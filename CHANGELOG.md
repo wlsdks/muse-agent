@@ -24,6 +24,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   itself blocks each escape, so a regression that weakened the confinement
   would be caught automatically.
 
+- **Clearer confirmation when a shell command hides its real work.** When a
+  command Muse wants to run buries what it actually does behind a shell
+  construction the safety check can't read through — command substitution
+  (`$(…)` / backticks), process substitution, a heredoc, or `eval` — the
+  confirmation prompt now flags that plainly so you approve it with eyes open,
+  and such a command can never slip through on a mis-labeled "read" risk. A
+  legitimate one still runs once you approve; nothing is auto-refused. (Fuller
+  automatic downgrade for any future unattended/trusted-run path is tracked as
+  a follow-up.)
+
 - **Post-compaction loop guard.** When the agent's context is compacted
   mid-run (old turns summarized away), a stuck small model could keep
   re-issuing the exact same tool call — the compaction failed to break the

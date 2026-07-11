@@ -9,3 +9,21 @@ ratchet: 로드맵 잔여 [ ] = 30/31 · self-eval pass · fabrication 0 · adve
 - 왜: D2-S1b가 seatbelt를 배선했으나 eval 표면에 탈출-차단 회귀 가드가 없었음. 이제 adversarialCases 래칫이 confinement 약화를 자동 포착.
 - 리뷰지점: network 케이스가 `accepted` 리스너 플래그로 채점되는지(curl exit≠0만으론 guard-OFF도 가짜 통과) — Opus 평가자가 guard-ON/OFF 뮤테이션 독립 재현으로 확인.
 - 리스크: network 케이스 300ms straggler 지연 의존(pass^2 안정 확인). ~/.ssh 없는 머신은 $HOME root 타겟(여전히 cwd/tmpdir 밖이라 거부).
+
+## fire 2 · 2026-07-11 · skill v2.x · 64557d3f9
+meta: slice=D2-S2a · wave=W1 · pkg=@muse/tools · kind=security-classifier · verdict=PASS(재판정) · firesSinceDrill=2
+ratchet: 로드맵 잔여 [ ] = 30/32(D2-S2가 a/b로 분해되며 +1) · self-eval pass · fabrication 0 · topology 22 test 신규
+- 무엇: 순수 셸-토폴로지 분류기 classifyCommandTopology — 셸 `-c` 스크립트가 DS-2 문자열가드가 못 보는 구성(치환/process-sub/heredoc/eval)을 quote-aware로 감지, 비-셸 command는 analyzable(near-miss). D2-S2를 a(분류기)/b(배선)로 분해.
+- 왜: DS-2는 `$(...)` 안에 숨은 파국을 못 봄. 이 분류기가 D2-S2b에서 un-analyzable→명시 승인 강등의 판정부가 됨.
+- 리뷰지점: Opus 1차 FAIL(개행이 명령구분자인데 eval 감지 누락=false neg; `$((` 산술을 command-sub로 오탐=false pos) → 롤백 대신 명명된 결함 수리(retry 예산 내), 재판정 PASS. maker=Sonnet·judge=Opus 모델차로 self-preference 차단이 실제 결함을 잡음.
+- 리스크: sudo/env 래퍼(`sudo sh -c '$(x)'`)는 program이 sudo로 풀려 미검출 → VQ-15 기록(D2-S2b 배선서 래퍼 벗기기). 배선 전까지 유저-가시 효과 0(CHANGELOG "기반/미연결"로 정직 표기).
+lesson: 셸 명령 구분자는 `; | & (`만이 아니라 **개행**도 포함 — command-position 스캐너는 `\n`을 반드시 재-arm; `$(`와 `$((`(산술)는 구분해야 near-miss 오탐 없음.
+
+## fire 3 · 2026-07-11 · skill v2.x · b3f581400
+meta: slice=D2-S2b · wave=W1 · pkg=apps/cli(chat-ink-core) · kind=security-wiring · verdict=PASS · firesSinceDrill=3
+ratchet: 로드맵 잔여 [ ] = 29/32 · self-eval FOREIGN-fail(아래) · fabrication 0 · chat gate 135 test(+9)
+- 무엇: D2-S2a 순수 분류기를 wired 승인 게이트 chatToolApprovalGate에 배선. un-analyzable run_command은 ①risk=read 위조로도 silent-allow 안 됨(read fast-path에 `&& topology.analyzable`) ②승인 프롬프트에 "검사 불가 셸 구성" 경고. 무조건 거부 아님(사람이 정당 heredoc 승인).
+- 왜: DS-2 문자열가드가 못 보는 $()/heredoc/eval을 사람이 인지하고 승인하도록. 발견: trust.json 런타임 미배선 + run_command 이미 execute라 live auto-approve seam 없음 → 완전 강등은 VQ-16.
+- 리뷰지점: Opus 평가자 PASS(우회불가 불변식·arg-hostility·mutation-RED 독립확인). over-cap construct=undefined → "(undefined)" 렌더 cosmetic를 `?? "un-analyzable"` 폴백+테스트로 수리.
+- 리스크: 동시 Telegram 루프가 트리 오염(api/messaging/web/MUSE_TELEGRAM_* env 미커밋) → self-eval envInventory FOREIGN-fail(내 diff는 MUSE_ env 0개), @muse/api 테스트 2 FOREIGN-fail. 내 파일만 명시 스테이징, 외부 미접촉. self-eval exit-0은 외부 루프 커밋 후 회복 예정.
+lesson: 동시 루프가 fire 중간에 트리를 오염시키면 self-eval/전패키지 게이트가 FOREIGN-fail — 내 파일 격리 검증(build+내test+lint)으로 판정하고 명시 경로 커밋, docs:env는 외부 env를 쓸어담으니 실행 금지.

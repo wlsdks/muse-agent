@@ -29,6 +29,11 @@ export class MessagingProviderRegistry {
     this.providers.set(provider.id, provider);
   }
 
+  /** Remove a provider so sends to it fail closed (PROVIDER_NOT_FOUND). */
+  unregister(providerId: string): boolean {
+    return this.providers.delete(providerId);
+  }
+
   list(): readonly MessagingProvider[] {
     return [...this.providers.values()];
   }

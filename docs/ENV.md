@@ -136,7 +136,7 @@ Total: **505** variables.
 | `MUSE_DEFAULT_TIMEZONE` | packages/autoconfigure |
 | `MUSE_DELTA_AT` | apps/cli |
 | `MUSE_DISCORD_AFTER_FILE` | packages/autoconfigure |
-| `MUSE_DISCORD_BOT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_DISCORD_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_DISCORD_INBOX_FILE` | packages/autoconfigure |
 | `MUSE_DISCORD_POLL_CHANNELS` | apps/api, packages/autoconfigure, packages/domain-tools |
 | `MUSE_DISCORD_POLL_ENABLED` | apps/api |
@@ -212,7 +212,7 @@ Total: **505** variables.
 | `MUSE_HUD_SEGMENTS` | apps/cli |
 | `MUSE_IDLE_LEARNING_ENABLED` | apps/cli |
 | `MUSE_INBOUND_AUTO_APPROVE` | apps/api |
-| `MUSE_INBOUND_REPLY_ENABLED` | apps/api |
+| `MUSE_INBOUND_REPLY_ENABLED` | apps/api, apps/web |
 | `MUSE_INBOUND_REPLY_INTERVAL_MS` | apps/api |
 | `MUSE_INBOX_CONTEXT_ENABLED` | packages/autoconfigure |
 | `MUSE_INBOX_INJECT_LIMIT` | packages/autoconfigure |
@@ -226,7 +226,7 @@ Total: **505** variables.
 | `MUSE_KNOWLEDGE_SEARCH_ENABLED` | apps/api, packages/autoconfigure |
 | `MUSE_LEARNING_PAUSE_FILE` | packages/autoconfigure |
 | `MUSE_LEARN_QUEUE_FILE` | packages/stores |
-| `MUSE_LINE_CHANNEL_ACCESS_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_LINE_CHANNEL_ACCESS_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_LINE_CHANNEL_SECRET` | apps/api |
 | `MUSE_LINE_INBOX_FILE` | packages/autoconfigure, packages/messaging |
 | `MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS` | packages/autoconfigure |
@@ -440,7 +440,7 @@ Total: **505** variables.
 | `MUSE_SKILL_REWARDS_FILE` | packages/autoconfigure |
 | `MUSE_SKIP_FIRST_RUN` | apps/cli |
 | `MUSE_SLACK_AFTER_FILE` | packages/autoconfigure |
-| `MUSE_SLACK_BOT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_SLACK_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_SLACK_INBOX_FILE` | packages/autoconfigure |
 | `MUSE_SLACK_POLL_CHANNELS` | apps/api, packages/autoconfigure, packages/domain-tools |
 | `MUSE_SLACK_POLL_ENABLED` | apps/api |
@@ -467,11 +467,11 @@ Total: **505** variables.
 | `MUSE_TASK_MEMORY_MAX_TASKS` | packages/autoconfigure |
 | `MUSE_TASK_MEMORY_PERSIST` | packages/autoconfigure |
 | `MUSE_TASK_MEMORY_RETENTION_MS` | packages/autoconfigure |
-| `MUSE_TELEGRAM_BOT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_TELEGRAM_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_TELEGRAM_INBOX_FILE` | packages/autoconfigure |
 | `MUSE_TELEGRAM_OFFSET_FILE` | packages/autoconfigure |
-| `MUSE_TELEGRAM_POLL_ENABLED` | apps/api |
-| `MUSE_TELEGRAM_POLL_INTERVAL_MS` | apps/api |
+| `MUSE_TELEGRAM_POLL_ENABLED` | apps/api, apps/web |
+| `MUSE_TELEGRAM_POLL_INTERVAL_MS` | apps/api, apps/web |
 | `MUSE_TELEMETRY_AGGREGATOR_CAPACITY` | packages/autoconfigure |
 | `MUSE_TELEMETRY_AGGREGATOR_ENABLED` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_TIERED_CASCADE` | apps/api |

@@ -3254,3 +3254,5 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 ## RUNNER SEATBELT (roadmap W1 D2-S1)
 - ✓ D2-S1b+c 2026-07-11 — MUSE_RUNNER_SANDBOX=seatbelt 배선(canonicalize 필수·/dev/null allowance 실기기 발견), 탈출3종 실프로세스 계약+mutation-RED, doctor 포스처; 다음 = D2-S1d(eval:adversarial 샌드박스-탈출 케이스, D2-S7 합류 가능)
 - ✓ D2-S1d 2026-07-11 — eval:adversarial 결정론 sandbox-탈출 3종(실 바이너리 spawn·OS거부 코드채점·adversarialCases 16→19); 다음 = D2-S2(셸 토폴로지 fail-close)
+- ✓ D2-S2a 2026-07-11 — 셸 토폴로지 순수 분류기 classifyCommandTopology(치환/heredoc/eval 감지, 비-셸=analyzable near-miss); Opus가 개행-eval false-neg+산술 false-pos 잡음→수리; 다음 = D2-S2b(approval-downgrade 배선), VQ-15(sudo/env 래퍼)
+- ✓ D2-S2b 2026-07-11 — 토폴로지 분류기를 chatToolApprovalGate에 배선(un-analyzable run_command은 read위조로도 silent-allow 불가 + 프롬프트 경고); trust.json 미배선이라 full auto-approve 강등은 VQ-16; 다음 = D1-S1(ping-pong 루프감지)

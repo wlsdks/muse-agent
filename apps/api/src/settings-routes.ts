@@ -21,7 +21,9 @@ const DAEMON_FLAGS: readonly (readonly [string, string, boolean])[] = [
   ["MUSE_CONFLICT_WATCH_ENABLED", "Calendar conflict watch", false],
   ["MUSE_PROACTIVE_AGENT_TURN", "Proactive agent turn", false],
   ["MUSE_BACKGROUND_REVIEW_ENABLED", "Background review (skill learning)", false],
-  ["MUSE_KNOWLEDGE_SEARCH_ENABLED", "Knowledge search", false]
+  ["MUSE_KNOWLEDGE_SEARCH_ENABLED", "Knowledge search", false],
+  ["MUSE_TELEGRAM_POLL_ENABLED", "Telegram inbound polling", false],
+  ["MUSE_INBOUND_REPLY_ENABLED", "Channel auto-reply (chat as a Muse session)", false]
 ];
 
 export function shapeDaemonFlags(env: NodeJS.ProcessEnv): DaemonFlagsResponse {

@@ -1601,3 +1601,37 @@ button {
   color: var(--ink-tertiary);
   margin-top: 2px;
 }
+
+/* Tooltip (Integrations tab et al.) */
+.tip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  outline: none;
+}
+.tip-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  max-width: 280px;
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-4);
+  border: 1px solid var(--hairline-strong);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 60;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.tip-wrap:hover .tip-bubble,
+.tip-wrap:focus-visible .tip-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

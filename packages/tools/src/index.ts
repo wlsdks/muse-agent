@@ -183,6 +183,7 @@ export {
 } from "./runner.js";
 
 export { classifyDangerousCommand, normalizeCommandForGuard, type DangerousCommandVerdict } from "./dangerous-command.js";
+export { classifyCommandTopology, type CommandTopologyVerdict } from "./command-topology.js";
 export { classifyRunnerFailure, type RunnerFailureKind, type RunnerFailureSignal } from "./runner-failure.js";
 
 export { ToolExecutor, nearestToolName, toolErrorHint } from "./executor.js";

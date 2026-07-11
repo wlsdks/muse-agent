@@ -2,6 +2,21 @@ import { useI18n } from "../i18n/index.js";
 
 import type { ReactNode } from "react";
 
+/**
+ * CSS-only hover/focus tooltip. Keyboard-reachable (tabIndex) and mirrored
+ * into aria-label so screen readers get the tip without the visual bubble.
+ */
+export function Tooltip({ tip, children }: { tip: string; children: ReactNode }) {
+  return (
+    <span className="tip-wrap" tabIndex={0} aria-label={tip}>
+      {children}
+      <span role="tooltip" className="tip-bubble">
+        {tip}
+      </span>
+    </span>
+  );
+}
+
 export function Card({
   title,
   count,

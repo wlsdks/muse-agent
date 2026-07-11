@@ -386,6 +386,97 @@ describe("chatToolApprovalGate", () => {
       "tool|tasks_add|title: Buy milk"
     ]);
   });
+
+  it("gates an un-analyzable run_command (shell construct hides the real command) even when declared read", async () => {
+    const seenDetails: string[] = [];
+    let asked = false;
+    const gate = chatToolApprovalGate(outbound, async (_name, detail) => {
+      asked = true;
+      seenDetails.push(detail);
+      return false;
+    });
+    const decision = await gate({
+      risk: "read",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "eval \"$X\""] } }
+    });
+    expect(asked).toBe(true);
+    expect(decision).toEqual({ allowed: false, reason: "user declined the tool call" });
+    expect(seenDetails[0]).toContain("un-inspectable shell construction (eval)");
+  });
+
+  it("un-analyzable run_command: approve lets it through, decline blocks it", async () => {
+    const approveGate = chatToolApprovalGate(outbound, async () => true);
+    const approved = await approveGate({
+      risk: "execute",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "rm -rf $(echo /)"] } }
+    });
+    expect(approved).toEqual({ allowed: true });
+
+    const denyGate = chatToolApprovalGate(outbound, async () => false);
+    const denied = await denyGate({
+      risk: "execute",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "rm -rf $(echo /)"] } }
+    });
+    expect(denied).toEqual({ allowed: false, reason: "user declined the tool call" });
+  });
+
+  it("un-analyzable run_command detail names the construct", async () => {
+    let detail = "";
+    const gate = chatToolApprovalGate(outbound, async (_name, d) => { detail = d; return true; });
+    await gate({
+      risk: "execute",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "rm -rf $(echo /)"] } }
+    });
+    expect(detail).toContain("un-inspectable shell construction (command-substitution)");
+    expect(detail).toContain("command:");
+  });
+
+  it("analyzable run_command: detail is the plain summary, no topology warning", async () => {
+    let detail = "";
+    const gate = chatToolApprovalGate(outbound, async (_name, d) => { detail = d; return true; });
+    const decision = await gate({
+      risk: "execute",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "ls -la /tmp"] } }
+    });
+    expect(decision).toEqual({ allowed: true });
+    expect(detail).not.toContain("un-inspectable");
+    expect(detail).toBe(summarizeToolArgs({ command: "sh", args: ["-c", "ls -la /tmp"] }));
+
+    const denyGate = chatToolApprovalGate(outbound, async () => false);
+    const denied = await denyGate({
+      risk: "execute",
+      toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", "ls -la /tmp"] } }
+    });
+    expect(denied).toEqual({ allowed: false, reason: "user declined the tool call" });
+  });
+
+  it("a genuine read tool that is NOT run_command still silently allows, ask never called", async () => {
+    let asked = false;
+    const gate = chatToolApprovalGate(outbound, async () => { asked = true; return true; });
+    const decision = await gate({ risk: "read", toolCall: { name: "file_read", arguments: { path: "/tmp/x" } } });
+    expect(decision).toEqual({ allowed: true });
+    expect(asked).toBe(false);
+  });
+
+  it("a non-run_command execute tool has an unchanged plain-summary detail (no topology warning)", async () => {
+    let detail = "";
+    const gate = chatToolApprovalGate(outbound, async (_name, d) => { detail = d; return true; });
+    await gate({ risk: "execute", toolCall: { name: "email_send", arguments: { to: "a@b.c", body: "$(whoami)" } } });
+    expect(detail).not.toContain("un-inspectable");
+    expect(detail).toBe(summarizeToolArgs({ to: "a@b.c", body: "$(whoami)" }));
+  });
+
+  it("an over-length (un-analyzable, no named construct) command still asks and reads 'un-analyzable', not 'undefined'", async () => {
+    let detail = "";
+    let asked = false;
+    const gate = chatToolApprovalGate(outbound, async (_name, d) => { detail = d; asked = true; return false; });
+    const huge = "x".repeat(9000);
+    const decision = await gate({ risk: "read", toolCall: { name: "run_command", arguments: { command: "sh", args: ["-c", huge] } } });
+    expect(asked).toBe(true);
+    expect(detail).toContain("un-analyzable");
+    expect(detail).not.toContain("undefined");
+    expect(decision.allowed).toBe(false);
+  });
 });
 
 describe("formatMemoryView", () => {

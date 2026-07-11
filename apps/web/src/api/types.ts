@@ -359,6 +359,23 @@ interface MessagingProvider {
 export interface MessagingProvidersResponse {
   readonly providers: readonly MessagingProvider[];
 }
+
+export interface MessagingSetupProvider {
+  readonly id: string;
+  readonly displayName: string;
+  readonly docsUrl: string;
+  readonly configured: boolean;
+  readonly registered: boolean;
+  readonly source: "env" | "file" | null;
+}
+export interface MessagingSetupResponse {
+  readonly providers: readonly MessagingSetupProvider[];
+}
+export interface MessagingConnectResponse {
+  readonly ok: boolean;
+  readonly account?: string;
+  readonly reason?: string;
+}
 interface InboundMessage {
   readonly id?: string;
   readonly from?: string;

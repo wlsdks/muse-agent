@@ -9,6 +9,7 @@ import {
   resolveActionLogFile,
   resolveContactsFile,
   resolveNotesIndexFile,
+  resolveMessagingCredentialsFile,
   resolveObjectivesFile,
   resolveVetoesFile,
   resolvePlaybookFile,
@@ -27,6 +28,7 @@ import { registerMultiAgentRoutes, resolveWorkerTimeoutMs } from "./multi-agent-
 import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
+import { registerMessagingSetupRoutes } from "./messaging-setup-routes.js";
 import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerAskRoutes } from "./ask-routes.js";
 import { registerBoardRoutes } from "./board-routes.js";
@@ -328,6 +330,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       registry: options.messaging,
       ...(options.messagingPollNow ? { pollNow: options.messagingPollNow } : {}),
       ...(options.messagingPollAll ? { pollAll: options.messagingPollAll } : {})
+    });
+    registerMessagingSetupRoutes(server, {
+      authService,
+      credentialsFile: resolveMessagingCredentialsFile(process.env),
+      env: process.env,
+      registry: options.messaging
     });
   }
   if (options.remindersFile) {

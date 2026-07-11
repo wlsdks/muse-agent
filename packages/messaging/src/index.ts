@@ -53,6 +53,12 @@ export {
   type MessagingCredentials
 } from "./credential-store.js";
 
+export {
+  verifyMessagingToken,
+  type TokenVerification,
+  type VerifyTokenOptions
+} from "./token-verify.js";
+
 export type {
   InboundFetchOptions,
   InboundMessage,
