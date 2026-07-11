@@ -282,6 +282,8 @@ export { casualResponseFor, containsHangul } from "./casual-prompt-responses.js"
 export {
   buildRegisterBrevityLayer,
   classifyCasualTurn,
+  detectBrevityRequest,
+  detectDetailRequest,
   detectKoreanRegister,
   REGISTER_BREVITY_LAYER_ID,
   REGISTER_BREVITY_LAYER_PRIORITY,

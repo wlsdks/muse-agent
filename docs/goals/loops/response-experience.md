@@ -97,3 +97,11 @@ ratchet: testFiles +1(reminder-firing-lock) · fabrication 0 · eval N/A
 왜: fire 10 형제-감사 발굴 — store-락만으론 send 결정을 못 지킴.
 리뷰지점: FLAG — 5분 stale-break vs pathological 긴 틱(다수 due×재시도 30s 캡)에서 in-flight 1건 중복 가능(pre-fix보다 엄격히 나음, 비차단); 체크인 몫은 이제 withProcessLock 3줄 채택.
 리스크: 낮음.
+
+## fire 12 · 2026-07-12 · skill v2.x · 26e8fba79
+meta: value-class=reliability · pkg=@muse/proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1(checkin-lock) · fabrication 0 · eval N/A
+무엇: 체크인 이중 전송 봉합 — fire 11 템플릿 1:1(byte-동일 추출, 판정자 diff 확인), 두-데몬 시뮬레이션 5/5 안정 2회. 이중-전송 3부작(digest·리마인더·체크인) 완결.
+왜: fire 10 형제 마무리 — 범용화 덕에 소형 슬라이스.
+리뷰지점: 형제 스윕이 동일 클래스 4곳+잠재 1곳 추가 발굴(큐잉) — select-then-send 패턴의 전면 감사가 사실상 완료됨.
+리스크: 낮음. fire 13은 KIND 규칙상 concurrency 금지(10-12 3연속) — Phase-D 절 보존 또는 ack 카피로 강제 전환.

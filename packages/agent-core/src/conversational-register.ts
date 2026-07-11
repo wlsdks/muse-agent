@@ -130,10 +130,129 @@ const REGISTER_INSTRUCTION: Readonly<Record<PersonaRegister, string>> = {
 const BREVITY_INSTRUCTION =
   "이건 가벼운 대화다 — 1~2문장(약 120자 이내)으로 짧게 답하라. 번호 목록이나 추가 질문 없이 핵심만 답하라.";
 
+// The user EXPLICITLY asked for a short answer ("한 줄로만", "짧게: …",
+// "briefly, …"). Each alternative requires a directive SHAPE — a colon/comma
+// introducing the real question, or the marker itself acting as the
+// sentence's verb ("답해줘"/"설명해줘") — never a bare mention. This is what
+// keeps "짧은 문장 만드는 법" (a question ABOUT short sentences, a topic) from
+// misfiring: "짧은" alone is not in this pattern, only "짧은 답변/대답" (asking
+// FOR a short answer) is.
+const BRIEF_REQUEST_KO_RE =
+  /(?:한\s?줄(?:로|만)|1\s?줄(?:로|만)?)\s*(?:만)?\s*[:,]|(?:짧게|간단히|간략히|간단하게|요약해서)\s*[:,]|(?:짧게|간단히|간략히|간단하게|요약해서)\s*(?:답해|답변|대답해|말해|알려|설명해|써줘|부탁)|짧은\s*(?:답변|대답)/u;
+const BRIEF_REQUEST_EN_RE = /\b(?:in one line|briefly|short answer|tl;?dr|in short|concisely)\b/iu;
+
+/**
+ * True when the user's OWN text explicitly directs a short answer — this
+ * must OUTRANK the gentle casual-turn brevity, because the model ignores a
+ * generic "keep it short" hint but obeys a strong, singular instruction
+ * (measured: brief-requests violated ≤100 chars by 57-96% under the generic
+ * casual instruction alone).
+ */
+export function detectBrevityRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  return BRIEF_REQUEST_KO_RE.test(trimmed) || BRIEF_REQUEST_EN_RE.test(trimmed);
+}
+
+// The user EXPLICITLY asked for depth/steps/examples. This is the
+// anti-over-gating guard: when true, NO brevity or lead-with-answer
+// instruction may be added, however short-looking the sentence otherwise
+// reads — a truncated "OAuth2 단계별로 자세히" answer is the regression this
+// function exists to prevent.
+const DETAIL_REQUEST_KO_RE = /자세히|자세하게|단계별|예제|예시|구체적으로|길게/u;
+const DETAIL_REQUEST_EN_RE = /\b(?:step[\s-]?by[\s-]?step|in detail|deep dive)\b/iu;
+
+export function detectDetailRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  return DETAIL_REQUEST_KO_RE.test(trimmed) || DETAIL_REQUEST_EN_RE.test(trimmed);
+}
+
+const STRONG_BRIEF_INSTRUCTION =
+  "사용자가 명시적으로 짧은 답을 요청했다 — 주제와 관계없이 1문장(최대 120자 정도)으로만 답하라. "
+  + "목록, 배경 설명, 부가 질문 없이 핵심만 말하라.";
+
+const LEAD_WITH_ANSWER_INSTRUCTION =
+  "먼저 핵심 답을 한두 문장으로 말하고 시작하라 — 배경 설명이나 목록으로 시작하지 마라. "
+  + "필요하면 답 끝에 \"더 자세히 알려줄까?\"처럼 확장 여부만 물어라.";
+
+// A question ABOUT the assistant itself (who/what are you, who made you,
+// where you run, a vendor-name challenge, "자기소개"). The identity core
+// (packages/prompts identity-core.ts, the identity battery its guard) OWNS
+// these turns; the light lead-with-answer nudge must NOT compete with it —
+// "lead with the direct answer" nudged the model to open with the locality
+// fact and drop the required 뮤즈/Muse mention, flaking the identity battery
+// on cloud-data-ko. Requires a second-person self-reference (너/네/니/당신/
+// you) OR a vendor-self-name OR "자기소개" OR a data-locality ask, so an
+// ordinary factual "who made Docker" (no self-reference) is unaffected.
+const SELF_REFERENTIAL_KO_RE =
+  /자기소개|(?:너|넌|네|니|당신)\s*(?:는|은|가|이)?\s*(?:누구|누가|이름|정체|무슨\s*모델|어떤\s*모델|모델이|만들었|만든|클라우드|어디서)|누가\s*(?:너|널|당신)\s*만들|내\s*데이터.{0,6}(?:어디|어디로)|(?:구글이\s*만든|Gemma\s*모델|ChatGPT|OpenAI)/iu;
+const SELF_REFERENTIAL_EN_RE =
+  /\bwho\s+(?:are\s+you|created\s+you|made\s+you|built\s+you)\b|\byour\s+name\b|\bare\s+you\s+(?:chatgpt|gemma|gpt|a\s+google)\b|\bwho\s+made\s+you\b/iu;
+
+// A leading turn that states a (often false) premise and fishes for
+// agreement ("지구가 평평하다는 거 너도 알지?", "1+1은 3인 것 같아, 어때?").
+// The anti-sycophancy / correction machinery — not this brevity layer — owns
+// these: "lead with the direct answer, keep it to one line" competes with
+// the model's need to correct the premise, so cede the light nudge here too.
+const AGREEMENT_BAIT_RE =
+  /(?:너도|당신도)\s*(?:알지|알잖아|그렇지|그치|맞지)|(?:맞지|그렇지|그치|안\s?그래|어때)\s*[?？]|내\s*생각(?:엔|에는)|(?:같아|같은데)\s*[.?？]|,\s*(?:맞지|그렇지|그치)\b|\b(?:right|isn'?t it|don'?t you (?:agree|think))\s*\?/iu;
+
+function defersToHonestyOrIdentityCore(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  return (
+    SELF_REFERENTIAL_KO_RE.test(trimmed) ||
+    SELF_REFERENTIAL_EN_RE.test(trimmed) ||
+    AGREEMENT_BAIT_RE.test(trimmed)
+  );
+}
+
 export interface RegisterBrevityLayerInput {
   readonly userText: string;
   /** From `persona.md`'s `register` frontmatter — WINS over detection when set. */
   readonly personaRegister?: PersonaRegister;
+}
+
+/**
+ * Pick the brevity/lead-with-answer line for the current turn, or
+ * `undefined` when none applies. Three mutually-exclusive cases, checked in
+ * priority order:
+ *   (a) an explicit brief-request ("한 줄로만", "짧게: …") → the STRONG
+ *       instruction — this must beat the model's default verbosity even on
+ *       a turn that also happens to read as casual.
+ *   (b) a casual/small-talk turn (existing behavior) → the gentle
+ *       casual-brevity instruction.
+ *   (c) neither (a) nor (b), NOT an explicit detail-request, and NOT a turn
+ *       the honesty/identity core owns → the LIGHT lead-with-answer nudge
+ *       (the simple-factual-question fix).
+ * An explicit detail-request ("자세히", "단계별", "예제와 함께", …) suppresses
+ * ALL THREE — the user's own request for depth always wins, however short
+ * the sentence otherwise looks. This is the anti-truncation guard. A
+ * self-referential identity question or a premise-challenge agreement-bait
+ * suppresses the light nudge (but not an explicit brief-request) so the
+ * identity / anti-sycophancy core, not this layer, shapes those turns.
+ */
+function selectBrevityLine(userText: string): string | undefined {
+  if (detectDetailRequest(userText)) {
+    return undefined;
+  }
+  if (detectBrevityRequest(userText)) {
+    return STRONG_BRIEF_INSTRUCTION;
+  }
+  if (classifyCasualTurn(userText)) {
+    return BREVITY_INSTRUCTION;
+  }
+  if (defersToHonestyOrIdentityCore(userText)) {
+    return undefined;
+  }
+  return LEAD_WITH_ANSWER_INSTRUCTION;
 }
 
 /**
@@ -146,15 +265,15 @@ export interface RegisterBrevityLayerInput {
 export function buildRegisterBrevityLayer(input: RegisterBrevityLayerInput): PromptLayer | undefined {
   const detected = detectKoreanRegister(input.userText);
   const effectiveRegister = input.personaRegister ?? (detected === "unknown" ? undefined : detected);
-  const casual = classifyCasualTurn(input.userText);
+  const brevityLine = selectBrevityLine(input.userText);
 
-  if (!effectiveRegister && !casual) {
+  if (!effectiveRegister && !brevityLine) {
     return undefined;
   }
 
   const lines = [
     ...(effectiveRegister ? [REGISTER_INSTRUCTION[effectiveRegister]] : []),
-    ...(casual ? [BREVITY_INSTRUCTION] : [])
+    ...(brevityLine ? [brevityLine] : [])
   ];
 
   return {
