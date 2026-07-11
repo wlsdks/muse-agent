@@ -194,7 +194,7 @@ ratchet: 로드맵 잔여 [ ] = 28/55 · self-eval pass · fabrication 0 · fs +
 - 리뷰지점: Opus PASS — re-indent 정확(consistent-base 케이스 trace)·보수적(edge서도 기존 verbatim splice보다 strictly-better)·exact/trailing-ws byte-identical(no-op 보장)·fail-close(유니크 매칭 gated, wrong-place 없음)·두 mutation 독립 재현(re-indent 무력화→indent 오염 RED, unescapeQuotes 제거→`\"` RED)·OUTCOME 채점(결과 라인 들여쓰기 검증). eval:computer-task 3/3 회귀無.
 - 리스크: 낮음. +10%p pass^3는 stochastic north-star라 per-fire 확증 불가(회귀-STABLE 3/3로 게이트, 메커니즘이 지향). 조합 drift(newline+quote 동시)는 1-shot 미수리이나 fail-CLOSED(refuse, 오염 아님). 미추가 형제(whitespace-collapse·first/last 앵커링)=backlog, case-insensitive는 영구 제외. 다음 = D4-S1(muse mcp serve 확대: read 다수+write draft-first 프록시+grounded-recall 노출).
 
-## fire 24 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 24 · 2026-07-12 · skill v2.x · d9855ec62
 meta: slice=D4-S1a · wave=W3 · pkg=apps/cli · kind=mcp-write-proxy · verdict=PASS · firesSinceDrill=6
 ratchet: 로드맵 잔여 [ ] = 29/57(D4-S1→a/b/c 분해로 +2) · self-eval pass · fabrication 0 · cli mcp-serve +? test(16)·★W3 착수
 - 무엇: `muse mcp serve` write draft-first 프록시. propose_action MCP 툴(buildMcpServeTools 4번째): 외부 클라이언트가 action+draft(+arguments) 제안→기존 PendingApproval 큐(recordPendingApproval 재사용, muse approvals 동일 파일)에 파킹(source "mcp-serve"), "승인 대기" 반환, 실행경로 0. D4-S1을 a(write프록시)/b(grounded surface 등록 📈)/c(read 확대)로 분해.
