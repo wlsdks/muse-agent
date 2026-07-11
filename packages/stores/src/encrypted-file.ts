@@ -84,8 +84,13 @@ const LOCK_MAX_ATTEMPTS = 240; // ~12s before giving up on a live holder — 50 
 async function lockIsStale(lockPath: string): Promise<boolean> {
   try {
     return Date.now() - (await fs.stat(lockPath)).mtimeMs > LOCK_STALE_MS;
-  } catch {
-    return true; // vanished between EEXIST and stat — stealable
+  } catch (cause) {
+    // ONLY ENOENT means "vanished between EEXIST and stat" (stealable). Any
+    // other stat error (win32 EPERM during a delete-pending window, an AV scan
+    // touching the file) says nothing about the holder — calling it stale
+    // deletes a LIVE holder's lock and admits a second writer (a real
+    // lost-update observed on the windows-latest runner).
+    return (cause as NodeJS.ErrnoException).code === "ENOENT";
   }
 }
 
