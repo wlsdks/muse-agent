@@ -5,7 +5,7 @@
  * so they can be unit-tested directly.
  */
 
-import { classifyActionRequest, classifyCasualPrompt, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
+import { casualResponseFor, classifyActionRequest, classifyCasualPrompt, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { evaluateArithmeticExpression } from "@muse/mcp";
 import { parseReminderDueAt } from "@muse/stores";
 
@@ -17,14 +17,14 @@ import { convertUnit, detectUnitConversion, formatConversion } from "./unit-conv
 import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 
-// Instant, on-brand replies for a PURE social prompt — so a bare "hi" / "thanks"
-// gets a clean conversational line instead of the empty-corpus on-ramp + a
-// fabricated `[action: …]` citation + a "treat as unverified" grounding warning.
-// Deterministic (no model call, no retrieval), so it is also the fastest path.
+// Canned replies for a PURE social prompt now live in agent-core
+// (`casualResponseFor`) so the channel-reply surface shares the exact same
+// text; re-exported here (unchanged shape) so existing CLI callers/tests
+// keep working.
 export const CASUAL_RESPONSES: Record<CasualPromptKind, string> = {
-  farewell: "Take care — I'll be here when you need your notes.",
-  greeting: "Hi! I answer from your own notes — ask me anything you've saved and I'll quote the source, or tell you honestly when it isn't there.",
-  thanks: "You're welcome."
+  farewell: casualResponseFor("farewell"),
+  greeting: casualResponseFor("greeting"),
+  thanks: casualResponseFor("thanks")
 };
 
 // An ACCURATE, honest description of what Muse actually does — so a "what can

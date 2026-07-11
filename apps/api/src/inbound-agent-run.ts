@@ -1,3 +1,4 @@
+import { casualResponseFor, classifyCasualPrompt } from "@muse/agent-core";
 import {
   parseBoolean,
   resolveActionLogFile,
@@ -126,6 +127,14 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         });
     if (approvalAck !== undefined) {
       return approvalAck;
+    }
+    // Deterministic casual fast-path (parity with `muse ask`): a bare
+    // greeting/thanks/farewell is not a question about the user's notes, so
+    // answer it conversationally and skip the agent run + grounding gate
+    // entirely — nothing here is a factual claim that needs a citation.
+    const casualKind = classifyCasualPrompt(latestUserText);
+    if (casualKind) {
+      return casualResponseFor(casualKind);
     }
     const result = await agentRuntime.run({
       messages,
