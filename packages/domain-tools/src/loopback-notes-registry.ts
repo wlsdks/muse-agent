@@ -1,4 +1,4 @@
-import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -193,7 +193,7 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
           if (id && !providerId) {
             return { error: "providerId is required to update an existing note" };
           }
-          const guard = guardSecretPersistence(`${title}\n${body}`);
+          const guard = assertNoSecretInPersistedFields({ title, body });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
@@ -242,7 +242,7 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
           if (body === undefined) {
             return { error: "body is required" };
           }
-          const guard = guardSecretPersistence(body);
+          const guard = assertNoSecretInPersistedFields({ body });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }

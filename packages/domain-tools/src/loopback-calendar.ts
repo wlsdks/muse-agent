@@ -4,7 +4,7 @@ import type {
   CalendarEventUpdate,
   CalendarProviderRegistry
 } from "@muse/calendar";
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { computeAvailability } from "@muse/mcp-shared";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
@@ -293,6 +293,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           const cadence = (cadenceArg && CALENDAR_CADENCES.has(cadenceArg) ? cadenceArg : undefined)
             ?? recurrenceFromPhrase(startsAtRaw ?? "");
           const recurrence = cadence ? `FREQ=${cadence.toUpperCase()}` : undefined;
+          const guard = assertNoSecretInPersistedFields({ title, notes, location });
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           const input: CalendarEventInput = {
             allDay,
             endsAt,
@@ -344,6 +348,17 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           const ref = readString(args, "id");
           if (!ref) {
             return { error: "id (or a distinct word from the event title) is required" };
+          }
+          // Guard BEFORE resolving the event ref — a blocked update should
+          // never hit the provider's listEvents/updateEvent at all, same
+          // as `add` guarding before createEvent.
+          const updateGuard = assertNoSecretInPersistedFields({
+            title: readString(args, "title"),
+            notes: readString(args, "notes"),
+            location: readString(args, "location")
+          });
+          if (!updateGuard.safe) {
+            return { blocked: true, error: updateGuard.notice, kinds: updateGuard.kinds as JsonValue };
           }
           const resolved = await resolveEventForAction(ref, readString(args, "providerId"));
           if ("error" in resolved) {

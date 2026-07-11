@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
 import { readString, readStringArray, errorMessage } from "@muse/mcp";
@@ -90,7 +90,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           }
           const notes = readString(args, "notes") ?? undefined;
           const tags = readStringArray(args, "tags") ?? undefined;
-          const guard = guardSecretPersistence([title, notes].filter((part): part is string => Boolean(part)).join("\n"));
+          const guard = assertNoSecretInPersistedFields({ title, notes });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
@@ -275,7 +275,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           if ((title === undefined || title.length === 0) && notesArg === undefined && dueArg === undefined && !hasUrgent) {
             return { error: "provide at least one of: dueAt, title, urgent, notes" };
           }
-          const guard = guardSecretPersistence([title, notesArg].filter((part): part is string => Boolean(part)).join("\n"));
+          const guard = assertNoSecretInPersistedFields({ title, notes: notesArg });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }

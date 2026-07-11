@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { resolve as nodePathResolve, sep as nodePathSep } from "node:path";
 
-import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -395,7 +395,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (content === undefined) {
             return { error: "content is required" };
           }
-          const guard = guardSecretPersistence(content);
+          const guard = assertNoSecretInPersistedFields({ content });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
@@ -479,7 +479,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (content === undefined) {
             return { error: "content is required" };
           }
-          const guard = guardSecretPersistence(content);
+          const guard = assertNoSecretInPersistedFields({ content });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
