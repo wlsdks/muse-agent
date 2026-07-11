@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerContactsCommands } from "./commands-contacts.js";
 import { registerEmailCommands } from "./commands-email.js";
 
-// P11 seam: a contact ADDED via `muse contacts` must resolve as the
+// Seam: a contact ADDED via `muse contacts` must resolve as the
 // recipient of `muse email send` over the SAME ~/.muse/contacts.json —
 // and the never-guess rule must hold end-to-end (two same-name contacts
 // ⇒ no send). Composes the real contacts store + resolveContact + the
@@ -56,7 +56,7 @@ async function run(sender: EmailSender, args: string[]): Promise<{ output: strin
   return { exitCode, output: output.join("") };
 }
 
-describe("P11 seam — contacts → gated email send over one store", () => {
+describe("Seam — contacts → gated email send over one store", () => {
   it("a contact added via `muse contacts` resolves as the recipient and the send fires on confirm", async () => {
     const { sender, sends } = recordingSender();
     await run(sender, ["contacts", "add", "Bob", "--email", "bob@example.com"]);

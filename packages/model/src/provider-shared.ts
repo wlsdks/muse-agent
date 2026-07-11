@@ -5,7 +5,7 @@
  * specific wire transforms stay in their respective files.
  */
 
-import type { JsonObject, JsonValue as _JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import type { ModelCapabilities, ModelEvent, ModelResponse } from "./index.js";
 

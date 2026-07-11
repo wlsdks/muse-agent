@@ -371,6 +371,127 @@ export function dedupeSubtasks(subtasks: readonly Subtask[]): Subtask[] {
 }
 
 /**
+ * Fan-out execution loop: run each sub-task in order, threading COMPLETED prior
+ * outputs forward for a SEQUENCED split. Only completed outputs are threaded — a
+ * failed/ungrounded/blank step is NOT fed forward (fail-close: never seed the next
+ * step with garbage). An independent list passes nothing (isolation preserved). A
+ * SEQUENCED dependent step (any step after the first) whose EVERY upstream step
+ * failed/ungrounded has NOTHING to act on — running it blind fabricates a confident
+ * result from an absent dependency (MAST reasoning-action mismatch / information
+ * withholding), so it is fail-closed instead of executed. The first step (no priors
+ * by design) always runs; an INDEPENDENT list never reaches that branch.
+ */
+async function executeSubtasks(subtasks: readonly Subtask[], deps: LeadWorkerDeps, sequenced: boolean): Promise<SubtaskExecution[]> {
+  const executions: SubtaskExecution[] = [];
+  for (const subtask of subtasks) {
+    const priorContext = sequenced
+      ? executions.flatMap((e) => (e.status === "completed" && e.output ? [e.output] : []))
+      : [];
+    if (sequenced && executions.length > 0 && priorContext.length === 0) {
+      executions.push({
+        error: "upstream sequenced step(s) failed — dependent step not run blind (fail-close)",
+        status: "failed",
+        subtask
+      });
+      continue;
+    }
+    executions.push(await runOne(subtask, deps, priorContext.length > 0 ? priorContext : undefined));
+  }
+  return executions;
+}
+
+interface SynthesisOutcome {
+  readonly finalAnswer: string;
+  readonly synthesisIncomplete?: readonly string[];
+}
+
+/**
+ * Fan-in objective-satisfaction (maker != judge) plus its verifier-gated SINGLE
+ * re-synthesis (reflection-guard): did the synthesis incorporate every completed
+ * sub-task, or silently drop one? Fail-soft — a verifier error leaves the answer
+ * as-is (never blocks the run). A bare unverified retry repeats the drop ~85% of
+ * the time (arXiv 2510.18254), so the retry is backed by the deterministic
+ * `verifySynthesisCoverage` AND accepted ONLY if the retry was itself VERIFIED and
+ * drops STRICTLY FEWER sub-results — a retry can never make the answer worse, and a
+ * retry whose verifier errored is NOT accepted as "complete" (we keep the original
+ * flagged answer rather than claim false coverage). The retry prompt names what was
+ * dropped (reinforceSynthesisRequest), not a blind "try again". The truncation
+ * caveat is kept on the retry base too — a re-synthesis must not drop the partiality
+ * directive just because it's adding the missing-coverage one.
+ */
+async function synthesizeWithRetryGate(
+  request: string,
+  executions: readonly SubtaskExecution[],
+  truncated: boolean,
+  droppedCount: number,
+  deps: LeadWorkerDeps
+): Promise<SynthesisOutcome> {
+  const runSynthesis = async (synthesisRequest: string): Promise<{ answer: string; missing?: readonly string[]; verified: boolean }> => {
+    const answer = await deps.synthesize(synthesisRequest, executions);
+    if (!deps.verifySynthesis) return { answer, verified: false };
+    try {
+      const verdict = await deps.verifySynthesis(request, answer, executions);
+      return { answer, missing: !verdict.satisfied && verdict.missing.length > 0 ? verdict.missing : undefined, verified: true };
+    } catch {
+      return { answer, verified: false }; // verifier unavailable — surface nothing, return the answer
+    }
+  };
+
+  const first = await runSynthesis(truncated ? truncatedSynthesisRequest(request, droppedCount) : request);
+  let finalAnswer = first.answer;
+  let synthesisIncomplete = first.missing;
+  if (synthesisIncomplete && deps.verifySynthesis) {
+    const retryBase = truncated ? truncatedSynthesisRequest(request, droppedCount) : request;
+    const retry = await runSynthesis(reinforceSynthesisRequest(retryBase, synthesisIncomplete));
+    if (retry.verified && (retry.missing?.length ?? 0) < synthesisIncomplete.length) {
+      finalAnswer = retry.answer;
+      synthesisIncomplete = retry.missing;
+    }
+  }
+  return { finalAnswer, synthesisIncomplete };
+}
+
+interface CoordinationIssues {
+  readonly subtaskConflicts?: readonly string[];
+  readonly subtaskRedundancies?: readonly string[];
+  readonly reasoningActionGaps?: readonly string[];
+}
+
+/**
+ * Fan-in coordination-health checks over the completed executions: cross-subtask
+ * CONTRADICTION (the grounding edge on the fan-OUT), step-REPETITION redundancy, and
+ * — only for a SEQUENCED split — reasoning-action alignment (MAST FM-2.6: did each
+ * completed downstream step actually engage the upstream RESULT it was handed?).
+ * Fail-soft — a detector error leaves that signal unset rather than blocking the run.
+ */
+async function detectCoordinationIssues(
+  executions: readonly SubtaskExecution[],
+  sequenced: boolean,
+  deps: LeadWorkerDeps
+): Promise<CoordinationIssues> {
+  let subtaskConflicts: readonly string[] | undefined;
+  if (deps.detectConflicts) {
+    try {
+      const conflicts = await deps.detectConflicts(executions);
+      if (conflicts.length > 0) subtaskConflicts = conflicts;
+    } catch { /* detector unavailable — surface nothing */ }
+  }
+  let subtaskRedundancies: readonly string[] | undefined;
+  if (deps.detectRedundancies) {
+    try {
+      const redundancies = await deps.detectRedundancies(executions);
+      if (redundancies.length > 0) subtaskRedundancies = redundancies;
+    } catch { /* detector unavailable — surface nothing */ }
+  }
+  let reasoningActionGaps: readonly string[] | undefined;
+  if (sequenced) {
+    const gaps = verifySequencedDependencyUse(executions);
+    if (gaps.length > 0) reasoningActionGaps = gaps;
+  }
+  return { reasoningActionGaps, subtaskConflicts, subtaskRedundancies };
+}
+
+/**
  * Lead-worker fan-out: a complex request is split into independent sub-tasks,
  * each run in its own clean context (sequential on a single GPU), then the lead
  * synthesizes one answer. A simple request bypasses the whole machinery and
@@ -420,31 +541,7 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
   const droppedCount = truncated ? subtasks.length - MAX_SUBTASKS : 0;
   if (truncated) subtasks = subtasks.slice(0, MAX_SUBTASKS);
 
-  const executions: SubtaskExecution[] = [];
-  for (const subtask of subtasks) {
-    // For a sequenced (dependent) split, thread the COMPLETED prior steps' outputs
-    // into this worker so a downstream step can act on the upstream result. Only
-    // completed outputs are threaded — a failed/ungrounded/blank step is NOT fed
-    // forward (fail-close: never seed the next step with garbage). An independent
-    // list passes nothing (isolation preserved).
-    const priorContext = sequenced
-      ? executions.flatMap((e) => (e.status === "completed" && e.output ? [e.output] : []))
-      : [];
-    // A SEQUENCED dependent step (any step after the first) whose EVERY upstream step
-    // failed/ungrounded has NOTHING to act on — running it blind fabricates a confident
-    // result from an absent dependency (MAST reasoning-action mismatch / information
-    // withholding). Fail-close it instead of executing the worker. The first step (no
-    // priors by design) always runs; an INDEPENDENT list never reaches this branch.
-    if (sequenced && executions.length > 0 && priorContext.length === 0) {
-      executions.push({
-        error: "upstream sequenced step(s) failed — dependent step not run blind (fail-close)",
-        status: "failed",
-        subtask
-      });
-      continue;
-    }
-    executions.push(await runOne(subtask, deps, priorContext.length > 0 ? priorContext : undefined));
-  }
+  const executions = await executeSubtasks(subtasks, deps, sequenced);
 
   const completed = executions.filter((e) => e.status === "completed").length;
   // Fail-close: a decomposition where ZERO sub-tasks grounded has nothing to fuse —
@@ -464,69 +561,8 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
     };
   }
 
-  // Fan-in objective-satisfaction (maker != judge): did the synthesis incorporate
-  // every completed sub-task, or silently drop one? Fail-soft — a verifier error
-  // leaves the answer as-is (never blocks the run).
-  const runSynthesis = async (synthesisRequest: string): Promise<{ answer: string; missing?: readonly string[]; verified: boolean }> => {
-    const answer = await deps.synthesize(synthesisRequest, executions);
-    if (!deps.verifySynthesis) return { answer, verified: false };
-    try {
-      const verdict = await deps.verifySynthesis(request, answer, executions);
-      return { answer, missing: !verdict.satisfied && verdict.missing.length > 0 ? verdict.missing : undefined, verified: true };
-    } catch {
-      return { answer, verified: false }; // verifier unavailable — surface nothing, return the answer
-    }
-  };
-
-  const first = await runSynthesis(truncated ? truncatedSynthesisRequest(request, droppedCount) : request);
-  let finalAnswer = first.answer;
-  let synthesisIncomplete = first.missing;
-  // Verifier-gated SINGLE re-synthesis (reflection-guard): a bare unverified retry
-  // repeats the drop ~85% of the time (arXiv 2510.18254), so the retry is backed by
-  // the deterministic `verifySynthesisCoverage` AND accepted ONLY if the retry was
-  // itself VERIFIED and drops STRICTLY FEWER sub-results — a retry can never make the
-  // answer worse, and a retry whose verifier errored is NOT accepted as "complete"
-  // (we keep the original flagged answer rather than claim false coverage). The retry
-  // prompt names what was dropped (reinforceSynthesisRequest), not a blind "try again".
-  if (synthesisIncomplete && deps.verifySynthesis) {
-    // Keep the truncation caveat on the retry base too (sibling of the first synthesis):
-    // a re-synthesis must not drop the partiality directive just because it's adding the
-    // missing-coverage one.
-    const retryBase = truncated ? truncatedSynthesisRequest(request, droppedCount) : request;
-    const retry = await runSynthesis(reinforceSynthesisRequest(retryBase, synthesisIncomplete));
-    if (retry.verified && (retry.missing?.length ?? 0) < synthesisIncomplete.length) {
-      finalAnswer = retry.answer;
-      synthesisIncomplete = retry.missing;
-    }
-  }
-  // Fan-in cross-subtask conflict (the grounding edge on the fan-OUT): are two
-  // completed sub-answers internally contradictory? Fail-soft — a detector error
-  // leaves the answer as-is.
-  let subtaskConflicts: readonly string[] | undefined;
-  if (deps.detectConflicts) {
-    try {
-      const conflicts = await deps.detectConflicts(executions);
-      if (conflicts.length > 0) subtaskConflicts = conflicts;
-    } catch { /* detector unavailable — surface nothing */ }
-  }
-  // Fan-in REDUNDANCY (step-repetition): are two completed sub-answers near-identical
-  // (a worker duplicated another's work)? Fail-soft — a detector error leaves the answer.
-  let subtaskRedundancies: readonly string[] | undefined;
-  if (deps.detectRedundancies) {
-    try {
-      const redundancies = await deps.detectRedundancies(executions);
-      if (redundancies.length > 0) subtaskRedundancies = redundancies;
-    } catch { /* detector unavailable — surface nothing */ }
-  }
-  // Reasoning-action alignment on the SEQUENCED handoff (MAST FM-2.6): did each completed
-  // downstream step actually engage the upstream RESULT it was handed? Only meaningful for a
-  // sequenced split (an independent list passes nothing forward, so isn't expected to relate).
-  // Pure + deterministic (no model) — always safe to run on a sequenced split.
-  let reasoningActionGaps: readonly string[] | undefined;
-  if (sequenced) {
-    const gaps = verifySequencedDependencyUse(executions);
-    if (gaps.length > 0) reasoningActionGaps = gaps;
-  }
+  const { finalAnswer, synthesisIncomplete } = await synthesizeWithRetryGate(request, executions, truncated, droppedCount, deps);
+  const { subtaskConflicts, subtaskRedundancies, reasoningActionGaps } = await detectCoordinationIssues(executions, sequenced, deps);
   const split = planned ? "model-planned" : "structural";
 
   return {

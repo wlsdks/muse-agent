@@ -1,5 +1,5 @@
 /**
- * Production investigator for the proactive loop's P0-b3 seam: given
+ * Production investigator for the proactive loop's seam: given
  * an imminent item, infer the likely unstated need (its topic) and
  * look it up in the user's notes, returning a one-line finding to
  * append to the unasked notice ("📎 Related notes: …").

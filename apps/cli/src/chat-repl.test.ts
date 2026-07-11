@@ -237,7 +237,7 @@ describe("parseAgentMode", () => {
     expect(parseAgentMode("Plan_Execute")).toBe("plan_execute");
   });
 
-  it("rejects an unknown mode with a `did you mean` hint for a near-miss typo (goal-493 sibling)", () => {
+  it("rejects an unknown mode with a `did you mean` hint for a near-miss typo", () => {
     expect(() => parseAgentMode("reactt"))
       .toThrow(/--mode must be 'react' or 'plan_execute'.*did you mean 'react'/u);
     expect(() => parseAgentMode("plan_execut"))

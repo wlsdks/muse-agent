@@ -30,6 +30,7 @@ import { promises as fs } from "node:fs";
 import { type JsonObject, hasRegisteredSecrets, redactSecrets } from "@muse/shared";
 
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type ActionResult = "performed" | "refused" | "failed";
 
@@ -152,14 +153,6 @@ export function verifyActionLogChain(entries: readonly ActionLogEntry[]): Action
     ok: true,
     reason: `chain intact — ${linked.toString()} linked entr${linked === 1 ? "y" : "ies"} verified`
   };
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readActionLog(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly ActionLogEntry[]> {

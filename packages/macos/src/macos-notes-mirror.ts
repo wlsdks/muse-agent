@@ -30,14 +30,9 @@
 import {
   defaultOsascriptRunner,
   escapeAppleScript,
-  isPermissionError,
   type MacOsascriptRunner
 } from "./macos-exec.js";
-
-// Matches @muse/autoconfigure's parseBoolean truthy set (env-parsers.ts). Kept
-// local so @muse/macos stays dependency-free (autoconfigure depends on macos —
-// importing it back would be a cycle).
-const TRUTHY_ENV_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
+import { isMirrorEnvEnabled, runMirrorScript } from "./mirror-shared.js";
 
 export const APPLE_NOTES_MIRROR_ENV = "MUSE_APPLE_NOTES_MIRROR";
 
@@ -84,8 +79,7 @@ export interface MirrorNoteResult {
 export function isAppleNotesMirrorEnabled(
   env: Record<string, string | undefined> = process.env
 ): boolean {
-  const raw = env[APPLE_NOTES_MIRROR_ENV]?.trim().toLowerCase();
-  return raw !== undefined && TRUTHY_ENV_VALUES.has(raw);
+  return isMirrorEnvEnabled(env, APPLE_NOTES_MIRROR_ENV);
 }
 
 /**
@@ -162,20 +156,6 @@ export async function mirrorNoteToApple(
     : DEFAULT_MAX_NOTE_BODY_CHARS;
   const exec = options.exec ?? defaultOsascriptRunner;
   const script = buildMirrorNoteScript({ body: capBody(note.body ?? "", maxBodyChars), title }, options.folder);
-  try {
-    const result = await exec(script);
-    if (result.timedOut) {
-      return { mirrored: false, skipped: false, warning: "Apple Notes mirror timed out (osascript was killed)", script };
-    }
-    if (result.exitCode !== 0) {
-      const reason = isPermissionError(result.stderr)
-        ? "Automation permission denied — grant Notes access in System Settings → Privacy & Security → Automation"
-        : (result.stderr.trim().slice(0, 300) || `osascript exited ${String(result.exitCode)}`);
-      return { mirrored: false, skipped: false, warning: `Apple Notes mirror failed: ${reason}`, script };
-    }
-    return { mirrored: true, skipped: false, script };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { mirrored: false, skipped: false, warning: `Apple Notes mirror failed: ${message}`, script };
-  }
+  const outcome = await runMirrorScript(exec, script, { app: "Apple Notes", permissionTarget: "Notes" });
+  return { mirrored: outcome.mirrored, skipped: false, warning: outcome.warning, script };
 }

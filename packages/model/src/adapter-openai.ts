@@ -10,8 +10,8 @@
  *
  * Wire-format helpers (toOpenAIResponsesRequest /
  * parseOpenAIResponsesStream / fromOpenAIResponsesResponse) live
- * in `./provider-openai.ts` so the adapter stays focused on the
- * HTTP shape.
+ * in `./provider-openai-responses.ts` so the adapter stays focused
+ * on the HTTP shape.
  */
 
 import { truncateErrorBody } from "@muse/shared";

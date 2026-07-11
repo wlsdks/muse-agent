@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildReminderContextBlock } from "./present.js";
+import { buildReminderContextBlock } from "./context-blocks.js";
 
 // Minimal PersistedReminder-shaped stub (only the fields the block builder reads).
 function reminder(id: string, text: string, dueAt: string) {

@@ -14,12 +14,11 @@
  * Read-only resolution needs no approval gate.
  */
 
-import { promises as fs } from "node:fs";
-
 import type { JsonObject } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface Contact {
   readonly id: string;
@@ -143,14 +142,6 @@ export type ContactResolution =
   | { readonly status: "resolved"; readonly contact: Contact }
   | { readonly status: "ambiguous"; readonly matches: readonly Contact[] }
   | { readonly status: "unknown" };
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
 
 export async function readContacts(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly Contact[]> {
   // A WRONG key THROWS here (fail-closed) — propagate it; an undecryptable people

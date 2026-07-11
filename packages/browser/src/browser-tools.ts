@@ -45,6 +45,22 @@ export interface BrowserApprovalDecision {
 /** Presents the EXACT page action to the user; returns approve/deny. */
 export type BrowserApprovalGate = (draft: BrowserActionDraft) => Promise<BrowserApprovalDecision> | BrowserApprovalDecision;
 
+type GateDecision = { readonly approved: true } | { readonly approved: false; readonly reason: string };
+
+/**
+ * Shared click/type/fill/upload gate call: a denial's missing `reason` falls
+ * back to "not approved", and a thrown gate turns into the same
+ * "approval gate error: …" denial each call site used to build inline.
+ */
+async function resolveGateDecision(gate: BrowserApprovalGate, draft: BrowserActionDraft): Promise<GateDecision> {
+  try {
+    const decision = await gate(draft);
+    return decision.approved ? { approved: true } : { approved: false, reason: decision.reason ?? "not approved" };
+  } catch (cause) {
+    return { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+}
+
 function elementsJson(elements: readonly PageSnapshot["elements"][number][]): JsonValue {
   return elements.map((element) => ({
     name: defangElementName(element.name),
@@ -495,16 +511,12 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
       // must clear the same draft-first gate as a click. The navigation keys
       // (Escape/Tab/arrows) change nothing on the server and stay free.
       if (key === "Enter") {
-        let decision: BrowserApprovalDecision;
-        try {
-          decision = deps.approvalGate
-            ? await deps.approvalGate({ action: "key", target: "Enter", url: deps.controller.currentUrl() })
-            : { approved: false, reason: "no approval gate wired — Enter (a submit) is fail-closed" };
-        } catch (cause) {
-          decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-        }
+        const draft: BrowserActionDraft = { action: "key", target: "Enter", url: deps.controller.currentUrl() };
+        const decision: GateDecision = deps.approvalGate
+          ? await resolveGateDecision(deps.approvalGate, draft)
+          : { approved: false, reason: "no approval gate wired — Enter (a submit) is fail-closed" };
         if (!decision.approved) {
-          return { pressed: false, reason: decision.reason ?? "not approved" };
+          return { pressed: false, reason: decision.reason };
         }
       }
       try {
@@ -615,14 +627,9 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
         return { clicked: false, ...resolved.error };
       }
       const draft: BrowserActionDraft = { action: "click", target: resolved.label, url: deps.controller.currentUrl() };
-      let decision: BrowserApprovalDecision;
-      try {
-        decision = await deps.approvalGate(draft);
-      } catch (cause) {
-        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
+      const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
-        return { clicked: false, reason: decision.reason ?? "not approved" };
+        return { clicked: false, reason: decision.reason };
       }
       try {
         const snapshot = await deps.controller.click(resolved.ref);
@@ -692,14 +699,9 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         text: submit ? `${text} ⏎(submit)` : text,
         url: deps.controller.currentUrl()
       };
-      let decision: BrowserApprovalDecision;
-      try {
-        decision = await deps.approvalGate(draft);
-      } catch (cause) {
-        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
+      const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
-        return { reason: decision.reason ?? "not approved", typed: false };
+        return { reason: decision.reason, typed: false };
       }
       try {
         const snapshot = await deps.controller.type(resolved.ref, text, submit);
@@ -824,14 +826,9 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
         target: `${resolved.length.toString()} fields`,
         url: deps.controller.currentUrl()
       };
-      let decision: BrowserApprovalDecision;
-      try {
-        decision = await deps.approvalGate(draft);
-      } catch (cause) {
-        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
+      const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
-        return { filled: false, reason: decision.reason ?? "not approved" };
+        return { filled: false, reason: decision.reason };
       }
       let snapshot: PageSnapshot | undefined;
       try {
@@ -942,14 +939,9 @@ export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
         return { reason: verdict.reason, uploaded: false };
       }
       const draft: BrowserActionDraft = { action: "upload", path, target: resolved.label, url: deps.controller.currentUrl() };
-      let decision: BrowserApprovalDecision;
-      try {
-        decision = await deps.approvalGate(draft);
-      } catch (cause) {
-        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
+      const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
-        return { reason: decision.reason ?? "not approved", uploaded: false };
+        return { reason: decision.reason, uploaded: false };
       }
       try {
         const snapshot = await deps.controller.uploadFile(resolved.ref, verdict.resolvedPath);

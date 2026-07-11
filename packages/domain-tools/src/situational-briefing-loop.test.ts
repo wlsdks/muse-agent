@@ -40,7 +40,7 @@ const imminent: BriefingImminent[] = [
   { kind: "calendar", startsAt: new Date(NOW.getTime() + 15 * 60_000), title: "Q3 review" }
 ];
 
-describe("runDueSituationalBriefing — P8-b2 contract-faithful real-channel delivery, deduped", () => {
+describe("runDueSituationalBriefing — contract-faithful real-channel delivery, deduped", () => {
   function telegram(posts: { url: string; body: string }[]) {
     return new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -134,7 +134,7 @@ describe("runDueSituationalBriefing — P8-b2 contract-faithful real-channel del
     expect(body.text).toContain("in 15 min: Q3 review");
   });
 
-  it("grounds the briefing with unread inbox items from the email provider (P11)", async () => {
+  it("grounds the briefing with unread inbox items from the email provider", async () => {
     const { objectivesFile, sidecarFile } = fixtures();
     await addObjective(objectivesFile, objective());
     const posts: { url: string; body: string }[] = [];

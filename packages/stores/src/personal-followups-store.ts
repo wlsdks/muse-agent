@@ -23,6 +23,7 @@ import { dirname, basename } from "node:path";
 import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type FollowupStatus = "scheduled" | "fired" | "cancelled";
 export type FollowupStatusFilter = FollowupStatus | "all";
@@ -64,17 +65,6 @@ export interface PersistedFollowup {
   readonly cancelReason?: string;
 }
 
-// Move a present-but-corrupt store aside so the next write
-// starts fresh WITHOUT permanently destroying the user's prior
-// followups. Best-effort; the original bytes survive at
-// `<file>.corrupt-<ts>` for manual recovery.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
 
 export async function readFollowups(file: string): Promise<readonly PersistedFollowup[]> {
   let raw: string;

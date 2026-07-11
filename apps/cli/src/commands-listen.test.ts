@@ -50,7 +50,7 @@ describe("safeTranscribe (wake-loop STT resilience)", () => {
   });
 });
 
-describe("muse listen — full mic→STT→agent→TTS round-trip (P4-b2)", () => {
+describe("muse listen — full mic→STT→agent→TTS round-trip", () => {
   it("captured audio is transcribed, sent to the agent, the reply is synthesised and played", async () => {
     const WAV = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);
     const TTS_AUDIO = new Uint8Array([9, 8, 7]);

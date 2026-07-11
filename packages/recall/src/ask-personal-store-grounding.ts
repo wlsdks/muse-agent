@@ -9,7 +9,7 @@
 
 import { lexicalTokens } from "@muse/agent-core";
 import type { CalendarEvent } from "@muse/calendar";
-import { buildCalendarContextBlock, buildReminderContextBlock, buildTaskContextBlock } from "./present.js";
+import { buildCalendarContextBlock, buildReminderContextBlock, buildTaskContextBlock } from "./context-blocks.js";
 import { buildContactContextBlock, contactMatchScore } from "./select.js";
 import { readContacts, readReminders, readTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 

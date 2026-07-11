@@ -85,6 +85,7 @@
     "smoke:browser": "pnpm --filter @muse/browser build && node scripts/smoke-browser.mjs",
     "eval:file-read": "pnpm --filter @muse/fs build && node scripts/verify-file-read.mjs",
     "eval:browser-agent": "pnpm --filter @muse/browser build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-browser-agent.mjs",
+    "eval:browser-injection": "pnpm --filter @muse/browser build && node scripts/eval-browser-injection.mjs",
     "eval:computer-task": "pnpm --filter @muse/fs build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-computer-task.mjs",
     "eval:run-command": "pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-run-command.mjs",
     "eval:edit-run-verify": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-edit-run-verify.mjs",

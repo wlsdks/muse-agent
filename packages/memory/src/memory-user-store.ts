@@ -144,6 +144,30 @@ export function normalizeMemoryKey(key: string): string {
   return normalized.length > 0 ? normalized : key.trim();
 }
 
+/**
+ * Decide what `forget(userId, rawKey, kind)` should drop, shared by both the
+ * in-memory and file-backed stores so the resolution logic exists ONCE:
+ *   - key resolution: keys are stored canonicalized (upsert normalizes), so a
+ *     raw key resolves to its stored form — exact match first, else the
+ *     normalized form — so "Home City" forgets the "home_city" entry.
+ *   - namespace scoping: `kind` limits the delete to facts OR preferences (so
+ *     an auto-extracted FACT retraction can't wipe a same-key PREFERENCE);
+ *     omitting `kind` keeps the dual-delete for the explicit `/forget` control.
+ * Returns `null` when there is nothing to drop under that key/kind.
+ */
+export function resolveForgetTarget(
+  existing: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>> },
+  rawKey: string,
+  kind?: "fact" | "preference"
+): { readonly key: string; readonly dropFact: boolean; readonly dropPref: boolean } | null {
+  const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
+  const dropFact = kind !== "preference";
+  const dropPref = kind !== "fact";
+  const hadFact = dropFact && key in existing.facts;
+  const hadPref = dropPref && key in existing.preferences;
+  return hadFact || hadPref ? { dropFact, dropPref, key } : null;
+}
+
 export type MemoryOperation = "add" | "update" | "noop" | "delete";
 
 // Tokens an extractor emits when it found NO value for a key — storing them
@@ -209,20 +233,11 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     if (!existing) {
       return false;
     }
-    // Keys are stored canonicalized (upsert normalizes), so resolve the raw key
-    // to its stored form — exact first, else the normalized one — exactly as the
-    // File store does, so "Home City" forgets the "home_city" entry.
-    const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
-    // Namespace-scoped: `kind` limits the delete to facts OR preferences (so an
-    // auto-extracted FACT retraction can't wipe a same-key PREFERENCE). Omitting
-    // `kind` keeps the dual-delete for the explicit `/forget` control.
-    const dropFact = kind !== "preference";
-    const dropPref = kind !== "fact";
-    const hadFact = dropFact && key in existing.facts;
-    const hadPref = dropPref && key in existing.preferences;
-    if (!hadFact && !hadPref) {
+    const target = resolveForgetTarget(existing, rawKey, kind);
+    if (!target) {
       return false;
     }
+    const { key, dropFact, dropPref } = target;
     const { [key]: _f, ...factsWithout } = existing.facts;
     const { [key]: _p, ...prefsWithout } = existing.preferences;
     this.memories.set(userId, {

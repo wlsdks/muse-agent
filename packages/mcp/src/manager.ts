@@ -9,11 +9,13 @@
  * the typed errors, and `createMcpMuseTool` all live in `index.ts`;
  * this file imports them back.
  *
- * Two private helpers come over because they were only used by
- * the manager:
+ * One private helper comes over because it was only used by the
+ * manager:
  *   - closeConnectionQuietly (best-effort connection cleanup
  *     after failed health checks)
- *   - toErrorMessage (Error.message / String fallback)
+ *
+ * `toErrorMessage` (Error.message / String fallback) lives in
+ * `./error-utils.js`, shared with `transport.ts` and `index.ts`.
  */
 
 import { createHash } from "node:crypto";
@@ -22,6 +24,7 @@ import { delimiter, join as joinPath } from "node:path";
 
 import type { MuseTool } from "@muse/tools";
 
+import { toErrorMessage } from "./error-utils.js";
 import {
   InMemoryMcpServerStore,
   McpConnectionError,
@@ -481,7 +484,7 @@ export class McpManager {
     // terminal, and a server still inside its reconnect backoff window (or
     // one that has exhausted maxAttempts) must NOT be hammered on every
     // tool call — surface the disconnect reason without a fresh attempt.
-    if (this.statuses.get(name) === "disabled" || !this.reconnectAllowedNow(name)) {
+    if (this.statuses.get(name) === "disabled" || !isOnDemandReconnectAllowed(this.health.get(name), this.now().getTime())) {
       return { error: formatDisconnectError(name, disconnectReason, this.health.get(name)?.error) };
     }
 
@@ -494,43 +497,14 @@ export class McpManager {
     return { error: formatDisconnectError(name, disconnectReason, this.health.get(name)?.error) };
   }
 
-  /**
-   * Is an on-demand reconnect allowed right now, or would it retry-storm a
-   * server that's already backing off / has given up? A fresh crash (no
-   * backoff armed yet) is allowed; inside the backoff window it waits; once
-   * maxAttempts is exhausted (`nextReconnectAt` cleared while attempts > 0)
-   * it stays terminal.
-   */
-  private reconnectAllowedNow(name: string): boolean {
-    const health = this.health.get(name);
-    const nextReconnectAt = health?.nextReconnectAt;
-    if (nextReconnectAt) {
-      return nextReconnectAt.getTime() <= this.now().getTime();
-    }
-    return (health?.reconnectAttempts ?? 0) === 0;
-  }
-
   private scheduleReconnect(name: string, error: string): McpHealthSnapshot {
     const previous = this.health.get(name);
     const attempts = (previous?.reconnectAttempts ?? 0) + 1;
-    const nextReconnectAt = this.nextReconnectAt(attempts);
+    const nextReconnectAt = computeNextReconnectAt(this.reconnectPolicy, this.now().getTime(), attempts);
     const snapshot = this.createHealthSnapshot(name, "unhealthy", error, attempts, nextReconnectAt);
 
     this.health.set(name, snapshot);
     return snapshot;
-  }
-
-  private nextReconnectAt(attempts: number): Date | undefined {
-    if (!this.reconnectPolicy.enabled || attempts > this.reconnectPolicy.maxAttempts) {
-      return undefined;
-    }
-
-    const delay = Math.min(
-      this.reconnectPolicy.maxDelayMs,
-      this.reconnectPolicy.initialDelayMs * (2 ** Math.max(0, attempts - 1))
-    );
-
-    return new Date(this.now().getTime() + delay);
   }
 
   private createHealthSnapshot(
@@ -556,11 +530,7 @@ export class McpManager {
     status: McpServerStatus,
     checks: readonly McpPreflightCheck[]
   ): McpPreflightReport {
-    const summary = {
-      failCount: checks.filter((check) => check.status === "fail").length,
-      passCount: checks.filter((check) => check.status === "pass").length,
-      warnCount: checks.filter((check) => check.status === "warn").length
-    };
+    const summary = summarizePreflightChecks(checks);
 
     return {
       checks,
@@ -723,10 +693,44 @@ async function closeConnectionQuietly(connection: McpConnection): Promise<void> 
   }
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function auditReason(reasons: readonly string[]): string {
   return `Static security audit failed: ${reasons.join("; ")}`;
+}
+
+export function computeNextReconnectAt(policy: McpReconnectPolicy, nowMs: number, attempts: number): Date | undefined {
+  if (!policy.enabled || attempts > policy.maxAttempts) {
+    return undefined;
+  }
+
+  const delay = Math.min(
+    policy.maxDelayMs,
+    policy.initialDelayMs * (2 ** Math.max(0, attempts - 1))
+  );
+
+  return new Date(nowMs + delay);
+}
+
+/**
+ * Is an on-demand reconnect allowed right now, or would it retry-storm a
+ * server that's already backing off / has given up? A fresh crash (no
+ * backoff armed yet) is allowed; inside the backoff window it waits; once
+ * maxAttempts is exhausted (`nextReconnectAt` cleared while attempts > 0)
+ * it stays terminal.
+ */
+export function isOnDemandReconnectAllowed(health: McpHealthSnapshot | undefined, nowMs: number): boolean {
+  const nextReconnectAt = health?.nextReconnectAt;
+  if (nextReconnectAt) {
+    return nextReconnectAt.getTime() <= nowMs;
+  }
+  return (health?.reconnectAttempts ?? 0) === 0;
+}
+
+export function summarizePreflightChecks(
+  checks: readonly McpPreflightCheck[]
+): { failCount: number; passCount: number; warnCount: number } {
+  return {
+    failCount: checks.filter((check) => check.status === "fail").length,
+    passCount: checks.filter((check) => check.status === "pass").length,
+    warnCount: checks.filter((check) => check.status === "warn").length
+  };
 }

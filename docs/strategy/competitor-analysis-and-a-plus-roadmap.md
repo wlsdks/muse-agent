@@ -777,7 +777,7 @@ delta-scout 주기에.
 - [x] **D1-S7b2** ✅ 2026-07-11 b1 결정코어 배선. createBrowserActionTracker(agent-core, b1 순수 primitive 재사용 mutable seam: pre-decide→advance→post-label)를 buildBrowserTools가 공유 인스턴스 1개로 생성(per-task 수명, run당 1회)→browser의 최소 구조 seam BrowserActionGuard로 click/type/fill(BrowserActToolDeps 공유 3툴) 배선. execute 최상단 소진 시 fail-close 거부(controller/resolveTarget 미도달)+성공시 actionsUsed `N/M`·근접 budgetWarning 부착. actionBudget 미주입=byte-identical(기존 81 test 무변). resolveBrowserMaxActions 기본30·`MUSE_BROWSER_MAX_ACTIONS` 오버라이드. tracker 4 test+browser 7 test+config 7 test·mutation-RED 양방향(가드제거→controller 도달 RED, 소진체크 제거→cap 미준수 RED)·Opus 8축 PASS(fail-close·per-task·산술·byte-identical·의미론). @muse/browser는 agent-core 미의존(구조타입). ※형제 미배선(→backlog): upload/key(Enter)/open counting·timeout은 controller protocolTimeout 기존
 - [x] **D1-S7c** ✅ 2026-07-11 dialog 스냅샷 필드는 기존 완료; 델타=처분을 fail-close로. registerDialogHandler가 모든 dialog auto-ACCEPT(confirm OK·prompt 텍스트제출)하던 fail-open을 순수 dialog-policy.ts로 교체: `decideDialogDisposition`(confirm/prompt/unknown→dismiss, alert/beforeunload→accept)+`planDialogResponse`(dismiss는 response無)+`settleDialog`(fake spy로 accept/dismiss 실호출 검증). 페이지-발 confirm/prompt를 auto-commit 안 함(클릭 승인≠dialog 응답 승인, 브라우저=untrusted). 12 test·mutation-RED 양방향(confirm→accept·ternary flip)·Opus PASS(fail-close 방향·spy 행동·accept fall-through 없음·불변식 tighten-only). controller.ts+puppeteer 425 stale doc 동반수정. ※트레이드: 승인된 submit-confirm은 미완(fail-safe, 스냅샷서 surface)
 - [x] **D1-S7d1** ✅ 2026-07-12 🔒 결정론 page-content guard(순수 page-content-guard.ts, 자립·no @muse/recall): defangPageText(escape `</page>`/`<page>` break-out→fullwidth · `](` 중화로 markdown 이미지/링크 엑스필 차단 · instruction-override 정규식 `ignore/disregard/forget/override…previous/above…instructions/rules`→`[defanged-directive]`, `{0,40}?` bounded=ReDoS-safe)+wrapPageContent(`<page>…</page>`, escape-then-wrap 순서)+defangElementName. snapshotToJson가 text 래핑·elementsJson가 name defang → 전 snapshot-반환 툴(open/read/click/type/…) 조립경로 커버. 11 pure+2 assembly test(fake controller 악성 text→툴출력 defanged, OUTCOME 채점)·mutation-RED 양방향(instruction rule 제거→6 RED, `](` 제거→4 RED)·clean prose byte-identical·Opus 위협모델 PASS(boundary·media·ReDoS·조립경로·정직 positioning). 실 e2e=d2
-- [ ] **D1-S7d2** 🔒 실 detached-Chrome e2e — 악성 HTML 픽스처(ignore-above·![](exfil)·`</page>`)를 http serve→PuppeteerBrowserController.open→스냅샷 text가 defanged·wrapped 확인(eval:browser-agent 하네스 재사용, Chrome/Ollama 없으면 skip). VQ-10 "e2e 하네스 신규작성" 실행. 조립경로 실증(page→innerText→snapshot→모델)
+- [x] **D1-S7d2** ✅ 2026-07-12 🔒 실 detached-Chrome e2e(`scripts/eval-browser-injection.mjs`, `pnpm eval:browser-injection`, 모델-free·Chrome만). 악성 HTML 픽스처(ignore-above·`![](exfil)`·HTML-escaped `&lt;/page&gt;` 경계·인젝션 anchor label)를 loopback http serve→실 PuppeteerBrowserController(headless).open→browser_open/read 툴출력이 `<page>` 래핑+defanged 확인(9/9 assertion, OUTCOME). 실 Chrome RUN(skip 아님, 라이브 PASS)·mutation-kill(defang no-op→7/9 FAIL 재현 후 byte-identical 복원). Opus PASS→지적 2건 수정(경계 픽스처를 `&lt;/page&gt;`로 escape해 tautological 해소=이제 guard 무력화 시 boundary도 flip·헤더 슬라이스마커 제거). Chrome 없으면만 skip. **D1-S7(브라우저 신뢰성 L) 전체 완주(a+b1+b2+c+d1+d2)**
 
 #### W3 — 능력·UX
 - [ ] **D4-S4** 📈 file_edit 결정론 리페어(hermes 9-전략 fuzzy 참조·escape-drift·indent) + eval:computer-task +10%p pass^3
@@ -868,8 +868,9 @@ delta-scout 주기에.
   `$TMPDIR`(`/var/folders/.../T/`)·`~/Library/pnpm/store`·`~/.npm`·`~/.cache`(read/write) +
   `~/.gitconfig`·`~/.config/git`(read). seatbelt 프로파일 allow = **cwd 서브트리 + $TMPDIR
   (rw) + 위 캐시/config (캐시 rw·config ro)**. 이 목록으로 git/pnpm/tsc/node 오탐 회피.
-- [x] **VQ-10** (D1-S7) ✅ **e2e 하네스 부재 확정**: browser 관련 e2e 테스트 파일 없음
-  (grep 0). D1-S7d는 실 detached-Chrome 구동 테스트를 **신규 작성** 필요(슬라이스에 반영됨).
+- [x] **VQ-10** (D1-S7) ✅ **e2e 하네스 부재 확정→신규 작성 완료**(D1-S7d2, 2026-07-12): browser
+  e2e 파일 없었음(grep 0) → `scripts/eval-browser-injection.mjs`(`pnpm eval:browser-injection`,
+  모델-free 실 headless Chrome) 신규 작성해 D1-S7d1 인젝션 guard를 조립경로로 실증(9/9 라이브 PASS).
 - [x] **VQ-12** (D-E1) ✅ **시간예산 확보**: precheck-grounding은 이미 배터리당 240s +
   skip-on-timeout(REPEAT 기본1). push가 수 분을 이미 허용 → eval:agent subset을 **같은
   per-battery 240s+skip 가드**로 추가, 총 push < ~5분 유지. 헤드룸 있음.

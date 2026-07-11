@@ -58,6 +58,21 @@ export function clampInboundLimit(raw: number | undefined, max: number = MAX_INB
 }
 
 /**
+ * Normalise a caller-supplied long-poll wait (seconds) for a provider's
+ * hold-open inbound endpoint (Telegram `getUpdates?timeout=`, Matrix
+ * `/sync?timeout=`). NaN / undefined / non-finite collapses to `0`
+ * (a snapshot poll); finite values truncate to integer and clamp to
+ * `[0, maxSeconds]` — the caller passes its own provider-specific cap
+ * (Telegram 50s, Matrix 60s).
+ */
+export function clampLongPollSeconds(raw: number | undefined, maxSeconds: number): number {
+  if (raw === undefined || !Number.isFinite(raw)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(maxSeconds, Math.trunc(raw)));
+}
+
+/**
  * Parse a body string as JSON, returning the typed value or
  * `undefined` for empty bodies / parse errors. Lets the caller
  * branch on response.ok cleanly without try/catch noise: the

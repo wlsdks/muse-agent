@@ -1,3 +1,5 @@
+import { toGlobal } from "./regex-utils.js";
+
 export interface InjectionPattern {
   readonly name: string;
   readonly regex: RegExp;
@@ -285,9 +287,4 @@ function stripDiacriticalMarks(text: string): string {
   }
 
   return result.normalize("NFC");
-}
-
-function toGlobal(regex: RegExp): RegExp {
-  const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
-  return new RegExp(regex.source, flags);
 }

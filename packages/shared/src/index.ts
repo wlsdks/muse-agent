@@ -94,18 +94,6 @@ export function formatBoundaryViolation(violation: BoundaryViolation): string {
 export const DEFAULT_ERROR_BODY_CAP = 240;
 
 /**
- * Cap an upstream response body for inclusion in an error message.
- * Library + CLI sites that wrap a non-OK HTTP response into a
- * thrown error funnel through this so a single hostile upstream
- * (or a misrouted call that returns a multi-kilobyte HTML page)
- * can't flood the user's stderr with one giant string.
- *
- * Trims surrounding whitespace, slices to `cap`, appends `…` when
- * the body was longer than the cap. Empty / falsy input returns
- * the empty string — caller decides whether to fall back to
- * `statusText`.
- */
-/**
  * Strip C0 control bytes (except newline + tab) plus DEL + C1
  * high-set (\x7f-\x9f) from untrusted text before writing it to a
  * terminal or persisting it where it'll later be displayed.
@@ -248,6 +236,18 @@ export function errorMessage(cause: unknown, fallback?: string): string {
   return fallback ?? String(cause);
 }
 
+/**
+ * Cap an upstream response body for inclusion in an error message.
+ * Library + CLI sites that wrap a non-OK HTTP response into a
+ * thrown error funnel through this so a single hostile upstream
+ * (or a misrouted call that returns a multi-kilobyte HTML page)
+ * can't flood the user's stderr with one giant string.
+ *
+ * Trims surrounding whitespace, slices to `cap`, appends `…` when
+ * the body was longer than the cap. Empty / falsy input returns
+ * the empty string — caller decides whether to fall back to
+ * `statusText`.
+ */
 export function truncateErrorBody(body: string | undefined, cap: number = DEFAULT_ERROR_BODY_CAP): string {
   if (!body) {
     return "";

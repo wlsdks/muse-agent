@@ -1,0 +1,270 @@
+/**
+ * Pure analysis layer over the Whetstone weakness ledger — BKT mastery calc, the
+ * KO-particle topic tokenizer, and the remediation/dev-fixable selectors. No I/O;
+ * the persistence layer (weakness-ledger.ts) owns reads/writes and calls into
+ * this for topic clustering, mastery gating, and axis classification.
+ */
+
+import type { WeaknessAxis, WeaknessEntry } from "./weakness-ledger.js";
+
+// Bayesian Knowledge Tracing constants (arXiv:2105.00385, Badrinath/Wang/Pardos, pyBKT, EDM'21).
+// P(L0)=prior, P(T)=learn, P(G)=guess, P(S)=slip, mastered threshold.
+export const BKT_PRIOR = 0.1;
+export const BKT_LEARN = 0.2;
+export const BKT_GUESS = 0.2;
+export const BKT_SLIP = 0.1;
+export const WEAKNESS_MASTERED_AT = 0.95;
+// BKT-Forget P(F)>0: mastery is RETAINED for this many days since the last grounded
+// confirmation (`lastResolved`), then expires — the model likely forgot over a long
+// idle gap, so a topic that recurs after it should re-surface on the FIRST recurrence
+// instead of needing ~3 fresh failures to claw pKnown back below the 0.95 threshold.
+// A quarter, matching the belief-provenance fact-stale horizon + the idle fade.
+// (Modeled as a retention horizon, not a continuous decay-through-threshold: the
+// mastered band [0.95, 1.0] is too narrow for a stable gradual decay.)
+export const WEAKNESS_MASTERY_RETENTION_DAYS = 90;
+
+// Drop conversational filler so the topic key keeps only the salient nouns —
+// "what's my office VPN MTU?" → "office vpn mtu", "내 오피스 vpn mtu 뭐야" → the same
+// content words. KO particles are stripped by the token regex; these are the
+// stand-alone filler words.
+const STOPWORDS = new Set([
+  "the", "a", "an", "my", "your", "is", "are", "do", "does", "did", "what", "whats", "what's",
+  "who", "when", "where", "why", "how", "of", "for", "to", "in", "on", "about", "me", "i", "you",
+  "please", "tell", "show", "give", "can", "could", "would", "and", "or", "그", "내", "제", "나",
+  "너", "뭐", "뭐야", "무슨", "어떤", "누구", "언제", "어디", "왜", "어떻게", "해줘", "알려줘",
+  "보여줘", "있어", "있나", "좀", "그리고", "또", "의", "을", "를", "은", "는", "이", "가", "에", "에서",
+  "뭐였지", "뭐였어", "뭐지", "뭔지", "뭘까", "뭔가", "어딨", "어딨어", "있었", "이야", "인가"
+]);
+
+// Korean particles (조사) attach to a noun with no space — "일련번호가",
+// "회의를", "학교에서" — so the same topic looks like a different token each
+// time. Strip a trailing particle to cluster them, but ONLY when the remaining
+// STEM is ≥ 2 chars, so a real word that merely ends in a particle syllable
+// ("포도" → 도, "도서관" → 관-isn't-a-particle) is never truncated.
+const KO_MULTI_PARTICLES = ["이라고", "으로", "에서", "에게", "한테", "까지", "부터", "라고", "처럼", "보다", "께서", "에다"];
+const KO_SINGLE_PARTICLES = new Set(["은", "는", "이", "가", "을", "를", "의", "에", "도", "로", "와", "과", "만"]);
+
+function stripKoreanParticle(token: string): string {
+  if (!/[가-힣]/u.test(token)) {
+    return token;
+  }
+  for (const particle of KO_MULTI_PARTICLES) {
+    if (token.endsWith(particle) && token.length - particle.length >= 2) {
+      return token.slice(0, -particle.length);
+    }
+  }
+  if (token.length >= 3 && KO_SINGLE_PARTICLES.has(token.slice(-1))) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+/**
+ * A deterministic topic cluster key: NFC-normalise (the macOS desktop passes KO
+ * args in NFD), lowercase, keep word/Hangul tokens, strip a trailing Korean
+ * particle, drop filler, keep up to 4 salient tokens. Returns "" when nothing
+ * salient remains (caller skips those).
+ */
+export function topicKeyFromMessage(message: string): string {
+  const tokens = message
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/u)
+    .map(stripKoreanParticle)
+    .filter((token) => token.length > 1 && !STOPWORDS.has(token));
+  return tokens.slice(0, 4).join(" ");
+}
+
+/**
+ * BKT update: given the current mastery estimate and whether the observation was
+ * a success, returns the updated P(known) after applying the observation and
+ * the learning step (arXiv:2105.00385, Badrinath/Wang/Pardos, pyBKT, EDM'21).
+ * Absent/NaN/out-of-range input coerces to BKT_PRIOR.
+ */
+export function bktUpdate(pKnown: number | undefined, observedSuccess: boolean): number {
+  const pL = (typeof pKnown === "number" && Number.isFinite(pKnown) && pKnown >= 0 && pKnown <= 1)
+    ? pKnown
+    : BKT_PRIOR;
+  const pLGivenObs = observedSuccess
+    ? (pL * (1 - BKT_SLIP)) / (pL * (1 - BKT_SLIP) + (1 - pL) * BKT_GUESS)
+    : (pL * BKT_SLIP) / (pL * BKT_SLIP + (1 - pL) * (1 - BKT_GUESS));
+  const pLNext = pLGivenObs + (1 - pLGivenObs) * BKT_LEARN;
+  return Math.min(1, Math.max(0, pLNext));
+}
+
+/**
+ * Returns true when a weakness entry is currently mastered (pKnown ≥ WEAKNESS_MASTERED_AT).
+ * Legacy entries without pKnown are never mastered — they behave exactly as before.
+ *
+ * With `opts.nowMs`, applies BKT-Forget idle decay: a mastery is RETAINED only while the
+ * last grounded confirmation (`lastResolved`, falling back to `lastSeen`) is within
+ * {@link WEAKNESS_MASTERY_RETENTION_DAYS}; past that horizon the mastery has decayed (the
+ * model likely forgot), so the topic re-surfaces on the doctor/nudge surfaces. WITHOUT
+ * `nowMs` the decay is off — the pure pKnown check (backward-compatible for callers that
+ * have no clock). An unparseable timestamp keeps the entry mastered (never spuriously
+ * un-masters a real win). arXiv:2105.00385.
+ */
+export function isMasteredWeakness(entry: WeaknessEntry, opts?: { readonly nowMs?: number; readonly retentionDays?: number }): boolean {
+  if (!(typeof entry.pKnown === "number" && entry.pKnown >= WEAKNESS_MASTERED_AT)) {
+    return false;
+  }
+  if (opts?.nowMs === undefined) {
+    return true;
+  }
+  const confirmedAt = Date.parse(entry.lastResolved ?? entry.lastSeen);
+  if (!Number.isFinite(confirmedAt)) {
+    return true;
+  }
+  const retentionMs = Math.max(1, opts.retentionDays ?? WEAKNESS_MASTERY_RETENTION_DAYS) * 86_400_000;
+  return opts.nowMs - confirmedAt <= retentionMs;
+}
+
+/** A recurring weakness worth surfacing to the user as an actionable nudge. */
+export interface RemediableWeakness {
+  readonly topic: string;
+  readonly count: number;
+  readonly axis: WeaknessAxis;
+}
+
+/** The axes the USER fixes (not Muse's bug): a `grounding-gap` (add a note) or a
+ *  `source-conflict` (their own saved notes disagree — reconcile them). */
+const USER_REMEDIABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["grounding-gap", "source-conflict"]);
+
+/**
+ * The user-facing remediation action for a remediable weakness, per axis — the two
+ * are DIFFERENT fixes: a `grounding-gap` means Muse has no note (add one), a
+ * `source-conflict` means two of the user's OWN saved notes give different answers
+ * (reconcile them). Single source of the copy so the recap renders each correctly.
+ */
+export function remediationHint(axis: WeaknessAxis, topic: string): string {
+  return axis === "source-conflict"
+    ? `your saved notes about "${topic}" disagree — reconcile them`
+    : `add a note about "${topic}"`;
+}
+
+/**
+ * The Whetstone REMEDIATION selector: pick the recurring topics the USER can fix —
+ * a `grounding-gap` (asked about something Muse had no note for, repeatedly → add a
+ * note) OR a `source-conflict` (the user's own saved notes disagree on a field →
+ * reconcile them). Both are the user's to remediate, with DIFFERENT actions (see
+ * {@link remediationHint}); the dev-fixable axes (misgrounding, unbacked-action,
+ * wrong-tool, time-parse) are Muse's OWN bugs and are excluded here (they go to
+ * {@link selectDevFixableWeaknesses}). Filters to count ≥ minCount, seen within
+ * recentDays; most-asked first; capped. Pure.
+ */
+export function selectRemediableWeaknesses(
+  entries: readonly WeaknessEntry[],
+  opts: { readonly nowMs: number; readonly minCount?: number; readonly recentDays?: number; readonly maxResults?: number }
+): readonly RemediableWeakness[] {
+  const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
+  const recentMs = Math.max(1, opts.recentDays ?? 30) * 86_400_000;
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 3));
+  return entries
+    .filter((entry) => USER_REMEDIABLE_AXES.has(entry.axis) && entry.count >= minCount && !isMasteredWeakness(entry, { nowMs: opts.nowMs }))
+    .filter((entry) => {
+      const seen = Date.parse(entry.lastSeen);
+      return Number.isFinite(seen) && opts.nowMs - seen <= recentMs;
+    })
+    .slice()
+    .sort((a, b) => b.count - a.count || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+    .slice(0, max)
+    .map((entry) => ({ axis: entry.axis, count: entry.count, topic: entry.topic }));
+}
+
+/** A point-of-use weakness nudge for the CURRENT ask's topic. */
+export interface AskTimeNudge {
+  readonly topic: string;
+  readonly axis: WeaknessAxis;
+  readonly count: number;
+  readonly hint: string;
+}
+
+/**
+ * Runtime learn→apply: when the CURRENT ask's topic is ALREADY a RECURRING
+ * user-remediable weakness (count ≥ minRecurrence, not yet mastered), return the
+ * remediation hint + count so the answer surfaces it AT THE MOMENT of the repeated
+ * failure — closing the loop at runtime instead of only the once-a-day recap. A
+ * DETERMINISTIC, USER-facing surfacing (never a model-steering prompt instruction).
+ * Picks the most-recurring user-remediable axis for the topic. Pure.
+ */
+export function askTimeWeaknessNudge(
+  entries: readonly WeaknessEntry[],
+  topic: string,
+  opts?: { readonly minRecurrence?: number; readonly nowMs?: number }
+): AskTimeNudge | undefined {
+  const minRecurrence = Math.max(2, Math.trunc(opts?.minRecurrence ?? 2));
+  const candidates = entries.filter(
+    (entry) => entry.topic === topic && USER_REMEDIABLE_AXES.has(entry.axis) && entry.count >= minRecurrence && !isMasteredWeakness(entry, { nowMs: opts?.nowMs })
+  );
+  if (candidates.length === 0) return undefined;
+  const top = candidates.reduce((a, b) => (b.count > a.count ? b : a));
+  return { axis: top.axis, count: top.count, hint: remediationHint(top.axis, top.topic), topic: top.topic };
+}
+
+/**
+ * Localized, axis-aware sentence for an {@link askTimeWeaknessNudge} result — the
+ * SINGLE source of the user-facing wording shared by every point-of-use surface
+ * (the `ask` 💡 stderr cue AND the in-chat repeat nudge), so source-conflict vs
+ * grounding-gap phrasing can never drift between them. Returns the bare sentence
+ * (no leading glyph / parens) — each surface wraps it in its own format. Pure.
+ */
+export function renderAskTimeNudge(nudge: AskTimeNudge, ko: boolean): string {
+  if (nudge.axis === "source-conflict") {
+    return ko
+      ? `"${nudge.topic}" 관련 노트가 서로 어긋나요 (${nudge.count.toString()}번째) — 정리해두시면 정확히 답해드릴게요.`
+      : `your notes on "${nudge.topic}" disagree (${nudge.count.toString()}×) — reconcile them and I'll answer accurately`;
+  }
+  return ko
+    ? `"${nudge.topic}" 주제는 전에도 막혔는데 노트에 없어요 (${nudge.count.toString()}번째) — 메모를 추가하시면 다음엔 답해드릴게요.`
+    : `you've hit "${nudge.topic}" ${nudge.count.toString()}× and it's not in your notes — add one and I'll answer next time`;
+}
+
+export interface DevFixableWeakness {
+  readonly topic: string;
+  readonly axis: WeaknessAxis;
+  readonly count: number;
+}
+
+/** The axes that are MUSE'S OWN bug to fix (not the user's to remediate with a note). */
+const DEV_FIXABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["misgrounding", "unbacked-action", "wrong-tool", "time-parse"]);
+
+/**
+ * Axes a later GROUNDED SUCCESS on the same topic learns away (BKT mastery up): a
+ * `grounding-gap` (couldn't answer → now can) and a `misgrounding` (answered but
+ * unsupported → now grounded — the GROUNDED≠TRUE core failure). NOT a dev-fixable
+ * actuator axis (time-parse/wrong-tool/unbacked-action), which is a code bug a grounded
+ * Q&A can't fix. Making misgrounding resolvable closes the whetstone loop's core axis,
+ * which was a one-way ratchet before (recordWeakness lowers mastery for all 7 axes, but
+ * recordWeaknessResolved raised it for grounding-gap only). Exported so the persistence
+ * layer's `recordWeaknessResolved` (weakness-ledger.ts) can classify which rows a
+ * grounded success resolves.
+ */
+export const GROUNDED_SUCCESS_RESOLVABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["grounding-gap", "misgrounding"]);
+
+/**
+ * The DEV-side mirror of {@link selectRemediableWeaknesses}: the recurring
+ * weaknesses that are MUSE'S OWN bug, not the user's — misgrounding (cited a real
+ * source that doesn't back the claim; GROUNDED != TRUE), unbacked-action (claimed
+ * an action it didn't do), wrong-tool, time-parse. `grounding-gap` is excluded
+ * (that one the USER fixes by adding a note; the recap nudges it). These are the
+ * dev loop's fix targets — what the agent keeps getting wrong on its own.
+ * Filters to count ≥ minCount; most-recurring first; capped. Pure.
+ */
+export function selectDevFixableWeaknesses(
+  entries: readonly WeaknessEntry[],
+  opts: { readonly minCount?: number; readonly maxResults?: number; readonly nowMs?: number } = {}
+): readonly DevFixableWeakness[] {
+  const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 5));
+  return entries
+    // Mastery-aware (parity with selectRemediableWeaknesses): a topic Muse demonstrably
+    // re-learned (BKT pKnown high via recordWeaknessResolved) drops off the doctor list —
+    // else a fixed misgrounding topic nags `muse doctor` forever, eroding the self-eval signal.
+    // With nowMs, BKT-Forget idle decay re-lists a topic whose mastery has gone stale.
+    .filter((entry) => DEV_FIXABLE_AXES.has(entry.axis) && entry.count >= minCount && !isMasteredWeakness(entry, { nowMs: opts.nowMs }))
+    .slice()
+    .sort((a, b) => b.count - a.count || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+    .slice(0, max)
+    .map((entry) => ({ axis: entry.axis, count: entry.count, topic: entry.topic }));
+}

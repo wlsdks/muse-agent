@@ -14,6 +14,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
+import { parseJudgeStringArray } from "./judge-output.js";
 import { sliceWithoutLoneSurrogate } from "./notes-providers-local.js";
 import type { ProactiveModelProviderLike } from "@muse/proactivity";
 
@@ -686,7 +687,7 @@ async function runNotesLlmJudge(args: NotesLlmJudgeArgs): Promise<NotesLlmJudgeR
     model: args.model,
     temperature: 0
   });
-  const parsed = parseNotesJudgeOutput((response.output ?? "").trim());
+  const parsed = parseJudgeStringArray((response.output ?? "").trim());
 
   // Resolve in model order, drop hallucinated paths, cap at limit.
   // The defense-in-depth filter is non-negotiable: the prompt tells
@@ -716,22 +717,3 @@ function previewOf(body: string, maxChars: number): string {
   return `${collapsed.slice(0, maxChars - 1)}…`;
 }
 
-function parseNotesJudgeOutput(raw: string): readonly string[] {
-  const first = raw.indexOf("[");
-  if (first < 0) return [];
-  let depth = 0;
-  let body = "";
-  for (let i = first; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (ch === "[") depth += 1;
-    else if (ch === "]") {
-      depth -= 1;
-      if (depth === 0) { body = raw.slice(first, i + 1); break; }
-    }
-  }
-  if (!body) return [];
-  let parsed: unknown;
-  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter((p): p is string => typeof p === "string" && p.length > 0);
-}

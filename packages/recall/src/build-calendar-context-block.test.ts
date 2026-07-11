@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCalendarContextBlock } from "./present.js";
+import { buildCalendarContextBlock } from "./context-blocks.js";
 
 // Assertions avoid the exact toLocaleString output (timezone-dependent); they pin the
 // structural wrapper, citation, provider, location, and the all-day vs timed shape.

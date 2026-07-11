@@ -46,6 +46,34 @@ import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
 import { startSituationalBriefingTick } from "./situational-briefing-tick.js";
 
+function stopOnClose(server: FastifyInstance, handle: { stop(): void }): void {
+  server.addHook("onClose", async () => {
+    handle.stop();
+  });
+}
+
+function optionalNumber(raw: string | undefined): number | undefined {
+  return raw ? Number(raw) : undefined;
+}
+
+function resolveMessagingTarget(
+  providerIdRaw: string | undefined,
+  destinationRaw: string | undefined,
+  options: ServerOptions
+): { readonly providerId: string; readonly destination: string; readonly registry: NonNullable<ServerOptions["messaging"]> } | undefined {
+  const providerId = providerIdRaw?.trim();
+  const destination = destinationRaw?.trim();
+  if (
+    !providerId || providerId.length === 0
+    || !destination || destination.length === 0
+    || !options.messaging
+    || !options.messaging.has(providerId)
+  ) {
+    return undefined;
+  }
+  return { providerId, destination, registry: options.messaging };
+}
+
 export interface PhaseDActivityWiring {
   readonly phaseDReminderOn: boolean;
   readonly phaseDProactiveOn: boolean;
@@ -58,22 +86,14 @@ export function startReminderDaemonIfConfigured(
   options: ServerOptions,
   phaseD: PhaseDActivityWiring
 ): void {
-  const tickProvider = env.MUSE_REMINDER_DEFAULT_PROVIDER?.trim();
-  const tickDestination = env.MUSE_REMINDER_DEFAULT_DESTINATION?.trim();
-  if (
-    !tickProvider || tickProvider.length === 0
-    || !tickDestination || tickDestination.length === 0
-    || !options.remindersFile
-    || !options.messaging
-    || !options.messaging.has(tickProvider)
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_REMINDER_DEFAULT_PROVIDER, env.MUSE_REMINDER_DEFAULT_DESTINATION, options);
+  if (!target || !options.remindersFile) {
     return;
   }
-  const tickMsRaw = env.MUSE_REMINDER_TICK_MS ? Number(env.MUSE_REMINDER_TICK_MS) : undefined;
+  const { providerId: tickProvider, destination: tickDestination, registry: tickRegistry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_REMINDER_TICK_MS);
   const quietHours = parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-  const reminderPhaseDWindowRaw = env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS
-    ? Number(env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS)
-    : undefined;
+  const reminderPhaseDWindowRaw = optionalNumber(env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS);
   const tickHandle = startReminderTick({
     ...(phaseD.phaseDReminderOn && phaseD.sharedActivityTracker ? { activitySource: phaseD.sharedActivityTracker } : {}),
     ...(phaseD.phaseDReminderOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
@@ -86,12 +106,10 @@ export function startReminderDaemonIfConfigured(
     logger: (message) => server.log.info(message),
     providerId: tickProvider,
     ...(quietHours ? { quietHours } : {}),
-    registry: options.messaging,
+    registry: tickRegistry,
     remindersFile: options.remindersFile
   });
-  server.addHook("onClose", async () => {
-    tickHandle.stop();
-  });
+  stopOnClose(server, tickHandle);
 }
 
 export function startProactiveDaemonIfConfigured(
@@ -100,23 +118,17 @@ export function startProactiveDaemonIfConfigured(
   options: ServerOptions,
   phaseD: PhaseDActivityWiring
 ): void {
-  const proactiveProvider = env.MUSE_PROACTIVE_PROVIDER?.trim();
-  const proactiveDestination = env.MUSE_PROACTIVE_DESTINATION?.trim();
   const proactiveCalendar = options.calendar && options.calendar.list().length > 0
     ? options.calendar
     : undefined;
   const proactiveHasSignal = Boolean(proactiveCalendar) || Boolean(options.tasksFile);
-  if (
-    !proactiveProvider || proactiveProvider.length === 0
-    || !proactiveDestination || proactiveDestination.length === 0
-    || !options.messaging
-    || !options.messaging.has(proactiveProvider)
-    || !proactiveHasSignal
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_PROACTIVE_PROVIDER, env.MUSE_PROACTIVE_DESTINATION, options);
+  if (!target || !proactiveHasSignal) {
     return;
   }
-  const proactiveTickMsRaw = env.MUSE_PROACTIVE_TICK_MS ? Number(env.MUSE_PROACTIVE_TICK_MS) : undefined;
-  const proactiveLeadRaw = env.MUSE_PROACTIVE_LEAD_MINUTES ? Number(env.MUSE_PROACTIVE_LEAD_MINUTES) : undefined;
+  const { providerId: proactiveProvider, destination: proactiveDestination, registry: proactiveRegistry } = target;
+  const proactiveTickMsRaw = optionalNumber(env.MUSE_PROACTIVE_TICK_MS);
+  const proactiveLeadRaw = optionalNumber(env.MUSE_PROACTIVE_LEAD_MINUTES);
   const proactiveQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const proactiveSidecarFile = resolveProactiveSidecarFile(env);
@@ -129,9 +141,7 @@ export function startProactiveDaemonIfConfigured(
   // created by the caller so a single onRequest hook unlocks both
   // this daemon and the reminder daemon when their respective
   // MUSE_*_AGENT_TURN flag is on.
-  const phaseDWindowRaw = env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS
-    ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
-    : undefined;
+  const phaseDWindowRaw = optionalNumber(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS);
 
   // A real notes-backed investigator over the primary notes
   // provider so the proactive notice surfaces "📎 Related notes: …"
@@ -163,7 +173,7 @@ export function startProactiveDaemonIfConfigured(
     ...(proactiveTickMsRaw !== undefined ? { intervalMs: proactiveTickMsRaw } : {}),
     ...(proactiveLeadRaw !== undefined ? { leadMinutes: proactiveLeadRaw } : {}),
     logger: (message) => server.log.info(message),
-    messagingRegistry: options.messaging,
+    messagingRegistry: proactiveRegistry,
     providerId: proactiveProvider,
     ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
     ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
@@ -171,9 +181,7 @@ export function startProactiveDaemonIfConfigured(
     trustLedgerFile: resolveProactiveTrustFile(env),
     ...(proactiveDailyCap > 0 ? { dailyCap: proactiveDailyCap } : {})
   });
-  server.addHook("onClose", async () => {
-    proactiveHandle.stop();
-  });
+  stopOnClose(server, proactiveHandle);
 }
 
 export function startFollowupDaemonIfConfigured(
@@ -181,21 +189,13 @@ export function startFollowupDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions
 ): void {
-  const followupProvider = env.MUSE_FOLLOWUP_DEFAULT_PROVIDER?.trim();
-  const followupDestination = env.MUSE_FOLLOWUP_DEFAULT_DESTINATION?.trim();
-  if (
-    !followupProvider || followupProvider.length === 0
-    || !followupDestination || followupDestination.length === 0
-    || !options.followupsFile
-    || !options.messaging
-    || !options.messaging.has(followupProvider)
-    || !options.modelProvider
-    || !options.defaultModel
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_FOLLOWUP_DEFAULT_PROVIDER, env.MUSE_FOLLOWUP_DEFAULT_DESTINATION, options);
+  if (!target || !options.followupsFile || !options.modelProvider || !options.defaultModel) {
     return;
   }
-  const followupTickMsRaw = env.MUSE_FOLLOWUP_TICK_MS ? Number(env.MUSE_FOLLOWUP_TICK_MS) : undefined;
-  const followupMaxPerTickRaw = env.MUSE_FOLLOWUP_MAX_PER_TICK ? Number(env.MUSE_FOLLOWUP_MAX_PER_TICK) : undefined;
+  const { providerId: followupProvider, destination: followupDestination, registry: followupRegistry } = target;
+  const followupTickMsRaw = optionalNumber(env.MUSE_FOLLOWUP_TICK_MS);
+  const followupMaxPerTickRaw = optionalNumber(env.MUSE_FOLLOWUP_MAX_PER_TICK);
   const followupQuietHours = parseQuietHours(env.MUSE_FOLLOWUP_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const followupHandle = startFollowupTick({
@@ -209,11 +209,9 @@ export function startFollowupDaemonIfConfigured(
     modelProvider: options.modelProvider,
     providerId: followupProvider,
     ...(followupQuietHours ? { quietHours: followupQuietHours } : {}),
-    registry: options.messaging
+    registry: followupRegistry
   });
-  server.addHook("onClose", async () => {
-    followupHandle.stop();
-  });
+  stopOnClose(server, followupHandle);
 }
 
 /**
@@ -245,23 +243,16 @@ export function startSituationalBriefingDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions
 ): void {
-  const briefingProvider = env.MUSE_BRIEFING_PROVIDER?.trim();
-  const briefingDestination = env.MUSE_BRIEFING_DESTINATION?.trim();
-  if (
-    !briefingProvider || briefingProvider.length === 0
-    || !briefingDestination || briefingDestination.length === 0
-    || !options.objectivesFile
-    || !options.briefingSidecarFile
-    || !options.messaging
-    || !options.messaging.has(briefingProvider)
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_BRIEFING_PROVIDER, env.MUSE_BRIEFING_DESTINATION, options);
+  if (!target || !options.objectivesFile || !options.briefingSidecarFile) {
     return;
   }
-  const tickMsRaw = env.MUSE_BRIEFING_TICK_MS ? Number(env.MUSE_BRIEFING_TICK_MS) : undefined;
-  const windowMsRaw = env.MUSE_BRIEFING_WINDOW_MS ? Number(env.MUSE_BRIEFING_WINDOW_MS) : undefined;
+  const { providerId: briefingProvider, destination: briefingDestination, registry: briefingRegistry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_BRIEFING_TICK_MS);
+  const windowMsRaw = optionalNumber(env.MUSE_BRIEFING_WINDOW_MS);
   const briefingQuietHours = parseQuietHours(env.MUSE_BRIEFING_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-  const leadRaw = env.MUSE_BRIEFING_LEAD_MINUTES ? Number(env.MUSE_BRIEFING_LEAD_MINUTES) : undefined;
+  const leadRaw = optionalNumber(env.MUSE_BRIEFING_LEAD_MINUTES);
   const tasksFile = options.tasksFile;
   const briefingCalendar = options.calendar;
   const leadOpt = leadRaw !== undefined ? { leadMinutes: leadRaw } : {};
@@ -322,13 +313,13 @@ export function startSituationalBriefingDaemonIfConfigured(
   const homeAlertOpt = haBaseUrl && haToken && homeChecks.length > 0
     ? { homeAlert: () => resolveHomeAlertLine({ baseUrl: haBaseUrl, token: haToken }, homeChecks) }
     : {};
-  const birthdayDaysRaw = env.MUSE_BRIEFING_BIRTHDAY_DAYS ? Number(env.MUSE_BRIEFING_BIRTHDAY_DAYS) : undefined;
+  const birthdayDaysRaw = optionalNumber(env.MUSE_BRIEFING_BIRTHDAY_DAYS);
   const birthdayDays = Number.isFinite(birthdayDaysRaw) ? (birthdayDaysRaw as number) : 7;
   const birthdayOpt = {
     birthdayLine: async () =>
       formatBirthdayBriefLine(resolveUpcomingBirthdays(await queryContacts(resolveContactsFile(env)), { withinDays: birthdayDays }))
   };
-  const taskDueDaysRaw = env.MUSE_BRIEFING_TASK_DUE_DAYS ? Number(env.MUSE_BRIEFING_TASK_DUE_DAYS) : undefined;
+  const taskDueDaysRaw = optionalNumber(env.MUSE_BRIEFING_TASK_DUE_DAYS);
   const taskDueDays = Number.isFinite(taskDueDaysRaw) ? (taskDueDaysRaw as number) : 1;
   const tasksDueOpt = tasksFile
     ? { tasksDueLine: async () => resolveTasksDueLine(await readTasks(tasksFile), { withinDays: taskDueDays }) }
@@ -351,7 +342,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     objectivesFile: options.objectivesFile,
     providerId: briefingProvider,
     ...(briefingQuietHours ? { quietHours: briefingQuietHours } : {}),
-    registry: options.messaging,
+    registry: briefingRegistry,
     sidecarFile: options.briefingSidecarFile,
     ...weatherOpt,
     ...emailOpt,
@@ -363,9 +354,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     ...availabilityOpt,
     ...(windowMsRaw !== undefined ? { windowMs: windowMsRaw } : {})
   });
-  server.addHook("onClose", async () => {
-    briefingHandle.stop();
-  });
+  stopOnClose(server, briefingHandle);
 }
 
 export function startObjectivesDaemonIfConfigured(
@@ -373,21 +362,13 @@ export function startObjectivesDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions
 ): void {
-  const objectivesProvider = env.MUSE_OBJECTIVES_PROVIDER?.trim();
-  const objectivesDestination = env.MUSE_OBJECTIVES_DESTINATION?.trim();
-  if (
-    !objectivesProvider || objectivesProvider.length === 0
-    || !objectivesDestination || objectivesDestination.length === 0
-    || !options.objectivesFile
-    || !options.messaging
-    || !options.messaging.has(objectivesProvider)
-    || !options.modelProvider
-    || !options.defaultModel
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_OBJECTIVES_PROVIDER, env.MUSE_OBJECTIVES_DESTINATION, options);
+  if (!target || !options.objectivesFile || !options.modelProvider || !options.defaultModel) {
     return;
   }
-  const tickMsRaw = env.MUSE_OBJECTIVES_TICK_MS ? Number(env.MUSE_OBJECTIVES_TICK_MS) : undefined;
-  const maxPerTickRaw = env.MUSE_OBJECTIVES_MAX_PER_TICK ? Number(env.MUSE_OBJECTIVES_MAX_PER_TICK) : undefined;
+  const { providerId: objectivesProvider, destination: objectivesDestination, registry: objectivesRegistry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_OBJECTIVES_TICK_MS);
+  const maxPerTickRaw = optionalNumber(env.MUSE_OBJECTIVES_MAX_PER_TICK);
   const objectivesQuietHours = parseQuietHours(env.MUSE_OBJECTIVES_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const objectivesActionLogFile = options.actionLogFile ?? resolveActionLogFile(env);
@@ -411,7 +392,7 @@ export function startObjectivesDaemonIfConfigured(
     ...(options.actionLogFile ? { actionLogFile: options.actionLogFile } : {}),
     destination: objectivesDestination,
     providerId: objectivesProvider,
-    registry: options.messaging
+    registry: objectivesRegistry
   });
   const objectivesHandle = startObjectivesTick({
     act,
@@ -424,9 +405,7 @@ export function startObjectivesDaemonIfConfigured(
     objectivesFile: options.objectivesFile,
     ...(objectivesQuietHours ? { quietHours: objectivesQuietHours } : {})
   });
-  server.addHook("onClose", async () => {
-    objectivesHandle.stop();
-  });
+  stopOnClose(server, objectivesHandle);
 }
 
 export function startPatternDaemonIfConfigured(
@@ -435,22 +414,15 @@ export function startPatternDaemonIfConfigured(
   options: ServerOptions
 ): void {
   const patternEnabled = parseBoolean(env.MUSE_PROACTIVE_PATTERN_ENABLED, false);
-  const patternProvider = env.MUSE_PROACTIVE_PATTERN_PROVIDER?.trim();
-  const patternDestination = env.MUSE_PROACTIVE_PATTERN_DESTINATION?.trim();
-  if (
-    !patternEnabled
-    || !patternProvider || patternProvider.length === 0
-    || !patternDestination || patternDestination.length === 0
-    || !options.patternsFiredFile
-    || !options.messaging
-    || !options.messaging.has(patternProvider)
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_PROACTIVE_PATTERN_PROVIDER, env.MUSE_PROACTIVE_PATTERN_DESTINATION, options);
+  if (!patternEnabled || !target || !options.patternsFiredFile) {
     return;
   }
-  const tickMsRaw = env.MUSE_PROACTIVE_PATTERN_TICK_MS ? Number(env.MUSE_PROACTIVE_PATTERN_TICK_MS) : undefined;
-  const cooldownMsRaw = env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS ? Number(env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS) : undefined;
-  const minConfidenceRaw = env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE ? Number(env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE) : undefined;
-  const maxPerTickRaw = env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK ? Number(env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK) : undefined;
+  const { providerId: patternProvider, destination: patternDestination, registry: patternRegistry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_TICK_MS);
+  const cooldownMsRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS);
+  const minConfidenceRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE);
+  const maxPerTickRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK);
   const patternQuietHours = parseQuietHours(env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const patternHandle = startPatternTick({
@@ -466,11 +438,9 @@ export function startPatternDaemonIfConfigured(
     patternsFiredFile: options.patternsFiredFile,
     providerId: patternProvider,
     ...(patternQuietHours ? { quietHours: patternQuietHours } : {}),
-    registry: options.messaging
+    registry: patternRegistry
   });
-  server.addHook("onClose", async () => {
-    patternHandle.stop();
-  });
+  stopOnClose(server, patternHandle);
 }
 
 /**
@@ -512,8 +482,8 @@ export function startConsolidateDaemonIfConfigured(
   const activitySource = source;
   const authoredSkillsDir = env.MUSE_AUTHORED_SKILLS_DIR?.trim()
     || join(homedir(), ".muse", "skills", "authored");
-  const idleMsRaw = env.MUSE_SKILL_CONSOLIDATE_IDLE_MS ? Number(env.MUSE_SKILL_CONSOLIDATE_IDLE_MS) : undefined;
-  const tickMsRaw = env.MUSE_SKILL_CONSOLIDATE_TICK_MS ? Number(env.MUSE_SKILL_CONSOLIDATE_TICK_MS) : undefined;
+  const idleMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_IDLE_MS);
+  const tickMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_TICK_MS);
   const consolidateQuietHours = parseQuietHours(env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const consolidateModel = options.defaultModel;
@@ -559,9 +529,7 @@ export function startConsolidateDaemonIfConfigured(
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(consolidateQuietHours ? { quietHours: consolidateQuietHours } : {})
   });
-  server.addHook("onClose", async () => {
-    consolidateHandle.stop();
-  });
+  stopOnClose(server, consolidateHandle);
 }
 
 /**
@@ -579,8 +547,6 @@ export function startAmbientDaemonIfConfigured(
   options: ServerOptions
 ): void {
   const enabled = parseBoolean(env.MUSE_AMBIENT_ENABLED, false);
-  const providerId = env.MUSE_AMBIENT_PROVIDER?.trim();
-  const destination = env.MUSE_AMBIENT_DESTINATION?.trim();
   const rules = parseAmbientNoticeRules(env.MUSE_AMBIENT_RULES ?? "");
   const enrich = buildKnowledgeEnricherIfEnabled(env, options);
   // SB-3 knowledge trigger: the active window title alone surfaces a
@@ -590,17 +556,16 @@ export function startAmbientDaemonIfConfigured(
   const knowledgeTrigger = parseBoolean(env.MUSE_AMBIENT_KNOWLEDGE_TRIGGER, false) && enrich
     ? { enrich }
     : undefined;
+  const target = resolveMessagingTarget(env.MUSE_AMBIENT_PROVIDER, env.MUSE_AMBIENT_DESTINATION, options);
   if (
     !enabled
-    || !providerId || providerId.length === 0
-    || !destination || destination.length === 0
+    || !target
     || (rules.length === 0 && !knowledgeTrigger)
-    || !options.messaging
-    || !options.messaging.has(providerId)
   ) {
     return;
   }
-  const tickMsRaw = env.MUSE_AMBIENT_TICK_MS ? Number(env.MUSE_AMBIENT_TICK_MS) : undefined;
+  const { providerId, destination, registry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_AMBIENT_TICK_MS);
   const quietHours = parseQuietHours(env.MUSE_AMBIENT_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
@@ -612,7 +577,7 @@ export function startAmbientDaemonIfConfigured(
     errorLogger: (message) => server.log.warn(message),
     logger: (message) => server.log.info(message),
     providerId,
-    registry: options.messaging,
+    registry,
     rules,
     source,
     ...(enrich ? { enrich } : {}),
@@ -620,9 +585,7 @@ export function startAmbientDaemonIfConfigured(
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(quietHours ? { quietHours } : {})
   });
-  server.addHook("onClose", async () => {
-    handle.stop();
-  });
+  stopOnClose(server, handle);
 }
 
 export function startWebWatchDaemonIfConfigured(
@@ -631,34 +594,25 @@ export function startWebWatchDaemonIfConfigured(
   options: ServerOptions
 ): void {
   const enabled = parseBoolean(env.MUSE_WEB_WATCH_ENABLED, false);
-  const providerId = env.MUSE_WEB_WATCH_PROVIDER?.trim();
-  const destination = env.MUSE_WEB_WATCH_DESTINATION?.trim();
   const watches = webWatchesFromConfig(env.MUSE_WEB_WATCH_CONFIG ?? "");
-  if (
-    !enabled
-    || !providerId || providerId.length === 0
-    || !destination || destination.length === 0
-    || watches.length === 0
-    || !options.messaging
-    || !options.messaging.has(providerId)
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_WEB_WATCH_PROVIDER, env.MUSE_WEB_WATCH_DESTINATION, options);
+  if (!enabled || !target || watches.length === 0) {
     return;
   }
-  const tickMsRaw = env.MUSE_WEB_WATCH_TICK_MS ? Number(env.MUSE_WEB_WATCH_TICK_MS) : undefined;
+  const { providerId, destination, registry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_WEB_WATCH_TICK_MS);
   const quietHours = parseQuietHours(env.MUSE_WEB_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const handle = startWebWatchTick({
     destination,
     errorLogger: (message) => server.log.warn(message),
     logger: (message) => server.log.info(message),
     providerId,
-    registry: options.messaging,
+    registry,
     watches,
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(quietHours ? { quietHours } : {})
   });
-  server.addHook("onClose", async () => {
-    handle.stop();
-  });
+  stopOnClose(server, handle);
 }
 
 export function startHomeWatchDaemonIfConfigured(
@@ -667,38 +621,29 @@ export function startHomeWatchDaemonIfConfigured(
   options: ServerOptions
 ): void {
   const enabled = parseBoolean(env.MUSE_HOME_WATCH_ENABLED, false);
-  const providerId = env.MUSE_HOME_WATCH_PROVIDER?.trim();
-  const destination = env.MUSE_HOME_WATCH_DESTINATION?.trim();
   const baseUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
   const token = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
   const watches = baseUrl && token
     ? homeWatchesFromConfig(env.MUSE_HOME_WATCH_CONFIG ?? "", { baseUrl, token })
     : [];
-  if (
-    !enabled
-    || !providerId || providerId.length === 0
-    || !destination || destination.length === 0
-    || watches.length === 0
-    || !options.messaging
-    || !options.messaging.has(providerId)
-  ) {
+  const target = resolveMessagingTarget(env.MUSE_HOME_WATCH_PROVIDER, env.MUSE_HOME_WATCH_DESTINATION, options);
+  if (!enabled || !target || watches.length === 0) {
     return;
   }
-  const tickMsRaw = env.MUSE_HOME_WATCH_TICK_MS ? Number(env.MUSE_HOME_WATCH_TICK_MS) : undefined;
+  const { providerId, destination, registry } = target;
+  const tickMsRaw = optionalNumber(env.MUSE_HOME_WATCH_TICK_MS);
   const quietHours = parseQuietHours(env.MUSE_HOME_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const handle = startWebWatchTick({
     destination,
     errorLogger: (message) => server.log.warn(message),
     logger: (message) => server.log.info(message),
     providerId,
-    registry: options.messaging,
+    registry,
     watches,
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(quietHours ? { quietHours } : {})
   });
-  server.addHook("onClose", async () => {
-    handle.stop();
-  });
+  stopOnClose(server, handle);
 }
 
 export function resolveAmbientSignalFile(env: NodeJS.ProcessEnv): string {

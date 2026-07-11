@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampLongPollSeconds, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import { readMatrixSince, writeMatrixSince } from "./matrix-since-store.js";
 import type {
   InboundFetchOptions,
@@ -96,14 +96,6 @@ function matrixRoomScope(joinedMemberCount: number | undefined): "direct" | "sha
  */
 const MATRIX_MAX_TEXT = 16_000;
 
-/** Matrix holds `/sync` for `timeout` ms; clamp to a sane [0s, 60s]. */
-function clampLongPollSeconds(raw: number | undefined): number {
-  if (raw === undefined || !Number.isFinite(raw)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(60, Math.trunc(raw)));
-}
-
 /**
  * Matrix channel adapter over the official Client-Server API v3 —
  * plain fetch, no SDK. Plaintext rooms only: E2EE (Olm/Megolm) is
@@ -190,7 +182,7 @@ export class MatrixProvider implements MessagingProvider {
   async pollUpdates(options?: InboundFetchOptions & { readonly longPollSeconds?: number }): Promise<readonly InboundMessage[]> {
     const limit = clampInboundLimit(options?.limit);
     const since = this.sinceFile ? await readMatrixSince(this.sinceFile) : undefined;
-    const longPoll = clampLongPollSeconds(options?.longPollSeconds);
+    const longPoll = clampLongPollSeconds(options?.longPollSeconds, 60);
     const filter = encodeURIComponent(JSON.stringify({ room: { timeline: { limit } } }));
     const url = `${this.baseUrl}/_matrix/client/v3/sync?timeout=${(longPoll * 1000).toString()}&filter=${filter}`
       + (since !== undefined ? `&since=${encodeURIComponent(since)}` : "");

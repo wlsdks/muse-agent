@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildGitContextBlock, buildShellContextBlock } from "./present.js";
+import { buildGitContextBlock, buildShellContextBlock } from "./context-blocks.js";
 
 describe("buildShellContextBlock — <<command N>> grounding block", () => {
   it("empty → placeholder", () => {

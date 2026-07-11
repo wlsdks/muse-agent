@@ -326,7 +326,6 @@ export class ConfigurationError extends Error {
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
   const env = mergeModelKeysFromFile(options.env ?? process.env);
   const db = options.db;
-  const authService = createAuthService(env, db);
   // Sync read: createMuseRuntimeAssembly is called synchronously from dozens
   // of CLI command sites, so the startup persona load can't await. A broken
   // or absent persona.md is fail-open here — see resolveRuntimePersonaLayerSync.
@@ -336,6 +335,224 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   if (startupPersonaLayer) {
     promptLayerRegistry.register(startupPersonaLayer);
   }
+
+  const observability = buildObservabilityStack(env, db);
+  const {
+    authService,
+    agentSpecRegistry,
+    agentSpecResolver,
+    historyStore,
+    hookTraceStore,
+    debugReplayCaptureStore,
+    cacheStatsStore,
+    cacheMetrics,
+    responseCache,
+    agentMetrics,
+    sloEvaluator,
+    driftDetector,
+    budgetTracker,
+    runtimeAgentMetrics,
+    followupSuggestionStore,
+    tracer,
+    latencyQuery,
+    tokenCostQuery,
+    traceSink,
+    tokenUsageSink,
+    circuitBreakerRegistry
+  } = observability;
+
+  const modelAndStores = buildModelAndStoreStack(env, db, tokenUsageSink, options.mcpConnector);
+  const {
+    modelProvider,
+    conversationSummaryStore,
+    taskMemoryStore,
+    userMemoryStore,
+    sessionTagStore,
+    defaultModel,
+    mcp,
+    runnerTools,
+    museTools,
+    loopbackMcpTools,
+    contextReferenceStore
+  } = modelAndStores;
+
+  // Loopback-tools construction is hoisted below `activeContextProvider`
+  // so the optional `muse.context.active` tool can hand the same
+  // provider instance the runtime uses. See the assignment near the
+  // `agentRuntime` declaration.
+  let contextReferenceLoopbackTools: readonly MuseTool[] = [];
+
+  const personalStores = buildPersonalStoreStack(env, options, modelProvider, defaultModel);
+  const {
+    notesDir,
+    notesRegistry,
+    calendarRegistry,
+    tasksFile,
+    tasksRegistry,
+    messagingRegistry,
+    pollAll,
+    pollNow,
+    followupsFile,
+    episodesFile,
+    loopback
+  } = personalStores;
+
+  const tooling = buildToolingStack({
+    calendarRegistry,
+    env,
+    episodesFile,
+    getContextReferenceLoopbackTools: () => contextReferenceLoopbackTools,
+    loopback,
+    loopbackMcpTools,
+    mcp,
+    museTools,
+    notesDir,
+    notesRegistry,
+    options,
+    runnerTools,
+    tasksFile,
+    tasksRegistry,
+    userMemoryStore
+  });
+  const { schedulerHandle, skillRegistryPromise, toolRegistry } = tooling;
+
+  const hooksAndProviders = buildHooksAndContextProviders({
+    calendarRegistry,
+    contextReferenceStore,
+    defaultModel,
+    env,
+    followupsFile,
+    modelProvider,
+    taskMemoryStore,
+    userMemoryStore
+  });
+  const {
+    runtimeHooks,
+    activeContextProvider,
+    telemetryAggregator,
+    vetoAvoidanceProvider,
+    playbookProvider,
+    planCacheProvider,
+    toolExemplarBank,
+    contextWindowOptions
+  } = hooksAndProviders;
+  contextReferenceLoopbackTools = hooksAndProviders.contextReferenceLoopbackTools;
+
+  const agentRuntime = buildAgentRuntime({
+    activeContextProvider,
+    agentSpecResolver,
+    cacheMetrics,
+    circuitBreakerRegistry,
+    contextReferenceStore,
+    contextWindowOptions,
+    conversationSummaryStore,
+    db,
+    defaultModel,
+    env,
+    historyStore,
+    hookTraceStore,
+    modelProvider,
+    playbookProvider,
+    planCacheProvider,
+    promptLayerRegistry,
+    responseCache,
+    runtimeAgentMetrics,
+    runtimeHooks,
+    skillRegistryPromise,
+    telemetryAggregator,
+    tokenUsageSink,
+    toolExemplarBank,
+    toolRegistry,
+    tracer,
+    userMemoryStore,
+    vetoAvoidanceProvider
+  });
+  const schedulerStore = createSchedulerStore(db, env);
+  const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
+  const schedulerLock = createSchedulerLock(db, env);
+  const schedulerService = new DynamicScheduler({
+    dispatcher: new ScheduledJobDispatcher({
+      agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
+      mcpInvoker: new ScheduledMcpToolInvoker(mcp.manager)
+    }),
+    cronScheduler: parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true)
+      ? new NodeCronScheduler()
+      : undefined,
+    executionStore: schedulerExecutionStore,
+    distributedLock: schedulerLock,
+    // User kill-switch: a cron-fired job is skipped while the user has paused
+    // the scheduler (toggled by `muse scheduler pause`); manual triggers still run.
+    isPaused: () => isSchedulerPaused(defaultSchedulerPauseFile(env)),
+    store: schedulerStore
+  });
+  schedulerHandle.current = schedulerService;
+
+  return {
+    agentRuntime,
+    agentSpecRegistry,
+    authService,
+    cache: {
+      metrics: cacheMetrics,
+      responseCache,
+      statsStore: cacheStatsStore
+    },
+    defaultModel,
+    personaFilePath,
+    promptLayerRegistry,
+    historyStore,
+    hookTraceStore,
+    mcp,
+    modelProvider,
+    debugReplayCaptureStore,
+    conversationSummaryStore,
+    sessionTagStore,
+    taskMemoryStore,
+    userMemoryStore,
+    observability: {
+      budgetTracker,
+      driftDetector,
+      followupSuggestionStore,
+      latencyQuery,
+      metrics: agentMetrics,
+      sloEvaluator,
+      ...(telemetryAggregator ? { telemetryAggregator } : {}),
+      tokenCostQuery,
+      tokenUsageSink,
+      ...(traceSink ? { traceSink } : {}),
+      tracer
+    },
+    requireAuth: parseBoolean(env.MUSE_REQUIRE_AUTH, Boolean(authService)),
+    resilience: {
+      circuitBreakerRegistry
+    },
+    calendar: calendarRegistry,
+    runtimeSettings: new RuntimeSettings(createRuntimeSettingsStore(db)),
+    toolRegistry,
+    scheduler: {
+      executionStore: schedulerExecutionStore,
+      service: schedulerService,
+      store: schedulerStore
+    },
+    ...(notesRegistry ? { notesProviderRegistry: notesRegistry } : {}),
+    ...(tasksRegistry ? { tasksProviderRegistry: tasksRegistry } : {}),
+    voice: buildVoiceRegistry(env),
+    ...(activeContextProvider ? { activeContextProvider } : {}),
+    agentInitiatedNoticeBroker: new InMemoryAgentInitiatedNoticeBroker(),
+    messaging: messagingRegistry,
+    ...(messagingRegistry.list().length > 0
+      ? { messagingPollAll: pollAll, messagingPollNow: pollNow }
+      : {})
+  };
+}
+
+/**
+ * Observability + core stores: auth, agent-spec registry, run history,
+ * hook traces, response cache, metrics/SLO/drift/budget, and the tracing
+ * pipeline's token-usage sink. Everything downstream (model provider,
+ * agent runtime) needs `tokenUsageSink`, so this stage runs first.
+ */
+function buildObservabilityStack(env: MuseEnvironment, db: Kysely<MuseDatabase> | undefined) {
+  const authService = createAuthService(env, db);
   // Seed default orchestration workers into a fresh in-memory registry so
   // `orchestrate` works out of the box (empty registry → NoAgentWorkerError).
   // DB-backed deployments are operator-managed — not auto-seeded. Opt out with
@@ -390,6 +607,45 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     failureThreshold: parseInteger(env.MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
     resetTimeoutMs: parseInteger(env.MUSE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS, 30_000)
   });
+
+  return {
+    authService,
+    agentSpecRegistry,
+    agentSpecResolver,
+    historyStore,
+    hookTraceStore,
+    debugReplayCaptureStore,
+    cacheStatsStore,
+    cacheMetrics,
+    responseCache,
+    agentMetrics,
+    sloEvaluator,
+    driftDetector,
+    budgetTracker,
+    runtimeAgentMetrics,
+    followupSuggestionStore,
+    tracer,
+    latencyQuery,
+    tokenCostQuery,
+    traceSink,
+    tokenUsageSink,
+    circuitBreakerRegistry
+  };
+}
+
+/**
+ * Model provider (usage-recording-wrapped) + the memory/summary/session
+ * stores + the MCP stack + the two static tool bundles (runner, muse
+ * built-ins) + the in-process context-reference store. `tokenUsageSink`
+ * comes from `buildObservabilityStack` so the local-answer path still
+ * records usage through the same decorator.
+ */
+function buildModelAndStoreStack(
+  env: MuseEnvironment,
+  db: Kysely<MuseDatabase> | undefined,
+  tokenUsageSink: TokenUsageSink,
+  mcpConnector: McpTransportConnector | undefined
+) {
   // Wrap every model call so the LOCAL answer path (which calls provider directly,
   // bypassing the runtime's recordTokenUsageEvent) still records token usage. The
   // runtime flags its own requests so this decorator skips them (no double-count).
@@ -400,7 +656,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const userMemoryStore = createUserMemoryStore(db, env);
   const sessionTagStore = createSessionTagStore(db);
   const defaultModel = resolveDefaultModel(env);
-  const mcp = assembleMcpStack(env, db, options.mcpConnector);
+  const mcp = assembleMcpStack(env, db, mcpConnector);
   const runnerTools = createRunnerTools(env);
   const museTools = parseBoolean(env.MUSE_TOOLS_ENABLED, true) ? createMuseTools() : [];
   const loopbackMcpTools = createLoopbackMcpToolsFromEnv(env);
@@ -412,16 +668,36 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     maxEntries: parseInteger(env.MUSE_CONTEXT_REF_MAX_ENTRIES, 1_000),
     ttlMs: parseInteger(env.MUSE_CONTEXT_REF_TTL_MS, 30 * 60 * 1_000)
   });
-  // Loopback-tools construction is hoisted below `activeContextProvider`
-  // so the optional `muse.context.active` tool can hand the same
-  // provider instance the runtime uses. See the assignment near the
-  // `agentRuntime` declaration.
-  let contextReferenceLoopbackTools: readonly MuseTool[] = [];
 
-  // Resolve every personal-store path + registry the loopback tools
-  // need. Some of these (notesDir, tasksFile, followupsFile,
-  // patternsFiredFile, messagingRegistry, pollAll, pollNow) are
-  // referenced by daemons/hooks downstream, so they stay as locals.
+  return {
+    modelProvider,
+    conversationSummaryStore,
+    taskMemoryStore,
+    userMemoryStore,
+    sessionTagStore,
+    defaultModel,
+    mcp,
+    runnerTools,
+    museTools,
+    loopbackMcpTools,
+    contextReferenceStore
+  };
+}
+
+/**
+ * Resolves every personal-store path + registry the loopback tools need
+ * (notes/calendar/tasks/messaging + reminders/proactive/followups/episodes/
+ * patterns files), then builds the 11 loopback-tool bundles in one call.
+ * Some resolved paths (notesDir, tasksFile, episodesFile, followupsFile)
+ * are also needed by downstream tool-registry/hook wiring, so they're
+ * returned alongside the loopback bundle rather than kept file-local.
+ */
+function buildPersonalStoreStack(
+  env: MuseEnvironment,
+  options: ApiServerAssemblyOptions,
+  modelProvider: ModelProvider | undefined,
+  defaultModel: string | undefined
+) {
   const notesDir = resolveNotesDir(env);
   ensureNotesDir(notesDir);
   const notesRegistry = parseBoolean(env.MUSE_NOTES_ENABLED, true) ? buildNotesRegistry(env) : undefined;
@@ -462,6 +738,68 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     tasksRegistry,
     userId: env.MUSE_USER_ID ?? "user"
   });
+
+  return {
+    notesDir,
+    notesRegistry,
+    calendarRegistry,
+    tasksFile,
+    tasksRegistry,
+    messagingRegistry,
+    pollAll,
+    pollNow,
+    remindersFile,
+    reminderHistoryFile,
+    proactiveHistoryFile,
+    followupsFile,
+    episodesFile,
+    patternsFiredFile,
+    loopback
+  };
+}
+
+/**
+ * The scheduler handle placeholder (mutated after the scheduler service
+ * exists), the async skill registry + its tools, and the composed
+ * `DynamicToolRegistry`. `getContextReferenceLoopbackTools` is a closure
+ * the caller creates over its own `let`-mutated array (assigned later,
+ * after `activeContextProvider` is built) — read lazily by the registry.
+ */
+function buildToolingStack(params: {
+  readonly env: MuseEnvironment;
+  readonly options: ApiServerAssemblyOptions;
+  readonly calendarRegistry: CalendarProviderRegistry;
+  readonly notesRegistry: NotesProviderRegistry | undefined;
+  readonly tasksRegistry: TasksProviderRegistry | undefined;
+  readonly userMemoryStore: UserMemoryStore;
+  readonly notesDir: string;
+  readonly tasksFile: string;
+  readonly episodesFile: string;
+  readonly mcp: ReturnType<typeof assembleMcpStack>;
+  readonly runnerTools: ReturnType<typeof createRunnerTools>;
+  readonly museTools: readonly MuseTool[];
+  readonly loopbackMcpTools: readonly MuseTool[];
+  readonly loopback: ReturnType<typeof buildLoopbackTools>;
+  readonly getContextReferenceLoopbackTools: () => readonly MuseTool[];
+}) {
+  const {
+    env,
+    options,
+    calendarRegistry,
+    notesRegistry,
+    tasksRegistry,
+    userMemoryStore,
+    notesDir,
+    tasksFile,
+    episodesFile,
+    mcp,
+    runnerTools,
+    museTools,
+    loopbackMcpTools,
+    loopback,
+    getContextReferenceLoopbackTools
+  } = params;
+
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);
@@ -482,9 +820,42 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     skillTools,
     museTools,
     loopbackMcpTools,
-    getContextReferenceLoopbackTools: () => contextReferenceLoopbackTools,
+    getContextReferenceLoopbackTools,
     loopback
   });
+
+  return { schedulerHandle, skillRegistryPromise, skillTools, toolRegistry };
+}
+
+/**
+ * Runtime hooks (auto-extract, background-review arms, followup capture)
+ * + the context-engineering providers (`activeContextProvider`, the
+ * context-reference loopback tools it feeds, telemetry, veto-avoidance,
+ * playbook, plan-cache, tool-exemplar bank, context-window options).
+ * `activeContextProvider` must exist before the context-reference
+ * loopback tools are built (same ordering as the original inline code).
+ */
+function buildHooksAndContextProviders(params: {
+  readonly env: MuseEnvironment;
+  readonly modelProvider: ModelProvider | undefined;
+  readonly defaultModel: string | undefined;
+  readonly userMemoryStore: UserMemoryStore;
+  readonly followupsFile: string;
+  readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
+  readonly calendarRegistry: CalendarProviderRegistry;
+  readonly contextReferenceStore: InMemoryContextReferenceStore;
+}) {
+  const {
+    env,
+    modelProvider,
+    defaultModel,
+    userMemoryStore,
+    followupsFile,
+    taskMemoryStore,
+    calendarRegistry,
+    contextReferenceStore
+  } = params;
+
   const autoExtractHook: HookStage | undefined = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
     ? createUserMemoryAutoExtractHook({
       model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
@@ -554,7 +925,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     taskMemoryStore,
     calendarRegistry
   );
-  contextReferenceLoopbackTools = createLoopbackMcpMuseTools(
+  const contextReferenceLoopbackTools = createLoopbackMcpMuseTools(
     createContextReferenceMcpServer({
       store: contextReferenceStore,
       ...(activeContextProvider ? { activeContextProvider } : {})
@@ -566,7 +937,86 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const planCacheProvider = buildPlanCacheProvider(env);
   const toolExemplarBank = buildToolExemplarBank(env);
   const contextWindowOptions = buildContextWindowOptions(env);
-  const agentRuntime = modelProvider && defaultModel
+
+  return {
+    runtimeHooks,
+    activeContextProvider,
+    contextReferenceLoopbackTools,
+    telemetryAggregator,
+    vetoAvoidanceProvider,
+    playbookProvider,
+    planCacheProvider,
+    toolExemplarBank,
+    contextWindowOptions
+  };
+}
+
+/**
+ * The `createAgentRuntime` composition itself — the single largest block
+ * in the original function. Returns `undefined` when no model provider /
+ * default model is configured (fresh, unconfigured install), same guard
+ * as the original inline ternary.
+ */
+function buildAgentRuntime(params: {
+  readonly env: MuseEnvironment;
+  readonly db: Kysely<MuseDatabase> | undefined;
+  readonly modelProvider: ModelProvider | undefined;
+  readonly defaultModel: string | undefined;
+  readonly agentSpecResolver: RuleBasedAgentSpecResolver;
+  readonly cacheMetrics: InMemoryCacheMetricsRecorder;
+  readonly circuitBreakerRegistry: CircuitBreakerRegistry;
+  readonly contextReferenceStore: InMemoryContextReferenceStore;
+  readonly contextWindowOptions: ReturnType<typeof buildContextWindowOptions>;
+  readonly historyStore: AgentRunHistoryStore;
+  readonly runtimeHooks: readonly HookStage[];
+  readonly hookTraceStore: HookTraceStore;
+  readonly tokenUsageSink: TokenUsageSink;
+  readonly runtimeAgentMetrics: AgentMetrics;
+  readonly tracer: MuseTracer;
+  readonly toolRegistry: ToolRegistry;
+  readonly activeContextProvider: ActiveContextProvider | undefined;
+  readonly vetoAvoidanceProvider: ReturnType<typeof buildVetoAvoidanceProvider>;
+  readonly playbookProvider: ReturnType<typeof buildPlaybookProvider>;
+  readonly planCacheProvider: ReturnType<typeof buildPlanCacheProvider>;
+  readonly toolExemplarBank: ReturnType<typeof buildToolExemplarBank>;
+  readonly userMemoryStore: UserMemoryStore;
+  readonly conversationSummaryStore: ConversationSummaryStore;
+  readonly skillRegistryPromise: ReturnType<typeof createSkillRuntime>["skillRegistryPromise"];
+  readonly telemetryAggregator: ReturnType<typeof buildTelemetryAggregator>;
+  readonly promptLayerRegistry: InMemoryPromptLayerRegistry;
+  readonly responseCache: InMemoryResponseCache;
+}): AgentRuntime | undefined {
+  const {
+    env,
+    db,
+    modelProvider,
+    defaultModel,
+    agentSpecResolver,
+    cacheMetrics,
+    circuitBreakerRegistry,
+    contextReferenceStore,
+    contextWindowOptions,
+    historyStore,
+    runtimeHooks,
+    hookTraceStore,
+    tokenUsageSink,
+    runtimeAgentMetrics,
+    tracer,
+    toolRegistry,
+    activeContextProvider,
+    vetoAvoidanceProvider,
+    playbookProvider,
+    planCacheProvider,
+    toolExemplarBank,
+    userMemoryStore,
+    conversationSummaryStore,
+    skillRegistryPromise,
+    telemetryAggregator,
+    promptLayerRegistry,
+    responseCache
+  } = params;
+
+  return modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
       // Persist execution checkpoints so a crashed/interrupted run can resume from
@@ -656,82 +1106,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ...(telemetryAggregator ? { telemetryAggregator } : {})
     })
     : undefined;
-  const schedulerStore = createSchedulerStore(db, env);
-  const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
-  const schedulerLock = createSchedulerLock(db, env);
-  const schedulerService = new DynamicScheduler({
-    dispatcher: new ScheduledJobDispatcher({
-      agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
-      mcpInvoker: new ScheduledMcpToolInvoker(mcp.manager)
-    }),
-    cronScheduler: parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true)
-      ? new NodeCronScheduler()
-      : undefined,
-    executionStore: schedulerExecutionStore,
-    distributedLock: schedulerLock,
-    // User kill-switch: a cron-fired job is skipped while the user has paused
-    // the scheduler (toggled by `muse scheduler pause`); manual triggers still run.
-    isPaused: () => isSchedulerPaused(defaultSchedulerPauseFile(env)),
-    store: schedulerStore
-  });
-  schedulerHandle.current = schedulerService;
-
-  return {
-    agentRuntime,
-    agentSpecRegistry,
-    authService,
-    cache: {
-      metrics: cacheMetrics,
-      responseCache,
-      statsStore: cacheStatsStore
-    },
-    defaultModel,
-    personaFilePath,
-    promptLayerRegistry,
-    historyStore,
-    hookTraceStore,
-    mcp,
-    modelProvider,
-    debugReplayCaptureStore,
-    conversationSummaryStore,
-    sessionTagStore,
-    taskMemoryStore,
-    userMemoryStore,
-    observability: {
-      budgetTracker,
-      driftDetector,
-      followupSuggestionStore,
-      latencyQuery,
-      metrics: agentMetrics,
-      sloEvaluator,
-      ...(telemetryAggregator ? { telemetryAggregator } : {}),
-      tokenCostQuery,
-      tokenUsageSink,
-      ...(traceSink ? { traceSink } : {}),
-      tracer
-    },
-    requireAuth: parseBoolean(env.MUSE_REQUIRE_AUTH, Boolean(authService)),
-    resilience: {
-      circuitBreakerRegistry
-    },
-    calendar: calendarRegistry,
-    runtimeSettings: new RuntimeSettings(createRuntimeSettingsStore(db)),
-    toolRegistry,
-    scheduler: {
-      executionStore: schedulerExecutionStore,
-      service: schedulerService,
-      store: schedulerStore
-    },
-    ...(notesRegistry ? { notesProviderRegistry: notesRegistry } : {}),
-    ...(tasksRegistry ? { tasksProviderRegistry: tasksRegistry } : {}),
-    voice: buildVoiceRegistry(env),
-    ...(activeContextProvider ? { activeContextProvider } : {}),
-    agentInitiatedNoticeBroker: new InMemoryAgentInitiatedNoticeBroker(),
-    messaging: messagingRegistry,
-    ...(messagingRegistry.list().length > 0
-      ? { messagingPollAll: pollAll, messagingPollNow: pollNow }
-      : {})
-  };
 }
 
 export function requireEnv(env: MuseEnvironment, key: string): string {

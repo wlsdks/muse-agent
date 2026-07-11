@@ -5,18 +5,11 @@ import { useAskStream } from "../api/useAskStream.js";
 import { Markdown } from "../components/markdown.js";
 import { AsyncBlock, Badge, Button, Card, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { readToken } from "../lib/token-storage.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { AskVerdict, NotesListResponse, NotesReadResponse, NotesSearchResponse } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
-
-function readToken(): string {
-  try {
-    return window.localStorage.getItem("muse.token") ?? "";
-  } catch {
-    return "";
-  }
-}
 
 const VERDICT_TONE: Record<AskVerdict, "ok" | "warn" | "neutral"> = {
   ambiguous: "warn",

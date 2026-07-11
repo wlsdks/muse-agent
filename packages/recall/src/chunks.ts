@@ -205,6 +205,25 @@ export function shouldSecondHop(verdict: RetrievalConfidence): boolean {
 }
 
 /**
+ * The chunk backing a cited note reference, matched by exact file path OR by
+ * basename — a citation may name a relative path while the chunk stores an
+ * absolute one (or vice versa). Shared by every source-receipt / disk-verify
+ * path that resolves a citation back to its indexed chunk.
+ */
+/** Last path segment, separator-agnostic (chunk files are native paths, note ids are "/"). */
+function lastPathSegment(p: string): string | undefined {
+  return p.split(/[\\/]/u).pop();
+}
+
+export function findChunkByNote<T extends { readonly file: string }>(
+  note: string,
+  chunks: ReadonlyArray<T>
+): T | undefined {
+  const base = lastPathSegment(note);
+  return chunks.find((c) => c.file === note || lastPathSegment(c.file) === base);
+}
+
+/**
  * CRAG confidence gate for `muse ask`'s notes grounding — the headline-surface
  * embodiment of Muse's identity ("says I'm not sure instead of making things
  * up"). The chunk score IS the absolute cosine, so we grade the top match: a

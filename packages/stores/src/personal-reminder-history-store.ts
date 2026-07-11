@@ -15,6 +15,7 @@ import { promises as fs } from "node:fs";
 import { redactSecretsInText } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ReminderHistoryEntry {
   readonly reminderId: string;
@@ -73,19 +74,6 @@ export async function appendReminderHistory(
     const payload: PersistedShape = { entries: trimmed, version: 1 };
     await atomicWriteFile(file, `${JSON.stringify(payload, null, 2)}\n`);
   });
-}
-
-// Move a present-but-corrupt store aside so the next append
-// starts fresh WITHOUT permanently destroying this audit log.
-// Best-effort; the original bytes survive at `<file>.corrupt-<ts>`
-// for manual recovery — the same posture as the sibling personal
-// stores. A missing file is NOT corruption and is never moved.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 async function readRaw(file: string): Promise<readonly ReminderHistoryEntry[]> {

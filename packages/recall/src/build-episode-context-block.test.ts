@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildEpisodeContextBlock } from "./present.js";
+import { buildEpisodeContextBlock } from "./context-blocks.js";
 
 describe("buildEpisodeContextBlock — <<session N>> grounding block", () => {
   it("empty → placeholder", () => {
