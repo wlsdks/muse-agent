@@ -81,16 +81,18 @@ const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 50;
 const LOCK_MAX_ATTEMPTS = 240; // ~12s before giving up on a live holder — 50 parallel writers on a slow runner exceed 3s
 
-async function lockIsStale(lockPath: string): Promise<boolean> {
+type LockProbe = "live" | "stale" | "vanished";
+
+async function probeLock(lockPath: string): Promise<LockProbe> {
   try {
-    return Date.now() - (await fs.stat(lockPath)).mtimeMs > LOCK_STALE_MS;
+    return Date.now() - (await fs.stat(lockPath)).mtimeMs > LOCK_STALE_MS ? "stale" : "live";
   } catch (cause) {
-    // ONLY ENOENT means "vanished between EEXIST and stat" (stealable). Any
-    // other stat error (win32 EPERM during a delete-pending window, an AV scan
-    // touching the file) says nothing about the holder — calling it stale
-    // deletes a LIVE holder's lock and admits a second writer (a real
-    // lost-update observed on the windows-latest runner).
-    return (cause as NodeJS.ErrnoException).code === "ENOENT";
+    // ONLY ENOENT means "vanished between EEXIST and stat". Any other stat
+    // error (win32 EPERM during a delete-pending window, an AV scan touching
+    // the file) says nothing about the holder — calling it stale deletes a
+    // LIVE holder's lock and admits a second writer (a real lost-update
+    // observed on the windows-latest runner).
+    return (cause as NodeJS.ErrnoException).code === "ENOENT" ? "vanished" : "live";
   }
 }
 
@@ -134,7 +136,14 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
       if (!(cause instanceof Error) || !contended) {
         throw cause;
       }
-      if (await lockIsStale(lockPath)) {
+      const probe = await probeLock(lockPath);
+      if (probe === "vanished") {
+        // Nothing to steal — the holder already released. Unlinking here would
+        // race a NEW holder that grabbed the lock between our stat and unlink
+        // (deleting a live lock admits a second writer); just retry the open.
+        continue;
+      }
+      if (probe === "stale") {
         await fs.unlink(lockPath).catch(() => undefined);
         continue;
       }
