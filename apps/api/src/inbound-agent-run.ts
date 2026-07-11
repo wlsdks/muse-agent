@@ -1,4 +1,4 @@
-import { casualResponseFor, classifyCasualPrompt, guardAgainstUnbackedActionClaim } from "@muse/agent-core";
+import { casualResponseFor, classifyCasualPrompt, containsHangul, guardAgainstUnbackedActionClaim } from "@muse/agent-core";
 import {
   parseBoolean,
   resolveActionLogFile,
@@ -160,7 +160,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // entirely — nothing here is a factual claim that needs a citation.
     const casualKind = classifyCasualPrompt(latestUserText);
     if (casualKind) {
-      return casualResponseFor(casualKind);
+      return casualResponseFor(casualKind, containsHangul(latestUserText));
     }
     // Delegation ack (S2, "the assistant rhythm"): a non-casual request is a
     // delegation, so restate it as an early second-channel confirmation

@@ -5,7 +5,7 @@
  * so they can be unit-tested directly.
  */
 
-import { casualResponseFor, classifyActionRequest, classifyCasualPrompt, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
+import { casualResponseFor, classifyActionRequest, classifyCasualPrompt, classifyMetaPrompt, containsHangul, type CasualPromptKind } from "@muse/agent-core";
 import { evaluateArithmeticExpression } from "@muse/mcp";
 import { parseReminderDueAt } from "@muse/stores";
 
@@ -80,7 +80,7 @@ export function tryDeterministicAnswer(
 ): DeterministicAnswer | null {
   const casualKind = classifyCasualPrompt(query);
   if (casualKind) {
-    const reply = CASUAL_RESPONSES[casualKind];
+    const reply = casualResponseFor(casualKind, containsHangul(query));
     return { answer: reply, jsonPayload: { answer: reply, casual: casualKind, query } };
   }
 
