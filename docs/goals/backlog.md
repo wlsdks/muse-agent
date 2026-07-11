@@ -6,7 +6,7 @@
   - ✓ 프로액티브 알림 근거 한 줄 — ambient 몫 — response-experience fire 4 (매칭 [field,pattern] verbatim 절, knowledge-trigger는 의도적 무절)
   - ✓ 프로액티브 알림 근거 한 줄 — commitment-checkin 몫 — response-experience fire 5 (createdAt→due 기준 결정론 나이 절; 근거 3부작 pattern·ambient·commitment 완성)
   - ✓ 체크인 나이 절을 절대 날짜로 — response-experience fire 7 (지연-불변 절대날짜, 이전-연도 pin, staleness 클래스 제거)
-  - ◦ pattern 알림 LLM-합성(Phase-D) 경로에 근거 절 보존 요구 — 합성 프롬프트가 "(N…across M…)" 절을 유지하도록(수치 fabrication 가드는 이미 있음, 절 존재는 미보장; fire 2 판정자 발굴) 재검증 게이트 또는 프롬프트 제약 + 테스트.
+  - ✓ pattern 알림 LLM-합성(Phase-D) 경로 근거 절 보존 — response-experience fire 13 (post-compose 결정론 가드: 카운트 미포함 합성문에 fallback 절 verbatim 부착)
   - ✓ 위임 ack 중복 억제 — response-experience fire 3 (ackAlreadySent 사이드카, at-most-once delivered ack)
   - ✓ digest 라인 injection-span 중화 — 조사 결과 5개 unasked 루프 중 pattern-firing(match.suggestion ← note/task 시그널 verbatim), commitment-checkin(title=checkin.commitment ← 유저 발화 커밋먼트), ambient-notice(knowledge-trigger enrich() ← 지식corpus 라인)가 USER-STORED 텍스트를 큐에 verbatim 적재함을 확인(ambient rule.message 자체는 소유자설정이나 enrich() 결과는 아님) — B1 "이미 게이트 통과"는 fabrication 불변식이지 injection 불변식이 아니었음. 컴파일 시점(`formatDigestItemLine`, packages/proactivity/digest-flush.ts — flush와 `muse digest list` 양쪽이 공유하는 단일 렌더 시임)에 recap.ts와 동일 조합(`escapeSystemPromptMarkers(neutralizeInjectionSpans(text))`)을 적용; 큐 저장은 verbatim 유지(감사용). 순수 헬퍼 `escapeSystemPromptMarkers`/`stripGroundingFences`/`sanitizeFenceLabel`을 `@muse/recall`에서 `@muse/agent-core`로 이관(이미 거기 있던 `neutralizeInjectionSpans`와 합류 — proactivity가 recall의 무거운 문서파서 의존 없이 재사용 가능; recall은 재-export로 기존 호출부 무변경) + proactivity package.json/tsconfig 참조 추가. 5개 소스 루프의 **direct-send**(예산 내 즉시발송) 경로는 의도적으로 미변경 — 여전히 각 루프 자체 게이트만 통과한 원문을 그대로 보내는 기존 컨벤션(별도 검토 대상으로 계속 남김, 이번 슬라이스는 digest 렌더 시임 한정). 테스트: proactivity(`digest-flush.test.ts` +5) + cli(`commands-digest.test.ts` +1) + agent-core(이관된 `prompt-escape.test.ts` 6개, 위치만 이동). RED→GREEN mutation-first 확인, 빌드+lint 그린.
   - ✓ digest-sent cross-process 레이스 완화 — response-experience fire 10 (withDigestLock: O_EXCL+nonce+no-spin, mark-after-send 유지, 두-데몬 시뮬레이션 pin)
@@ -14,6 +14,7 @@
   - ✓ 체크인 이중 전송 레이스 — response-experience fire 12 (withProcessLock 채택, 두-데몬 시뮬레이션 pin)
   - ◦ 이중 전송 레이스 잔여 4곳 — runDueFollowups·runDueObjectives·runDuePatternNotices·runDueProactiveNotices 전부 동일 클래스(select-then-send, dedupe 쓰기는 atomic-but-not-lock, api+cli 양데몬 동일 파일); withProcessLock 채택 각 1 fire(체크인 템플릿) (fire 12 형제 스윕 발굴).
   - ◦ background-exit 잠재 레이스 — 현재 cli 단일 콜러 + mark-before-send 관례(크래시 시 드롭 위험)라 우선순위 낮음; api 콜러 추가 시 같은 클래스 합류 (fire 12 스윕 노트).
+  - ◦ 라이브 배터리 부하-강건화 — misgrounding 등 LLM 배터리가 동시 루프 Ollama 포화에서 transient abstain으로 헛-FAIL(fire 1·13 반복 관측, 3회 재실행으로 매번 반증); retry/quorum 또는 abstain≠misgrounded 구분으로 배터리 자체를 강건화 (fire 13 판정자 권고).
   - ◦ digest-lock EACCES 코너 — POSIX에서 락 디렉토리 권한 거부 시 lock-held로 침묵(fail-open-send가 아님, withFileLock 관례 미러); 단일 사용자 실제품에선 도달 희박하나 'never-silent' 주장 대비 기록 (fire 10 판정자 비차단 노트).
   - ◦ ack 카피/톤 개선 — composeAck 프롬프트·가드 튜닝(복창이 더 자연스럽고 짧게, "다 되면 알려줄게" 일관성), eval:channel-rhythm 케이스로 pin.
 
