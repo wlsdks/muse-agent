@@ -34,6 +34,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **Stops a "ping-pong" tool loop.** A small model sometimes gets stuck
+  bouncing between the same two tool calls (do A, do B, do A, do B…) without
+  ever making progress, burning its whole step budget and ending in an error.
+  Muse now recognizes that alternation and cleanly stops the run instead of
+  spinning — it looks at the real action behind each call (ignoring cosmetic
+  differences like a fresh timestamp or id), so genuine step-by-step work is
+  never mistaken for a loop. Complements the existing stuck-on-one-call guard.
+
 - **Post-compaction loop guard.** When the agent's context is compacted
   mid-run (old turns summarized away), a stuck small model could keep
   re-issuing the exact same tool call — the compaction failed to break the

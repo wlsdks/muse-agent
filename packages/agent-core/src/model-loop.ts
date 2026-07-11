@@ -58,6 +58,7 @@ import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
 import { applyToolCallMiddleware, type ToolCallMiddleware } from "./tool-call-middleware.js";
 import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
+import { buildPingPongSignature, PingPongLoopGuard } from "./tool-loop-pingpong.js";
 import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
 import { REVERIFY_NUDGE, ReverifyNudgeTracker, hasRunVerifyIntent, toolsIncludeExecute } from "./reverify-nudge.js";
 import type { AgentRunContext } from "./types.js";
@@ -241,6 +242,29 @@ function postCompactionAbortedExecution(
   };
 }
 
+/**
+ * Terminal execution for a confirmed ping-pong loop (the model alternating
+ * between two tool calls without progress) — same shape as
+ * `postCompactionAbortedExecution`, a different stop condition.
+ */
+function pingPongAbortedExecution(
+  request: ModelRequest,
+  intermediateMessages: ModelMessage[],
+  toolResults: ExecutedToolResult[],
+  toolsUsed: readonly string[]
+): ModelLoopExecution {
+  return {
+    finalResponse: {
+      id: "ping-pong-loop-guard",
+      model: request.model,
+      output: "Stopped: the agent was ping-ponging between two tool calls without progress."
+    },
+    intermediateMessages,
+    toolResults,
+    toolsUsed: [...new Set(toolsUsed)]
+  };
+}
+
 /** Trackers threaded through the shared per-batch tool-execution body. */
 interface ToolBatchTrackers {
   readonly deduplicator: ToolCallDeduplicator;
@@ -249,6 +273,7 @@ interface ToolBatchTrackers {
   readonly shellPhase: GeneralShellPhaseGate;
   readonly reverify: ReverifyNudgeTracker;
   readonly postCompactionGuard: PostCompactionLoopGuard;
+  readonly pingPong: PingPongLoopGuard;
 }
 
 interface ToolBatchState {
@@ -263,6 +288,7 @@ interface ToolBatchResult {
   readonly toolCallCount: number;
   readonly messages: readonly ModelMessage[];
   readonly postCompactionLoopDetected: boolean;
+  readonly pingPongLoopDetected: boolean;
 }
 
 /**
@@ -307,10 +333,11 @@ async function* runToolBatch(
   trackers: ToolBatchTrackers,
   state: ToolBatchState
 ): AsyncGenerator<ModelLoopStreamEvent, ToolBatchResult, void> {
-  const { deduplicator, progress, failureStreak, shellPhase, reverify, postCompactionGuard } = trackers;
+  const { deduplicator, progress, failureStreak, shellPhase, reverify, postCompactionGuard, pingPong } = trackers;
   const { deadlineMs, now, anchorTerms } = state;
   let toolCallCount = state.toolCallCount;
   let postCompactionLoopDetected = false;
+  let pingPongLoopDetected = false;
   const toolMessages: ModelMessage[] = [];
 
   intermediateMessages.push(assistantMessage);
@@ -456,6 +483,12 @@ async function* runToolBatch(
       if (plan.canRun && postCompactionGuard.record(buildPostCompactionSignature(toolCall, executed.result.output))) {
         postCompactionLoopDetected = true;
       }
+      // Same rationale as the compaction guard above: an exact dedup-served
+      // repeat IS the ping-pong signal (the model asked for the same A again
+      // in the A,B,A,B pattern), so this gates on `plan.canRun` alone too.
+      if (plan.canRun && pingPong.record(buildPingPongSignature(toolCall, executed.result.output)) === "block") {
+        pingPongLoopDetected = true;
+      }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big
@@ -495,7 +528,7 @@ async function* runToolBatch(
     : nextMessages;
   intermediateMessages.push(...toolMessages);
 
-  return { messages, postCompactionLoopDetected, toolCallCount };
+  return { messages, pingPongLoopDetected, postCompactionLoopDetected, toolCallCount };
 }
 
 export async function executeModelLoop(
@@ -518,6 +551,7 @@ export async function executeModelLoop(
   const reverify = new ReverifyNudgeTracker();
   const postCompactionGuard = new PostCompactionLoopGuard();
   if (runner.compactionOccurred) postCompactionGuard.arm();
+  const pingPong = new PingPongLoopGuard();
   const reverifyRunIntent = hasRunVerifyIntent(request.messages);
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
@@ -597,7 +631,7 @@ export async function executeModelLoop(
       intermediateMessages,
       toolResults,
       toolsUsed,
-      { deduplicator, failureStreak, postCompactionGuard, progress, reverify, shellPhase },
+      { deduplicator, failureStreak, pingPong, postCompactionGuard, progress, reverify, shellPhase },
       { anchorTerms, deadlineMs, messages, now, toolCallCount }
     );
     // Blocking path: drain the per-batch generator without forwarding its
@@ -610,6 +644,9 @@ export async function executeModelLoop(
     toolCallCount = step.value.toolCallCount;
     if (step.value.postCompactionLoopDetected) {
       return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+    }
+    if (step.value.pingPongLoopDetected) {
+      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
     // Per-step checkpoint: the messages now include this batch's tool results, so a
     // crash before the next model call can resume from here without re-running tools.
@@ -640,6 +677,7 @@ export async function* executeStreamingModelLoop(
   const reverify = new ReverifyNudgeTracker();
   const postCompactionGuard = new PostCompactionLoopGuard();
   if (runner.compactionOccurred) postCompactionGuard.arm();
+  const pingPong = new PingPongLoopGuard();
   const reverifyRunIntent = hasRunVerifyIntent(request.messages);
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
@@ -714,13 +752,16 @@ export async function* executeStreamingModelLoop(
       intermediateMessages,
       toolResults,
       toolsUsed,
-      { deduplicator, failureStreak, postCompactionGuard, progress, reverify, shellPhase },
+      { deduplicator, failureStreak, pingPong, postCompactionGuard, progress, reverify, shellPhase },
       { anchorTerms, deadlineMs, messages, now, toolCallCount }
     );
     messages = batchResult.messages;
     toolCallCount = batchResult.toolCallCount;
     if (batchResult.postCompactionLoopDetected) {
       return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+    }
+    if (batchResult.pingPongLoopDetected) {
+      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
     // Per-step checkpoint (streaming parity): resume mid-loop after a crash without
     // re-running already-completed tools (their results are in the replayed messages).

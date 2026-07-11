@@ -3256,3 +3256,4 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ D2-S1d 2026-07-11 — eval:adversarial 결정론 sandbox-탈출 3종(실 바이너리 spawn·OS거부 코드채점·adversarialCases 16→19); 다음 = D2-S2(셸 토폴로지 fail-close)
 - ✓ D2-S2a 2026-07-11 — 셸 토폴로지 순수 분류기 classifyCommandTopology(치환/heredoc/eval 감지, 비-셸=analyzable near-miss); Opus가 개행-eval false-neg+산술 false-pos 잡음→수리; 다음 = D2-S2b(approval-downgrade 배선), VQ-15(sudo/env 래퍼)
 - ✓ D2-S2b 2026-07-11 — 토폴로지 분류기를 chatToolApprovalGate에 배선(un-analyzable run_command은 read위조로도 silent-allow 불가 + 프롬프트 경고); trust.json 미배선이라 full auto-approve 강등은 VQ-16; 다음 = D1-S1(ping-pong 루프감지)
+- ✓ D1-S1 2026-07-11 — ping-pong 루프가드(A↔B 교대 감지, 창20/warn6/block10, 휘발필드 strip, block→abort 양쪽 루프 배선); stall/3-cycle/distinct=none 오탐0; 다음 = D2-S6a(승인 프롬프트 위험토큰 하이라이트). VQ-17: eval:computer-task가 ambient GEMINI_API_KEY로 클라우드 하이재킹

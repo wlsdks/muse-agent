@@ -27,3 +27,12 @@ ratchet: 로드맵 잔여 [ ] = 29/32 · self-eval FOREIGN-fail(아래) · fabri
 - 리뷰지점: Opus 평가자 PASS(우회불가 불변식·arg-hostility·mutation-RED 독립확인). over-cap construct=undefined → "(undefined)" 렌더 cosmetic를 `?? "un-analyzable"` 폴백+테스트로 수리.
 - 리스크: 동시 Telegram 루프가 트리 오염(api/messaging/web/MUSE_TELEGRAM_* env 미커밋) → self-eval envInventory FOREIGN-fail(내 diff는 MUSE_ env 0개), @muse/api 테스트 2 FOREIGN-fail. 내 파일만 명시 스테이징, 외부 미접촉. self-eval exit-0은 외부 루프 커밋 후 회복 예정.
 lesson: 동시 루프가 fire 중간에 트리를 오염시키면 self-eval/전패키지 게이트가 FOREIGN-fail — 내 파일 격리 검증(build+내test+lint)으로 판정하고 명시 경로 커밋, docs:env는 외부 env를 쓸어담으니 실행 금지.
+
+## fire 4 · 2026-07-11 · skill v2.x · <commit-pending>
+meta: slice=D1-S1 · wave=W1 · pkg=@muse/agent-core · kind=loop-guard · verdict=PASS · firesSinceDrill=4
+ratchet: 로드맵 잔여 [ ] = 28/32 · self-eval pass · fabrication 0 · agent-core 2841 test green · pingpong 19 신규 · eval:computer-task PASS(local-forced 1/1, false-abort 없음)
+- 무엇: ping-pong 루프가드 tool-loop-pingpong.ts — 모델이 두 툴 사이를 무한 교대(A,B,A,B)하는 걸 trailing-alternation-run으로 감지(창20·warn6·block10), 결과 서명서 휘발필드(runId/tsIso/id/ts/timestamp) 재귀 strip. block→pingPongAbortedExecution(post-compaction 미러) 양쪽 루프 배선. 기존 stall 감지기(A,A,A만)의 사각을 메움.
+- 왜: openclaw tool-loop-detection이 별도 케이스로 꼽는 실패모드. 12B는 2-툴 왕복에 잘 빠짐. stall(동일출력)만 잡던 Muse에 교대 감지 추가.
+- 리뷰지점: 오탐이 최대 리스크(정당 다단계를 루프로 오인해 abort) → 유닛(genuine progress/stall/3-cycle=none)+Opus 독립 false-positive 배터리+model-loop 2841 green로 검증. id-strip이 args는 보존해 distinct-arg 병합 안 함(Opus 확인). mutation-RED 양방향(교대조건·volatile strip).
+- 리스크: eval:computer-task가 ambient GEMINI_API_KEY로 Gemini 하이재킹(VQ-17, eval 정책위반) → MUSE_LOCAL_ONLY=true로 local-forced 재실행 시 PASS(1/1, add-works·multiply-intact·no-collateral, 실 다단계작업이 가드 하에 false-abort 없이 완료). 가드는 10-deep A↔B에서만 abort라 정당작업 불발현.
+lesson: "LOCAL OLLAMA ONLY" eval이 실제로 로컬 강제를 안 하면 ambient 클라우드 키에 하이재킹됨 — eval 스크립트는 MUSE_LOCAL_ONLY/MUSE_DEFAULT_MODEL을 명시 강제해야(VQ-17).
