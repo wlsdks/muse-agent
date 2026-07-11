@@ -81,7 +81,7 @@ ratchet: 드릴 성공 — 판정자 보정 확인 · fabrication 0
 리스크: 없음(주입분 전량 롤백, 저널/backlog만 커밋).
 lesson: 결정론 스위트가 green이어도 pin 반전은 diff-리뷰만 잡는다 — judge의 "테스트 변경 정밀 심사" 단계가 실효 방어선임이 실측됨.
 
-## fire 10 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 10 · 2026-07-12 · skill v2.x · 68d4b37de
 meta: value-class=reliability · pkg=@muse/stores+proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles +1(digest-lock) · fabrication 0 · eval N/A
 무엇: digest-sent 레이스 진짜 수정 — withDigestLock(O_EXCL wx+nonce+5min stale-break+no-spin, 락 오류는 fail-open으로 오늘 동작에 강등), 임계구역 check→send→drain→mark 전체 잠금, mark-after-send 불변식 유지, 두-데몬 Promise.all 시뮬레이션 pin(정확히 1건 전송, 3/3 안정).
