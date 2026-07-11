@@ -255,7 +255,7 @@ ratchet: 로드맵 잔여 [ ] = 28/62(D4-S2 b/c/d 별개 체크박스 분할 +2,
 - 리스크: 낮음. quit=graceful(저장 프롬프트 가능, force-kill 아님)·로컬이라 draft-first 불요. eval:tools 로컬셋 heavy timeout(가산 enum+키워드라 selection 회귀 near-zero, Opus가 무혼동 확인). 다음 = D4-S2c(다크모드: dark_mode_on/off parameterless osascript enum).
 - lesson: 사용자/모델-제공 문자열을 osascript에 임베드할 땐 항상 공유 escapeAppleScript(backslash-first)를 통과 — ad-hoc 이스케이프 금지, 기존 tested escaper 재사용이 인젝션 표면의 정답.
 
-## fire 31 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 31 · 2026-07-12 · skill v2.x · 5a9e4598a
 meta: slice=D4-S2c · wave=W3 · pkg=@muse/macos · kind=mac-dark-mode · verdict=PASS · firesSinceDrill=5
 ratchet: 로드맵 잔여 [ ] = 27/62 · self-eval pass · fabrication 0 · macos +3 test(dark_mode)
 - 무엇: macOS 다크모드. mac_system_set에 dark_mode_on/dark_mode_off parameterless enum 추가. 고정 osascript(System Events appearance preferences set dark mode to true/false) — 유저입력 無이라 인젝션 표면 0, 이스케이프 불요(quit_app과 대비). on→true/off→false.
