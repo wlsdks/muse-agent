@@ -21,6 +21,12 @@
  * failure — permissions, a read-only mount, …) runs `fn` UNLOCKED rather
  * than silencing the action. A broken lock must degrade to today's known
  * duplicate-action risk, never to an action that never runs.
+ *
+ * Heartbeat: unlike `withFileLock`'s millisecond critical sections, a
+ * `withProcessLock` holder can run for minutes (several queued model calls),
+ * so the mtime is refreshed on an unref'd interval (`staleMs / 3`) for as
+ * long as `fn` runs — otherwise a legitimately slow holder can cross the
+ * stale window and have its own lock stolen mid-work.
  */
 
 import { randomUUID } from "node:crypto";
@@ -75,6 +81,38 @@ async function lockHoldsNonce(lockPath: string, nonce: string): Promise<boolean>
   }
 }
 
+// Refresh the lock's mtime while `fn` is still running, so a legitimately
+// slow holder (several queued model calls under contention) never crosses
+// the stale-window and gets its lock stolen mid-work — the exact double-fire
+// bug the lock exists to prevent. Read-nonce-then-touch has a TOCTOU window
+// (the lock could be stale-broken and re-acquired by someone else between the
+// read and the utimes call) — same accepted residual as the unlink guard
+// below; the fix scope here is "never touch a KNOWN foreign lock", not "make
+// the touch atomic with the read".
+async function touchOwnLock(lockPath: string, nonce: string): Promise<void> {
+  try {
+    if (!(await lockHoldsNonce(lockPath, nonce))) {
+      return;
+    }
+    const now = new Date();
+    await fs.utimes(lockPath, now, now);
+  } catch {
+    // Best-effort heartbeat — a failed touch just falls back to today's
+    // stamp-once-at-acquisition behavior for this beat.
+  }
+}
+
+function startLockHeartbeat(lockPath: string, nonce: string, staleMs: number): NodeJS.Timeout {
+  const intervalMs = Math.max(1, Math.floor(staleMs / 3));
+  const timer = setInterval(() => {
+    void touchOwnLock(lockPath, nonce);
+  }, intervalMs);
+  // Never keeps the process alive on its own — the lock's own logic (fn
+  // completing) is what should end the process, not this housekeeping timer.
+  timer.unref();
+  return timer;
+}
+
 type AcquireAttempt = "acquired" | "contended" | { readonly error: unknown };
 
 async function tryAcquireOnce(lockPath: string, nonce: string): Promise<AcquireAttempt> {
@@ -118,9 +156,11 @@ export async function withProcessLock<T>(
   for (let attempt = 0; attempt < MAX_ACQUIRE_ATTEMPTS; attempt += 1) {
     const attemptResult = await tryAcquireOnce(lockPath, nonce);
     if (attemptResult === "acquired") {
+      const heartbeat = startLockHeartbeat(lockPath, nonce, staleMs);
       try {
         return { kind: "ran", value: await fn() };
       } finally {
+        clearInterval(heartbeat);
         if (await lockHoldsNonce(lockPath, nonce)) {
           await fs.unlink(lockPath).catch(() => undefined);
         }

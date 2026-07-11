@@ -139,3 +139,12 @@ ratchet: eval:channel-rhythm 14/14(재실행; 1회 13/14는 stochastic null, 게
 리뷰지점: 스코어러 실패 라벨이 실제 판별 기준(캐주얼 동일언어 phrasing)과 살짝 어긋남(비차단, 코스메틱).
 리스크: 낮음.
 lesson: 프롬프트-튜닝 fire의 mutation-RED 등가물은 "옛 프롬프트 대비 스코어러 판별력 프로브" — 순수-추가라도 스코어러가 공허하지 않음을 증명해야 함(판정자가 보완한 절차, 다음 프롬프트-튜닝 fire의 표준).
+
+## fire 17 · 2026-07-12 · skill v2.x · (sha pending)
+meta: value-class=reliability · pkg=@muse/stores · kind=lock-hardening · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0(기존 파일 3케이스) · fabrication 0 · eval N/A
+무엇: 락 하트비트 — staleMs/3 간격 mtime 갱신(unref, finally에서 unlink 전 해제, foreign-nonce 가드), 느린 정당 보유자의 락 탈취 클래스를 프리미티브에서 제거. RED 확인(하트비트 제거 시 2×staleMs 프로브가 탈취).
+왜: fire 15 판정자 FLAG — 6개 사이트 공통 구멍을 한 곳에서.
+리뷰지점: TOCTOU 잔여는 foreign 락 1박자 연장 방향(무해, 판정자 확인); withFileLock은 ms-스케일이라 제외.
+리스크: 낮음(순수 추가, 기존 7 테스트 무수정).
+lesson: firesSinceDrill=8 도달 — fire 18은 JUDGE-DRILL(미루기 불가).

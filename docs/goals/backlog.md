@@ -14,7 +14,7 @@
   - ✓ 체크인 이중 전송 레이스 — response-experience fire 12 (withProcessLock 채택, 두-데몬 시뮬레이션 pin)
   - ◦ 이중 전송 레이스 잔여 4곳 — (✓ followup: fire 14) (✓ objectives: fire 15) runDueObjectives·runDuePatternNotices·runDueProactiveNotices 전부 동일 클래스(select-then-send, dedupe 쓰기는 atomic-but-not-lock, api+cli 양데몬 동일 파일); withProcessLock 채택 각 1 fire(체크인 템플릿) (fire 12 형제 스윕 발굴).
   - ◦ background-exit 잠재 레이스 — 현재 cli 단일 콜러 + mark-before-send 관례(크래시 시 드롭 위험)라 우선순위 낮음; api 콜러 추가 시 같은 클래스 합류 (fire 12 스윕 노트).
-  - ◦ withProcessLock 하트비트/stale-window 횡단 보강 — 모든 firing-lock 사이트 공통: 락 mtime을 fn 실행 중 주기 갱신(하트비트)하거나 DEFAULT_STALE_MS를 일괄 상향 — 5분 창 vs 최악 모델-파일업(5×200토큰, 포화 시 ~300s)이 근접(fire 15 판정자 FLAG; 개별 루프 발산 금지, digest-lock.ts에서 한 번에).
+  - ✓ withProcessLock 하트비트 횡단 보강 — response-experience fire 17 (staleMs/3 mtime 하트비트+foreign-nonce 가드, 6개 락 사이트 전부 상속)
   - ◦ 라이브 배터리 부하-강건화 — misgrounding 등 LLM 배터리가 동시 루프 Ollama 포화에서 transient abstain으로 헛-FAIL(fire 1·13 반복 관측, 3회 재실행으로 매번 반증); retry/quorum 또는 abstain≠misgrounded 구분으로 배터리 자체를 강건화 (fire 13 판정자 권고).
   - ◦ digest-lock EACCES 코너 — POSIX에서 락 디렉토리 권한 거부 시 lock-held로 침묵(fail-open-send가 아님, withFileLock 관례 미러); 단일 사용자 실제품에선 도달 희박하나 'never-silent' 주장 대비 기록 (fire 10 판정자 비차단 노트).
   - ✓ ack 카피/톤 개선 — response-experience fire 16 (관측-진단 기반 프롬프트 재작성: 격식 preamble 금지·동일언어 마무리 약속, 판별력 검증된 token-set 스코어러 pin)

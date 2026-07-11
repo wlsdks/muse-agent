@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DIGEST_LOCK_STALE_MS, withDigestLock } from "../src/digest-lock.js";
+import { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "../src/digest-lock.js";
 
 let dir: string;
 let sentFile: string;
@@ -101,5 +101,61 @@ describe("withDigestLock", () => {
     const kinds = [a.kind, b.kind].sort();
     expect(kinds).toEqual(["lock-held", "ran"]);
     expect(maxConcurrent).toBe(1);
+  });
+});
+
+describe("withProcessLock heartbeat", () => {
+  it("keeps a slow holder's lock alive past staleMs so a mid-work probe gets lock-held, not a steal", async () => {
+    const staleMs = 300;
+    let holderRan = false;
+    const holderPromise = withProcessLock(lockPath, async () => {
+      holderRan = true;
+      await new Promise((resolve) => setTimeout(resolve, staleMs * 4));
+      return "done";
+    }, staleMs);
+
+    // Midway through the holder's work — already past staleMs from acquisition
+    // time, so WITHOUT a heartbeat this probe would see a stale lock and steal it.
+    await new Promise((resolve) => setTimeout(resolve, staleMs * 2));
+    let probeRan = false;
+    const probeOutcome = await withProcessLock(lockPath, async () => { probeRan = true; }, staleMs);
+    expect(probeOutcome).toEqual({ kind: "lock-held" });
+    expect(probeRan).toBe(false);
+
+    const holderOutcome = await holderPromise;
+    expect(holderOutcome).toEqual({ kind: "ran", value: "done" });
+    expect(holderRan).toBe(true);
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("stops the heartbeat timer once fn completes (finally clears it before the unlink)", async () => {
+    const clearIntervalSpy = vi.spyOn(global, "clearInterval");
+    const outcome = await withProcessLock(lockPath, async () => "ok", 300);
+    expect(outcome).toEqual({ kind: "ran", value: "ok" });
+    expect(clearIntervalSpy).toHaveBeenCalled();
+  });
+
+  it("stops touching (and never unlinks) a FOREIGN lock once it detects it lost the lock mid-fn", async () => {
+    const staleMs = 240;
+    const beatMs = Math.floor(staleMs / 3);
+    const holderPromise = withProcessLock(lockPath, async () => {
+      // Let at least one heartbeat land with OUR nonce first.
+      await new Promise((resolve) => setTimeout(resolve, beatMs + 30));
+      // Simulate: our lock was stale-broken and re-acquired by another holder.
+      await writeFile(lockPath, "foreign-holder-nonce", "utf8");
+      const foreignMtimeBefore = (await stat(lockPath)).mtimeMs;
+      // Wait past another heartbeat interval — our heartbeat must see the
+      // foreign nonce and skip the touch rather than extending it.
+      await new Promise((resolve) => setTimeout(resolve, beatMs + 60));
+      const foreignMtimeAfter = (await stat(lockPath)).mtimeMs;
+      expect(foreignMtimeAfter).toBe(foreignMtimeBefore);
+      return "done";
+    }, staleMs);
+
+    const outcome = await holderPromise;
+    expect(outcome).toEqual({ kind: "ran", value: "done" });
+    // finally's own nonce-check refuses to unlink a lock it no longer owns.
+    expect(await lockExists()).toBe(true);
+    expect(await fsPromises.readFile(lockPath, "utf8")).toBe("foreign-holder-nonce");
   });
 });
