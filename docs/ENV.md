@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **528** variables.
+Total: **536** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -144,6 +144,11 @@ Total: **528** variables.
 | `MUSE_DEFAULT_MODEL` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_DEFAULT_TIMEZONE` | packages/autoconfigure |
 | `MUSE_DELTA_AT` | apps/cli |
+| `MUSE_DIGEST_ENABLED` | apps/api, apps/cli |
+| `MUSE_DIGEST_HOUR` | apps/api, apps/cli |
+| `MUSE_DIGEST_QUEUE_FILE` | packages/autoconfigure |
+| `MUSE_DIGEST_SENT_FILE` | packages/autoconfigure |
+| `MUSE_DIGEST_TICK_MS` | apps/api |
 | `MUSE_DISCORD_AFTER_FILE` | packages/autoconfigure |
 | `MUSE_DISCORD_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_DISCORD_INBOX_FILE` | packages/autoconfigure |
@@ -232,6 +237,9 @@ Total: **528** variables.
 | `MUSE_INPUT_GUARD_INJECTION_ENABLED` | packages/autoconfigure |
 | `MUSE_INPUT_GUARD_PII_ENABLED` | packages/autoconfigure |
 | `MUSE_INPUT_HISTORY_FILE` | apps/cli |
+| `MUSE_INTERRUPTION_DAILY_CAP` | apps/api, apps/cli |
+| `MUSE_INTERRUPTION_HOURLY_CAP` | apps/api, apps/cli |
+| `MUSE_INTERRUPTION_LEDGER_FILE` | packages/autoconfigure |
 | `MUSE_JOBS_DIR` | apps/cli |
 | `MUSE_JOBS_MAX_CONCURRENT` | apps/cli |
 | `MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL` | apps/api, apps/cli, packages/autoconfigure |
