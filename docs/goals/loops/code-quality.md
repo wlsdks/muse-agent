@@ -20,7 +20,8 @@
 | apps/web | – | 미방문 |
 | packages/autoconfigure | fire 11 | 방문 |
 | packages/shared | fire 11 | 방문 (사실상 CLEAN — 고아 docstring 1건만 큐) |
-| 기타 packages/* | – | 미방문 |
+| packages/stores | fire 13 | 방문 |
+| 기타 packages/* | – | 미방문 (tools/mcp/messaging/proactivity 등) |
 
 ## 대기 발견 큐
 
@@ -47,6 +48,9 @@
 - apps/api server-helpers.ts 544줄 3책임(chat runner/입력 파서/HTTP plumbing) → 분리 후보
 - ~~autoconfigure 격리 결함~~ → fire 12에서 해결 (크리덴셜 파일을 빈 tmp로 고정 — 정확한 누수원은 ~/.muse/messaging.json의 실등록 토큰)
 - 같은 클래스 의심: resolveDotMusePath 폴백(~/.muse)을 기본으로 읽는 다른 "빈 env" 테스트가 더 있는지 스캔 후보 (autoconfigure/api 전반)
+- ⚠ 실버그 의심 (fire 13 haiku): stores personal-recall-hits-store.ts recordRecallHits가 withFileMutationQueue 없이 read→write (RMW race) — 다른 스토어는 큐로 보호. 동작 변경이라 별도 fix 후보 (재현 테스트 먼저)
+- stores 대형 파일 분해 후보: personal-episodes-store 554줄(저장+분석 혼재), weakness-ledger 485줄, playbook-store 413줄(저장+리워드 엔진)
+- stores 동시성 스트레스 테스트 3파일(consent/veto/objectives-concurrent)은 머신 부하시 false-timeout — 알려진 클래스, 부하 낮으면 green (fire 13 확인)
 - autoconfigure buildLoopbackTools 207줄·buildRuntimeToolRegistry 279줄 → runtime-assembly와 같은 패턴 분해 후보
 - packages/shared index.ts 고아 docstring (truncateErrorBody 설명이 함수와 144줄 분리) → 이동 후보 (소형)
 - 루프 운영: sonnet 워커 stash 금지 위반 2회째 (fire 11) — 잔여물은 없었으나 프롬프트에 대안(git show HEAD:path) 강제 + "stash 사용시 보고서에 사유 명시" 요구 추가할 것
@@ -75,3 +79,4 @@
 | 10 | apps/api (큐 집행) | 낡은 테스트 2파일 갱신: settings-routes(데몬 플래그 6→8 고정목록 갱신, 변경-감지기 방식 유지) + p1-seam(sendChatAction 등장에 맞춰 sendMessage 필터 단언 + endpoint 집합 단언 보강) — 둘 다 src 무변경 | api 전체 130파일 793/793 완전 green ✓ · lint 0 ✓ |
 | 11 | packages/autoconfigure (+shared 스캔) | createMuseRuntimeAssembly 397→209줄: 조립을 6개 module-private 단계 헬퍼(관측스택/모델·스토어/개인스토어/툴링/훅·컨텍스트/에이전트런타임)로 순수 재배치, 배선 순서·lazy-closure 계약 보존, 공개 표면 불변 | autoconfigure build ✓ · 어셈블리 e2e+wiring 83/84 (red 1건=diff 밖 사전존재 격리결함 확증) · lint 0 ✓ |
 | 12 | autoconfigure (큐 집행) + 머지 | ①main 충돌 해소: settings-routes(9플래그 main측)+p1-seam(main측+우리의 강한 endpoint-집합 단언 보존 — 양쪽이 같은 낡은 테스트를 각자 고친 경합) ②buildInboxContextProvider 테스트 격리: 크리덴셜 파일을 빈 tmp로 고정, 실머신 ~/.muse/messaging.json 토큰 누수 차단 | 충돌 2파일 5/5 ✓ · autoconfigure.test 62/62 ✓ (실토큰 있는 머신에서 green) · build ✓ · lint 0 ✓ |
+| 13 | packages/stores | 15벌 토큰-동일 quarantineCorruptStore를 store-quarantine.ts 한 벌로 통합(파일 15개 수정, fs 죽은 import 3건 동반 제거) + 직접 단위테스트 4건; 부수리 main발 lint error(messaging-setup-routes 죽은 매개변수) 제거 | stores build ✓ · quarantine 4/4 ✓ · messaging 15/15 ✓ · 동시성 3파일 저부하 8/8 ✓(고부하 flake=알려진 클래스) · lint 0 ✓ |

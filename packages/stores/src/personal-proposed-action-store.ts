@@ -17,6 +17,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { withFileLock } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type ProposedActionStatus = "pending" | "executed" | "declined";
 
@@ -74,14 +75,6 @@ function isProposedAction(value: unknown): value is ProposedAction {
     && typeof c.destination === "string"
     && typeof c.text === "string"
     && (c.status === "pending" || c.status === "executed" || c.status === "declined");
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // best-effort — a missing file or rename failure must not throw
-  }
 }
 
 export async function readProposedActions(file: string): Promise<ProposedAction[]> {

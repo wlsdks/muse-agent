@@ -20,6 +20,7 @@ import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ScopedConsent {
   readonly id: string;
@@ -45,14 +46,6 @@ export interface ScopedConsent {
   readonly grantedAt: string;
   /** Optional human note ("approved in chat 2026-05-19"). */
   readonly note?: string;
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readConsents(file: string): Promise<readonly ScopedConsent[]> {

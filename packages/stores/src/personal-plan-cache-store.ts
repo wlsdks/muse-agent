@@ -11,6 +11,7 @@
 import { promises as fs } from "node:fs";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 /** Newest templates kept — bounds the file + retrieval cost. */
 export const MAX_PLAN_CACHE_ENTRIES = 100;
@@ -28,14 +29,6 @@ export interface PlanCacheEntry {
   readonly prompt: string;
   readonly steps: readonly PlanCacheStep[];
   readonly createdAt: string;
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readPlanCache(file: string): Promise<readonly PlanCacheEntry[]> {

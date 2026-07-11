@@ -10,10 +10,9 @@
  * fsync+rename write, tolerant read, corrupt store quarantined aside.
  */
 
-import { promises as fs } from "node:fs";
-
 import { withFileMutationQueue } from "./atomic-file-store.js";
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 /** Newest entries kept — bounds the file + the injected context. */
 export const MAX_PLAYBOOK_ENTRIES = 100;
@@ -90,14 +89,6 @@ export interface PlaybookEntry {
    */
   readonly reinforcements?: number;
   readonly decays?: number;
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readPlaybook(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly PlaybookEntry[]> {

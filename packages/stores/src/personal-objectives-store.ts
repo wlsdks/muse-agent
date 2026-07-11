@@ -23,6 +23,7 @@ import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type ObjectiveKind = "watch" | "until" | "notify";
 export type ObjectiveStatus = "active" | "done" | "escalated" | "cancelled";
@@ -47,17 +48,6 @@ export interface StandingObjective {
   readonly nextEvalAt?: string;
   /** Why it left `active` (set when status flips). */
   readonly resolution?: string;
-}
-
-// Move a present-but-corrupt store aside so the next write starts
-// fresh WITHOUT destroying the user's prior objectives. Best-effort;
-// the bytes survive at `<file>.corrupt-<ts>` for manual recovery.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readObjectives(file: string): Promise<readonly StandingObjective[]> {

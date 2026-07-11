@@ -22,6 +22,7 @@ import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ActionVeto {
   readonly id: string;
@@ -30,14 +31,6 @@ export interface ActionVeto {
   readonly scope: string;
   readonly vetoedAt: string;
   readonly reason?: string;
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readVetoes(file: string): Promise<readonly ActionVeto[]> {

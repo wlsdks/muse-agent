@@ -19,8 +19,6 @@
  * persona rendering, CLI surface — those live in steps 2–5.
  */
 
-import { promises as fs } from "node:fs";
-
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
@@ -33,6 +31,7 @@ import {
   withFileLock,
   writeMaybeEncrypted
 } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 const EMPTY_EPISODES_BODY = `${JSON.stringify({ episodes: [] }, null, 2)}\n`;
 
@@ -72,18 +71,6 @@ export interface PersistedEpisode {
    * are unaffected.
    */
   readonly trusted?: boolean;
-}
-
-// Move a present-but-corrupt store aside so the next upsert
-// starts fresh WITHOUT permanently destroying the user's prior
-// episodic memory. Best-effort; the original bytes survive at
-// `<file>.corrupt-<ts>` for manual recovery.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
 }
 
 export async function readEpisodes(

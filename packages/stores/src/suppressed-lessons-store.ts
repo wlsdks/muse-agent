@@ -17,6 +17,7 @@
 import { promises as fs } from "node:fs";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 /** Bounds the file + keeps the per-distill scan cheap; newest-kept on overflow. */
 export const MAX_SUPPRESSED_LESSONS = 200;
@@ -37,14 +38,6 @@ export interface SuppressedLesson {
   readonly createdAt: string;
   /** How many times this veto has blocked a re-learn (the "N suppressed" count). */
   readonly blockedCount?: number;
-}
-
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read degrades to empty either way
-  }
 }
 
 export async function readSuppressedLessons(file: string): Promise<readonly SuppressedLesson[]> {
