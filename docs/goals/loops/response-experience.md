@@ -30,7 +30,7 @@ ratchet: testFiles +2 · fabrication 0 · eval N/A(composeAck 무접촉)
 리스크: 낮음 — 옵션 부재 시 byte-동일 pin.
 lesson: 회귀 491a1772c는 duck-type 계약(metadata 추가)을 바꾸면서 소비 패키지(apps/api)를 빌드하지 않아 침묵 출하 — 좁은-게이트 정책의 사각. 공유 duck-type을 바꾸면 그 소비자 패키지 빌드가 형제-감사에 포함되어야 함. 양성 assignability pin이 재발 방지.
 
-## fire 4 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 4 · 2026-07-12 · skill v2.x · 726915d74
 meta: value-class=new-capability · pkg=@muse/proactivity(+mcp tests) · kind=rationale-source · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles +0(기존 3파일 갱신+핀 추가) · fabrication 0 · eval N/A(채널 답장 경로 무접촉)
 무엇: ambient 알림에 "(field에 'pattern' 포함되어 매칭)" 결정론 근거 절 — 이미 계산되던 매칭 증거 재사용, ≤2쌍 명시+"외 N개" 접기, knowledge-trigger는 구조적 증거 부재로 의도적 무절(pin).
