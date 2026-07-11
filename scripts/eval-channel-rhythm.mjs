@@ -68,6 +68,12 @@ async function ollamaReachable() {
   }
 }
 
+// Closing-promise token set, checked per language rather than pinning one
+// exact phrase — the model varies wording run-to-run (agent-testing.md:
+// don't pin a model-INVENTED value verbatim, pin the observable intent).
+const KO_CLOSING_PROMISE_RE = /(알려|말해|보고)(줄게|드릴게|주겠|드리겠|하겠)/u;
+const EN_CLOSING_PROMISE_RE = /(let you know|report back)/iu;
+
 function scoreAck(ack, testCase) {
   if (typeof ack !== "string" || ack.length === 0) {
     return { ok: false, detail: `composeAck returned ${ack === null ? "null (guard rejected / timed out / errored)" : "empty"}` };
@@ -83,6 +89,10 @@ function scoreAck(ack, testCase) {
   }
   if (!ack.toLowerCase().includes(testCase.literal.toLowerCase())) {
     return { ok: false, detail: `ack does not echo "${testCase.literal}": ${ack}` };
+  }
+  const closingRe = testCase.language === "ko" ? KO_CLOSING_PROMISE_RE : EN_CLOSING_PROMISE_RE;
+  if (!closingRe.test(ack)) {
+    return { ok: false, detail: `ack is missing the closing report-back promise: ${ack}` };
   }
   if (citedSourcesIn(ack).length > 0 || /\[[^\]]*:/u.test(ack)) {
     return { ok: false, detail: `ack contains a citation marker: ${ack}` };

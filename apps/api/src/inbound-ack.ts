@@ -35,9 +35,16 @@ export function sanitizeAckText(raw: string): string | null {
 const DEFAULT_ACK_TIMEOUT_MS = 15_000;
 
 const ACK_SYSTEM_PROMPT =
-  "Restate what the user just asked as ONE short first-person acknowledgment " +
-  "sentence, in the SAME language the user wrote in. End with a promise to " +
-  "report back once it's done. Do not answer the request, invent any facts, " +
+  "Write ONE short, casual first-person sentence confirming you're on the " +
+  "user's request — entirely in the SAME language they wrote in, like a " +
+  "quick text, not a customer-service reply. Never start with a formal " +
+  "preamble such as \"I understand that you would like me to\" or \"요청을 " +
+  "확인했습니다\" — name the concrete task directly (e.g. \"I'll set a " +
+  "reminder to call mom tomorrow\" / \"엄마한테 전화하라고 리마인더 해둘게\"). " +
+  "End with a brief promise to report back once it's done, phrased " +
+  "naturally in that SAME language and never mixed with another language " +
+  "(Korean example: \"다 되면 알려줄게.\" English example: \"I'll let you " +
+  "know when it's done.\"). Do not answer the request, invent any facts, " +
   "numbers, or cite any source — you are only confirming you understood.";
 
 export interface ComposeAckDeps {

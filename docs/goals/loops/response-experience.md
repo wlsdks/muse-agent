@@ -130,3 +130,12 @@ ratchet: testFiles +1(objective-evaluation-lock) · fabrication 0 · eval N/A
 왜: 잔여 레이스 둘째.
 리뷰지점: FLAG — 모든 firing-lock 공통의 무하트비트 5분 창 vs 최악 파일업 근접(횡단 보강 ◦ 큐잉, 개별 발산 금지).
 리스크: 낮음. fire 16은 (proactivity,concurrency) 금지(8-윈도 6 도달) — pattern/proactive-notices 락은 이후로, 다음은 ack 카피 또는 배터리 강건화.
+
+## fire 16 · 2026-07-12 · skill v2.x · 7a2a014fb
+meta: value-class=ux-copy · pkg=@muse/api · kind=prompt-tuning · verdict=PASS · firesSinceDrill=7
+ratchet: eval:channel-rhythm 14/14(재실행; 1회 13/14는 stochastic null, 게이트 통과) · 신규 closing-promise 스코어러 판별력 옛11/20→새20/20 · fabrication 0
+무엇: ack 카피 튜닝 — 실측 결함(격식 preamble·마무리 약속 불일치·KO 존댓말 상담원 톤) 진단 후 프롬프트 재작성; 가드 무변경(판정자 byte-검증). 예: "…요청이시군요. 확인 후 바로 말씀드리겠습니다"(55자) → "다음 주 일정 확인해서 겹치는 부분 바로 알려줄게. 다 되면 말해줄게."(39자).
+왜: 테마 원점 — 복창 ack의 체감 품질이 곧 응답 경험.
+리뷰지점: 스코어러 실패 라벨이 실제 판별 기준(캐주얼 동일언어 phrasing)과 살짝 어긋남(비차단, 코스메틱).
+리스크: 낮음.
+lesson: 프롬프트-튜닝 fire의 mutation-RED 등가물은 "옛 프롬프트 대비 스코어러 판별력 프로브" — 순수-추가라도 스코어러가 공허하지 않음을 증명해야 함(판정자가 보완한 절차, 다음 프롬프트-튜닝 fire의 표준).
