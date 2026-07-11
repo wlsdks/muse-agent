@@ -219,3 +219,53 @@ describe("onConnected hot-start hook", () => {
     expect(connected).toEqual(["telegram"]);
   });
 });
+
+describe("POST /api/messaging/setup/:providerId/test-send", () => {
+  function buildWithOwner(options: { readonly owner?: string } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), "muse-testsend-"));
+    const sent: { destination: string; text: string }[] = [];
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "stub", displayName: "Telegram", id: "telegram" }),
+      id: "telegram",
+      send: async (message) => {
+        sent.push({ destination: message.destination, text: message.text });
+        return { destination: message.destination, messageId: "m1", providerId: "telegram" };
+      }
+    }]);
+    const ownersFile = join(dir, "channel-owners.json");
+    const server = Fastify({ logger: false });
+    registerMessagingSetupRoutes(server, {
+      credentialsFile: join(dir, "messaging.json"),
+      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile },
+      registry,
+      verifyToken: async () => ({ ok: true })
+    });
+    return { ownersFile, sent, server };
+  }
+
+  it("sends a hello to the PAIRED owner chat and echoes the destination", async () => {
+    const { ownersFile, sent, server } = buildWithOwner();
+    const { adoptChannelOwner } = await import("../src/channel-owner-store.js");
+    await adoptChannelOwner(ownersFile, "telegram", "8303165569");
+
+    const response = await server.inject({ method: "POST", url: "/api/messaging/setup/telegram/test-send" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ destination: "8303165569", ok: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.destination).toBe("8303165569");
+    expect(sent[0]?.text.length).toBeGreaterThan(0);
+  });
+
+  it("409s when no chat has paired yet (nothing is sent — no guessed recipient)", async () => {
+    const { sent, server } = buildWithOwner();
+    const response = await server.inject({ method: "POST", url: "/api/messaging/setup/telegram/test-send" });
+    expect(response.statusCode).toBe(409);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("404s for an unknown provider", async () => {
+    const { server } = buildWithOwner();
+    const response = await server.inject({ method: "POST", url: "/api/messaging/setup/smoke-signals/test-send" });
+    expect(response.statusCode).toBe(404);
+  });
+});

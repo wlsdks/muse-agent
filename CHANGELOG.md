@@ -34,6 +34,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **Muse won't accidentally stop the wrong program.** When Muse stops a
+  background task it started, it now first checks that the process still running
+  under that ID is the same one it launched — because after a program exits, the
+  operating system can hand its numeric ID to a completely unrelated program.
+  If the identity doesn't match, Muse leaves that program alone and just marks
+  its own record finished, so a stale entry can never send a stop signal to
+  someone else's process.
+
 - **A file change Muse can't confirm is saved to your approvals list instead of
   dropped.** When Muse (running with tools) wants to write or edit a file but
   there's no interactive prompt to confirm it — a headless or scripted run —

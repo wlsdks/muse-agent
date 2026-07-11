@@ -93,6 +93,10 @@ export function IntegrationsView({ client }: { client: ApiClient }) {
                     </Tooltip>
                   </div>
                   <div className="row-meta mono">{flag.key}</div>
+                  {flag.lastIngestAtIso && (
+                    <div className="row-meta">{t("int.daemon.lastIngest", { time: new Date(flag.lastIngestAtIso).toLocaleTimeString() })}</div>
+                  )}
+                  {flag.lastError && <div className="row-meta" style={{ color: "var(--danger)" }}>{t("int.daemon.lastError", { error: flag.lastError })}</div>}
                 </div>
                 <Tooltip tip={t(daemonBadge(flag).tone === "warn" ? "int.tip.daemon.notRunning" : "int.tip.daemon.state")}>
                   <Badge tone={daemonBadge(flag).tone}>{t(daemonBadge(flag).labelKey)}</Badge>
@@ -143,6 +147,9 @@ function ProviderCard({
       setAccount(null);
       onChanged();
     }
+  });
+  const testSend = useMutation({
+    mutationFn: () => client.post<{ ok: boolean; destination: string }>(`/api/messaging/setup/${provider.id}/test-send`)
   });
 
   const stepCount = GUIDE_STEPS[provider.id] ?? 0;
@@ -224,6 +231,17 @@ function ProviderCard({
         {connect.error && <div className="banner err">{(connect.error as Error).message}</div>}
         {disconnect.error && <div className="banner err">{(disconnect.error as Error).message}</div>}
 
+        {provider.configured && provider.registered && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <Tooltip tip={t("int.tip.testSend")}>
+              <Button variant="ghost" size="sm" disabled={testSend.isPending} onClick={() => testSend.mutate()}>
+                <Icon.send className="nav-icon" /> {testSend.isPending ? t("int.testSending") : t("int.testSend")}
+              </Button>
+            </Tooltip>
+            {testSend.data && <Badge tone="ok">{t("int.testSent", { destination: testSend.data.destination })}</Badge>}
+          </div>
+        )}
+        {testSend.error && <div className="banner err">{(testSend.error as Error).message}</div>}
         {provider.configured && (
           <div>
             {canDisconnect(provider) ? (

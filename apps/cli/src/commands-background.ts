@@ -6,6 +6,7 @@
  * check; the spawn/stop tool + agent wiring is the attended follow-up.
  */
 
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -75,6 +76,22 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
+/**
+ * The OS-level start-time for a live pid, or undefined if it can't be read
+ * (pid gone, or `ps` unavailable). `ps -o lstart=` works on both macOS (BSD)
+ * and Linux (GNU) with a stable per-process value — unlike `/proc`, which is
+ * Linux-only — so it portably distinguishes "same process" from "OS reused
+ * this pid for someone else" without needing to parse the date format.
+ */
+export function readProcessStartTime(pid: number): string | undefined {
+  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return undefined;
+  }
+  const value = result.stdout.trim();
+  return value.length > 0 ? value : undefined;
+}
+
 /** Last `n` lines of `text` (a single trailing newline is ignored). Returns all when n<=0 or non-finite. */
 export function tailLines(text: string, n: number): string {
   if (!Number.isFinite(n) || n <= 0) {
@@ -94,7 +111,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       // Crash-recovery: a 'running' record whose PID is gone (the process
       // died while Muse was off, so its exit handler never ran) is corrected
       // to exited before display, so the list reflects reality.
-      await reconcileBackgroundProcesses(backgroundStoreFile(), isProcessAlive, () => new Date()).catch(() => undefined);
+      await reconcileBackgroundProcesses(backgroundStoreFile(), isProcessAlive, () => new Date(), readProcessStartTime).catch(() => undefined);
       const records = await readBackgroundProcesses(backgroundStoreFile());
       if (options.json) {
         io.stdout(`${JSON.stringify({ processes: records }, null, 2)}\n`);
@@ -142,7 +159,8 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
           classifyDanger: (cmd) => {
             const verdict = classifyDangerousCommand(cmd);
             return verdict.dangerous ? verdict.reason : undefined;
-          }
+          },
+          readProcessStartTime
         });
         io.stdout(`Started '${record.id}' (pid ${record.pid.toString()}). Logs: muse bg logs ${record.id}\n`);
       } catch (error) {
@@ -180,7 +198,8 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
           classifyDanger: (cmd) => {
             const verdict = classifyDangerousCommand(cmd);
             return verdict.dangerous ? verdict.reason : undefined;
-          }
+          },
+          readProcessStartTime
         });
         io.stdout(`Restarted '${prior.id}' as '${record.id}' (pid ${record.pid.toString()}).\n`);
       } catch (error) {
@@ -191,11 +210,19 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
   bg.command("stop <id>")
     .description("Stop a running background process by id (sends SIGTERM)")
     .action(async (id: string) => {
-      const result = await stopBackgroundProcess(backgroundStoreFile(), id, (pid) => process.kill(pid), () => new Date());
+      const result = await stopBackgroundProcess(
+        backgroundStoreFile(),
+        id,
+        (pid) => process.kill(pid),
+        () => new Date(),
+        readProcessStartTime
+      );
       if (result === "not_found") {
         io.stderr(commandErrorLine("bg stop", `No background process with id '${id}'.`));
       } else if (result === "already_done") {
         io.stdout(`'${id}' is not running.\n`);
+      } else if (result === "pid_reused") {
+        io.stdout(`'${id}' had already exited (its pid was reused by another process) — marked exited, nothing signalled.\n`);
       } else {
         io.stdout(`Stopped '${id}'.\n`);
       }

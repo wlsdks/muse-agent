@@ -1,6 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 import {
   parseBoolean,
   resolveActionLogFile,
@@ -20,7 +17,7 @@ import { gateChatAnswerGrounding } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 import { queryContacts } from "@muse/stores";
 
-import { adoptChannelOwner, parseAllowedChats, readChannelOwner } from "./channel-owner-store.js";
+import { adoptChannelOwner, parseAllowedChats, readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
@@ -62,14 +59,6 @@ export interface InboundAgentRunOptions {
  */
 const UNPAIRED_CHAT_NOTICE =
   "This bot is a private personal assistant and only talks to its paired owner.";
-
-function resolveChannelOwnersFile(env: MuseEnvironment): string {
-  const override = env.MUSE_CHANNEL_OWNERS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return join(homedir(), ".muse", "channel-owners.json");
-}
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
   const { agentRuntime, env, model, registry } = options;

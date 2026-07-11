@@ -53,3 +53,11 @@ ratchet: 로드맵 잔여 [ ] = 26/34 · self-eval pass · fabrication 0 · actu
 - 리뷰지점: Opus 독립 e2e(파일 미생성+readback isPendingApproval 통과)·staging throw→deny 불변·mutation-RED 양방향. 시크릿: draft는 byte-count만(content 미포함), store 0600. messaging/src 0편집(동시 Matrix 루프와 충돌 회피).
 - 리스크: CLI-write 스테이징 entry는 {path,action}만이라 approve→재실행 불가(VQ-18, 채널처럼 full-args 필요). 동시 Matrix/Telegram 루프가 트리 대량 오염(api/web/autoconfigure/messaging) → 내 3 apps/cli 파일만 격리 커밋.
 lesson: 다른 루프가 churn 중인 패키지의 스토어를 재사용할 땐 barrel 익스포트만 import하고 그 src는 절대 편집 말 것 — 충돌 원천 회피(D2-S6b가 messaging store를 0편집으로 CLI 확장).
+
+## fire 7 · 2026-07-11 · skill v2.x · 3b6e67c59
+meta: slice=D3-S7 · wave=W1 · pkg=@muse/stores+apps/cli · kind=safety-guard · verdict=PASS · firesSinceDrill=7 · ★W1 완주
+ratchet: 로드맵 잔여 [ ] = 25/34 · self-eval FOREIGN-fail(envInventory=MUSE_MATRIX_POLL_ENABLED, 내 env 0) · fabrication 0 · stores 13 test 신규
+- 무엇: PID-재사용 kill 가드. background-process record에 osStartTime(spawn 시 OS start-time 캡처) 추가, 순수 pidIdentityMatches(레거시 보존/equality). stop·reconcile이 kill/reconcile 전 대조→불일치(재사용/소멸)면 kill 금지+exited(fail-close, 신규 pid_reused 결과). CLI가 ps -o lstart= -p로 배선(BSD+GNU, /proc 회피).
+- 왜: 원 프로세스 죽고 PID 재사용되면 stopBackgroundProcess가 무관 유저 프로세스를 SIGTERM, reconcile은 isAlive만 봐 stale running. hermes process_registry 커널 start-time 검증 참조. "위험실행=결정론가드" 정합.
+- 리뷰지점: Opus 독립 검증(reused-PID no-kill 직접 구동·truth table empty-string edge·throwing reader는 spawnSync가 안 던져 unreachable+fail-safe)·mutation-RED 양방향. messaging 0편집(동시 Matrix 루프 충돌 회피)·env 0.
+- 리스크: 동시 Matrix 루프가 트리 대량 오염(api/web/autoconfigure/messaging)+envInventory FOREIGN-fail(MUSE_MATRIX_POLL_ENABLED). 내 5파일(stores 4+cli 1)만 격리 커밋. stop의 reader-throw는 try/catch 없으나 프로덕션 spawnSync는 미발현.

@@ -39,6 +39,10 @@ export interface BackgroundProcessRecord {
   readonly exitCode?: number | null;
   readonly endedAt?: string;
   readonly logFile?: string;
+  /** OS-level start-time captured at spawn (e.g. `ps -o lstart=`). Re-queried
+   *  before a kill/reconcile to detect PID reuse after the original process
+   *  exited. Optional so legacy records without it still load. */
+  readonly osStartTime?: string;
 }
 
 const STATUSES: ReadonlySet<string> = new Set(["running", "exited", "failed", "killed"]);

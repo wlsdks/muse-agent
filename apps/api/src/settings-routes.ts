@@ -10,6 +10,8 @@ export interface DaemonFlagView {
   readonly enabled: boolean;
   /** Live handle state for channel daemons — enabled says the FLAG, running says the truth. */
   readonly running?: boolean;
+  readonly lastIngestAtIso?: string;
+  readonly lastError?: string;
 }
 
 export interface DaemonFlagsResponse {
@@ -31,7 +33,11 @@ const DAEMON_FLAGS: readonly (readonly [string, string, boolean, string?])[] = [
   ["MUSE_INBOUND_REPLY_ENABLED", "Channel auto-reply (chat as a Muse session)", false, "inbound-reply"]
 ];
 
-export type DaemonStatusSource = () => Readonly<Record<string, { readonly running: boolean }>>;
+export type DaemonStatusSource = () => Readonly<Record<string, {
+  readonly running: boolean;
+  readonly lastIngestAtIso?: string;
+  readonly lastError?: string;
+}>>;
 
 export function shapeDaemonFlags(env: NodeJS.ProcessEnv, daemonStatus?: DaemonStatusSource): DaemonFlagsResponse {
   const status = daemonStatus?.();
@@ -40,7 +46,9 @@ export function shapeDaemonFlags(env: NodeJS.ProcessEnv, daemonStatus?: DaemonSt
       key,
       label,
       enabled: parseBoolean(env[key], dflt),
-      ...(status && supervisorName ? { running: status[supervisorName]?.running ?? false } : {})
+      ...(status && supervisorName ? { running: status[supervisorName]?.running ?? false } : {}),
+      ...(status?.[supervisorName ?? ""]?.lastIngestAtIso ? { lastIngestAtIso: status[supervisorName ?? ""]?.lastIngestAtIso } : {}),
+      ...(status?.[supervisorName ?? ""]?.lastError ? { lastError: status[supervisorName ?? ""]?.lastError } : {})
     }))
   };
 }

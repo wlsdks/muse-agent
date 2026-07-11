@@ -246,7 +246,7 @@ Total: **516** variables.
 | `MUSE_MATRIX_HOMESERVER_URL` | packages/autoconfigure |
 | `MUSE_MATRIX_INBOX_FILE` | packages/autoconfigure |
 | `MUSE_MATRIX_LONG_POLL_SECONDS` | apps/api |
-| `MUSE_MATRIX_POLL_ENABLED` | apps/api |
+| `MUSE_MATRIX_POLL_ENABLED` | apps/api, apps/web |
 | `MUSE_MATRIX_POLL_INTERVAL_MS` | apps/api |
 | `MUSE_MATRIX_SINCE_FILE` | packages/autoconfigure |
 | `MUSE_MAX_TOOL_OUTPUT_CHARS` | apps/cli, packages/autoconfigure |

@@ -393,6 +393,8 @@ interface DaemonFlagView {
   label: string;
   enabled: boolean;
   running?: boolean;
+  lastIngestAtIso?: string;
+  lastError?: string;
 }
 export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];

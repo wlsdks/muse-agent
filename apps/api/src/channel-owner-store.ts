@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 /**
  * Per-provider channel pairing: the first chat that ever talks to the
@@ -12,6 +13,14 @@ import { dirname } from "node:path";
 interface PersistedShape {
   readonly version: 1;
   readonly owners: Readonly<Record<string, string>>;
+}
+
+export function resolveChannelOwnersFile(env: { readonly [key: string]: string | undefined }): string {
+  const override = env.MUSE_CHANNEL_OWNERS_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return join(homedir(), ".muse", "channel-owners.json");
 }
 
 export async function readChannelOwner(file: string, providerId: string): Promise<string | undefined> {

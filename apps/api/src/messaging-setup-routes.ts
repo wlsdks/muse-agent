@@ -23,6 +23,7 @@ import {
   type TokenVerification
 } from "@muse/messaging";
 
+import { readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
 import { requireAuthenticated } from "./server-helpers.js";
 
 import type { ServerOptions } from "./server.js";
@@ -159,6 +160,39 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     gate.registry.register(buildProvider(provider.id, token, gate.env, provider.requiresHomeserverUrl ? homeserverUrl : undefined));
     gate.onConnected?.(provider.id);
     return { ok: true, ...(verdict.account ? { account: verdict.account } : {}) };
+  });
+
+  server.post("/api/messaging/setup/:providerId/test-send", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return reply;
+    }
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
+    if (!provider) {
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
+    }
+    // The test goes to the PAIRED owner chat only — never a guessed or
+    // user-typed recipient, so this stays on outbound-safety's low-risk
+    // "user's own channel" path.
+    const owner = await readChannelOwner(resolveChannelOwnersFile(gate.env), provider.id);
+    if (!owner) {
+      const reason = `no chat has paired with ${provider.displayName} yet — message the bot once first`;
+      return reply.status(409).send({ message: reason, reason });
+    }
+    if (!gate.registry.has(provider.id)) {
+      const reason = `${provider.displayName} is not live in this server — connect it first`;
+      return reply.status(409).send({ message: reason, reason });
+    }
+    try {
+      await gate.registry.send(provider.id, {
+        destination: owner,
+        text: "✅ Muse test message — this channel is connected and can reach you."
+      });
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      return reply.status(502).send({ message: reason, reason });
+    }
+    return { destination: owner, ok: true };
   });
 
   server.delete("/api/messaging/setup/:providerId", async (request, reply) => {

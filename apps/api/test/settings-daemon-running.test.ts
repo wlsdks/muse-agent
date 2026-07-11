@@ -33,3 +33,20 @@ describe("shapeDaemonFlags running state", () => {
     expect(shaped.flags.some((flag) => flag.key === "MUSE_MATRIX_POLL_ENABLED")).toBe(true);
   });
 });
+
+describe("shapeDaemonFlags status detail passthrough", () => {
+  it("carries lastIngestAtIso and lastError for channel daemons", () => {
+    const shaped = shapeDaemonFlags(
+      { MUSE_TELEGRAM_POLL_ENABLED: "1" },
+      () => ({
+        "telegram-poll": { lastError: "getUpdates failed", lastIngestAtIso: "2026-07-11T10:00:00.000Z", running: true }
+      })
+    );
+    const telegram = shaped.flags.find((flag) => flag.key === "MUSE_TELEGRAM_POLL_ENABLED");
+    expect(telegram).toMatchObject({
+      lastError: "getUpdates failed",
+      lastIngestAtIso: "2026-07-11T10:00:00.000Z",
+      running: true
+    });
+  });
+});
