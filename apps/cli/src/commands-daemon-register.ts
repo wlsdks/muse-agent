@@ -41,11 +41,10 @@ import { synthesizePatternSuggestion, adjustConfidenceFloor, sdtCriterion, summa
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, queryActionLog, readReminders, readTasks, readProactiveHistory } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
-import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
-import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { homeWatchesFromConfig, type EmailProvider, runDueSituationalBriefing } from "@muse/domain-tools";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { backgroundStoreFile } from "./commands-background.js";
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
@@ -57,7 +56,6 @@ import { checkinsFile } from "./commands-checkins.js";
 import { closestCommandName } from "./closest-command.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
 import { DEFAULT_REFLECTION_INTERVAL_MS, resolveReflectionsFile, runReflectionPass, shouldRunReflection } from "./commands-reflections.js";
-import { syncEmailsToNotes } from "./email-sync.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import {
   makeDigestFlushTick,
@@ -68,12 +66,20 @@ import {
   makeSelfLearnTick,
   type TickRunState
 } from "./daemon-selflearn-ticks.js";
+import {
+  makeAmbientTick,
+  makeBrowsingAutoSyncTick,
+  makeConflictWatchTick,
+  makeEmailSyncTick,
+  makeHomeWatchTick,
+  makeMessagingPollTick,
+  makeObjectivesTick,
+  makeWebWatchTick
+} from "./daemon-watch-ticks.js";
 import type { ProgramIO } from "./program.js";
 import { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { maybeAutoPrune } from "./local-state-retention.js";
-import { defaultEmbedModel } from "./council-corpus.js";
-import { embed } from "./embed.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -693,54 +699,18 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`[${new Date().toISOString()}] pattern: delivered ${summary.delivered.toString()}/${summary.fireable.toString()} fireable\n`);
       };
 
-      const ambientTick = async (): Promise<void> => {
-        if (!ambientRunner) {
-          io.stdout(`[${new Date().toISOString()}] ambient: skipped (no rules)\n`);
-          return;
-        }
-        const summary = await ambientRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] ambient: delivered ${summary.delivered.toString()}\n`);
-      };
+      const ambientTick = makeAmbientTick({ ambientRunner, stdout: io.stdout });
 
-      const webWatchTick = async (): Promise<void> => {
-        if (!webWatchRunner) {
-          io.stdout(`[${new Date().toISOString()}] web-watch: skipped (no config)\n`);
-          return;
-        }
-        const summary = await webWatchRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] web-watch: delivered ${summary.delivered.toString()}\n`);
-      };
+      const webWatchTick = makeWebWatchTick({ stdout: io.stdout, webWatchRunner });
 
-      const objectivesTick = async (): Promise<void> => {
-        if (!objectivesEvaluate || !objectivesActuator) {
-          io.stdout(`[${new Date().toISOString()}] objectives: skipped (no model resolved)\n`);
-          return;
-        }
-        const summary = await runDueObjectives({
-          act: objectivesActuator.act,
-          escalate: objectivesActuator.escalate,
-          evaluate: objectivesEvaluate,
-          file: objectivesFile
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) {
-            io.stdout(`\n  ! ${error}`);
-          }
-        }
-        io.stdout("\n");
-      };
+      const objectivesTick = makeObjectivesTick({
+        actuator: objectivesActuator,
+        evaluate: objectivesEvaluate,
+        file: objectivesFile,
+        stdout: io.stdout
+      });
 
-      const homeWatchTick = async (): Promise<void> => {
-        if (!homeWatchRunner) {
-          io.stdout(`[${new Date().toISOString()}] home-watch: skipped (no config)\n`);
-          return;
-        }
-        const summary = await homeWatchRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] home-watch: delivered ${summary.delivered.toString()}\n`);
-      };
+      const homeWatchTick = makeHomeWatchTick({ homeWatchRunner, stdout: io.stdout });
 
       // Situational briefing — a periodic digest (objective status +
       // imminent tasks + a related note), self-deduped by its sidecar
@@ -820,20 +790,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const emailSyncIntervalMs = Number.isFinite(emailSyncIntervalRaw) && emailSyncIntervalRaw > 0 ? emailSyncIntervalRaw : DEFAULT_EMAIL_SYNC_INTERVAL_MS;
       const emailSyncLimitRaw = e.MUSE_EMAIL_SYNC_LIMIT ? Number(e.MUSE_EMAIL_SYNC_LIMIT) : 20;
       const emailSyncLimit = Number.isFinite(emailSyncLimitRaw) && emailSyncLimitRaw > 0 ? Math.min(100, Math.trunc(emailSyncLimitRaw)) : 20;
-      let lastEmailSyncMs: number | undefined;
-      const emailSyncTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return;
-        const token = e.MUSE_GMAIL_TOKEN?.trim();
-        const provider = helpers.emailSyncProvider ?? (token ? new GmailEmailProvider(token) : undefined);
-        if (!provider) return; // opt-in: no token, no sync
-        const nowMs = Date.now();
-        if (lastEmailSyncMs !== undefined && nowMs - lastEmailSyncMs < emailSyncIntervalMs) return;
-        lastEmailSyncMs = nowMs;
-        try {
-          const written = await syncEmailsToNotes(provider, resolveNotesDir(e), emailSyncLimit);
-          if (written > 0) io.stdout(`[${new Date(nowMs).toISOString()}] email-sync: ${written.toString()} email(s) → recall (ask about them with \`muse ask\`)\n`);
-        } catch { /* fail-soft — a Gmail blip must never break the daemon */ }
-      };
+      const lastEmailSyncMs: TickRunState = { current: undefined };
+      const emailSyncTick = makeEmailSyncTick({
+        env: e,
+        intervalMs: emailSyncIntervalMs,
+        lastRunMs: lastEmailSyncMs,
+        limit: emailSyncLimit,
+        notesDir: resolveNotesDir(e),
+        stdout: io.stdout,
+        ...(helpers.emailSyncProvider ? { emailSyncProvider: helpers.emailSyncProvider } : {})
+      });
 
       // Unattended learning (distill + subtractive decay) — see
       // `makeSelfLearnTick`'s doc comment for the full brake/safety contract.
@@ -939,18 +905,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const DEFAULT_MSG_POLL_INTERVAL_MS = 5 * 60 * 1000;
       const msgPollIntervalRaw = e.MUSE_MESSAGING_POLL_INTERVAL_MS ? Number(e.MUSE_MESSAGING_POLL_INTERVAL_MS) : DEFAULT_MSG_POLL_INTERVAL_MS;
       const msgPollIntervalMs = Number.isFinite(msgPollIntervalRaw) && msgPollIntervalRaw > 0 ? msgPollIntervalRaw : DEFAULT_MSG_POLL_INTERVAL_MS;
-      let lastMsgPollMs: number | undefined;
-      const messagingPollTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false)) return;
-        const nowMs = Date.now();
-        if (lastMsgPollMs !== undefined && nowMs - lastMsgPollMs < msgPollIntervalMs) return;
-        lastMsgPollMs = nowMs;
-        try {
-          const result = await pollMessaging();
-          const total = Object.values(result.ingestedByProvider).reduce((sum, n) => sum + n, 0);
-          if (total > 0) io.stdout(`[${new Date(nowMs).toISOString()}] messaging-poll: +${total.toString()} new message${total === 1 ? "" : "s"} ingested (recallable via \`muse ask\`)\n`);
-        } catch { /* fail-soft — a transient poll failure must never break the daemon */ }
-      };
+      const lastMsgPollMs: TickRunState = { current: undefined };
+      const messagingPollTick = makeMessagingPollTick({
+        env: e,
+        intervalMs: msgPollIntervalMs,
+        lastRunMs: lastMsgPollMs,
+        poll: pollMessaging,
+        stdout: io.stdout
+      });
 
       // Proactive double-booking watch — scan the upcoming calendar window for
       // overlapping events and warn ONCE per clash (a Friday conflict caught on
@@ -969,37 +931,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const DEFAULT_CONFLICT_WATCH_INTERVAL_MS = 30 * 60 * 1000;
       const conflictIntervalRaw = e.MUSE_CONFLICT_WATCH_INTERVAL_MS ? Number(e.MUSE_CONFLICT_WATCH_INTERVAL_MS) : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
       const conflictIntervalMs = Number.isFinite(conflictIntervalRaw) && conflictIntervalRaw > 0 ? conflictIntervalRaw : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
-      let lastConflictWatchMs: number | undefined;
-      const conflictWatchTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false)) return;
-        if (!conflictWatchLister) return;
-        const nowMs = Date.now();
-        if (lastConflictWatchMs !== undefined && nowMs - lastConflictWatchMs < conflictIntervalMs) return;
-        lastConflictWatchMs = nowMs;
-        const now = new Date(nowMs);
-        try {
-          const events = await conflictWatchLister({ from: now, to: new Date(nowMs + conflictWithinDays * 86_400_000) });
-          const notices = selectUpcomingConflicts(
-            events.map((ev) => ({ allDay: ev.allDay, title: ev.title, startsAt: ev.startsAt, endsAt: ev.endsAt })),
-            { now, withinDays: conflictWithinDays }
-          );
-          if (notices.length === 0) return;
-          let firedKeys: string[] = [];
-          try {
-            const parsed = JSON.parse(readFileSync(conflictWatchSidecar, "utf8")) as { keys?: unknown };
-            if (Array.isArray(parsed.keys)) firedKeys = parsed.keys.filter((k): k is string => typeof k === "string");
-          } catch { /* no sidecar yet ⇒ nothing fired */ }
-          const fresh = notices.filter((n) => !firedKeys.includes(n.key));
-          if (fresh.length === 0) return;
-          const text = `Heads up — upcoming calendar conflict${fresh.length === 1 ? "" : "s"}:\n${fresh.map((n) => `• ${n.line}`).join("\n")}`;
-          await messagingRegistry.send(provider, { destination, text });
-          try {
-            mkdirSync(dirname(conflictWatchSidecar), { recursive: true });
-            writeFileSync(conflictWatchSidecar, JSON.stringify({ keys: [...firedKeys, ...fresh.map((n) => n.key)].slice(-200) }), "utf8");
-          } catch { /* fail-soft — dedup persistence is best-effort */ }
-          io.stdout(`[${now.toISOString()}] conflict-watch: warned of ${fresh.length.toString()} upcoming double-booking${fresh.length === 1 ? "" : "s"}\n`);
-        } catch { /* fail-soft — a calendar hiccup must never break the daemon */ }
-      };
+      const lastConflictWatchMs: TickRunState = { current: undefined };
+      const conflictWatchTick = makeConflictWatchTick({
+        destination,
+        env: e,
+        intervalMs: conflictIntervalMs,
+        lastRunMs: lastConflictWatchMs,
+        lister: conflictWatchLister,
+        messagingRegistry,
+        provider,
+        sidecarFile: conflictWatchSidecar,
+        stdout: io.stdout,
+        withinDays: conflictWithinDays
+      });
 
       // Opt-in browsing auto-sync — the always-on half of `muse browsing sync`:
       // the daemon reads NEW Chrome visits into the local archive on its own tick,
@@ -1014,33 +958,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const browsingIntervalRaw = e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ? Number(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES) : 60;
       const browsingIntervalMinutes = Number.isFinite(browsingIntervalRaw) && browsingIntervalRaw > 0 ? Math.trunc(browsingIntervalRaw) : 60;
       const browsingSyncIntervalMs = browsingIntervalMinutes * 60 * 1000;
-      const defaultBrowsingSync = async (args: { env: NodeJS.ProcessEnv; storeFile: string; limit: number }): Promise<{ synced: number; total: number }> => {
-        const historyFile = await locateChromeHistoryFile({ env: args.env });
-        if (!historyFile) return { synced: 0, total: 0 };
-        // Embed titles at ingest so cross-lingual recall works later. Localhost-only
-        // + per-visit fail-soft: a down embedder never breaks the tick (visits still
-        // ingest, unembedded, and backfill on a later tick once Ollama is back).
-        return syncBrowsingHistory({
-          embed: (text) => embed(text, defaultEmbedModel(args.env)),
-          historyFile,
-          limit: args.limit,
-          storeFile: args.storeFile
-        });
-      };
-      let lastBrowsingSyncMs: number | undefined;
-      const browsingAutoSyncTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false)) return; // consent gate FIRST — no Chrome access when off
-        const nowMs = Date.now();
-        if (!shouldAutoSyncBrowsing(lastBrowsingSyncMs, nowMs, browsingSyncIntervalMs)) return;
-        lastBrowsingSyncMs = nowMs;
-        try {
-          const storeFile = e.MUSE_BROWSING_FILE?.trim()?.length
-            ? e.MUSE_BROWSING_FILE.trim()
-            : join(homedir(), ".muse", "browsing.json");
-          const { synced } = await (helpers.browsingSync ?? defaultBrowsingSync)({ env: e, limit: BROWSING_SYNC_LIMIT, storeFile });
-          if (synced > 0) io.stdout(`[${new Date(nowMs).toISOString()}] browsing: synced ${synced.toString()} new visit${synced === 1 ? "" : "s"} (ask about them with \`muse ask\`)\n`);
-        } catch { /* fail-soft — a Chrome-file hiccup must never break the daemon */ }
-      };
+      const lastBrowsingSyncMs: TickRunState = { current: undefined };
+      const browsingAutoSyncTick = makeBrowsingAutoSyncTick({
+        env: e,
+        intervalMs: browsingSyncIntervalMs,
+        lastRunMs: lastBrowsingSyncMs,
+        stdout: io.stdout,
+        ...(helpers.browsingSync ? { browsingSync: helpers.browsingSync } : {})
+      });
 
       // DS-13: age-based retention for unbounded append-only local state
       // (.muse/runs, .muse/checkpoints, ~/.muse/action-log.json,
