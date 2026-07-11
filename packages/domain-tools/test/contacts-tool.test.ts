@@ -107,7 +107,9 @@ describe("createContactsAddTool — capture a person", () => {
 
   it("omits relationship when not given (a plain contact stays plain)", async () => {
     const { saved, tool } = addTool();
-    await tool.execute({ email: "x@y.com", name: "Plain" });
+    const out = await tool.execute({ email: "x@y.com", name: "Plain" });
+    expect(out).toMatchObject({ added: true });
+    expect(saved).toHaveLength(1);
     expect(saved[0]).not.toHaveProperty("relationship");
   });
 

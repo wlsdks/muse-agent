@@ -1,4 +1,5 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
+import { safeReadText } from "./http-utils.js";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -147,13 +148,5 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     if (mime.includes("ogg")) return "audio.ogg";
     if (mime.includes("flac")) return "audio.flac";
     return "audio.bin";
-  }
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return `<status ${response.status}>`;
   }
 }

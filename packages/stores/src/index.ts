@@ -4,9 +4,15 @@
 // unexported. See packages/agent-core/src/index.ts for the house style.
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+export { appendDigestItem, drainDigestQueue, readDigestQueue } from "./digest-queue.js";
+export type { DigestQueueItem } from "./digest-queue.js";
+export { digestAlreadySentToday, localDateKey, markDigestSent, readDigestSentDate } from "./digest-sent-store.js";
+export type { DigestSentState } from "./digest-sent-store.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";
+export { appendInterruptionDelivery, readInterruptionLedger, withinInterruptionBudget } from "./interruption-budget.js";
+export type { InterruptionBudgetCaps, InterruptionDeliveryEntry } from "./interruption-budget.js";
 export { DEFAULT_JOURNEY_LIMIT, factRecordsFromProvenance, mergeJourneyEvents, resolveJourneyForgetTarget } from "./journey-timeline.js";
 export type { JourneyEvent, JourneyEventKind, JourneyFactRecord, JourneyFactValueStep, JourneyForgetTarget, JourneySkillRecord, JourneyStoreKind, JourneyStrategyRecord, MergeJourneyEventsInput } from "./journey-timeline.js";
 export { enqueueLearnEvent, markLearnEventsDone, pruneLearnQueueByAge, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";

@@ -1,6 +1,6 @@
 /**
- * Deliver the synthesised situational briefing (P8-b1) on the real
- * channel, once per situation-window. Composes the P2
+ * Deliver the synthesised situational briefing on the real
+ * channel, once per situation-window. Composes the
  * contract-faithful messaging-send path with a minimal
  * last-fired-at dedupe sidecar so a JARVIS briefs the situation
  * once, not on every tick.

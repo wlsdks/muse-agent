@@ -60,7 +60,7 @@ export interface SearchMcpServerOptions {
   /**
    * Retry-with-backoff tuning for the (idempotent GET) search fetches —
    * a transient 429 / 5xx / network reject on the DDG or SearXNG read is
-   * retried instead of failing the search outright (P19 actuator
+   * retried instead of failing the search outright (actuator
    * hardening). Safe because search is read-only; the state-changing
    * web-action path deliberately never retries. Tests inject
    * `{ baseDelayMs: 0, sleep: async () => {} }` to avoid real waits.

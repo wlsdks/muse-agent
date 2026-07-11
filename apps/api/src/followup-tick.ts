@@ -17,7 +17,7 @@
  * to [5s, 1h] for the same reason the other ticks clamp.
  */
 
-import { runDueFollowups, type ProactiveModelProviderLike } from "@muse/proactivity";
+import { runDueFollowups, type InterruptionBudgetWiring, type ProactiveModelProviderLike } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
@@ -42,6 +42,8 @@ export interface FollowupTickOptions {
   readonly quietHours?: QuietHourRange;
   /** Injectable clock for tests; default `() => new Date()`. */
   readonly now?: () => Date;
+  /** Opt-in interruption budget — forwarded verbatim to `runDueFollowups`. */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -70,6 +72,7 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
       const summary = await runDueFollowups({
         destination: options.destination,
         file: options.followupsFile,
+        ...(options.interruptionBudget ? { interruptionBudget: options.interruptionBudget } : {}),
         ...(options.maxPerTick !== undefined ? { maxPerTick: options.maxPerTick } : {}),
         model: options.model,
         modelProvider: options.modelProvider,

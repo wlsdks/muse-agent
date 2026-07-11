@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampLongPollSeconds, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
 import type {
   InboundFetchOptions,
@@ -154,7 +154,7 @@ export class TelegramProvider implements MessagingProvider {
     // `longPollSeconds` so Telegram HOLDS the request and returns the
     // instant a message arrives — the Bot API's real-time mechanism
     // (no websocket exists; webhook needs a public HTTPS endpoint).
-    const longPoll = clampLongPollSeconds(options?.longPollSeconds);
+    const longPoll = clampLongPollSeconds(options?.longPollSeconds, 50);
     const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=${longPoll.toString()}`
       + (offsetParam !== undefined ? `&offset=${offsetParam.toString()}` : "");
     // The HTTP timeout must outlive the held long poll or every idle
@@ -310,14 +310,6 @@ export function escapeForTelegramParseMode(
 }
 
 const TELEGRAM_MAX_TEXT = 4096;
-
-/** Telegram accepts 0–50s; out-of-range/invalid values collapse to a snapshot poll. */
-function clampLongPollSeconds(raw: number | undefined): number {
-  if (raw === undefined || !Number.isFinite(raw)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(50, Math.trunc(raw)));
-}
 
 /**
  * Clamp the SOURCE text so the escaped form Telegram receives never

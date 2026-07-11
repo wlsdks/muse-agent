@@ -445,40 +445,64 @@ export class MultiAgentOrchestrator {
     return selected.slice(0, limit);
   }
 
+  /**
+   * Run one worker to a terminal `OrchestrationStepResult`, publishing its
+   * outcome on the message bus. Shared by `runSequential` and `runParallel` —
+   * the only difference between the two callers is whether the next worker's
+   * input is threaded (sequential) or every worker shares the same input
+   * (parallel), which stays in the caller. `handoffOutput` is set on success
+   * (sequential feeds it to `addWorkerResultMessage`); `failure` is set on
+   * failure with the SAME error shape the previous inline code passed to
+   * `addHandoffMessage` — a fresh `Error(reason)` for a parse/validate
+   * rejection, the original caught error otherwise.
+   */
+  private async runWorkerStep(
+    runId: string,
+    worker: AgentWorker,
+    workerInput: AgentRunInput
+  ): Promise<{ step: OrchestrationStepResult; handoffOutput?: string; failure?: Error }> {
+    try {
+      const raw = await this.runRegisteredWorker(runId, worker, workerInput);
+      const parsed = parseWorkerResult(raw);
+      if (!parsed.ok) {
+        const failure = new Error(parsed.reason);
+        await this.publishWorkerFailure(worker.id, failure).catch(() => undefined);
+        return { failure, step: { error: parsed.reason, status: "failed", workerId: worker.id } };
+      }
+      const result = parsed.result;
+      const handoff = validateWorkerHandoff(worker.id, result.response.output);
+      if (!handoff.ok) {
+        const failure = new Error(handoff.reason);
+        await this.publishWorkerFailure(worker.id, failure).catch(() => undefined);
+        return { failure, step: { error: handoff.reason, status: "failed", workerId: worker.id } };
+      }
+      // A bus-publish failure must NOT re-trigger the catch (it would
+      // double-push a `failed` entry for this worker and, for the sequential
+      // caller, corrupt the pipeline input) — only worker.run decides status.
+      // Same stance as runRace.
+      await this.publishWorkerResult(worker.id, result).catch(() => undefined);
+      return { handoffOutput: handoff.output, step: { result, status: "completed", workerId: worker.id } };
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(errorMessage(error));
+      await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
+      return { failure, step: { error: errorMessage(error), status: "failed", workerId: worker.id } };
+    }
+  }
+
   private async runSequential(input: AgentRunInput, workers: readonly AgentWorker[]): Promise<readonly OrchestrationStepResult[]> {
     const results: OrchestrationStepResult[] = [];
     let currentInput = input;
 
     for (const worker of workers) {
-      try {
-        const raw = await this.runRegisteredWorker(input.runId!, worker, withSelectedWorker(currentInput, worker));
-        const parsed = parseWorkerResult(raw);
-        if (!parsed.ok) {
-          results.push({ error: parsed.reason, status: "failed", workerId: worker.id });
-          await this.publishWorkerFailure(worker.id, new Error(parsed.reason)).catch(() => undefined);
-          currentInput = addHandoffMessage(currentInput, worker.id, new Error(parsed.reason));
-          continue;
-        }
-        const result = parsed.result;
-        const handoff = validateWorkerHandoff(worker.id, result.response.output);
-        if (!handoff.ok) {
-          results.push({ error: handoff.reason, status: "failed", workerId: worker.id });
-          await this.publishWorkerFailure(worker.id, new Error(handoff.reason)).catch(() => undefined);
-          currentInput = addHandoffMessage(currentInput, worker.id, new Error(handoff.reason));
-          continue;
-        }
-        results.push({ result, status: "completed", workerId: worker.id });
-        // A bus-publish failure must NOT re-trigger the catch (it
-        // would double-push a `failed` entry for this worker and
-        // corrupt the pipeline input) — only worker.run decides
-        // status. Same stance as runRace.
-        await this.publishWorkerResult(worker.id, result).catch(() => undefined);
-        currentInput = addWorkerResultMessage(currentInput, worker.id, handoff.output);
-      } catch (error) {
-        results.push({ error: errorMessage(error), status: "failed", workerId: worker.id });
-        await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
-        currentInput = addHandoffMessage(currentInput, worker.id, error);
-      }
+      const { step, handoffOutput, failure } = await this.runWorkerStep(
+        input.runId!,
+        worker,
+        withSelectedWorker(currentInput, worker)
+      );
+      results.push(step);
+      currentInput = failure
+        ? addHandoffMessage(currentInput, worker.id, failure)
+        : addWorkerResultMessage(currentInput, worker.id, handoffOutput!);
     }
 
     return results;
@@ -486,28 +510,8 @@ export class MultiAgentOrchestrator {
 
   private async runParallel(input: AgentRunInput, workers: readonly AgentWorker[]): Promise<readonly OrchestrationStepResult[]> {
     return Promise.all(workers.map(async (worker): Promise<OrchestrationStepResult> => {
-      try {
-        const raw = await this.runRegisteredWorker(input.runId!, worker, withSelectedWorker(input, worker));
-        const parsed = parseWorkerResult(raw);
-        if (!parsed.ok) {
-          await this.publishWorkerFailure(worker.id, new Error(parsed.reason)).catch(() => undefined);
-          return { error: parsed.reason, status: "failed", workerId: worker.id };
-        }
-        const result = parsed.result;
-        const handoff = validateWorkerHandoff(worker.id, result.response.output);
-        if (!handoff.ok) {
-          await this.publishWorkerFailure(worker.id, new Error(handoff.reason)).catch(() => undefined);
-          return { error: handoff.reason, status: "failed", workerId: worker.id };
-        }
-        // A bus-publish failure must not downgrade a succeeded
-        // worker to "failed" or reject the whole Promise.all —
-        // only worker.run decides status. Same stance as runRace.
-        await this.publishWorkerResult(worker.id, result).catch(() => undefined);
-        return { result, status: "completed", workerId: worker.id };
-      } catch (error) {
-        await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
-        return { error: errorMessage(error), status: "failed", workerId: worker.id };
-      }
+      const { step } = await this.runWorkerStep(input.runId!, worker, withSelectedWorker(input, worker));
+      return step;
     }));
   }
 

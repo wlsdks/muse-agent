@@ -219,7 +219,7 @@ describe("muse remind list --local — ordering by parsed instant, not lexicogra
   });
 });
 
-describe("resolveLocalReminderId — typo-tolerant id resolution (goal-544 sibling)", () => {
+describe("resolveLocalReminderId — typo-tolerant id resolution", () => {
   const reminders = [
     { id: "rem_abc123def", text: "alpha", dueAt: "2026-05-21T10:00:00Z", createdAt: "2026-05-20T10:00:00Z", status: "pending" as const },
     { id: "rem_xyz789ghi", text: "beta", dueAt: "2026-05-21T11:00:00Z", createdAt: "2026-05-20T10:00:00Z", status: "pending" as const }

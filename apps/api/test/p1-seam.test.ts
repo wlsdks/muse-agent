@@ -39,11 +39,14 @@ describe("P1 seam — two-way channel conversation composes end-to-end", () => {
     const cursorFile = join(dir, "telegram-inbox.json.reply-cursor.json");
     const threadFile = join(dir, "telegram-inbox.json.threads.json");
 
-    const posts: Array<{ url: string; body: { chat_id: string; text: string } }> = [];
+    const posts: Array<{ url: string; body: { chat_id: string; text?: string; action?: string } }> = [];
     const telegram = new TelegramProvider({
       baseUrl: "https://tg.test",
       fetch: async (u, init) => {
-        posts.push({ body: JSON.parse(String(init?.body)) as { chat_id: string; text: string }, url: String(u) });
+        posts.push({
+          body: JSON.parse(String(init?.body)) as { chat_id: string; text?: string; action?: string },
+          url: String(u)
+        });
         return fakeJsonResponse({ ok: true, result: { message_id: posts.length } });
       },
       token: "BOT-T"
@@ -80,6 +83,13 @@ describe("P1 seam — two-way channel conversation composes end-to-end", () => {
       // Turn 2: a risky request on the SAME channel.
       await appendInbound(inboxFile, inbound("m2", "555", "delete all my tasks"));
       await handle.tickOnce();
+
+      // Every POST hits one of exactly two known Telegram endpoints —
+      // sendChatAction (typing keepalives, interleaved on a timer) and
+      // sendMessage (the actual reply content). Any other endpoint here
+      // would be an unexpected wiring change.
+      const endpoints = new Set(posts.map((p) => p.url.replace(/^https:\/\/tg\.test\/botBOT-T\//u, "")));
+      expect(endpoints).toEqual(new Set(["sendChatAction", "sendMessage"]));
 
       // 3 outbound sendMessage POSTs, all to chat 555 over the real
       // provider HTTP: (1) the turn-1 reply, (2) the in-chat approval

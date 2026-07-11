@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
 const SIGNAL_FIELDS = ["app", "window", "selected", "clipboard", "notifications"] as const;
@@ -258,9 +259,49 @@ export function createAmbientNoticeRunner(options: {
    * which only decorates rule-fired notices.
    */
   readonly knowledgeTrigger?: KnowledgeAmbientTrigger;
+  /**
+   * Opt-in interruption budget (unset → identical to pre-budget behavior).
+   * Within budget, a firing notice still reaches the sink exactly as before;
+   * over budget, the sink is skipped and the notice lands in the digest
+   * queue instead — the edge-trigger state still advances either way so a
+   * suppressed rule doesn't re-fire every tick just because it never
+   * actually reached the sink.
+   */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
+  /** Injectable clock for the budget ledger. Default `() => new Date()`. */
+  readonly now?: () => Date;
 }): AmbientNoticeRunner {
   let lastMatchedIds = new Set<string>();
   let lastKnowledgeKey: string | undefined;
+  const now = options.now ?? ((): Date => new Date());
+  // Gate a sink.deliver call through the budget when wired, else send it
+  // plainly — a single seam both call sites below share. Returns whether the
+  // caller should treat the notice as delivered (mark fired but don't count
+  // it) or a genuine send. Rethrows a real delivery failure so each call
+  // site's own catch keeps its existing "don't consume the edge" behavior.
+  const deliverGated = async (
+    notice: { readonly kind: string; readonly text: string; readonly title: string },
+    sourceId: string
+  ): Promise<{ readonly digested: boolean }> => {
+    if (!options.interruptionBudget) {
+      await options.sink.deliver(notice);
+      return { digested: false };
+    }
+    const budget = options.interruptionBudget;
+    const result = await applyInterruptionBudget({
+      caps: resolveInterruptionBudgetCaps(budget),
+      deliver: async () => {
+        await options.sink.deliver(notice);
+      },
+      digestFile: budget.digestFile,
+      ledgerFile: budget.ledgerFile,
+      now: now(),
+      source: "ambient-notice",
+      sourceId,
+      text: notice.text
+    });
+    return { digested: result.outcome === "digested" };
+  };
   return {
     async tick(): Promise<RunAmbientNoticeTickSummary> {
       let signal: AmbientSignal | undefined;
@@ -292,12 +333,15 @@ export function createAmbientNoticeRunner(options: {
           nextMatched.add(id);
         }
       }
+      let ruleDelivered = 0;
       for (const notice of toFire) {
         const text = related && related.trim().length > 0 ? `${notice.text} — Related: ${related}` : notice.text;
         try {
-          await options.sink.deliver({ kind: notice.kind, text, title: notice.title });
+          const { digested } = await deliverGated({ kind: notice.kind, text, title: notice.title }, notice.ruleId);
+          if (!digested) ruleDelivered += 1;
           newlyFired.push(notice.ruleId);
-          // Mark fired ONLY after a successful send: a failed delivery
+          // Mark fired ONLY after a successful send OR a budget-suppressed
+          // digest (both consume the edge): a genuine failed delivery
           // leaves the rule OUT so it re-fires next tick instead of being
           // lost, and an already-sent sibling stays in so it never
           // duplicates. Other notices still go out (per-notice catch).
@@ -325,13 +369,17 @@ export function createAmbientNoticeRunner(options: {
           // context; a different connection (or the same after a gap) fires.
           if (related !== lastKnowledgeKey) {
             try {
-              await options.sink.deliver({
-                kind: "ambient",
-                text: related,
-                title: options.knowledgeTrigger.title ?? DEFAULT_KNOWLEDGE_TRIGGER_TITLE
-              });
-              knowledgeDelivered = 1;
-              // Mark deduped only after a successful send: a failed delivery
+              const { digested } = await deliverGated(
+                {
+                  kind: "ambient",
+                  text: related,
+                  title: options.knowledgeTrigger.title ?? DEFAULT_KNOWLEDGE_TRIGGER_TITLE
+                },
+                "knowledge-trigger"
+              );
+              if (!digested) knowledgeDelivered = 1;
+              // Mark deduped after a successful send OR a budget-suppressed
+              // digest (both consume the edge): a genuine failed delivery
               // leaves it un-keyed so it re-fires next tick (mirrors the rule path).
               lastKnowledgeKey = related;
             } catch {
@@ -344,7 +392,7 @@ export function createAmbientNoticeRunner(options: {
         }
       }
 
-      return { delivered: newlyFired.length + knowledgeDelivered, firedRuleIds: [...nextMatched] };
+      return { delivered: ruleDelivered + knowledgeDelivered, firedRuleIds: [...nextMatched] };
     }
   };
 }

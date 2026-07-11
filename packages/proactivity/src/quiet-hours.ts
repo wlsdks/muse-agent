@@ -81,3 +81,13 @@ export function gateProactiveNoticeSink(
     }
   };
 }
+
+/**
+ * Whole minutes from `now` until `target`, floored at 0 (a target already
+ * in the past reads as "due now" rather than a negative count). Shared by
+ * every proactive surface that renders a "starting in N min" / "due in N
+ * min" line so the rounding rule stays in one place.
+ */
+export function minutesUntil(target: Date, now: Date): number {
+  return Math.max(0, Math.round((target.getTime() - now.getTime()) / 60_000));
+}

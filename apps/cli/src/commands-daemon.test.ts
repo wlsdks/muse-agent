@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readBrowsingStore } from "@muse/recall";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
+import { appendDigestItem, enqueueLearnEvent, readDigestQueue, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
 import { buildCheckinQuestion, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -95,7 +95,10 @@ function tmpEnv(): NodeJS.ProcessEnv {
     MUSE_BRIEFING_SIDECAR_FILE: join(dir, "briefing-fired.json"),
     MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
     MUSE_DAEMON_CONFIG_FILE: join(dir, "daemon.json"),
+    MUSE_DIGEST_QUEUE_FILE: join(dir, "digest-queue.json"),
+    MUSE_DIGEST_SENT_FILE: join(dir, "digest-sent.json"),
     MUSE_FOLLOWUPS_FILE: join(dir, "followups.json"),
+    MUSE_INTERRUPTION_LEDGER_FILE: join(dir, "interruption-ledger.json"),
     MUSE_OBJECTIVES_FILE: join(dir, "objectives.json"),
     MUSE_PROACTIVE_HISTORY_FILE: join(dir, "history.json"),
     MUSE_PROACTIVE_SIDECAR_FILE: join(dir, "fired.json"),
@@ -1595,5 +1598,54 @@ describe("muse daemon — opt-in browsing auto-sync tick", () => {
     expect(on.stdout).toContain("browsing:   enabled");
     const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
     expect(off.stdout).toContain("browsing:   disabled (set MUSE_BROWSING_AUTO_SYNC)");
+  });
+});
+
+describe("muse daemon — daily digest flush (delivery half of the interruption budget)", () => {
+  it("at the digest hour: flushes the pre-seeded queue through the SAME channel as proactive, and drains it", async () => {
+    const env = tmpEnv();
+    // Deterministic without an injectable clock: pin the digest hour to
+    // whatever the real local hour is right now, so the tick's own
+    // `now.getHours() === digestHour` check passes regardless of when this
+    // suite runs.
+    env.MUSE_DIGEST_HOUR = new Date().getHours().toString();
+    await appendDigestItem(env.MUSE_DIGEST_QUEUE_FILE!, {
+      at: new Date(Date.now() - 60_000),
+      source: "pattern-firing",
+      text: "you usually leave by 5pm"
+    });
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/digest: sent \(1 item\(s\)\)/);
+    const digestSend = sent.find((m) => m.text.includes("you usually leave by 5pm"));
+    expect(digestSend).toBeDefined();
+    expect(digestSend!.destination).toBe("555");
+    expect(await readDigestQueue(env.MUSE_DIGEST_QUEUE_FILE!)).toHaveLength(0);
+  });
+
+  it("MUSE_DIGEST_ENABLED=false: the queue is never flushed even at the digest hour", async () => {
+    const env = tmpEnv();
+    env.MUSE_DIGEST_HOUR = new Date().getHours().toString();
+    env.MUSE_DIGEST_ENABLED = "false";
+    await appendDigestItem(env.MUSE_DIGEST_QUEUE_FILE!, { at: new Date(), source: "pattern-firing", text: "should stay queued" });
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).not.toContain("digest:");
+    expect(sent.some((m) => m.text.includes("should stay queued"))).toBe(false);
+    expect(await readDigestQueue(env.MUSE_DIGEST_QUEUE_FILE!)).toHaveLength(1);
+  });
+
+  it("--status reports the digest daemon's default-on state and its configured hour", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const res = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
+    expect(res.stdout).toContain("digest:     enabled (daily, at 18:00 local)");
   });
 });

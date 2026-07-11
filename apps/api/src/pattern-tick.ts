@@ -17,7 +17,7 @@
  * filesystem-walk cost trivial. Clamped to [60s, 1h].
  */
 
-import { runDuePatternNotices, type AgentInitiatedNoticeBrokerLike } from "@muse/proactivity";
+import { runDuePatternNotices, type AgentInitiatedNoticeBrokerLike, type InterruptionBudgetWiring } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
@@ -43,6 +43,8 @@ export interface PatternTickOptions {
   readonly quietHours?: QuietHourRange;
   /** Injectable clock for tests. */
   readonly now?: () => Date;
+  /** Opt-in interruption budget — forwarded verbatim to `runDuePatternNotices`. */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -74,6 +76,7 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
         registry: options.registry,
         ...(options.agentInitiatedNoticeBroker ? { agentInitiatedNoticeBroker: options.agentInitiatedNoticeBroker } : {}),
         ...(options.agentInitiatedNoticeUserId ? { agentInitiatedNoticeUserId: options.agentInitiatedNoticeUserId } : {}),
+        ...(options.interruptionBudget ? { interruptionBudget: options.interruptionBudget } : {}),
         select: {
           ...(options.cooldownMs !== undefined ? { cooldownMs: options.cooldownMs } : {}),
           ...(options.maxPerTick !== undefined ? { maxPerTick: options.maxPerTick } : {}),

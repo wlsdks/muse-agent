@@ -20,9 +20,8 @@
  *     toJsonObject
  *   - defaultMcpRequestTimeoutMs constant
  *
- * `toErrorMessage` is duplicated as a private 1-line helper — its
- * other consumer `McpManager` lives back in `index.ts`, so
- * exporting it would widen `@muse/mcp`'s public surface.
+ * `toErrorMessage` (Error.message / String fallback) lives in
+ * `./error-utils.js`, shared with `manager.ts` and `index.ts`.
  */
 
 import { lookup } from "node:dns/promises";
@@ -43,6 +42,7 @@ import { pathToFileURL } from "node:url";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { ToolRisk } from "@muse/tools";
 
+import { toErrorMessage } from "./error-utils.js";
 import {
   McpConnectionError,
   type DefaultMcpTransportConnectorOptions,
@@ -378,10 +378,6 @@ async function closeQuietly(client: Client): Promise<void> {
   } catch {
     // Best-effort cleanup after failed MCP initialization.
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

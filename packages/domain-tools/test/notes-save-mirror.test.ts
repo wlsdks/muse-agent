@@ -52,7 +52,8 @@ describe("muse.notes save — Apple Notes mirror injection (create-only)", () =>
     const dir = mkdtempSync(join(tmpdir(), "muse-notes-mirror-app-"));
     const { calls, mirror } = recordingMirror();
     const server = createNotesMcpServer({ notesDir: dir, mirror });
-    await toolNamed(server, "append").execute({ path: "log.md", content: "one line\n" });
+    const out = await toolNamed(server, "append").execute({ path: "log.md", content: "one line\n" });
+    expect(out).not.toHaveProperty("error");
     expect(calls).toHaveLength(0);
   });
 
@@ -61,7 +62,8 @@ describe("muse.notes save — Apple Notes mirror injection (create-only)", () =>
     const { calls, mirror } = recordingMirror();
     const server = createNotesMcpServer({ notesDir: dir, mirror });
     writeFileSync(join(dir, "d.md"), "x", "utf8");
-    await toolNamed(server, "delete").execute({ path: "d.md" });
+    const out = await toolNamed(server, "delete").execute({ path: "d.md" });
+    expect(out).toEqual({ deleted: true, path: "d.md" });
     expect(calls).toHaveLength(0);
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { browsingHostname, buildBrowsingContextBlock, selectBrowsingVisitsForQuery } from "./present.js";
+import { buildBrowsingContextBlock } from "./context-blocks.js";
+import { browsingHostname, selectBrowsingVisitsForQuery } from "./present.js";
 import type { BrowsingVisit } from "./browsing-store.js";
 
 const visit = (id: string, title: string, url: string, visitedAt: string, embedding?: readonly number[]): BrowsingVisit => embedding ? ({ id, title, url, visitedAt, embedding }) : ({ id, title, url, visitedAt });

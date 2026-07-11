@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseOpenAIStream, parseOpenAIResponsesStream } from "../src/provider-openai.js";
+import { parseOpenAIStream } from "../src/provider-openai.js";
+import { parseOpenAIResponsesStream } from "../src/provider-openai-responses.js";
 import type { ModelEvent } from "../src/index.js";
 
 const enc = new TextEncoder();

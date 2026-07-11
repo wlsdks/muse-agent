@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+
 import type { ProactiveNotice } from "./types.js";
 
 /**
@@ -49,21 +51,13 @@ export function useNoticeStream(
             break;
           }
           buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() ?? "";
-          for (const part of parts) {
-            let eventName = "message";
-            let dataLine = "";
-            for (const line of part.split("\n")) {
-              if (line.startsWith("event: ")) {
-                eventName = line.slice(7).trim();
-              } else if (line.startsWith("data: ")) {
-                dataLine = line.slice(6);
-              }
-            }
-            if (eventName === "notice" && dataLine) {
+          const { frames, rest } = splitSseFrames(buffer);
+          buffer = rest;
+          for (const frame of frames) {
+            const { data, eventName } = parseSseFrame(frame);
+            if (eventName === "notice" && data) {
               try {
-                onNoticeRef.current(JSON.parse(dataLine) as ProactiveNotice);
+                onNoticeRef.current(JSON.parse(data) as ProactiveNotice);
               } catch {
                 /* ignore malformed notice */
               }

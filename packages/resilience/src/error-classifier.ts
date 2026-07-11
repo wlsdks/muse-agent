@@ -257,3 +257,21 @@ function readBooleanProp(obj: unknown, key: string): boolean | null {
   const value = (obj as Record<string, unknown>)[key];
   return typeof value === "boolean" ? value : null;
 }
+
+/**
+ * A user/caller-initiated abort, not a real failure — circuit breakers,
+ * retry, and fallback must all let it propagate unclassified rather than
+ * counting it toward failure thresholds or trying another model.
+ * Lives alongside `classifyError` (both are error-classification, no
+ * dependency on ModelProvider or the resilience primitives above it) so
+ * every consumer — including a moved-out module like fallback-strategy —
+ * can import it without a reverse dependency on index.ts.
+ */
+export function isCancellationLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as { readonly code?: unknown; readonly name?: unknown };
+  return record.name === "AbortError" || record.code === "ABORT_ERR";
+}

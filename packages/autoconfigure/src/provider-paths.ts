@@ -183,6 +183,24 @@ export function resolveCheckinsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_CHECKINS_FILE", "checkins.json");
 }
 
+/** The shared interruption-budget delivery ledger every UNASKED notice loop
+ *  gates its send against (`packages/stores/interruption-budget.ts`). */
+export function resolveInterruptionLedgerFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_INTERRUPTION_LEDGER_FILE", "interruption-ledger.json");
+}
+
+/** The shared digest queue a budget-suppressed notice lands in instead of
+ *  sending (`packages/stores/digest-queue.ts`). */
+export function resolveDigestQueueFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_DIGEST_QUEUE_FILE", "digest-queue.json");
+}
+
+/** The once-per-day "already sent" sidecar the digest flush dedupes against
+ *  (`packages/stores/digest-sent-store.ts`). */
+export function resolveDigestSentFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_DIGEST_SENT_FILE", "digest-sent.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

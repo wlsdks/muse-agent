@@ -1,5 +1,5 @@
 /**
- * Draft-first, fail-closed outbound email — the P11-send half, the
+ * Draft-first, fail-closed outbound email — the send half, the
  * first capability that *transmits content to a third party*, governed
  * by `.claude/rules/outbound-safety.md`:
  *

@@ -8,7 +8,8 @@
  * the trust signals, and the run-log.
  */
 
-import { buildBrowsingContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, selectBrowsingVisitsForQuery, selectFeedHeadlinesForQuery, type BrowsingHit } from "./present.js";
+import { buildBrowsingContextBlock, buildEpisodeContextBlock, buildFeedContextBlock } from "./context-blocks.js";
+import { selectBrowsingVisitsForQuery, selectFeedHeadlinesForQuery, type BrowsingHit } from "./present.js";
 import { rankEpisodeHits } from "./select.js";
 import { readEpisodes, readReflections, selectReflectionsForRecall } from "@muse/stores";
 

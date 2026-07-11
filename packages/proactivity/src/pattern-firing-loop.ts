@@ -37,6 +37,7 @@ import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "@muse/stores";
+import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
 export interface RunDuePatternNoticesOptions {
@@ -64,6 +65,14 @@ export interface RunDuePatternNoticesOptions {
    */
   readonly agentInitiatedNoticeBroker?: AgentInitiatedNoticeBrokerLike;
   readonly agentInitiatedNoticeUserId?: string;
+  /**
+   * Opt-in interruption budget (unset → identical to pre-budget behavior).
+   * Within budget, a fireable pattern still delivers exactly as before; over
+   * budget, the send is skipped and the suggestion lands in the digest queue
+   * instead — the cooldown sidecar still advances either way so it doesn't
+   * re-offer the same match next tick.
+   */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 export interface RunDuePatternNoticesSummary {
@@ -114,13 +123,40 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
         const composed = await options.composeSuggestion(match).catch(() => undefined);
         if (composed && composed.trim().length > 0) text = composed.trim();
       }
-      await sendWithRetry(options.registry, options.providerId, {
+      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text
-      });
+      }).then(() => undefined);
+      let digested = false;
+      if (options.interruptionBudget) {
+        const budget = options.interruptionBudget;
+        const result = await applyInterruptionBudget({
+          caps: resolveInterruptionBudgetCaps(budget),
+          deliver,
+          digestFile: budget.digestFile,
+          errorLogger: (message) => errors.push(`${match.id}: ${message}`),
+          ledgerFile: budget.ledgerFile,
+          now: now(),
+          source: "pattern-firing",
+          sourceId: match.id,
+          text
+        });
+        digested = result.outcome === "digested";
+      } else {
+        await deliver();
+      }
+      // The cooldown sidecar advances whether the suggestion was sent or
+      // suppressed to the digest — a suppressed match must not re-offer
+      // itself next tick just because it never actually reached the user.
       await recordPatternFired(options.patternsFiredFile, match.id, now().getTime());
-      delivered += 1;
       fired.push(match);
+      if (!digested) {
+        delivered += 1;
+      }
+      // The broker feeds an already-open live stream (an engaged user watching
+      // /api/agent-notices/stream) — publish regardless of the budget outcome.
+      // The interruption budget governs push channels (messaging send) only;
+      // suppressing ambient visibility too would defeat the point of the live feed.
       if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
         try {
           options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {

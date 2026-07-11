@@ -23,6 +23,7 @@ import { redactSecretsInText } from "@muse/shared";
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 import type { ProactiveFiredKind } from "./proactive-notice-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ProactiveHistoryEntry {
   /** "calendar" | "task" — same union the dedupe sidecar uses. */
@@ -148,19 +149,6 @@ export async function rotateProactiveHistoryFiles(file: string, archiveMaxFiles:
     await fs.rename(file, `${file}.1`);
   } catch {
     // Live file may not exist yet (first-rotation edge case).
-  }
-}
-
-// Move a present-but-corrupt store aside so the next append
-// starts fresh WITHOUT permanently destroying this audit log.
-// Best-effort; the original bytes survive at `<file>.corrupt-<ts>`
-// for manual recovery — the same posture as the sibling personal
-// stores. A missing file is NOT corruption and is never moved.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
   }
 }
 

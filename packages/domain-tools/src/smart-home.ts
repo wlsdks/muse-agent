@@ -1,5 +1,5 @@
 /**
- * P16 lifestyle actuator: opt-in Home Assistant smart-home control.
+ * Lifestyle actuator: opt-in Home Assistant smart-home control.
  * Every state-changing service call (turn a light off, lock a door)
  * goes through the SAME fail-closed approval gate as every other
  * outbound/state-changing action (`performWebActionWithApproval`,

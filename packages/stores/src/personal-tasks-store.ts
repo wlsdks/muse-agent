@@ -20,6 +20,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import { formatDueLocal } from "@muse/mcp-shared";
 import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "@muse/mcp-shared";
 import { withFileLock } from "./encrypted-file.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface PersistedTask {
   readonly id: string;
@@ -48,21 +49,6 @@ export interface PersistedTask {
 }
 
 export type TaskStatusFilter = "open" | "done" | "all";
-
-/**
- * Move a present-but-corrupt store aside so the next write
- * starts fresh WITHOUT permanently destroying the user's prior
- * tasks. Best-effort: a rename failure must not crash the read
- * path. The original bytes survive at `<file>.corrupt-<ts>` for
- * manual recovery.
- */
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
 
 export async function readTasks(file: string): Promise<readonly PersistedTask[]> {
   let raw: string;

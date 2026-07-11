@@ -1,6 +1,6 @@
 /**
  * `muse objectives` — the user entry point to the standing-objective
- * delegated-autonomy chain (P5 store → P9 daemon). Local mode over
+ * delegated-autonomy chain (store → daemon). Local mode over
  * the shared `~/.muse/objectives.json`, the same file the
  * objectives daemon ticks, so a CLI-registered objective is picked
  * up on the next tick with no API server required.

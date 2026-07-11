@@ -31,7 +31,7 @@ import {
   type UserModel,
   type UserModelSlot
 } from "./index.js";
-import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, normalizeMemoryKey, sanitizeUserMemoryValue } from "./memory-user-store.js";
+import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, normalizeMemoryKey, resolveForgetTarget, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -225,17 +225,11 @@ export class FileUserMemoryStore implements UserMemoryStore {
   async forget(userId: string, rawKey: string, kind?: "fact" | "preference"): Promise<boolean> {
     const existing = await this.findByUserId(userId);
     if (!existing) return false;
-    // Exact stored key first; else the normalized form, so "Home City" can
-    // forget the canonicalized "home_city" entry written by upsertFact.
-    const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
-    // Namespace-scoped: `kind` limits the delete to facts OR preferences (so an
-    // auto-extracted FACT retraction can't wipe a same-key PREFERENCE). Omitting
-    // `kind` keeps the dual-delete for the explicit `/forget` control.
-    const dropFact = kind !== "preference";
-    const dropPref = kind !== "fact";
-    if (!(dropFact && key in existing.facts) && !(dropPref && key in existing.preferences)) {
+    const target = resolveForgetTarget(existing, rawKey, kind);
+    if (!target) {
       return false;
     }
+    const { key, dropFact, dropPref } = target;
     await this.patch(userId, (current) => {
       const { [key]: _f, ...factsWithout } = current.facts;
       const { [key]: _p, ...prefsWithout } = current.preferences;

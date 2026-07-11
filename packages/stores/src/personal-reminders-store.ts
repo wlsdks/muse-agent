@@ -19,6 +19,7 @@ import type { JsonObject } from "@muse/shared";
 import { formatDueLocal } from "@muse/mcp-shared";
 import { withFileLock } from "./encrypted-file.js";
 import { parseTaskDueAt } from "./personal-tasks-store.js";
+import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ReminderVia {
   readonly providerId: string;
@@ -59,18 +60,6 @@ export interface PersistedReminder {
 }
 
 export type ReminderStatusFilter = "pending" | "fired" | "all" | "due";
-
-// Move a present-but-corrupt store aside so the next write
-// starts fresh WITHOUT permanently destroying the user's prior
-// reminders. Best-effort; the original bytes survive at
-// `<file>.corrupt-<ts>` for manual recovery.
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
 
 export async function readReminders(file: string): Promise<readonly PersistedReminder[]> {
   let raw: string;

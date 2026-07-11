@@ -1,21 +1,22 @@
-import {
-  ModelProviderRegistry,
-  parseModelName,
-  type ModelMessage,
-  type ModelProvider,
-  type ModelResponse
-} from "@muse/model";
-import type { JsonObject } from "@muse/shared";
 import { finiteOr } from "@muse/shared";
 
-import { classifyError } from "./error-classifier.js";
+import { classifyError, isCancellationLikeError } from "./error-classifier.js";
+import type { FallbackStrategy } from "./fallback-strategy.js";
 
 export {
   classifyError,
+  isCancellationLikeError,
   type ClassifiedError,
   type ErrorReason,
   type RecoveryHints
 } from "./error-classifier.js";
+
+export {
+  ModelFallbackStrategy,
+  type FallbackCommand,
+  type FallbackStrategy,
+  type ModelFallbackStrategyOptions
+} from "./fallback-strategy.js";
 
 export type Awaitable<T> = T | Promise<T>;
 export type CircuitBreakerState = "closed" | "open" | "half_open";
@@ -75,24 +76,6 @@ export interface RetryOptions extends RetryPolicy {
   readonly name?: string;
   readonly metricsRecorder?: ResilienceMetricsRecorder;
   readonly sleep?: (ms: number) => Promise<void>;
-}
-
-export interface FallbackCommand {
-  readonly messages: readonly ModelMessage[];
-  readonly metadata?: JsonObject;
-  readonly temperature?: number;
-  readonly maxOutputTokens?: number;
-}
-
-export interface FallbackStrategy {
-  execute(command: FallbackCommand, originalError: unknown): Promise<ModelResponse | undefined>;
-}
-
-export interface ModelFallbackStrategyOptions {
-  readonly fallbackModels: readonly string[];
-  readonly providerRegistry?: ModelProviderRegistry;
-  readonly providers?: ReadonlyMap<string, ModelProvider> | readonly ModelProvider[];
-  readonly metricsRecorder?: ResilienceMetricsRecorder;
 }
 
 export const noOpResilienceMetricsRecorder: ResilienceMetricsRecorder = {};
@@ -431,77 +414,6 @@ export class NoOpFallbackStrategy implements FallbackStrategy {
   }
 }
 
-export class ModelFallbackStrategy implements FallbackStrategy {
-  private readonly fallbackModels: readonly string[];
-  private readonly providerRegistry?: ModelProviderRegistry;
-  private readonly providers = new Map<string, ModelProvider>();
-  private readonly metricsRecorder: ResilienceMetricsRecorder;
-
-  constructor(options: ModelFallbackStrategyOptions) {
-    this.fallbackModels = options.fallbackModels;
-    this.providerRegistry = options.providerRegistry;
-    this.metricsRecorder = options.metricsRecorder ?? noOpResilienceMetricsRecorder;
-
-    if (options.providers && isProviderMap(options.providers)) {
-      for (const [id, provider] of options.providers) {
-        this.providers.set(id, provider);
-      }
-    } else if (options.providers) {
-      for (const provider of options.providers) {
-        this.providers.set(provider.id, provider);
-      }
-    }
-  }
-
-  async execute(command: FallbackCommand, originalError: unknown): Promise<ModelResponse | undefined> {
-    void originalError;
-
-    for (const modelName of this.fallbackModels) {
-      try {
-        const provider = this.resolveProvider(modelName);
-        const model = parseModelName(modelName).modelId;
-        const response = await provider.generate({
-          maxOutputTokens: command.maxOutputTokens,
-          messages: command.messages,
-          metadata: command.metadata,
-          model,
-          temperature: command.temperature
-        });
-
-        if (response.output.trim().length > 0) {
-          this.metricsRecorder.recordFallbackAttempt?.(modelName, true);
-          return response;
-        }
-
-        this.metricsRecorder.recordFallbackAttempt?.(modelName, false);
-      } catch (error) {
-        if (isCancellationLikeError(error)) {
-          throw error;
-        }
-
-        this.metricsRecorder.recordFallbackAttempt?.(modelName, false);
-      }
-    }
-
-    return undefined;
-  }
-
-  private resolveProvider(modelName: string): ModelProvider {
-    if (this.providerRegistry) {
-      return this.providerRegistry.getProvider(modelName);
-    }
-
-    const parsed = parseModelName(modelName);
-    const provider = parsed.providerId ? this.providers.get(parsed.providerId) : undefined;
-
-    if (!provider) {
-      throw new Error(`No fallback provider registered for model: ${modelName}`);
-    }
-
-    return provider;
-  }
-}
-
 export function computeRetryDelay(attempt: number, options: RetryPolicy = {}): number {
   // `?? default` does NOT catch NaN / Infinity (a misconfigured
   // env-derived `Number("")` is NaN). Without this an unguarded
@@ -580,23 +492,8 @@ export function scaleRequestTimeout(
 }
 
 
-export function isCancellationLikeError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const record = error as { readonly code?: unknown; readonly name?: unknown };
-  return record.name === "AbortError" || record.code === "ABORT_ERR";
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
-}
-
-function isProviderMap(
-  providers: ReadonlyMap<string, ModelProvider> | readonly ModelProvider[]
-): providers is ReadonlyMap<string, ModelProvider> {
-  return typeof (providers as ReadonlyMap<string, ModelProvider>).get === "function";
 }

@@ -1,4 +1,5 @@
-import { homedir } from "node:os";
+import { mkdtempSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -193,7 +194,11 @@ describe("autoconfigure", () => {
 
   it("buildInboxContextProvider stays undefined when no messaging token is registered (Phase 2)", async () => {
     const { buildInboxContextProvider } = await import("../src/personal-providers.js");
-    expect(buildInboxContextProvider({})).toBeUndefined();
+    // Pin the credentials file to an empty tmp location — the default falls
+    // back to the REAL ~/.muse/messaging.json, so a token registered on the
+    // dev machine would leak into this "no token" assumption.
+    const emptyCredentials = join(mkdtempSync(join(tmpdir(), "muse-inbox-isolated-")), "messaging.json");
+    expect(buildInboxContextProvider({ MUSE_MESSAGING_CREDENTIALS_FILE: emptyCredentials })).toBeUndefined();
   });
 
   it("buildToolFilter is off by default and on with MUSE_TOOL_FILTER_ENABLED=true (Phase 4)", async () => {
@@ -433,7 +438,7 @@ describe("autoconfigure", () => {
         // Disable the Context Engineering Phase 1 system-prompt
         // injection so the budget math is dominated by the
         // conversation messages this test ships — otherwise the
-        // ~80-token nominal budget tips into `hard_limit` from the
+        // nominal budget tips into `hard_limit` from the
         // `[Active Context]` block alone, which isn't what this
         // test is exercising.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
@@ -468,17 +473,16 @@ describe("autoconfigure", () => {
   it("respects MUSE_LLM_WORKING_BUDGET_TOKENS=0 to disable proactive compaction", async () => {
     // Same scenario as above but with the user explicitly opting
     // out via 0. The trim should NOT fire because the hard cap is
-    // unreached and proactive compaction is disabled.
+    // unreached and proactive compaction is disabled. Same 1000-token
+    // floor as the sibling test above (see its comment) — with it
+    // on, the [Active Context] block's reminders/user-memory
+    // resolvers default to the real `~/.muse/reminders.json` and
+    // `~/.muse/user-memory.json` when no env override is given —
+    // on a lived-in dev box those files are non-empty and inflate
+    // the prompt past a too-tight hard cap, flipping this test's
+    // `hard_limit` vs `none` assertion depending on machine state.
     const assembly = createMuseRuntimeAssembly({
       env: {
-        // Disable the Context Engineering Phase 1 system-prompt
-        // injection (same reason as the sibling test above): with it
-        // on, the [Active Context] block's reminders/user-memory
-        // resolvers default to the real `~/.muse/reminders.json` and
-        // `~/.muse/user-memory.json` when no env override is given —
-        // on a lived-in dev box those files are non-empty and inflate
-        // the prompt past the 200-token hard cap, flipping this test's
-        // `hard_limit` vs `none` assertion depending on machine state.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
         MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",

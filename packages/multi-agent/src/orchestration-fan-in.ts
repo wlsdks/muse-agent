@@ -53,11 +53,55 @@ export async function buildOrchestrationResponse(
   synthesisTimeoutMs?: number
 ): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
-  // Neutralize each completed worker's output ONCE, BEFORE summarize/cap, and feed
-  // BOTH fan-ins (concat + synthesizer parts) from the SAME safe value — a poisoned
-  // worker's embedded instruction / forged `[from system]` citation must not reach
-  // the lead's final answer (OWASP ASI07). `safe` is fan-in-only; the tracked
-  // `results[].result.response.output` keeps the RAW output for trace fidelity.
+  const { concatenated, safeOutputs } = await projectWorkerOutputs(results, cap, summarizeWorkerOutput);
+  const completedParts = buildCompletedParts(results, safeOutputs);
+
+  const synthesized = await synthesizeAndVerify(
+    completedParts,
+    concatenated,
+    synthesizeFinalAnswer,
+    objective,
+    verifyFinalAnswer,
+    synthesisTimeoutMs
+  );
+  const { conflicts, output, redundancies } = await detectFanInIssues(
+    completedParts,
+    synthesized.output,
+    detectConflicts,
+    detectRedundancies
+  );
+
+  return {
+    id: createRunId("multi_agent_response"),
+    model,
+    output,
+    raw: {
+      runId,
+      workers: results.map((result) => ({
+        status: result.status,
+        workerId: result.workerId
+      })),
+      ...(synthesized.verification ? { verification: synthesized.verification } : {}),
+      ...(conflicts ? { conflicts } : {}),
+      ...(redundancies ? { redundancies } : {})
+    }
+  };
+}
+
+/**
+ * Per-worker projection: neutralize each completed worker's output ONCE,
+ * BEFORE summarize/cap, and feed BOTH fan-ins (concat + synthesizer parts)
+ * from the SAME safe value — a poisoned worker's embedded instruction /
+ * forged `[from system]` citation must not reach the lead's final answer
+ * (OWASP ASI07). `safeOutputs` is fan-in-only; the tracked
+ * `results[].result.response.output` keeps the RAW output for trace
+ * fidelity.
+ */
+async function projectWorkerOutputs(
+  results: readonly OrchestrationStepResult[],
+  cap: number | undefined,
+  summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined
+): Promise<{ readonly concatenated: string; readonly safeOutputs: ReadonlyArray<string | undefined> }> {
   const safeOutputs = results.map((r) =>
     r.status === "completed" ? neutralizeInjectionSpans(r.result?.response.output ?? "") : undefined
   );
@@ -71,28 +115,49 @@ export async function buildOrchestrationResponse(
       : safe;
     return `## ${result.workerId}\n${capWorkerOutput(result.workerId, summarized, cap)}`;
   }));
-  const concatenated = projected.join("\n\n");
+  return { concatenated: projected.join("\n\n"), safeOutputs };
+}
 
-  // Optional final-answer synthesis: fuse the completed workers into ONE
-  // coherent answer. Fail-soft — a throwing / empty synthesizer keeps the
-  // concatenation, so the orchestration never loses its output.
-  //
-  // Enforce the typed hand-off schema at THIS seam (fan-in is the second MAST
-  // cascade boundary): the parts are built from the NEUTRALIZED output, so a
-  // worker whose raw output passed the worker boundary but is entirely an
-  // injection span has collapsed to the placeholder here — content-free yet
-  // non-blank. `parseHandoffPart` drops such a part fail-close so the synthesizer
-  // / conflict / redundancy fan-in never consumes a content-free hand-off as if
-  // it were a real answer. The per-worker concatenation above still shows every
-  // completed worker honestly; only the FUSION inputs are schema-gated.
-  const completedParts = results
-    .filter((r) => r.status === "completed")
-    .map((r) => parseHandoffPart({ output: safeOutputs[results.indexOf(r)] ?? "", workerId: r.workerId }))
+/**
+ * Enforce the typed hand-off schema at THIS seam (fan-in is the second MAST
+ * cascade boundary): the parts are built from the NEUTRALIZED output, so a
+ * worker whose raw output passed the worker boundary but is entirely an
+ * injection span has collapsed to the placeholder here — content-free yet
+ * non-blank. `parseHandoffPart` drops such a part fail-close so the synthesizer
+ * / conflict / redundancy fan-in never consumes a content-free hand-off as if
+ * it were a real answer. The per-worker concatenation still shows every
+ * completed worker honestly; only the FUSION inputs are schema-gated.
+ */
+function buildCompletedParts(
+  results: readonly OrchestrationStepResult[],
+  safeOutputs: ReadonlyArray<string | undefined>
+): ReadonlyArray<{ readonly workerId: string; readonly output: string }> {
+  return results
+    .map((result, index) => ({ index, result }))
+    .filter(({ result }) => result.status === "completed")
+    .map(({ result, index }) => parseHandoffPart({ output: safeOutputs[index] ?? "", workerId: result.workerId }))
     .filter((parsed): parsed is { ok: true; part: { workerId: string; output: string } } => parsed.ok)
     .map((parsed) => parsed.part);
+}
 
-  // Fuse the workers into one answer, optionally steered by `guidance` (the gap
-  // the verifier found). Fail-soft — empty/throw keeps the prior output.
+/**
+ * Optional final-answer synthesis: fuse the completed workers into ONE
+ * coherent answer, then verify against the original objective. On an
+ * incomplete verdict, RE-SYNTHESISE ONCE with the missing piece as guidance
+ * and re-verify — MAST's +15.6% is catch AND fix, not just flag. The answer
+ * is only marked incomplete if it's STILL missing something after the single
+ * retry (bounded — small-model coherence degrades past 2 hops). Fail-soft
+ * throughout — a throwing / empty synthesizer or verifier keeps the prior
+ * output, so the orchestration never loses its output.
+ */
+async function synthesizeAndVerify(
+  completedParts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>,
+  concatenated: string,
+  synthesizeFinalAnswer: ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>, guidance?: string) => Promise<string>) | undefined,
+  objective: string | undefined,
+  verifyFinalAnswer: ((objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>) | undefined,
+  synthesisTimeoutMs: number | undefined
+): Promise<{ readonly output: string; readonly verification?: { readonly satisfied: boolean; readonly missing?: string } }> {
   const trySynthesize = async (guidance?: string): Promise<string | undefined> => {
     if (!synthesizeFinalAnswer || completedParts.length === 0) {
       return undefined;
@@ -107,11 +172,6 @@ export async function buildOrchestrationResponse(
 
   let output = (await trySynthesize()) ?? concatenated;
 
-  // Verify against the original objective, then the evaluator-OPTIMIZER half: on an
-  // incomplete verdict, RE-SYNTHESISE ONCE with the missing piece as guidance and
-  // re-verify — MAST's +15.6% is catch AND fix, not just flag. The answer is only
-  // marked incomplete if it's STILL missing something after the single retry (bounded
-  // — small-model coherence degrades past 2 hops). Fail-soft throughout.
   let verification: { readonly satisfied: boolean; readonly missing?: string } | undefined;
   if (verifyFinalAnswer && objective && objective.trim().length > 0 && output.trim().length > 0) {
     try {
@@ -133,56 +193,54 @@ export async function buildOrchestrationResponse(
     }
   }
 
-  // Cross-worker conflict (the grounding edge on the fan-OUT): are two COMPLETED
-  // workers internally contradictory? Runs on the SAME neutralized parts the
-  // synthesizer saw. Fail-soft — a throwing detector leaves the answer as-is. A
-  // non-empty result appends one honest line (alongside any incomplete note) so an
-  // internally-inconsistent answer is flagged, not passed off as one truth.
+  return verification ? { output, verification } : { output };
+}
+
+/**
+ * Cross-worker conflict (the grounding edge on the fan-OUT): are two COMPLETED
+ * workers internally contradictory? Cross-worker REDUNDANCY (step-repetition,
+ * the complement of the conflict check): two COMPLETED workers produced
+ * near-identical answers — one added no distinct value. Both run on the SAME
+ * neutralized parts the synthesizer saw, advisory only, fail-soft — a
+ * throwing detector leaves the answer as-is. A non-empty result appends one
+ * honest line so an internally-inconsistent or duplicated-work answer is
+ * flagged, not passed off as independent corroboration.
+ */
+async function detectFanInIssues(
+  completedParts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>,
+  output: string,
+  detectConflicts: ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>) | undefined,
+  detectRedundancies: ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>) | undefined
+): Promise<{ readonly conflicts?: readonly string[]; readonly output: string; readonly redundancies?: readonly string[] }> {
+  let result = output;
+
   let conflicts: readonly string[] | undefined;
   if (detectConflicts && completedParts.length >= 2) {
     try {
       const found = await detectConflicts(completedParts);
       if (found.length > 0) {
         conflicts = found;
-        output = `${output}\n\n⚠ Workers disagree on the same point — reconcile before trusting: ${found.join("; ")}`;
+        result = `${result}\n\n⚠ Workers disagree on the same point — reconcile before trusting: ${found.join("; ")}`;
       }
     } catch {
       // detector unavailable — surface nothing, keep the answer
     }
   }
 
-  // Cross-worker REDUNDANCY (step-repetition, the complement of the conflict check):
-  // two COMPLETED workers produced near-identical answers — one added no distinct value.
-  // Advisory only; fail-soft. Surfaced so duplicated work is visible, not passed off as
-  // independent corroboration.
   let redundancies: readonly string[] | undefined;
   if (detectRedundancies && completedParts.length >= 2) {
     try {
       const found = await detectRedundancies(completedParts);
       if (found.length > 0) {
         redundancies = found;
-        output = `${output}\n\nℹ Workers produced near-identical answers (possible duplicated work): ${found.join("; ")}`;
+        result = `${result}\n\nℹ Workers produced near-identical answers (possible duplicated work): ${found.join("; ")}`;
       }
     } catch {
       // detector unavailable — surface nothing, keep the answer
     }
   }
 
-  return {
-    id: createRunId("multi_agent_response"),
-    model,
-    output,
-    raw: {
-      runId,
-      workers: results.map((result) => ({
-        status: result.status,
-        workerId: result.workerId
-      })),
-      ...(verification ? { verification } : {}),
-      ...(conflicts ? { conflicts } : {}),
-      ...(redundancies ? { redundancies } : {})
-    }
-  };
+  return { conflicts, output: result, redundancies };
 }
 
 async function applyWorkerSummarizer(

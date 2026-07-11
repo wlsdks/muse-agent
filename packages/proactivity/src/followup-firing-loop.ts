@@ -34,6 +34,7 @@ import {
   readFollowups,
   type PersistedFollowup
 } from "@muse/stores";
+import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 export interface RunDueFollowupsOptions {
@@ -51,6 +52,14 @@ export interface RunDueFollowupsOptions {
    * spam the messenger in one burst. Default 5.
    */
   readonly maxPerTick?: number;
+  /**
+   * Opt-in interruption budget (unset → identical to pre-budget behavior).
+   * Within budget, a due followup still delivers exactly as before; over
+   * budget, the send is skipped and the composed text lands in the digest
+   * queue instead — the followup is still marked `fired` either way, so a
+   * suppressed one is never re-synthesized and re-attempted next tick.
+   */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 export interface RunDueFollowupsSummary {
@@ -113,16 +122,39 @@ export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<
       }
       // Retry wraps only the send — synthesis above already ran
       // once, so a transient 5xx doesn't re-invoke the model.
-      await sendWithRetry(options.registry, options.providerId, {
+      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text
-      });
+      }).then(() => undefined);
+      let digested = false;
+      if (options.interruptionBudget) {
+        const budget = options.interruptionBudget;
+        const result = await applyInterruptionBudget({
+          caps: resolveInterruptionBudgetCaps(budget),
+          deliver,
+          digestFile: budget.digestFile,
+          errorLogger: (message) => errors.push(`${followup.id}: ${message}`),
+          ledgerFile: budget.ledgerFile,
+          now: now(),
+          source: "followup",
+          sourceId: followup.id,
+          text
+        });
+        digested = result.outcome === "digested";
+      } else {
+        await deliver();
+      }
+      // Marked fired either way: a suppressed followup must not be
+      // re-synthesized and re-attempted next tick just because the
+      // budget held it back from sending.
       const firedAtIso = now().toISOString();
       const patched = await markFollowupFired(options.file, followup.id, firedAtIso);
       if (patched) {
         fired.push(patched);
       }
-      delivered += 1;
+      if (!digested) {
+        delivered += 1;
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       errors.push(`${followup.id}: ${message}`);

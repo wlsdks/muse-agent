@@ -10,8 +10,8 @@ import { runDueSituationalBriefing } from "./situational-briefing-loop.js";
 import type { BriefingImminent } from "@muse/proactivity";
 
 /**
- * P8 target audit (the P→P seam check). P8's bullets ARE a
- * composed pipeline (b1 synthesise → b2 deliver-deduped). The
+ * Situational-briefing seam audit. The briefing's bullets ARE a
+ * composed pipeline (synthesise → deliver-deduped). The
  * isolated tests cover each piece; the seam the audit must prove
  * is the WHOLE situational picture — upcoming + needs-you +
  * still-tracking, finished excluded — assembled from the REAL
@@ -37,7 +37,7 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
   };
 }
 
-describe("P8 audit — the full situational picture is synthesised from the real store and delivered intact over the real channel", () => {
+describe("Situational-briefing audit — the full situational picture is synthesised from the real store and delivered intact over the real channel", () => {
   it("upcoming + needs-you + still-tracking compose into ONE real-channel POST; finished excluded; deduped in-window", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-p8-seam-"));
     const objectivesFile = join(dir, "objectives.json");

@@ -204,11 +204,6 @@ export {
   TimescaleTraceEventExporter
 } from "./observability-tracers.js";
 
-type StoredFollowupSuggestionEvent = Omit<FollowupSuggestionEvent, "occurredAt"> & {
-  readonly kind: FollowupSuggestionEventKind;
-  readonly occurredAt: Date;
-};
-
 // Latency-query primitives (in-memory + Kysely, types, defaults) live in
 // packages/observability/src/observability-latency.ts.
 export {
@@ -267,168 +262,13 @@ export {
 } from "./observability-detectors.js";
 
 
-export class InMemoryFollowupSuggestionStore implements FollowupSuggestionStore {
-  static readonly defaultMaxEvents = 50_000;
-  static readonly defaultRetentionMs = 72 * 60 * 60 * 1000;
+// InMemoryFollowupSuggestionStore lives in
+// packages/observability/src/followup-suggestion-store.ts.
+export { InMemoryFollowupSuggestionStore } from "./followup-suggestion-store.js";
 
-  private readonly events: StoredFollowupSuggestionEvent[] = [];
-  private readonly maxEvents: number;
-  private readonly retentionMs: number;
-  private readonly now: () => Date;
-
-  constructor(options: InMemoryFollowupSuggestionStoreOptions = {}) {
-    this.maxEvents = Math.max(1, options.maxEvents ?? InMemoryFollowupSuggestionStore.defaultMaxEvents);
-    this.retentionMs = Math.max(1, options.retentionMs ?? InMemoryFollowupSuggestionStore.defaultRetentionMs);
-    this.now = options.now ?? (() => new Date());
-  }
-
-  recordImpression(event: FollowupSuggestionEvent): void {
-    this.record("impression", event);
-  }
-
-  recordClick(event: FollowupSuggestionEvent): void {
-    this.record("click", event);
-  }
-
-  aggregateStats(windowMs = 24 * 60 * 60 * 1000): FollowupStats {
-    this.purgeExpired();
-    const since = this.now().getTime() - Math.max(1, windowMs);
-    const events = this.events.filter((event) => event.occurredAt.getTime() >= since);
-    const impressions = events.filter((event) => event.kind === "impression");
-    const clicks = events.filter((event) => event.kind === "click");
-    const categories = new Set(events.map((event) => event.category));
-    const byCategory = [...categories]
-      .map((category) => {
-        const categoryImpressions = impressions.filter((event) => event.category === category).length;
-        const categoryClicks = clicks.filter((event) => event.category === category).length;
-        return {
-          category,
-          clicks: categoryClicks,
-          ctr: categoryImpressions > 0 ? categoryClicks / categoryImpressions : 0,
-          impressions: categoryImpressions
-        };
-      })
-      .sort((left, right) => right.clicks - left.clicks || left.category.localeCompare(right.category));
-
-    return {
-      byCategory,
-      ctr: impressions.length > 0 ? clicks.length / impressions.length : 0,
-      totalClicks: clicks.length,
-      totalImpressions: impressions.length
-    };
-  }
-
-  private record(kind: FollowupSuggestionEventKind, event: FollowupSuggestionEvent): void {
-    this.events.push({
-      ...event,
-      kind,
-      occurredAt: event.occurredAt ?? this.now()
-    });
-    this.purgeExpired();
-    this.trimOldest();
-  }
-
-  private purgeExpired(): void {
-    const cutoff = this.now().getTime() - this.retentionMs;
-
-    while (this.events[0] && this.events[0].occurredAt.getTime() < cutoff) {
-      this.events.shift();
-    }
-  }
-
-  private trimOldest(): void {
-    while (this.events.length > this.maxEvents) {
-      this.events.shift();
-    }
-  }
-}
-
-export class StartupDoctor {
-  constructor(private readonly checks: readonly StartupCheck[]) {}
-
-  async run(): Promise<StartupDoctorReport> {
-    const reports: StartupDoctorCheckReport[] = [];
-
-    for (const check of this.checks) {
-      const required = check.required !== false;
-
-      try {
-        const result = await check.run();
-        reports.push({
-          ...(result.details ? { details: result.details } : {}),
-          id: check.id,
-          ok: result.ok,
-          required
-        });
-      } catch (error) {
-        reports.push({
-          details: {
-            message: error instanceof Error ? error.message : String(error)
-          },
-          id: check.id,
-          ok: false,
-          required
-        });
-      }
-    }
-
-    return {
-      checks: reports,
-      ok: reports.every((report) => report.ok || !report.required)
-    };
-  }
-}
-
-export function createCacheStartupCheck(
-  cache: CacheHealthProbe | undefined,
-  options: { readonly id?: string; readonly required?: boolean; readonly probeKey?: string } = {}
-): StartupCheck {
-  const id = options.id ?? "cache";
-
-  return {
-    id,
-    required: options.required ?? false,
-    async run(): Promise<StartupCheckResult> {
-      if (!cache) {
-        return { details: { configured: false }, ok: false };
-      }
-
-      const probeKey = options.probeKey ?? "__muse_startup_probe__";
-      await cache.put?.(probeKey, { ok: true });
-      await cache.get(probeKey);
-      return { details: { configured: true, probeKey }, ok: true };
-    }
-  };
-}
-
-export function createMcpStartupCheck(
-  probe: McpHealthProbe | undefined,
-  options: { readonly id?: string; readonly required?: boolean } = {}
-): StartupCheck {
-  const id = options.id ?? "mcp";
-
-  return {
-    id,
-    required: options.required ?? false,
-    async run(): Promise<StartupCheckResult> {
-      if (!probe) {
-        return { details: { configured: false }, ok: false };
-      }
-
-      const servers = await probe.listServers();
-      const unhealthy = servers.filter((server) => server.healthy === false || server.status === "unhealthy");
-      return {
-        details: {
-          serverCount: servers.length,
-          unhealthy: unhealthy.map((server) => server.name)
-        },
-        ok: unhealthy.length === 0
-      };
-    }
-  };
-}
-
-
+// StartupDoctor + createCacheStartupCheck / createMcpStartupCheck live in
+// packages/observability/src/startup-doctor.ts.
+export { StartupDoctor, createCacheStartupCheck, createMcpStartupCheck } from "./startup-doctor.js";
 
 // Token-usage sinks + token-cost queries + cost-anomaly /
 // budget-tracking decorators live in

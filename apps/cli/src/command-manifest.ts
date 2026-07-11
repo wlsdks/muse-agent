@@ -278,6 +278,15 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": []
   },
   {
+    "name": "digest",
+    "description": "Notices the interruption budget deferred — compiled into one daily message by the background daemon",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "list"
+    ]
+  },
+  {
     "name": "doctor",
     "description": "Run a runtime health check (model, MCP, calendar, scheduler, etc.)",
     "argsTerm": "",

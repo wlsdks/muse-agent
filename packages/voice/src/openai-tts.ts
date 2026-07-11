@@ -1,4 +1,5 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
+import { safeReadText } from "./http-utils.js";
 import type {
   TextToSpeechProvider,
   TtsFormat,
@@ -132,13 +133,5 @@ export class OpenAITtsProvider implements TextToSpeechProvider {
       mimeType: FORMAT_MIME[format],
       format
     };
-  }
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return `<status ${response.status}>`;
   }
 }

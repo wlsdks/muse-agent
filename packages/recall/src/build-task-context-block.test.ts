@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTaskContextBlock } from "./present.js";
+import { buildTaskContextBlock } from "./context-blocks.js";
 
 // Minimal PersistedTask-shaped stub (only the fields the block builder reads).
 function task(id: string, title: string, extra: { dueAt?: string; urgent?: boolean } = {}) {

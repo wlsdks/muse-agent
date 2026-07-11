@@ -31,7 +31,8 @@ import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } fro
 export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
 import { cosine, loadIndex, type ReindexSummary } from "./notes-index.js";
-import { buildNoteContextBlock, formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
+import { buildNoteContextBlock } from "./context-blocks.js";
+import { formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
 import { answerIsRefusal, stripEchoedCiteAs } from "./text.js";
 
 export interface GroundedRecallSources {

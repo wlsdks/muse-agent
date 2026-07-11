@@ -47,7 +47,7 @@ function pendingFile(id: string): { approvals: string; trust: string } {
   return { approvals, trust };
 }
 
-describe("muse approval — typo-tolerant id resolution (goal-468/472 sibling)", () => {
+describe("muse approval — typo-tolerant id resolution", () => {
   it("suggests the closest pending id when `approve <typo>` does not match", async () => {
     const { approvals, trust } = pendingFile("req-abc123");
     process.exitCode = undefined;
@@ -117,7 +117,7 @@ describe("muse approval approve — malformed trust.json must not corrupt on-dis
   });
 });
 
-describe("approvalsPath / trustPath — empty-env-shadow defence (goal-532 sibling)", () => {
+describe("approvalsPath / trustPath — empty-env-shadow defence", () => {
   it("uses the env value when MUSE_APPROVALS_FILE / MUSE_TRUST_FILE is set non-empty", () => {
     const prevA = process.env.MUSE_APPROVALS_FILE;
     const prevT = process.env.MUSE_TRUST_FILE;

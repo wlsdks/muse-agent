@@ -1,5 +1,5 @@
 /**
- * Draft-first, fail-closed agentic web action (P15) — submitting a
+ * Draft-first, fail-closed agentic web action — submitting a
  * form, booking, or any state-changing HTTP request to a third party.
  * Governed by `.claude/rules/outbound-safety.md`: the action is
  * approval-gated and NEVER autonomous; absent an explicit confirm the

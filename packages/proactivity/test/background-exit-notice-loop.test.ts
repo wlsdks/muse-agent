@@ -2,7 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { registerBackgroundProcess, updateBackgroundProcess, type BackgroundProcessRecord } from "@muse/stores";
+import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, registerBackgroundProcess, updateBackgroundProcess, type BackgroundProcessRecord } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -54,6 +55,17 @@ async function seedExited(record: Partial<BackgroundProcessRecord>): Promise<voi
 
 function opts(over: Partial<RunDueBackgroundExitNoticesOptions>): RunDueBackgroundExitNoticesOptions {
   return { notifiedFile, storeFile, ...over } as RunDueBackgroundExitNoticesOptions;
+}
+
+function capturingProvider(sent: OutboundMessage[]): MessagingProvider {
+  return {
+    describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
+    id: "telegram",
+    async send(message: OutboundMessage): Promise<OutboundReceipt> {
+      sent.push(message);
+      return { destination: message.destination, messageId: "m1", providerId: "telegram" };
+    }
+  };
 }
 
 describe("backgroundExitNoticeText", () => {
@@ -140,5 +152,81 @@ describe("runDueBackgroundExitNotices — one-shot on-exit notice", () => {
     // the sidecar is now valid JSON holding p1
     const raw = await readFile(notifiedFile, "utf8");
     expect(JSON.parse(raw)).toEqual({ notifiedIds: ["p1"] });
+  });
+
+  describe("interruption budget (opt-in) — gates only the messaging leg", () => {
+    it("cap reached: messagingRegistry.send is never called, the notice lands in the digest, and the exit is still notified (one-shot)", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      const now = new Date("2026-07-01T10:05:00.000Z");
+      await appendInterruptionDelivery(ledgerFile, { at: now, source: "background-exit" });
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        destination: "555",
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        now: () => now,
+        providerId: "telegram"
+      }));
+      expect(summary.notified).toBe(0);
+      expect(sent).toEqual([]);
+      const queued = await readDigestQueue(digestFile);
+      expect(queued).toHaveLength(1);
+      expect(queued[0]).toMatchObject({ source: "background-exit", sourceId: "p1" });
+      // The one-shot sidecar is unaffected — it's marked before any delivery
+      // attempt, budget or not — so a suppressed exit is never re-notified.
+      expect((await readBackgroundExitNotified(notifiedFile)).has("p1")).toBe(true);
+    });
+
+    it("cap not reached: delivers exactly as without a budget, and records the ledger", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      const now = new Date("2026-07-01T10:05:00.000Z");
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        destination: "555",
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        now: () => now,
+        providerId: "telegram"
+      }));
+      expect(summary.notified).toBe(1);
+      expect(sent).toHaveLength(1);
+      expect(await readInterruptionLedger(ledgerFile)).toHaveLength(1);
+      expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    });
+
+    it("interruptionBudget absent: behavior is byte-identical to the pre-budget path", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const summary = await runDueBackgroundExitNotices(opts({
+        destination: "555",
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        providerId: "telegram"
+      }));
+      expect(summary.notified).toBe(1);
+      expect(sent).toHaveLength(1);
+    });
+
+    it("a corrupt ledger file fails OPEN — the notice still sends", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      await writeFile(ledgerFile, "{ not valid json", "utf8");
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        destination: "555",
+        interruptionBudget: { dailyCap: 1, digestFile, hourlyCap: 1, ledgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        providerId: "telegram"
+      }));
+      expect(summary.notified).toBe(1);
+      expect(sent).toHaveLength(1);
+    });
   });
 });

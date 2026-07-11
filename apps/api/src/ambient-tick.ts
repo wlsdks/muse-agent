@@ -10,7 +10,7 @@
  */
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignalSource, type KnowledgeAmbientTrigger, type ProactiveNoticeSink } from "@muse/proactivity";
+import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignalSource, type InterruptionBudgetWiring, type KnowledgeAmbientTrigger, type ProactiveNoticeSink } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
@@ -30,6 +30,8 @@ export interface AmbientTickOptions {
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   readonly now?: () => Date;
+  /** Opt-in interruption budget — forwarded verbatim to `createAmbientNoticeRunner`. */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -53,11 +55,13 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
     }
   };
   const runner = createAmbientNoticeRunner({
+    now,
     rules: options.rules,
     sink,
     source: options.source,
     ...(options.enrich ? { enrich: options.enrich } : {}),
-    ...(options.knowledgeTrigger ? { knowledgeTrigger: options.knowledgeTrigger } : {})
+    ...(options.knowledgeTrigger ? { knowledgeTrigger: options.knowledgeTrigger } : {}),
+    ...(options.interruptionBudget ? { interruptionBudget: options.interruptionBudget } : {})
   });
   let firing = false;
 

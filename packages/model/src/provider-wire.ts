@@ -11,10 +11,10 @@
  *     + parseAnthropicUsage + anthropicModelCapabilities.
  *   - provider-gemini.ts: toGeminiRequest / fromGeminiResponse +
  *     sanitizeGeminiSchema + parseGeminiUsage + geminiModelCapabilities.
- *   - provider-openai.ts: toOpenAIChatRequest / fromOpenAIChatResponse
- *     / toOpenAIResponsesRequest / fromOpenAIResponsesResponse /
- *     parseOpenAIStream / parseOpenAIResponsesStream + their internal
- *     SSE / tool-call merging helpers.
+ *   - provider-openai.ts: toOpenAIChatRequest / fromOpenAIChatResponse /
+ *     parseOpenAIStream + their internal SSE / tool-call merging helpers.
+ *   - provider-openai-responses.ts: toOpenAIResponsesRequest /
+ *     fromOpenAIResponsesResponse / parseOpenAIResponsesStream.
  *   - provider-diagnostic.ts: the diagnostic provider's deterministic-output
  *     helpers (`estimateDiagnosticTokens`, `renderDiagnosticOutput`,
  *     `diagnosticModelCapabilities`).
@@ -45,12 +45,15 @@ export {
 
 export {
   fromOpenAIChatResponse,
+  parseOpenAIStream,
+  toOpenAIChatRequest
+} from "./provider-openai.js";
+
+export {
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
-  parseOpenAIStream,
-  toOpenAIChatRequest,
   toOpenAIResponsesRequest
-} from "./provider-openai.js";
+} from "./provider-openai-responses.js";
 
 export {
   defaultRemoteModelCapabilities,

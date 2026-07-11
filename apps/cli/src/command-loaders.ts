@@ -246,6 +246,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "digest",
+    names: ["digest"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-digest.js");
+    m.registerDigestCommands(program, io);
+    },
+  },
+  {
     id: "episode",
     names: ["episode"],
     load: async (program, io, _deps) => {

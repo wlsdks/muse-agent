@@ -96,7 +96,7 @@ describe("decideWebSearchPolicy", () => {
     ).toBe(5);
   });
 
-  it("a lenient-prefix MAX_USES typo falls through instead of being silently accepted (goal-463 runtime sibling)", () => {
+  it("a lenient-prefix MAX_USES typo falls through instead of being silently accepted", () => {
     for (const bad of ["3x", "30s", "1e3", "5.9", "12abc", "1_000", "-3", "0", " "]) {
       expect(
         decideWebSearchPolicy({

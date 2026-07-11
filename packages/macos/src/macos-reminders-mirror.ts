@@ -26,14 +26,9 @@
 import {
   defaultOsascriptRunner,
   escapeAppleScript,
-  isPermissionError,
   type MacOsascriptRunner
 } from "./macos-exec.js";
-
-// Matches @muse/autoconfigure's parseBoolean truthy set (env-parsers.ts). Kept
-// local so @muse/macos stays dependency-free (autoconfigure depends on macos —
-// importing it back would be a cycle).
-const TRUTHY_ENV_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
+import { isMirrorEnvEnabled, runMirrorScript } from "./mirror-shared.js";
 
 export const APPLE_REMINDERS_MIRROR_ENV = "MUSE_APPLE_REMINDERS_MIRROR";
 
@@ -67,8 +62,7 @@ export interface MirrorReminderResult {
 export function isAppleRemindersMirrorEnabled(
   env: Record<string, string | undefined> = process.env
 ): boolean {
-  const raw = env[APPLE_REMINDERS_MIRROR_ENV]?.trim().toLowerCase();
-  return raw !== undefined && TRUTHY_ENV_VALUES.has(raw);
+  return isMirrorEnvEnabled(env, APPLE_REMINDERS_MIRROR_ENV);
 }
 
 /**
@@ -123,20 +117,6 @@ export async function mirrorReminderToApple(
   }
   const exec = options.exec ?? defaultOsascriptRunner;
   const script = buildMirrorReminderScript({ text, dueAt: reminder.dueAt }, options.list);
-  try {
-    const result = await exec(script);
-    if (result.timedOut) {
-      return { mirrored: false, skipped: false, warning: "Apple Reminders mirror timed out (osascript was killed)", script };
-    }
-    if (result.exitCode !== 0) {
-      const reason = isPermissionError(result.stderr)
-        ? "Automation permission denied — grant Reminders access in System Settings → Privacy & Security → Automation"
-        : (result.stderr.trim().slice(0, 300) || `osascript exited ${String(result.exitCode)}`);
-      return { mirrored: false, skipped: false, warning: `Apple Reminders mirror failed: ${reason}`, script };
-    }
-    return { mirrored: true, skipped: false, script };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { mirrored: false, skipped: false, warning: `Apple Reminders mirror failed: ${message}`, script };
-  }
+  const outcome = await runMirrorScript(exec, script, { app: "Apple Reminders", permissionTarget: "Reminders" });
+  return { mirrored: outcome.mirrored, skipped: false, warning: outcome.warning, script };
 }

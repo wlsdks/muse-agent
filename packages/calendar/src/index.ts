@@ -47,7 +47,6 @@ export {
 } from "./credential-store.js";
 export {
   CALENDAR_KEYCHAIN_SERVICE,
-  createCalendarSecretSources,
   resolveCalendarSecret,
   type CalendarSecretSourceOptions
 } from "./credential-resolver.js";

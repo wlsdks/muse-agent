@@ -9,6 +9,7 @@ import {
   serializeEpisode,
   type PersistedEpisode
 } from "@muse/stores";
+import { parseJudgeStringArray } from "./judge-output.js";
 import type { ProactiveModelProviderLike } from "@muse/proactivity";
 
 /**
@@ -303,7 +304,7 @@ async function runLlmJudge(
     model: options.model!,
     temperature: 0
   });
-  const ids = parseLlmJudgeOutput((response.output ?? "").trim());
+  const ids = parseJudgeStringArray((response.output ?? "").trim());
   // Resolve in the order the LLM returned (preserves its relevance ranking),
   // dedupe, cap at `limit`, drop hallucinated ids.
   const byId = new Map(candidates.map((ep) => [ep.id, ep] as const));
@@ -320,25 +321,3 @@ async function runLlmJudge(
   return out;
 }
 
-function parseLlmJudgeOutput(raw: string): readonly string[] {
-  const first = raw.indexOf("[");
-  if (first < 0) return [];
-  let depth = 0;
-  let body = "";
-  for (let i = first; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (ch === "[") depth += 1;
-    else if (ch === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        body = raw.slice(first, i + 1);
-        break;
-      }
-    }
-  }
-  if (!body) return [];
-  let parsed: unknown;
-  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
-}

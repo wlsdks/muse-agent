@@ -12,6 +12,8 @@
 import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp-shared";
 import type { StandingObjective } from "@muse/stores";
 
+import { minutesUntil } from "./quiet-hours.js";
+
 /**
  * Duck-typed imminent item — mirrors the public fields of the
  * proactive loop's private `ImminentItem` without coupling to it.
@@ -114,10 +116,6 @@ export function resolveDayShapeLine(
 
 function clean(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
-}
-
-function minutesUntil(startsAt: Date, now: Date): number {
-  return Math.max(0, Math.round((startsAt.getTime() - now.getTime()) / 60_000));
 }
 
 /**

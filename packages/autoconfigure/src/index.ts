@@ -41,6 +41,9 @@ export {
   resolveNoteProvenanceFile,
   resolveFadedMemoriesFile,
   resolveFollowupsFile,
+  resolveInterruptionLedgerFile,
+  resolveDigestQueueFile,
+  resolveDigestSentFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
   resolveCheckinsFile,
@@ -166,6 +169,7 @@ export {
   parseBoolean,
   parseCsv,
   parseInteger,
+  parseNonNegativeInteger,
   parseOptionalString
 } from "./env-parsers.js";
 

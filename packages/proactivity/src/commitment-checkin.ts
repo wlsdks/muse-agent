@@ -19,6 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { withFileMutationQueue } from "@muse/stores";
+import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
 export type CheckinStatus = "scheduled" | "fired" | "cancelled";
@@ -281,6 +282,14 @@ export interface RunDueCheckinsOptions {
   readonly maxPerTick?: number;
   /** When set and the current hour is within it, hold ALL check-ins (DND). */
   readonly quietHours?: QuietHourRange;
+  /**
+   * Opt-in interruption budget (unset → identical to pre-budget behavior).
+   * Within budget, a due check-in still delivers exactly as before; over
+   * budget, the send is skipped and the question lands in the digest queue
+   * instead. It is still marked `fired` either way — a suppressed check-in
+   * must not re-ask the same question every tick.
+   */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 export interface RunDueCheckinsSummary {
@@ -327,11 +336,36 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
   const firedIds = new Set<string>();
   const fired: PersistedCheckin[] = [];
   const errors: string[] = [];
+  let delivered = 0;
   for (const checkin of due) {
     try {
-      await options.registry.send(options.providerId, { destination: options.destination, text: checkin.question });
+      const deliver = (): Promise<void> =>
+        options.registry.send(options.providerId, { destination: options.destination, text: checkin.question }).then(() => undefined);
+      let digested = false;
+      if (options.interruptionBudget) {
+        const budget = options.interruptionBudget;
+        const result = await applyInterruptionBudget({
+          caps: resolveInterruptionBudgetCaps(budget),
+          deliver,
+          digestFile: budget.digestFile,
+          errorLogger: (message) => errors.push(`${checkin.id}: ${message}`),
+          ledgerFile: budget.ledgerFile,
+          now: at,
+          source: "commitment-checkin",
+          sourceId: checkin.id,
+          text: checkin.question
+        });
+        digested = result.outcome === "digested";
+      } else {
+        await deliver();
+      }
+      // Marked fired either way: a suppressed check-in must not re-ask the
+      // same question next tick just because the budget held it back.
       firedIds.add(checkin.id);
       fired.push({ ...checkin, firedAt: at.toISOString(), status: "fired" });
+      if (!digested) {
+        delivered += 1;
+      }
     } catch (cause) {
       errors.push(`${checkin.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
@@ -347,5 +381,5 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
       await writeCheckins(options.file, next);
     });
   }
-  return { delivered: fired.length, due: due.length, errors, fired };
+  return { delivered, due: due.length, errors, fired };
 }

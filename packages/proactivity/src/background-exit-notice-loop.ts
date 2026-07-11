@@ -31,6 +31,7 @@ import { sendWithRetry } from "@muse/mcp-shared";
 import { redactSecretsInText } from "@muse/shared";
 import { readBackgroundProcesses, type BackgroundProcessRecord } from "@muse/stores";
 
+import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
 /** Terminal states that warrant a heads-up. `killed` is user-initiated
@@ -105,6 +106,16 @@ export interface RunDueBackgroundExitNoticesOptions {
   readonly destination?: string;
   /** Injectable clock. Default `() => new Date()`. */
   readonly now?: () => Date;
+  /**
+   * Opt-in interruption budget (unset → identical to pre-budget behavior).
+   * Gates only the `messagingRegistry` leg — the broker fan-out (live
+   * chat-stream subscribers) is unaffected. Within budget, the messaging
+   * send still happens exactly as before; over budget, it's skipped and the
+   * notice text lands in the digest queue instead. The one-shot
+   * `notifiedFile` mark already happens BEFORE any delivery attempt, so a
+   * suppressed exit is never re-notified regardless.
+   */
+  readonly interruptionBudget?: InterruptionBudgetWiring;
 }
 
 export interface RunDueBackgroundExitNoticesSummary {
@@ -159,6 +170,7 @@ export async function runDueBackgroundExitNotices(
     const generatedAt = now().toISOString();
     try {
       let anySink = false;
+      let digested = false;
       if (options.broker && options.brokerUserId) {
         options.broker.publish(options.brokerUserId, {
           generatedAt,
@@ -169,15 +181,36 @@ export async function runDueBackgroundExitNotices(
         anySink = true;
       }
       if (options.messagingRegistry && options.providerId && options.destination) {
-        await sendWithRetry(options.messagingRegistry, options.providerId, {
-          destination: options.destination,
-          text
-        });
-        anySink = true;
+        const messagingRegistry = options.messagingRegistry;
+        const providerId = options.providerId;
+        const destination = options.destination;
+        const deliver = (): Promise<void> => sendWithRetry(messagingRegistry, providerId, { destination, text }).then(() => undefined);
+        if (options.interruptionBudget) {
+          const budget = options.interruptionBudget;
+          const result = await applyInterruptionBudget({
+            caps: resolveInterruptionBudgetCaps(budget),
+            deliver,
+            digestFile: budget.digestFile,
+            errorLogger: (message) => errors.push(`${record.id}: ${message}`),
+            ledgerFile: budget.ledgerFile,
+            now: now(),
+            source: "background-exit",
+            sourceId: record.id,
+            text
+          });
+          if (result.outcome === "digested") {
+            digested = true;
+          } else {
+            anySink = true;
+          }
+        } else {
+          await deliver();
+          anySink = true;
+        }
       }
       if (anySink) {
         delivered += 1;
-      } else {
+      } else if (!digested) {
         errors.push(`${record.id}: no delivery sink configured`);
       }
     } catch (cause) {

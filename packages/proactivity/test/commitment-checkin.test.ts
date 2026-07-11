@@ -1,7 +1,9 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger } from "@muse/stores";
 
 import {
   appendCheckins,
@@ -20,6 +22,10 @@ import {
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-checkin-")), "checkins.json");
+}
+
+function tmpBudgetDir(): string {
+  return mkdtempSync(join(tmpdir(), "muse-checkin-budget-"));
 }
 
 const NOW = new Date("2026-05-01T09:00:00.000Z");
@@ -214,6 +220,93 @@ describe("runDueCheckins", () => {
     expect(res.delivered).toBe(0);
     expect(sent).toEqual([]);
     expect((await readCheckins(file))[0]!.status).toBe("scheduled"); // not consumed
+  });
+
+  describe("interruption budget (opt-in)", () => {
+    const mkDue = (id: string): PersistedCheckin => ({
+      commitment: id, createdAt: NOW.toISOString(), dueAtIso: new Date("2026-05-02T10:00:00Z").toISOString(),
+      id, question: `q-${id}`, sourceKey: id, status: "scheduled", userId: "stark"
+    });
+
+    it("cap reached: registry.send is never called, the question lands in the digest, and the check-in is still marked fired", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+      await appendInterruptionDelivery(ledgerFile, { at: now, source: "commitment-checkin" });
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(res.delivered).toBe(0);
+      expect(sent).toEqual([]);
+      expect((await readCheckins(file))[0]!.status).toBe("fired"); // sidecar marks fired regardless
+      const queued = await readDigestQueue(digestFile);
+      expect(queued).toHaveLength(1);
+      expect(queued[0]).toMatchObject({ source: "commitment-checkin", sourceId: "a", text: "q-a" });
+    });
+
+    it("cap not reached: delivers exactly as without a budget, and records the ledger", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(res.delivered).toBe(1);
+      expect(sent).toEqual(["q-a"]);
+      expect((await readCheckins(file))[0]!.status).toBe("fired");
+      expect(await readInterruptionLedger(ledgerFile)).toHaveLength(1);
+      expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    });
+
+    it("interruptionBudget absent: behavior is byte-identical to the pre-budget path", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({ destination: "me", file, now: () => new Date("2026-05-02T10:05:00Z"), providerId: "log", registry });
+      expect(res.delivered).toBe(1);
+      expect(sent).toEqual(["q-a"]);
+    });
+
+    it("a corrupt ledger file fails OPEN — the check-in still delivers", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      writeFileSync(ledgerFile, "{ not valid json", "utf8");
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 1, digestFile, hourlyCap: 1, ledgerFile },
+        now: () => new Date("2026-05-02T10:05:00Z"),
+        providerId: "log",
+        registry
+      });
+      expect(res.delivered).toBe(1);
+      expect(sent).toEqual(["q-a"]);
+    });
   });
 });
 

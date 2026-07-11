@@ -99,7 +99,7 @@ describe("runActuatorByName", () => {
   });
 });
 
-// outbound-safety.md acceptance at the actuator-DISPATCHER level (backlog P2
+// outbound-safety.md acceptance at the actuator-DISPATCHER level (the
 // approval round-trip). The cases above assert the external HTTP effect; these
 // add the "recorded + reversible-where-possible" rule (#4) — every outcome,
 // performed OR refused OR failed, lands a rationale-bearing action-log entry —
