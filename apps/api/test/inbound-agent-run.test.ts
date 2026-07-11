@@ -2,8 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { UNGROUNDABLE_ANSWER_NOTICE } from "@muse/agent-core";
-import { LogMessagingProvider, MessagingProviderRegistry } from "@muse/messaging";
+import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE } from "@muse/agent-core";
+import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
 import { createInboundAgentRun } from "../src/inbound-agent-run.js";
@@ -103,7 +103,8 @@ describe("createInboundAgentRun channel pairing gate", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
     const run = buildGated(dir, agentCalls);
-    const reply = await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    // NOT a casual greeting — this probes pairing, not the S1 fast-path.
+    const reply = await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
     expect(agentCalls).toEqual(["run"]);
     expect(reply).toContain("answer");
   });
@@ -112,7 +113,7 @@ describe("createInboundAgentRun channel pairing gate", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
     const run = buildGated(dir, agentCalls);
-    await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
 
     const strangerReply = await run({ messages: [{ content: "what are the owner's secrets?", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
     expect(agentCalls).toEqual(["run"]);
@@ -128,8 +129,8 @@ describe("createInboundAgentRun channel pairing gate", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
     const run = buildGated(dir, agentCalls, { MUSE_CHANNEL_ALLOWED_CHATS: "log:family-2" });
-    await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
-    const familyReply = await run({ messages: [{ content: "hello", role: "user" }], providerId: "log", scope: "direct", source: "family-2" });
+    await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    const familyReply = await run({ messages: [{ content: "another message", role: "user" }], providerId: "log", scope: "direct", source: "family-2" });
     expect(familyReply).toContain("answer");
     expect(agentCalls).toEqual(["run", "run"]);
   });
@@ -291,7 +292,6 @@ describe("createInboundAgentRun conversation-scope: shared (group) chat safety",
     const dir = mkdtempSync(join(tmpdir(), "muse-scope-"));
     const agentCalls: { readonly metadata: { readonly userId: string } }[] = [];
     const pendingFile = join(dir, "pending.json");
-    const { recordPendingApproval } = await import("@muse/messaging");
     await recordPendingApproval(pendingFile, {
       arguments: { url: "http://x.test/book" },
       createdAt: NOW().toISOString(),
@@ -319,5 +319,335 @@ describe("createInboundAgentRun conversation-scope: shared (group) chat safety",
     expect(agentCalls).toHaveLength(1);
     expect(reply).toContain("answer");
     expect(reply.toLowerCase()).not.toContain("muse approvals approve");
+  });
+});
+
+// Deterministic casual fast-path (S1, parity with `muse ask`): a bare
+// greeting/thanks/farewell answers instantly with the shared canned text and
+// never touches the agent run or the grounding gate — but only AFTER the
+// pairing and approval-reply gates have had their say.
+describe("createInboundAgentRun casual fast-path", () => {
+  function buildCasual(dir: string, agentCalls: string[], extraEnv: Record<string, string> = {}) {
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        agentCalls.push("run");
+        return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      ...extraEnv
+    };
+    return createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+  }
+
+  it("a casual greeting answers with the canned reply — the agent never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
+    const agentCalls: string[] = [];
+    const run = buildCasual(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe(casualResponseFor("greeting"));
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("a real question still runs the full agent exactly as before", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
+    const agentCalls: string[] = [];
+    const run = buildCasual(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(agentCalls).toHaveLength(1);
+    expect(reply).toContain("answer");
+  });
+
+  it("gate ordering: an unpaired stranger sending a casual greeting still gets the pairing refusal, not the canned reply", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
+    const agentCalls: string[] = [];
+    const run = buildCasual(dir, agentCalls);
+    // First chat adopts as owner.
+    await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    const strangerReply = await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    expect(strangerReply).not.toBe(casualResponseFor("greeting"));
+    expect(agentCalls).toHaveLength(1); // only the owner's turn ran
+  });
+
+  it("gate ordering: a pure approval word with a pending approval resolves as the approval ack, never the casual path", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
+    const agentCalls: string[] = [];
+    const pendingFile = join(dir, "pending.json");
+    await recordPendingApproval(pendingFile, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    const run = buildCasual(dir, agentCalls, { MUSE_PENDING_APPROVALS_FILE: pendingFile });
+    const reply = await run({ messages: [{ content: "ok", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("muse approvals approve pending-1");
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("gate ordering: a casual greeting with an unrelated pending approval still answers casually, leaving the approval untouched — proof approval-reply handling runs first and correctly declines a non-approval text", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
+    const agentCalls: string[] = [];
+    const pendingFile = join(dir, "pending.json");
+    await recordPendingApproval(pendingFile, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    const run = buildCasual(dir, agentCalls, { MUSE_PENDING_APPROVALS_FILE: pendingFile });
+    const reply = await run({ messages: [{ content: "hi", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe(casualResponseFor("greeting"));
+    expect(agentCalls).toHaveLength(0);
+
+    const fs = await import("node:fs/promises");
+    const parsed = JSON.parse(await fs.readFile(pendingFile, "utf8")) as { pending?: readonly { readonly id: string }[] };
+    expect(parsed.pending?.some((entry) => entry.id === "pending-1")).toBe(true);
+  });
+});
+
+// Delegation ack (S2, "the assistant rhythm"): a non-casual, non-approval,
+// paired-chat request gets an early second-channel acknowledgment BEFORE the
+// (possibly slow) agent run — sequential, fail-open, and gated to fire ONLY
+// on the genuine delegation path (every earlier gate still wins first).
+describe("createInboundAgentRun delegation ack (S2)", () => {
+  function buildAck(
+    dir: string,
+    opts: {
+      readonly composeAck?: (input: { readonly latestUserText: string }) => Promise<string | null>;
+      readonly extraEnv?: Record<string, string>;
+    } = {}
+  ) {
+    const calls: string[] = [];
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        calls.push("run");
+        return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      ...opts.extraEnv
+    };
+    const composeAck = opts.composeAck
+      ? async (input: { readonly latestUserText: string }) => {
+          calls.push(`composeAck:${input.latestUserText}`);
+          return opts.composeAck!(input);
+        }
+      : undefined;
+    const run = createInboundAgentRun({
+      agentRuntime,
+      ...(composeAck ? { composeAck } : {}),
+      env,
+      model: "default",
+      registry
+    });
+    return { calls, run };
+  }
+
+  it("ordering: composeAck is called, then notify with its result, then agentRuntime.run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "on it — I'll report back" });
+    const notified: string[] = [];
+    const reply = await run({
+      messages: [{ content: "book a flight for me", role: "user" }],
+      notify: async (text) => {
+        calls.push(`notify:${text}`);
+        notified.push(text);
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual([
+      "composeAck:book a flight for me",
+      "notify:on it — I'll report back",
+      "run"
+    ]);
+    expect(notified).toEqual(["on it — I'll report back"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("composeAck throwing → no notify, run still proceeds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => {
+        throw new Error("model unavailable");
+      }
+    });
+    let notifyCalls = 0;
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        notifyCalls += 1;
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(notifyCalls).toBe(0);
+    expect(calls).toEqual(["composeAck:book a flight", "run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("composeAck returning null → no notify, run still proceeds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => null });
+    let notifyCalls = 0;
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        notifyCalls += 1;
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(notifyCalls).toBe(0);
+    expect(calls).toEqual(["composeAck:book a flight", "run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("MUSE_CHANNEL_ACK=false → composeAck is never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_CHANNEL_ACK: "false" }
+    });
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual(["run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("MUSE_CHANNEL_ACK=0 (parseBoolean's other falsy spelling) → composeAck is never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_CHANNEL_ACK: "0" }
+    });
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual(["run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("unpaired chat → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "should never run" });
+    // First chat adopts as owner (this turn's ack fires as expected).
+    await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async (text) => calls.push(`notify:${text}`),
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+    calls.length = 0;
+
+    const strangerReply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called for a stranger");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "stranger-9"
+    });
+
+    expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    expect(calls).toEqual([]);
+  });
+
+  it("approval-reply 'ok' path → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const pendingFile = join(dir, "pending.json");
+    await recordPendingApproval(pendingFile, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_PENDING_APPROVALS_FILE: pendingFile }
+    });
+    const reply = await run({
+      messages: [{ content: "ok", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toContain("muse approvals approve pending-1");
+    expect(calls).toEqual([]);
+  });
+
+  it("casual 'hi' → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "should never run" });
+    const reply = await run({
+      messages: [{ content: "hi", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toBe(casualResponseFor("greeting"));
+    expect(calls).toEqual([]);
   });
 });

@@ -56,6 +56,7 @@ import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startMatrixSyncTick } from "./matrix-sync-tick.js";
 import { createChannelDaemonSupervisor } from "./channel-daemon-supervisor.js";
 import { readDaemonSettingsSync, resolveDaemonSettingsFile } from "./daemon-settings-store.js";
+import { createComposeAck } from "./inbound-ack.js";
 import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
@@ -615,11 +616,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
     replyStarters.telegram = () => {
+      const ackModel = options.defaultModel ?? "default";
       const runner: InboundAgentRunner = createThreadedInboundRunner({
         run: createInboundAgentRun({
           agentRuntime,
+          ...(options.modelProvider
+            ? { composeAck: createComposeAck({ model: ackModel, modelProvider: options.modelProvider }) }
+            : {}),
           env,
-          model: options.defaultModel ?? "default",
+          model: ackModel,
           registry: messaging
         }),
         threadFile: `${telegramInboxFile}.threads.json`
@@ -702,11 +707,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
     replyStarters.matrix = () => {
+      const ackModel = options.defaultModel ?? "default";
       const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
         run: createInboundAgentRun({
           agentRuntime,
+          ...(options.modelProvider
+            ? { composeAck: createComposeAck({ model: ackModel, modelProvider: options.modelProvider }) }
+            : {}),
           env,
-          model: options.defaultModel ?? "default",
+          model: ackModel,
           registry: messaging
         }),
         threadFile: `${matrixInboxFile}.threads.json`

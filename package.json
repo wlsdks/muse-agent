@@ -52,7 +52,7 @@
     "eval:recipient-resolution": "pnpm --filter @muse/mcp build && node scripts/eval-recipient-resolution.mjs",
     "eval:differentiation": "pnpm eval:memory-poisoning && pnpm eval:receipt-drift && pnpm eval:action-log-tamper && pnpm eval:policy-symmetry && pnpm eval:consent-fail-close && pnpm eval:recipient-resolution",
     "eval:shadow-trial": "pnpm --filter @muse/model build && node scripts/eval-shadow-trial.mjs",
-    "eval:agent": "pnpm --filter @muse/model build && pnpm --filter @muse/tools build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && node scripts/eval-agent.mjs",
+    "eval:agent": "pnpm --filter @muse/model build && pnpm --filter @muse/tools build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && pnpm --filter @muse/api build && node scripts/eval-agent.mjs",
     "eval:self-improving": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/eval-self-improving.mjs",
     "eval:plan-quality": "pnpm --filter @muse/model build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && node scripts/eval-plan-quality.mjs",
     "eval:vision": "pnpm --filter @muse/model build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && node apps/cli/scripts/verify-vision-actions.mjs",
@@ -91,6 +91,7 @@
     "eval:multistep": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multistep.mjs",
     "eval:two-edit-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs",
     "eval:reverify-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-reverify-fix.mjs",
+    "eval:channel-rhythm": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/api build && node scripts/eval-channel-rhythm.mjs",
     "check:env": "node scripts/env-inventory.mjs --check",
     "docs:env": "node scripts/env-inventory.mjs --write"
   },
