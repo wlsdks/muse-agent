@@ -70,7 +70,7 @@ describe("undoLoggedAction — P6-b2 act → undo → veto → no longer auto-ac
     };
     const first = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: f.objectivesFile,
       now: () => T
     });
@@ -110,7 +110,7 @@ describe("undoLoggedAction — P6-b2 act → undo → veto → no longer auto-ac
     await addObjective(f.objectivesFile, objective());
     const second = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: f.objectivesFile,
       now: () => new Date("2026-05-19T14:00:00.000Z")
     });

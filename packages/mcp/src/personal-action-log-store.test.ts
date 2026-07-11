@@ -145,7 +145,7 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });
@@ -195,7 +195,7 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });

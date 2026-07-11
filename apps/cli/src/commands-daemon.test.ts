@@ -446,14 +446,14 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
     const notInstalled = await runDaemon(
       ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
     );
     expect(notInstalled.stdout).toMatch(/autostart:\s+not installed/);
 
     writeFileSync(plistFile, "<plist/>", "utf8");
     const installed = await runDaemon(
       ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
     );
     expect(installed.stdout).toMatch(/autostart:\s+installed/);
   });
@@ -591,7 +591,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
 
-    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, registry });
+    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, platform: "darwin", registry });
 
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toContain("LaunchAgent written");

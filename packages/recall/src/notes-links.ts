@@ -13,7 +13,7 @@ import { levenshteinDistance } from "@muse/shared";
 
 /** A note's link key for resolution: basename without extension, lowercased. */
 export function noteLinkKey(id: string): string {
-  const base = id.split("/").pop() ?? id;
+  const base = id.split(/[\\/]/u).pop() ?? id;
   return base.replace(/\.(md|markdown|txt)$/iu, "").trim().toLowerCase();
 }
 

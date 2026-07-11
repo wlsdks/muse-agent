@@ -50,7 +50,7 @@ describe("atomicWriteFile", () => {
     if (process.platform !== "win32") expect((await stat(a)).mode & 0o777).toBe(0o600);
     const b = join(dir, "b");
     await atomicWriteFile(b, "x", { mode: 0o644 });
-    expect((await stat(b)).mode & 0o777).toBe(0o644);
+    if (process.platform !== "win32") expect((await stat(b)).mode & 0o777).toBe(0o644);
   });
 
   it("overwrites an existing file atomically", async () => {

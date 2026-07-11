@@ -21,21 +21,21 @@ import type { ProgramIO } from "./program.js";
 describe("resolveSkillsDir", () => {
   it("honours MUSE_SKILLS_DIR, else defaults under ~/.muse/skills", () => {
     expect(resolveSkillsDir({ MUSE_SKILLS_DIR: "/tmp/s" } as NodeJS.ProcessEnv)).toBe("/tmp/s");
-    expect(resolveSkillsDir({} as NodeJS.ProcessEnv).endsWith("/.muse/skills")).toBe(true);
+    expect(resolveSkillsDir({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skills")).toBe(true);
   });
 });
 
 describe("resolveAuthoredSkillsDir", () => {
   it("honours MUSE_AUTHORED_SKILLS_DIR, else defaults under ~/.muse/skills/authored", () => {
     expect(resolveAuthoredSkillsDir({ MUSE_AUTHORED_SKILLS_DIR: "/tmp/a" } as NodeJS.ProcessEnv)).toBe("/tmp/a");
-    expect(resolveAuthoredSkillsDir({} as NodeJS.ProcessEnv).endsWith("/.muse/skills/authored")).toBe(true);
+    expect(resolveAuthoredSkillsDir({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skills/authored")).toBe(true);
   });
 });
 
 describe("resolveSkillRewardsFile", () => {
   it("honours MUSE_SKILL_REWARDS_FILE, else defaults under ~/.muse/skill-rewards.json", () => {
     expect(resolveSkillRewardsFile({ MUSE_SKILL_REWARDS_FILE: "/tmp/r.json" } as NodeJS.ProcessEnv)).toBe("/tmp/r.json");
-    expect(resolveSkillRewardsFile({} as NodeJS.ProcessEnv).endsWith("/.muse/skill-rewards.json")).toBe(true);
+    expect(resolveSkillRewardsFile({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skill-rewards.json")).toBe(true);
   });
 });
 

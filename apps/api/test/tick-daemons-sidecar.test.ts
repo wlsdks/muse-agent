@@ -23,9 +23,9 @@ describe("resolveProactiveSidecarFile — refuses to default to filesystem-root 
 
   it("falls back to HOME/.muse/proactive-fired.json when env override is missing or whitespace", () => {
     withProcessHome("/u/jinan", () => {
-      expect(resolveProactiveSidecarFile({})).toBe(join("/u/jinan", ".muse", "proactive-fired.json"));
+      expect(resolveProactiveSidecarFile({})).toBe("/u/jinan/.muse/proactive-fired.json");
       expect(resolveProactiveSidecarFile({ MUSE_PROACTIVE_SIDECAR_FILE: "   " }))
-        .toBe(join("/u/jinan", ".muse", "proactive-fired.json"));
+        .toBe("/u/jinan/.muse/proactive-fired.json");
     });
   });
 
@@ -41,7 +41,7 @@ describe("resolveProactiveSidecarFile — refuses to default to filesystem-root 
       }
       expect(path).toBeDefined();
       expect(path, "no leading whitespace in resolved path").not.toMatch(/^\s/u);
-      expect(path, "no bare filesystem-root .muse/").not.toBe(join("/", ".muse", "proactive-fired.json"));
+      expect(path, "no bare filesystem-root .muse/").not.toBe("/.muse/proactive-fired.json");
       expect(path).toMatch(/\/\.muse\/proactive-fired\.json$/u);
     });
   });

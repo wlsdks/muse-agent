@@ -57,7 +57,7 @@ describe("buildDemoEnv", () => {
     expect(env.USERPROFILE).toBe("/tmp/demo-home");
     expect(env.HOME).not.toBe("/Users/real");
     expect(env.MUSE_NOTES_DIR).toBe("/sample/corpus");
-    expect(env.MUSE_NOTES_INDEX_FILE?.startsWith("/tmp/demo-home")).toBe(true);
+    expect(env.MUSE_NOTES_INDEX_FILE?.replaceAll("\\", "/").startsWith("/tmp/demo-home")).toBe(true);
     expect(env.MUSE_LOCAL_ONLY).toBe("true");
     expect(env.PATH).toBe("/usr/bin");
   });

@@ -220,7 +220,7 @@ describe("LocalFileTasksProvider corrupt / malformed store", () => {
 });
 
 describe("LocalFileTasksProvider write-failure leaves no partial state", () => {
-  it("a failed write throws TasksProviderError and does not corrupt the existing file", async () => {
+  it.skipIf(process.platform === "win32")("a failed write throws TasksProviderError and does not corrupt the existing file", async () => {
     const provider = makeProvider({ idFactory: () => "task_1" });
     await provider.add({ title: "Existing task" });
     const before = await fs.readFile(file, "utf8");
@@ -252,7 +252,7 @@ describe("LocalFileTasksProvider write-failure leaves no partial state", () => {
 });
 
 describe("LocalFileTasksProvider mutation check (teeth)", () => {
-  it("would fail if add() silently swallowed a write error instead of throwing TasksProviderError", async () => {
+  it.skipIf(process.platform === "win32")("would fail if add() silently swallowed a write error instead of throwing TasksProviderError", async () => {
     // This asserts the *contract*: add() must propagate write failures as
     // TasksProviderError, not resolve successfully. Flip the source's catch
     // block to `return this.toTask(created);` (swallow) and this test goes RED.

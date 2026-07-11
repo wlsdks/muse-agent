@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, basename, sep } from "node:path";
 
 import { citedSourcesIn, cosineSimilarity, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, quorumVerdict, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
@@ -279,8 +279,8 @@ export function formatSourceReceipts(
     return undefined;
   }
   const hitFor = (note: string): { readonly file: string; readonly text: string } | undefined => {
-    const base = note.split("/").pop();
-    return chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
+    const base = lastPathSegment(note);
+    return chunks.find((c) => c.file === note || lastPathSegment(c.file) === base);
   };
   const blocks = cited.map((note) => {
     const date = provenanceDate(note);
@@ -397,8 +397,8 @@ export async function buildDiskContents(
     if (verifyTargets?.has(note)) {
       continue;
     }
-    const base = note.split("/").pop();
-    const hit = chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
+    const base = lastPathSegment(note);
+    const hit = chunks.find((c) => c.file === note || lastPathSegment(c.file) === base);
     const filePath = hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
     try {
       out.set(note, await readFile(filePath, "utf8"));
@@ -421,8 +421,8 @@ export async function collectCitedNoteAges(
     if (verifyTargets?.has(note) || provenanceDate(note) !== undefined) {
       continue;
     }
-    const base = note.split("/").pop();
-    const hit = chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
+    const base = lastPathSegment(note);
+    const hit = chunks.find((c) => c.file === note || lastPathSegment(c.file) === base);
     const filePath = hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
     try {
       const stats = await stat(filePath);
@@ -743,6 +743,11 @@ export function formatNonNoteReceipts(
  * cited answer "treat as unverified". One source of truth keeps gate + verdict
  * + receipt consistent.
  */
+/** Last path segment, separator-agnostic (chunk files are native paths, note ids are "/"). */
+function lastPathSegment(p: string): string | undefined {
+  return p.split(/[\\/]/u).pop();
+}
+
 export function relativizeNoteSource(file: string, notesDir: string): string {
   if (!isAbsolute(file)) {
     return file;
@@ -753,7 +758,8 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
   // that ESCAPES it (an ad-hoc `--file ~/work/RUNBOOK.md`) would otherwise cite
   // as `[from ../../../work/RUNBOOK.md]` — show the basename instead; the receipt
   // resolves the real openable path from the matched chunk's absolute file.
-  return rel.startsWith("..") ? (file.split("/").pop() ?? rel) : rel;
+  // Receipts render forward-slash on every OS (portable, matches note ids).
+  return rel.startsWith("..") ? basename(file) : rel.split(sep).join("/");
 }
 
 /**

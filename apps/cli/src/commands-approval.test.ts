@@ -142,10 +142,10 @@ describe("approvalsPath / trustPath — empty-env-shadow defence (goal-532 sibli
     try {
       const apath = approvalsPath();
       const tpath = trustPath();
-      expect(apath).toMatch(/\/\.muse\/pending-approvals\.jsonl$/u);
+      expect(apath.replaceAll("\\", "/")).toMatch(/\/\.muse\/pending-approvals\.jsonl$/u);
       expect(apath, "the whitespace-only env value must NOT leak through as the resolved path").not.toBe("");
       expect(apath).not.toBe("   ");
-      expect(tpath).toMatch(/\/\.muse\/trust\.json$/u);
+      expect(tpath.replaceAll("\\", "/")).toMatch(/\/\.muse\/trust\.json$/u);
       expect(tpath).not.toBe("");
     } finally {
       if (prevA === undefined) delete process.env.MUSE_APPROVALS_FILE;

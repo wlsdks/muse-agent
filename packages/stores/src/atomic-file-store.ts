@@ -55,7 +55,21 @@ export async function atomicWriteFile(file: string, contents: string, options: A
     } finally {
       await handle.close();
     }
-    await fs.rename(tmp, file);
+    // win32: rename onto a target another process holds open fails EPERM/EACCES
+    // transiently (POSIX rename is atomic-replace; Windows is not). Bounded
+    // retry keeps the concurrent-writers contract without changing POSIX behavior.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await fs.rename(tmp, file);
+        break;
+      } catch (cause) {
+        const code = (cause as NodeJS.ErrnoException).code;
+        if (process.platform !== "win32" || attempt >= 20 || (code !== "EPERM" && code !== "EACCES")) {
+          throw cause;
+        }
+        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 5 + attempt * 5));
+      }
+    }
     await fs.chmod(file, mode).catch(() => undefined);
     // Best-effort: fsync the PARENT directory so the rename's directory-entry
     // update is itself durable. Without this, a crash between rename() and the

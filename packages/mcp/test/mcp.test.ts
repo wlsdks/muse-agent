@@ -285,10 +285,11 @@ describe("DefaultMcpTransportConnector", () => {
     try {
       const raw = await connection.callTool?.("dump-roots", {});
       const roots = JSON.parse(raw as string) as Array<{ name?: string; uri: string }>;
+      const { pathToFileURL } = await import("node:url");
       expect(roots).toHaveLength(2);
-      expect(roots[0]?.uri).toBe("file:///tmp/muse-test-root");
+      expect(roots[0]?.uri).toBe(pathToFileURL("/tmp/muse-test-root").href);
       expect(roots[0]?.name).toBe("/tmp/muse-test-root");
-      expect(roots[1]?.uri).toBe("file:///Users/example/notes");
+      expect(roots[1]?.uri).toBe(pathToFileURL("/Users/example/notes").href);
     } finally {
       await connection.close?.();
     }
@@ -3649,7 +3650,7 @@ describe("notes provider abstraction", () => {
     await expect(apple.append({ body: "b", id: "" })).rejects.toMatchObject({ code: "EMPTY_ID" });
   });
 
-  it("AppleNotesProvider surfaces osascript failures as typed provider errors", async () => {
+  it.skipIf(process.platform === "win32")("AppleNotesProvider surfaces osascript failures as typed provider errors", async () => {
     const apple = new AppleNotesProvider({ osascriptPath: "/usr/bin/false" });
     const error = await apple.list().catch((err) => err);
     expect(error).toBeInstanceOf(NotesProviderError);
@@ -4183,7 +4184,7 @@ describe("tasks provider abstraction", () => {
     await expect(apple.search("   ", 10)).rejects.toMatchObject({ code: "EMPTY_QUERY" });
   });
 
-  it("AppleRemindersProvider surfaces osascript failures as typed provider errors", async () => {
+  it.skipIf(process.platform === "win32")("AppleRemindersProvider surfaces osascript failures as typed provider errors", async () => {
     // /usr/bin/false exits non-zero with empty stdout/stderr — exercises the
     // generic EXIT_<code> code path without needing a real Reminders.app.
     const apple = new AppleRemindersProvider({ osascriptPath: "/usr/bin/false" });
@@ -9420,7 +9421,7 @@ describe("proactive-history rotation on capacity", () => {
   });
 });
 
-describe("Apple osascript timeout watchdog (notes + reminders)", () => {
+describe.skipIf(process.platform === "win32")("Apple osascript timeout watchdog (notes + reminders)", () => {
   async function fakeOsascript(body: string): Promise<string> {
     const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
