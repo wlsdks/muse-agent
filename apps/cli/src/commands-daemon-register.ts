@@ -17,67 +17,70 @@ import {
   buildCalendarRegistry,
   buildMessagingRegistry,
   createMessagingPollDispatchers,
-  createGateEmbedder,
-  decayContradictedStrategies,
-  distillQueuedCorrections,
   parseBoolean,
   parseNonNegativeInteger,
-  resolveContactsFile,
   resolveDigestQueueFile,
   resolveDigestSentFile,
-  resolveEpisodesFile,
   resolveFollowupsFile,
   resolveInterruptionLedgerFile,
   resolveLastProactiveDeliveryFile,
-  resolveLearningPauseFile,
   resolveActionLogFile,
   resolveNotesDir,
   resolveObjectivesFile,
-  resolvePatternsFiredFile,
-  resolvePlaybookFile,
   resolveProactiveHistoryFile,
   resolveRemindersFile,
-  resolveSuppressedLessonsFile,
-  resolveRecallHitsFile,
-  resolveFadedMemoriesFile,
   resolveTasksFile,
   type DecayContradictedDeps,
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
-import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, synthesizePatternSuggestion, validateMergeCoverage, adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses } from "@muse/agent-core";
-import { FileUserMemoryStore } from "@muse/memory";
-import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryActionLog, queryPlaybook, readReminders, readTasks, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, runDigestFlushIfDue, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
-import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
-import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
+import { queryActionLog, readReminders, readTasks } from "@muse/stores";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { backgroundStoreFile } from "./commands-background.js";
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
 import { buildSchtasksCreateArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
 
-import { checkinsFile } from "./commands-checkins.js";
-import { deliverEveningRecapIfDue, gatherEveningRecap } from "./commands-recap.js";
 import { closestCommandName } from "./closest-command.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
-import { DEFAULT_REFLECTION_INTERVAL_MS, resolveReflectionsFile, runReflectionPass, shouldRunReflection } from "./commands-reflections.js";
-import { syncEmailsToNotes } from "./email-sync.js";
-import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
-import { consolidatePlaybook } from "./playbook-consolidate.js";
-import { runMemoryConsolidationTick } from "./memory-consolidate-tick.js";
-import { promoteRecalledMemories, resolveMemoryUserId } from "./commands-memory.js";
+import { DEFAULT_REFLECTION_INTERVAL_MS } from "./commands-reflections.js";
+import {
+  makeDigestFlushTick,
+  makeMemoryConsolidateTick,
+  makePlaybookConsolidateTick,
+  makeRecapTick,
+  makeSelfLearnDecayTick,
+  makeSelfLearnTick,
+  type TickRunState
+} from "./daemon-selflearn-ticks.js";
+import {
+  makeAmbientTick,
+  makeBrowsingAutoSyncTick,
+  makeConflictWatchTick,
+  makeEmailSyncTick,
+  makeHomeWatchTick,
+  makeMessagingPollTick,
+  makeObjectivesTick,
+  makeWebWatchTick
+} from "./daemon-watch-ticks.js";
+import {
+  makeBackgroundExitNoticeTick,
+  makeBriefingTick,
+  makeCheckinsTick,
+  makeFollowupTick,
+  makePatternTick,
+  makeProactiveTick,
+  makeRemindersTick,
+  makeReflectionTick,
+  makeRetentionPruneTick
+} from "./daemon-delivery-ticks.js";
 import type { ProgramIO } from "./program.js";
-import { randomUUID } from "node:crypto";
 import { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
-import { maybeAutoPrune } from "./local-state-retention.js";
-import { defaultEmbedModel } from "./council-corpus.js";
-import { embed } from "./embed.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -345,7 +348,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const sidecarFile = e.MUSE_PROACTIVE_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
-      const backgroundExitNotifiedFile = (): string => join(homedir(), ".muse", "bg-exit-notified.json");
       const dailyCapRaw = e.MUSE_PROACTIVE_DAILY_CAP ? Number(e.MUSE_PROACTIVE_DAILY_CAP) : 0;
       const dailyCap = Number.isFinite(dailyCapRaw) && dailyCapRaw > 0 ? Math.trunc(dailyCapRaw) : 0;
       const followupsFile = resolveFollowupsFile(e);
@@ -537,281 +539,105 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const proactiveInvestigator = createIndexedProactiveInvestigator();
-      const proactiveTick = async (): Promise<void> => {
-        const summary = await runDueProactiveNotices({
-          ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
-          destination,
-          historyFile,
-          investigate: proactiveInvestigator,
-          leadMinutes,
-          messagingRegistry,
-          providerId: provider,
-          ...(quietHours ? { quietHours } : {}),
-          sidecarFile,
-          tasksFile,
-          trustLedgerFile,
-          ...(dailyCap > 0 ? { dailyCap } : {})
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} proactive: fired ${summary.fired.toString()}/${summary.imminent.toString()} imminent`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) {
-            io.stdout(`\n  ! ${error}`);
-          }
-        }
-        io.stdout("\n");
-      };
+      const proactiveTick = makeProactiveTick({
+        calendarRegistry,
+        dailyCap,
+        destination,
+        historyFile,
+        leadMinutes,
+        messagingRegistry,
+        provider,
+        quietHours,
+        sidecarFile,
+        stdout: io.stdout,
+        tasksFile,
+        trustLedgerFile
+      });
 
-      const backgroundExitNoticeTick = async (): Promise<void> => {
-        const summary = await runDueBackgroundExitNotices({
-          destination,
-          interruptionBudget,
-          messagingRegistry,
-          notifiedFile: backgroundExitNotifiedFile(),
-          providerId: provider,
-          storeFile: backgroundStoreFile()
-        });
-        if (summary.notified > 0 || summary.errors.length > 0) {
-          const tag = `[${new Date().toISOString()}]`;
-          io.stdout(`${tag} background-exit: notified ${summary.notified.toString()}/${summary.pending.toString()} pending`);
-          if (summary.errors.length > 0) {
-            io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-            for (const error of summary.errors) {
-              io.stdout(`\n  ! ${error}`);
-            }
-          }
-          io.stdout("\n");
-        }
-      };
+      const backgroundExitNoticeTick = makeBackgroundExitNoticeTick({
+        destination,
+        interruptionBudget,
+        messagingRegistry,
+        provider,
+        stdout: io.stdout
+      });
 
-      const remindersTick = async (): Promise<void> => {
-        const summary = await runDueReminders({
-          destination,
-          file: remindersFile,
-          providerId: provider,
-          registry: messagingRegistry
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} reminders: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) {
-            io.stdout(`\n  ! ${error}`);
-          }
-        }
-        io.stdout("\n");
-      };
+      const remindersTick = makeRemindersTick({
+        destination,
+        messagingRegistry,
+        provider,
+        remindersFile,
+        stdout: io.stdout
+      });
 
-      const followupTick = async (): Promise<void> => {
-        if (!followupModel) {
-          io.stdout(`[${new Date().toISOString()}] followup: skipped (no model resolved)\n`);
-          return;
-        }
-        const summary = await runDueFollowups({
-          destination,
-          file: followupsFile,
-          interruptionBudget,
-          model: followupModel.model,
-          modelProvider: followupModel.modelProvider,
-          providerId: provider,
-          registry: messagingRegistry
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} followup: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) {
-            io.stdout(`\n  ! ${error}`);
-          }
-        }
-        io.stdout("\n");
-      };
+      const followupTick = makeFollowupTick({
+        destination,
+        followupModel,
+        followupsFile,
+        interruptionBudget,
+        messagingRegistry,
+        provider,
+        stdout: io.stdout
+      });
 
-      const checkinsTick = async (): Promise<void> => {
-        const summary = await runDueCheckins({
-          destination,
-          file: checkinsFile(e),
-          interruptionBudget,
-          providerId: provider,
-          registry: messagingRegistry,
-          ...(quietHours ? { quietHours } : {})
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} checkins: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) io.stdout(`\n  ! ${error}`);
-        }
-        io.stdout("\n");
-      };
+      const checkinsTick = makeCheckinsTick({
+        destination,
+        env: e,
+        interruptionBudget,
+        messagingRegistry,
+        provider,
+        quietHours,
+        stdout: io.stdout
+      });
 
-      const renderPatternFacts = (match: PatternMatch): string =>
-        match.category === "weekly-task"
-          ? `weekly recurring task on ${match.bucket.weekday}; recent: ${match.relatedTitles.slice(0, 3).join("; ")}; ${match.bucket.matches.toString()}× over ${match.bucket.distinctWeeks.toString()} weeks`
-          : `recurring action: ${match.bucket.weekday} ${match.bucket.hourBand}, area "${match.bucket.pathFamily}"; ${match.bucket.matches.toString()}× over ${match.bucket.distinctDays.toString()} days`;
+      const patternTick = makePatternTick({
+        destination,
+        env: e,
+        followupModel,
+        interruptionBudget,
+        messagingRegistry,
+        provider,
+        quietHours,
+        stdout: io.stdout
+      });
 
-      const patternTick = async (): Promise<void> => {
-        if (quietHours && isQuietHour(new Date().getHours(), quietHours)) {
-          io.stdout(`[${new Date().toISOString()}] pattern: held (quiet hours)\n`);
-          return;
-        }
-        // SDT criterion (Green & Swets): the pattern category's firing floor
-        // adapts to the user's OWN response history — dismiss-heavy raises it,
-        // acted-on lowers it. Fail-soft to the default floor on any error.
-        let minConfidence: number | undefined;
-        try {
-          const history = await readProactiveHistory(resolveProactiveHistoryFile(e));
-          const stats = summarizeNoticeResponses(history.map((entry) => ({ kind: entry.kind, text: entry.text })));
-          const patternStats = stats.get("pattern");
-          if (patternStats && patternStats.acted + patternStats.dismissed >= 3) {
-            minConfidence = adjustConfidenceFloor(0.7, sdtCriterion(patternStats));
-          }
-        } catch { /* default floor */ }
-        const summary = await runDuePatternNotices({
-          destination,
-          interruptionBudget,
-          patternsFiredFile: resolvePatternsFiredFile(e),
-          ...(minConfidence !== undefined ? { select: { minConfidence } } : {}),
-          providerId: provider,
-          registry: messagingRegistry,
-          ...(followupModel
-            ? {
-                composeSuggestion: (match: PatternMatch): Promise<string | undefined> =>
-                  synthesizePatternSuggestion(
-                    {
-                      category: match.category,
-                      confidence: match.confidence,
-                      fallbackSuggestion: match.suggestion,
-                      groundedFacts: renderPatternFacts(match)
-                    },
-                    {
-                      model: followupModel.model,
-                      modelProvider: followupModel.modelProvider as Parameters<typeof synthesizePatternSuggestion>[1]["modelProvider"]
-                    }
-                  )
-              }
-            : {})
-        });
-        io.stdout(`[${new Date().toISOString()}] pattern: delivered ${summary.delivered.toString()}/${summary.fireable.toString()} fireable\n`);
-      };
+      const ambientTick = makeAmbientTick({ ambientRunner, stdout: io.stdout });
 
-      const ambientTick = async (): Promise<void> => {
-        if (!ambientRunner) {
-          io.stdout(`[${new Date().toISOString()}] ambient: skipped (no rules)\n`);
-          return;
-        }
-        const summary = await ambientRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] ambient: delivered ${summary.delivered.toString()}\n`);
-      };
+      const webWatchTick = makeWebWatchTick({ stdout: io.stdout, webWatchRunner });
 
-      const webWatchTick = async (): Promise<void> => {
-        if (!webWatchRunner) {
-          io.stdout(`[${new Date().toISOString()}] web-watch: skipped (no config)\n`);
-          return;
-        }
-        const summary = await webWatchRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] web-watch: delivered ${summary.delivered.toString()}\n`);
-      };
+      const objectivesTick = makeObjectivesTick({
+        actuator: objectivesActuator,
+        evaluate: objectivesEvaluate,
+        file: objectivesFile,
+        stdout: io.stdout
+      });
 
-      const objectivesTick = async (): Promise<void> => {
-        if (!objectivesEvaluate || !objectivesActuator) {
-          io.stdout(`[${new Date().toISOString()}] objectives: skipped (no model resolved)\n`);
-          return;
-        }
-        const summary = await runDueObjectives({
-          act: objectivesActuator.act,
-          escalate: objectivesActuator.escalate,
-          evaluate: objectivesEvaluate,
-          file: objectivesFile
-        });
-        const tag = `[${new Date().toISOString()}]`;
-        io.stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);
-        if (summary.errors.length > 0) {
-          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-          for (const error of summary.errors) {
-            io.stdout(`\n  ! ${error}`);
-          }
-        }
-        io.stdout("\n");
-      };
+      const homeWatchTick = makeHomeWatchTick({ homeWatchRunner, stdout: io.stdout });
 
-      const homeWatchTick = async (): Promise<void> => {
-        if (!homeWatchRunner) {
-          io.stdout(`[${new Date().toISOString()}] home-watch: skipped (no config)\n`);
-          return;
-        }
-        const summary = await homeWatchRunner.tick();
-        io.stdout(`[${new Date().toISOString()}] home-watch: delivered ${summary.delivered.toString()}\n`);
-      };
+      const briefingTick = makeBriefingTick({
+        briefingCalendarLister: helpers.briefingCalendarLister,
+        calendarRegistry,
+        destination,
+        env: e,
+        knowledgeEnrich,
+        leadMinutes,
+        messagingRegistry,
+        objectivesFile,
+        provider,
+        stdout: io.stdout,
+        tasksFile
+      });
 
-      // Situational briefing — a periodic digest (objective status +
-      // imminent tasks + a related note), self-deduped by its sidecar
-      // (default 4h window). Opt-in via MUSE_BRIEFING_ENABLED.
-      const briefingTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_BRIEFING_ENABLED, false)) {
-          io.stdout(`[${new Date().toISOString()}] briefing: skipped (set MUSE_BRIEFING_ENABLED)\n`);
-          return;
-        }
-        const now = new Date();
-        let imminent: Awaited<ReturnType<typeof deriveBriefingImminent>> = [];
-        try {
-          imminent = await deriveBriefingImminent(tasksFile, { leadMinutes, now });
-        } catch { /* fail-soft — brief objective status only */ }
-        const calendarLister = helpers.briefingCalendarLister
-          ?? (calendarRegistry.list().length > 0 ? (range: Parameters<BriefingCalendarLister>[0]) => calendarRegistry.listEvents(range) : undefined);
-        if (calendarLister) {
-          try {
-            imminent = [...imminent, ...(await deriveCalendarBriefingImminent(calendarLister, { leadMinutes, now }))];
-          } catch { /* fail-soft — calendar unavailable */ }
-        }
-        const summary = await runDueSituationalBriefing({
-          birthdayLine: async () => {
-            try {
-              const contacts = await queryContacts(resolveContactsFile(e));
-              return formatBirthdayBriefLine(resolveUpcomingBirthdays(contacts, { now, withinDays: 7 }));
-            } catch {
-              return undefined;
-            }
-          },
-          destination,
-          imminent,
-          messagingRegistry,
-          now: () => now,
-          objectivesFile,
-          providerId: provider,
-          sidecarFile: e.MUSE_BRIEFING_SIDECAR_FILE?.trim()?.length
-            ? e.MUSE_BRIEFING_SIDECAR_FILE.trim()
-            : join(homedir(), ".muse", "briefing-fired.json"),
-          ...(knowledgeEnrich ? { relatedKnowledge: knowledgeEnrich } : {})
-        });
-        io.stdout(`[${now.toISOString()}] briefing: ${summary.delivered > 0 ? "delivered" : "quiet (deduped or nothing to say)"}\n`);
-      };
-
-      // Grounded "dreaming" — the daemon synthesises reflections from recent
-      // episodes while idle. Off by default; throttled to a slow cadence
-      // (default 6h) so it isn't a model call every tick. Silent unless it adds.
       const reflectionIntervalRaw = e.MUSE_REFLECTION_INTERVAL_MS ? Number(e.MUSE_REFLECTION_INTERVAL_MS) : DEFAULT_REFLECTION_INTERVAL_MS;
       const reflectionIntervalMs = Number.isFinite(reflectionIntervalRaw) && reflectionIntervalRaw > 0 ? reflectionIntervalRaw : DEFAULT_REFLECTION_INTERVAL_MS;
-      let lastReflectionMs: number | undefined;
-      const reflectionTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_REFLECTION_ENABLED, false) || !followupModel) return;
-        const nowMs = Date.now();
-        if (!shouldRunReflection(lastReflectionMs, nowMs, reflectionIntervalMs)) return;
-        lastReflectionMs = nowMs;
-        try {
-          const episodes = (await readEpisodes(resolveEpisodesFile(e))).slice(-30);
-          const inputs = episodes.map((ep) => ({ id: ep.id, text: ep.summary }));
-          const added = await runReflectionPass(inputs, {
-            model: followupModel.model,
-            modelProvider: followupModel.modelProvider as Parameters<typeof runReflectionPass>[1]["modelProvider"],
-            reflectionsFile: resolveReflectionsFile(e),
-            embed: createGateEmbedder(e)
-          });
-          if (added > 0) io.stdout(`[${new Date(nowMs).toISOString()}] reflections: +${added.toString()} (see \`muse reflections\`)\n`);
-        } catch { /* fail-soft — dreaming is a background nicety */ }
-      };
+      const lastReflectionMs: TickRunState = { current: undefined };
+      const reflectionTick = makeReflectionTick({
+        env: e,
+        followupModel,
+        intervalMs: reflectionIntervalMs,
+        lastRunMs: lastReflectionMs,
+        stdout: io.stdout
+      });
 
       // Continuous email ingestion — the always-on half of `muse email sync`: the
       // daemon pulls recent inbox emails into recallable notes on its own tick, so
@@ -824,238 +650,70 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const emailSyncIntervalMs = Number.isFinite(emailSyncIntervalRaw) && emailSyncIntervalRaw > 0 ? emailSyncIntervalRaw : DEFAULT_EMAIL_SYNC_INTERVAL_MS;
       const emailSyncLimitRaw = e.MUSE_EMAIL_SYNC_LIMIT ? Number(e.MUSE_EMAIL_SYNC_LIMIT) : 20;
       const emailSyncLimit = Number.isFinite(emailSyncLimitRaw) && emailSyncLimitRaw > 0 ? Math.min(100, Math.trunc(emailSyncLimitRaw)) : 20;
-      let lastEmailSyncMs: number | undefined;
-      const emailSyncTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return;
-        const token = e.MUSE_GMAIL_TOKEN?.trim();
-        const provider = helpers.emailSyncProvider ?? (token ? new GmailEmailProvider(token) : undefined);
-        if (!provider) return; // opt-in: no token, no sync
-        const nowMs = Date.now();
-        if (lastEmailSyncMs !== undefined && nowMs - lastEmailSyncMs < emailSyncIntervalMs) return;
-        lastEmailSyncMs = nowMs;
-        try {
-          const written = await syncEmailsToNotes(provider, resolveNotesDir(e), emailSyncLimit);
-          if (written > 0) io.stdout(`[${new Date(nowMs).toISOString()}] email-sync: ${written.toString()} email(s) → recall (ask about them with \`muse ask\`)\n`);
-        } catch { /* fail-soft — a Gmail blip must never break the daemon */ }
-      };
+      const lastEmailSyncMs: TickRunState = { current: undefined };
+      const emailSyncTick = makeEmailSyncTick({
+        env: e,
+        intervalMs: emailSyncIntervalMs,
+        lastRunMs: lastEmailSyncMs,
+        limit: emailSyncLimit,
+        notesDir: resolveNotesDir(e),
+        stdout: io.stdout,
+        ...(helpers.emailSyncProvider ? { emailSyncProvider: helpers.emailSyncProvider } : {})
+      });
 
-      // Unattended learning — the daemon distills the corrections you made in
-      // past sessions (queued at correction time) into learned strategies with
-      // NO manual `muse playbook distill`. Off by default; brake-first (the
-      // learning-pause kill switch is checked inside distillQueuedCorrections,
-      // one distill per tick); every write lands on PROBATION until a real
-      // reinforce graduates it. Silent unless it actually learns something.
+      // Unattended learning (distill + subtractive decay) — see
+      // `makeSelfLearnTick`'s doc comment for the full brake/safety contract.
       const DEFAULT_SELFLEARN_INTERVAL_MS = 5 * 60 * 1000;
       const selfLearnIntervalRaw = e.MUSE_SELFLEARN_INTERVAL_MS ? Number(e.MUSE_SELFLEARN_INTERVAL_MS) : DEFAULT_SELFLEARN_INTERVAL_MS;
       const selfLearnIntervalMs = Number.isFinite(selfLearnIntervalRaw) && selfLearnIntervalRaw > 0 ? selfLearnIntervalRaw : DEFAULT_SELFLEARN_INTERVAL_MS;
-      let lastSelfLearnMs: number | undefined;
-      const selfLearnTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) || !followupModel) return;
-        const nowMs = Date.now();
-        if (lastSelfLearnMs !== undefined && nowMs - lastSelfLearnMs < selfLearnIntervalMs) return;
-        lastSelfLearnMs = nowMs;
-        try {
-          const playbookFile = resolvePlaybookFile(e);
-          // Snapshot probation BEFORE distill so we can act ONLY on this tick's
-          // new corrections (the subtractive decay below is driven by what you
-          // JUST corrected, not the whole bank re-scanned every tick).
-          const probationBefore = new Set(
-            (await queryPlaybook(playbookFile)).filter((p) => p.probation === true).map((p) => p.id)
-          );
-          const recorded = await distillQueuedCorrections({
-            model: followupModel.model,
-            modelProvider: followupModel.modelProvider as DistillQueuedDeps["modelProvider"],
-            embed: createGateEmbedder(e),
-            queueFile: resolveLearnQueueFile(e),
-            playbookFile,
-            suppressedLessonsFile: resolveSuppressedLessonsFile(e),
-            pauseFile: resolveLearningPauseFile(e),
-            ...(helpers.selfLearnDistill ? { distill: helpers.selfLearnDistill } : {})
-          });
-          if (recorded > 0) {
-            io.stdout(`[${new Date(nowMs).toISOString()}] learned: +${recorded.toString()} strateg${recorded === 1 ? "y" : "ies"} from your corrections (see \`muse learned\`)\n`);
-            // FELT self-learning: deliver the autonomous-learning event
-            // to the user's CHANNEL — not just this console they don't watch —
-            // so a background daemon's learning is PERCEIVED, not silent.
-            // Quiet-hours-gated + fail-soft like every
-            // notice. SAFE: the strategy stays PROBATION — this only SURFACES it,
-            // never auto-applies it (the honesty-sensitive injection path is
-            // untouched; nothing graduates without the user's own reinforce).
-            await noticeSink.deliver({
-              kind: "self-learn",
-              text: `I noted ${recorded.toString()} strateg${recorded === 1 ? "y" : "ies"} from how you've corrected me lately — review with \`muse learned\` (nothing changes how I answer until you reinforce it).`,
-              title: "Learned from your corrections"
-            });
-          }
-          // Subtractive correction-decay: a NEW correction that
-          // CONTRADICTS a strategy Muse currently APPLIES drops that strategy
-          // below the inject line, unattended, so a LATER session stops applying
-          // it. SIGN-SAFE: decay-only (never graduates), polarity-gated +
-          // fail-closed (only a confident `contradict` acts), injected-only,
-          // brake-first; reversible by a `muse playbook reward`.
-          const newProbation = (await queryPlaybook(playbookFile))
-            .filter((p) => p.probation === true && !probationBefore.has(p.id));
-          if (newProbation.length > 0) {
-            // Single-user daemon: this tick's new corrections are one user's. Decay
-            // that user's injected strategies the corrections contradict.
-            const userId = newProbation[0]!.userId;
-            const decayed = await decayContradictedStrategies({
-              corrections: newProbation.filter((p) => p.userId === userId).map((p) => ({ id: p.id, text: p.source ?? p.text })),
-              model: followupModel.model,
-              modelProvider: followupModel.modelProvider as DecayContradictedDeps["modelProvider"],
-              pauseFile: resolveLearningPauseFile(e),
-              playbookFile,
-              userId,
-              ...(helpers.contradictionClassify ? { classify: helpers.contradictionClassify } : {})
-            });
-            if (decayed.length > 0) {
-              const first = decayed[0]!;
-              io.stdout(`[${new Date(nowMs).toISOString()}] unlearned: stopped applying ${decayed.length.toString()} strateg${decayed.length === 1 ? "y" : "ies"} you contradicted (see \`muse learned\`)\n`);
-              await noticeSink.deliver({
-                kind: "self-learn",
-                text: decayed.length === 1
-                  ? `You corrected me, so I've stopped applying "${first.text}" going forward. If that was wrong, reinforce it with \`muse playbook reward ${first.id}\`.`
-                  : `You corrected me, so I've stopped applying ${decayed.length.toString()} preferences I was using (see \`muse learned\`). Reinforce any I got wrong with \`muse playbook reward <id>\`.`,
-                title: "Stopped applying a contradicted preference"
-              });
-            }
-          }
-        } catch { /* fail-soft — background learning must never break the daemon */ }
-      };
+      const lastSelfLearnMs: TickRunState = { current: undefined };
+      const selfLearnTick = makeSelfLearnTick({
+        env: e,
+        followupModel,
+        intervalMs: selfLearnIntervalMs,
+        lastRunMs: lastSelfLearnMs,
+        noticeSink,
+        stdout: io.stdout,
+        ...(helpers.selfLearnDistill ? { selfLearnDistill: helpers.selfLearnDistill } : {}),
+        ...(helpers.contradictionClassify ? { contradictionClassify: helpers.contradictionClassify } : {})
+      });
 
-      // Disuse-decay — the FORGETTING half of continuous RL over the learned
-      // bank (the distill step adds new strategies; this fades old ones). A
-      // positive-reward strategy you stopped using sinks back toward neutral so
-      // a one-off thumbs-up can't steer the agent forever. Same MUSE_SELFLEARN
-      // switch + the learning-pause brake (a paused user's bank is frozen);
-      // model-free, so it runs without a model, on a slow daily cadence.
+      // Disuse-decay (the FORGETTING half) — see `makeSelfLearnDecayTick`'s
+      // doc comment.
       const DEFAULT_SELFLEARN_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
       const decayIntervalRaw = e.MUSE_SELFLEARN_DECAY_INTERVAL_MS ? Number(e.MUSE_SELFLEARN_DECAY_INTERVAL_MS) : DEFAULT_SELFLEARN_DECAY_INTERVAL_MS;
       const decayIntervalMs = Number.isFinite(decayIntervalRaw) && decayIntervalRaw > 0 ? decayIntervalRaw : DEFAULT_SELFLEARN_DECAY_INTERVAL_MS;
-      let lastDecayMs: number | undefined;
-      const selfLearnDecayTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, false)) return;
-        const nowMs = Date.now();
-        if (lastDecayMs !== undefined && nowMs - lastDecayMs < decayIntervalMs) return;
-        lastDecayMs = nowMs;
-        try {
-          if (await isLearningPaused(resolveLearningPauseFile(e))) return; // brake: paused ⇒ bank frozen
-          const playbookFile = resolvePlaybookFile(e);
-          const beforeReward = new Map((await queryPlaybook(playbookFile)).map((s) => [s.id, s.reward ?? 0]));
-          const decayed = await decayStalePlaybookRewards(playbookFile, { nowMs });
-          if (decayed > 0) {
-            io.stdout(`[${new Date(nowMs).toISOString()}] decay: ${decayed.toString()} stale strateg${decayed === 1 ? "y" : "ies"} faded toward neutral\n`);
-            // FELT forgetting: when a preference you TAUGHT crosses from
-            // healthy into near-forgotten (reward >1 → ≤1) purely from disuse, tell
-            // you so you can RESCUE it before it's gone — the symmetric other half
-            // of the learned-notice. SAFE: the decay
-            // itself is the existing model-free RL, untouched.
-            const fading = (await queryPlaybook(playbookFile))
-              .filter((s) => { const prev = beforeReward.get(s.id); return prev !== undefined && prev > 1 && (s.reward ?? 0) <= 1; })
-              .sort((a, b) => (a.reward ?? 0) - (b.reward ?? 0))[0];
-            if (fading) {
-              await noticeSink.deliver({
-                kind: "self-learn-decay",
-                text: `A preference you taught me — "${fading.text}" — is fading from disuse. Reinforce it with \`muse playbook reward ${fading.id.slice(0, 8)}\` to keep it.`,
-                title: "A preference is fading"
-              });
-            }
-          }
-        } catch { /* fail-soft — background maintenance must never break the daemon */ }
-      };
+      const lastDecayMs: TickRunState = { current: undefined };
+      const selfLearnDecayTick = makeSelfLearnDecayTick({
+        env: e,
+        intervalMs: decayIntervalMs,
+        lastRunMs: lastDecayMs,
+        noticeSink,
+        stdout: io.stdout
+      });
 
-      // Autonomous playbook CONSOLIDATE — the unattended distill writes
-      // PROBATION strategies; exact/lexical near-duplicates are deduped at write
-      // time, but SEMANTIC paraphrases the lexical dedup misses still accumulate.
-      // This merges near-duplicate PROBATION strategies into one via the LLM
-      // merger behind the SkillOpt held-out coverage gate (a merge commits only
-      // if the result still covers every original; else the originals are kept).
-      // SAFETY: it operates ONLY on probation strategies and the merged strategy
-      // STAYS on probation — autonomous consolidation NEVER graduates a guess
-      // into the injected block (graduation stays bound to a positive user act),
-      // and the graduated/injected bank is never touched. Brake-first: ≤1 cluster
-      // per tick, the same MUSE_SELFLEARN switch + learning-pause brake, off
-      // without a model.
+      // Autonomous playbook CONSOLIDATE — see `makePlaybookConsolidateTick`'s
+      // doc comment for the sign-safe merge contract.
       const DEFAULT_SELFLEARN_CONSOLIDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
       const consolidateIntervalRaw = e.MUSE_SELFLEARN_CONSOLIDATE_INTERVAL_MS ? Number(e.MUSE_SELFLEARN_CONSOLIDATE_INTERVAL_MS) : DEFAULT_SELFLEARN_CONSOLIDATE_INTERVAL_MS;
       const consolidateIntervalMs = Number.isFinite(consolidateIntervalRaw) && consolidateIntervalRaw > 0 ? consolidateIntervalRaw : DEFAULT_SELFLEARN_CONSOLIDATE_INTERVAL_MS;
-      let lastConsolidateMs: number | undefined;
-      const playbookConsolidateTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) || !followupModel) return;
-        const nowMs = Date.now();
-        if (lastConsolidateMs !== undefined && nowMs - lastConsolidateMs < consolidateIntervalMs) return;
-        lastConsolidateMs = nowMs;
-        try {
-          if (await isLearningPaused(resolveLearningPauseFile(e))) return; // brake: paused ⇒ bank frozen
-          const playbookFile = resolvePlaybookFile(e);
-          // The playbook file is a single-user ~/.muse bucket — operate on the
-          // whole file (no external userId resolution); the merged strategy
-          // inherits the cluster's userId.
-          const entries = await queryPlaybook(playbookFile);
-          // ONLY fresh PENDING learnings: probation AND not-yet-avoided. The
-          // graduated / avoided bank is never autonomously merged.
-          const pending = entries.filter((x) => x.probation === true && (x.reward ?? 0) > PLAYBOOK_AVOID_BELOW);
-          const clusters = clusterByTextSimilarity(pending, (x) => x.text, strategyTextSimilarity, 0.6).filter((c) => c.length >= 2);
-          if (clusters.length === 0) return;
-          const cluster = clusters[0]!; // ≤1 per tick (brake-first)
-          const userId = cluster[0]!.userId;
-          const tag = cluster.find((x) => x.tag)?.tag;
-          const merge = helpers.consolidateMerge ?? ((texts) =>
-            mergePlaybookStrategies(texts, { model: followupModel.model, modelProvider: followupModel.modelProvider as Parameters<typeof mergePlaybookStrategies>[1]["modelProvider"] }));
-          const validate = helpers.consolidateValidate ?? (async (originals: readonly string[], mergedText: string) => {
-            const verdict = await validateMergeCoverage(originals.map((t) => ({ label: t, text: t })), { label: mergedText.slice(0, 40), text: mergedText }, { embed: createGateEmbedder(e) });
-            return { accept: verdict.accept, lost: verdict.lost, reason: verdict.reason };
-          });
-          const { merged } = await consolidatePlaybook([cluster], {
-            apply: true,
-            log: () => { /* the daemon logs the single outcome below */ },
-            merge,
-            // SAFETY: the merged strategy STAYS on probation — never graduate.
-            record: async (text) => {
-              await recordPlaybookStrategy(playbookFile, {
-                createdAt: new Date(nowMs).toISOString(),
-                id: `pb_${randomUUID()}`,
-                origin: "grounded",
-                probation: true,
-                text,
-                userId,
-                ...(tag ? { tag } : {})
-              });
-            },
-            remove: async (id) => { await removePlaybookStrategy(playbookFile, id); },
-            validate
-          });
-          if (merged > 0) io.stdout(`[${new Date(nowMs).toISOString()}] consolidate: merged ${cluster.length.toString()} near-duplicate pending learning(s) into 1 (still on probation; see \`muse learned\`)\n`);
-        } catch { /* fail-soft — background maintenance must never break the daemon */ }
-      };
+      const lastConsolidateMs: TickRunState = { current: undefined };
+      const playbookConsolidateTick = makePlaybookConsolidateTick({
+        env: e,
+        followupModel,
+        intervalMs: consolidateIntervalMs,
+        lastRunMs: lastConsolidateMs,
+        stdout: io.stdout,
+        ...(helpers.consolidateMerge ? { consolidateMerge: helpers.consolidateMerge } : {}),
+        ...(helpers.consolidateValidate ? { consolidateValidate: helpers.consolidateValidate } : {})
+      });
 
-      let lastMemoryConsolidateMs: number | undefined;
-      const memoryConsolidateTick = async (): Promise<void> => {
-        const sleepPromoteEnabled = parseBoolean(e.MUSE_SLEEP_PROMOTE, false);
-        const persist = sleepPromoteEnabled
-          ? async () => {
-              const userId = resolveMemoryUserId(undefined);
-              const store = new FileUserMemoryStore();
-              const result = await promoteRecalledMemories({
-                store,
-                userId,
-                readHits: () => readRecallHits(resolveRecallHitsFile(e))
-              });
-              return { promoted: result.promoted.length };
-            }
-          : undefined;
-        const nextState = await runMemoryConsolidationTick({
-          enabled: parseBoolean(e.MUSE_SELFLEARN_ENABLED, false),
-          nowMs: Date.now(),
-          lastRunMs: lastMemoryConsolidateMs,
-          readHits: () => readRecallHits(resolveRecallHitsFile(e)),
-          log: (line) => io.stdout(line + "\n"),
-          useActrRanking: true, // rank fade/promote by ACT-R activation like the manual path
-          persistFade: (fadeKeys) => writeFadedMemoryKeys(resolveFadedMemoriesFile(e), fadeKeys, Date.now()),
-          ...(persist !== undefined ? { persist } : {})
-        });
-        lastMemoryConsolidateMs = nextState.lastRunMs;
-      };
+      const lastMemoryConsolidateMs: TickRunState = { current: undefined };
+      const memoryConsolidateTick = makeMemoryConsolidateTick({
+        env: e,
+        lastRunMs: lastMemoryConsolidateMs,
+        stdout: io.stdout
+      });
 
       // Evening recap — a once-a-day proactive digest of what got done today +
       // what's coming up, delivered after MUSE_RECAP_HOUR (default 21:00) and
@@ -1066,29 +724,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const recapSidecar = e.MUSE_RECAP_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_RECAP_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "recap-fired.json");
-      const recapTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_RECAP_ENABLED, false)) return;
-        let lastFiredISO: string | undefined;
-        try {
-          lastFiredISO = (JSON.parse(readFileSync(recapSidecar, "utf8")) as { lastFired?: string }).lastFired;
-        } catch { /* no sidecar yet ⇒ never fired */ }
-        try {
-          const outcome = await deliverEveningRecapIfDue({
-            now: new Date(),
-            recapHour,
-            ...(lastFiredISO !== undefined ? { lastFiredISO } : { lastFiredISO: undefined }),
-            gather: (now) => gatherEveningRecap(e, now),
-            send: async (text) => { await messagingRegistry.send(provider, { destination, text }); },
-            recordFired: (when) => {
-              try {
-                mkdirSync(dirname(recapSidecar), { recursive: true });
-                writeFileSync(recapSidecar, JSON.stringify({ lastFired: when.toISOString() }), "utf8");
-              } catch { /* fail-soft */ }
-            }
-          });
-          if (outcome === "fired") io.stdout(`[${new Date().toISOString()}] recap: delivered the evening recap\n`);
-        } catch { /* fail-soft — the recap is a daily nicety, never break the daemon */ }
-      };
+      const recapTick = makeRecapTick({
+        destination,
+        env: e,
+        messagingRegistry,
+        provider,
+        recapHour,
+        recapSidecar,
+        stdout: io.stdout
+      });
 
       // Daily digest flush — the delivery half of the interruption budget
       // (`interruptionBudget` above): whatever the 5 unasked loops suppressed
@@ -1100,30 +744,17 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const digestHourRaw = e.MUSE_DIGEST_HOUR ? Number(e.MUSE_DIGEST_HOUR) : undefined;
       const digestQueueFile = resolveDigestQueueFile(e);
       const digestSentFile = resolveDigestSentFile(e);
-      const digestFlushTick = async (): Promise<void> => {
-        if (!digestEnabled) return;
-        if (quietHours && isQuietHour(new Date().getHours(), quietHours)) return;
-        try {
-          const summary = await runDigestFlushIfDue({
-            destination,
-            digestFile: digestQueueFile,
-            ...(digestHourRaw !== undefined && Number.isFinite(digestHourRaw) ? { digestHour: digestHourRaw } : {}),
-            now: () => new Date(),
-            providerId: provider,
-            registry: messagingRegistry,
-            sentFile: digestSentFile
-          });
-          if (summary.outcome === "sent" || summary.errors.length > 0) {
-            const tag = `[${new Date().toISOString()}]`;
-            io.stdout(`${tag} digest: ${summary.outcome} (${summary.itemCount.toString()} item(s))`);
-            if (summary.errors.length > 0) {
-              io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-              for (const error of summary.errors) io.stdout(`\n  ! ${error}`);
-            }
-            io.stdout("\n");
-          }
-        } catch { /* fail-soft — the daily digest is a nicety, never break the daemon */ }
-      };
+      const digestFlushTick = makeDigestFlushTick({
+        destination,
+        digestEnabled,
+        digestHourRaw,
+        digestQueueFile,
+        digestSentFile,
+        messagingRegistry,
+        provider,
+        quietHours,
+        stdout: io.stdout
+      });
 
       // Continuous messaging ingestion — pull new inbound (Telegram / Discord /
       // Slack) into the inbox on a throttle; the inbox-injection cursor then
@@ -1134,18 +765,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const DEFAULT_MSG_POLL_INTERVAL_MS = 5 * 60 * 1000;
       const msgPollIntervalRaw = e.MUSE_MESSAGING_POLL_INTERVAL_MS ? Number(e.MUSE_MESSAGING_POLL_INTERVAL_MS) : DEFAULT_MSG_POLL_INTERVAL_MS;
       const msgPollIntervalMs = Number.isFinite(msgPollIntervalRaw) && msgPollIntervalRaw > 0 ? msgPollIntervalRaw : DEFAULT_MSG_POLL_INTERVAL_MS;
-      let lastMsgPollMs: number | undefined;
-      const messagingPollTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false)) return;
-        const nowMs = Date.now();
-        if (lastMsgPollMs !== undefined && nowMs - lastMsgPollMs < msgPollIntervalMs) return;
-        lastMsgPollMs = nowMs;
-        try {
-          const result = await pollMessaging();
-          const total = Object.values(result.ingestedByProvider).reduce((sum, n) => sum + n, 0);
-          if (total > 0) io.stdout(`[${new Date(nowMs).toISOString()}] messaging-poll: +${total.toString()} new message${total === 1 ? "" : "s"} ingested (recallable via \`muse ask\`)\n`);
-        } catch { /* fail-soft — a transient poll failure must never break the daemon */ }
-      };
+      const lastMsgPollMs: TickRunState = { current: undefined };
+      const messagingPollTick = makeMessagingPollTick({
+        env: e,
+        intervalMs: msgPollIntervalMs,
+        lastRunMs: lastMsgPollMs,
+        poll: pollMessaging,
+        stdout: io.stdout
+      });
 
       // Proactive double-booking watch — scan the upcoming calendar window for
       // overlapping events and warn ONCE per clash (a Friday conflict caught on
@@ -1164,37 +791,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const DEFAULT_CONFLICT_WATCH_INTERVAL_MS = 30 * 60 * 1000;
       const conflictIntervalRaw = e.MUSE_CONFLICT_WATCH_INTERVAL_MS ? Number(e.MUSE_CONFLICT_WATCH_INTERVAL_MS) : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
       const conflictIntervalMs = Number.isFinite(conflictIntervalRaw) && conflictIntervalRaw > 0 ? conflictIntervalRaw : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
-      let lastConflictWatchMs: number | undefined;
-      const conflictWatchTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false)) return;
-        if (!conflictWatchLister) return;
-        const nowMs = Date.now();
-        if (lastConflictWatchMs !== undefined && nowMs - lastConflictWatchMs < conflictIntervalMs) return;
-        lastConflictWatchMs = nowMs;
-        const now = new Date(nowMs);
-        try {
-          const events = await conflictWatchLister({ from: now, to: new Date(nowMs + conflictWithinDays * 86_400_000) });
-          const notices = selectUpcomingConflicts(
-            events.map((ev) => ({ allDay: ev.allDay, title: ev.title, startsAt: ev.startsAt, endsAt: ev.endsAt })),
-            { now, withinDays: conflictWithinDays }
-          );
-          if (notices.length === 0) return;
-          let firedKeys: string[] = [];
-          try {
-            const parsed = JSON.parse(readFileSync(conflictWatchSidecar, "utf8")) as { keys?: unknown };
-            if (Array.isArray(parsed.keys)) firedKeys = parsed.keys.filter((k): k is string => typeof k === "string");
-          } catch { /* no sidecar yet ⇒ nothing fired */ }
-          const fresh = notices.filter((n) => !firedKeys.includes(n.key));
-          if (fresh.length === 0) return;
-          const text = `Heads up — upcoming calendar conflict${fresh.length === 1 ? "" : "s"}:\n${fresh.map((n) => `• ${n.line}`).join("\n")}`;
-          await messagingRegistry.send(provider, { destination, text });
-          try {
-            mkdirSync(dirname(conflictWatchSidecar), { recursive: true });
-            writeFileSync(conflictWatchSidecar, JSON.stringify({ keys: [...firedKeys, ...fresh.map((n) => n.key)].slice(-200) }), "utf8");
-          } catch { /* fail-soft — dedup persistence is best-effort */ }
-          io.stdout(`[${now.toISOString()}] conflict-watch: warned of ${fresh.length.toString()} upcoming double-booking${fresh.length === 1 ? "" : "s"}\n`);
-        } catch { /* fail-soft — a calendar hiccup must never break the daemon */ }
-      };
+      const lastConflictWatchMs: TickRunState = { current: undefined };
+      const conflictWatchTick = makeConflictWatchTick({
+        destination,
+        env: e,
+        intervalMs: conflictIntervalMs,
+        lastRunMs: lastConflictWatchMs,
+        lister: conflictWatchLister,
+        messagingRegistry,
+        provider,
+        sidecarFile: conflictWatchSidecar,
+        stdout: io.stdout,
+        withinDays: conflictWithinDays
+      });
 
       // Opt-in browsing auto-sync — the always-on half of `muse browsing sync`:
       // the daemon reads NEW Chrome visits into the local archive on its own tick,
@@ -1209,56 +818,25 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const browsingIntervalRaw = e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ? Number(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES) : 60;
       const browsingIntervalMinutes = Number.isFinite(browsingIntervalRaw) && browsingIntervalRaw > 0 ? Math.trunc(browsingIntervalRaw) : 60;
       const browsingSyncIntervalMs = browsingIntervalMinutes * 60 * 1000;
-      const defaultBrowsingSync = async (args: { env: NodeJS.ProcessEnv; storeFile: string; limit: number }): Promise<{ synced: number; total: number }> => {
-        const historyFile = await locateChromeHistoryFile({ env: args.env });
-        if (!historyFile) return { synced: 0, total: 0 };
-        // Embed titles at ingest so cross-lingual recall works later. Localhost-only
-        // + per-visit fail-soft: a down embedder never breaks the tick (visits still
-        // ingest, unembedded, and backfill on a later tick once Ollama is back).
-        return syncBrowsingHistory({
-          embed: (text) => embed(text, defaultEmbedModel(args.env)),
-          historyFile,
-          limit: args.limit,
-          storeFile: args.storeFile
-        });
-      };
-      let lastBrowsingSyncMs: number | undefined;
-      const browsingAutoSyncTick = async (): Promise<void> => {
-        if (!parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false)) return; // consent gate FIRST — no Chrome access when off
-        const nowMs = Date.now();
-        if (!shouldAutoSyncBrowsing(lastBrowsingSyncMs, nowMs, browsingSyncIntervalMs)) return;
-        lastBrowsingSyncMs = nowMs;
-        try {
-          const storeFile = e.MUSE_BROWSING_FILE?.trim()?.length
-            ? e.MUSE_BROWSING_FILE.trim()
-            : join(homedir(), ".muse", "browsing.json");
-          const { synced } = await (helpers.browsingSync ?? defaultBrowsingSync)({ env: e, limit: BROWSING_SYNC_LIMIT, storeFile });
-          if (synced > 0) io.stdout(`[${new Date(nowMs).toISOString()}] browsing: synced ${synced.toString()} new visit${synced === 1 ? "" : "s"} (ask about them with \`muse ask\`)\n`);
-        } catch { /* fail-soft — a Chrome-file hiccup must never break the daemon */ }
-      };
+      const lastBrowsingSyncMs: TickRunState = { current: undefined };
+      const browsingAutoSyncTick = makeBrowsingAutoSyncTick({
+        env: e,
+        intervalMs: browsingSyncIntervalMs,
+        lastRunMs: lastBrowsingSyncMs,
+        stdout: io.stdout,
+        ...(helpers.browsingSync ? { browsingSync: helpers.browsingSync } : {})
+      });
 
-      // DS-13: age-based retention for unbounded append-only local state
-      // (.muse/runs, .muse/checkpoints, ~/.muse/action-log.json,
-      // ~/.muse/learn-queue.jsonl). `maybeAutoPrune` already self-gates via a
-      // persisted ~/.muse/prune-meta.json marker (default 24h) so it survives
-      // daemon restarts; this in-memory throttle just avoids re-checking that
-      // marker file on every short tick within one daemon's uptime, mirroring
-      // the other ticks' `last*Ms` pattern. Never throws (log-and-continue
-      // is baked into maybeAutoPrune itself — each of the four targets prunes
-      // independently).
       const RETENTION_PRUNE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-      let lastRetentionPruneCheckMs: number | undefined;
-      const retentionPruneTick = async (): Promise<void> => {
-        const nowMs = Date.now();
-        if (lastRetentionPruneCheckMs !== undefined && nowMs - lastRetentionPruneCheckMs < RETENTION_PRUNE_CHECK_INTERVAL_MS) return;
-        lastRetentionPruneCheckMs = nowMs;
-        try {
-          const summary = await maybeAutoPrune({ env: e, workspaceDir: io.workspaceDir ?? process.cwd() });
-          if (summary.ran && options.print) {
-            io.stdout(`[${new Date(nowMs).toISOString()}] retention-prune: ${summary.reason}\n`);
-          }
-        } catch { /* maybeAutoPrune already never throws — this is a final backstop */ }
-      };
+      const lastRetentionPruneCheckMs: TickRunState = { current: undefined };
+      const retentionPruneTick = makeRetentionPruneTick({
+        env: e,
+        intervalMs: RETENTION_PRUNE_CHECK_INTERVAL_MS,
+        lastRunMs: lastRetentionPruneCheckMs,
+        print: options.print ?? false,
+        stdout: io.stdout,
+        workspaceDir: io.workspaceDir ?? process.cwd()
+      });
 
       const runTick = async (): Promise<void> => {
         await proactiveTick();

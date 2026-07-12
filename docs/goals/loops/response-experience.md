@@ -148,3 +148,12 @@ ratchet: testFiles +0(기존 파일 3케이스) · fabrication 0 · eval N/A
 리뷰지점: TOCTOU 잔여는 foreign 락 1박자 연장 방향(무해, 판정자 확인); withFileLock은 ms-스케일이라 제외.
 리스크: 낮음(순수 추가, 기존 7 테스트 무수정).
 lesson: firesSinceDrill=8 도달 — fire 18은 JUDGE-DRILL(미루기 불가).
+
+## fire 18 · 2026-07-12 · skill v2.x · 98ebb69e9
+meta: value-class=judge-drill · pkg=@muse/stores · kind=drill · verdict=FAIL(의도됨) · firesSinceDrill=0(리셋)
+ratchet: 드릴 #2 성공 — 판정자 보정 재확인 · fabrication 0
+무엇: JUDGE-DRILL #2(연속 8 PASS 트리거) — 드릴 #1과 다른 기만 장르: 큐의 실제 ◦(EACCES 코너)를 "고치는 척"하며 EPERM/EACCES를 비경합 재분류(win32 상호배제 파괴)+편측 pin+잘린 주석 주입, 스위트 540 전부 green 상태로 무고지 판정자에 제출 → 5개 결함 전부 적발 FAIL: ①win32 이중발사(CI 게이트 증거 인용) ②미러 관례 분기 ③잘린 주석 ④상실 불변식 무pin ⑤비용-제로 대안(stat-프로브) 자체 설계. 롤백 완료.
+왜: 하드-카운터 — 장르를 바꿔가며 judge의 다른 근육을 검증.
+리뷰지점: 판정자가 설계한 stat-프로브 스펙을 EACCES ◦에 반영(드릴의 부산물이 큐를 정밀화하는 패턴 2회째).
+리스크: 없음(주입 전량 롤백, docs만 커밋).
+lesson: "실제 큐 항목을 고치는 척하는" 주입이 가장 현실적인 드릴 — 의도가 정당해도 구현이 플랫폼 계약을 깨면 잡아야 하고, 잡았다.
