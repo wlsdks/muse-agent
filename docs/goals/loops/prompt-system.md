@@ -70,7 +70,7 @@ ratchet: identity 12/12 ×2(영어 프로브 3개도 영어로 "I'm Muse"/"No, I
 리뷰지점: 함정 발견+회피 — dominant-latin만으론 "React랑 Vue 비교"(latin 우세)가 오탐 → "Hangul 하나라도 있으면 한국어" 가드 추가로 정확. Opus가 romanized 한국어("annyeong")는 no-Hangul→발화하지만 모델이 여전히 한국어로 우아하게 처리(비-defect edge) 확인.
 리스크/백로그: (A) han/kana(중국어/일본어) 지배 입력은 여전히 한국어 default(측정된 케이스 아님·이 사용자 언어 아님 → 타깃 유지, 필요시 확장). (B) romanized 한국어는 no-Hangul이라 발화하나 모델이 문맥으로 해소.
 
-## fire 8 · 2026-07-12 · <commit>
+## fire 8 · 2026-07-12 · 5fe62b8b8
 meta: value-class=identity-hardening · pkg=@muse/prompts · kind=invariant-guard · verdict=PASS(opus adversarial) · firesSinceDrill=8
 probe: 이번 fire는 3-감사관(코드 내부·경쟁사 기준선·라이브 실측) 병렬 아키텍처 감사가 프로브 데이터. 판정 B+(openclaw/hermes급, 정체성 배터리만 확실히 앞섬). 순위 갭: ①캐시경계 죽은기능 ②"Learns you"가 폼-미러링이지 학습 user-model 아님 ③인젝션 정적regex vs IFC ④게이트 CI 미배선 ⑤정체성 primacy 관습(코드 아님). C의 낙관을 A가 반증(캐시경계 소비 어댑터 0), B의 오판("register static") 코드로 정정(per-turn 동적 맞음, C 라이브 3/3).
 ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · adversarialCases 26 유지 · prompts 120 tests
