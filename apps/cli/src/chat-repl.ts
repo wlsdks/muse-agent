@@ -20,15 +20,13 @@
 
 import type { Readable } from "node:stream";
 
-import { createModelProviderFor, createMuseRuntimeAssembly, resolveAnswerTemperature, resolveTasksFile } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type AgentRunResult, type KnowledgeMatch } from "@muse/agent-core";
-import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
-import { findPii, resolvePrivacyRoutedModel, type PrivacyRoutedModelResult } from "@muse/policy";
-import type { AskTimeNudge, WeaknessEntry } from "@muse/stores";
+import type { ModelProvider } from "@muse/model";
 
-import { buildQueryRewritePrompt, chatTraceOutcome, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, chatTraceOutcome, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -48,6 +46,18 @@ import type { ProgramIO } from "./program.js";
 // The deterministic fast-path renderers moved to a sibling module; re-export the
 // public ones so chat-repl's surface (and its tests) stay stable.
 export { formatNotesOverview, formatReminderList, formatTaskList } from "./chat-fast-path-format.js";
+
+// Privacy-tiered cloud routing moved to a sibling module (behavior-preserving
+// decomposition, no code changes); re-export so existing importers of
+// `chat-repl.js` (chat-ink-run.ts, the privacy-routing tests) keep working.
+import { createChatCloudTurn, filterFactsToKeys } from "./chat-cloud-routing.js";
+export { buildCloudTurnRequest, chatHasPersonalContext, createChatCloudTurn, filterFactsToKeys, formatCloudRouteMarker, resolveChatRouting } from "./chat-cloud-routing.js";
+
+// Whetstone weakness-ledger recording moved to a sibling module (behavior-preserving
+// decomposition, no code changes); re-export so existing importers of
+// `chat-repl.js` (chat-ink-run.ts, the weakness-ledger tests) keep working.
+import { chatRepeatWeaknessNudge, chatResolveWeakness, looksLikeRefusal, recordChatWeaknessForTurn } from "./chat-weakness-ledger.js";
+export { chatRepeatWeaknessNudge, chatResolveWeakness, recordChatWeaknessForTurn, recordChatTurnWeakness, type ChatRepeatNudgeDeps, type RecordChatWeaknessDeps, type ResolveChatWeaknessDeps } from "./chat-weakness-ledger.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
 
@@ -231,126 +241,6 @@ export async function recordChatTurnTrace(
     },
     source: args.source
   }).catch(() => undefined);
-}
-
-/** Keep only the named keys from a fact map (preserving values). */
-export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
-  const allow = new Set(keys);
-  return Object.fromEntries(Object.entries(facts).filter(([key]) => allow.has(key)));
-}
-
-/**
- * Whether THIS turn's local payload counts as "personal context" for
- * privacy-tiered routing (`resolvePrivacyRoutedModel`): a persona block was
- * built (durable memory facts injected) or grounding retrieval actually
- * matched something in the user's notes/episodes. Conversation history is
- * deliberately NOT folded in here — `buildCloudTurnRequest` below never
- * forwards `priorHistory` to a cloud-routed request regardless of its
- * content, so there is nothing about history to classify.
- */
-export function chatHasPersonalContext(userMemoryBlock: string, groundingBlock: string): boolean {
-  return userMemoryBlock.length > 0 || groundingBlock.length > 0;
-}
-
-/**
- * Resolve THIS chat turn's privacy route — wraps `resolvePrivacyRoutedModel`
- * with the exact local/cloud signal `runLocalChat` computes: persona/
- * grounding presence, a PII hit in the raw message (`findPii`), and whether
- * the message references a remembered fact BY VALUE (a contact's name, not
- * just its key — `matchedMemoryValue` inside the policy needs values).
- */
-export function resolveChatRouting(args: {
-  readonly message: string;
-  readonly userMemoryBlock: string;
-  readonly groundingBlock: string;
-  readonly memoryFacts?: Readonly<Record<string, string>>;
-  readonly defaultModel: string;
-  readonly env: Readonly<Record<string, string | undefined>>;
-}): PrivacyRoutedModelResult {
-  return resolvePrivacyRoutedModel({
-    defaultModel: args.defaultModel,
-    env: args.env,
-    hasPersonalContext: chatHasPersonalContext(args.userMemoryBlock, args.groundingBlock),
-    memoryValues: args.memoryFacts ? Object.values(args.memoryFacts) : undefined,
-    piiDetected: findPii(args.message).length > 0,
-    query: args.message
-  });
-}
-
-/**
- * The model request for a CLOUD-routed turn — deliberately narrow: no
- * parameter accepts persona text, grounding evidence, or prior turns, so it
- * is structurally impossible for this function to forward them. Only the
- * raw message plus a non-personal system line (reply-language directive +
- * the current clock/timezone, the same line every chat surface always sends
- * regardless of routing) goes out.
- */
-export function buildCloudTurnRequest(
-  message: string,
-  model: string,
-  env: Readonly<Record<string, string | undefined>> = process.env,
-  now: Date = new Date()
-): ModelRequest {
-  const korean = /[가-힣]/u.test(message);
-  const languageDirective = korean
-    ? "사용자는 한국어를 씁니다. 사용자에게 보이는 텍스트 답변만 한국어로 작성하세요."
-    : "";
-  const system = [languageDirective, formatCurrentContextLine(now)].filter((part) => part.length > 0).join("\n\n");
-  return {
-    messages: [
-      { content: system, role: "system" },
-      { content: message, role: "user" }
-    ],
-    model,
-    temperature: resolveAnswerTemperature(env)
-  };
-}
-
-/**
- * Display-only marker on a cloud-routed answer — "Muse shows its work": the
- * user can always tell a context-free reply left the device, and which model
- * answered it. Never persisted to history (matches every other display-only
- * cue `finalizeGatedChatAnswer` / the weakness nudge appends in this file).
- */
-export function formatCloudRouteMarker(korean: boolean, model: string): string {
-  return korean ? `\n\n☁️ 클라우드 (개인 정보 없음) — ${model}` : `\n\n☁️ cloud (context-free) — ${model}`;
-}
-
-/**
- * The privacy-tiered routing cloud leg as a reusable closure — `runLocalChat`
- * below and the interactive Ink chat (`chat-ink-run.ts`) both need "resolve
- * this turn's route, and if it's cloud, run it" as one call. ANY failure
- * (routing off/personal, no provider, throw, or an empty completion) resolves
- * to `undefined` so the caller's only job is "fall back to local" — a cloud
- * hiccup must never become a chat-facing error.
- */
-export function createChatCloudTurn(args: {
-  readonly defaultModel: string;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly memoryFacts: () => Readonly<Record<string, string>> | undefined;
-  readonly cloudProviderFactory?: (model: string, env: Readonly<Record<string, string | undefined>>) => ModelProvider | undefined;
-}): (message: string, userMemoryBlock: string, groundingBlock: string) => Promise<{ readonly response: ModelResponse; readonly model: string; readonly marker: string } | undefined> {
-  const cloudProviderFactory = args.cloudProviderFactory ?? createModelProviderFor;
-  return async (message, userMemoryBlock, groundingBlock) => {
-    const routing = resolveChatRouting({
-      defaultModel: args.defaultModel,
-      env: args.env,
-      groundingBlock,
-      memoryFacts: args.memoryFacts(),
-      message,
-      userMemoryBlock
-    });
-    if (routing.route !== "cloud") return undefined;
-    try {
-      const cloudProvider = cloudProviderFactory(routing.model, args.env);
-      if (!cloudProvider) return undefined;
-      const response = await cloudProvider.generate(buildCloudTurnRequest(message, routing.model, args.env));
-      if (response.output.trim().length === 0) return undefined;
-      return { marker: formatCloudRouteMarker(/[가-힣]/u.test(message), routing.model), model: routing.model, response };
-    } catch {
-      return undefined;
-    }
-  };
 }
 
 export async function runLocalChat(
@@ -727,165 +617,6 @@ export async function runLocalChat(
     runId: result.runId,
     toolsUsed
   };
-}
-
-// The explicit refusal phrases the grounding floor emits ("잘 모르겠어요" /
-// "I'm not sure" / "no matching passages") — anchored on these, NOT a bare
-// "not sure", so a normal answer that merely contains the words isn't logged.
-const REFUSAL_RE = /잘\s*모르겠|모르겠어|관련(된|있는)?\s*(노트|메모|정보|내용)[^.]*없|찾(지|을)\s*(못했|수\s*없)|i'?m\s+not\s+sure|i\s+am\s+not\s+sure|no\s+matching\s+(passages|notes)|don'?t\s+have\s+(that|any)|couldn'?t\s+find/iu;
-
-function looksLikeRefusal(text: string): boolean {
-  return REFUSAL_RE.test(text);
-}
-
-/**
- * Append a failure signal to the Whetstone weakness ledger. @muse/mcp +
- * @muse/autoconfigure are loaded LAZILY — a static import of these heavy
- * modules breaks the bun-compiled desktop binary (top-level await in a sync
- * context). Best-effort; swallows every error.
- */
-async function recordChatWeakness(
-  message: string,
-  axis: ChatWeaknessAxis,
-  deps: RecordChatWeaknessDeps = {}
-): Promise<number | undefined> {
-  try {
-    const recordWeakness = deps.recordWeakness ?? (await import("@muse/stores")).recordWeakness;
-    const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
-    const file = deps.weaknessesFile ?? resolveWeaknessesFile(process.env as Record<string, string | undefined>);
-    const entry = await recordWeakness(file, { axis, message });
-    return entry?.count;
-  } catch {
-    // a ledger write must never surface as a chat error
-    return undefined;
-  }
-}
-
-export interface RecordChatWeaknessDeps {
-  /** Injectable ledger writer + file (tests assert the ledger STATE without a live store). */
-  readonly recordWeakness?: (
-    file: string,
-    signal: { readonly axis: ChatWeaknessAxis; readonly message: string }
-  ) => Promise<{ readonly count: number } | undefined>;
-  readonly weaknessesFile?: string;
-}
-
-export interface ResolveChatWeaknessDeps {
-  /** Injectable ledger resolver + file (tests assert resolution without a live store). */
-  readonly recordWeaknessResolved?: (file: string, message: string) => Promise<unknown>;
-  readonly weaknessesFile?: string;
-}
-
-/**
- * Mark this topic's grounding-gap weakness RESOLVED after a grounded success —
- * the parity of ask's `recordAskWeaknessResolvedLive`. Bumps BKT mastery so a
- * now-answered recurring gap stops nudging. @muse/mcp + @muse/autoconfigure load
- * LAZILY (a static import breaks the bun-compiled desktop binary). Best-effort:
- * a ledger write must never surface as a chat error.
- */
-export async function chatResolveWeakness(message: string, deps: ResolveChatWeaknessDeps = {}): Promise<void> {
-  try {
-    const recordWeaknessResolved = deps.recordWeaknessResolved ?? (await import("@muse/stores")).recordWeaknessResolved;
-    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
-    await recordWeaknessResolved(file, message);
-  } catch {
-    // a ledger write must never surface as a chat error
-  }
-}
-
-/**
- * Classify a finished chat turn's failure signal and write it to the weakness
- * ledger — the testable seam for the turn's detect→classify→persist step. Mirrors
- * the ASK path (`recordAskWeakness` + `askWeaknessAxis`): `unbacked-action` >
- * `misgrounding` (a non-refusal answer whose cited sources don't support it,
- * GROUNDED != TRUE) > `grounding-gap` (a refusal/empty-fallback). A fully-supported
- * grounded answer writes NOTHING. Best-effort: a null axis writes nothing, a
- * throwing write is swallowed. Returns the resulting topic count (for the repeat nudge).
- */
-export async function recordChatWeaknessForTurn(
-  args: {
-    readonly message: string;
-    readonly answer: string;
-    readonly matches: readonly KnowledgeMatch[];
-    readonly refusal: boolean;
-    readonly unbackedAction: boolean;
-  },
-  deps: RecordChatWeaknessDeps = {}
-): Promise<number | undefined> {
-  const axis = chatWeaknessAxis({
-    answer: args.answer,
-    matches: args.matches,
-    refusal: args.refusal,
-    unbackedAction: args.unbackedAction
-  });
-  if (axis === null) return undefined;
-  return recordChatWeakness(args.message, axis, deps);
-}
-
-export interface ChatRepeatNudgeDeps {
-  /** Injectable ledger reader + selection/render/topic seams (tests assert the nudge OUTCOME without a live store). */
-  readonly readWeaknesses?: (file: string) => Promise<readonly WeaknessEntry[]>;
-  readonly selectNudge?: (entries: readonly WeaknessEntry[], topic: string, opts?: { readonly nowMs?: number }) => AskTimeNudge | undefined;
-  readonly render?: (nudge: AskTimeNudge, ko: boolean) => string;
-  readonly topicKey?: (message: string) => string;
-  readonly weaknessesFile?: string;
-}
-
-/**
- * The in-chat repeat-weakness nudge — unified onto the shared @muse/mcp helpers so
- * chat and `ask` surface the SAME recurring user-remediable weakness (grounding-gap
- * OR source-conflict), mastery-suppressed, with one axis-aware wording. Returns the
- * parenthetical suffix to append to the answer, or undefined when there is nothing
- * to nudge. @muse/mcp + @muse/autoconfigure load LAZILY (a static import of these
- * heavy modules breaks the bun-compiled desktop binary). Best-effort: any failure
- * (ledger unavailable, etc.) → no nudge.
- */
-export async function chatRepeatWeaknessNudge(message: string, deps: ChatRepeatNudgeDeps = {}): Promise<string | undefined> {
-  try {
-    const mcp = deps.readWeaknesses && deps.selectNudge && deps.render && deps.topicKey ? undefined : await import("@muse/stores");
-    const readWeaknesses = deps.readWeaknesses ?? mcp!.readWeaknesses;
-    const selectNudge = deps.selectNudge ?? mcp!.askTimeWeaknessNudge;
-    const render = deps.render ?? mcp!.renderAskTimeNudge;
-    const topicKey = deps.topicKey ?? mcp!.topicKeyFromMessage;
-    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
-    const nudge = selectNudge(await readWeaknesses(file), topicKey(message), { nowMs: Date.now() });
-    if (!nudge) return undefined;
-    return `\n\n(${render(nudge, /[가-힣]/u.test(message))})`;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Whetstone weakness-ledger parity for a chat turn run OUTSIDE `runLocalChat`
- * (the interactive Ink surface, `cli.ink`, drives its own turn loop and never
- * called the classify→persist→nudge sequence above — the MOST-USED chat
- * surface silently skipped the same self-knowledge `runLocalChat` already
- * records). Same detect→classify→persist→nudge steps `runLocalChat` runs
- * inline, extracted so both surfaces share ONE implementation. Returns the
- * repeat-weakness nudge suffix to append to the DISPLAYED answer, or
- * `undefined` when there is nothing to record/nudge. Best-effort: every step
- * it calls already swallows its own errors.
- */
-export async function recordChatTurnWeakness(args: {
-  readonly question: string;
-  readonly answer: string;
-  readonly matches: readonly KnowledgeMatch[];
-  readonly toolsUsed?: readonly string[];
-}): Promise<string | undefined> {
-  const isCasual = classifyCasualPrompt(args.question) !== null;
-  const refusal = isChatAbstention(args.answer) || looksLikeRefusal(args.answer);
-  const unbackedAction = isUnbackedActionClaim({ answer: args.answer, query: args.question, toolNames: args.toolsUsed ?? [] });
-  if (unbackedAction) {
-    await recordChatWeaknessForTurn({ answer: args.answer, matches: args.matches, message: args.question, refusal, unbackedAction });
-    return undefined;
-  }
-  if (isCasual) return undefined;
-  await recordChatWeaknessForTurn({ answer: args.answer, matches: args.matches, message: args.question, refusal, unbackedAction });
-  if (isChatGroundedSuccess({ answer: args.answer, matches: args.matches, refusal, unbackedAction })) {
-    await chatResolveWeakness(args.question);
-  }
-  return chatRepeatWeaknessNudge(args.question);
 }
 
 /**
