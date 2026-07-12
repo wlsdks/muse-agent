@@ -324,6 +324,28 @@ export class ConfigurationError extends Error {
   }
 }
 
+/**
+ * Fail-CLOSED coherence check: `MUSE_REQUIRE_AUTH=true` demands the API enforce
+ * auth, but the server's auth preHandler only exists when an auth service does
+ * (i.e. a JWT secret is configured). Without one, that explicit hardening
+ * request would silently run the API UNAUTHENTICATED (fully exposed under
+ * `HOST=0.0.0.0`). Refuse to assemble instead of ignoring the request. An UNSET
+ * flag defaults to "auth iff a secret exists" and is fine — this fires ONLY on
+ * an explicit true with no auth service.
+ */
+export function assertAuthConfigCoherent(
+  env: { readonly MUSE_REQUIRE_AUTH?: string },
+  hasAuthService: boolean
+): void {
+  if (parseBoolean(env.MUSE_REQUIRE_AUTH, false) && !hasAuthService) {
+    throw new Error(
+      "MUSE_REQUIRE_AUTH=true but no auth secret is configured — set MUSE_AUTH_JWT_SECRET "
+      + "(or a rotation file). Refusing to start: without a secret the API would run "
+      + "UNAUTHENTICATED. Configure the secret, or unset MUSE_REQUIRE_AUTH."
+    );
+  }
+}
+
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
   const env = mergeModelKeysFromFile(options.env ?? process.env);
   const db = options.db;
@@ -496,6 +518,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     store: schedulerStore
   });
   schedulerHandle.current = schedulerService;
+
+  assertAuthConfigCoherent(env, Boolean(authService));
 
   return {
     agentRuntime,

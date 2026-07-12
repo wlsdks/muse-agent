@@ -7,6 +7,7 @@ import type { Kysely } from "kysely";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAuthService } from "../src/auth-wiring.js";
+import { assertAuthConfigCoherent } from "../src/runtime-assembly.js";
 import type { MuseEnvironment } from "../src/index.js";
 
 const SECRET = "x".repeat(40); // >= 32 chars
@@ -52,5 +53,22 @@ describe("createAuthService — fail-open JWT secret wiring", () => {
   it("rejects a too-short current secret (< 32 chars) in the rotation file", async () => {
     const file = await secretsFile({ current: "tooshort" });
     expect(createAuthService(env({ MUSE_AUTH_SECRETS_FILE: file }), undefined)).toBeUndefined();
+  });
+});
+
+describe("assertAuthConfigCoherent — fail-close on an explicit auth request with no secret", () => {
+  it("throws when MUSE_REQUIRE_AUTH=true but no secret ⇒ no auth service (would silently run unauthenticated)", () => {
+    // createAuthService returns undefined with no secret; the coherence check
+    // must then REFUSE assembly instead of running the API unauthenticated.
+    const hasService = Boolean(createAuthService(env({ MUSE_REQUIRE_AUTH: "true" }), undefined));
+    expect(hasService).toBe(false);
+    expect(() => assertAuthConfigCoherent({ MUSE_REQUIRE_AUTH: "true" }, hasService)).toThrow(/UNAUTHENTICATED|MUSE_REQUIRE_AUTH/u);
+    expect(() => assertAuthConfigCoherent({ MUSE_REQUIRE_AUTH: "1" }, false)).toThrow();
+  });
+
+  it("does NOT throw when auth is available, or the flag is unset / explicitly off", () => {
+    expect(() => assertAuthConfigCoherent({ MUSE_REQUIRE_AUTH: "true" }, true)).not.toThrow();
+    expect(() => assertAuthConfigCoherent({}, false)).not.toThrow();
+    expect(() => assertAuthConfigCoherent({ MUSE_REQUIRE_AUTH: "false" }, false)).not.toThrow();
   });
 });
