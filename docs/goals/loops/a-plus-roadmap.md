@@ -451,3 +451,12 @@ ratchet: 로드맵 잔여 [ ] = 11/65(D6-S3 체크) · self-eval pass · fabrica
 - 리뷰지점: Opus PASS — 외부편집 never clobber/destroy(throw-before-write+.bak copy not move, 디스크에 외부내용 잔존 검증)·byte-identical when 미engaged(47 기존 무수정)·encrypted drift 감지(raw 비교)·normal write false-positive 없음(currentRaw===expected)·mutation-RED 양방향 독립 재현(drift check 제거→clobber RED). ★codegraph 사전확인으로 fire 51 중복실수 재발 방지.
 - 리스크: 낮음. opt-in per-call(expected 없으면 무변경). 외부편집을 삭제 아닌 백업(Muse 데이터 파괴 금지 준수). 다음 = D-E1c(self-eval 커밋훅+CI) 또는 D6-S4(provenance 태그). D-E1b(공유 pre-push 훅)는 신중 이연.
 - lesson: 무결성 compare-and-swap는 read시 raw 캡처→write 직전 재읽기 비교가 핵심; raw(pre-parse) 비교라 plaintext/encrypted 무관 동작. 외부-변경 감지 시 삭제 아닌 .bak 복사+throw로 유저 데이터 절대 파괴 안 함. ★교훈 실천: 이번엔 빌드 전 codegraph로 기존구현 부재 확인 후 진행(fire 51 중복 재발 방지).
+
+## fire 53 · 2026-07-12 · skill v2.x · 877020fb2
+meta: slice=D6-S4 · wave=W5 · pkg=apps/cli(test-only) · kind=autonomous-no-delete-contract · verdict=PASS · firesSinceDrill=2
+ratchet: 로드맵 잔여 [ ] = 10/65(D6-S4 체크) · self-eval pass · fabrication 0 · cli +2 계약 유닛(memory-consolidate-tick-user-fact-protection, testFiles 1406→1407)
+- 무엇: ①기준선 green. ②교훈 실천: 빌드 전 verify-first — 독립 Opus 감사로 D6-S4 불변("자율 큐레이션이 user 사실 삭제 못 함")이 **이미 구조적 성립** 확인(provenance source auto|user 존재·자율 fade 비파괴적 rank-down sidecar·유일 자율 forget은 recalled-* synthetic scoped·실삭제는 user-트리거뿐). 갭=end-to-end 핀 부재. ③가드 신설 대신(dead code=fire 51 중복함정) **mutation 계약 테스트** 신설: 실 FileUserMemoryStore에 user 사실 seed+강한 recall-hits로 fade+promote 발화(non-vacuous) 하에 runMemoryConsolidationTick→user 사실 잔존·불변 검증. ④발견: recalled-/recalled_ normalize 버그(별개, backlog).
+- 왜: 로드맵 수용이 "자율-삭제-금지 계약(mutation)". 유저-지시 사실을 자율 큐레이션이 지우면 교정-망각·신뢰 붕괴. 이미 성립하는 불변을 **핀**으로 잠가 미래 회귀 방지가 옳은 산출(가드는 이미 있으니 신설=중복).
+- 리뷰지점: Opus PASS — non-vacuous(tick이 promote+fade 실동작하며 user 사실 잔존, no-op면 무의미)·mutation flips(recalled- scope 제거→user 사실 삭제 RED, non-vacuous assertion은 여전히 통과=실동작 증명)·올바른 불변(user 사실 잔존, user-트리거 forget 무손상)·프로덕션 무변경(verify-first 준수).
+- 리스크: 낮음. test-only. ★fire 51 교훈 2연속 실천(D6-S3·D6-S4 둘 다 verify-first로 기존구현/불변 확인 후 진행 — 중복 재발 0). 발견한 recalled_ 버그는 별개 슬라이스로 backlog. 다음 = D-E1c(self-eval 커밋훅, CI파트는 진안이 CI 안 돌려 N/A) 또는 D6-S5. D-E1b(공유 훅) 신중 이연.
+- lesson: 로드맵 "계약(mutation)" 수용은 이미 성립하는 불변을 **non-vacuous 핀 테스트**로 잠그는 것 — 실 store+실 경로로 자율 tick이 진짜 일하게(promote+fade 발화) 한 뒤 user 데이터 잔존 assert, 그리고 mutation(가드 제거)로 RED 확인. 가드가 이미 있으면 신설 말고 테스트만(중복 회피). 테스트 작성 중 인접 버그(recalled_ 미매칭) 발견 시 scope 밖이면 고치지 말고 backlog 기록.
