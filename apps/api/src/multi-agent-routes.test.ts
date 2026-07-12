@@ -183,3 +183,29 @@ describe("resolveWorkerTimeoutMs — strict positive-integer env parse", () => {
     expect(resolveWorkerTimeoutMs({ MUSE_MULTI_AGENT_WORKER_TIMEOUT_MS: "30x" })).toBeUndefined();
   });
 });
+
+describe("multi-agent routes — per-route auth gate (defense-in-depth)", () => {
+  it("returns 401 and runs nothing when requireAuthenticated rejects", async () => {
+    const s = Fastify();
+    let orchestrateRan = false;
+    registerMultiAgentRoutes(s, {
+      agentRuntime: { run: async () => { orchestrateRan = true; return { response: { output: "x" }, results: [] } as unknown as AgentRunResult; } } as unknown as AgentRuntime,
+      agentSpecRegistry: new InMemoryAgentSpecRegistry(DEFAULT_AGENT_SPECS),
+      defaultModel: "test-model",
+      requireAuthenticated: (_request, reply) => {
+        reply.status(401).send({ error: "unauthorized" });
+        return false;
+      }
+    });
+    await s.ready();
+
+    const runs = await s.inject({ method: "GET", url: "/api/multi-agent/runs" });
+    expect(runs.statusCode).toBe(401);
+
+    const orchestrate = await s.inject({ method: "POST", url: "/api/multi-agent/orchestrate", payload: { query: "hi" } });
+    expect(orchestrate.statusCode).toBe(401);
+    expect(orchestrateRan).toBe(false);
+
+    await s.close();
+  });
+});

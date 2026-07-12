@@ -26,6 +26,17 @@ import { createAnswerVerifier, createWorkerSummarizer, createWorkerSynthesizer }
 export interface MultiAgentRouteOptions {
   readonly agentRuntime?: AgentRuntime;
   readonly agentSpecRegistry: AgentSpecRegistry;
+  /**
+   * Per-route auth gate — the same seam the scheduler/mcp/compat routes use.
+   * These routes RUN the agent runtime and fan out workers, so they must gate
+   * like their siblings (defense-in-depth alongside the global preHandler; the
+   * gap was a `MUSE_REQUIRE_AUTH=false`-with-authService downgrade leaving only
+   * multi-agent ungated). Omitted ⇒ no per-route gate (test callers).
+   */
+  readonly requireAuthenticated?: (
+    request: unknown,
+    reply: { status(statusCode: number): { send(payload: unknown): void } }
+  ) => boolean;
   readonly defaultModel?: string;
   readonly historyStore?: OrchestrationHistoryStore;
   readonly modelProvider?: ModelProvider;
@@ -73,7 +84,16 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   const historyStore = options.historyStore ?? new InMemoryOrchestrationHistoryStore();
   const runRegistry = options.runRegistry ?? new SubAgentRunRegistry();
 
+  // Per-route auth gate (defense-in-depth beside the global preHandler). Returns
+  // true when the request may proceed; when it returns false the gate already
+  // sent the 401. No gate configured (tests) ⇒ allow.
+  const authed = (request: unknown, reply: { status(statusCode: number): { send(payload: unknown): void } }): boolean =>
+    options.requireAuthenticated === undefined || options.requireAuthenticated(request, reply);
+
   server.get("/api/multi-agent/orchestrations", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return;
+    }
     const limitRaw = (request.query as { readonly limit?: string } | undefined)?.limit;
     let limit: number | undefined;
 
@@ -111,7 +131,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     };
   });
 
-  server.get("/api/multi-agent/orchestrations/stats", async () => {
+  server.get("/api/multi-agent/orchestrations/stats", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     return historyStore.summary();
   });
 
@@ -119,7 +142,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   // transitions), distinct from the finished-run audit above. Marking
   // stalled runs as timed-out on read makes a hung sub-agent observable
   // without a background sweep.
-  server.get("/api/multi-agent/runs", async () => {
+  server.get("/api/multi-agent/runs", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     const timedOut = runRegistry.markStalledAsTimedOut();
     return {
       activeCount: runRegistry.activeCount(),
@@ -142,6 +168,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   // finalizes the run as cancelled. An in-flight model call still settles
   // in the background but can no longer flip the run's terminal status.
   server.post("/api/multi-agent/runs/:runId/cancel", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     const { runId } = request.params as { runId: string };
     const existing = runRegistry.get(runId);
     if (!existing) {
@@ -164,6 +193,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   });
 
   server.get("/api/multi-agent/orchestrations/:runId", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     const { runId } = request.params as { readonly runId: string };
 
     if (!runId || runId.length === 0) {
@@ -207,6 +239,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   });
 
   server.post("/api/multi-agent/orchestrate", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     if (!options.agentRuntime) {
       return reply.status(503).send({
         code: "AGENT_RUNTIME_UNAVAILABLE",
@@ -279,6 +314,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   });
 
   server.post("/api/multi-agent/orchestrate/stream", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return undefined;
+    }
     if (!options.agentRuntime) {
       return reply.status(503).send({
         code: "AGENT_RUNTIME_UNAVAILABLE",

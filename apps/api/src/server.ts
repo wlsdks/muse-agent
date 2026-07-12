@@ -240,6 +240,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     historyStore: new FileOrchestrationHistoryStore(),
     modelProvider: options.modelProvider,
     embed: createGateEmbedder(process.env),
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     ...(resolveWorkerTimeoutMs(process.env) !== undefined
       ? { workerTimeoutMs: resolveWorkerTimeoutMs(process.env) }
       : {})
