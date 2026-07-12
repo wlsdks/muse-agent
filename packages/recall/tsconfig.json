@@ -23,6 +23,9 @@
       "path": "../mcp-shared"
     },
     {
+      "path": "../model"
+    },
+    {
       "path": "../prompts"
     },
     {

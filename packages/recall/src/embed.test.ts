@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { DEFAULT_EMBED_TIMEOUT_MS, cosineSimilarity, embed } from "./embed.js";
 
@@ -92,5 +92,35 @@ describe("embed", () => {
 
   it("exports a sensible 30-second default — callers that don't pass timeoutMs still inherit the cap", () => {
     expect(DEFAULT_EMBED_TIMEOUT_MS).toBe(30_000);
+  });
+});
+
+describe("embed — MUSE_LOCAL_ONLY cloud-egress guard", () => {
+  const prev = process.env.MUSE_LOCAL_ONLY;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MUSE_LOCAL_ONLY;
+    else process.env.MUSE_LOCAL_ONLY = prev;
+  });
+
+  it("throws (no fetch) when local-only is on and the resolved host is REMOTE — personal text never leaves the box", async () => {
+    process.env.MUSE_LOCAL_ONLY = "true";
+    let called = false;
+    const spyFetch: typeof globalThis.fetch = async (...args) => { called = true; return okJson({ embedding: [1] })(...args); };
+    await expect(
+      embed("my private note", "m", { fetchImpl: spyFetch, baseUrlResolver: () => "http://192.168.1.50:11434" })
+    ).rejects.toThrow(/local-only|cloud provider/u);
+    expect(called).toBe(false);
+  });
+
+  it("allows a LOOPBACK host under local-only (on-box embedding is fine)", async () => {
+    process.env.MUSE_LOCAL_ONLY = "true";
+    const result = await embed("x", "m", { ...opts(okJson({ embedding: [0.5] })), baseUrlResolver: () => "http://127.0.0.1:11434" });
+    expect(result).toEqual([0.5]);
+  });
+
+  it("allows a REMOTE host when local-only is off (cloud/remote allowed by default)", async () => {
+    process.env.MUSE_LOCAL_ONLY = "false";
+    const result = await embed("x", "m", { ...opts(okJson({ embedding: [0.5] })), baseUrlResolver: () => "http://192.168.1.50:11434" });
+    expect(result).toEqual([0.5]);
   });
 });

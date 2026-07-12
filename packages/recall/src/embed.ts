@@ -4,15 +4,38 @@
  * `/api/embeddings` endpoint with the same body shape; one source
  * of truth.
  *
- * No new dep — wraps Node's global `fetch`. Surfaces that resolve the
- * Ollama host beyond the environment (the CLI merges `muse setup model`'s
- * `~/.muse/models.json` via its `resolveOllamaUrl`) MUST pass
- * `baseUrlResolver`; the package default is env-or-localhost only.
+ * Wraps Node's global `fetch`. Surfaces that resolve the Ollama host beyond
+ * the environment (the CLI merges `muse setup model`'s `~/.muse/models.json`
+ * via its `resolveOllamaUrl`) MUST pass `baseUrlResolver`; the package default
+ * is env-or-localhost only. A fail-closed `MUSE_LOCAL_ONLY` egress guard sits
+ * on the POST so a REMOTE resolved host never receives personal text off-box.
  */
+
+import { classifyProviderLocality, LocalOnlyViolationError } from "@muse/model";
 
 export { cosineSimilarity } from "@muse/agent-core";
 
 export const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
+
+// Matches @muse/autoconfigure's parseBoolean truthy set so the embed gate fires
+// under the exact same MUSE_LOCAL_ONLY values the chat/doctor posture uses.
+const TRUTHY = new Set(["true", "1", "yes", "on"]);
+
+/**
+ * Fail-CLOSED cloud-egress guard for the embeddings POST. `MUSE_LOCAL_ONLY=true`
+ * means personal text must never leave the box — but an embed hits an arbitrary
+ * resolved `OLLAMA_BASE_URL`, and a REMOTE Ollama host is egress. The chat
+ * provider gate never sees this endpoint (it's an independent base URL), and the
+ * guarded `createOllamaEmbedder` is a DIFFERENT embedder family than the CLI's,
+ * so this is the only chokepoint that covers `muse ask/recall/note/…`. Throws
+ * before any note/memory/query text is POSTed off-box.
+ */
+function assertEmbedEgressAllowed(baseUrl: string): void {
+  const localOnly = TRUTHY.has((process.env.MUSE_LOCAL_ONLY ?? "").trim().toLowerCase());
+  if (localOnly && classifyProviderLocality("ollama", baseUrl) === "cloud") {
+    throw new LocalOnlyViolationError("ollama", baseUrl);
+  }
+}
 
 /** Env-only fallback resolver — no credentials-file merge (that's the caller's seam). */
 function envOllamaUrl(): string {
@@ -40,6 +63,7 @@ export interface EmbedOptions {
 export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const baseUrl = (options.baseUrlResolver ?? envOllamaUrl)();
+  assertEmbedEgressAllowed(baseUrl);
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
     ? (options.timeoutMs as number)
     : DEFAULT_EMBED_TIMEOUT_MS;
