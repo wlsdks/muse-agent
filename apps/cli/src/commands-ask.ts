@@ -185,9 +185,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // down — degrade to "no notes grounding" and still answer
       // from tasks + calendar + memory + general knowledge.
       // Notes RAG core: embed → rank/MMR → graph-augment → second-hop. See
-      // ask-note-retrieval.ts. `scored`/`notesUnavailable` stay reassignable —
+      // ask-note-retrieval.ts. `scored` stays reassignable —
       // ad-hoc grounding and contact dedup both mutate `scored`, and ad-hoc
-      // grounding clears `notesUnavailable`.
       const askStages = createStageTimer();
       const retrieval = await retrieveAndRankNotes({
         embedModel,
@@ -200,7 +199,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         topK
       });
       let scored = retrieval.scored;
-      let notesUnavailable = retrieval.notesUnavailable;
+      const notesUnavailable = retrieval.notesUnavailable;
       const { queryVec, splitClauses, subqueryEmbeddings } = retrieval;
       // The "open to verify" target for an AD-HOC grounding source whose receipt
       // would otherwise point at a fabricated `.muse/notes/<source>` path: the
@@ -214,7 +213,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // seam re-retrieves those itself).
       const preAdHocChunkCount = scored.length;
 
-      const adHoc = await applyAdHocGrounding({
+      await applyAdHocGrounding({
         adHocVerifyTargets,
         notesUnavailable,
         onStderr: (text) => { io.stderr(text); },
@@ -222,7 +221,6 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         query,
         scored
       });
-      notesUnavailable = adHoc.notesUnavailable;
 
       // Second-brain grounding: past-session episodes (auto-refreshed + untrusted-
       // tagged), recent feed headlines, and the user's own reflections. Each store

@@ -103,7 +103,7 @@ async function oldWithToolsContextAndFraming(
     topK: 3
   });
   const notesUnavailable = retrieval.notesUnavailable;
-  let scored: readonly ScoredChunk[] = dedupNearDuplicateChunks(retrieval.scored, cosine);
+  const scored: readonly ScoredChunk[] = dedupNearDuplicateChunks(retrieval.scored, cosine);
   const contextChunks = demoteStale(reorderForLongContext(scored), (c) => c.chunk.text);
   const notesFraming = notesGroundingFraming(scored, QUERY, retrieval.preGapScored.length > 0 ? retrieval.preGapScored : undefined, EMBED_MODEL);
   const noteContradictions = notesUnavailable || contextChunks.length < 2
