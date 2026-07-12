@@ -84,10 +84,12 @@
 }
 
 html,
-body,
-html,
 body {
   height: 100%;
+}
+/* Pre-hydration paint — the old inline <style> version was CSP-blocked. */
+html {
+  background: var(--canvas);
 }
 
 #root {

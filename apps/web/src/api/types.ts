@@ -215,6 +215,7 @@ interface ModelInfo {
 export interface ModelsResponse {
   readonly models?: readonly ModelInfo[];
   readonly active?: string;
+  readonly defaultModel?: string;
 }
 
 export interface TokenCostDailyRow {

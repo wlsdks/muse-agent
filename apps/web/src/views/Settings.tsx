@@ -12,13 +12,9 @@ import type { ContactsResponse, DaemonFlagsResponse, ModelsResponse } from "../a
 import { summarizeFlags } from "./settings-flags.js";
 
 interface SetupSection {
-  readonly ok?: boolean;
-  readonly ready?: boolean;
-  readonly configured?: boolean;
+  readonly status?: "ok" | "info" | "todo" | string;
 }
-type SetupStatus = Record<string, SetupSection & Record<string, unknown>> & {
-  readonly model?: { readonly muse_model?: string; readonly providerKeys?: readonly string[] } & SetupSection;
-};
+type SetupStatus = Record<string, (SetupSection & Record<string, unknown>) | undefined>;
 
 interface HealthResponse {
   readonly status?: string;
@@ -84,9 +80,8 @@ export function SettingsView({
     queryKey: ["models", client.baseUrl]
   });
 
-  const sectionOk = (s?: SetupSection) => Boolean(s?.ok ?? s?.ready ?? s?.configured);
   const setupRows: readonly [string, SetupSection | undefined][] = setup.data
-    ? SETUP_KEYS.map((k) => [k, setup.data?.[k] as SetupSection | undefined])
+    ? SETUP_KEYS.map((k) => [k, setup.data?.[k]])
     : [];
 
   return (
@@ -128,7 +123,7 @@ export function SettingsView({
           <div className="row">
             <div className="row-main">
               <div className="row-title mono">
-                {(setup.data?.model?.muse_model as string) ?? models.data?.active ?? "—"}
+                {models.data?.defaultModel ?? models.data?.active ?? "—"}
               </div>
               <div className="row-meta">{t("settings.modelsAvailable", { n: models.data?.models?.length ?? 0 })}</div>
             </div>
@@ -146,8 +141,8 @@ export function SettingsView({
               <div className="row-main">
                 <div className="row-title">{t(SETUP_LABEL_KEYS[name] ?? "settings.setup.model")}</div>
               </div>
-              <Badge tone={sectionOk(section) ? "ok" : "neutral"}>
-                {sectionOk(section) ? t("settings.ready") : t("settings.notSet")}
+              <Badge tone={section?.status === "ok" ? "ok" : "neutral"} dot={section?.status === "ok"}>
+                {section?.status === "ok" ? t("settings.ready") : section?.status === "info" ? t("settings.optional") : t("settings.notSet")}
               </Badge>
             </div>
           ))}
