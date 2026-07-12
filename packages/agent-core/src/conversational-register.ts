@@ -68,6 +68,17 @@ export function detectKoreanRegister(text: string): PersonaRegister | "unknown" 
 const MOOD_STATE_RE =
   /^(?:심심해(?:요)?|심심하다|피곤해(?:요)?|힘들어(?:요)?|배고파(?:요)?|졸려(?:요)?|우울해(?:요)?|bored|tired|sleepy|hungry)[.!~]*$/iu;
 
+// An affective musing / observation ("오늘 날씨 좋다", "이 노래 좋다", "커피
+// 맛있다") — a statement, not a question or request. Measured live: these fell
+// THROUGH the casual classification to the lead-with-answer nudge, so a pure
+// musing got an unsolicited "더 자세히 알려줄까?" expansion offer — chatter
+// turned into forced helpfulness (service-bot, not companion). Anchored to an
+// affective/descriptive predicate at the END so a request that merely contains
+// the adjective ("날씨 좋으면 산책 계획 짜줘") or a question ("이 방법이 좋아?")
+// is not swept in.
+const MUSING_STATEMENT_RE =
+  /(?:좋다|좋네|좋아|좋군|좋구나|좋은데|맛있다|맛있네|맛있어|맛나|예쁘다|예쁘네|이쁘다|이쁘네|멋지다|멋지네|멋있다|멋있네|재밌다|재미있다|재밌네|재밌어|귀엽다|귀여워|덥다|춥다|따뜻하다|따뜻해|시원하다|시원해|행복하다|행복해|기쁘다|기뻐|신난다|신나|설렌다|편하다|편해|배부르다|나른하다|뿌듯하다|뿌듯해)[.!~ㅋㅎ]*$/u;
+
 // A casual "what should we/I do" decision question ("오늘 뭐하지", "뭐 먹을까").
 const CASUAL_DECISION_RE = /뭐\s?(?:하지|할까|먹을까|볼까|살까|입지|타지)\s*[?？]?$/u;
 
@@ -111,6 +122,7 @@ export function classifyCasualTurn(text: string): boolean {
   }
   return (
     MOOD_STATE_RE.test(trimmed) ||
+    MUSING_STATEMENT_RE.test(trimmed) ||
     CASUAL_DECISION_RE.test(trimmed) ||
     CASUAL_ASK_LEADIN_RE.test(trimmed) ||
     SIMPLE_DEFINE_KO_RE.test(trimmed) ||

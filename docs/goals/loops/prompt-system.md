@@ -131,3 +131,13 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · eval
 리뷰지점: FP 리스크가 핵심(fail-close 가드) — 편집 전 benign 세트 전수검증(6-[1-8]-6 형태가 전화/사업자/카드/계좌와 안 겹침), Opus가 ISBN/버전/주문번호까지 적대 확인.
 리스크/백로그: (A) [선행·무관] byte-hygiene 실패 = packages/shared/test/utf16-safe.test.ts:43 raw byte(동시 커밋 e287c94f6 D-KO-S1) — 이 루프 밖, D-KO-S1 소유자에게 flag. (B) RRN을 마스커(로그/notice 리댁션)에도 넣을지는 backlog(현재 persistence-guard만).
 lesson: 프로버 "서버 hung/timeout" 주장은 항상 직접 재현으로 검증 — gemma4:12b는 5-40s라 짧은 타임아웃이 정상 서버를 hung로 오판(fire 5·9·13 반복).
+
+## fire 14 · 2026-07-12 · d3119ad17
+meta: value-class=personalization · pkg=@muse/agent-core · kind=prompt-layer · verdict=PASS(opus adversarial) · firesSinceDrill=3
+probe: 7-axis 라이브(지시우선순위충돌·confident-wrong저항·멀티링구얼JP/CN·경어체적응·자기교정·빈입력·task-vs-chatter). 9/10 GOOD — 멀티링구얼 정체성도 정확("私はミューズです"/"我是缪斯"), 반말/존댓말 적응, 오답저항, 키보드매시 우아. 유일 WEAK: task-vs-chatter — "오늘 날씨 좋다"(순수 musing)에 "더 자세히 알려줄까?" 불필요 확장제안 부착(잡담→강요된 도움, service-bot).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · agent-core 3027 tests · self-eval 무회귀
+무엇: MUSING_STATEMENT_RE(감정/관찰 서술어 좋다/맛있다/예쁘다/귀엽다… 문장끝 앵커) 추가 → classifyCasualTurn에 포함. 감정 musing/관찰문이 이제 casual로 분류돼 gentle BREVITY(1~2문장, 추가질문 없이)를 받음 — fire-5 LEAD-WITH-ANSWER 넛지("더 자세히 알려줄까?")로 안 빠짐. 문장끝 앵커라 요청("날씨 좋으면 계획 짜줘")·질문("이 방법이 좋아?")은 안 쓸림.
+왜: 우선순위 (c) 개인화. companion vs service-bot 톤 — 좌우명 "Learns you" 정렬. 다양성 RATCHET: 최근 guard-heavy(9~13)라 agent-core/prompt-layer로 전환(fire 7 이후 처음).
+라이브: "오늘 날씨 좋다"→29자 no-offer("진짜네, 기분 좋게 하루 시작하기 딱"), "이 노래 좋다"→30자 no-offer(되물음), "404가 뭐야?"(팩트질문)→123자 "더 자세히?" 유지(타깃 수정). mutation-RED(MUSING 제거→musing 테스트 FAIL). Opus: 실요청 퀵소트 441자 무손상·자연 요청/질문 전부 casual=false·detail-suppression 우선.
+리뷰지점: 과억제 리스크(fail-close 아니지만 요청이 짧게 잘릴라)를 Opus가 적대검증 — ?로 질문 앵커깨짐·요청은 명령형 종결·SUBSTANTIAL 가드. misses는 문법이상 dangling("알려줘 좋다")뿐(비자연, non-blocker).
+리스크/백로그: eval:adversarial는 이번 fire서 Ollama idle-timeout으로 STALL(출력 0, 코드회귀 아님·[[project_smoke_live_stall]]). 이 슬라이스는 must-refuse/secret 케이스와 결정론적 직교(musing 분류가 안전거절에 영향 불가)라 무영향 자명; Opus가 full suite 3027/3027 무회귀 확인, fire 13 baseline 26/26. lesson: 라이브 eval 병렬 실행은 Ollama 경합/idle-timeout으로 stall — fire당 라이브 배터리는 순차로, 직교 슬라이스면 결정론 논증으로 대체.
