@@ -17,10 +17,14 @@ describe("api server: web contract + manifest", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       service: "muse-api",
       status: "ok"
     });
+    const payload = response.json() as { pid: number; version: string; startedAtIso: string };
+    expect(payload.pid).toBeGreaterThan(0);
+    expect(typeof payload.version).toBe("string");
+    expect(Number.isFinite(Date.parse(payload.startedAtIso))).toBe(true);
   });
 
   it("applies Muse compatible web contract headers", async () => {
