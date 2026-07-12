@@ -370,6 +370,19 @@ button {
   max-width: 960px;
   margin: 0 auto;
 }
+/* Vertical-rhythm safety net: every top-level block gets breathing room
+   from the one above, so a view can't ship colliding cards by forgetting
+   a spacer div. An inline or section-specific margin-top (same property)
+   simply wins. The page header opts back into its tight stack. */
+.content-narrow > * + * {
+  margin-top: var(--s-md);
+}
+.content-narrow > .eyebrow + .page-title {
+  margin-top: 0;
+}
+.content-narrow > .page-title + p {
+  margin-top: 4px;
+}
 
 /* ── Draft-first send confirm ────────────────────────────── */
 
