@@ -140,6 +140,14 @@ export function extractFollowupPromises(
   const seenMinute = new Set<number>();
   const slots = { ...DEFAULT_SLOTS, ...options.slotHours };
   const push = (promise: FollowupPromise, matchIndex: number): void => {
+    // A recurrence marker (매일/매주/매달/…요일마다/마다) governing the time
+    // expression means the model resolved a RECURRING request into a wrong
+    // ONE-SHOT time (e.g. "매일 아침 8시" → today 08:00, once). Full recurrence
+    // support is out of scope; a wrong one-shot is worse than no followup at
+    // all (it fires once at the wrong moment and never again), so the whole
+    // match is dropped — the honest caveat then tells the user recurring
+    // isn't supported yet instead of silently mis-scheduling.
+    if (recurrenceGoverns(text, matchIndex)) return;
     // A refusal right before the time phrase ("I won't remind you in 30 min",
     // "I will NOT check tomorrow") means the assistant DECLINED — it is not a
     // promise to queue. Suppress it; the module's documented bias is toward
@@ -357,6 +365,17 @@ export function extractFollowupPromises(
 const NEGATION_BEFORE_RE = /\b(?:not|never|cannot)\b|won['’]?t|can['’]?t|wouldn['’]?t|won['’]?t\s+be\s+able/iu;
 function negatedBefore(text: string, index: number): boolean {
   return NEGATION_BEFORE_RE.test(text.slice(Math.max(0, index - 28), index));
+}
+
+// Korean recurrence markers — 매일/매주/매달 ("every day/week/month") and the
+// generic "…마다" suffix (covers "N요일마다", "매년마다", etc). English recurring
+// phrasing ("every day") is out of scope here (no observed audit finding for
+// it); this stays Korean-only rather than guessing an EN equivalent.
+const RECURRENCE_MARKER_RE = /매일|매주|매달|마다/u;
+
+/** Does a recurrence marker (매일/매주/매달/…마다) govern the sentence containing the time phrase at `index`? */
+function recurrenceGoverns(text: string, index: number): boolean {
+  return RECURRENCE_MARKER_RE.test(sentenceWindow(text, index));
 }
 
 // First-person commissive markers (the assistant committing to a future act).

@@ -270,7 +270,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // this" commit marker, deterministically extract date/name/preference
         // candidates and merge them ADDITIVELY — a model-extracted value for
         // the same key always wins (memory-fact-backstop.ts).
-        const backstopCandidates = extractDeterministicFactCandidates(boundedUser);
+        const backstopCandidates = extractDeterministicFactCandidates(boundedUser, { now: new Date(now()) });
         const factsIsArray = Array.isArray(payload.facts);
         const groundedFacts = payload.facts && !factsIsArray
           ? dropModelAssertedValues(payload.facts, boundedUser, boundedAssistant)

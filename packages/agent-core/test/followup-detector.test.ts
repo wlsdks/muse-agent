@@ -443,6 +443,38 @@ describe("extractFollowupPromises — the two audited sim utterances now schedul
   });
 });
 
+describe("extractFollowupPromises — recurrence markers suppress the one-shot capture (FIX N1b)", () => {
+  // Full recurrence support is out of scope — a wrong ONE-SHOT time is worse
+  // than nothing (it fires the reminder at the wrong moment and never
+  // again), so a recurrence marker (매일/매주/매달/…요일마다/마다) governing the
+  // time expression drops the match entirely instead of resolving a bogus
+  // single occurrence.
+  it("수요일마다 6시 — no korean-weekday AND no korean-today-at bogus one-shot", () => {
+    const result = extractFollowupPromises("수요일마다 6시에 회의 있는거 잊지 마", { now });
+    expect(result).toHaveLength(0);
+  });
+
+  it("매일 아침 8시 — no korean-today-at bogus one-shot (today 08:00)", () => {
+    const result = extractFollowupPromises("매일 아침 8시 혈압약 먹는거 잊지 마", { now });
+    expect(result).toHaveLength(0);
+  });
+
+  it("매주 금요일 — no korean-weekday bogus one-shot", () => {
+    const result = extractFollowupPromises("매주 금요일에 청소하는거 잊지 마", { now });
+    expect(result.filter((p) => p.kind === "korean-weekday")).toHaveLength(0);
+  });
+
+  it("매달 1일 — no korean-absolute-date bogus one-shot", () => {
+    const result = extractFollowupPromises("매달 1일 월세 내는거 잊지 마", { now });
+    expect(result.filter((p) => p.kind === "korean-absolute-date")).toHaveLength(0);
+  });
+
+  it("control: the SAME time phrase with NO recurrence marker still schedules normally", () => {
+    const result = extractFollowupPromises("수요일 6시에 회의 있는거 잊지 마", { now });
+    expect(result.some((p) => p.kind === "korean-weekday")).toBe(true);
+  });
+});
+
 describe("detectUnscheduledRememberIntent — the honest-caveat signal for a date the rule detector can't yet resolve", () => {
   it("true for a remember-request that pairs a marker with a date-ish token", () => {
     for (const q of [

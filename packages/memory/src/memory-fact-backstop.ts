@@ -39,6 +39,36 @@ const RELATION_KEY_BY_NOUN: Readonly<Record<string, string>> = {
 const RELATION_BIRTHDAY_RE =
   /(딸|아들|엄마|아빠|남편|아내|친구)[^\n]{0,6}생일[^\n]{0,20}?((?:다음\s?달|\d{1,2}\s?월)\s?\d{1,2}\s?일)/u;
 
+/**
+ * Resolve a "다음달 N일" (relative — goes stale a month later) into an
+ * absolute "M월 N일" anchored at `now`. "N월 N일" is already absolute and
+ * passes through unchanged. Returns the raw phrase unresolved only if it
+ * doesn't match either recognized shape (defensive — `RELATION_BIRTHDAY_RE`
+ * guarantees one of them today).
+ */
+function resolveBirthdayDate(raw: string, now: Date): string {
+  const compact = raw.replace(/\s+/gu, "");
+  const nextMonthMatch = /^다음달(\d{1,2})일$/u.exec(compact);
+  if (!nextMonthMatch) {
+    return raw;
+  }
+  const day = Number.parseInt(nextMonthMatch[1] ?? "", 10);
+  if (!Number.isFinite(day) || day < 1 || day > 31) {
+    return raw;
+  }
+  const nextMonthIndex = (now.getMonth() + 1) % 12;
+  // Drop-not-guess, matching followup-detector's buildValid precedent: a day
+  // the resolved month doesn't have (다음달 31일 said before a 30-day month)
+  // must keep the raw phrase — persisting "4월 31일" would be a fabricated
+  // durable fact that JS Date consumers silently roll to another day.
+  const yearRoll = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  const candidate = new Date(yearRoll, nextMonthIndex, day);
+  if (candidate.getDate() !== day || candidate.getMonth() !== nextMonthIndex) {
+    return raw;
+  }
+  return `${nextMonthIndex + 1}월 ${day}일`;
+}
+
 // "내 이름은 X" / "나 X야" self-introduction patterns. Lazy quantifier so
 // the euphonic copula (이야/야) doesn't get absorbed into the captured name.
 const NAME_PATTERNS: readonly RegExp[] = [
@@ -53,18 +83,26 @@ const PREFERENCE_RE = /([가-힣]{1,20}?)(?:을|를)?\s*(좋아해|싫어해)/u;
  * returns `{}` when the turn carries no explicit "remember this" signal
  * so the backstop never fires on ordinary chat.
  */
-export function extractDeterministicFactCandidates(userPrompt: string): Record<string, string> {
+export function extractDeterministicFactCandidates(
+  userPrompt: string,
+  options: { readonly now?: Date } = {}
+): Record<string, string> {
   const out: Record<string, string> = {};
   if (!userPrompt || !hasCommitMarker(userPrompt)) {
     return out;
   }
+  const now = options.now ?? new Date();
 
   const birthdayMatch = RELATION_BIRTHDAY_RE.exec(userPrompt);
   if (birthdayMatch) {
     const relationKey = RELATION_KEY_BY_NOUN[birthdayMatch[1] ?? ""];
     const date = (birthdayMatch[2] ?? "").trim();
     if (relationKey && date) {
-      out[`${relationKey}_birthday`] = date;
+      // FIX N5b: a relative "다음달 N일" stored VERBATIM goes stale the
+      // moment the calendar rolls over — resolve to the absolute month at
+      // extraction time so recall never speaks a date that used to be
+      // "next month" but no longer is.
+      out[`${relationKey}_birthday`] = resolveBirthdayDate(date, now);
     }
   }
 

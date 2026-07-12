@@ -93,7 +93,11 @@ describe("createUserMemoryAutoExtractHook — FIX 1 deterministic fact-candidate
     });
     await hook.afterComplete?.(...turn("u", message));
     const memory = store.findByUserId("u");
-    expect(memory?.facts?.daughter_birthday).toBe("다음달 5일");
+    // FIX N5b: the backstop resolves "다음달 5일" to the ABSOLUTE month at
+    // extraction time (real wall clock here — no `now` injected), so a
+    // "next month" string never goes stale once the calendar rolls over.
+    const expectedMonth = ((new Date().getMonth() + 1) % 12) + 1;
+    expect(memory?.facts?.daughter_birthday).toBe(`${expectedMonth}월 5일`);
   });
 
   it("does not overwrite a richer model-extracted value for the same key", async () => {

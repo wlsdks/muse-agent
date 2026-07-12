@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import type { UserMemory, UserMemoryStore } from "@muse/memory";
 import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
-import { appendLastProactiveDelivery, avoidedSourceKeys, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
+import { appendLastProactiveDelivery, avoidedSourceKeys, readFollowups, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { createInboundAgentRun } from "../src/inbound-agent-run.js";
@@ -1196,8 +1196,14 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
 // captured, the model's confident "기억해둘게" promise gets a code-appended
 // honest caveat — never left to the model to remember to say.
 describe("createInboundAgentRun false-done remember-intent backstop", () => {
-  const REMEMBER_KO = "8월 5일 아침에 알려달라고 기억해줘";
-  const REMEMBER_EN = "remind me tomorrow morning about the dentist";
+  // FIX N1 landed deterministic user-side scheduling: a date the RULE
+  // detector CAN resolve ("8월 5일", "tomorrow morning") now actually gets
+  // scheduled from the user's own text, so these two caveat cases use a
+  // date-ish phrase the rule detector does NOT (yet) resolve — 모레/"next
+  // week" — the genuinely-unresolvable residual gap the caveat still covers.
+  // See "createInboundAgentRun FIX N1" below for the now-successful cases.
+  const REMEMBER_KO = "모레 아침에 알려달라고 기억해줘";
+  const REMEMBER_EN = "remind me next week about the dentist";
 
   function buildRemember(dir: string, output: string) {
     const followupsFile = join(dir, "followups.json");
@@ -1313,5 +1319,139 @@ describe("createInboundAgentRun false-done remember-intent backstop", () => {
     const { run } = buildRemember(dir, "내일 미팅 오후 3시야.");
     const reply = await run({ messages: [{ content: "내일 미팅 몇시야?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
     expect(reply).toBe("내일 미팅 오후 3시야.");
+  });
+});
+
+// FIX N1 — scheduling a reminder used to work ONLY as a coin-flip (the
+// runtime's followup-capture-hook scans the ASSISTANT's echo, never the
+// user's own ask). This extracts + persists straight from the user's text
+// (through the SAME `upsertFollowup` store the hook uses), so the followup
+// lands regardless of whether the model happens to restate the date, and
+// appends a CODE-derived confirmation echo naming the persisted date.
+describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", () => {
+  function buildN1(dir: string, output: string) {
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => ({ response: { output }, toolsUsed: [] })
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_FOLLOWUPS_FILE: followupsFile,
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    return { followupsFile, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry }) };
+  }
+
+  it("\"다음달 15일 기말고사 까먹지 않게 해줘\" — the followup gets persisted at next month's 15th (no assistant echo needed), the confirmation echo is appended, and NO caveat fires", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    // The model's own reply carries NO commissive date phrase at all — the
+    // pre-fix coin-flip would have missed this turn entirely.
+    const { followupsFile, run } = buildN1(dir, "걱정 마, 잘 챙길게!");
+    const reply = await run({ messages: [{ content: "다음달 15일 기말고사 까먹지 않게 해줘", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const followups = await readFollowups(followupsFile);
+    const scheduled = followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    const scheduledFor = new Date(scheduled[0]!.scheduledFor);
+    const now = new Date();
+    const expectedMonthIndex = (now.getMonth() + 1) % 12;
+    expect(scheduledFor.getMonth()).toBe(expectedMonthIndex);
+    expect(scheduledFor.getDate()).toBe(15);
+
+    expect(reply).toContain("걱정 마, 잘 챙길게!");
+    expect(reply).toContain("📌");
+    expect(reply).not.toContain("예약이 안 됐어");
+  });
+
+  it("EN — \"remind me tomorrow morning about the dentist\" now schedules from the user's own ask and confirms in English", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "Sure thing!");
+    const reply = await run({ messages: [{ content: "remind me tomorrow morning about the dentist", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const followups = await readFollowups(followupsFile);
+    expect(followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled")).toHaveLength(1);
+    expect(reply).toContain("Sure thing!");
+    expect(reply).toContain("📌");
+    expect(reply).not.toContain("wasn't actually scheduled");
+  });
+
+  it("dedup — the assistant's OWN commissive echo already scheduled the SAME date this turn: no duplicate followup, still exactly one confirmation echo", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    // Simulates the runtime's OWN followup-capture-hook firing on a
+    // commissive assistant echo for the SAME date the user asked about —
+    // by the time agentRuntime.run() resolves this is already persisted.
+    const agentRuntime = {
+      run: async () => {
+        const now = new Date();
+        const nextMonthIndex = (now.getMonth() + 1) % 12;
+        const nextMonthYear = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+        const scheduledFor = new Date(nextMonthYear, nextMonthIndex, 15, 9, 0, 0, 0);
+        const captured: PersistedFollowup = {
+          createdAt: now.toISOString(),
+          id: "fu_hook_echo",
+          scheduledFor: scheduledFor.toISOString(),
+          status: "scheduled",
+          summary: "기말고사 알려드릴게요",
+          userId: "log:owner-1"
+        };
+        await writeFollowups(followupsFile, [captured]);
+        return { response: { output: "네! 다음달 15일에 알려드릴게요!" }, toolsUsed: [] };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_FOLLOWUPS_FILE: followupsFile,
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    const run = createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+    const reply = await run({ messages: [{ content: "다음달 15일 기말고사 까먹지 않게 해줘", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const followups = await readFollowups(followupsFile);
+    const scheduled = followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled");
+    expect(scheduled).toHaveLength(1); // NOT two — the hook's entry already covered it
+    expect(scheduled[0]?.id).toBe("fu_hook_echo"); // the user-side path skipped writing a duplicate
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).not.toContain("예약이 안 됐어");
+  });
+
+  it("interplay — FIX N1b recurrence suppression means a recurring ask still gets the honest caveat, not a wrong one-shot: \"수요일마다 6시\"", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "알았어!");
+    const reply = await run({ messages: [{ content: "수요일마다 6시에 회의 있는거 잊지 마", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const followups = await readFollowups(followupsFile);
+    expect(followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled")).toHaveLength(0);
+    expect(reply).toContain("예약이 안 됐어");
+    expect(reply).not.toContain("📌");
+  });
+
+  it("interplay — \"매일 아침 8시 혈압약\" also collapses to the honest caveat, not a bogus today-08:00 one-shot", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "알았어!");
+    const reply = await run({ messages: [{ content: "매일 아침 8시 혈압약 먹는거 잊지 마", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const followups = await readFollowups(followupsFile);
+    expect(followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled")).toHaveLength(0);
+    expect(reply).toContain("예약이 안 됐어");
+    expect(reply).not.toContain("📌");
+  });
+
+  it("the confirmation echo does NOT fire on plain chat (no remember-intent → the scheduling path never runs)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { run } = buildN1(dir, "오늘은 화창해!");
+    const reply = await run({ messages: [{ content: "오늘 날씨 어때?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe("오늘은 화창해!");
+    expect(reply).not.toContain("📌");
   });
 });

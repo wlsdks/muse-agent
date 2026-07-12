@@ -9,7 +9,15 @@
   - ✓ [MED] 레지스터 불일치 — fix-wave (기존 detectKoreanRegister 재사용, ack+chat 프롬프트에 미러 라인)
   - ✓ [LOW] 휘발성 사실·미요청 self-followup — fix-wave (ephemeral 가드 + korean-* commissive 게이트 봉쇄)
   - ◦ ephemeral 가드 고유명사 오탐 — "오늘의집"/"내일배움카드"류 고유명사 value가 시효성으로 오분류돼 durable 승격 거부됨(LOW-MODERATE); 토큰 뒤 시간표현 동반 요구로 정밀화 (fix-wave 판정자 후속).
+  - ✓ 백스톱 날짜 캘린더 검증 — 다음달 31일→4월 31일류 불가능 날짜 durable 저장 차단(drop-not-guess, N1 판정자 REQUIRED 트윅; 검출기 buildValid 선례 미러).
   - ◦ 시뮬 인프라 개선 — per-turn route+reply 풀 로그 캡처(스레드 12msg 캡이 감사 증거를 자름); 페르소나-로테이션 시뮬 루프는 진안 지시 시 등록.
+  - ✓ [HIGH] N1 — 예약 성공이 모델 복창 코인플립이었던 문제(follow-up-capture-hook이 response.output만 스캔) 해소: `inbound-agent-run.ts`가 rememberIntent 턴마다 `extractFollowupPromises(latestUserText, {requireCommissive:false})`로 유저 원문에서 직접 추출 + `upsertFollowup`으로 결정론 예약(agentRuntime.run() 이후, 캐비엇 체크 이전 — before/after 카운트가 신규 followup을 자연히 인식). 어시스턴트 자기복창이 같은 분(minute)에 이미 예약했으면 스토어 재조회로 중복 스킵(hook 자체엔 across-call dedup 없음을 확인 후 채택한 설계). 성공 시 코드 부착 확인 에코("📌 M월 D일 알림 잡아뒀어" / EN "Reminder set for …") — persisted followup의 resolved 날짜에서만 생성, 모델 텍스트 아님. 캐비엇은 유저측 추출도 실패했을 때만.
+  - ✓ [MED] N1b — 반복 요청("매일 아침 8시", "수요일마다 6시")이 잘못된 1회성으로 캡처되던 문제: `followup-detector.ts`에 매일|매주|매달|…마다 recurrence-marker 가드 추가, 같은 문장에서 마커가 발견되면 해당 시간 매치 전체를 드롭(완전한 반복지원은 큐로 이관 — 잘못된 1회 예약보다 무예약이 낫다는 판단). 정상 캐비엇으로 대체.
+  - ✓ [MED] N5b — daughter_birthday 등 백스톱 팩트가 "다음달 N일" 상대표현 그대로 저장되어 스테일해지던 문제: `memory-fact-backstop.ts`가 추출 시점(anchor=now)에 절대 "M월 N일"로 해석 후 저장("N월 N일" 형은 이미 절대라 그대로 통과, 해석 실패시만 원문 유지).
+  - ◦ [MED→백로그] 완전한 반복 리마인더 지원 — N1b는 스코프상 반복을 완전히 SUPPRESS만 함(무예약 + 정직 캐비엇); "매일/매주/매달/N요일마다" 실제 반복 스케줄 자체는 미착수 — followups 스토어에 recurrence rule 필드 + firing daemon 재스케줄 로직 필요.
+  - ◦ [LOW] N3b — 레지스터(존댓말/반말) 판정 로직의 register 문자열 typo (wave-2 감사 발견, 정확 위치·재현은 감사 세션 기록 참조 — 이번 슬라이스 미착수, 사용자 체감 영향 낮음으로 판단해 큐 이관).
+  - ◦ [LOW] N5a — 메모리 팩트 백스톱이 노이즈성("junk") 팩트를 승격시키는 케이스 (wave-2 감사 발견, 재현 상세는 감사 세션 기록) — 이번 슬라이스 미착수, 패턴 정밀화 필요.
+  - ◦ [LOW] N5c — false-done 캐비엇 중복 트리거 가능 엣지 (wave-2 감사 발견, 재현 상세는 감사 세션 기록) — 이번 슬라이스 미착수; N1 도입으로 return 경로가 단일화돼 재현 여부 재확인 필요.
 
 - ★ RESPONSE-EXPERIENCE (2026-07-12, 진안 직접 요청 — 20m 자율루프 `response-experience`의 전용 큐; 어시스턴트 응답 경험을 계속 더 좋게. 기반: 채널 대화 리듬(잡담 fast-path·복창 ack·인용 완료보고)·개입 예산+다이제스트·원터치 veto, 전부 main 머지됨):
   - ✓ 캔드 casual 응답 한국어 패리티 — response-experience fire 1 (CASUAL_RESPONSES_KO + containsHangul, CLI·채널 양표면)
