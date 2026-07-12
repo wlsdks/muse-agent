@@ -36,14 +36,19 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate, NSWindowDel
     }
 
     private func build() {
+        // No .fullSizeContentView: the WKWebView would underlap the (hidden)
+        // titlebar and swallow its mouse-downs (mouseDownCanMoveWindow == false),
+        // leaving the window with zero draggable pixels. A real titlebar —
+        // transparent, title hidden, dark-matched — keeps dragging native.
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
         win.title = "Muse"
         win.titlebarAppearsTransparent = true
         win.titleVisibility = .hidden
+        win.backgroundColor = NSColor(calibratedRed: 0.051, green: 0.043, blue: 0.086, alpha: 1)
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 720, height: 520)
         win.delegate = self
