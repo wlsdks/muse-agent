@@ -172,9 +172,11 @@ export {
   resolveAnswerTemperature,
   resolveAuxiliaryModel,
   resolveDefaultModel,
+  resolveModelFallbackChain,
   resolveVisionModel,
   type AuxiliaryModelResolution,
-  type AuxiliaryTask
+  type AuxiliaryTask,
+  type ModelFallbackChainResolution
 } from "./autoconfigure-model-provider.js";
 
 export {

@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **547** variables.
+Total: **548** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -307,6 +307,7 @@ Total: **547** variables.
 | `MUSE_MODEL_API_KEY` | packages/autoconfigure |
 | `MUSE_MODEL_BASE_URL` | apps/cli, packages/autoconfigure, packages/model |
 | `MUSE_MODEL_EXTRA_HEADERS` | packages/autoconfigure |
+| `MUSE_MODEL_FALLBACKS` | packages/autoconfigure |
 | `MUSE_MODEL_KEYS_FILE` | packages/autoconfigure |
 | `MUSE_MODEL_LIST` | packages/autoconfigure |
 | `MUSE_MODEL_PROVIDER_ID` | apps/cli, apps/web, packages/autoconfigure |

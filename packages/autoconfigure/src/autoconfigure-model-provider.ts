@@ -196,6 +196,64 @@ export function resolveAuxiliaryModel(params: {
   return { keptLocalForPrivacy: false, model: chosen, route, source };
 }
 
+export interface ModelFallbackChainResolution {
+  readonly chain: readonly string[];
+  readonly dropped: readonly { readonly model: string; readonly reason: string }[];
+}
+
+/**
+ * Turn `MUSE_MODEL_FALLBACKS` (a comma-separated model list) into an ordered,
+ * privacy-gated fallback chain — the explicit opt-in Muse's "no hidden
+ * retries" principle requires: a fallback happens ONLY when the operator
+ * names it, never as an implicit provider-hop the runtime invents on its own.
+ *
+ * Unset (or blank/whitespace-only) → `{ chain: [], dropped: [] }`, byte-identical
+ * to today's no-fallback behavior — no `ModelFallbackStrategy` is constructed
+ * from an empty chain.
+ *
+ * Each configured model is re-gated the same way `resolveAuxiliaryModel` gates
+ * an override: a fallback is exactly the kind of secondary path that could
+ * quietly become a cloud-egress hole, so a cloud-routed entry is DROPPED
+ * (never silently promoted to the top of the chain, never thrown) when
+ * `MUSE_LOCAL_ONLY` is set or the caller marks this request personal-context —
+ * order among the surviving entries is preserved.
+ */
+export function resolveModelFallbackChain(params: {
+  readonly env: MuseEnvironment;
+  readonly isPersonalContext?: boolean;
+}): ModelFallbackChainResolution {
+  const { env, isPersonalContext } = params;
+  const raw = parseOptionalString(env.MUSE_MODEL_FALLBACKS);
+  if (!raw) {
+    return { chain: [], dropped: [] };
+  }
+
+  const models = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  const localOnly = parseBoolean(env.MUSE_LOCAL_ONLY, false);
+  const chain: string[] = [];
+  const dropped: { model: string; reason: string }[] = [];
+
+  for (const model of models) {
+    const route = classifyModelRoute(model);
+    const isCloud = route === "cloud";
+    if (isCloud && localOnly) {
+      dropped.push({ model, reason: "MUSE_LOCAL_ONLY forbids cloud egress" });
+      continue;
+    }
+    if (isCloud && isPersonalContext === true) {
+      dropped.push({ model, reason: "personal request stays local" });
+      continue;
+    }
+    chain.push(model);
+  }
+
+  return { chain, dropped };
+}
+
 /**
  * Resolve the default model identifier the runtime should use.
  *
