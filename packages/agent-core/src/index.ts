@@ -202,6 +202,7 @@ export {
   parseGroundingReverifyJson,
   parseGroundingReverifyVerdict,
   REVERIFY_RESPONSE_FORMAT,
+  neutralizeGraderCoercion,
   REVERIFY_SYSTEM_PROMPT,
   segmentClaims,
   selectBestGroundedDraft,
