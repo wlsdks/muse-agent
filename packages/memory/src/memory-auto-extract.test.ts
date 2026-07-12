@@ -76,3 +76,95 @@ describe("createUserMemoryAutoExtractHook — onLearned", () => {
     expect(line).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul").');
   });
 });
+
+describe("createUserMemoryAutoExtractHook — FIX 1 deterministic fact-candidate backstop", () => {
+  it("rescues daughter_birthday from a rambling long-form remember-request the model DROPS", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const message =
+      "우리 딸 생일이 다음달 5일인데 자꾸 까먹을까봐 걱정이예요. 요즘 나이가 들어서 그런지 이것저것 자꾸 잊어버리네요. " +
+      "그래서 그러는데 혹시 이것 좀 꼭 기억했다가 알려줄수 있어요?";
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      // Simulates the LLM pass dropping the fact in the rambling long-form
+      // turn — the exact confirmed defect.
+      modelProvider: fakeProvider('{"facts":{},"preferences":{},"vetoes":[],"goals":[]}'),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", message));
+    const memory = store.findByUserId("u");
+    expect(memory?.facts?.daughter_birthday).toBe("다음달 5일");
+  });
+
+  it("does not overwrite a richer model-extracted value for the same key", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const message = "딸 생일 다음달 5일이야 기억해줘";
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider('{"facts":{"daughter_birthday":"다음달 5일, 김민지"},"preferences":{},"vetoes":[],"goals":[]}'),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", message));
+    const memory = store.findByUserId("u");
+    expect(memory?.facts?.daughter_birthday).toBe("다음달 5일, 김민지");
+  });
+
+  it("stays silent when the message has no commit marker (no spurious fact)", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const message = "우리 딸 생일이 다음달 5일이에요";
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider('{"facts":{},"preferences":{},"vetoes":[],"goals":[]}'),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", message));
+    const memory = store.findByUserId("u");
+    expect(memory?.facts?.daughter_birthday).toBeUndefined();
+  });
+});
+
+describe("createUserMemoryAutoExtractHook — FIX 2 ephemeral value guard", () => {
+  it("rejects the confirmed jiwoo case: climbing_gym_time = '오늘 저녁 7시' is never persisted as a durable fact", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider('{"facts":{"climbing_gym_time":"오늘 저녁 7시"},"preferences":{},"vetoes":[],"goals":[]}'),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", "오늘 저녁 7시에 클라이밍장 가요"));
+    const memory = store.findByUserId("u");
+    expect(memory?.facts?.climbing_gym_time).toBeUndefined();
+  });
+
+  it("keeps an absolute-date fact alongside a rejected ephemeral one in the same turn", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider(
+        '{"facts":{"climbing_gym_time":"오늘 저녁 7시","daughter_birthday":"8월 5일"},"preferences":{},"vetoes":[],"goals":[]}'
+      ),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", "오늘 저녁 7시에 클라이밍장 가요, 참고로 딸 생일은 8월 5일이에요"));
+    const memory = store.findByUserId("u");
+    expect(memory?.facts?.climbing_gym_time).toBeUndefined();
+    expect(memory?.facts?.daughter_birthday).toBe("8월 5일");
+  });
+
+  it("does not reject an ephemeral PREFERENCE (guard is scoped to facts only)", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider('{"facts":{},"preferences":{"mood_today":"오늘 기분 좋음"},"vetoes":[],"goals":[]}'),
+      model: "m",
+      extractionCooldownMs: 0
+    });
+    await hook.afterComplete?.(...turn("u", "오늘 기분이 좋아요"));
+    const memory = store.findByUserId("u");
+    expect(memory?.preferences?.mood_today).toBe("오늘 기분 좋음");
+  });
+});

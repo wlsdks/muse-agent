@@ -24,6 +24,8 @@ import { classifyMemoryOperation, normalizeMemoryKey } from "./memory-user-store
 import { extractJsonObject } from "./memory-extract-json.js";
 export { extractJsonObject } from "./memory-extract-json.js";
 import { sanitizeEntries, sanitizeSlotArray, type ExtractedSlot } from "./memory-auto-extract-sanitize.js";
+import { extractDeterministicFactCandidates, mergeFactBackstop } from "./memory-fact-backstop.js";
+import { dropEphemeralFacts } from "./memory-ephemeral-value-guard.js";
 import type {
   FactSupersession,
   UserGoalSlot,
@@ -262,11 +264,26 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // Only filter the proper shape — a malformed array-shaped facts/preferences
         // (or non-array vetoes/goals) is left untouched so the downstream sanitizer
         // still rejects it instead of being silently coerced.
+        // FIX 1 (rescue): the LLM auto-extract pass drops key items buried in
+        // long, rambling text even though the same request phrased tersely
+        // extracts fine. When the user's turn carries an explicit "remember
+        // this" commit marker, deterministically extract date/name/preference
+        // candidates and merge them ADDITIVELY — a model-extracted value for
+        // the same key always wins (memory-fact-backstop.ts).
+        const backstopCandidates = extractDeterministicFactCandidates(boundedUser);
+        const factsIsArray = Array.isArray(payload.facts);
+        const groundedFacts = payload.facts && !factsIsArray
+          ? dropModelAssertedValues(payload.facts, boundedUser, boundedAssistant)
+          : undefined;
+        // FIX 2: a fact VALUE that reads as a same-day-relative, time-decaying
+        // phrase ("오늘 저녁 7시") is rejected from durable fact promotion — it
+        // belongs to a followup, not permanent memory (memory-ephemeral-value-guard.ts).
+        const finalFacts = !factsIsArray && (groundedFacts !== undefined || Object.keys(backstopCandidates).length > 0)
+          ? dropEphemeralFacts(mergeFactBackstop(groundedFacts, backstopCandidates))
+          : undefined;
         const groundedPayload: ExtractionPayload = {
           ...payload,
-          ...(payload.facts && !Array.isArray(payload.facts)
-            ? { facts: dropModelAssertedValues(payload.facts, boundedUser, boundedAssistant) }
-            : {}),
+          ...(finalFacts !== undefined ? { facts: finalFacts } : {}),
           ...(payload.preferences && !Array.isArray(payload.preferences)
             ? { preferences: dropModelAssertedValues(payload.preferences, boundedUser, boundedAssistant) }
             : {}),
