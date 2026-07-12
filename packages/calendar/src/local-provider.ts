@@ -245,7 +245,11 @@ export class LocalCalendarProvider implements CalendarProvider {
     // Format-preserving: once a store is encrypted it STAYS encrypted even if
     // MUSE_CALENDAR_ENCRYPT is later unset — an env flip must never silently
     // decrypt a file at rest on the next write.
-    const shouldEncrypt = calendarEncryptionEnabled(this.env) || (await isCalendarFileCurrentlyEncrypted(this.file));
+    const alreadyEncrypted = await isCalendarFileCurrentlyEncrypted(this.file);
+    const shouldEncrypt = calendarEncryptionEnabled(this.env) || alreadyEncrypted;
+    if (shouldEncrypt && !alreadyEncrypted) {
+      await this.backupPlaintextBeforeEncrypt();
+    }
     const content = shouldEncrypt ? `${JSON.stringify(encryptCalendarEnvelope(payload, this.env))}\n` : payload;
     const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
 
@@ -257,6 +261,20 @@ export class LocalCalendarProvider implements CalendarProvider {
     await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
+  }
+
+  /**
+   * Before the FIRST plaintext→encrypted write, snapshot the existing on-disk
+   * plaintext so a lost or rotated MUSE_MEMORY_KEY can't make the schedule
+   * unrecoverable. No plaintext on disk yet ⇒ nothing to back up.
+   */
+  private async backupPlaintextBeforeEncrypt(): Promise<void> {
+    const existing = await fs.readFile(this.file, "utf8").catch(() => undefined);
+    if (existing === undefined || existing.trim().length === 0) {
+      return;
+    }
+    const backupPath = `${this.file}.plaintext-backup-${new Date().toISOString().replace(/[:.]/gu, "-")}`;
+    await fs.writeFile(backupPath, existing, { encoding: "utf8", mode: 0o600 });
   }
 }
 

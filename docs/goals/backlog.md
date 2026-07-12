@@ -3362,6 +3362,7 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ eval:adversarial 결정론-가드 카테고리 확대(topology-bypass·obfuscation, 10→19 케이스) — a-plus-roadmap fire 55 (D2-S7)
 - ✓ eval:orchestration 래칫: MAST step-repetition·unaware-of-termination + 용량거부 라이브 pass^3 — a-plus-roadmap fire 56 (D3-S6)
 - ✓ 웹 채팅 스마트-테일 스크롤(위로 읽는 중 yank 없음, 하단근처만 tail) + 실브라우저 측정 — a-plus-roadmap fire 57 (D7-S3)
+- ✓ calendar 암호화 전 plaintext 백업(키 분실 복구용 `.plaintext-backup-<ts>`, 형제-감사=calendar 유일 갭) — a-plus-roadmap fire 58
 - ◦ [선행·타루프] byte-hygiene 실패: packages/shared/test/utf16-safe.test.ts:43 raw byte (D-KO-S1 e287c94f6) — D-KO-S1 소유자 수리
 
 - ✓ credential_extraction 과차단(도어락 잠김 self-help 차단) 수정 — forgot/unlock veto (prompt-system fire 16)

@@ -10,6 +10,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Encrypting your calendar now keeps a recovery backup.** The first time your
+  local calendar switches to encrypted-at-rest, Muse saves a private
+  (owner-only) `.plaintext-backup-…` copy next to it, so a lost or changed
+  encryption key can never leave your schedule permanently unreadable. Delete
+  that backup once you've confirmed the key works. (The memory store already
+  did this; the calendar now matches it.)
+
 - **Scroll up to read without getting yanked back down.** The chat view now
   keeps following new messages only while you're already near the bottom. If
   you scroll up to re-read something while Muse is still replying, it leaves

@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -110,5 +110,56 @@ describe("LocalCalendarProvider encryption-at-rest", () => {
     const finalReader = new LocalCalendarProvider({ env: { MUSE_MEMORY_KEY: "test-key" }, file: encFile });
     const finalEvents = await finalReader.listEvents({ from: d("2026-05-15T00:00:00Z"), to: d("2026-05-17T00:00:00Z") });
     expect(finalEvents).toHaveLength(2);
+  });
+});
+
+const backupsIn = (file: string): string[] =>
+  readdirSync(dirname(file)).filter((n) => n.includes(".plaintext-backup-"));
+
+describe("LocalCalendarProvider plaintext backup before first encryption", () => {
+  it("snapshots the existing plaintext to a .plaintext-backup file on the FIRST encryption, so a lost key stays recoverable", async () => {
+    const file = freshFile();
+    const plain = new LocalCalendarProvider({ env: {}, file, idFactory: seq() });
+    await plain.createEvent({ endsAt: d("2026-05-15T09:30:00Z"), startsAt: d("2026-05-15T09:00:00Z"), title: "Dentist" });
+    expect(isEncryptedCalendarEnvelope(JSON.parse(readFileSync(file, "utf8")) as unknown)).toBe(false);
+
+    const enc = new LocalCalendarProvider({ env: { MUSE_CALENDAR_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" }, file, idFactory: seq() });
+    await enc.createEvent({ endsAt: d("2026-05-16T09:30:00Z"), startsAt: d("2026-05-16T09:00:00Z"), title: "Checkup" });
+
+    // main store is now ciphertext …
+    expect(isEncryptedCalendarEnvelope(JSON.parse(readFileSync(file, "utf8")) as unknown)).toBe(true);
+    // … and the pre-encryption plaintext survives in a backup that is readable
+    // WITHOUT the key (this is the whole point: key-loss recovery).
+    const [backup] = backupsIn(file);
+    if (!backup) throw new Error("expected a plaintext backup file");
+    const backupRaw = readFileSync(join(dirname(file), backup), "utf8");
+    expect(isEncryptedCalendarEnvelope(JSON.parse(backupRaw) as unknown)).toBe(false);
+    expect(backupRaw).toContain("Dentist");
+  });
+
+  it("writes the backup with 0o600 (the schedule is private user data)", async () => {
+    const file = freshFile();
+    await new LocalCalendarProvider({ env: {}, file, idFactory: seq() }).createEvent({ endsAt: d("2026-05-15T09:30:00Z"), startsAt: d("2026-05-15T09:00:00Z"), title: "Plain" });
+    await new LocalCalendarProvider({ env: { MUSE_CALENDAR_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" }, file, idFactory: seq() }).createEvent({ endsAt: d("2026-05-16T09:30:00Z"), startsAt: d("2026-05-16T09:00:00Z"), title: "Enc" });
+    const [backup] = backupsIn(file);
+    if (!backup) throw new Error("expected a plaintext backup file");
+    expect(statSync(join(dirname(file), backup)).mode & 0o777).toBe(0o600);
+  });
+
+  it("does NOT back up when a store is created encrypted from the start (no prior plaintext to lose)", async () => {
+    const file = freshFile();
+    const enc = new LocalCalendarProvider({ env: { MUSE_CALENDAR_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" }, file, idFactory: seq() });
+    await enc.createEvent({ endsAt: d("2026-05-15T09:30:00Z"), startsAt: d("2026-05-15T09:00:00Z"), title: "FreshSecret" });
+    expect(isEncryptedCalendarEnvelope(JSON.parse(readFileSync(file, "utf8")) as unknown)).toBe(true);
+    expect(backupsIn(file)).toHaveLength(0);
+  });
+
+  it("does not create a SECOND backup on later writes once the store is already encrypted", async () => {
+    const file = freshFile();
+    await new LocalCalendarProvider({ env: {}, file, idFactory: seq() }).createEvent({ endsAt: d("2026-05-15T09:30:00Z"), startsAt: d("2026-05-15T09:00:00Z"), title: "First" });
+    const enc = new LocalCalendarProvider({ env: { MUSE_CALENDAR_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" }, file, idFactory: seq() });
+    await enc.createEvent({ endsAt: d("2026-05-16T09:30:00Z"), startsAt: d("2026-05-16T09:00:00Z"), title: "Second" });
+    await enc.createEvent({ endsAt: d("2026-05-17T09:30:00Z"), startsAt: d("2026-05-17T09:00:00Z"), title: "Third" });
+    expect(backupsIn(file)).toHaveLength(1);
   });
 });

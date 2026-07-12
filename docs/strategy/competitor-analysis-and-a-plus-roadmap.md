@@ -825,7 +825,7 @@ delta-scout 주기에.
 
 #### 이연 (착수 전 진안 확인)
 - [ ] **D-KO-S3** i18n 정적 카탈로그 중앙화 (저우선·리팩터 리스크>이득 가능)
-- [ ] **암호화 key-migration 백업** `.plaintext-backup-<ts>` (§8.6.1, 소소)
+- [x] **암호화 key-migration 백업** ✅ 2026-07-12 `.plaintext-backup-<ts>` (§8.6.1). 형제-감사로 **calendar가 유일 갭** 확정: writeAll이 `MUSE_CALENDAR_ENCRYPT` 플래그로 plaintext→encrypted를 self-initiate하는데 백업 없음(memory `encryptAtRest`·shared `encryptFileAtRest`는 이미 백업; reflections/belief-provenance는 format-preserving+백업하는 마이그레이션 경유=DONE). fix: `local-provider.ts` writeAll이 `alreadyEncrypted` 캡처 후 첫 `shouldEncrypt && !alreadyEncrypted` 전환에서 `backupPlaintextBeforeEncrypt()`(기존 on-disk plaintext를 `${file}.plaintext-backup-<ts>` mode 0o600으로 스냅샷; 파일 없거나 빈 경우 no-op) — 암호화 write **전** 실행(크래시 윈도우 없음). 4 test(전환시 백업=키없이 읽히는 plaintext 복구·0o600·brand-new 무백업·이미암호화 2차백업 없음)·mutation-RED 3/3(헬퍼 무력화→백업 test RED)·calendar 184/184 무회귀·Opus 독립 PASS(순서·전환only·복구실증·format-preserving/wrong-key 무변경·형제감사 정직). 유저-가시=CHANGELOG
 
 ### 10.4 슬라이스 의존성 (착수 전 확인)
 
