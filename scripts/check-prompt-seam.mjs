@@ -24,6 +24,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
+import {
+  BUILD_SYSTEM_PROMPT_PATTERN,
+  IDENTITY_STRING_PATTERNS,
+  lineAssertsIdentity,
+  lineCallsBuildSystemPrompt
+} from "./lib/prompt-seam-patterns.mjs";
+
 const ROOT = process.cwd();
 const ROOTS = ["packages", "apps"];
 
@@ -37,8 +44,6 @@ const LEGACY_IDENTITY_STRING_FILES = new Set([]);
 
 const LEGACY_BUILD_SYSTEM_PROMPT_FILES = new Set([]);
 
-const IDENTITY_STRING_PATTERNS = [/You are Muse\b/u, /너는 뮤즈/u];
-const BUILD_SYSTEM_PROMPT_PATTERN = /\bbuildSystemPrompt\s*\(/u;
 const EXEMPT_FILES = new Set([
   "packages/prompts/src/identity-core.ts",
   "packages/prompts/src/compose.ts"
@@ -88,7 +93,7 @@ for (const root of ROOTS) {
 
       if (!isExempt) {
         lines.forEach((line, index) => {
-          if (!IDENTITY_STRING_PATTERNS.some((re) => re.test(line))) return;
+          if (!lineAssertsIdentity(line)) return;
           if (LEGACY_IDENTITY_STRING_FILES.has(relPath)) return;
           violations.push({
             file: relPath,
@@ -101,7 +106,7 @@ for (const root of ROOTS) {
 
       if (!isPromptsPackage) {
         lines.forEach((line, index) => {
-          if (!BUILD_SYSTEM_PROMPT_PATTERN.test(line)) return;
+          if (!lineCallsBuildSystemPrompt(line)) return;
           if (LEGACY_BUILD_SYSTEM_PROMPT_FILES.has(relPath)) return;
           violations.push({
             file: relPath,

@@ -79,3 +79,13 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · adve
 행동 acceptance(방어적 불변식): 악성 caller priority(±99999)를 주입해도 조립된 출력 문자열에서 정체성이 항상 첫째·role이 항상 마지막(indexOf 검증), 양끝 동시·정상레이어 대조 포함. mutation-RED(clamp 제거→attacker 3테스트 RED 양방향, 정상 GREEN). undefined priority는 그대로(comparePromptLayers 100 default, 이미 구간 내).
 리뷰지점: Opus가 우회 4종 empirical 프로브 — 토큰ceiling 루프도 clamp후 실행·preview(segments)는 구조적으로 정체성 index0 고정이라 무취약·dynamic-section 공격자는 캐시경계 뒤 유지·정상 2레이어(100/200) 상대순서 보존.
 리스크/백로그: 감사 갭 ①②③④는 backlog에 기록(루프가 순서대로). ②(학습 user-model)는 좌우명 정렬상 최전략 큰 슬라이스.
+
+## fire 9 · 2026-07-12 · 6cb2e11f8
+meta: value-class=identity-hardening · pkg=scripts(prompt-seam) · kind=drift-guard · verdict=PASS(opus adversarial) · firesSinceDrill=9
+probe: 8-axis 라이브 배터리(멀티턴 register 일관성·mixed-register·과차단 신도메인·툴선택 의도·수치단위·환각메모리·장문구조·시간인지). 8/9 GOOD. 프로버 WEAK 3: (5b)"3.5시간"→"5시간은 210분"(값 210은 맞음, 라벨 오기·모델 산술슬립) (1)멀티턴 반말 드리프트(1회 관측) (5a)환율 부정확. → 셋 다 프롬프트-레이어 결정론 수정 불가(모델 산술/실시간데이터) 또는 재현 안 됨: (1) baseline 4/4 반말 유지(모델이 히스토리서 자가보정). 라이브가 재현성 있는 프롬프트-수정가능 약점을 못 냄.
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · adversarialCases 26 · scripts test 4/4 신규
+무엇: EXHAUSTION 규칙 — 노이즈 강제 대신 감사 발굴 갭(A#3 "drift-lint 얕음")으로 전환. check-prompt-seam의 IDENTITY_STRING_PATTERNS이 리터럴 2개(You are Muse/너는 뮤즈)만 잡아 패러프레이즈("I am Muse", "저는 뮤즈입니다", "제 이름은 뮤즈")가 seam 밖서 통과했음. 순수 매처를 scripts/lib/prompt-seam-patterns.mjs로 추출+브로드닝(EN: I am/I'm/You are/You're/(my|your) name is + 대문자 Muse; KO: 너는/넌/나는/난/저는/제·내 이름은 + 뮤즈), scripts/check-prompt-seam.test.mjs 추가.
+왜: 정체성 단일소스 해자를 "존재→강제"로 강화(fire 8 primacy-clamp 연속). 라이브 dry일 때 결정론·in-theme·강한 acceptance 백로그 갭이 최적, 이 루프 소유 파일이라 타 루프 충돌 없음.
+행동 acceptance: 패러프레이즈 7종 flagged + benign 12종(@muse/prompts·"you are musing"·amuse·museName 등) NOT flagged + 하위호환(원 리터럴 2개) + buildSystemPrompt 감지. 레포 0 FP(브로드닝 전수스캔), mutation-RED(2리터럴로 되돌리면 패러프레이즈 테스트 FAIL). Opus 12/12 FP-트랩 통과 확인.
+리뷰지점: 브로드닝 전 후보패턴을 레포 전수스캔해 FP 0 선확인(감사 A의 "브로드 패턴 FP 이력" 경고 반영). 대문자 Muse 고정으로 @muse/ 경로 무플래그, `i` 플래그 배제로 "musing" 무플래그.
+리스크/백로그: (A) 3인칭("이 어시스턴트는 뮤즈입니다")·부사삽입("You are now Muse")은 미포착 — Opus가 acceptable scope 판정(가드 목적=1/2인칭 자기주장 드리프트). (B) [선행·무관] reflection-guard.test.mjs 실패 = packages/proactivity/src/proactive-notice-loop.ts의 options.reverify( 마커 누락(동시 proactivity 리팩터). 이 루프 밖 — proactivity 소유자에게 flag.

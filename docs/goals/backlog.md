@@ -3345,3 +3345,5 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ◦ [감사갭2·전략] "Learns you" 학습 user-model 동적 레이어: 현재 폼-미러링(반말/영어)만, 누적 학습(말투·약어·선호)을 memory/recall서 per-turn 블록으로 조립하는 게 빠짐 (hermes Honcho 대응)
 - ◦ [감사갭3·중] 인젝션 provenance/taint 레이어: 툴출력 유래 토큰을 untrusted 마킹·액추에이터 인자 도달 금지(정적 regex 스캐너 보완, IFC 방향)
 - ◦ [감사갭4·싸다] check:prompt-seam을 GitHub CI(.github/workflows/ci.yml)에 배선 — 현재 lint/check만, 정체성 게이트가 로컬 self-eval에만 (Ollama 불필요)
+
+- ✓ drift-lint 브로드닝(패러프레이즈 정체성 문자열 포착, 리터럴 2개→매처) — prompt-system fire 9 (감사 A#3)
