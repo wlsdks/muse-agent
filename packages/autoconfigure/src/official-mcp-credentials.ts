@@ -71,7 +71,7 @@ export function resolveOfficialMcpToken(env: MuseEnvironment, presetName: string
       return fromEnv;
     }
   }
-  const file = readCredentialsSync(resolveOfficialMcpCredentialsFile(env));
+  const file = readCredentialsSync(resolveOfficialMcpCredentialsFile(env), env);
   return stringField(file[presetName], "token");
 }
 

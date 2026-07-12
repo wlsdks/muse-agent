@@ -1,7 +1,14 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import {
+  backupPlaintextCredentialsFile,
+  credentialEncryptionEnabled,
+  decodeMaybeEncryptedCredentialsJson,
+  encryptCredentialEnvelope,
+  isCredentialsFileEncryptedAtRest,
+  type JsonObject
+} from "@muse/shared";
 
 export type MessagingCredentials = JsonObject;
 
@@ -25,9 +32,12 @@ interface PersistedShape {
  */
 export class FileMessagingCredentialStore implements MessagingCredentialStore {
   private readonly file: string;
+  private readonly env: NodeJS.ProcessEnv;
 
-  constructor(file: string) {
+  /** `env` defaults to `process.env`; tests inject `MUSE_MEMORY_KEY` / `MUSE_CREDENTIALS_ENCRYPT`. */
+  constructor(file: string, env: NodeJS.ProcessEnv = process.env) {
     this.file = file;
+    this.env = env;
   }
 
   async load(providerId: string): Promise<MessagingCredentials | undefined> {
@@ -59,6 +69,12 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     return Object.keys(all.providers).sort();
   }
 
+  /**
+   * Format-preserving read: transparently decrypts an encrypted envelope OR
+   * reads legacy plaintext — an existing user's plaintext `messaging.json`
+   * keeps working unchanged. A wrong `MUSE_MEMORY_KEY` on an ENCRYPTED file
+   * THROWS (fail-closed) rather than silently returning an empty store.
+   */
   private async readAll(): Promise<PersistedShape> {
     let raw: string;
     try {
@@ -69,21 +85,40 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
       }
       throw error;
     }
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(raw) as Partial<PersistedShape>;
-      if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
-        return { providers: {}, version: 1 };
-      }
-      return { providers: { ...parsed.providers }, version: 1 };
+      parsed = JSON.parse(raw);
     } catch {
       return { providers: {}, version: 1 };
     }
+    parsed = decodeMaybeEncryptedCredentialsJson(parsed, this.env); // THROWS fail-closed on a wrong key
+    const shape = parsed as Partial<PersistedShape>;
+    if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
+      return { providers: {}, version: 1 };
+    }
+    return { providers: { ...shape.providers }, version: 1 };
   }
 
+  /**
+   * Atomic write. Encrypts only when `MUSE_CREDENTIALS_ENCRYPT` is enabled AND
+   * a key is available, OR the file is ALREADY encrypted on disk (sticky).
+   * Absent both, writes plaintext (chmod 600) exactly as before. The first
+   * plaintext→encrypted transition backs up the existing plaintext first.
+   */
   private async writeAll(value: PersistedShape): Promise<void> {
-    const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
     await fs.mkdir(dirname(this.file), { recursive: true });
-    await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    const payload = `${JSON.stringify(value, null, 2)}\n`;
+    const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(this.file);
+    const shouldEncrypt = credentialEncryptionEnabled(this.env) || alreadyEncrypted;
+    if (shouldEncrypt && !alreadyEncrypted) {
+      const existing = await fs.readFile(this.file, "utf8").catch(() => undefined);
+      if (existing !== undefined) {
+        await backupPlaintextCredentialsFile(this.file, existing);
+      }
+    }
+    const content = shouldEncrypt ? `${JSON.stringify(encryptCredentialEnvelope(payload, this.env))}\n` : payload;
+    const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
+    await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
   }

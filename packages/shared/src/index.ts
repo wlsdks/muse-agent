@@ -26,6 +26,18 @@ export {
   type PlatformOs
 } from "./platform-capabilities.js";
 
+export {
+  backupPlaintextCredentialsFile,
+  credentialEncryptionEnabled,
+  credentialEncryptionSecret,
+  decodeMaybeEncryptedCredentialsJson,
+  decryptCredentialEnvelope,
+  encryptCredentialEnvelope,
+  isCredentialsFileEncryptedAtRest,
+  isEncryptedCredentialEnvelope,
+  type EncryptedCredentialEnvelope
+} from "./credential-encryption.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];

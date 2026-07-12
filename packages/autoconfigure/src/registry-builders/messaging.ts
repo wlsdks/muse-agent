@@ -35,7 +35,7 @@ import { readCredentialsSync, stringField } from "../provider-utils.js";
 
 export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderRegistry {
   const registry = new MessagingProviderRegistry();
-  const file = readCredentialsSync(resolveMessagingCredentialsFile(env));
+  const file = readCredentialsSync(resolveMessagingCredentialsFile(env), env);
   const tokenFor = (envKey: string, providerId: string): string | undefined => {
     const fromEnv = env[envKey]?.trim();
     if (fromEnv && fromEnv.length > 0) {

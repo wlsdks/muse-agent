@@ -118,7 +118,7 @@ export {
  * reads env directly; the file fallback rides the same path.
  */
 export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
-  const file = readCredentialsSync(resolveModelKeysFile(env));
+  const file = readCredentialsSync(resolveModelKeysFile(env), env);
   if (Object.keys(file).length === 0) {
     return env;
   }

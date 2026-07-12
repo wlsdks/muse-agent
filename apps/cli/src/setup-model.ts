@@ -14,11 +14,20 @@ import { homedir } from "node:os";
 import { dirname, join as pathJoin } from "node:path";
 
 import { isCancel, multiselect, password, text } from "@clack/prompts";
+import {
+  backupPlaintextCredentialsFile,
+  credentialEncryptionEnabled,
+  decodeMaybeEncryptedCredentialsJson,
+  encryptCredentialEnvelope,
+  isCredentialsFileEncryptedAtRest
+} from "@muse/shared";
 
 interface SetupModelIO {
   readonly stdout: (message: string) => void;
   readonly stderr: (message: string) => void;
   readonly home?: string;
+  /** Defaults to `process.env`; tests inject `MUSE_MEMORY_KEY` / `MUSE_CREDENTIALS_ENCRYPT`. */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 type SetupModelProviderId =
@@ -174,8 +183,9 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
     return;
   }
 
+  const env = io.env ?? process.env;
   const requested = selection as readonly SetupModelProviderSpec["id"][];
-  const persisted: PersistedShape = await readPersisted(file);
+  const persisted: PersistedShape = await readPersisted(file, env);
   const collected: Array<{ spec: SetupModelProviderSpec; token: string }> = [];
 
   for (const id of requested) {
@@ -210,7 +220,7 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
     return;
   }
 
-  await writePersisted(file, persisted);
+  await writePersisted(file, persisted, env);
   io.stdout(`\n✓ Saved ${collected.length.toString()} provider(s) to ${file}\n`);
   io.stdout("autoconfigure will load these at next boot. Resolved environment:\n");
   for (const { spec, token } of collected) {
@@ -233,12 +243,13 @@ export async function persistModelProviderKey(
   home: string,
   providerId: string,
   token: string,
-  suggestedModel: string
+  suggestedModel: string,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<string> {
   const file = pathJoin(home, ".muse", "models.json");
-  const persisted = await readPersisted(file);
+  const persisted = await readPersisted(file, env);
   persisted.providers[providerId] = { suggestedModel, token };
-  await writePersisted(file, persisted);
+  await writePersisted(file, persisted, env);
   return file;
 }
 
@@ -249,23 +260,56 @@ function maskSecret(token: string): string {
   return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
-async function readPersisted(file: string): Promise<PersistedShape> {
+/**
+ * Format-preserving read: transparently decrypts an encrypted envelope OR
+ * reads legacy plaintext — an existing user's plaintext `models.json` keeps
+ * working unchanged. A wrong `MUSE_MEMORY_KEY` on an ENCRYPTED file THROWS
+ * (fail-closed), never silently starts fresh (that would look like "no keys
+ * configured" and could prompt the user to overwrite recoverable data).
+ */
+async function readPersisted(file: string, env: NodeJS.ProcessEnv = process.env): Promise<PersistedShape> {
+  let raw: string;
   try {
-    const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PersistedShape>;
-    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
-      return { providers: { ...parsed.providers as PersistedShape["providers"] }, version: 1 };
-    }
+    raw = await fs.readFile(file, "utf8");
   } catch {
-    // missing or malformed → start fresh
+    return { providers: {}, version: 1 };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { providers: {}, version: 1 };
+  }
+  parsed = decodeMaybeEncryptedCredentialsJson(parsed, env); // THROWS fail-closed on a wrong key
+  const shape = parsed as Partial<PersistedShape>;
+  if (shape && typeof shape === "object" && shape.providers && typeof shape.providers === "object") {
+    return { providers: { ...shape.providers }, version: 1 };
   }
   return { providers: {}, version: 1 };
 }
 
-async function writePersisted(file: string, value: PersistedShape): Promise<void> {
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+/**
+ * Atomic write. Encrypts only when `MUSE_CREDENTIALS_ENCRYPT` is enabled AND
+ * a key is available, OR the file is ALREADY encrypted on disk (sticky —
+ * once encrypted, stays encrypted even if the env flag is later unset).
+ * Absent both, writes plaintext (chmod 600) exactly as before — a keyless
+ * setup is never hard-broken. The first plaintext→encrypted transition backs
+ * up the existing plaintext so a lost key can't make keys unrecoverable.
+ */
+async function writePersisted(file: string, value: PersistedShape, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  const payload = `${JSON.stringify(value, null, 2)}\n`;
+  const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
+  const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
+  if (shouldEncrypt && !alreadyEncrypted) {
+    const existing = await fs.readFile(file, "utf8").catch(() => undefined);
+    if (existing !== undefined) {
+      await backupPlaintextCredentialsFile(file, existing);
+    }
+  }
+  const content = shouldEncrypt ? `${JSON.stringify(encryptCredentialEnvelope(payload, env))}\n` : payload;
+  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
   await fs.chmod(file, 0o600).catch(() => undefined);
 }

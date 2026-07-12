@@ -1,8 +1,10 @@
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { isEncryptedCredentialEnvelope } from "@muse/shared";
 
 import { FileMessagingCredentialStore } from "../src/credential-store.js";
 
@@ -88,5 +90,97 @@ describe("FileMessagingCredentialStore", () => {
     // and the store can still save over the corrupt file
     await store.save("telegram", { token: "recovered" });
     expect(await store.load("telegram")).toEqual({ token: "recovered" });
+  });
+});
+
+// Behavioral coverage for encryption-at-rest (security finding #4): channel bot
+// tokens are high-value credentials, so the store must be unreadable ciphertext
+// on disk when MUSE_CREDENTIALS_ENCRYPT is on, a wrong-key read must fail
+// CLOSED, and an existing user's plaintext file must keep working untouched.
+describe("FileMessagingCredentialStore encryption-at-rest", () => {
+  it("plaintext default: with no key/flag, writes plaintext exactly as before (backward compatible)", async () => {
+    const store = new FileMessagingCredentialStore(file, {});
+    await store.save("telegram", { token: "tg-plain-token" });
+    const raw = await readFile(file, "utf8");
+    expect(raw).toContain("tg-plain-token");
+    expect(isEncryptedCredentialEnvelope(JSON.parse(raw) as unknown)).toBe(false);
+  });
+
+  it("legacy plaintext read still works when encryption is later enabled (format-preserving)", async () => {
+    const plainStore = new FileMessagingCredentialStore(file, {});
+    await plainStore.save("telegram", { token: "legacy-token" });
+
+    const laterStore = new FileMessagingCredentialStore(file, { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" });
+    expect(await laterStore.load("telegram")).toEqual({ token: "legacy-token" });
+  });
+
+  it("round-trip: on-disk bytes are ciphertext with no plaintext token, and read-back decrypts identically", async () => {
+    const env = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "test-key" };
+    const writer = new FileMessagingCredentialStore(file, env);
+    await writer.save("telegram", { token: "tg-super-secret" });
+
+    const raw = await readFile(file, "utf8");
+    expect(raw).not.toContain("tg-super-secret");
+    const parsed = JSON.parse(raw) as unknown;
+    expect(isEncryptedCredentialEnvelope(parsed)).toBe(true);
+
+    const reader = new FileMessagingCredentialStore(file, env);
+    expect(await reader.load("telegram")).toEqual({ token: "tg-super-secret" });
+  });
+
+  it("wrong-key read fails CLOSED: throws (never returns undefined/empty) and leaves the ciphertext on disk unchanged", async () => {
+    const rightEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "right-key" };
+    const wrongEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "wrong-key" };
+
+    const writer = new FileMessagingCredentialStore(file, rightEnv);
+    await writer.save("telegram", { token: "tg-secret" });
+
+    const before = await readFile(file, "utf8");
+    expect(isEncryptedCredentialEnvelope(JSON.parse(before) as unknown)).toBe(true);
+
+    const reader = new FileMessagingCredentialStore(file, wrongEnv);
+    await expect(reader.load("telegram")).rejects.toThrow();
+
+    const after = await readFile(file, "utf8");
+    expect(after).toBe(before);
+  });
+
+  it("format-preserving: once encrypted, stays encrypted even if the flag is later unset", async () => {
+    const encEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" };
+    const encStore = new FileMessagingCredentialStore(file, encEnv);
+    await encStore.save("telegram", { token: "a" });
+    expect(isEncryptedCredentialEnvelope(JSON.parse(await readFile(file, "utf8")) as unknown)).toBe(true);
+
+    // flag unset, key still supplied — a later write must NOT silently decrypt at rest
+    const laterStore = new FileMessagingCredentialStore(file, { MUSE_MEMORY_KEY: "k" });
+    await laterStore.save("discord", { token: "b" });
+    const raw = await readFile(file, "utf8");
+    expect(isEncryptedCredentialEnvelope(JSON.parse(raw) as unknown)).toBe(true);
+
+    const finalReader = new FileMessagingCredentialStore(file, { MUSE_MEMORY_KEY: "k" });
+    expect(await finalReader.load("telegram")).toEqual({ token: "a" });
+    expect(await finalReader.load("discord")).toEqual({ token: "b" });
+  });
+
+  it("backs up the pre-encryption plaintext on the FIRST transition, readable without the key", async () => {
+    const plainStore = new FileMessagingCredentialStore(file, {});
+    await plainStore.save("telegram", { token: "tg-before-encrypt" });
+
+    const encStore = new FileMessagingCredentialStore(file, { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" });
+    await encStore.save("telegram", { token: "tg-before-encrypt" });
+
+    const entries = await readdir(join(dir, "nested"));
+    const backups = entries.filter((e) => e.includes(".plaintext-backup-"));
+    expect(backups).toHaveLength(1);
+    const backupRaw = await readFile(join(dir, "nested", backups[0]!), "utf8");
+    expect(backupRaw).toContain("tg-before-encrypt");
+    expect(isEncryptedCredentialEnvelope(JSON.parse(backupRaw) as unknown)).toBe(false);
+  });
+
+  it("does NOT back up when a store is created encrypted from the start (nothing to lose)", async () => {
+    const encStore = new FileMessagingCredentialStore(file, { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "k" });
+    await encStore.save("telegram", { token: "fresh-secret" });
+    const entries = await readdir(join(dir, "nested"));
+    expect(entries.filter((e) => e.includes(".plaintext-backup-"))).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **552** variables.
+Total: **553** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -107,7 +107,7 @@ Total: **552** variables.
 | `MUSE_CALDAV_URL` | packages/autoconfigure |
 | `MUSE_CALDAV_USERNAME` | packages/autoconfigure |
 | `MUSE_CALENDAR_ENABLED` | packages/autoconfigure |
-| `MUSE_CALENDAR_ENCRYPT` | packages/calendar |
+| `MUSE_CALENDAR_ENCRYPT` | packages/calendar, packages/shared |
 | `MUSE_CALENDAR_FILE` | apps/cli, packages/autoconfigure, packages/mcp |
 | `MUSE_CALENDAR_ICS_FILE` | packages/autoconfigure |
 | `MUSE_CALENDAR_PROVIDERS` | apps/cli, packages/autoconfigure |
@@ -147,6 +147,7 @@ Total: **552** variables.
 | `MUSE_CONVERSATION_SUMMARY_FILE` | packages/autoconfigure, packages/memory |
 | `MUSE_CONVERSATION_SUMMARY_PERSIST` | packages/autoconfigure |
 | `MUSE_CORS_ALLOWED_ORIGINS` | packages/autoconfigure |
+| `MUSE_CREDENTIALS_ENCRYPT` | apps/cli, packages/autoconfigure, packages/messaging, packages/shared |
 | `MUSE_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_CREDENTIAL_KEY` | apps/cli |
 | `MUSE_CROSS_LINGUAL_COSINE_FLOOR` | packages/recall |
@@ -294,7 +295,7 @@ Total: **552** variables.
 | `MUSE_MCP_RECONNECT_MAX_ATTEMPTS` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_MAX_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
-| `MUSE_MEMORY_KEY` | apps/cli, packages/calendar, packages/memory, packages/stores |
+| `MUSE_MEMORY_KEY` | apps/cli, packages/autoconfigure, packages/calendar, packages/memory, packages/messaging, packages/shared, packages/stores |
 | `MUSE_MENTION` | apps/api |
 | `MUSE_MESSAGING_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MESSAGING_LIBNOTIFY_ENABLED` | packages/autoconfigure, packages/messaging |

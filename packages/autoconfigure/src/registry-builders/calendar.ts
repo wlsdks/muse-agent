@@ -36,7 +36,7 @@ export function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderReg
   if (!requested.includes("ics") && existsSync(resolveCalendarIcsFile(env))) {
     requested.push("ics");
   }
-  const credentials = readCredentialsSync(resolveCredentialsFile(env));
+  const credentials = readCredentialsSync(resolveCredentialsFile(env), env);
 
   for (const id of requested) {
     const provider = tryBuildCalendarProvider(id, env, credentials[id]);

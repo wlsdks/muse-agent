@@ -155,7 +155,7 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
     return undefined;
   }
   const sources: InboxSourceConfig[] = [];
-  const credentials = readCredentialsSync(resolveMessagingCredentialsFile(env));
+  const credentials = readCredentialsSync(resolveMessagingCredentialsFile(env), env);
   const hasToken = (envKey: string, providerId: string): boolean => {
     const fromEnv = env[envKey]?.trim();
     if (fromEnv && fromEnv.length > 0) {

@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { encryptCredentialEnvelope } from "@muse/shared";
+
 import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
 
 describe("readCredentialsSync", () => {
@@ -28,6 +30,26 @@ describe("readCredentialsSync", () => {
     expect(readCredentialsSync(f)).toEqual({});
     writeFileSync(f, JSON.stringify({ providers: "wrong-type" }), "utf8");
     expect(readCredentialsSync(f)).toEqual({});
+  });
+
+  it("transparently decrypts an encrypted envelope (format-preserving, security finding #4)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cred-"));
+    const f = join(dir, "creds.json");
+    const env = { MUSE_MEMORY_KEY: "test-key" };
+    const plaintext = JSON.stringify({ providers: { openai: { token: "sk-secret" } } });
+    writeFileSync(f, JSON.stringify(encryptCredentialEnvelope(plaintext, env)), "utf8");
+
+    const raw = readCredentialsSync(f, env);
+    expect(raw).toEqual({ openai: { token: "sk-secret" } });
+  });
+
+  it("a wrong key on an encrypted file THROWS (fail-closed) rather than returning {} (which would look like 'no credentials')", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cred-"));
+    const f = join(dir, "creds.json");
+    const plaintext = JSON.stringify({ providers: { openai: { token: "sk-secret" } } });
+    writeFileSync(f, JSON.stringify(encryptCredentialEnvelope(plaintext, { MUSE_MEMORY_KEY: "right-key" })), "utf8");
+
+    expect(() => readCredentialsSync(f, { MUSE_MEMORY_KEY: "wrong-key" })).toThrow();
   });
 });
 

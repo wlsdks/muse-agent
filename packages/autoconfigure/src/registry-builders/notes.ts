@@ -38,7 +38,7 @@ export function buildNotesRegistry(env: MuseEnvironment): NotesProviderRegistry 
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
-  const credentials = readCredentialsSync(resolveCredentialsFile(env));
+  const credentials = readCredentialsSync(resolveCredentialsFile(env), env);
 
   for (const id of requested) {
     const provider = tryBuildNotesProvider(id, env, credentials[id]);

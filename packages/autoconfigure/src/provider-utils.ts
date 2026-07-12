@@ -1,24 +1,46 @@
 import { readFileSync } from "node:fs";
 
+import { decodeMaybeEncryptedCredentialsJson } from "@muse/shared";
+
 /**
  * Read a `~/.muse/{file}.json` credentials file into a
  * `{ providerId → record }` map. Used by every provider-builder
  * that wants the file fallback path when an env token is absent
- * (messaging, calendar, notes, tasks, models). Returns `{}` on any
- * read / parse failure so callers can layer "env or file" lookups
- * without try/catch noise.
+ * (messaging, calendar, notes, tasks, models). Returns `{}` on a
+ * missing file / malformed JSON so callers can layer "env or file"
+ * lookups without try/catch noise.
+ *
+ * Format-preserving: transparently decrypts an AES-256-GCM envelope
+ * (`MUSE_CREDENTIALS_ENCRYPT`-written) OR reads legacy plaintext —
+ * an existing user's plaintext file keeps working unchanged. A wrong
+ * `MUSE_MEMORY_KEY` on an ENCRYPTED file THROWS (fail-closed) rather
+ * than silently returning `{}`, which would look like "no credentials
+ * configured" and mask a real key mismatch.
  */
-export function readCredentialsSync(file: string): Record<string, Record<string, unknown>> {
+export function readCredentialsSync(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Record<string, Record<string, unknown>> {
+  let raw: string;
   try {
-    const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as { readonly providers?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
-      return {};
-    }
-    return { ...(parsed.providers as Record<string, Record<string, unknown>>) };
+    raw = readFileSync(file, "utf8");
   } catch {
     return {};
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  // decodeMaybeEncryptedCredentialsJson THROWS on a wrong key — that error
+  // must propagate here, never be folded into the "malformed JSON" catch.
+  parsed = decodeMaybeEncryptedCredentialsJson(parsed, env);
+  const shape = parsed as { readonly providers?: unknown };
+  if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
+    return {};
+  }
+  return { ...(shape.providers as Record<string, Record<string, unknown>>) };
 }
 
 /**
