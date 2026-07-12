@@ -79,7 +79,12 @@ export function useChatStream(baseUrl: string, token: string) {
           return;
         }
         mut(d);
-        setTurns((prev) => prev.map((t) => (t === d ? { ...d } : t)));
+        // Replace by POSITION, not identity: the first commit swaps the draft
+        // for a clone in the array, so a `t === d` match goes dead after one
+        // update — under real token streaming that froze the bubble on the
+        // first delta. The draft is always the last turn while pending
+        // (send() rejects re-entry), so the tail slot is the draft's slot.
+        setTurns((prev) => prev.map((t, i) => (i === prev.length - 1 ? { ...d } : t)));
       };
 
       try {

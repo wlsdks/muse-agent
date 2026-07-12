@@ -33,6 +33,16 @@ export interface AgentRunInput {
    */
   readonly toolApprovalGate?: ToolApprovalGate;
   /**
+   * Stream raw text deltas even though response filters / output guards are
+   * installed. STRICT consumer contract (the accepted streaming shape): the
+   * caller MUST (1) pass the live deltas through a citation stream filter so
+   * a fabricated citation never reaches a display, and (2) treat the gated
+   * final response (`done` / its grounding frame) as AUTHORITATIVE, replacing
+   * whatever streamed. Off by default — a consumer without those two pieces
+   * keeps today's suppress-until-gated behavior.
+   */
+  readonly streamRawDeltas?: boolean;
+  /**
    * Cooperative cancellation. When the caller aborts this signal mid-run, the
    * tool loop stops cleanly at the next iteration boundary — no further model
    * call or tool execution — and returns what it has. Lets a surface (the CLI)

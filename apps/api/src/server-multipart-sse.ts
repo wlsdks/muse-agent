@@ -1,5 +1,5 @@
-import { guardAgainstUnbackedActionClaim, type AgentRuntime } from "@muse/agent-core";
-import { gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
+import { enforceAnswerCitations, guardAgainstUnbackedActionClaim, type AgentRuntime } from "@muse/agent-core";
+import { chatAllowedCitations, createCitationStreamFilter, gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
 export function parseMultipartBody(contentType: string | string[] | undefined, body: Buffer): JsonObject {
@@ -81,18 +81,26 @@ export async function* toSseStream(
   let assembled = "";
   const evidence: ChatGroundingSource[] = [];
   const toolNames = new Set<string>();
+  // Live citation filter over the SAME allowed set the buffered gate derives
+  // (chatAllowedCitations over this turn's evidence — read at clean time, so
+  // sources a tool adds mid-run count). Deltas stream through it, a fabricated
+  // `[from …]` span is dropped before it can flash, and the post-stream
+  // grounding frame stays the authoritative final answer.
+  const liveFilter = createCitationStreamFilter(
+    (span) => enforceAnswerCitations(span, chatAllowedCitations(evidence)).text
+  );
   // The first frame leaves BEFORE any model/recall work, so the client can
   // show a live "thinking" state instantly instead of a dead connection —
   // the answer itself only arrives post-gate, which can take a minute on
   // a local 12B model.
-  yield `event: stage
-data: thinking
-
-`;
+  yield "event: stage\ndata: thinking\n\n";
   for await (const event of events) {
     if (event.type === "text-delta") {
       assembled += event.text;
-      yield `event: message\ndata: ${sseData(event.text)}\n\n`;
+      const safe = liveFilter.push(event.text);
+      if (safe.length > 0) {
+        yield `event: message\ndata: ${sseData(safe)}\n\n`;
+      }
       continue;
     }
 
@@ -162,6 +170,11 @@ data: thinking
     if (event.type === "synthesis-started") {
       yield `event: synthesis_started\ndata: ${sseData(JSON.stringify({ runId: event.runId }))}\n\n`;
       continue;
+    }
+
+    const tail = liveFilter.flush();
+    if (tail.length > 0) {
+      yield `event: message\ndata: ${sseData(tail)}\n\n`;
     }
 
     if (grounding) {

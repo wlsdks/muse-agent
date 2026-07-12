@@ -159,9 +159,14 @@ export async function runChatStream(
 
   reply.header("content-type", "text/event-stream; charset=utf-8");
   reply.header("cache-control", "no-cache");
+  // streamRawDeltas satisfies the AgentRunInput contract HERE: toSseStream
+  // passes every delta through the live citation filter, and the grounding
+  // frame it emits post-stream is the authoritative gated answer.
   return reply.send(
     Readable.from(
-      toSseStream(options.agentRuntime.stream(runInput), responseMode, { question: lastUserQuestion(runInput.messages) })
+      toSseStream(options.agentRuntime.stream({ ...runInput, streamRawDeltas: true }), responseMode, {
+        question: lastUserQuestion(runInput.messages)
+      })
     )
   );
 }

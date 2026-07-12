@@ -2064,6 +2064,44 @@ describe("AgentRuntime", () => {
     expect(JSON.stringify(events)).not.toContain("https://example.test/invoice");
   });
 
+  it("streamRawDeltas forwards live deltas per-run while the done response stays filtered", async () => {
+    const provider = createStreamingSequenceProvider([
+      {
+        id: "stream-source",
+        model: "test-model",
+        output: [
+          "The answer is 42.",
+          "",
+          "Sources:",
+          "- [Invoice docs](https://example.test/invoice)"
+        ].join("\n")
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      modelProvider: provider,
+      responseFilters: [createSourceBlockResponseFilter()]
+    });
+    const events = [];
+
+    for await (const event of runtime.stream({
+      messages: [{ content: "Summarize the invoice", role: "user" }],
+      model: "provider/model",
+      streamRawDeltas: true
+    })) {
+      events.push(event);
+    }
+
+    // Raw deltas flow (the consumer contract: it runs its own live filter and
+    // replaces text with the gated done/grounding answer)…
+    const deltas = events.filter((e) => e.type === "text-delta");
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(JSON.stringify(deltas)).toContain("https://example.test/invoice");
+    // …but the authoritative done response is still the FILTERED one.
+    const done = events.find((e) => e.type === "done");
+    expect(done.response.output).toBe("The answer is 42.");
+    expect(done.response.output).not.toContain("https://example.test/invoice");
+  });
+
   it("normalizes structured output based on run metadata", async () => {
     const runtime = createAgentRuntime({
       modelProvider: createProvider({

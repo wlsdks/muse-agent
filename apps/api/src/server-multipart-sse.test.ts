@@ -60,3 +60,51 @@ describe("toSseStream opening stage frame", () => {
     expect(frames[1]).toContain("event: message");
   });
 });
+
+describe("toSseStream live citation gate on forwarded deltas", () => {
+  // The invariant this file exists to prove: a fabricated citation must not
+  // reach a display EVEN over the new live-delta surface — the same clean
+  // function the buffered gate uses runs over every in-flight [ … ] span,
+  // and the spans it passes are exactly the spans the buffered gate keeps.
+  async function* deltasWithFabrication(): AsyncIterable<
+    | { type: "text-delta"; text: string; runId: string }
+    | { type: "tool-result"; toolCall: { id: string; name: string; arguments: {} }; runId: string; grounding: { source: string; text: string } }
+    | { type: "done"; runId: string; response: { output: string; model: string; usage: undefined } }
+  > {
+    yield { grounding: { source: "notes/real.md", text: "회의는 3시" }, runId: "r", toolCall: { arguments: {}, id: "t1", name: "knowledge_search" }, type: "tool-result" };
+    yield { runId: "r", text: "회의는 3시야 [from ", type: "text-delta" };
+    yield { runId: "r", text: "notes/real.md]. 그리고 예산은 ", type: "text-delta" };
+    yield { runId: "r", text: "확정됐어 [from notes/ghost.md].", type: "text-delta" };
+    yield { response: { model: "m", output: "", usage: undefined }, runId: "r", type: "done" };
+  }
+
+  it("passes a real citation through and DROPS a fabricated one mid-stream (span split across chunks)", async () => {
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    const frames: string[] = [];
+    for await (const frame of toSseStream(deltasWithFabrication() as never, "compat")) {
+      frames.push(frame);
+    }
+    const streamedText = frames
+      .filter((f) => f.startsWith("event: message"))
+      .map((f) => f.split("data: ").slice(1).join("data: "))
+      .join("");
+    // The enforcer canonicalizes the ref to its basename — same as the buffered gate.
+    expect(streamedText).toContain("[from real.md]");
+    expect(streamedText).not.toContain("ghost.md");
+  });
+
+  it("the grounding frame stays authoritative over whatever streamed", async () => {
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    const frames: string[] = [];
+    for await (const frame of toSseStream(deltasWithFabrication() as never, "compat", { question: "회의 언제야?" })) {
+      frames.push(frame);
+    }
+    const groundingFrame = frames.find((f) => f.startsWith("event: grounding"));
+    expect(groundingFrame).toBeTruthy();
+    const payload = JSON.parse(groundingFrame!.split("data: ")[1]!) as { answer: string; strippedCitations: string[] };
+    // The fabricated source never reaches the answer — it appears ONLY in the
+    // gate's own audit list of what it removed.
+    expect(payload.answer).not.toContain("ghost.md");
+    expect(payload.strippedCitations).toContain("notes/ghost.md");
+  });
+});

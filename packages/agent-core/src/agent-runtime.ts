@@ -443,7 +443,7 @@ export class AgentRuntime {
         return;
       }
 
-      const forwardTextDeltas = this.canForwardRawStreamText();
+      const forwardTextDeltas = this.canForwardRawStreamText() || input.streamRawDeltas === true;
       const streamLoopRequest: ModelRequest = {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,

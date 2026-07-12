@@ -80,12 +80,22 @@ function citationRef(source: string): string {
  * answer passes through UNCHANGED — matching the CLI chat gate, which likewise does
  * not refuse a general turn on coverage alone.
  */
+/**
+ * The citation set a chat turn's evidence permits — shared by the buffered
+ * gate below AND the live stream filter in the API's SSE layer, so the two
+ * can never diverge (a span the live filter passes is exactly a span the
+ * buffered gate would keep).
+ */
+export function chatAllowedCitations(evidence: readonly ChatGroundingSource[]): { readonly notes: readonly string[] } {
+  return { notes: evidence.map((source) => citationRef(source.source)) };
+}
+
 export function gateChatAnswerGrounding(args: {
   readonly question: string;
   readonly answer: string;
   readonly evidence: readonly ChatGroundingSource[];
 }): GatedChatAnswer {
-  const allowedNotes = args.evidence.map((source) => citationRef(source.source));
+  const allowedNotes = [...chatAllowedCitations(args.evidence).notes];
   const cleaned = stripEchoedCiteAs(stripGroundingFences(args.answer));
   const enforced = enforceAnswerCitations(cleaned, { notes: allowedNotes });
   const answer = withUngroundableFallback(enforced);
