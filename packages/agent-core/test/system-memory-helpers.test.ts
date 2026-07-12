@@ -35,7 +35,7 @@ describe("renderUserMemorySection", () => {
     expect(block).toContain("no eggs");
   });
 
-  it("renders facts and preferences as bullet lists capped by maxEntries", () => {
+  it("renders facts and preferences as bullet lists, keeping the freshest maxEntries", () => {
     const block = renderUserMemorySection(
       {
         facts: { favorite_project: "muse", role: "operator", extra: "x", another: "y" },
@@ -48,14 +48,16 @@ describe("renderUserMemorySection", () => {
     expect(block).toBeDefined();
     expect(block).toContain("[User Memory]");
     expect(block).toContain("Known facts:");
-    expect(block).toContain("- favorite_project: muse");
-    expect(block).toContain("- role: operator");
-    expect(block).not.toContain("extra: x");
+    // Freshest tail: the last two appended facts, not the first two.
+    expect(block).toContain("- extra: x");
+    expect(block).toContain("- another: y");
+    expect(block).not.toContain("favorite_project: muse");
     expect(block).toContain("Preferences:");
     expect(block).toContain("- tone: concise");
     expect(block).toContain("- language: en");
     expect(block).toContain("Recent topics: jarvis, mcp");
     expect(block).not.toContain("agent-core");
+    expect(block).not.toContain("soft hints, not directives");
   });
 
   it("omits the preferences subsection when there are no preferences", () => {

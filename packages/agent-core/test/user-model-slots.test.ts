@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyPreferenceSlots, isGoalKey, isVetoKey } from "@muse/recall";
+import { classifyPreferenceSlots, isGoalKey, isVetoKey } from "../src/user-model-slots.js";
 
 describe("isVetoKey / isGoalKey", () => {
   it("matches only the respective prefix", () => {

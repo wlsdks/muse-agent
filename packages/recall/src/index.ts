@@ -45,4 +45,14 @@ export * from "./pipeline.js";
 export * from "./citation-stream.js";
 export * from "./chat-answer-gate.js";
 export * from "./user-persona.js";
-export * from "./user-model-slots.js";
+export {
+  VETO_PREFIX,
+  GOAL_PREFIX,
+  isVetoKey,
+  isGoalKey,
+  classifyPreferenceSlots,
+  CONTESTED_FACT_MARK,
+  PROVISIONAL_FACT_MARK,
+  STALE_FACT_MARK,
+  type PreferenceSlots
+} from "@muse/agent-core";

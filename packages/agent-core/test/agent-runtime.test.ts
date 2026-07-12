@@ -3197,9 +3197,10 @@ describe("AgentRuntime user memory injection", () => {
     });
 
     const systemMessage = generated[0]?.messages.find((message) => message.role === "system");
-    expect(systemMessage?.content ?? "").toContain("alpha: 1");
+    // Cap keeps the freshest maxEntries (tail) — auto-extract appends chronologically.
+    expect(systemMessage?.content ?? "").toContain("gamma: 3");
+    expect(systemMessage?.content ?? "").not.toContain("alpha: 1");
     expect(systemMessage?.content ?? "").not.toContain("beta: 2");
-    expect(systemMessage?.content ?? "").not.toContain("gamma: 3");
   });
 });
 

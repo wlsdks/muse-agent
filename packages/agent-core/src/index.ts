@@ -268,6 +268,17 @@ export { untrustedOnlySentences } from "./untrusted-sentences.js";
 export { MEMORY_INJECTION_PATTERNS, INJECTION_SPAN_PLACEHOLDER, isMemoryInjection, defangMemoryInjection, neutralizeInjectionSpans, stripInjectionEvasionChars } from "./injection.js";
 export { escapeSystemPromptMarkers, stripGroundingFences, sanitizeFenceLabel } from "./prompt-escape.js";
 export {
+  VETO_PREFIX,
+  GOAL_PREFIX,
+  isVetoKey,
+  isGoalKey,
+  classifyPreferenceSlots,
+  CONTESTED_FACT_MARK,
+  PROVISIONAL_FACT_MARK,
+  STALE_FACT_MARK,
+  type PreferenceSlots
+} from "./user-model-slots.js";
+export {
   reportCitationRecall,
   isAbstentionSentence,
   stripCitationMarkers,

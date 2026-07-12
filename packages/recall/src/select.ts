@@ -2,7 +2,7 @@ import { chunkText, cosineSimilarity, defangMemoryInjection, escapeSystemPromptM
 
 import type { ActionLogEntry, Contact } from "@muse/stores";
 
-import { CONTESTED_FACT_MARK, PROVISIONAL_FACT_MARK, STALE_FACT_MARK, isGoalKey, isVetoKey } from "./user-model-slots.js";
+import { CONTESTED_FACT_MARK, PROVISIONAL_FACT_MARK, STALE_FACT_MARK, isGoalKey, isVetoKey } from "@muse/agent-core";
 
 const EPISODE_IMPORTANCE_WEIGHT = 0.15;
 const EPISODE_RECENCY_WEIGHT = 0.15;
