@@ -18,6 +18,16 @@
  * Stochastic models aren't proved by one pass: `repeat` runs each case N times
  * and counts it passed only if EVERY run passes (surfaces flaky selections).
  *
+ * Under concurrent-loop Ollama saturation a model call can time out or a
+ * fail-open composer can return an ambiguous `null` — infrastructure noise,
+ * not the model behaving wrongly. `runEvalSuite` retries ONE such infra-
+ * classified outcome per run before ever scoring it (see classifyEvalOutcome /
+ * shouldRetryEvalOutcome below); a genuine semantic failure never gets this
+ * pass. A persisted infra failure is still counted FAIL but labeled
+ * "infra-null (2x)" / "infra-timeout (2x)" in the report, distinct from a
+ * semantic wrong-answer — and the run's total flake-retries are logged so
+ * saturation is visible without inflating the pass rate.
+ *
  * Sources (shape): Inspect AI (UK AISI) dataset/solver/scorer/task primitives;
  * Braintrust + promptfoo "code-based scorers first, LLM-judge only for
  * subjective qualities"; Hamel Husain "Your AI Product Needs Evals" (evals gate
@@ -29,17 +39,24 @@
  */
 
 /**
- * Run a scored eval suite. Returns { passed, total, rate, gate } and streams a
- * report. Does NOT exit the process — the caller decides (so the harness is
- * usable both as a CLI gate and inline).
+ * Run a scored eval suite. Returns { passed, total, rate, gate, flakeRetries }
+ * and streams a report. Does NOT exit the process — the caller decides (so
+ * the harness is usable both as a CLI gate and inline).
  *
  * @param {object} opts
  * @param {string} opts.name              suite name for the report + gate line
- * @param {readonly {label:string, skip?:string, cases:readonly any[], tools?:readonly any[]}[]} opts.scenarios
+ * @param {readonly {label:string, skip?:string, cases:readonly any[], tools?:readonly any[], allowNullAsInfra?:boolean}[]} opts.scenarios
+ *   `allowNullAsInfra` opts a scenario INTO treating a `null` solve result as
+ *   a possible infra-flake worth one retry — only set it where `null` is
+ *   genuinely ambiguous (a fail-open composer), never where `null` is a
+ *   scenario's normal/expected value (would mask real failures).
  * @param {(testCase:any, scenario:any) => Promise<any>} opts.solve
  * @param {(observed:any, testCase:any, scenario:any) => ({ok:boolean,detail:string}|Promise<{ok:boolean,detail:string}>)} opts.score
  * @param {number} [opts.repeat=1]
  * @param {number} [opts.threshold=0.85]
+ * @param {number} [opts.infraRetries=1]     retries for an infra-classified outcome (thrown transport error, or `null` on an opted-in scenario) — a semantic failure never gets this
+ * @param {number} [opts.infraBackoffMs=3000] backoff before an infra retry
+ * @param {(ms:number)=>Promise<void>} [opts.sleep]  injectable for tests
  * @param {(line:string)=>void} [opts.log=console.log]
  * @param {(line:string)=>void} [opts.err=console.error]
  */
@@ -102,16 +119,65 @@ export function detectTier0Contamination(observed) {
   return { contaminated: false, marker: "" };
 }
 
+// Under concurrent-loop Ollama saturation a model call can time out or the
+// transport can drop — infrastructure noise, not the model behaving wrongly.
+// A composer built fail-open (createComposeAck / createComposeChatReply)
+// returns `null` for BOTH a guard rejection and a timeout/error, and that
+// distinction is NOT recoverable at the caller (see apps/api/src/inbound-
+// ack.ts's catch-all). So the harness compensates at THIS shared layer: it
+// classifies a case's outcome and, for an infra-shaped one, retries once
+// before ever calling the scorer — a genuine semantic failure (a wrong
+// answer, a bad tool pick) never gets this pass, it fails immediately.
+const TRANSPORT_ERROR_RE =
+  /econnrefused|econnreset|etimedout|enotfound|epipe|und_err|timed?[\s-]*out|\btimeout\b|deadline exceeded|socket hang up|fetch failed|network error|\baborted?\b|\b50[234]\b/iu;
+
+/** Does a thrown error look like a transport/timeout failure rather than a real application error? Pure — no IO. */
+export function isTransportLikeError(error) {
+  if (error === undefined || error === null) return false;
+  const text = `${error?.name ?? ""} ${error?.message ?? error}`.toLowerCase();
+  return TRANSPORT_ERROR_RE.test(text);
+}
+
+/**
+ * Classify a single solve attempt's outcome. `allowNullAsInfra` is opt-in
+ * per scenario — most batteries never return `null` as a legitimate solve
+ * result, but a composer-backed scenario does (guard-rejection AND
+ * infra-failure both surface as `null`), so only THOSE scenarios ask the
+ * harness to treat a `null` as a possible flake worth one retry.
+ * @returns {"infra-timeout"|"infra-null"|"error"|"value"}
+ */
+export function classifyEvalOutcome({ error, observed, allowNullAsInfra = false } = {}) {
+  if (error !== undefined && error !== null) {
+    return isTransportLikeError(error) ? "infra-timeout" : "error";
+  }
+  if (allowNullAsInfra && observed === null) {
+    return "infra-null";
+  }
+  return "value";
+}
+
+/** Whether an infra-classified outcome still has a retry budget left. Pure. */
+export function shouldRetryEvalOutcome(outcome, attempt, maxRetries) {
+  return (outcome === "infra-timeout" || outcome === "infra-null") && attempt < maxRetries;
+}
+
+const DEFAULT_INFRA_RETRIES = Math.max(0, Math.trunc(Number(process.env.MUSE_EVAL_INFRA_RETRIES ?? "1")));
+const DEFAULT_INFRA_BACKOFF_MS = Math.max(0, Math.trunc(Number(process.env.MUSE_EVAL_INFRA_BACKOFF_MS ?? "3000")));
+
 export async function runEvalSuite(opts) {
   const { name, scenarios, solve, score } = opts;
   const repeat = Math.max(1, Math.trunc(opts.repeat ?? 1));
   const threshold = opts.threshold ?? 0.85;
   const log = opts.log ?? console.log;
   const err = opts.err ?? console.error;
+  const infraRetries = Math.max(0, Math.trunc(opts.infraRetries ?? DEFAULT_INFRA_RETRIES));
+  const infraBackoffMs = Math.max(0, Math.trunc(opts.infraBackoffMs ?? DEFAULT_INFRA_BACKOFF_MS));
+  const sleep = opts.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 
   let total = 0;
   let passed = 0;
   let excluded = 0;
+  let flakeRetries = 0;
   for (const scenario of scenarios) {
     if (scenario.skip) {
       log(`\n[${scenario.label}] SKIP — ${scenario.skip}`);
@@ -124,18 +190,46 @@ export async function runEvalSuite(opts) {
       let lastDetail = "";
       let contamination = null;
       for (let run = 0; run < repeat; run += 1) {
-        let result;
-        try {
-          const observed = await solve(testCase, scenario);
-          const tier0 = detectTier0Contamination(observed);
-          if (tier0.contaminated) {
-            contamination = tier0;
-            break; // exits the run loop — the case is excluded, not scored
+        let result = null;
+        for (let attempt = 0; ; attempt += 1) {
+          let observed;
+          let thrown;
+          try {
+            observed = await solve(testCase, scenario);
+          } catch (error) {
+            thrown = error;
           }
-          result = await score(observed, testCase, scenario);
-        } catch (error) {
-          result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
+          if (!thrown) {
+            const tier0 = detectTier0Contamination(observed);
+            if (tier0.contaminated) {
+              contamination = tier0;
+              break; // exits the attempt loop with result still null
+            }
+          }
+          const outcome = classifyEvalOutcome({ allowNullAsInfra: scenario.allowNullAsInfra === true, error: thrown, observed });
+          if (shouldRetryEvalOutcome(outcome, attempt, infraRetries)) {
+            flakeRetries += 1;
+            if (infraBackoffMs > 0) await sleep(infraBackoffMs);
+            continue; // flake-retry, not a fail — try solve again
+          }
+          if (thrown) {
+            result = { ok: false, detail: `threw: ${thrown instanceof Error ? thrown.message : String(thrown)}` };
+          } else {
+            try {
+              result = await score(observed, testCase, scenario);
+            } catch (error) {
+              result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
+            }
+          }
+          if (!result.ok && (outcome === "infra-timeout" || outcome === "infra-null")) {
+            // Retries exhausted and it's STILL infra-shaped — label it distinctly
+            // from a semantic failure so the report never confuses "the model was
+            // saturated twice" with "the model answered wrong".
+            result = { ...result, detail: `${outcome} (${attempt + 1}x) — ${result.detail}` };
+          }
+          break; // exits the attempt loop — result is final for this run
         }
+        if (contamination) break; // exits the run loop — the case is excluded, not scored
         if (result.ok) runsPassed += 1;
         lastDetail = result.detail;
         if (!result.ok) break; // strict: a single failing run fails the case
@@ -157,10 +251,11 @@ export async function runEvalSuite(opts) {
   const rate = total === 0 ? 0 : passed / total;
   const excludedNote = excluded > 0 ? ` ; excluded ${excluded} (Tier-0 infra)` : "";
   log(`\n--- ${passed}/${total} (${(rate * 100).toFixed(0)}%) ; threshold ${(threshold * 100).toFixed(0)}%${excludedNote}`);
+  log(`--- flake-retries used: ${flakeRetries} (infra timeout/null absorbed before scoring — visible saturation signal)`);
   const gate = total > 0 && rate >= threshold;
   if (gate) log(`${name} PASSED`);
   else err(`${name} FAILED — ${(rate * 100).toFixed(0)}% below ${(threshold * 100).toFixed(0)}%`);
-  return { excluded, gate, passed, rate, total };
+  return { excluded, flakeRetries, gate, passed, rate, total };
 }
 
 /**
