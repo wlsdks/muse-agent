@@ -40,7 +40,7 @@ export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
-import { streamGroundedRecall, type GroundedRecallExtras, type ScoredChunk } from "@muse/recall";
+import { prepareGroundedRecall, streamGroundedRecall, type GroundedRecallExtras, type ScoredChunk } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
@@ -201,7 +201,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       });
       let scored = retrieval.scored;
       let notesUnavailable = retrieval.notesUnavailable;
-      const { preGapScored, queryVec, splitClauses, subqueryEmbeddings } = retrieval;
+      const { queryVec, splitClauses, subqueryEmbeddings } = retrieval;
       // The "open to verify" target for an AD-HOC grounding source whose receipt
       // would otherwise point at a fabricated `.muse/notes/<source>` path: the
       // real URL for a `--url` answer (openable), or `null` for an ephemeral
@@ -357,23 +357,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         feedBlock,
         feedHeadlines,
         io,
-        notesDir,
-        notesUnavailable,
         options,
         personaPrompt,
         personaTemplatePreamble,
-        preGapScored,
         query,
         reflectionBlock,
         reflectionLines,
-        scored,
-        untrustedNoteSources,
         userKey,
         userMemory
       });
-      let systemPrompt = assembled.systemPrompt;
-      const { notesFraming, contextBlock } = assembled;
-      scored = assembled.scored;
+      let systemPrompt = "";
       const {
         matchedContacts, openTasks, pendingReminders, upcomingEvents,
         allMemoryFacts, matchedMemories,
@@ -384,9 +377,34 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         nonNoteCitations, buildFullSystemPrompt, normalizeAskCitations
       } = assembled;
       let { collectedAnswer, answerLogprobs, toolsUsed, allowedNotes, citationAllowed, preRefusalStrippedCitations, agentGroundingSources, decompositionSignals } = assembled;
+      // Isolate the ad-hoc (--file/--url/--clipboard) hits pushed onto `scored`
+      // (see `preAdHocChunkCount` above) — both branches below fold these into
+      // the seam's retrieval as `extras.extraChunks` so they cite exactly like
+      // a retrieved note, instead of double-counting the real retrieval hits
+      // the seam re-retrieves itself.
+      const adHocChunks: readonly ScoredChunk[] = scored.slice(preAdHocChunkCount);
       if (options.withTools) {
-        systemPrompt = buildFullSystemPrompt({ contextBlock, notesFraming });
-        printGroundedBanner(scored, notesFraming.verdict);
+        // `--with-tools` now converges onto the SAME `@muse/recall` seam the
+        // plain chat-only path uses (`prepareGroundedRecall` — the prepare-only
+        // half of `streamGroundedRecall`) instead of a hand-maintained
+        // dedup→reorder→demoteStale→context-block copy, so both paths' note
+        // retrieval stay byte-identical to the API/MCP callers of that pipeline.
+        const prepared = await prepareGroundedRecall({
+          embedFn: (t, m) => embed(t, m),
+          extras: {
+            composeSystemPrompt: (a) => buildFullSystemPrompt({ contextBlock: a.contextBlock, notesFraming: a.framing }),
+            extraChunks: adHocChunks,
+            notesUnavailableContextBlock: "(notes search unavailable this turn — answer from the other grounding sources)",
+            refineChunks: true,
+            untrustedNoteSources
+          },
+          options: { embedModel, scope: options.scope?.trim(), topK },
+          query,
+          sources: { notesDir, notesIndexFile: notesIndexPath() }
+        });
+        systemPrompt = prepared.systemPrompt;
+        scored = [...prepared.scored];
+        printGroundedBanner(scored, prepared.verdict);
         announceGenerating();
         await acquireLease();
         // Agent-runtime path — tools (muse.search, muse.notes.*,
@@ -520,7 +538,6 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // `normalizeAnswer` (`normalizeAskCitations` above), and folds any ad-hoc
         // (--file/--url/--clipboard) passage in as `extraChunks` so it cites
         // exactly like a retrieved note.
-        const adHocChunks: readonly ScoredChunk[] = scored.slice(preAdHocChunkCount);
         const extras: GroundedRecallExtras = {
           allowedCitations: nonNoteCitations,
           // Captured into the outer `systemPrompt` too — `runGroundingVerdict`'s

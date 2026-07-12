@@ -1,31 +1,28 @@
 /**
  * Context / system-prompt ASSEMBLY for `muse ask`, lifted out of the commands-ask
- * god-file (4th decomposition pass). Covers the withTools-only manual note-context
- * pipeline (dedup near-duplicate chunks, Lost-in-the-Middle reorder, stale demotion,
- * CRAG confidence framing, value-conflict detection), the personal-store / user-
- * memory (incl. cross-lingual rescue + provisional/contested/stale provenance marks)
- * / activity / playbook grounding blocks, and the shared banner + system-prompt +
- * citation-normalization builders BOTH `muse ask` paths consume.
+ * god-file (4th decomposition pass). Covers the personal-store / user-memory (incl.
+ * cross-lingual rescue + provisional/contested/stale provenance marks) / activity /
+ * playbook grounding blocks, and the shared banner + system-prompt + citation-
+ * normalization builders BOTH `muse ask` paths consume.
  *
- * `muse ask --with-tools` builds its own context block + system prompt inline (it
- * feeds `assembly.agentRuntime.run`, not the seam's generate callback). The plain
- * chat-only path composes the SAME retrieval→dedup→reorder→demoteStale→context-
- * block→system-prompt work through `runGroundedRecall`'s seam (`streamGroundedRecall`)
- * so it stays byte-identical to the API/MCP callers of that pipeline instead of a
- * second hand-maintained copy — this module owns the withTools-only half plus every
- * grounding block/builder BOTH paths share.
+ * The note-retrieval pipeline itself (dedup near-duplicate chunks, Lost-in-the-Middle
+ * reorder, stale demotion, CRAG confidence framing, value-conflict detection, context-
+ * block build) now lives in ONE place — `@muse/recall`'s `prepareGroundedRecall` /
+ * `streamGroundedRecall` seam — so BOTH `muse ask --with-tools` (via `prepareGroundedRecall`,
+ * feeding `assembly.agentRuntime.run`) and the plain chat-only path (via `streamGroundedRecall`)
+ * stay byte-identical to the API/MCP callers of that pipeline instead of a hand-maintained
+ * copy. This module owns the personal-store/memory/activity/playbook grounding blocks
+ * plus the shared banner + system-prompt + citation-normalizer builders both paths need.
  *
- * Pure assembly — no model call, no streaming. The caller still owns actually
- * generating the answer (agentRuntime.run / streamGroundedRecall) using the values
- * returned here: `systemPrompt`/`notesFraming`/`contextBlock` start at their withTools
- * (or empty) value and the caller's own branch may rebuild/reassign them; `scored` is
- * reassigned here by the dedup pass and must flow back to the caller, which reassigns
- * it again once its own branch's retrieval settles.
+ * Pure assembly — no model call, no streaming, no note retrieval. The caller owns
+ * actually generating the answer (agentRuntime.run / streamGroundedRecall) and builds
+ * its system prompt via the returned `buildFullSystemPrompt`, fed the note `contextBlock`
+ * / `notesFraming` its OWN retrieval (via `prepareGroundedRecall`/`streamGroundedRecall`)
+ * produced.
  */
 
 import {
   classifyActionRequest,
-  detectEvidenceContradictions,
   isInjectableStrategy,
   isMemoryInjection,
   lexicalTokens,
@@ -33,9 +30,7 @@ import {
   normalizeFromPrefixedCitations,
   normalizeMemoryCitations,
   normalizeSlotCitations,
-  renderPlaybookSection,
-  reorderForLongContext,
-  type ContradictionPair
+  renderPlaybookSection
 } from "@muse/agent-core";
 import type { enforceAnswerCitations } from "@muse/agent-core";
 import {
@@ -53,12 +48,7 @@ import { acquireOllamaLease, resolveOllamaLeaseFile } from "@muse/stores";
 import {
   allUserMemoryFacts,
   buildMemoryContextBlock,
-  buildNoteContextBlock,
-  dedupNearDuplicateChunks,
-  demoteStale,
   groundedSourceSummary,
-  notesGroundingFraming,
-  relativizeNoteSource,
   renderMemoryFact,
   selectMemoryFacts,
   selectPlaybookSection,
@@ -71,7 +61,6 @@ import type { createStageTimer } from "@muse/recall";
 import type { SessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { createRunId } from "@muse/shared";
 
-import { cosine } from "./commands-notes-rag.js";
 import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
 import { rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
@@ -86,7 +75,6 @@ import type { ProgramIO } from "./program.js";
 export interface AskContextAssemblyInput {
   readonly query: string;
   readonly embedModel: string;
-  readonly notesDir: string;
   readonly options: AskOptions;
   readonly io: ProgramIO;
   readonly assembly: MuseRuntimeAssembly;
@@ -94,10 +82,6 @@ export interface AskContextAssemblyInput {
   readonly userMemory: UserMemory | undefined;
   readonly personaPrompt: string | undefined;
   readonly personaTemplatePreamble: string;
-  readonly untrustedNoteSources: ReadonlySet<string>;
-  readonly scored: ScoredChunk[];
-  readonly preGapScored: readonly ScoredChunk[];
-  readonly notesUnavailable: boolean;
   readonly episodeHits: SessionFeedReflectionGrounding["episodeHits"];
   readonly episodeBlock: string;
   readonly feedHeadlines: SessionFeedReflectionGrounding["feedHeadlines"];
@@ -111,59 +95,11 @@ export interface AskContextAssemblyInput {
 
 export async function assembleAskContext(input: AskContextAssemblyInput) {
   const {
-    query, embedModel, notesDir, options, io, assembly, userKey, userMemory, personaPrompt,
-    personaTemplatePreamble, untrustedNoteSources, preGapScored, notesUnavailable,
+    query, embedModel, options, io, assembly, userKey, userMemory, personaPrompt,
+    personaTemplatePreamble,
     episodeHits, episodeBlock, feedHeadlines, feedBlock, browsingHits, browsingBlock,
     reflectionLines, reflectionBlock, askStages
   } = input;
-  let scored = input.scored;
-
-  // Never reassigned within this function — the caller's own branch
-  // (--with-tools inline, or the chat-only seam's composeSystemPrompt
-  // callback) rebuilds it from the returned `buildFullSystemPrompt`.
-  const systemPrompt = "";
-  let notesFraming: { readonly verdict: "confident" | "ambiguous" | "none"; readonly header: string; readonly guidance?: string } = { header: "", verdict: "none" };
-  let contextBlock = "";
-  if (options.withTools) {
-    // Compose RAG context block. Edge-place the chunks (most relevant at
-    // the start + end, least in the middle) per "Lost in the Middle" so the
-    // small local model actually attends to the strongest grounding.
-    // Graph-link + second-hop AUGMENT chunks are appended after MMR and
-    // bypass it, so a near-identical chunk (same fact across two notes, or a
-    // bridge near a seed) can pad the small model's context. Drop provable
-    // near-duplicates first-wins (highest-ranked survives); fail-open on any
-    // chunk without a comparable embedding (e.g. --file ad-hoc passages).
-    scored = dedupNearDuplicateChunks(scored, cosine);
-    // reorderForLongContext re-sorts by raw cosine score, which would put a
-    // higher-scoring but explicitly-superseded chunk back ahead of its current
-    // counterpart — so the stale demotion (already applied once inside
-    // retrieveAndRankNotes) must run again on its output, not before it.
-    const contextChunks = demoteStale(reorderForLongContext(scored), (c) => c.chunk.text);
-    // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
-    // presented to the small model as something to cite as fact.
-    notesFraming = notesGroundingFraming(scored, query, preGapScored.length > 0 ? preGapScored : undefined, embedModel);
-    // Detect value-conflicts between retrieved notes (arXiv:2504.19413) so
-    // reconciliation arrives as DATA, not a fragile prompt instruction.
-    // Fail-open: any embed error → no annotations → today's behaviour.
-    const noteContradictions: readonly ContradictionPair[] = notesUnavailable || contextChunks.length < 2
-      ? []
-      : await detectEvidenceContradictions(
-          contextChunks.map((r) => ({ score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
-          (t) => embed(t, embedModel)
-        ).catch(() => []);
-    contextBlock = notesUnavailable
-      ? "(notes search unavailable this turn — answer from the other grounding sources)"
-      : contextChunks.length === 0
-        ? "(no relevant notes found)"
-        // The trailing `[from FILE]` is a COPY-READY token: a small local
-        // model (qwen3:8b) parrots placeholders ("FILENAME") and even fake
-        // example paths verbatim, so don't ask it to substitute — hand it the
-        // exact real bracket to copy. NO "cite as:" label before it: qwen
-        // copies the whole line, leaking the label into the answer ("…1380.
-        // cite as: [from vpn.md]") — visible on the demo. The source is shown
-        // relative to the notes dir (clean + locatable), not the absolute path.
-        : buildNoteContextBlock(contextChunks, noteContradictions, notesDir, untrustedNoteSources);
-  }
 
   // Personal-store grounding — open tasks / upcoming calendar / pending
   // reminders / matching contacts. Each gated by its flag (default-on),
@@ -393,10 +329,10 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
     } catch { /* best-effort */ }
   };
   // Shared by both branches below: the non-notes half of the citation
-  // allowlist (the notes half depends on each branch's own retrieval —
-  // withTools's live corpus scan vs. the seam's `scored`), and the
-  // full-prompt builder (each branch supplies its own contextBlock +
-  // notesFraming — withTools's own manual pipeline above, or the seam's).
+  // allowlist (the notes half depends on each branch's own retrieval via
+  // `prepareGroundedRecall`/`streamGroundedRecall`), and the full-prompt
+  // builder (each branch supplies its own contextBlock + notesFraming from
+  // that same retrieval).
   const nonNoteCitations = {
     actions: matchedActions.map((a) => a.what),
     browsing: browsingHits.map((h) => h.host),
@@ -466,10 +402,6 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
   };
 
   return {
-    systemPrompt,
-    notesFraming,
-    contextBlock,
-    scored,
     calendarBlock,
     contactBlock,
     matchedContacts,
