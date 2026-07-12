@@ -1,4 +1,5 @@
 import type { ModelMessage } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, type MuseTool } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -47,7 +48,7 @@ const runtimeWith = (tools: readonly MuseTool[], gate?: AgentRunInput["toolAppro
   });
 
 const contextFor = (messages: readonly ModelMessage[], input: Partial<AgentRunInput> = {}): AgentRunContext => ({
-  input: { messages, model: "provider/model", metadata: { localMode: true }, ...input },
+  input: { messages, model: "provider/model", ...input },
   runId: "run-ptc",
   startedAt: new Date()
 });
@@ -68,7 +69,9 @@ describe("PTC Phase 2 — gated plan execution (no gate bypass)", () => {
     });
     if ("error" in parsed) throw new Error(parsed.error);
 
-    await expect(runtime.executeToolPlanGated(parsed, contextFor([{ content: "go", role: "user" }]))).rejects.toBeInstanceOf(
+    await expect(runtime.executeToolPlanGated(parsed, contextFor([{ content: "go", role: "user" }], {
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["step_one", "step_two"], localMode: true })
+    }))).rejects.toBeInstanceOf(
       ToolPlanStepBlockedError
     );
 
@@ -85,7 +88,9 @@ describe("PTC Phase 2 — gated plan execution (no gate bypass)", () => {
     const parsed = parseToolPlan({ result: "$a", steps: [{ args: { text: "hi" }, as: "a", tool: "send_message" }] });
     if ("error" in parsed) throw new Error(parsed.error);
 
-    await expect(runtime.executeToolPlanGated(parsed, contextFor([{ content: "hi", role: "user" }]))).rejects.toBeInstanceOf(
+    await expect(runtime.executeToolPlanGated(parsed, contextFor([{ content: "hi", role: "user" }], {
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["send_message"], localMode: true })
+    }))).rejects.toBeInstanceOf(
       ToolPlanStepBlockedError
     );
     expect(effects).toEqual([]); // the risky tool produced NO effect
@@ -106,7 +111,7 @@ describe("PTC Phase 2 — gated plan execution (no gate bypass)", () => {
         return "added";
       }
     };
-    const runtime = runtimeWith([groundedTool]);
+    const runtime = runtimeWith([groundedTool], () => ({ allowed: true }));
     const parsed = parseToolPlan({
       result: "$a",
       // "Cafe Roma" is fabricated — it is NOT in the user message, so the grounding gate must drop it.
@@ -114,7 +119,9 @@ describe("PTC Phase 2 — gated plan execution (no gate bypass)", () => {
     });
     if ("error" in parsed) throw new Error(parsed.error);
 
-    await runtime.executeToolPlanGated(parsed, contextFor([{ content: "add a Lunch event", role: "user" }]));
+    await runtime.executeToolPlanGated(parsed, contextFor([{ content: "add a Lunch event", role: "user" }], {
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["calendar_add"], localMode: true })
+    }));
 
     expect(effects).toHaveLength(1);
     expect(effects[0]!.args).toEqual({ title: "Lunch" }); // ungrounded `location` dropped at the gate

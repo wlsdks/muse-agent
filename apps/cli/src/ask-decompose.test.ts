@@ -1,4 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
+import { createToolExposureAuthority } from "@muse/policy";
 import { answerIsRefusal } from "@muse/recall";
 import { describe, expect, it, vi } from "vitest";
 
@@ -288,51 +289,51 @@ describe("runDecomposedAgentAsk — worker sub-agents get their OWN smaller tool
   });
 });
 
-describe("runDecomposedAgentAsk — a worker sub-agent's tools are STRUCTURALLY clamped to the parent's allowlist", () => {
+describe("runDecomposedAgentAsk — trusted authority survives fan-out without metadata widening", () => {
   const listQuery = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
 
-  it("clamps a worker handed a BROADER tool set than the parent down to the parent's set (the demotion)", async () => {
-    const seenAllowedToolNames: Array<readonly string[] | undefined> = [];
+  it("passes one exact opaque token to every planner, worker, and synthesis run while stripping legacy metadata authority aliases", async () => {
+    const seenAuthorities: Array<AgentRunInput["toolExposureAuthority"]> = [];
+    const seenMetadata: Array<Record<string, unknown> | undefined> = [];
     const runner = {
       run: vi.fn(async (input: AgentRunInput): Promise<AskAgentRunResult> => {
         const content = userContentOf(input);
-        const metadata = input.metadata as { allowedToolNames?: readonly string[] } | undefined;
-        seenAllowedToolNames.push(metadata?.allowedToolNames);
+        seenAuthorities.push(input.toolExposureAuthority);
+        seenMetadata.push(input.metadata as Record<string, unknown> | undefined);
         if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
         return { response: { output: `done:${content}` } };
       })
     };
-    const metadata = { allowedToolNames: ["a", "b"] };
+    const authority = createToolExposureAuthority({ allowedToolNames: ["muse.notes.list"] });
     await runDecomposedAgentAsk({
       ...baseArgs,
-      metadata,
+      metadata: { allowedToolNames: ["shell_execute"], localMode: true, maxTools: 7 },
       query: listQuery,
       runner,
-      workerAllowedToolNames: ["a", "b", "c"] // a future path handing a worker a BROADER set
+      toolExposureAuthority: authority
     });
 
-    // 3 worker runs clamped to the parent's ["a","b"] ("c" dropped), then 1 synthesis
-    // run that is NOT clamped (lead-level, keeps the parent's set untouched).
-    expect(seenAllowedToolNames.slice(0, 3)).toEqual([["a", "b"], ["a", "b"], ["a", "b"]]);
-    expect(seenAllowedToolNames[3]).toEqual(["a", "b"]);
-    expect(metadata.allowedToolNames).toEqual(["a", "b"]); // the caller's metadata object was never mutated
+    expect(seenAuthorities).toHaveLength(5);
+    expect(seenAuthorities.every((seen) => seen === authority)).toBe(true);
+    expect(seenMetadata).toEqual([
+      { maxTools: 3 }, { maxTools: 3 }, { maxTools: 3 }, { maxTools: 7 }, { maxTools: 7 }
+    ]);
   });
 
-  it("clamps an unrestricted worker override down to the parent's set", async () => {
-    const seenAllowedToolNames: Array<readonly string[] | undefined> = [];
+  it("uses an explicit invalid token for every decomposition phase when no trusted authority exists", async () => {
+    const seenAuthorities: Array<AgentRunInput["toolExposureAuthority"]> = [];
     const runner = {
       run: vi.fn(async (input: AgentRunInput): Promise<AskAgentRunResult> => {
         const content = userContentOf(input);
-        const metadata = input.metadata as { allowedToolNames?: readonly string[] } | undefined;
-        seenAllowedToolNames.push(metadata?.allowedToolNames);
+        seenAuthorities.push(input.toolExposureAuthority);
         if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
         return { response: { output: `done:${content}` } };
       })
     };
-    const metadata = { allowedToolNames: ["a", "b"] };
-    await runDecomposedAgentAsk({ ...baseArgs, metadata, query: listQuery, runner });
+    await runDecomposedAgentAsk({ ...baseArgs, metadata: { maxTools: 7 }, query: listQuery, runner });
 
-    expect(seenAllowedToolNames.slice(0, 3)).toEqual([["a", "b"], ["a", "b"], ["a", "b"]]);
+    expect(seenAuthorities).toHaveLength(5);
+    expect(seenAuthorities.every((seen) => seen === null)).toBe(true);
   });
 });
 

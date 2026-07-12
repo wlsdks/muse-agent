@@ -1,4 +1,5 @@
 import type { ModelProvider, ModelResponse, ModelToolCall } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, createRunToolPlanTool, type MuseTool } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -57,9 +58,13 @@ const turn = (output: string, toolCalls: ModelToolCall[] = []): ModelResponse =>
 
 const runInput = (prompt: string, tools: readonly string[], extra: Partial<AgentRunInput> = {}): AgentRunInput => ({
   messages: [{ content: prompt, role: "user" }],
-  metadata: { allowedToolNames: [...tools, "run_tool_plan"], localMode: true, maxTools: 20 },
+  metadata: { maxTools: 20 },
   model: "provider/model",
   runId: "run-ptc3",
+  toolExposureAuthority: createToolExposureAuthority({
+    allowedToolNames: [...tools, "run_tool_plan"],
+    localMode: true
+  }),
   ...extra
 });
 
@@ -260,5 +265,35 @@ describe("PTC Phase 3 — run_tool_plan tool, intercepted + grounded", () => {
     const planResult = cap.seen.find((e) => e.name === "run_tool_plan");
     expect(planResult?.status).toBe("blocked");
     expect(effects).toEqual([]); // denied step never executed AND after_step never ran (no partial effect)
+  });
+
+  it("default non-read denial blocks the first planned actuator and all downstream leaves", async () => {
+    const effects: Effect[] = [];
+    const cap = capture();
+    const runtime = createAgentRuntime({
+      hooks: [cap.hook as never],
+      modelProvider: sequenceProvider([
+        turn("planning", [planCall({
+          result: "$b",
+          steps: [
+            { args: { value: "x" }, as: "a", tool: "first_actuator" },
+            { args: { value: "$a" }, as: "b", tool: "after_actuator" }
+          ]
+        })]),
+        turn("recovered")
+      ]),
+      toolRegistry: registry([
+        tool("first_actuator", effects, () => "must not run", "execute"),
+        tool("after_actuator", effects, () => "must not run", "execute")
+      ])
+    });
+
+    const result = await runtime.run(runInput("plan an actuator workflow", ["first_actuator", "after_actuator"]));
+
+    expect(result.response.output).toBe("recovered");
+    expect(effects).toEqual([]);
+    const planResult = cap.seen.find((entry) => entry.name === "run_tool_plan");
+    expect(planResult?.status).toBe("blocked");
+    expect(String(planResult?.output)).toContain("requires an approval gate");
   });
 });

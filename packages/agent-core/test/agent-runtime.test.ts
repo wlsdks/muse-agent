@@ -5,7 +5,11 @@ import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { COMPACTION_SUMMARY_PREFIX, InMemoryConversationSummaryStore } from "@muse/memory";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
-import { GuardBlockRateMonitor } from "@muse/policy";
+import {
+  createToolExposureAuthority,
+  GuardBlockRateMonitor,
+  PERSONAL_WORK_CAPABILITY_PROFILE_ID
+} from "@muse/policy";
 import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import {
   createAgentRuntime,
@@ -1190,7 +1194,12 @@ describe("AgentRuntime", () => {
       toolRegistry
     });
 
-    await runtime.run({ messages: [{ content: "run the test to verify", role: "user" }], metadata: { localMode: true, maxTools: 6 }, model: "provider/model", runId: "run-cmdname" });
+    await runtime.run({
+      messages: [{ content: "run the test to verify", role: "user" }],
+      model: "provider/model",
+      runId: "run-cmdname",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["run_command"], localMode: true })
+    });
     expect(executeTool).not.toHaveBeenCalled();
     const blocked = captured.find((e) => e.toolCall.id === "tc-1");
     expect(blocked?.result.status).toBe("blocked");
@@ -1455,14 +1464,10 @@ describe("AgentRuntime", () => {
     });
 
     const result = await runtime.run({
-      // `localMode: true` is required for the default exposure policy
-      // to surface `risk: "execute"` tools to the model in the first
-      // place — the gate is what enforces trust *within* that
-      // exposed surface.
       messages: [{ content: "do it", role: "user" }],
-      metadata: { localMode: true },
       model: "provider/model",
-      runId: "run-gate-block"
+      runId: "run-gate-block",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["exec_shell"], localMode: true })
     });
 
     expect(executeTool).not.toHaveBeenCalled();
@@ -1503,9 +1508,9 @@ describe("AgentRuntime", () => {
 
     const result = await runtime.run({
       messages: [{ content: "do it", role: "user" }],
-      metadata: { localMode: true },
       model: "provider/model",
-      runId: "run-gate-throw"
+      runId: "run-gate-throw",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["exec_shell"], localMode: true })
     });
 
     // Fail-close: the tool never ran and the run completed cleanly
@@ -3705,6 +3710,142 @@ describe("AgentRuntime default tool-exposure ceiling", () => {
     });
 
     expect(advertised).toBe(10);
+  });
+});
+
+describe("AgentRuntime server-owned tool exposure authority", () => {
+  function authorityTool(
+    name: string,
+    risk: "read" | "write" | "execute",
+    options: { readonly local?: boolean; readonly onExecute?: () => void } = {}
+  ) {
+    return {
+      definition: {
+        description: `Authority test tool ${name}.`,
+        inputSchema: { type: "object" as const },
+        keywords: ["authority", "tool"],
+        name,
+        risk,
+        ...(options.local ? { scopes: ["local" as const] } : {})
+      },
+      execute: () => {
+        options.onExecute?.();
+        return `${name} completed`;
+      }
+    };
+  }
+
+  async function advertisedToolNames(input: Record<string, unknown>, registry: ToolRegistry): Promise<readonly string[]> {
+    let advertised: readonly string[] = [];
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "authority-test", (request) => {
+        advertised = request.tools?.map((tool) => tool.name) ?? [];
+      }),
+      toolRegistry: registry
+    });
+    await runtime.run({
+      messages: [{ content: "authority tool", role: "user" }],
+      model: "provider/model",
+      runId: "authority-exposure",
+      ...input
+    } as never);
+    return advertised;
+  }
+
+  it("treats request metadata as inert and exposes only non-local read tools without an authority", async () => {
+    const registry = new ToolRegistry([
+      authorityTool("remote_read", "read"),
+      authorityTool("local_read", "read", { local: true }),
+      authorityTool("write_tool", "write"),
+      authorityTool("execute_tool", "execute")
+    ]);
+
+    expect(await advertisedToolNames({
+      metadata: {
+        allowedToolNames: ["write_tool", "execute_tool"],
+        forbiddenToolNames: ["remote_read"],
+        localMode: true,
+        maxTools: 99
+      }
+    }, registry)).toEqual(["remote_read"]);
+  });
+
+  it("fails closed for null, forged, and JSON-cloned authority values", async () => {
+    const genuine = createToolExposureAuthority({ allowedToolNames: ["remote_read"], localMode: true });
+    const registry = new ToolRegistry([authorityTool("remote_read", "read")]);
+
+    for (const authority of [null, {}, JSON.parse(JSON.stringify(genuine))]) {
+      expect(await advertisedToolNames({ toolExposureAuthority: authority }, registry)).toEqual([]);
+    }
+  });
+
+  it("enforces the profile allowlist before the tool policy's empty-list semantics", async () => {
+    const registry = new ToolRegistry([
+      authorityTool("write_tool", "write"),
+      authorityTool("execute_tool", "execute")
+    ]);
+    const authority = createToolExposureAuthority({
+      allowedToolNames: ["write_tool", "execute_tool"],
+      localMode: true,
+      profileId: PERSONAL_WORK_CAPABILITY_PROFILE_ID
+    });
+
+    expect(await advertisedToolNames({ toolExposureAuthority: authority }, registry)).toEqual([]);
+  });
+
+  it("blocks non-read tool execution by default even when a genuine authority exposed it", async () => {
+    let writes = 0;
+    const runtime = createAgentRuntime({
+      modelProvider: createSequenceProvider([
+        {
+          id: "authority-call",
+          model: "m",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "write-1", name: "write_tool" }]
+        },
+        { id: "authority-final", model: "m", output: "refused" }
+      ]),
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: new ToolRegistry([authorityTool("write_tool", "write", { onExecute: () => { writes += 1; } })])
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "authority tool", role: "user" }],
+      model: "provider/model",
+      runId: "default-non-read-deny",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["write_tool"], localMode: true })
+    });
+
+    expect(result.response.output).toBe("refused");
+    expect(writes).toBe(0);
+  });
+
+  it("uses a fresh run-scoped gate ahead of the constructor gate", async () => {
+    let writes = 0;
+    const runtime = createAgentRuntime({
+      modelProvider: createSequenceProvider([
+        {
+          id: "authority-call",
+          model: "m",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "write-1", name: "write_tool" }]
+        },
+        { id: "authority-final", model: "m", output: "completed" }
+      ]),
+      toolApprovalGate: () => ({ allowed: false, reason: "constructor deny" }),
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: new ToolRegistry([authorityTool("write_tool", "write", { onExecute: () => { writes += 1; } })])
+    });
+
+    await runtime.run({
+      messages: [{ content: "authority tool", role: "user" }],
+      model: "provider/model",
+      runId: "run-gate-precedence",
+      toolApprovalGate: () => ({ allowed: true }),
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["write_tool"], localMode: true })
+    });
+
+    expect(writes).toBe(1);
   });
 });
 

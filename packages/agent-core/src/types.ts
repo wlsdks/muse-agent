@@ -1,6 +1,7 @@
 import type { AgentSpecResolution } from "@muse/agent-specs";
 import type { UserModel } from "@muse/memory";
 import type { ModelMessage, ModelProvider, ModelResponse, ModelToolCall } from "@muse/model";
+import type { ToolExposureAuthority } from "@muse/policy";
 
 export interface AgentSpecResolver {
   resolve(text: string): Awaitable<AgentSpecResolution | undefined>;
@@ -26,6 +27,12 @@ export interface AgentRunInput {
   readonly messages: readonly ModelMessage[];
   readonly runId?: string;
   readonly metadata?: JsonObject;
+  /**
+   * A server-issued, non-serializable tool-exposure token. Omission means the
+   * safe read-only surface; any present value that cannot be resolved by
+   * policy is fail-closed to zero tools.
+   */
+  readonly toolExposureAuthority?: ToolExposureAuthority | null;
   /**
    * Run-scoped approval gate. When set it takes precedence over the
    * runtime's constructor gate for THIS run only — lets a caller

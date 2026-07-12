@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, type MuseTool } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -131,11 +132,10 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     });
 
     const events = await collect(runtime.stream({
-      // localMode exposes the execute-risk tool to the model; the GATE enforces trust within that surface
       messages: [{ content: "save: buy milk", role: "user" }],
-      metadata: { localMode: true },
       model: "provider/model",
       runId: "run-react-gated",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["save_note"], localMode: true })
     }));
 
     expect(gateCalls).toEqual([{ name: "save_note", risk: "execute" }]); // the gate was consulted mid-loop
@@ -144,5 +144,27 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     expect(doneEvent.type).toBe("done");
     expect(doneEvent.response.output).toBe("I can't do that without approval.");
     expect(await readNotes()).toBe("absent"); // the gated tool NEVER ran — no side effect
+  });
+
+  it("DEFAULT-DENY MID-STREAM: an exposed execute tool without a gate mutates nothing", async () => {
+    const runtime = createAgentRuntime({
+      maxToolCalls: 2,
+      modelProvider: streamingProvider([
+        { id: "t", model: "m", output: "", toolCalls: [{ arguments: { text: "buy milk" }, id: "tc1", name: "save_note" }] },
+        { id: "f", model: "m", output: "I need approval first." },
+      ]),
+      toolRegistry: new ToolRegistry([saveNoteTool({ risk: "execute" })]),
+    });
+
+    const events = await collect(runtime.stream({
+      messages: [{ content: "save: buy milk", role: "user" }],
+      model: "provider/model",
+      runId: "run-react-default-deny",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["save_note"], localMode: true })
+    }));
+
+    expect(events.some((event) => event.type === "tool-result")).toBe(true);
+    expect((events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>).response.output).toBe("I need approval first.");
+    expect(await readNotes()).toBe("absent");
   });
 });

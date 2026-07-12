@@ -25,7 +25,6 @@
 import { existsSync } from "node:fs";
 
 import { enforceAnswerCitations, withUngroundableFallback } from "@muse/agent-core";
-import { describeImage } from "@muse/agent-core";
 import { classifyActionRequest } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveAnswerTemperature, resolveNoteProvenanceFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
@@ -44,7 +43,7 @@ import { prepareGroundedRecall, streamGroundedRecall, type GroundedRecallExtras,
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
-export { listNoteFiles, notesCorpusFileCount, resolveAskMaxTools, selectGraphConnections };
+export { listNoteFiles, notesCorpusFileCount, selectGraphConnections };
 export { collectAutoImageAttachments, loadImageAttachment };
 export { CITATION_INSTRUCTION_LINES };
 import { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
@@ -74,44 +73,24 @@ import { buildAskRunLog, writeRunLog } from "./program-helpers.js";
 import { buildMusePersona } from "./muse-persona.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
-import { listNoteFiles, notesCorpusFileCount, resolveAskMaxTools, selectGraphConnections } from "./ask-corpus-helpers.js";
+import { listNoteFiles, notesCorpusFileCount, selectGraphConnections } from "./ask-corpus-helpers.js";
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { applyAdHocGrounding } from "./ask-adhoc-grounding.js";
-import { buildAskToolWiring } from "./ask-tool-wiring.js";
 import { resolveSessionVisionModel, runVisionCommandAction } from "./ask-vision-command.js";
 import { runGroundingVerdict } from "./ask-grounding-verdict.js";
 import { finalizeAndRenderAsk } from "./ask-finalize.js";
 import { assembleAskContext } from "./ask-context-assembly.js";
+import { assertTrustedAskB1Preflight } from "./ask-trusted-preflight.js";
 import { applyAskOptions, type AskOptions } from "./ask-command-options.js";
 export type { AskOptions };
 import { composeAskInput } from "./ask-input.js";
 import { notesIndexPath, prepareAskContext } from "./ask-context-setup.js";
-
-/**
- * The allowlist consumed via `metadata.allowedToolNames` when
- * `muse ask --notes-only` runs in `--with-tools` mode. Notes +
- * notes-multi cover both inline and registry-aware paths; context
- * is the persona / memory accessor so the model can still reach
- * for "what did the user tell me about X". Web/fetch tools and
- * everything else stay off.
- */
-export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "muse.context"] as const;
-
-/**
- * Memory-WRITE tools the recall agent (`muse ask --with-tools`) must never
- * reach, passed via `metadata.forbiddenToolNames`. `muse ask` is a READ/recall
- * surface; authoring durable user-memory is the job of the explicit `muse
- * remember` command (user-directed) and chat auto-extraction (which gates on
- * what the USER actually stated). Left exposed, the local model autonomously
- * saved its OWN general-knowledge assertions (e.g. "WireGuard default MTU is
- * 1420") as facts ABOUT the user — which the next recall then cited as "🧠 from
- * what you told me", a provenance fabrication the user never made. Forbidding it
- * deterministically keeps recall read-only for memory.
- */
-const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
+import {
+  createTrustedAskToolRun
+} from "./trusted-local-cli-authority.js";
 
 /**
  * Drain the chat-only fast-path model stream. A provider `error`
@@ -145,6 +124,9 @@ export async function consumeAskStream(
 export function registerAskCommand(program: Command, io: ProgramIO): void {
   applyAskOptions(program.command("ask"))
     .action(async (queryParts: readonly string[], options: AskOptions) => {
+      if (!assertTrustedAskB1Preflight(options, io)) {
+        return;
+      }
       const composedInput = await composeAskInput(queryParts, options, io);
       if (!composedInput.ok) {
         process.exitCode = 1;
@@ -241,12 +223,6 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           topK
         });
 
-      // Build assembly + chat-only fast path. Gated actuator tools
-      // (--actuators), default browser control, the @muse/fs read/write
-      // suite + web_download, and the messaging draft-first approval gate —
-      // all conditional on --with-tools / --actuators. See ask-tool-wiring.ts.
-      const { browserControllerToRelease, extraTools, messagingApprovalGate, screenVision, useActuators } =
-        await buildAskToolWiring({ io, options, userKey });
       // Codex delegation routing (opt-in, OFF by default). An explicit
       // `--model codex/...` pins codex for THIS ask; otherwise a recorded AND
       // ready delegation choice (~/.muse/codex.json + `codex login`) routes the
@@ -263,10 +239,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           io.stderr(`(codex delegation is configured but not ready — using the local default)\n${activation.setupSteps}\n`);
         }
       }
-      const assembly = createMuseRuntimeAssembly({
-        ...(extraTools ? { extraTools } : {}),
-        ...(messagingApprovalGate ? { messagingApprovalGate } : {})
-      });
+      const assembly = createMuseRuntimeAssembly();
       if (!assembly.modelProvider || !(options.model ?? assembly.defaultModel)) {
         io.stderr("muse ask requires a configured model. Set MUSE_MODEL or pass --model.\n");
         process.exitCode = 2;
@@ -304,17 +277,6 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (visionModel !== model) {
         io.stderr(`(vision: ${visionModel})\n`);
       }
-      if (assembly.modelProvider) {
-        const visionProvider = assembly.modelProvider;
-        screenVision.current = (input) =>
-          describeImage(visionProvider, {
-            imageBase64: input.imageBase64,
-            mimeType: input.mimeType,
-            model: visionModel,
-            ...(input.question ? { question: input.question } : {})
-          });
-      }
-
       // Grounded vision actions: --extract / --to-calendar read the IMAGE (not
       // notes) and emit structured output / a draft action, so they short-circuit
       // the normal recall+grounding flow. Both require --image.
@@ -411,32 +373,25 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         printGroundedBanner(scored, prepared.verdict);
         announceGenerating();
         await acquireLease();
-        // Agent-runtime path — tools (muse.search, muse.notes.*,
-        // muse.tasks.*, etc.) are exposed to the model and tool calls
-        // get full round-trip execution. Slower (every tool round is
-        // an extra request) but unlocks fresh-web answers + side-
-        // effecting actions from a single `muse ask` shot.
+        // Agent-runtime path exposes only the static personal-read tool set.
         if (!assembly.agentRuntime) {
           io.stderr("(--with-tools requires a configured agent runtime — set MUSE_MODEL or provider key and re-run)\n");
           await writeAskFailureLog("--with-tools requires a configured agent runtime");
           process.exitCode = 1;
           return;
         }
-        // Recall is read-only for durable memory: never let the agent save
-        // its own assertions as "facts you told me" (provenance fabrication).
-        // Two vectors, both closed: the remember_fact TOOL (forbidden) and
-        // the after-complete auto-extract HOOK (skipped) — see
-        // RECALL_FORBIDDEN_TOOL_NAMES and readSkipAutoExtract.
+        const trustedToolRun = createTrustedAskToolRun(options);
+        if (!trustedToolRun) {
+          return;
+        }
         const askMetadata = {
           runId: askRunId,
           userId: userKey,
-          forbiddenToolNames: [...RECALL_FORBIDDEN_TOOL_NAMES],
           skipUserMemoryAutoExtract: true,
-          ...(resolveAskMaxTools(process.env) !== undefined ? { maxTools: resolveAskMaxTools(process.env) } : {}),
-          ...(useActuators ? { localMode: true } : {}),
-          ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
+          maxTools: trustedToolRun.maxTools,
           ...(webSearchPolicy ? { webSearchPolicy } : {})
         };
+        const toolExposureAuthority = trustedToolRun.toolExposureAuthority;
         // Lead-worker fan-out: a complex multi-task request (never an image
         // ask) is split into independent sub-tasks, each its own run, then
         // synthesized. Merged grounding sources still flow through the citation
@@ -451,7 +406,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               model,
               query,
               runner: assembly.agentRuntime,
-              systemPrompt
+              systemPrompt,
+              toolExposureAuthority
             });
             // An all-sub-tasks-failed decomposition returns "" (the seam's
             // documented fail-closed contract) — never print that verbatim
@@ -480,14 +436,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               ],
               metadata: askMetadata,
               model,
-              runId: askRunId
+              runId: askRunId,
+              toolExposureAuthority
             });
             collectedAnswer = result.response.output ?? "";
             toolsUsed = result.toolsUsed ?? [];
             agentGroundingSources = result.groundingSources ?? [];
           }
         } catch (cause) {
-          await browserControllerToRelease?.disconnect().catch(() => { /* best-effort */ });
           // Same --json contract as the chat-only path: an agent
           // failure must be a parseable stdout object, not an
           // uncaught throw that leaves stdout empty.
@@ -504,7 +460,6 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
-        await browserControllerToRelease?.disconnect().catch(() => { /* best-effort */ });
         if (!options.json && toolsUsed.length > 0) {
           io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
         }

@@ -1,4 +1,6 @@
 export * from "./adversarial-red-team.js";
+export * from "./approval-receipt.js";
+export * from "./capability-profile.js";
 export * from "./guard-monitor.js";
 export * from "./injection-detection-counter.js";
 export * from "./injection-patterns.js";
@@ -10,3 +12,4 @@ export * from "./source-block-sanitizer.js";
 export * from "./structured-output.js";
 export * from "./topic-drift.js";
 export * from "./tool-output-sanitizer.js";
+export * from "./tool-exposure-authority.js";

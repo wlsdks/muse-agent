@@ -45,7 +45,11 @@ import {
   type ConversationTrimOptions,
   type DroppedContextSummarizer
 } from "@muse/memory";
-import type { GuardBlockRateMonitor } from "@muse/policy";
+import {
+  resolveToolExposureAuthority,
+  selectToolNamesForExposureAuthority,
+  type GuardBlockRateMonitor
+} from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 import {
   ToolExecutor,
@@ -938,11 +942,39 @@ export class AgentRuntime {
     const userMessage = latestUserPrompt(context.input.messages);
     const recentToolNames = stringListMetadata(context.input.metadata?.recentToolNames);
     const callerMaxTools = numberMetadata(context.input.metadata?.maxTools);
+    const availableTools = this.toolRegistry.list();
+    const requestedAuthority = context.input.toolExposureAuthority;
+    const authority = requestedAuthority === undefined
+      ? {
+          allowedToolNames: availableTools
+            .filter((tool) => tool.definition.risk === "read" && !tool.definition.scopes?.includes("local"))
+            .map((tool) => tool.definition.name),
+          localMode: false
+        }
+      : resolveToolExposureAuthority(requestedAuthority);
+
+    if (!authority) {
+      return [];
+    }
+
+    const allowedToolNames = requestedAuthority === undefined
+      ? authority.allowedToolNames
+      : selectToolNamesForExposureAuthority(
+          authority,
+          availableTools.map((tool) => tool.definition.name)
+        );
+
+    // `ToolExposurePolicy` treats an empty allowlist as unrestricted. An
+    // authority/profile empty allowlist is the opposite: it is an explicit
+    // zero-capability surface and must stop before that legacy policy runs.
+    if (allowedToolNames.length === 0) {
+      return [];
+    }
+
     const tools = this.toolRegistry
       .planForContext({
-        allowedToolNames: stringListMetadata(context.input.metadata?.allowedToolNames),
-        forbiddenToolNames: stringListMetadata(context.input.metadata?.forbiddenToolNames),
-        localMode: context.input.metadata?.localMode === true,
+        allowedToolNames,
+        localMode: authority.localMode,
         maxTools: callerMaxTools,
         prompt: userMessage,
         recentToolNames
@@ -1142,6 +1174,15 @@ export class AgentRuntime {
     const provenanceWarning = this.actuatorProvenanceWarning(context, toolCall, risk);
 
     const approvalGate = context.input.toolApprovalGate ?? this.toolApprovalGate;
+    if (risk !== "read" && !approvalGate) {
+      const executed = blockedToolResult(
+        toolCall,
+        "Error: non-read tool call requires an approval gate"
+      );
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
     if (approvalGate) {
       let decision: ToolApprovalGateDecision;
       try {

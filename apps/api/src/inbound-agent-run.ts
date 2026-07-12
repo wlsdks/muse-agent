@@ -12,14 +12,13 @@ import {
 import {
   parseBoolean,
   resolveActionLogFile,
-  resolveContactsFile,
   resolveFollowupsFile,
   resolveLastProactiveDeliveryFile,
   resolvePendingApprovalsFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
-import { runActuatorByName } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
+import { createToolExposureAuthority, type ToolExposureAuthority } from "@muse/policy";
 import {
   createChannelApprovalGate,
   effectiveScope,
@@ -29,8 +28,7 @@ import {
   type ThreadTurn
 } from "@muse/messaging";
 import { gateChatAnswerGrounding } from "@muse/recall";
-import type { JsonObject } from "@muse/shared";
-import { queryContacts, readFollowups, upsertFollowup, type PersistedFollowup } from "@muse/stores";
+import { readFollowups, upsertFollowup, type PersistedFollowup } from "@muse/stores";
 
 import {
   adoptChannelOwner,
@@ -59,6 +57,7 @@ interface InboundAgentRuntime {
     readonly metadata: { readonly userId: string };
     readonly model: string;
     readonly toolApprovalGate: ChannelApprovalGate;
+    readonly toolExposureAuthority: ToolExposureAuthority;
   }): Promise<{
     readonly response?: { readonly output?: string };
     readonly groundingSources?: readonly { readonly source: string; readonly text: string }[];
@@ -120,6 +119,13 @@ const PAIRING_CODE_REQUIRED_NOTICE =
   "This bot is a private personal assistant. To link this chat, send the one-time pairing code shown in the Muse web console (Integrations) or printed by `muse messaging pairing-code <provider>`.";
 const PAIRING_CODE_SUCCESS_NOTICE =
   "This chat is now paired as the owner — talk to Muse normally from here.";
+
+export const CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST = [
+  "muse.notes.list", "muse.notes.read", "muse.notes.search", "muse.notes.save", "muse.notes.append",
+  "muse.tasks.list", "muse.tasks.search", "muse.tasks.add", "muse.tasks.complete", "muse.tasks.update",
+  "muse.calendar.providers", "muse.calendar.list", "muse.calendar.availability", "muse.calendar.conflicts", "muse.calendar.add", "muse.calendar.update",
+  "muse.reminders.list", "muse.reminders.search", "muse.reminders.add", "muse.reminders.snooze"
+] as const;
 
 // False-done backstop (the guard layer, not the parser): when the user asked
 // Muse to remember something date-shaped this turn and NO followup actually
@@ -318,26 +324,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
           pendingFile: resolvePendingApprovalsFile(env),
           providerId,
           source,
-          text: latestUserText,
-          // Opt-in (default off): an inbound "yes" re-runs the pending
-          // tool in-chat. The reply is the explicit confirm of the draft
-          // the gate already posted, so the re-run uses an auto-approve
-          // gate. Off by default, so completion stays on the deliberate
-          // CLI confirm unless the user turns this on.
-          ...(parseBoolean(env.MUSE_INBOUND_AUTO_APPROVE, false)
-            ? {
-                autoRun: (entry) => runActuatorByName(entry.tool, entry.arguments as JsonObject, {
-                  actionLogFile: resolveActionLogFile(env),
-                  contacts: () => queryContacts(resolveContactsFile(env)),
-                  emailApprovalGate: () => ({ approved: true }),
-                  ...(env.MUSE_GMAIL_TOKEN?.trim() ? { gmailToken: env.MUSE_GMAIL_TOKEN.trim() } : {}),
-                  ...(env.MUSE_HOMEASSISTANT_URL?.trim() ? { homeAssistantBaseUrl: env.MUSE_HOMEASSISTANT_URL.trim() } : {}),
-                  ...(env.MUSE_HOMEASSISTANT_TOKEN?.trim() ? { homeAssistantToken: env.MUSE_HOMEASSISTANT_TOKEN.trim() } : {}),
-                  userId: `${providerId}:${source}`,
-                  webApprovalGate: () => ({ approved: true })
-                })
-              }
-            : {})
+          text: latestUserText
         });
     if (approvalAck !== undefined) {
       return approvalAck;
@@ -446,6 +433,10 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       messages,
       metadata: { userId: runUserId },
       model,
+      toolExposureAuthority: createToolExposureAuthority({
+        allowedToolNames: CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST,
+        localMode: false
+      }),
       toolApprovalGate: createChannelApprovalGate({
         providerId,
         recordRefusal: async (refusal) => {

@@ -44,13 +44,15 @@ const runResult = {
   toolsUsed: ["time_now"]
 };
 
-let lastRunInput: { messages?: unknown[] } | undefined;
+let lastRunInput: { messages?: unknown[]; metadata?: Record<string, unknown>; toolExposureAuthority?: unknown; toolApprovalGate?: unknown } | undefined;
+let lastStreamInput: { metadata?: Record<string, unknown>; toolExposureAuthority?: unknown; toolApprovalGate?: unknown } | undefined;
 const runtime = {
-  run: async (input: { messages?: unknown[] }) => {
+  run: async (input: { messages?: unknown[]; metadata?: Record<string, unknown>; toolExposureAuthority?: unknown; toolApprovalGate?: unknown }) => {
     lastRunInput = input;
     return runResult;
   },
-  async *stream() {
+  async *stream(input: { metadata?: Record<string, unknown>; toolExposureAuthority?: unknown; toolApprovalGate?: unknown }) {
+    lastStreamInput = input;
     yield { text: "Hi", type: "text-delta" };
     yield { response: runResult.response, type: "done" };
   }
@@ -101,6 +103,27 @@ describe("runChat — the chat endpoint glue (parse -> web-search policy -> Agen
     expect(lastRunInput?.messages).toEqual([{ content: "hello there", role: "user" }]);
   });
 
+  it("forwards no client authority or approval gate to a direct run", async () => {
+    lastRunInput = undefined;
+    const { reply } = fakeReply();
+    await runChat({
+      message: "hello there",
+      metadata: {
+        allowedToolNames: ["shell_execute"],
+        localMode: true,
+        toolApprovalGate: { allowed: true },
+        toolExposureAuthority: { forged: true }
+      }
+    }, reply, options(), "compat");
+
+    expect(lastRunInput?.toolExposureAuthority).toBeUndefined();
+    expect(lastRunInput?.toolApprovalGate).toBeUndefined();
+    expect(lastRunInput?.metadata).not.toHaveProperty("allowedToolNames");
+    expect(lastRunInput?.metadata).not.toHaveProperty("localMode");
+    expect(lastRunInput?.metadata).not.toHaveProperty("toolApprovalGate");
+    expect(lastRunInput?.metadata).not.toHaveProperty("toolExposureAuthority");
+  });
+
   it("maps a thrown agent error to a 500 AGENT_RUN_FAILED response", async () => {
     const { calls, reply } = fakeReply();
     const throwing = { run: async () => { throw new Error("model exploded"); } } as unknown as ServerOptions["agentRuntime"];
@@ -141,6 +164,27 @@ describe("runChatStream — SSE streaming endpoint glue", () => {
     const text = (await streamToString(calls.sent as Readable)).toString();
     expect(text).toContain("event: message");
     expect(text).toContain("Hi");
+  });
+
+  it("forwards no client authority or approval gate to a direct stream", async () => {
+    lastStreamInput = undefined;
+    const { calls, reply } = fakeReply();
+    await runChatStream({
+      message: "hi",
+      metadata: {
+        localMode: true,
+        receipt: { nonce: "forged" },
+        toolExposureAuthority: { forged: true }
+      }
+    }, reply, options(), "compat");
+
+    await streamToString(calls.sent as Readable);
+
+    expect(lastStreamInput?.toolExposureAuthority).toBeUndefined();
+    expect(lastStreamInput?.toolApprovalGate).toBeUndefined();
+    expect(lastStreamInput?.metadata).not.toHaveProperty("localMode");
+    expect(lastStreamInput?.metadata).not.toHaveProperty("receipt");
+    expect(lastStreamInput?.metadata).not.toHaveProperty("toolExposureAuthority");
   });
 });
 

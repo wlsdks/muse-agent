@@ -37,6 +37,37 @@ export interface ApiError {
   readonly message: string;
 }
 
+const RESERVED_UNTRUSTED_AGENT_METADATA_KEYS = new Set([
+  "allowedtoolnames",
+  "approvalgate",
+  "approvalreceipt",
+  "authority",
+  "capabilityprofile",
+  "capabilityprofileid",
+  "forbiddentoolnames",
+  "localmode",
+  "maxtools",
+  "profile",
+  "profileid",
+  "receipt",
+  "toolapprovalgate",
+  "toolapprovalreceipt",
+  "toolauthority",
+  "toolexposureauthority",
+  "workapprovalreceipt"
+]);
+
+function sanitizeUntrustedAgentMetadata(metadata: Record<string, JsonValue>): JsonObject {
+  const sanitized: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    const normalizedKey = key.replace(/[-_]/gu, "").toLowerCase();
+    if (!RESERVED_UNTRUSTED_AGENT_METADATA_KEYS.has(normalizedKey)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 // ---------------------------------------------------------------------------
 // Chat runners
 // ---------------------------------------------------------------------------
@@ -380,7 +411,7 @@ function compatChatMetadata(value: Record<string, unknown>, authUserId?: string)
     }
   }
 
-  return entries;
+  return sanitizeUntrustedAgentMetadata(entries);
 }
 
 function isModelRole(value: unknown): value is AgentRunInput["messages"][number]["role"] {

@@ -4,11 +4,12 @@ import { dirname, join } from "node:path";
 
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import type { UserMemory, UserMemoryStore } from "@muse/memory";
-import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
+import { LogMessagingProvider, MessagingProviderRegistry, listPendingApprovals, recordPendingApproval } from "@muse/messaging";
+import { resolveToolExposureAuthority } from "@muse/policy";
 import { appendLastProactiveDelivery, avoidedSourceKeys, readFollowups, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
-import { createInboundAgentRun } from "../src/inbound-agent-run.js";
+import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST, createInboundAgentRun } from "../src/inbound-agent-run.js";
 
 // The channel reply surface (Telegram et al.) answers with the FULL agent, so
 // its output must pass the SAME deterministic grounding + citation gate the
@@ -96,6 +97,101 @@ describe("createInboundAgentRun grounding gate (channel-reply parity with /chat)
       source: "42"
     });
     expect(reply).toBe("");
+  });
+});
+
+describe("createInboundAgentRun trusted channel authority", () => {
+  it("issues the exact static channel allowlist with localMode false and a run-scoped gate", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-inbound-authority-"));
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    let received: {
+      readonly metadata: { readonly userId: string };
+      readonly toolApprovalGate: unknown;
+      readonly toolExposureAuthority: unknown;
+    } | undefined;
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const run = createInboundAgentRun({
+      agentRuntime: {
+        run: async (input) => {
+          received = input;
+          return { response: { output: "" } };
+        }
+      },
+      env: {
+        MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+        MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+        MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+      },
+      model: "default",
+      registry
+    });
+
+    await run({
+      messages: [{ content: "add a task to buy milk", role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    const authority = resolveToolExposureAuthority(received?.toolExposureAuthority);
+    expect(authority).toEqual({
+      allowedToolNames: [...CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST],
+      localMode: false
+    });
+    expect(received?.metadata).toEqual({ userId: "log:owner-1" });
+    expect(received?.toolApprovalGate).toEqual(expect.any(Function));
+  });
+
+  it("keeps the CLI-only approval path even when MUSE_INBOUND_AUTO_APPROVE is true", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-inbound-auto-deny-"));
+    const ownersFile = join(dir, "channel-owners.json");
+    const pendingFile = join(dir, "pending.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    await recordPendingApproval(pendingFile, {
+      arguments: { url: "https://example.test/submit" },
+      createdAt: NOW().toISOString(),
+      draft: "POST https://example.test/submit",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      id: "pending-auto-deny",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    let agentRuns = 0;
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const run = createInboundAgentRun({
+      agentRuntime: {
+        run: async () => {
+          agentRuns += 1;
+          return { response: { output: "should not run" } };
+        }
+      },
+      env: {
+        MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+        MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+        MUSE_INBOUND_AUTO_APPROVE: "true",
+        MUSE_PENDING_APPROVALS_FILE: pendingFile
+      },
+      model: "default",
+      registry
+    });
+
+    const reply = await run({
+      messages: [{ content: "yes", role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toContain("muse approvals approve pending-auto-deny");
+    expect(agentRuns).toBe(0);
+    expect(await listPendingApprovals(pendingFile)).toHaveLength(1);
   });
 });
 

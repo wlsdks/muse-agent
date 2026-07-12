@@ -1,5 +1,6 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { detectSubtaskConflicts, detectSubtaskRedundancies, inheritParentToolDeny, resolveSubAgentToolBudget, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import type { ToolExposureAuthority } from "@muse/policy";
+import { detectSubtaskConflicts, detectSubtaskRedundancies, resolveSubAgentToolBudget, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -24,17 +25,9 @@ export interface DecomposedAskArgs {
   readonly systemPrompt: string;
   readonly model: string;
   readonly metadata: JsonObject;
+  readonly toolExposureAuthority?: ToolExposureAuthority;
   /** Embed fn for the fan-in cross-subtask conflict check. Omitted ⇒ no conflict check. */
   readonly embed?: (text: string) => Promise<readonly number[]>;
-  /**
-   * Test-only seam standing in for a future worker path that hands a sub-task
-   * a BROADER tool set than the parent's `metadata.allowedToolNames` — real
-   * callers never set this (it defaults to the parent's own set, i.e. no
-   * broadening). Whatever value it carries, `inheritParentToolDeny` still
-   * clamps the worker's effective allowlist to the parent's — this field only
-   * proves the clamp holds even when handed a wider set.
-   */
-  readonly workerAllowedToolNames?: readonly string[];
 }
 
 export interface DecomposedAskResult {
@@ -101,6 +94,24 @@ function buildSynthesisPrompt(query: string, completed: readonly SubtaskExecutio
   );
 }
 
+function metadataWithoutToolAuthority(metadata: JsonObject, maxTools: number | undefined): JsonObject {
+  const {
+    allowedToolNames: _allowedToolNames,
+    approvalReceipt: _approvalReceipt,
+    capabilityProfile: _capabilityProfile,
+    forbiddenToolNames: _forbiddenToolNames,
+    localMode: _localMode,
+    profileId: _profileId,
+    toolApprovalGate: _toolApprovalGate,
+    toolExposureAuthority: _toolExposureAuthority,
+    ...safeMetadata
+  } = metadata;
+  return {
+    ...safeMetadata,
+    ...(maxTools === undefined ? {} : { maxTools })
+  };
+}
+
 /**
  * Runs a complex `muse ask` request as a lead-worker fan-out: each sub-task
  * runs as its OWN agent run (clean context — only its sub-task text, never the
@@ -122,29 +133,21 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
   const sourceByName = new Map<string, AskGroundingSource>();
   const mergedTools = new Set<string>();
   let synthesisSourceNames: readonly string[] = [];
+  const toolExposureAuthority = args.toolExposureAuthority ?? null;
 
-  // A worker sub-task run may pass an explicit clamp for `allowedToolNames` (never
-  // for the lead-level planner/synthesis calls, which pass neither override and so
-  // keep the parent's `args.metadata` untouched).
   const runSubtaskMessage = async (
     userContent: string,
-    maxToolsOverride?: number,
-    allowedToolNamesOverride?: readonly string[]
+    maxToolsOverride?: number
   ): Promise<AskAgentRunResult> => {
-    const metadata = maxToolsOverride === undefined && allowedToolNamesOverride === undefined
-      ? args.metadata
-      : {
-        ...args.metadata,
-        ...(maxToolsOverride === undefined ? {} : { maxTools: maxToolsOverride }),
-        ...(allowedToolNamesOverride === undefined ? {} : { allowedToolNames: [...allowedToolNamesOverride] })
-      };
+    const metadata = metadataWithoutToolAuthority(args.metadata, maxToolsOverride);
     const result = await args.runner.run({
       messages: [
         { content: args.systemPrompt, role: "system" },
         { content: userContent, role: "user" }
       ],
       metadata,
-      model: args.model
+      model: args.model,
+      toolExposureAuthority
     } satisfies AgentRunInput);
     for (const s of result.groundingSources ?? []) sourceByName.set(s.source, s);
     for (const t of result.toolsUsed ?? []) mergedTools.add(t);
@@ -164,18 +167,7 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
       // limit). Synthesis/planner below stay on the parent budget — they're lead-level
       // fan-in/planning, not fanned-out workers.
       const parentMaxTools = typeof args.metadata.maxTools === "number" ? args.metadata.maxTools : undefined;
-      const parentAllowedToolNames = Array.isArray(args.metadata.allowedToolNames)
-        ? (args.metadata.allowedToolNames as readonly string[])
-        : undefined;
-      // Structural clamp: a worker sub-agent's effective allowlist is NEVER broader than
-      // the parent's — even if a future path handed it one — so a sub-agent can never
-      // reach a tool the parent was denied (openclaw subagent-capabilities: a sub-agent
-      // inherits the parent's deny).
-      const workerAllowedToolNames = inheritParentToolDeny(
-        parentAllowedToolNames,
-        args.workerAllowedToolNames ?? parentAllowedToolNames
-      );
-      const result = await runSubtaskMessage(userContent, resolveSubAgentToolBudget(parentMaxTools), workerAllowedToolNames);
+      const result = await runSubtaskMessage(userContent, resolveSubAgentToolBudget(parentMaxTools));
       return {
         output: result.response.output ?? "",
         sources: (result.groundingSources ?? []).map((s) => s.source)
@@ -195,8 +187,9 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
           { content: PLANNER_SYSTEM_PROMPT, role: "system" },
           { content: request, role: "user" }
         ],
-        metadata: args.metadata,
-        model: args.model
+        metadata: metadataWithoutToolAuthority(args.metadata, undefined),
+        model: args.model,
+        toolExposureAuthority
       } satisfies AgentRunInput);
       return parsePlannerLines(result.response.output ?? "");
     },

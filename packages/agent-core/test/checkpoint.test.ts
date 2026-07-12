@@ -1,4 +1,7 @@
 import { Buffer } from "node:buffer";
+import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
+import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,6 +11,7 @@ import {
   resumeRunInputFromCheckpoint
 } from "../src/checkpoint.js";
 import { ModelRoutingError } from "../src/errors.js";
+import { createAgentRuntime } from "../src/index.js";
 
 const sampleMessages = [
   { content: "you are helpful", role: "system" as const },
@@ -149,6 +153,95 @@ describe("resumeRunInputFromCheckpoint — durable resume", () => {
   it("omits metadata when the checkpoint had none", () => {
     const state = createAgentCheckpointState({ messages: sampleMessages, model: "m", phase: "p" });
     expect(resumeRunInputFromCheckpoint(state).metadata).toBeUndefined();
+  });
+
+  it("does not persist authority or receipt-shaped metadata, and only accepts fresh resume overrides", () => {
+    const authority = createToolExposureAuthority({ allowedToolNames: ["safe.read"], localMode: true });
+    const gate = () => ({ allowed: true as const });
+    const state = createAgentCheckpointState({
+      messages: sampleMessages,
+      metadata: {
+        allowedToolNames: ["unsafe.write"],
+        approvalReceipt: { nonce: "receipt-1" },
+        localMode: true,
+        profile: "personal-work",
+        toolExposureAuthority: authority as never,
+        userId: "jinan"
+      },
+      model: "m",
+      phase: "tool-loop"
+    });
+
+    expect(JSON.stringify(state)).not.toContain("unsafe.write");
+    expect(JSON.stringify(state)).not.toContain("receipt-1");
+    expect(JSON.stringify(state)).not.toContain("personal-work");
+    expect(JSON.stringify(state)).not.toContain("toolExposureAuthority");
+    expect(resumeRunInputFromCheckpoint(state).toolExposureAuthority).toBeUndefined();
+    expect(resumeRunInputFromCheckpoint(state).toolApprovalGate).toBeUndefined();
+    expect(resumeRunInputFromCheckpoint(state).metadata).toEqual({ userId: "jinan" });
+
+    const resumed = resumeRunInputFromCheckpoint(state, {
+      toolApprovalGate: gate,
+      toolExposureAuthority: authority
+    });
+    expect(resumed.toolApprovalGate).toBe(gate);
+    expect(resumed.toolExposureAuthority).toBe(authority);
+  });
+
+  it("requires fresh authority and a fresh gate before a resumed execute call can run", async () => {
+    const state = createAgentCheckpointState({
+      messages: [{ content: "resume the command", role: "user" }],
+      metadata: { allowedToolNames: ["checkpoint_execute"], localMode: true },
+      model: "provider/model",
+      phase: "tool-loop"
+    });
+
+    const runResume = async (overrides: Parameters<typeof resumeRunInputFromCheckpoint>[1]) => {
+      let executions = 0;
+      let turn = 0;
+      const provider: ModelProvider = {
+        id: "checkpoint-provider",
+        async generate(request) {
+          const responses: readonly ModelResponse[] = [
+            {
+              id: "tool",
+              model: request.model,
+              output: "",
+              toolCalls: [{ arguments: {}, id: "checkpoint-tool", name: "checkpoint_execute" }]
+            },
+            { id: "final", model: request.model, output: "resumed" }
+          ];
+          return responses[Math.min(turn++, responses.length - 1)]!;
+        },
+        async listModels() { return []; },
+        async *stream() {}
+      };
+      const runtime = createAgentRuntime({
+        modelProvider: provider,
+        toolRegistry: new ToolRegistry([{
+          definition: {
+            description: "Execute a checkpoint test action.",
+            inputSchema: { type: "object" },
+            name: "checkpoint_execute",
+            risk: "execute"
+          },
+          execute: () => {
+            executions += 1;
+            return "executed";
+          }
+        }])
+      });
+      await runtime.run(resumeRunInputFromCheckpoint(state, overrides));
+      return executions;
+    };
+
+    expect(await runResume()).toBe(0);
+    const authority = createToolExposureAuthority({ allowedToolNames: ["checkpoint_execute"], localMode: true });
+    expect(await runResume({ toolExposureAuthority: authority })).toBe(0);
+    expect(await runResume({
+      toolApprovalGate: () => ({ allowed: true }),
+      toolExposureAuthority: authority
+    })).toBe(1);
   });
 });
 

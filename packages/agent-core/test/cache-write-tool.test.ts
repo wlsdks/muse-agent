@@ -1,5 +1,6 @@
 import { InMemoryResponseCache } from "@muse/cache";
 import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -49,7 +50,7 @@ function registryWith(risk: "read" | "write", onRun: () => void): ToolRegistry {
   ]);
 }
 
-const input = { messages: [{ content: "add the status item", role: "user" as const }], metadata: { localMode: true }, model: "test-model" };
+const input = { messages: [{ content: "add the status item", role: "user" as const }], model: "test-model" };
 
 describe("response cache never replays a run that ACTED (audit finding 1)", () => {
   it("a write-tool run is NOT cached — the identical follow-up request executes again", async () => {
@@ -60,10 +61,15 @@ describe("response cache never replays a run that ACTED (audit finding 1)", () =
       toolExposurePolicy: { select: (tools) => ({ blocked: [], tools: [...tools] }) },
       toolRegistry: registryWith("write", () => { runs += 1; })
     });
-    const first = await runtime.run(input);
+    const writeInput = {
+      ...input,
+      toolApprovalGate: () => ({ allowed: true }),
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["add_item"], localMode: true })
+    };
+    const first = await runtime.run(writeInput);
     expect(first.toolsUsed).toContain("add_item");
     expect(runs).toBe(1);
-    const second = await runtime.run(input);
+    const second = await runtime.run(writeInput);
     expect(runs).toBe(2);
     expect(second.fromCache).not.toBe(true);
   });

@@ -6955,16 +6955,15 @@ describe("cli program", () => {
     expect(DEFAULT_EXPORT_FILES).toContain("user-memory.json");
   });
 
-  it("NOTES_ONLY_TOOL_ALLOWLIST excludes web/search/fetch tools by design", async () => {
-    const { NOTES_ONLY_TOOL_ALLOWLIST } = await import("../src/commands-ask.js");
-    // Whitelist is exactly the notes + memory surface — nothing else.
-    expect([...NOTES_ONLY_TOOL_ALLOWLIST].sort()).toEqual(["muse.context", "muse.notes", "muse.notes-multi"]);
+  it("trusted notes-only allowlist excludes web/search/fetch tools by design", async () => {
+    const { TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST } = await import("../src/trusted-local-cli-authority.js");
+    expect([...TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST].sort()).toEqual(["muse.notes.list", "muse.notes.read", "muse.notes.search"]);
     // Negative assertions — the names below would betray the goal if
     // they crept into the allowlist, so guard them explicitly.
-    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.search");
-    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.fetch");
-    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.url");
-    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("web_search");
+    expect([...TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST]).not.toContain("muse.search");
+    expect([...TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST]).not.toContain("muse.fetch");
+    expect([...TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST]).not.toContain("muse.url");
+    expect([...TRUSTED_CLI_NOTES_READ_TOOL_ALLOWLIST]).not.toContain("web_search");
   });
 
   it("resolveStatusWatchIntervalMs defaults to 5s and clamps to [1s, 3600s]", async () => {

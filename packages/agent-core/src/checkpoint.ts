@@ -22,6 +22,36 @@ export interface AgentCheckpointState extends JsonObject {
   readonly output: string | null;
 }
 
+const NON_DURABLE_AUTHORITY_METADATA_KEYS = new Set([
+  "allowedtoolnames",
+  "approvalgate",
+  "approvalreceipt",
+  "authority",
+  "capabilityprofile",
+  "capabilityprofileid",
+  "forbiddentoolnames",
+  "localmode",
+  "maxtools",
+  "profile",
+  "profileid",
+  "receipt",
+  "toolapprovalgate",
+  "toolapprovalreceipt",
+  "toolauthority",
+  "toolexposureauthority",
+  "workapprovalreceipt"
+]);
+
+function checkpointMetadata(metadata: JsonObject | undefined): JsonObject | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  const durableEntries = Object.entries(metadata).filter(([key]) =>
+    !NON_DURABLE_AUTHORITY_METADATA_KEYS.has(key.replace(/[-_]/gu, "").toLowerCase())
+  );
+  return durableEntries.length > 0 ? Object.fromEntries(durableEntries) as JsonObject : undefined;
+}
+
 export function createAgentCheckpointState(input: {
   readonly phase: string;
   readonly model: string;
@@ -29,9 +59,10 @@ export function createAgentCheckpointState(input: {
   readonly metadata?: JsonObject;
   readonly output?: string;
 }): AgentCheckpointState {
+  const metadata = checkpointMetadata(input.metadata);
   return {
     encodedMessages: [...encodeCheckpointMessages(input.messages)],
-    metadata: input.metadata ?? null,
+    metadata: metadata ?? null,
     model: input.model,
     output: input.output ?? null,
     phase: input.phase
@@ -48,7 +79,7 @@ export function createAgentCheckpointState(input: {
  */
 export function resumeRunInputFromCheckpoint(
   state: AgentCheckpointState,
-  overrides: Partial<Pick<AgentRunInput, "runId" | "signal" | "toolApprovalGate">> = {}
+  overrides: Partial<Pick<AgentRunInput, "runId" | "signal" | "toolApprovalGate" | "toolExposureAuthority">> = {}
 ): AgentRunInput {
   return {
     messages: decodeCheckpointMessages(state.encodedMessages),

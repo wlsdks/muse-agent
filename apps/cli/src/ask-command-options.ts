@@ -100,11 +100,11 @@ Examples:
     )
     .option(
       "--shell",
-      "OPT-IN: also ground on matching commands from your shell history (secret-redacted, local-only; default OFF because history is sensitive). Set $MUSE_SHELL_HISTORY_FILE / $HISTFILE to override the source."
+      "Unavailable in Muse's non-coding personal-read mode; Muse does not inspect shell history."
     )
     .option(
       "--git",
-      "OPT-IN: also ground on your recent git commits in the current repo (read from .git/logs/HEAD, local-only). Answers 'what did I work on?' / 'what was that commit?'. Set $MUSE_GIT_REFLOG_FILE to override the source."
+      "Unavailable in Muse's non-coding personal-read mode; Muse does not inspect repositories or git history."
     )
     .option(
       "--file <path>",
@@ -112,7 +112,7 @@ Examples:
     )
     .option(
       "--url <url>",
-      "Ground this answer on a public web page's readable text WITHOUT ingesting it (read-only fetch). The answer cites it as [from <host>]; an off-topic question still honestly refuses."
+      "Unavailable in Muse's non-coding personal-read mode; provide material locally to analyze it."
     )
     .option(
       "--clipboard",
@@ -128,15 +128,15 @@ Examples:
     )
     .option(
       "--with-tools",
-      "Run through the agent runtime so the model can call MCP tools (muse.search, muse.notes.*, muse.tasks.*, etc.). Default off — the chat-only fast path streams ~2x faster but can't fetch fresh web data."
+      "Run through the agent runtime with a small local personal-read set only (notes, tasks, calendar, reminders). Default off; it cannot browse, edit files, run code, or act on external services."
     )
     .option(
       "--actuators",
-      "With --with-tools, expose the gated state-changing actuators (email_send, web_action, home_action) so the conversation can trigger them. Each action shows the exact draft and fires only after you confirm. Off by default; providers resolve from env (MUSE_GMAIL_TOKEN, MUSE_HOMEASSISTANT_URL/TOKEN)."
+      "Unavailable in Muse's non-coding personal-read mode."
     )
     .option(
       "--notes-only",
-      "Clamp grounding to local notes + memory only — disables native web_search on every provider path and, when combined with --with-tools, allowlists the agent runtime to muse.notes / muse.notes-multi / muse.context only."
+      "Clamp grounding to local notes + memory only — disables native web_search and, with --with-tools, limits tools to note list/read/search."
     )
     .option(
       "--connect",
@@ -176,14 +176,14 @@ Examples:
     )
     .option(
       "--to-calendar",
-      "With --image: extract a calendar event from the image and DRAFT it (title/startsAt/location/notes). Draft-first — prints the proposed event; re-run with --apply to actually create it. e.g. `muse ask --image flyer.jpg --to-calendar`."
+      "With --image: extract a calendar event and DRAFT it (title/startsAt/location/notes). Muse creates reviewable drafts only. e.g. `muse ask --image flyer.jpg --to-calendar`."
     )
     .option(
       "--auto",
-      "With --image: AUTO-detect the image kind (event / receipt / contact) and draft the matching action — calendar event, expense note, or new contact. Draft-first; re-run with --apply to perform it. e.g. `muse ask --image photo.jpg --auto`."
+      "With --image: AUTO-detect the image kind (event / receipt / contact) and draft the matching action — calendar event, expense note, or new contact. Muse creates reviewable drafts only. e.g. `muse ask --image photo.jpg --auto`."
     )
     .option(
       "--apply",
-      "With --to-calendar: actually create the extracted event (default is draft-only)."
+      "Unavailable; Muse creates reviewable drafts only."
     );
 }
