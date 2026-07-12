@@ -36,8 +36,8 @@ export type SecretPersistenceGuardResult = SecretPersistenceSafe | SecretPersist
  * not aspirational.
  */
 export const SECRET_PERSISTENCE_NOTICE =
-  "비밀번호·토큰·API 키 같은 민감한 값은 평문 저장소에 기록하지 않아요 (이 저장소는 암호화되지 않습니다). " +
-  "macOS 키체인(Keychain Access) 같은 안전한 곳에 저장해 주세요.";
+  "비밀번호·토큰·API 키·주민등록번호 같은 민감한 정보는 평문 저장소에 기록하지 않아요 (이 저장소는 암호화되지 않습니다). " +
+  "비밀번호·키는 macOS 키체인(Keychain Access) 같은 안전한 곳에 두시고, 주민등록번호 같은 개인정보는 저장을 피해 주세요.";
 
 export function guardSecretPersistence(text: string): SecretPersistenceGuardResult {
   if (typeof text !== "string" || text.length === 0) {
