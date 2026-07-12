@@ -132,7 +132,7 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · eval
 리스크/백로그: (A) [선행·무관] byte-hygiene 실패 = packages/shared/test/utf16-safe.test.ts:43 raw byte(동시 커밋 e287c94f6 D-KO-S1) — 이 루프 밖, D-KO-S1 소유자에게 flag. (B) RRN을 마스커(로그/notice 리댁션)에도 넣을지는 backlog(현재 persistence-guard만).
 lesson: 프로버 "서버 hung/timeout" 주장은 항상 직접 재현으로 검증 — gemma4:12b는 5-40s라 짧은 타임아웃이 정상 서버를 hung로 오판(fire 5·9·13 반복).
 
-## fire 14 · 2026-07-12 · <commit>
+## fire 14 · 2026-07-12 · d3119ad17
 meta: value-class=personalization · pkg=@muse/agent-core · kind=prompt-layer · verdict=PASS(opus adversarial) · firesSinceDrill=3
 probe: 7-axis 라이브(지시우선순위충돌·confident-wrong저항·멀티링구얼JP/CN·경어체적응·자기교정·빈입력·task-vs-chatter). 9/10 GOOD — 멀티링구얼 정체성도 정확("私はミューズです"/"我是缪斯"), 반말/존댓말 적응, 오답저항, 키보드매시 우아. 유일 WEAK: task-vs-chatter — "오늘 날씨 좋다"(순수 musing)에 "더 자세히 알려줄까?" 불필요 확장제안 부착(잡담→강요된 도움, service-bot).
 ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · agent-core 3027 tests · self-eval 무회귀
