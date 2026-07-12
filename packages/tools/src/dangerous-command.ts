@@ -168,6 +168,29 @@ function stripLineContinuations(command: string): string {
   return command.replace(/\\\r?\n/gu, "");
 }
 
+// ECMA-48/ANSI escape sequences (CSI: `ESC [` … parameter/intermediate bytes …
+// final byte `@`-`~`, plus the 8-bit CSI introducer `\x9b`, plus the two-char
+// Fe forms like `ESC c`) can be inserted mid-token by a terminal-rendering
+// trick — `r\x1b[0mm -rf /` renders as "rm -rf /" but splits the literal verb
+// so the anchored `rm` rule never matches. Stripping them first closes that
+// gap. Character classes only (no nested quantifiers), so this stays
+// ReDoS-safe on adversarial input.
+const ANSI_ESCAPE_PATTERN = /[\x1b\x9b]\[[0-9:;<=>?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/gu;
+
+export function stripAnsiEscapes(command: string): string {
+  return command.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+// NFKC folds Unicode compatibility variants to their canonical ASCII form —
+// a fullwidth homograph like `ｒｍ` (U+FF52 U+FF4D) becomes `rm`, closing a
+// homograph bypass of the ASCII-anchored rules. This is DETECTION-only: the
+// guard classifies the ORIGINAL command string the caller will run, so
+// folding a copy for pattern-matching purposes cannot change what executes.
+// It is a no-op on already-ASCII input, so existing behavior is unchanged.
+export function normalizeCommandNfkc(command: string): string {
+  return command.normalize("NFKC");
+}
+
 // Resolve a command built by substitution — `$(echo rm) -rf /`,
 // `` `echo rm` -rf / `` — to its bare-word payload so the command-position
 // scanner sees the real verb. Only a literal `echo`/`printf <simple word>` is
@@ -291,9 +314,8 @@ function markCommandStarts(command: string): string {
  * variant; any hit is dangerous.
  */
 export function normalizeCommandForGuard(command: string): readonly string[] {
-  const cleaned = collapseIfs(
-    stripCommentsOutsideQuotes(stripLineContinuations(command.replace(/\x00/gu, "")))
-  );
+  const deobfuscated = stripAnsiEscapes(normalizeCommandNfkc(command)).replace(/\x00/gu, "");
+  const cleaned = collapseIfs(stripCommentsOutsideQuotes(stripLineContinuations(deobfuscated)));
   const variants = new Set<string>([cleaned, markCommandStarts(cleaned)]);
   const resolved = resolveEchoSubstitutions(cleaned);
   if (resolved !== cleaned) {

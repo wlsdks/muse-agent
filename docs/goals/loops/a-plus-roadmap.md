@@ -361,3 +361,12 @@ ratchet: 로드맵 잔여 [ ] = 20/65(D1-S6→a/b 분해 +1, a 체크 -1) · sel
 - 리뷰지점: 드릴 judge와 confirm judge 별개 Opus. 드릴 judge가 심은 결함(claim 항상 true·hollow 2번째-claim 미검증)을 라인 지목 FAIL. confirm judge가 corrected(once-guard 존재·guaranteed-once 실검증·mutation caught·additive) PASS. mutation-RED 3 test flip 독립 재현.
 - 리스크: 낮음. 미배선 프리미티브(model-loop 실배선=D1-S6b) — 로드맵 수용이 "프리미티브+guaranteed-once 유닛"이고 배선을 별도 신중작업으로 분해. 유저-가시 0(CHANGELOG 생략). 배치 진행 중(진안 지시 5-10 슬라이스→push+cron중단). 다음 = D2-S3(난독화 해제 확장, VQ-3 먼저).
 - lesson: JUDGE-DRILL은 "구조적 불변"(guaranteed-once) 슬라이스가 좋은 vehicle — 결함(가드 반전)+hollow 테스트(불변 2번째-호출 미검증)를 주입하면 Opus가 둘 다 정확히 지목. 중앙 대형파일(model-loop 1112줄) 리팩터는 프리미티브+유닛(안전)과 실배선(신중)으로 분해해 배치서 중앙파일을 급하게 안 건드림.
+
+## fire 43 · 2026-07-12 · skill v2.x · bd1b3374f
+meta: slice=D2-S3 · wave=W4 · pkg=@muse/tools · kind=security-deobfuscation · verdict=PASS · firesSinceDrill=1
+ratchet: 로드맵 잔여 [ ] = 19/65(D2-S3 체크) · self-eval pass(baseline-repair 후) · fabrication 0 · tools +9 test(dangerous-command, 36/36)
+- 무엇: ①기준선 green. ②D2-S3(🔒 보안): dangerous-command DS-2 정규화기 확장. VQ-3 확정대로 실부재 2벡터만 — `normalizeCommandNfkc`(command.normalize("NFKC"), 전각 ｒｍ→rm)+`stripAnsiEscapes`(ECMA-48 CSI, ReDoS-safe char-class regex)를 normalizeCommandForGuard 파이프라인 front에 추가. clean ASCII엔 no-op→기존 DS-2 byte-identical(RULES/helper/기존27 test 무수정). 전각 homograph·ANSI 삽입 우회 페이로드 차단. ③baseline-repair: foreign apps/api WIP(타루프 MUSE_TELEGRAM_POLL_ENABLED 등)로 envInventory red→docs:env 재생성(생성 파일).
+- 왜: hermes approval.py 참조. raw-regex 게이트는 shell 난독화로 우회되므로 정규화 변형 위에서 검출. VQ-3이 $IFS/라인연속/comment-strip/홈경로는 이미 있고 NFKC+ANSI만 실부재로 확정. DETECTION-only라 folding이 실행을 안 바꿈(위협모델 안전).
+- 리뷰지점: Opus PASS — 독립 우회 프로빙(전각 sudo/슬래시·ANSI 변형·전각 틸데 모두 차단)·DETECTION-only 실검증(zero 외부 caller, executor runner.ts:257 등 원본 실행)·no-over-block(인용내 전각·benign ANSI echo safe, quote-awareness 유지)·ReDoS-safe(char-class 단일 quantifier)·기존 27 무수정·mutation-RED 양방향 독립 재현.
+- 리스크: 낮음. 순수 결정론 변환·additive. ⚠️ foreign apps/api WIP가 working-tree 더럽힘(내 commit 미포함, 명시 add) — 그 loop의 envInventory 회귀를 docs:env로 임시 봉합, 그 loop 커밋 시 재생성. ⚠️ 워커가 격리검증에 git stash 사용(금지 사항)했으나 무손상(stash list 비어있음·내 변경/foreign 그대로) — 향후 워커 브리핑에 git stash 금지 명시. 배치 진행중(진안 지시). 다음 = D2-S4(runner stdout→모델 시크릿 마스킹, VQ-4 확인 후).
+- lesson: 보안 난독화-해제 확장은 DETECTION-only 변형(원본 미변경)을 정규화 파이프라인 front에 추가하면 clean 입력 no-op으로 기존 게이트 무수정 보장. 동시-루프가 shared 메인 워크트리서 env 추가하면 내 self-eval envInventory가 foreign하게 red될 수 있음 — docs:env 재생성으로 봉합(생성 파일이라 안전). 워커에 git stash 금지를 브리핑에 명시해야(격리 검증 유혹).

@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **Harder to disguise a destructive command.** Muse's block on catastrophic
+  shell commands (like `rm -rf /`) now sees through look-alike full-width
+  characters and embedded ANSI color codes, so a disguised version can't slip
+  past the guard.
+
 - **A clear error when a model can't use tools.** If you point Muse at a model
   that doesn't support tool calling and then try to do something that needs a
   tool, you now get an explicit "this model can't call tools" message instead

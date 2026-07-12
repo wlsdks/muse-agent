@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyDangerousCommand, normalizeCommandForGuard, parseRunnerCommandRequest } from "../src/index.js";
+import { normalizeCommandNfkc, stripAnsiEscapes } from "../src/dangerous-command.js";
 
 const blocks = (cmd: string) => expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(true);
 const passes = (cmd: string) => expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(false);
@@ -223,6 +224,43 @@ describe("ReDoS discipline — bounded runtime on adversarial 8KB input", () => 
   });
 });
 
+describe("adversarial: NFKC fullwidth homograph bypass", () => {
+  const fullwidthRm = String.fromCodePoint(0xff52, 0xff4d); // ｒｍ
+
+  it("blocks a fullwidth `rm` folded to its ASCII equivalent under NFKC", () => {
+    blocks(`${fullwidthRm} -rf /`);
+    blocks(`${fullwidthRm} -rf ~`);
+    blocks(`sudo ${fullwidthRm} -rf /`);
+  });
+  it("still blocks the plain ASCII form (unchanged behavior)", () => {
+    blocks("rm -rf /");
+  });
+  it("does not flag a fullwidth token that lives inside a quoted string", () => {
+    passes(`git commit -m 'delete via ${fullwidthRm} -rf / is bad'`);
+  });
+});
+
+describe("adversarial: ANSI/ECMA-48 escape-sequence insertion", () => {
+  it("blocks a verb split mid-token by an inserted SGR escape", () => {
+    blocks("r\x1b[0mm -rf /");
+    blocks("rm -rf \x1b[31m/");
+    blocks("r\x1b[1;31mm -rf ~");
+  });
+  it("passes a benign command whose ANSI color codes sit outside command position", () => {
+    passes("echo \x1b[32mhello\x1b[0m");
+  });
+});
+
+describe("de-obfuscation helper units", () => {
+  it("stripAnsiEscapes removes an inserted CSI sequence", () => {
+    expect(stripAnsiEscapes("r\x1b[0mm")).toBe("rm");
+    expect(stripAnsiEscapes("\x1b[31m/\x1b[0m")).toBe("/");
+  });
+  it("normalizeCommandNfkc folds a fullwidth homograph to ASCII", () => {
+    expect(normalizeCommandNfkc(String.fromCodePoint(0xff52, 0xff4d))).toBe("rm");
+  });
+});
+
 // Mutation checks: each proves a specific hardening layer is load-bearing.
 // Removing the layer named in the test makes it go RED.
 describe("mutation checks — hardening layers are load-bearing", () => {
@@ -237,5 +275,18 @@ describe("mutation checks — hardening layers are load-bearing", () => {
     // the substitution and no command-position variant exposes `rm`.
     blocks("$(echo rm) -rf /");
     expect(normalizeCommandForGuard("$(echo rm) -rf /").some((v) => /(^|\0)rm -rf \//u.test(v))).toBe(true);
+  });
+  it("MUTATION (NFKC): folding a fullwidth homograph to ASCII is required", () => {
+    // If normalizeCommandNfkc() were removed from the pipeline, `ｒｍ -rf /`
+    // never becomes `rm -rf /` and no ASCII rule can anchor to it.
+    const fullwidthRm = String.fromCodePoint(0xff52, 0xff4d);
+    blocks(`${fullwidthRm} -rf /`);
+    expect(normalizeCommandForGuard(`${fullwidthRm} -rf /`).some((v) => /rm -rf \//u.test(v))).toBe(true);
+  });
+  it("MUTATION (ANSI strip): removing inserted escape sequences is required", () => {
+    // If stripAnsiEscapes() were removed from the pipeline, the ESC-split
+    // token `r\x1b[0mm` never rejoins into `rm` and the anchored rule misses.
+    blocks("r\x1b[0mm -rf /");
+    expect(normalizeCommandForGuard("r\x1b[0mm -rf /").some((v) => /rm -rf \//u.test(v))).toBe(true);
   });
 });
