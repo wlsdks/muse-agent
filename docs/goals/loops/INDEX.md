@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|---|
 | `recall-spine` | 개인 기억/회상 비서 golden path 강화 | [recall-spine.md](recall-spine.md) | 9 | `aa224dceb` | v2.1.0 | RETIRED — 9 fires merged to main (FF), worktree+branch removed, cron `ffe5773d` deleted (진안 directive) |
 | `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 148 | `177a6c9b` | v1.14.0 | active (cron, session-only) |
-| `a-plus-roadmap` | A+ 로드맵 §10.3 집행 (main worktree) | [a-plus-roadmap.md](a-plus-roadmap.md) | 39 | `41c8f0a04` | v2.x | active (cron `964ac861`, 30m session-only, Tier1 no-push) |
+| `a-plus-roadmap` | A+ 로드맵 §10.3 집행 (main worktree) | [a-plus-roadmap.md](a-plus-roadmap.md) | 40 | `aecf44510` | v2.x | active (cron `964ac861`, 30m session-only, Tier1 no-push) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | superseded → re-registered as `agent-core-cognition` (v1.14.0, cron 42e5d7ba) |
 | `agent-core-cognition` | agent-core 인지 코어 강화 (worktree `agent-core-enhance`) | [agent-core-cognition.md](agent-core-cognition.md) | 63 | `dad16a57` | v1.14.0 | STOPPED fire 63 (Jinan directive; cron 42e5d7ba deleted) |
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 16 | `1f4b4b1d` | v1.14.0 | active (cron `291e935d`, session-only) |
@@ -33,6 +33,6 @@
 | `desktop-enhance` | macOS desktop app 강화 + 뮤즈 캐릭터 상호작용 (번들 web 포함; ④c 브라우저 실측 검증) (worktree `/tmp/muse-desktop-enhance`, branch `loop/desktop-enhance`, Tier2 push + draft PR) | [desktop-enhance.md](desktop-enhance.md) | 14 | (pending) | v2.1.0 | active (cron `d7012104`, session-only 20m) |
 | `capability-parity` | hermes/openclaw 급 순수 에이전트 역량 parity — 4 갭(history-search · skill curator · dreaming/inert 배선 · sub-agent 오케스트레이션 내구성) 결정론-우선 (worktree `/tmp/muse-capability-parity`, branch `loop/capability-parity`, Tier1 local-commit only) | [capability-parity.md](capability-parity.md) | 9 | `e49e9e99c` | v2.0.0 | active (cron, session-only 20m) |
 
-| `response-experience` | 어시스턴트 응답 경험 지속 개선 (worktree `/tmp/muse-response-loop`, branch `response-loop`, verified-fire → main FF push opt-in) | [response-experience.md](response-experience.md) | 17 | `020d8a769` | v2.x | active (cron `513db0d4`, session-only 20m) |
+| `response-experience` | 어시스턴트 응답 경험 지속 개선 (worktree `/tmp/muse-response-loop`, branch `response-loop`, verified-fire → main FF push opt-in) | [response-experience.md](response-experience.md) | 18 | `98ebb69e9` | v2.x | active (cron `513db0d4`, session-only 20m) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->

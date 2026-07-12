@@ -15,6 +15,7 @@
 import type { PromptLayer } from "@muse/prompts";
 
 import { classifyCasualPrompt } from "./casual-prompt.js";
+import { dominantScriptFamily } from "./script-family.js";
 
 export type PersonaRegister = "존댓말" | "반말";
 
@@ -212,6 +213,48 @@ function defersToHonestyOrIdentityCore(text: string): boolean {
     SELF_REFERENTIAL_EN_RE.test(trimmed) ||
     AGREEMENT_BAIT_RE.test(trimmed)
   );
+}
+
+export const LANGUAGE_MIRROR_LAYER_ID = "personalization/language-mirror";
+// Dynamic-section tone-hint, just ahead of the 반말/존댓말 register layer so the
+// language directive is read first on the rare turn that carries both.
+export const LANGUAGE_MIRROR_LAYER_PRIORITY = 48;
+
+const LANGUAGE_MIRROR_INSTRUCTION =
+  "사용자가 한국어가 아닌 언어(영어 등)로 말했다 — 한국어로 바꾸지 말고, 사용자가 쓴 그 언어로 처음부터 끝까지 답하라. "
+  + "The user wrote in a non-Korean language; reply entirely in that same language and do not switch to Korean partway through.";
+
+/**
+ * Build the language-mirroring dynamic layer for the CURRENT turn, or
+ * `undefined` when the user is writing in Korean (the default — no instruction
+ * needed). The identity block carries only a soft "follow the user's language"
+ * line, which a Korean-primed 12B ignores on a self-referential English turn
+ * (measured live: "What can you do for me?" answered fully in Korean, and
+ * "Summarize … in 3 bullets" switched to Korean mid-answer). This layer makes
+ * that deterministic.
+ *
+ * TWO signals, both required, so a Korean question that merely name-drops
+ * English tech terms ("React랑 Vue 비교", "이거 영어로 번역해줘") stays Korean:
+ *   1. NO Hangul at all — any 가-힣 means the user is speaking Korean and wants
+ *      a Korean reply, regardless of how many Latin tech-tokens ride along.
+ *   2. Latin is the DOMINANT script — targets English (the measured leak) and
+ *      not a han/kana/symbol-only turn, which this layer deliberately leaves at
+ *      the Korean default.
+ */
+export function buildLanguageMirrorLayer(userText: string): PromptLayer | undefined {
+  const trimmed = userText.trim();
+  if (trimmed.length === 0 || HANGUL_RE.test(trimmed)) {
+    return undefined;
+  }
+  if (dominantScriptFamily(trimmed) !== "latin") {
+    return undefined;
+  }
+  return {
+    content: LANGUAGE_MIRROR_INSTRUCTION,
+    id: LANGUAGE_MIRROR_LAYER_ID,
+    priority: LANGUAGE_MIRROR_LAYER_PRIORITY,
+    section: "dynamic"
+  };
 }
 
 export interface RegisterBrevityLayerInput {

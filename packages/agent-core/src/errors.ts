@@ -40,3 +40,15 @@ export class ModelRoutingError extends Error {
     this.name = "ModelRoutingError";
   }
 }
+
+export class ModelToolCallingUnsupportedError extends Error {
+  readonly model: string;
+
+  constructor(model: string) {
+    super(
+      `Model "${model}" does not support tool calling (native tool-calling + structured output required). Use a tool-capable model, or a build that implements the text tool protocol.`
+    );
+    this.name = "ModelToolCallingUnsupportedError";
+    this.model = model;
+  }
+}
