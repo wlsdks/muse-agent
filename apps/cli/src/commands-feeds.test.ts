@@ -126,7 +126,7 @@ function seedFeeds(ids: readonly string[]): string {
       version: 1,
       feeds: ids.map((id) => ({
         id,
-        url: `https://example.com/${id}.xml`,
+        url: `https://93.184.216.34/${id}.xml`,
         name: id,
         lastFetchedAt: "2026-05-15T00:00:00Z",
         entries: []
@@ -344,7 +344,7 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
       });
     };
     await expect(
-      loadFeedBody("https://slow.example.com/feed.xml", { fetchImpl: neverResolves, timeoutMs: 10 })
+      loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: neverResolves, timeoutMs: 10 })
     ).rejects.toThrow(/timed out after 10ms/u);
   });
 
@@ -359,7 +359,7 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
       });
     };
     await expect(
-      loadFeedBody("https://slow.example.com/feed.xml", { fetchImpl: captureSignal, timeoutMs: 5 })
+      loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: captureSignal, timeoutMs: 5 })
     ).rejects.toThrow(/timed out/u);
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
     expect(receivedSignal?.aborted).toBe(true);
@@ -368,7 +368,7 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
   it("returns the body and clears the timer on a successful fetch — no leaked timer keeping the event loop alive", async () => {
     const okFetch: typeof globalThis.fetch = () =>
       Promise.resolve(new Response("<rss><channel><item><title>x</title></item></channel></rss>", { status: 200 }));
-    const result = await loadFeedBody("https://ok.example.com/feed.xml", { fetchImpl: okFetch, timeoutMs: 5_000 });
+    const result = await loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: okFetch, timeoutMs: 5_000 });
     expect(result).toContain("<rss>");
   });
 
@@ -384,7 +384,7 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
         ? new Response("err", { status: 503 })
         : new Response("<rss><channel><item><title>ok</title></item></channel></rss>", { status: 200 }));
     };
-    const result = await loadFeedBody("https://flaky.example.com/feed.xml", { fetchImpl: flaky, sleep: async () => {} });
+    const result = await loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: flaky, sleep: async () => {} });
     expect(calls).toBe(2);
     expect(result).toContain("<rss>");
   });
@@ -392,13 +392,13 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
   it("a persistent 503 throws after exhausting retries; a 404 fails fast (no retry)", async () => {
     let five = 0;
     const always503: typeof globalThis.fetch = () => { five += 1; return Promise.resolve(new Response("e", { status: 503 })); };
-    await expect(loadFeedBody("https://down.example.com/feed.xml", { fetchImpl: always503, retries: 2, sleep: async () => {} }))
+    await expect(loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: always503, retries: 2, sleep: async () => {} }))
       .rejects.toThrow("returned 503");
     expect(five).toBe(3); // first + 2 retries
 
     let four = 0;
     const fourOhFour: typeof globalThis.fetch = () => { four += 1; return Promise.resolve(new Response("nope", { status: 404 })); };
-    await expect(loadFeedBody("https://gone.example.com/feed.xml", { fetchImpl: fourOhFour, sleep: async () => {} }))
+    await expect(loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: fourOhFour, sleep: async () => {} }))
       .rejects.toThrow("returned 404");
     expect(four).toBe(1); // 4xx is permanent — no retry
   });
@@ -413,7 +413,7 @@ describe("loadFeedBody — body size cap so a hostile / runaway RSS server can't
       })
     );
     await expect(
-      loadFeedBody("https://huge.example.com/feed.xml", { fetchImpl: contentLengthLies, maxBodyBytes: 1024 })
+      loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: contentLengthLies, maxBodyBytes: 1024 })
     ).rejects.toThrow(/declared 999999999 bytes; cap is 1024/u);
   });
 
@@ -427,7 +427,7 @@ describe("loadFeedBody — body size cap so a hostile / runaway RSS server can't
       }), { status: 200 })
     );
     await expect(
-      loadFeedBody("https://chunked.example.com/feed.xml", { fetchImpl: oversizedFetch, maxBodyBytes: 100 })
+      loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: oversizedFetch, maxBodyBytes: 100 })
     ).rejects.toThrow(/exceeded 100 bytes/u);
   });
 
@@ -439,7 +439,7 @@ describe("loadFeedBody — body size cap so a hostile / runaway RSS server can't
 function feedWith(id: string, entries: ReadonlyArray<{ id: string; title: string; summary?: string; publishedAt?: string }>) {
   return {
     id,
-    url: `https://example.com/${id}.xml`,
+    url: `https://93.184.216.34/${id}.xml`,
     name: id,
     lastFetchedAt: "2026-05-15T00:00:00Z",
     entries: entries.map((e) => ({
@@ -575,5 +575,36 @@ describe("feeds list — singular entry count", () => {
   it("still pluralizes a feed with several entries", async () => {
     const { stdout } = await runFeedsCommand(["list"], seedOneFeedWithEntries(3));
     expect(stdout).toContain("3 entries\t");
+  });
+});
+
+describe("loadFeedBody — SSRF guard (no internal/metadata host, pre- and post-redirect)", () => {
+  const okBody = (body: string, url: string) => ({
+    ok: true,
+    status: 200,
+    url,
+    headers: new Headers(),
+    body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(body)); c.close(); } })
+  }) as unknown as Response;
+
+  it("refuses a direct internal / cloud-metadata / loopback target BEFORE any fetch", async () => {
+    let fetched = false;
+    const spy = (async () => { fetched = true; return okBody("<rss/>", "x"); }) as unknown as typeof globalThis.fetch;
+    for (const url of ["http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:8080/feed", "http://[::1]/feed"]) {
+      await expect(loadFeedBody(url, { fetchImpl: spy })).rejects.toThrow(/public http|not an allowed/u);
+    }
+    expect(fetched).toBe(false);
+  });
+
+  it("refuses a body whose FINAL url (after a redirect) is internal — the metadata SSRF via a trusted feed", async () => {
+    const redirectToMeta = (async () => okBody("<rss/>", "http://169.254.169.254/latest/meta-data/")) as unknown as typeof globalThis.fetch;
+    await expect(loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: redirectToMeta }))
+      .rejects.toThrow(/redirected to a non-public/u);
+  });
+
+  it("allows a public host and returns the body", async () => {
+    const publicFetch = (async () => okBody("<rss><title>ok</title></rss>", "https://93.184.216.34/feed.xml")) as unknown as typeof globalThis.fetch;
+    const out = await loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: publicFetch });
+    expect(out).toContain("ok");
   });
 });

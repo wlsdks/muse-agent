@@ -9,14 +9,15 @@
  *
  * `~/.muse/feeds.json` carries every feed's url + cached entries
  * so `today` doesn't need network. Pure XML parsing via
- * `fast-xml-parser` (MIT). Supports both `file://` URLs (for
- * dogfood + offline tests) and `http(s)://`.
+ * `fast-xml-parser` (MIT). Feed fetch is SSRF-guarded for http(s) (no
+ * internal/metadata host, pre- and post-redirect); `file://` is supported
+ * for offline fixtures / dogfood (a local, user-only read).
  */
 
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { isRetriableStatus } from "@muse/domain-tools";
+import { assertPublicHttpUrl, isRetriableStatus } from "@muse/domain-tools";
 import { formatErrorForTerminal, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
@@ -50,9 +51,10 @@ function feedTitleEmbedder(): (text: string) => Promise<readonly number[]> {
 }
 
 /**
- * Fetch the feed body. Supports `file://` so the
- * dogfood can plant a fixture and exercise the parser without
- * network. Exported for direct test coverage.
+ * Fetch the feed body. An http(s) URL is SSRF-guarded (pre- and post-redirect,
+ * public hosts only, no internal/metadata target); a `file://` URL is read
+ * directly — a local, user-only path for offline fixtures / dogfood, not
+ * reachable from a model tool. Exported for direct test coverage.
  */
 export const DEFAULT_FEED_FETCH_TIMEOUT_MS = 30_000;
 export const DEFAULT_FEED_MAX_BODY_BYTES = 5 * 1024 * 1024;
@@ -70,8 +72,20 @@ export interface LoadFeedBodyOptions {
 }
 
 export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {}): Promise<string> {
+  // `file://` reads a local fixture (offline / dogfood). It is a user-only CLI
+  // path (never a model-reachable tool), so it carries no REMOTE attack surface;
+  // the SSRF guard below is what closes the remote vector (a trusted feed that
+  // redirects to an internal/metadata host).
   if (url.startsWith("file://")) {
     return readFile(fileURLToPath(url), "utf8");
+  }
+  // SSRF guard: an http(s) feed URL (or a redirect from a trusted feed) must
+  // resolve to a PUBLIC host — blocks a direct or redirect-to internal/metadata
+  // target (`169.254.169.254`, `127.0.0.1`, link-local). Re-checked after the
+  // fetch for the final, post-redirect URL below.
+  const preGuard = await assertPublicHttpUrl(url);
+  if (!preGuard.ok) {
+    throw new Error(`feed URL is not an allowed public http(s) address: ${url}`);
   }
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
@@ -108,6 +122,15 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
     }
     if (!response.ok) {
       throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
+    }
+    // Post-redirect re-guard: a trusted feed can 302 to an internal/metadata
+    // host, which `redirect: "follow"` would have chased. If the FINAL URL is
+    // not public, refuse the body before it is parsed/ingested.
+    if (response.url && response.url !== url) {
+      const postGuard = await assertPublicHttpUrl(response.url);
+      if (!postGuard.ok) {
+        throw new Error(`feed ${url} redirected to a non-public address: ${response.url}`);
+      }
     }
     const declared = response.headers.get("content-length");
     if (declared !== null) {
