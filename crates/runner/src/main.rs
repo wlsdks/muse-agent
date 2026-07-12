@@ -4,6 +4,9 @@ use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -231,10 +234,20 @@ fn run_request(request: RunnerRequest, mode: SandboxMode) -> RunnerResponse {
         }
     }
 
+    // Make the child its own process-group leader (pgid == its own pid) so the
+    // whole tree it spawns can be signalled together. Without this, a
+    // backgrounded grandchild (`sh -c "sleep 300 &"`) stays in the runner's OWN
+    // process group, survives a kill of just the direct child as an orphan, and
+    // — if it inherited the stdout/stderr pipe — keeps the write end open,
+    // wedging the drainer threads' join past the direct child's own exit.
+    #[cfg(unix)]
+    command.process_group(0);
+
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => return error_response(&describe_spawn_error(&request.command, &error)),
     };
+    let pgid = child.id() as i32;
 
     // Drain stdout/stderr on dedicated threads so the child can never block
     // writing to a full OS pipe buffer (~64 KB). Without this, any command
@@ -260,18 +273,24 @@ fn run_request(request: RunnerRequest, mode: SandboxMode) -> RunnerResponse {
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = stdout_drainer.join();
-                let _ = stderr_drainer.join();
+                kill_process_group(pgid);
+                let _ = recv_drained(stdout_drainer);
+                let _ = recv_drained(stderr_drainer);
                 return error_response(&format!("failed while waiting for command: {error}"));
             }
         }
     };
 
-    // Reap the (possibly killed) child so its pipe write-ends close and the
-    // drainer threads see EOF and finish.
+    // Reap the (possibly killed) direct child so its own pipe write-ends close,
+    // THEN sweep the whole process group. A grandchild backgrounded by the
+    // child (`sh -c "sleep 300 &"`) is not reaped by `child.wait()` — it lives
+    // on as an orphan in the same group whether the child exited on its own or
+    // was just killed for timing out. Kill the group so nothing is left
+    // running and no pipe write-end it inherited stays open.
     let _ = child.wait();
-    let (stdout, stdout_truncated) = stdout_drainer.join().unwrap_or_else(|_| (String::new(), false));
-    let (stderr, stderr_truncated) = stderr_drainer.join().unwrap_or_else(|_| (String::new(), false));
+    kill_process_group(pgid);
+    let (stdout, stdout_truncated) = recv_drained(stdout_drainer);
+    let (stderr, stderr_truncated) = recv_drained(stderr_drainer);
 
     RunnerResponse {
         ok: status.map(|status| status.success()).unwrap_or(false) && !timed_out,
@@ -290,6 +309,43 @@ fn run_request(request: RunnerRequest, mode: SandboxMode) -> RunnerResponse {
     }
 }
 
+// The direct child was made its own process-group leader at spawn time
+// (`process_group(0)`), so its pgid equals its own pid — signalling `-pgid`
+// (a negative pid means "the whole group") reaches it AND every descendant
+// it spawned, including ones it never waited on. `Child::kill()` only ever
+// signals the single direct-child pid, which is exactly the gap this closes.
+//
+// This shells out to the `kill` utility rather than adding a `libc` dependency
+// for a raw `kill(2)` call — the crate already shells out to a system binary
+// for sandboxing (`/usr/bin/sandbox-exec`), so this follows the same pattern
+// without growing the dependency graph. A missing target (already exited) is
+// not an error worth surfacing — this is best-effort cleanup, always run
+// after the direct child has already been reaped.
+#[cfg(unix)]
+fn kill_process_group(pgid: i32) {
+    let _ = Command::new("kill")
+        .arg("-KILL")
+        .arg(format!("-{pgid}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(unix))]
+fn kill_process_group(_pgid: i32) {}
+
+/// A drainer thread should finish almost instantly once `kill_process_group`
+/// has run — every writer of the pipe is dead, so `read` hits EOF. Bound the
+/// wait anyway: if some writer somehow survives group-kill, the runner must
+/// still return (with whatever was captured so far) rather than wedge past
+/// its own configured timeout.
+const DRAIN_RECV_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn recv_drained(drainer: mpsc::Receiver<(String, bool)>) -> (String, bool) {
+    drainer.recv_timeout(DRAIN_RECV_TIMEOUT).unwrap_or_else(|_| (String::new(), false))
+}
+
 /// Self-labelled marker appended to a captured stream that was truncated at the
 /// capture limit, so the model SEES in the text that output is partial.
 const OUTPUT_TRUNCATION_MARKER: &str =
@@ -304,12 +360,15 @@ fn mark_if_truncated(mut text: String, truncated: bool) -> String {
 
 /// Read a child pipe to EOF on its own thread, retaining at most
 /// `max_output_bytes` and discarding the rest (while still draining so the
-/// child never blocks on a full pipe). Returns the kept text and whether
-/// anything was dropped.
+/// child never blocks on a full pipe). Sends the kept text and whether
+/// anything was dropped over the returned channel — a channel (rather than a
+/// bare `JoinHandle`) lets the receiver bound its wait with `recv_timeout`
+/// instead of blocking forever on `.join()` (see `recv_drained`).
 fn spawn_drainer<R: Read + Send + 'static>(
     pipe: Option<R>,
     max_output_bytes: usize,
-) -> thread::JoinHandle<(String, bool)> {
+) -> mpsc::Receiver<(String, bool)> {
+    let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut kept: Vec<u8> = Vec::new();
         let mut truncated = false;
@@ -332,8 +391,9 @@ fn spawn_drainer<R: Read + Send + 'static>(
         if truncated {
             trim_partial_utf8_tail(&mut kept);
         }
-        (String::from_utf8_lossy(&kept).into_owned(), truncated)
-    })
+        let _ = sender.send((String::from_utf8_lossy(&kept).into_owned(), truncated));
+    });
+    receiver
 }
 
 /// Drop a trailing partial multi-byte UTF-8 char (left by a byte-boundary cut)
@@ -733,6 +793,64 @@ mod tests {
             "error carries the actionable timeout message, not None: {:?}",
             resp.error
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backgrounded_grandchild_is_reaped_with_the_group_and_never_wedges_the_runner() {
+        // The exact shape of the verified finding: the direct child backgrounds
+        // a grandchild with `&` and exits right away — `sh -c "sleep N && touch
+        // marker &"` returns almost instantly. The grandchild inherits the
+        // stdout/stderr pipe write-ends and, pre-fix, is never reaped (only the
+        // direct child is waited on) — so it survives as an orphan and keeps a
+        // pipe write-end open, which wedges `stdout_drainer`/`stderr_drainer`'s
+        // join past the direct child's own exit until the grandchild finishes
+        // its own sleep (here, 2s later) and closes the pipe on its own.
+        //
+        // MUTATION-FIRST: without process-group spawn + group-kill, this test
+        // fails two ways — `elapsed` is ~2s (the wedge), and the marker file
+        // DOES exist after the post-sleep (the grandchild ran to completion as
+        // an orphan instead of being killed with the group).
+        let marker = std::env::temp_dir().join(format!(
+            "muse-runner-group-kill-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let marker_path = marker.to_string_lossy().into_owned();
+        let script = format!("(sleep 2 && touch {marker_path}) &\necho parent-done");
+
+        let started = Instant::now();
+        let response = run_request(RunnerRequest {
+            command: "sh".to_string(),
+            args: vec!["-c".to_string(), script],
+            cwd: None,
+            env: BTreeMap::new(),
+            timeout_ms: Some(5_000),
+            max_output_bytes: None,
+            allow_network: false,
+        }, SandboxMode::Disabled);
+        let elapsed = started.elapsed();
+
+        assert!(response.ok, "the direct child completes normally: {response:?}");
+        assert!(!response.timed_out, "the direct child exits well within the 5s timeout: {response:?}");
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "the runner must return promptly once the direct child exits, not wedge on the orphaned grandchild's pipe: {elapsed:?}"
+        );
+
+        // Give the grandchild's own 2s sleep time to have completed IF it
+        // survived as an orphan — proves it was actually killed, not merely
+        // that this process raced ahead of it.
+        thread::sleep(Duration::from_secs(3));
+        assert!(
+            !marker.exists(),
+            "the backgrounded grandchild must be killed together with the process group, not survive to finish its delayed write"
+        );
+
+        let _ = fs::remove_file(&marker);
     }
 
     #[test]

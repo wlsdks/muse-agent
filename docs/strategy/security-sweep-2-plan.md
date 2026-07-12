@@ -20,7 +20,7 @@ tool fail-open. This sweep goes deeper.
 | ✅P1 | #5 Feed loader SSRF (http pre/post-redirect) (FIXED 328984e71) | web | MED | done | done |
 | ✅P1 | #13 Zip-bomb DoS via `.docx`/`.pptx` (FIXED 78921c0a7) | parsing | MED-HIGH | done | done |
 | ✅P2 | #6 Missed code-exec env vars (JAVA_TOOL_OPTIONS, PYTHONHOME, …) | runner | MED | FIXED with #2 | done |
-| **P2** | #7 Timeout kill ignores process tree → orphans + runner wedge | runner | MED | ✅ rustc repro | M (killpg/setsid) |
+| ✅P2 | #7 Timeout kill ignores process tree → orphans + runner wedge (FIXED 71dcfed0c) | runner | MED | done | done |
 | ✅P2 | #8 `resolvesByOverlap` single-token forgery (FIXED af50a783f) | grounding | MED | done | done |
 | **P2** | #9 TOFU channel pairing: first stranger claims the public bot | auth | MED (design) | ✅ traced | M (one-time pairing code) |
 | ✅P3 | #10 `/api/multi-agent/*` per-route auth guard (FIXED e6b21fc17) | api | LOW | done | done |
@@ -92,9 +92,17 @@ change resolution. **Effort S–M (touches Rust — cargo test + clippy).**
 - **#6** Extend the runner env allowlist: `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`,
   `JDK_JAVA_OPTIONS`, `PYTHONHOME`, `NODE_PATH`, `CLASSPATH`, `GEM_HOME`, `GEM_PATH`,
   `LESSOPEN` — each an interpreter-startup code-injection path. Effort S (paired with #2).
-- **#7** Runner timeout kill: spawn in its own session + `killpg`, and bound the
-  drain-join so a pipe-holding backgrounded grandchild can't wedge the runner
-  (verified: `sh -c "sleep 300 &"` wedges + orphans). Effort M (Rust).
+- **#7 FIXED** — Runner timeout kill spawns the child as its own process-group
+  leader (`process_group(0)`, unix), sweeps the whole group with `kill -KILL
+  -<pgid>` after the direct child is reaped (normal exit, timeout-kill, or a
+  wait error — not just the timeout branch), and bounds the drain join with
+  `recv_timeout` (mpsc channel, not a bare `JoinHandle`) so a residual
+  pipe-holder can't wedge the runner past its own timeout either. No new
+  dependency (`kill` shelled out, same pattern as `sandbox-exec`). Mutation-
+  first test (`backgrounded_grandchild_is_reaped_with_the_group_and_never_wedges_the_runner`)
+  reproduces the exact verified shape (`sh -c "sleep 2 && touch <marker> &"`) —
+  confirmed failing pre-fix (2s wedge, orphan survives to write its marker),
+  passing post-fix; `cargo test` 40/40, `cargo clippy --all-targets -D warnings` clean.
 - **#8** `resolvesByOverlap` (`recall-citations.ts:86`) accepts a forged free-text
   citation on ONE shared content token. Tighten to ≥2 tokens or a coverage ratio.
   Partially defended on ask (coverage floor) and unreachable on chat (notes-only).
