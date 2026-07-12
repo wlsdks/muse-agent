@@ -682,6 +682,9 @@ importers:
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
       '@muse/prompts':
         specifier: workspace:*
         version: link:../prompts
