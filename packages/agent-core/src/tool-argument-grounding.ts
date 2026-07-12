@@ -1,21 +1,11 @@
 import { normalizeForRecall } from "./recall-lexical.js";
+import { contentTokens } from "./provenance-tokens.js";
 
 export interface ToolArgumentGrounding {
   /** A NEW arguments object with ungrounded designated args removed. */
   readonly args: Record<string, unknown>;
   /** Names of the args that were dropped as fabricated (not in the utterance). */
   readonly dropped: readonly string[];
-}
-
-// Content tokens of a value/utterance: lowercased runs of letters/digits/Hangul,
-// >= 2 chars (a 1-char token is too common to ground on). Used only to test
-// whether an asserted value appears in the utterance, never re-emitted.
-// normalizeForRecall FIRST (NFC + full-width fold) so a KO arg the model fills
-// in NFC grounds against an utterance the user typed/pasted NFD (macOS) — without
-// it a real "회의실" location is FALSE-DROPPED as fabricated (the same recall-miss
-// normalization class, here mis-firing the anti-fabrication guard against the user).
-function contentTokens(text: string): string[] {
-  return (normalizeForRecall(text).toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []);
 }
 
 /**
