@@ -150,8 +150,16 @@ export function Empty({
   );
 }
 
-function Spinner() {
-  return <span className="spinner" aria-label="loading" />;
+/** Shimmering placeholder lines shaped like the list they stand in for —
+ * loading reads as "content on its way", not a modal wait. */
+function SkeletonBlock() {
+  return (
+    <div className="skeleton-block" aria-busy="true" aria-label="loading">
+      <span className="skeleton" style={{ width: "34%" }} />
+      <span className="skeleton" style={{ width: "78%" }} />
+      <span className="skeleton" style={{ width: "56%" }} />
+    </div>
+  );
 }
 
 export function Stat({ value, label, icon }: { value: ReactNode; label: string; icon?: ReactNode }) {
@@ -196,11 +204,7 @@ export function AsyncBlock({
 }) {
   const { t } = useI18n();
   if (loading) {
-    return (
-      <div className="empty">
-        <Spinner />
-      </div>
-    );
+    return <SkeletonBlock />;
   }
   if (error) {
     return (

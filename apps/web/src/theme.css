@@ -383,6 +383,62 @@ button {
 .content-narrow > .page-title + p {
   margin-top: 4px;
 }
+/* Entrance cascade: top-level blocks rise in with a 30ms ladder on view
+   change (they remount per view), replacing a single flat fade with a
+   composed reveal. Capped at 6 steps; reduced-motion zeroes it all. */
+.content-narrow > * {
+  animation: blockIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.content-narrow > *:nth-child(2) {
+  animation-delay: 0.03s;
+}
+.content-narrow > *:nth-child(3) {
+  animation-delay: 0.06s;
+}
+.content-narrow > *:nth-child(4) {
+  animation-delay: 0.09s;
+}
+.content-narrow > *:nth-child(5) {
+  animation-delay: 0.12s;
+}
+.content-narrow > *:nth-child(n + 6) {
+  animation-delay: 0.15s;
+}
+@keyframes blockIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+/* Skeleton loading — shimmering content-shaped lines (AsyncBlock). */
+.skeleton-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--s-sm) 0 var(--s-md);
+}
+.skeleton {
+  display: block;
+  height: 13px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(
+    100deg,
+    var(--surface-2) 30%,
+    var(--surface-3) 50%,
+    var(--surface-2) 70%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
 
 /* ── Draft-first send confirm ────────────────────────────── */
 
@@ -531,17 +587,19 @@ button {
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
   padding: var(--s-lg);
-  box-shadow: var(--shadow-sm);
+  /* The inset top hairline is light catching the panel's upper edge —
+     what makes a dark surface read as a raised object, not a region. */
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.035);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 .card:hover {
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .card.lifted {
   background: var(--surface-2);
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .card-head {
   display: flex;
@@ -659,7 +717,9 @@ button {
   color: var(--ink-subtle);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--surface-1);
+  /* surface-3, not surface-1 — ghost buttons mostly live ON surface-1
+     cards, where a surface-1 hover wash is invisible. */
+  background: var(--surface-3);
   color: var(--ink);
 }
 .btn-sm {
@@ -737,6 +797,17 @@ button {
 }
 .badge.ok .dot {
   background: var(--success);
+  /* A live-state dot breathes — "connected" should look alive, not printed. */
+  animation: dotBreath 2.6s ease-in-out infinite;
+}
+@keyframes dotBreath {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5.5px color-mix(in srgb, currentColor 8%, transparent);
+  }
 }
 .badge.warn {
   color: var(--warn);
