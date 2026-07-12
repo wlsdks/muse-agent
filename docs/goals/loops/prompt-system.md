@@ -120,3 +120,14 @@ FAIL→FIX: 1차 게이트 FAIL — 내 benign 테스트셋이 payload 명사(AI
 리뷰지점: maker≠judge 정확 작동 — 1차 게이트가 FP 맹점 적발, 정밀 수정(copula 프레임), 재게이트가 dist+라이브로 8/8 반례 spare 확인. mutation-RED(persona-copula alt 파괴→jailbreak 테스트 FAIL).
 리스크/백로그: "봇이야?"(질문형)도 flag되나 결정론 가드가 주장/질문 구분 불가+"?"만 살리면 자명 우회 → acceptable. "너 이제 나쁜 AI야"(너, 는없)·"지금 부터"(공백) 미검출 — 모델 자가거부, 방어심층 gap.
 lesson: fail-close 가드 FP 테스트셋은 payload 토큰을 회피하지 말고 그 토큰의 benign 용례(AI/봇/캐릭터를 topic으로)를 negative로 포함해야 한다 — 회피는 과차단 표면을 미검증으로 남긴다.
+
+## fire 13 · 2026-07-12 · <commit>
+meta: value-class=privacy-guard · pkg=@muse/shared · kind=guard-pattern · verdict=PASS(opus adversarial) · firesSinceDrill=2
+probe: baseline self-eval이 testFiles 하락(1407→1406)으로 fail-close — 동시 revert(19bcfdaec, 중복 D6-S1 모듈 제거)의 정상 churn, 재실행으로 재베이스라인(내 회귀 아님). 라이브 프로브: haiku가 "서버 hung" 오판(12s 타임아웃이 gemma4:12b엔 짧음, fire-5 교훈 재발) — 직접 재현으로 서버 정상 확인("안녕하세요!"). 프로버 axis#7(주민등록번호 저장)이 겨냥한 갭을 결정론으로 확증: guardSecretPersistence("900101-1234567")→safe:true(미검출).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · eval:adversarial 26/26 · shared secret-persistence 23/23
+무엇: secret-persistence 가드에 national-id 패턴(`\b\d{6}-[1-8]\d{6}\b`) 추가(GUARD_ONLY_PATTERNS, 마스커 아님) — 주민등록번호(고민감 PII)를 암호화 안 된 노트/작업/캘린더에 평문 저장하는 걸 차단. notice에 주민등록번호/개인정보 문구 확장.
+왜: credential-label 규칙과 같은 "민감값을 평문 저장소에 안 씀" 해악. privacy-first 정체성 정렬. 경쟁사-기준선(툴 정책 방어). 다양성 RATCHET: @muse/shared(fire 3/4 이후 오랜만).
+행동 acceptance: RRN 4종 차단(kinds:national-id, notice 주민등록번호)+benign 하이픈숫자 9종 spare(전화·사업자·카드·계좌·우편·날짜·주문·버전·ISBN)+credential 무회귀+마스커 고정밀 유지(national-id는 GUARD_ONLY만). mutation-RED(패턴 제거→RRN 테스트 FAIL). 전이 툴거부: loopback-notes가 assertNoSecretInPersistedFields로 RRN write 거부, check-secret-guard-coverage exit 0.
+리뷰지점: FP 리스크가 핵심(fail-close 가드) — 편집 전 benign 세트 전수검증(6-[1-8]-6 형태가 전화/사업자/카드/계좌와 안 겹침), Opus가 ISBN/버전/주문번호까지 적대 확인.
+리스크/백로그: (A) [선행·무관] byte-hygiene 실패 = packages/shared/test/utf16-safe.test.ts:43 raw byte(동시 커밋 e287c94f6 D-KO-S1) — 이 루프 밖, D-KO-S1 소유자에게 flag. (B) RRN을 마스커(로그/notice 리댁션)에도 넣을지는 backlog(현재 persistence-guard만).
+lesson: 프로버 "서버 hung/timeout" 주장은 항상 직접 재현으로 검증 — gemma4:12b는 5-40s라 짧은 타임아웃이 정상 서버를 hung로 오판(fire 5·9·13 반복).

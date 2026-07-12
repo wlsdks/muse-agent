@@ -39,6 +39,31 @@ describe("findSecrets / guardSecretPersistence — deterministic secret detectio
     if (!result.safe) expect(result.kinds).toContain("private-key");
   });
 
+  // 주민등록번호 (Korean resident-registration number) — highly sensitive PII.
+  // A plaintext RRN in an unencrypted note/task is the same harm the credential
+  // guard prevents; the guard treated it as ordinary text before this.
+  it("detects a Korean resident-registration number (national-id PII)", () => {
+    const result = guardSecretPersistence("내 주민등록번호는 900101-1234567 이야, 노트에 저장해줘");
+    expect(result.safe).toBe(false);
+    if (!result.safe) {
+      expect(result.kinds).toContain("national-id");
+      expect(result.notice).toContain("주민등록번호");
+    }
+    expect(guardSecretPersistence("751225-2000000 기억해줘").safe).toBe(false);
+  });
+
+  it("does NOT over-block other hyphenated numbers (phone / business-reg / card / account)", () => {
+    for (const benign of [
+      "전화번호 010-1234-5678 저장해줘",
+      "사업자등록번호 123-45-67890",
+      "카드 1234-5678-9012-3456 메모",
+      "계좌 110-234-567890 기억해",
+      "회의는 2020-01-01 이야"
+    ]) {
+      expect(guardSecretPersistence(benign).safe).toBe(true);
+    }
+  });
+
   it("does NOT over-block a how-to question about passwords (no value present)", () => {
     expect(guardSecretPersistence("비밀번호 바꾸는 법 알려줘").safe).toBe(true);
     expect(guardSecretPersistence("how do I reset my password").safe).toBe(true);

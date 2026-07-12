@@ -134,6 +134,17 @@ export const GUARD_ONLY_PATTERNS: ReadonlyArray<{ readonly name: string; readonl
   {
     name: "credential-label",
     regex: /(?:(?<![A-Za-z])(?:password|passphrase|api[ _-]?key|secret|token)(?![A-Za-z])|비밀번호|암호|패스워드|비번|토큰|시크릿)\s*(?:은|는|이|가|을|를)?\s*(?:is|are|[:=])?\s*["'`]?((?=[A-Za-z0-9!@#$%^&*()_+./-]*[\d!@#$%^&*()_+./])[A-Za-z0-9!@#$%^&*()_+./-]{3,})["'`]?/giu
+  },
+  {
+    // Korean resident-registration number (주민등록번호) — YYMMDD-Gxxxxxx with a
+    // valid gender/century digit (1-8). Highly sensitive PII: a plaintext RRN
+    // in an unencrypted note/task/calendar is the same "don't persist a secret
+    // to a cleartext store" harm the credential-label rule prevents. Guard-only
+    // (not the masker): it must block the WRITE, not rewrite existing text. The
+    // digit shape is distinctive — phone (010-1234-5678), business-reg
+    // (123-45-67890), card (4×4), and account numbers do not fit 6-[1-8]-6.
+    name: "national-id",
+    regex: /\b\d{6}-[1-8]\d{6}\b/g
   }
 ];
 
