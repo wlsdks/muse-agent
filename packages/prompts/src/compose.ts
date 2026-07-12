@@ -170,6 +170,26 @@ function enforceTokenCeiling(label: string, content: string, ceiling: number): v
 const IDENTITY_LAYER_PRIORITY = -1000;
 const SURFACE_ROLE_LAYER_PRIORITY = 500;
 
+// Identity primacy is a SECURITY invariant, not a convention: identity-core
+// must sort first and the surface role last among the stable layers so a
+// caller/registry layer can never displace or bury the identity anchor. But
+// the layers share one sort, and comparePromptLayers tiebreaks EQUAL priority
+// by id.localeCompare — so a caller layer at priority ≤ -1000 with an id
+// sorting before "identity-core", or ≥ 500 sorting after the role id, would
+// slip past the anchors. Clamp every explicit caller priority into the OPEN
+// interval (IDENTITY, ROLE) so no tiebreak against an anchor is ever reached.
+// (An unset priority defaults to 100 in comparePromptLayers — already inside.)
+function clampCallerPriorityBetweenAnchors(layer: PromptLayer): PromptLayer {
+  if (layer.priority === undefined) {
+    return layer;
+  }
+  const clamped = Math.min(
+    Math.max(layer.priority, IDENTITY_LAYER_PRIORITY + 1),
+    SURFACE_ROLE_LAYER_PRIORITY - 1
+  );
+  return clamped === layer.priority ? layer : { ...layer, priority: clamped };
+}
+
 export interface ComposeSurfaceContext extends PromptLayerContext {
   readonly layers?: readonly PromptLayer[];
 }
@@ -192,7 +212,7 @@ export function composeSurfacePrompt(
   enforceTokenCeiling("identity-core", MUSE_IDENTITY_CORE, IDENTITY_TOKEN_CEILING);
   enforceTokenCeiling(`surface-role:${surface}`, role, SURFACE_ROLE_TOKEN_CEILING);
 
-  const callerLayers = ctx.layers ?? [];
+  const callerLayers = (ctx.layers ?? []).map(clampCallerPriorityBetweenAnchors);
   for (const layer of callerLayers) {
     enforceTokenCeiling(layer.id, layer.content, CALLER_LAYER_TOKEN_CEILING);
   }

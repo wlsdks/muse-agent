@@ -3336,3 +3336,9 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 
 - ✓ credential_extraction 인젝션 오탐(비밀번호 관리 팁 차단) 수정 — prompt-system fire 6
 - ✓ 언어 미러링: 비-한국어 입력에 그 언어로 답하는 결정론 PromptLayer(buildLanguageMirrorLayer) — prompt-system fire 7
+
+- ✓ 정체성 primacy 코드 강제(caller priority clamp) — prompt-system fire 8 (감사 갭5)
+- ◦ [감사갭1·높음] 캐시 경계 죽은 기능: MUSE_CACHE_BOUNDARY 마커가 매 턴 모델에 전송되나 splitPromptCacheBoundary/strip 소비 어댑터 0 → anthropic/gemini cache_control 배치·Ollama strip 배선, 정적 preamble을 안정 프리픽스로 이동 (prompt-system 감사)
+- ◦ [감사갭2·전략] "Learns you" 학습 user-model 동적 레이어: 현재 폼-미러링(반말/영어)만, 누적 학습(말투·약어·선호)을 memory/recall서 per-turn 블록으로 조립하는 게 빠짐 (hermes Honcho 대응)
+- ◦ [감사갭3·중] 인젝션 provenance/taint 레이어: 툴출력 유래 토큰을 untrusted 마킹·액추에이터 인자 도달 금지(정적 regex 스캐너 보완, IFC 방향)
+- ◦ [감사갭4·싸다] check:prompt-seam을 GitHub CI(.github/workflows/ci.yml)에 배선 — 현재 lint/check만, 정체성 게이트가 로컬 self-eval에만 (Ollama 불필요)
