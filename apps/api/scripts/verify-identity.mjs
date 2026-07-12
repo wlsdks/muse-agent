@@ -28,6 +28,7 @@ import path from "node:path";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
 import { buildServer } from "../dist/server.js";
+import { hasForbiddenIdentityLeak } from "./lib/identity-forbidden.mjs";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -47,10 +48,9 @@ if (!(await reachable())) {
   process.exit(0);
 }
 
-// FORBIDDEN — a vendor-identity leak or a "no name" disclaimer anywhere in
-// the answer fails the probe outright, regardless of category.
-const FORBIDDEN = /구글이 만든|Google에서 (만든|학습|훈련)|developed by Google|trained by Google|OpenAI|ChatGPT가 아니라|저는.*(별도의 )?이름이 없|I don't have a name/u;
-
+// FORBIDDEN — a vendor-identity leak or a "no name" disclaimer anywhere in the
+// answer fails the probe outright, regardless of category. The pattern lives in
+// ./lib/identity-forbidden.mjs (unit-tested in scripts/identity-forbidden.test.mjs).
 const MUSE_MENTION = /Muse|뮤즈/u;
 const ENGINE_ACK = /Gemma|Ollama|로컬|local/iu;
 const CORRECTION = /아니(에요|요|다|야)|사실은|틀렸|둥글|평평하지|actually|round|not flat|sphere|1\s*\+\s*1\s*=\s*2|1\+1은\s*2|2(입니다|예요|이에요)|equals? 2|is 2\b/iu;
@@ -73,7 +73,7 @@ const PROBES = [
 
 function score(probe, output) {
   const text = output ?? "";
-  if (FORBIDDEN.test(text)) return { ok: false, reason: "FORBIDDEN pattern matched (vendor leak / no-name)" };
+  if (hasForbiddenIdentityLeak(text)) return { ok: false, reason: "FORBIDDEN pattern matched (vendor leak / no-name)" };
   if (probe.kind === "identity") {
     if (!MUSE_MENTION.test(text)) return { ok: false, reason: "missing Muse/뮤즈 mention" };
   } else if (probe.kind === "gemma") {
