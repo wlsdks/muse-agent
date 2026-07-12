@@ -22,6 +22,22 @@
  * than silencing the action. A broken lock must degrade to today's known
  * duplicate-action risk, never to an action that never runs.
  *
+ * Deliberate DIVERGENCE from `withFileLock`'s EPERM/EACCES classification:
+ * `withFileLock` treats EPERM/EACCES from the O_EXCL open as unconditionally
+ * contended (correct for its win32 unlink-vs-open race). This module ALSO
+ * stat()s the lock path first when it sees EPERM/EACCES, because a bare
+ * "contended" verdict here has a worse failure mode: an unwritable config
+ * directory with NO lock file present would misread as a live contender,
+ * loop through `probeLock`'s stale/vanished retry, and resolve "lock-held"
+ * without ever running `fn` — silently swallowing the digest flush forever,
+ * with nothing in the outcome to say why. `withFileLock`'s equivalent
+ * misclassification degrades differently: it retries up to LOCK_MAX_ATTEMPTS
+ * (~12s) and then THROWS a "locked by another write" error — a misleading
+ * message, but a loud one the caller can see and act on, for a one-shot
+ * admin migration rather than a silent recurring flush. That's a real gap
+ * (the thrown message would lie about the cause), but it fails LOUD where
+ * this module was failing SILENT, so it is out of scope for this fix.
+ *
  * Heartbeat: unlike `withFileLock`'s millisecond critical sections, a
  * `withProcessLock` holder can run for minutes (several queued model calls),
  * so the mtime is refreshed on an unref'd interval (`staleMs / 3`) for as
@@ -123,10 +139,33 @@ async function tryAcquireOnce(lockPath: string, nonce: string): Promise<AcquireA
     return "acquired";
   } catch (cause) {
     const code = (cause as NodeJS.ErrnoException).code;
-    // win32 can surface a concurrent unlink-vs-open race on the lock file as
-    // EPERM/EACCES/EBUSY rather than EEXIST — same meaning: contended.
-    const contended = code === "EEXIST" || code === "EPERM" || code === "EACCES" || code === "EBUSY";
-    return contended ? "contended" : { error: cause };
+    if (code === "EEXIST" || code === "EBUSY") {
+      return "contended";
+    }
+    if (code === "EPERM" || code === "EACCES") {
+      // win32 can surface a concurrent unlink-vs-open race on the lock file as
+      // EPERM/EACCES rather than EEXIST — genuine contention. But on POSIX the
+      // SAME codes also fire when the lock's DIRECTORY itself is unwritable
+      // and no lock file exists at all — that is not contention, and blindly
+      // calling it "contended" sends it through probeLock's stat, which sees
+      // ENOENT and reports "vanished"; the retry loop then hits the exact same
+      // EACCES/ENOENT pair every attempt until MAX_ACQUIRE_ATTEMPTS, so it
+      // resolves "lock-held" WITHOUT ever running `fn` — a permanently silenced
+      // digest flush with no error surfaced anywhere. Disambiguate with a stat:
+      // a lock file that actually exists is a genuine holder (unchanged win32
+      // behavior, falls through to the normal contended/probeLock path below);
+      // no lock file (ENOENT), or the stat call itself failing (we can't even
+      // confirm one way or the other — e.g. the directory listing is also
+      // denied) both fail OPEN via the existing non-contention path, because
+      // "never silence the action" outweighs "never run it unlocked" here.
+      try {
+        await fs.stat(lockPath);
+        return "contended";
+      } catch {
+        return { error: cause };
+      }
+    }
+    return { error: cause };
   } finally {
     await handle?.close().catch(() => undefined);
   }

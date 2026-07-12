@@ -104,6 +104,61 @@ describe("withDigestLock", () => {
   });
 });
 
+describe("withDigestLock EPERM/EACCES disambiguation", () => {
+  it("fails OPEN when EACCES fires and NO lock file exists (unwritable dir, not a live contender)", async () => {
+    const eacces = Object.assign(new Error("simulated EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "open").mockRejectedValueOnce(eacces);
+    let ran = false;
+    const outcome = await withDigestLock(sentFile, async () => { ran = true; return "ok"; });
+    expect(ran).toBe(true);
+    expect(outcome.kind).toBe("ran");
+    if (outcome.kind === "ran") {
+      expect(outcome.value).toBe("ok");
+      expect(outcome.lockError).toContain("simulated EACCES");
+    }
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("returns lock-held (fn NOT run) when EACCES fires and a LIVE lock file already exists (win32 unlink-vs-open race)", async () => {
+    await writeFile(lockPath, "external-holder", "utf8");
+    const eacces = Object.assign(new Error("simulated EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "open").mockRejectedValueOnce(eacces);
+    let ran = false;
+    const outcome = await withDigestLock(sentFile, async () => { ran = true; });
+    expect(outcome).toEqual({ kind: "lock-held" });
+    expect(ran).toBe(false);
+    expect(await lockExists()).toBe(true);
+  });
+
+  it("still breaks a STALE existing lock when the open fails with EACCES", async () => {
+    await writeFile(lockPath, "crashed-holder", "utf8");
+    const staleMtime = new Date(Date.now() - DIGEST_LOCK_STALE_MS - 60_000);
+    await utimes(lockPath, staleMtime, staleMtime);
+    const eacces = Object.assign(new Error("simulated EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "open").mockRejectedValueOnce(eacces);
+    let ran = false;
+    const outcome = await withDigestLock(sentFile, async () => { ran = true; return "ok"; });
+    expect(outcome).toEqual({ kind: "ran", value: "ok" });
+    expect(ran).toBe(true);
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("fails OPEN when EACCES fires and the stat probe itself errors (can't confirm a contender either way)", async () => {
+    const eacces = Object.assign(new Error("simulated EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "open").mockRejectedValueOnce(eacces);
+    const statError = Object.assign(new Error("simulated stat EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "stat").mockRejectedValueOnce(statError);
+    let ran = false;
+    const outcome = await withDigestLock(sentFile, async () => { ran = true; return "ok"; });
+    expect(ran).toBe(true);
+    expect(outcome.kind).toBe("ran");
+    if (outcome.kind === "ran") {
+      expect(outcome.value).toBe("ok");
+      expect(outcome.lockError).toContain("simulated EACCES");
+    }
+  });
+});
+
 describe("withProcessLock heartbeat", () => {
   it("keeps a slow holder's lock alive past staleMs so a mid-work probe gets lock-held, not a steal", async () => {
     const staleMs = 300;
