@@ -406,3 +406,12 @@ ratchet: 로드맵 잔여 [ ] = 15/65(D1-S6b 체크) · self-eval pass(envInvent
 - 리뷰지점: 독립 Opus가 5개 분기의 recovery ACTION(detector 아님)을 적대적으로 추적 — 모두 단일 비루프 호출 or 터미널 return or 전용 stateful tracker로 bounded. self-판정 아님(maker≠judge: Done 판정을 독립 evaluator가). OneShotRecoveryState는 미래 신규 회복분기용 프리미티브로 존속.
 - 리스크: 없음(코드변경 0). 로드맵 전제가 코드현실과 어긋난 케이스를 honest하게 close. 다음 = D-E1(📈 eval 집계 실-강제, VQ-12 시간예산 참조).
 - lesson: 로드맵 슬라이스의 전제(산재 flag)가 코드 현실(이미 tracker 캡슐화)과 다르면, 인위적 배선으로 슬라이스를 "채우지" 말고 독립 evaluator에게 실타깃 유무를 적대판정시켜 already-satisfied를 honest하게 close. 프리미티브(D1-S6a)는 미래용으로 남김. "관련없는 리팩터 금지"는 무동작변경 배선도 포함.
+
+## fire 48 · 2026-07-12 · skill v2.x · 49204a4f3
+meta: slice=D-E1a · wave=W5 · pkg=scripts(eval-harness) · kind=eval-tier0-contamination-filter · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 15/65(D-E1→a/b/c 분해, a 체크) · self-eval pass · fabrication 0 · scripts +4 유닛(eval-harness.test)
+- 무엇: ①기준선 green. ②D-E1a(진안 "안전한 부분부터 분해" 선택): eval-harness.mjs Tier-0 오염 필터. detectTier0Contamination(observed)+TIER0_CONTAMINATION_PATTERNS(4 마커 정밀 정규식) → runEvalSuite가 case observed에 인프라-실패 누출 감지 시 total서 제외(excluded 카운터, behavior 실패로 오인 방지). **핵심 위협모델: over-exclusion 금지** — infra 마커 없는 진짜 behavior 실패는 여전히 total 카운트(pass rate 인플레 차단, total+=1을 오염체크 後로 이동). 비오염 suite byte-identical.
+- 왜: VQ-21 확정(eval-harness에 인프라-오염 사전배제 없음). §591 "검증규율 A→A+ 되돌리는 유일한 실-작업". 인프라 실패(backend down·tool crash·timeout)가 behavior 실패로 집계되면 게이트 신뢰성 훼손. D-E1의 공유 pre-push 훅 변경은 blast radius 커서(활성 루프 다수) 진안과 상의→안전한 결정론 부분(Tier-0 필터)부터 분해 진행.
+- 리뷰지점: Opus PASS — over-exclusion threat SAFE(contamination은 detector 결과서만 set, score 결과서 파생 안 함; behavior-fail case C가 total 유지 검증)·정밀성(benign "failed launch"/"30s timeout"/"supports vision" 미flag)·byte-identical(excluded 추가만)·mutation-RED 양방향(detector 무력화·over-exclusion→"no over-exclusion" assertion RED)·훅/CI/package src 무접촉.
+- 리스크: 낮음. 결정론·additive·zero blast radius(공유 훅 무변경). D-E1b(pre-push 확장+훅 실차단 증명)는 공유 push 인프라라 신중 fire로 이연(진안 확인). 다음 = D-E1b 또는 D6-S1a. ※foreign reflection-guard.test.mjs 실패는 타루프 proactivity(내 것 아님).
+- lesson: eval 오염 필터의 핵심 위협은 over-exclusion(진짜 실패 은폐→pass rate 인플레) — contamination을 detector에서만 결정하고 score 결과와 분리, total 증가를 오염체크 後로 배치하면 behavior 실패는 절대 제외 안 됨. mutation으로 over-exclusion을 RED로 잡는 게 이 클래스의 핵심 가드. 공유 인프라(pre-push 훅) 변경은 blast radius 크면 결정론 부분부터 분해.

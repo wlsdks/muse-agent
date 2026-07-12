@@ -808,7 +808,9 @@ delta-scout 주기에.
 - [x] **D-KO-S1** ✅ 2026-07-12 ★ truncateUtf16Safe 추출 + 미안전 4곳 배선(VQ-6). `truncateErrorBody`(shared)의 lone-high-surrogate 드롭을 `truncateUtf16Safe(text,cap)`+`sliceUtf16Safe(text,start,end)`(양boundary: 선행 lone-low·후행 lone-high 드롭)로 추출, truncateErrorBody는 위임(byte-identical). 4파일 5사이트 배선: recall/history-search(206 head→truncateUtf16Safe, 213 middle-substring→sliceUtf16Safe)·tools/tool-definition-helpers(108)·autoconfigure/knowledge-corpus(365)·voice/tts-truncate(19 window+28 cut). 한글(BMP byte-identical)/이모지(astral lone-surrogate 드롭)/ZWJ 시퀀스 경계 유닛+wiring behavioral(tts 이모지 straddle→lone surrogate 無, 한글 byte-identical)·mutation-RED 양방향(드롭 제거→emoji+truncateErrorBody 위임증명 RED)·5 패키지 빌드 green·Opus PASS(양boundary 정확·byte-identical 위임·4사이트 배선·no over-change)
 
 #### W5 — 기억·마감
-- [ ] **D-E1** 📈 eval 집계 실-강제(pre-push subset 확장·self-eval 커밋훅·CI 결정론분·Tier-0 오염필터) + 훅 실차단 증명 (→ VQ-12 시간예산)
+- [x] **D-E1a** ✅ 2026-07-12 Tier-0 오염 필터(§8.5.2 d, VQ-21). eval-harness.mjs에 `detectTier0Contamination(observed)`+`TIER0_CONTAMINATION_PATTERNS`(backend-error·tool-failed·model-unsupported·timeout, 정밀 정규식) 추가 → `runEvalSuite`가 배터리 case의 observed에 인프라-실패 누출 감지 시 **total서 제외**(behavior 실패로 오인 방지, `excluded` 카운터). **핵심: over-exclusion 금지** — infra 마커 없는 진짜 behavior 실패는 여전히 total 카운트(pass rate 인플레 차단). 비오염 suite byte-identical(excluded 추가만). 4 유닛(detector positive/precision-negative·runEvalSuite 3-case 제외·byte-identical regression)·mutation-RED 양방향(detector 무력화·over-exclusion→RED)·Opus PASS(over-exclusion threat SAFE·정밀성·훅/CI 무접촉). 공유 pre-push 훅 무변경(D-E1b로 이연). ★"검증규율 A→A+ 되돌리는 실-작업"
+- [ ] **D-E1b** eval:agent 핵심 subset을 pre-push 훅에 확장(precheck-grounding 미러: per-battery 240s+skip-if-Ollama-unreachable, VQ-12) + **훅 실차단 증명**(나쁜 케이스 주입→push 거부). ⚠️공유 push 인프라(활성 루프 다수)라 신중 fire
+- [ ] **D-E1c** self-eval 회귀 fail-close 커밋 시 자동확인(tracked count 하락→차단) + GitHub CI에 결정론분 배선(eval-harness 유닛·스코어보드 파싱·케이스 스키마)
 - [ ] **D6-S1a** sleep-consolidation 결정론 승격 스코어(재-recall·distinct질의·반감기, LLM없음) + 유닛
 - [ ] **D6-S1b** 승격을 draft 제안(proactive 카드)+**자동쓰기-없음 계약**(mutation)
 - [ ] **D6-S1c** 데몬 배선(opt-in) + loop-v2 Sleep 정합

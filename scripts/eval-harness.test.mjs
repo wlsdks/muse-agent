@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   buildJudgeUserMessage,
   combineScorers,
+  detectTier0Contamination,
   llmJudge,
   runEvalSuite,
   runShadowTrial,
@@ -192,6 +193,48 @@ test("runEvalSuite — a throwing solver is caught and scored as a failed case, 
   const r = await runEvalSuite({ name: "t", scenarios, solve, score, ...silent });
   assert.equal(r.passed, 0);
   assert.equal(r.gate, false);
+});
+
+test("detectTier0Contamination — flags each infra-failure phrasing with the right marker", () => {
+  assert.deepEqual(detectTier0Contamination("upstream backend error while calling the model"), { contaminated: true, marker: "backend-error" });
+  assert.deepEqual(detectTier0Contamination("the calendar_add tool failed"), { contaminated: true, marker: "tool-failed" });
+  assert.deepEqual(detectTier0Contamination("unsupported model for this request"), { contaminated: true, marker: "model-unsupported" });
+  assert.deepEqual(detectTier0Contamination("the request timed out after 30s"), { contaminated: true, marker: "timeout" });
+});
+
+test("detectTier0Contamination — precision: a benign answer that merely mentions failure-ish words is NOT flagged", () => {
+  assert.equal(detectTier0Contamination("Your meeting about the failed launch is at 3pm").contaminated, false);
+  assert.equal(detectTier0Contamination("Set a 30 second timeout in the config").contaminated, false);
+  assert.equal(detectTier0Contamination("The model you chose supports vision").contaminated, false);
+});
+
+test("runEvalSuite — excludes Tier-0 contaminated cases from total/passed while a genuine behavior failure still counts (no over-exclusion)", async () => {
+  const scenarios = [{
+    cases: [
+      { id: "A", note: "infra-contaminated" },
+      { id: "B", note: "clean-pass" },
+      { id: "C", note: "clean-behavior-fail" },
+    ],
+    label: "s",
+  }];
+  const solve = async (c) => {
+    if (c.id === "A") return "upstream backend error while calling the model";
+    if (c.id === "B") return "the correct answer";
+    return "a wrong answer, no infra markers here";
+  };
+  const score = (_observed, c) => (c.id === "B" ? { detail: "matches", ok: true } : { detail: "wrong", ok: false });
+  const r = await runEvalSuite({ name: "t", scenarios, solve, score, ...silent });
+  assert.equal(r.excluded, 1); // only A
+  assert.equal(r.total, 2); // B + C
+  assert.equal(r.passed, 1); // only B
+});
+
+test("runEvalSuite — a non-contaminated suite reports byte-identical passed/total/rate/gate (excluded:0 is purely additive)", async () => {
+  const scenarios = [{ cases: [{ want: true }, { want: true }, { want: false }], label: "s" }];
+  const solve = async (c) => c.want;
+  const score = (observed) => ({ detail: "", ok: observed === true });
+  const r = await runEvalSuite({ name: "t", scenarios, solve, score, threshold: 0.6, ...silent });
+  assert.deepEqual(r, { excluded: 0, gate: true, passed: 2, rate: 2 / 3, total: 3 });
 });
 
 test("runEvalSuite — a skipped scenario is excluded from the tally; all-skipped → rate 0, gate false", async () => {

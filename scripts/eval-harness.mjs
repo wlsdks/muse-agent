@@ -74,6 +74,34 @@ export function buildJudgeUserMessage(rubric, output) {
     + `${fence}\n${body}\n${fence}`;
 }
 
+// Infra-failure phrasings that, when they leak into a battery transcript, mean
+// the run failed for INFRASTRUCTURE reasons (backend down, tool crash, model
+// unsupported, timeout) — NOT because the model behaved wrongly. Scored cases
+// carrying these are excluded (Tier-0) so infra noise never counts as a
+// behavior failure. Kept specific to avoid excluding a genuine wrong answer.
+export const TIER0_CONTAMINATION_PATTERNS = [
+  { marker: "backend-error", regex: /\bbackend error\b|\b5\d\d\s+(?:internal server error|bad gateway|service unavailable)\b|\bECONNREFUSED\b/i },
+  { marker: "tool-failed", regex: /\btool (?:call |execution )?failed\b|\btool crashed\b/i },
+  { marker: "model-unsupported", regex: /\bmodel (?:is )?(?:not supported|unsupported)\b|\bunsupported model\b|\bmodel not found\b/i },
+  { marker: "timeout", regex: /\btimed\s+out\b|\b(?:request|connection|response|read|socket|gateway)\s+timeout\b|\bdeadline exceeded\b/i },
+];
+
+/**
+ * Scan an `observed` battery transcript for Tier-0 infra-failure leakage
+ * (backend/tool/model/timeout phrasing). Deterministic — no model call. Kept
+ * narrow so a benign answer that merely mentions "timeout"/"failed" in normal
+ * content is never mistaken for infra contamination.
+ * @param {unknown} observed
+ * @returns {{contaminated:boolean, marker:string}}
+ */
+export function detectTier0Contamination(observed) {
+  const text = typeof observed === "string" ? observed : JSON.stringify(observed ?? "");
+  for (const { marker, regex } of TIER0_CONTAMINATION_PATTERNS) {
+    if (regex.test(text)) return { contaminated: true, marker };
+  }
+  return { contaminated: false, marker: "" };
+}
+
 export async function runEvalSuite(opts) {
   const { name, scenarios, solve, score } = opts;
   const repeat = Math.max(1, Math.trunc(opts.repeat ?? 1));
@@ -83,6 +111,7 @@ export async function runEvalSuite(opts) {
 
   let total = 0;
   let passed = 0;
+  let excluded = 0;
   for (const scenario of scenarios) {
     if (scenario.skip) {
       log(`\n[${scenario.label}] SKIP — ${scenario.skip}`);
@@ -91,13 +120,18 @@ export async function runEvalSuite(opts) {
     const toolNote = scenario.tools ? ` (tools: ${scenario.tools.map((t) => t.name).join(", ")})` : "";
     log(`\n[${scenario.label}] ${scenario.cases.length} cases${toolNote}`);
     for (const testCase of scenario.cases) {
-      total += 1;
       let runsPassed = 0;
       let lastDetail = "";
+      let contamination = null;
       for (let run = 0; run < repeat; run += 1) {
         let result;
         try {
           const observed = await solve(testCase, scenario);
+          const tier0 = detectTier0Contamination(observed);
+          if (tier0.contaminated) {
+            contamination = tier0;
+            break; // exits the run loop — the case is excluded, not scored
+          }
           result = await score(observed, testCase, scenario);
         } catch (error) {
           result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
@@ -106,19 +140,27 @@ export async function runEvalSuite(opts) {
         lastDetail = result.detail;
         if (!result.ok) break; // strict: a single failing run fails the case
       }
+      const label = `[${testCase.note ?? testCase.prompt ?? ""}]`;
+      if (contamination) {
+        excluded += 1;
+        log(`  EXCLUDED [Tier-0 ${contamination.marker}]  ${label}`);
+        continue; // not counted in total/passed — infra noise, not a behavior verdict
+      }
+      total += 1;
       const ok = runsPassed === repeat;
       if (ok) passed += 1;
       const stability = repeat > 1 ? ` [${runsPassed}/${repeat} runs]` : "";
-      log(`  ${ok ? "PASS" : "FAIL"}${stability}  [${testCase.note ?? testCase.prompt ?? ""}] ${lastDetail}`);
+      log(`  ${ok ? "PASS" : "FAIL"}${stability}  ${label} ${lastDetail}`);
     }
   }
 
   const rate = total === 0 ? 0 : passed / total;
-  log(`\n--- ${passed}/${total} (${(rate * 100).toFixed(0)}%) ; threshold ${(threshold * 100).toFixed(0)}%`);
+  const excludedNote = excluded > 0 ? ` ; excluded ${excluded} (Tier-0 infra)` : "";
+  log(`\n--- ${passed}/${total} (${(rate * 100).toFixed(0)}%) ; threshold ${(threshold * 100).toFixed(0)}%${excludedNote}`);
   const gate = total > 0 && rate >= threshold;
   if (gate) log(`${name} PASSED`);
   else err(`${name} FAILED — ${(rate * 100).toFixed(0)}% below ${(threshold * 100).toFixed(0)}%`);
-  return { gate, passed, rate, total };
+  return { excluded, gate, passed, rate, total };
 }
 
 /**
