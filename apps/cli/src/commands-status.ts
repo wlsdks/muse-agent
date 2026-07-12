@@ -23,6 +23,7 @@ import { defaultBeliefProvenanceFile, FileUserMemoryStore, projectRecentlyLearne
 import { readFollowups, readObjectives, readReminders } from "@muse/stores";
 import { readSessionLock } from "@muse/proactivity";
 import { summariseEpisodesRows, summariseFollowupsRows, summariseObjectivesRows, summarisePatternsFiredRows, summariseRemindersRows } from "@muse/domain-tools";
+import { isGoalKey, isVetoKey } from "@muse/recall";
 import type { Command } from "commander";
 
 import {
@@ -357,10 +358,10 @@ async function collectStatus(userId: string) {
       ...(recentlyLearnedLine ? { recentlyLearned: recentlyLearnedLine } : {}),
       ...(recentlyForgottenLine ? { recentlyForgotten: recentlyForgottenLine } : {}),
       vetoCount: persona?.preferences
-        ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
+        ? Object.keys(persona.preferences).filter((k) => isVetoKey(k)).length
         : 0,
       goalCount: persona?.preferences
-        ? Object.keys(persona.preferences).filter((k) => k.startsWith("goal:")).length
+        ? Object.keys(persona.preferences).filter((k) => isGoalKey(k)).length
         : 0,
       // preferences-first, facts-fallback — matches active-context.ts.
       ...(typeof persona?.preferences?.["current_focus"] === "string" && persona.preferences["current_focus"].trim().length > 0

@@ -204,3 +204,11 @@ meta: value-class=security-moat · pkg=@muse/agent-core · kind=IFC-sink-gate ·
 왜: execute 툴은 이미 항상 approval-gate(dangerous-command.ts) → provenance 경고가 기존 confirm만 enrich, 새 마찰 0·false-positive 표면 0(클린 윈). RCE-via-injection이 아웃바운드 다음으로 sharp한 표면.
 검증: contract-faithful(주입명령→run_command deny→spy 미호출; 사용자-타이핑 명령 통과), mutation-RED(sha256 복원 확인), eval:adversarial 41/41, agent-core 3098, messaging/cli/seam clean, 독립 Opus 게이트 PASS.
 남음: **S3b**(write-risk actuator — memory/contacts/notes/calendar; first-party-source trusted-haystack 선행 필요, 항상-게이트 아님) · S4(exfil) · gap2 user-model S1~4 · gap3 캐시 S1~2.
+
+## fire 22 (post-loop, 진안 direct) · 2026-07-12 · gap2 user-model S1 (single-source slot vocab)
+meta: value-class=wiring/refactor · pkg=@muse/recall · kind=dedup-foundation · verdict=PASS(opus indep) · context=A+ 갭② 학습 user-model 워크스트림 착수
+무엇: learned-user-model 슬롯 어휘(veto:/goal: 분리 + contested/provisional/stale caution-mark)를 6곳 인라인 중복→packages/recall/src/user-model-slots.ts 단일 소스(VETO_PREFIX·GOAL_PREFIX·isVetoKey·isGoalKey·classifyPreferenceSlots·3마크). 소비처 재배선: recall/select·cli/muse-persona·api/chat-persona-snapshot·cli/commands-status·human-formatters. domain-tools/loopback-status는 recall dep 없어 정직히 skip(신규 cross-pkg ref 금지).
+왜: FRESHNESS: 로드맵의 "buildMusePersona=CLI-전용, 공유로 승격" 전제가 부정확 — 채널은 이미 chat-persona-snapshot(축약)로 주입中. 진짜 문제는 슬롯 규약 6곳 중복(drift 지뢰). 단일 소스가 S2(top-K)/S3(style accumulator)가 한 곳만 강화하게 하는 기반.
+검증: behavior-preserving byte-identical(마크 hexdump em-dash e2 80 94, 분류기 순서·prefix-strip 동일, 스냅샷 value-type 가드 유지), mutation-RED, recall 642/cli 3606/api 1018 green, 빌드 clean, lint 0, 독립 Opus 게이트 PASS.
+남음: gap2 S2(top-K relevance+provenance tag+IrrelAcc) · S3(말투 누적기 Mem0 라우터) · S4(honesty-wall+크로스세션 eval) · domain-tools 슬롯 dep 후속 · gap3 캐시 S1~2. 병렬: fable5 시스템프롬프트 최종감사 진행中.
+lesson: 로드맵 슬라이스도 착수 전 FRESHNESS GUARD — "CLI-전용" 전제가 이미 부분해결(채널 스냅샷)이라 슬라이스 프레이밍을 "승격"→"단일소스 dedup"으로 교정.

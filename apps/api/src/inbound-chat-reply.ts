@@ -1,5 +1,6 @@
 import { citedSourcesIn, escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
+import { MUSE_IDENTITY_LEAD } from "@muse/prompts";
 
 import { formalityInstructionLine } from "./register-mirror.js";
 
@@ -40,7 +41,7 @@ export function sanitizeChatReplyText(raw: string): string | null {
 const DEFAULT_CHAT_REPLY_TIMEOUT_MS = 15_000;
 
 const CHAT_REPLY_SYSTEM_PROMPT =
-  "You are 뮤즈 (Muse), a friendly personal companion chatting casually with the " +
+  `${MUSE_IDENTITY_LEAD}, a friendly personal companion chatting casually with the ` +
   "user over a messaging channel. Reply in the SAME language the user wrote in, " +
   "in 1 to 3 short, natural sentences — a casual conversational reply, not a " +
   "formal one. Never invent facts, numbers, schedules, memories, or anything " +

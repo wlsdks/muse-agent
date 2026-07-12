@@ -2,6 +2,8 @@ import { chunkText, cosineSimilarity, defangMemoryInjection, escapeSystemPromptM
 
 import type { ActionLogEntry, Contact } from "@muse/stores";
 
+import { CONTESTED_FACT_MARK, PROVISIONAL_FACT_MARK, STALE_FACT_MARK, isGoalKey, isVetoKey } from "./user-model-slots.js";
+
 const EPISODE_IMPORTANCE_WEIGHT = 0.15;
 const EPISODE_RECENCY_WEIGHT = 0.15;
 const EPISODE_RECENCY_HALF_LIFE_DAYS = 7;
@@ -126,7 +128,7 @@ export function allUserMemoryFacts(
 ): readonly MemoryFact[] {
   return [
     ...Object.entries(memory.facts ?? {}),
-    ...Object.entries(memory.preferences ?? {}).filter(([key]) => !key.startsWith("veto:") && !key.startsWith("goal:"))
+    ...Object.entries(memory.preferences ?? {}).filter(([key]) => !isVetoKey(key) && !isGoalKey(key))
   ].map(([key, value]) => ({ key, value }));
 }
 
@@ -148,8 +150,6 @@ export function renderMemoryFact(fact: MemoryFact): string {
   const value = escapeSystemPromptMarkers(defangMemoryInjection(fact.value.trim()));
   return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
 }
-
-const STALE_FACT_MARK = " (last confirmed a while ago — may be out of date)";
 
 /** Build the <<memory N>> grounding block from the on-topic remembered facts. Pure. */
 export function buildMemoryContextBlock(
@@ -174,9 +174,9 @@ export function buildMemoryContextBlock(
   return facts
     .map((f, i) => {
       const mark = contested?.has(f.key)
-        ? " (value has changed before — confirm it's current)"
+        ? CONTESTED_FACT_MARK
         : provisional?.has(f.key)
-          ? " (unconfirmed — learned once, not yet re-confirmed)"
+          ? PROVISIONAL_FACT_MARK
           : stale?.has(f.key)
             ? STALE_FACT_MARK
             : "";

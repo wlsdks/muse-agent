@@ -11,11 +11,16 @@
  * mention: "Muse is a local agent", "@muse/prompts", "you are musing" do NOT
  * trip. "Muse" stays capitalized (the product name always is) so lowercase
  * package paths (`@muse/…`) are never flagged.
+ *
+ * The name is `(?:Muse\b|뮤즈)` on BOTH copula/pronoun sides so the MIXED
+ * scripts also trip — an EN copula bound to the KO name ("You are 뮤즈 (Muse)")
+ * or a KO pronoun bound to the latin name ("너는 Muse야"). That EN+KO form is
+ * exactly what once evaded this guard in a hand-rolled channel prompt.
  */
 
 export const IDENTITY_STRING_PATTERNS = [
-  /\b(?:I ?am|I['’`]?m|[Yy]ou ?are|[Yy]ou['’`]?re|(?:[Mm]y |[Yy]our )?name is)\s+Muse\b/u,
-  /(?:너는|넌|나는|난|저는|제\s*이름은|내\s*이름은)\s*뮤즈/u
+  /\b(?:I ?am|I['’`]?m|[Yy]ou ?are|[Yy]ou['’`]?re|(?:[Mm]y |[Yy]our )?name is)\s+(?:Muse\b|뮤즈)/u,
+  /(?:너는|넌|나는|난|저는|제\s*이름은|내\s*이름은)\s*(?:뮤즈|Muse\b)/u
 ];
 
 export const BUILD_SYSTEM_PROMPT_PATTERN = /\bbuildSystemPrompt\s*\(/u;
