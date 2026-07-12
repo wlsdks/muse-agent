@@ -27,6 +27,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm lint:comments
+      # Deterministic drift guards (no Ollama): the identity single-source seam
+      # and the secret-persistence guard coverage. self-eval runs check:prompt-seam
+      # locally each loop; check:secret-guard-coverage had only its own unit test —
+      # neither runs on a HUMAN PR, which bypasses self-eval. CI must enforce both
+      # so a hardcoded-identity string or an unguarded write tool can't merge.
+      - run: pnpm check:prompt-seam
+      - run: pnpm check:secret-guard-coverage
       - run: pnpm check
   check-windows:
     runs-on: windows-latest

@@ -3369,3 +3369,5 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 
 - ✓ apps/cli lint 회귀 수리(prefer-const·no-useless-assignment) — prompt-system fire 17
 - ◦ [선행·CRITICAL·타루프] colorize가 NO_COLOR/non-TTY/plain 모드서 ANSI emit — 7 테스트 실패(tty-color·muse-banner·program), CLI/code-quality 루프 소유
+
+- ✓ CI에 check:prompt-seam+check:secret-guard-coverage 배선(정체성/시크릿 해자 사람PR 강제) — prompt-system fire 19 (감사 갭4)

@@ -180,3 +180,13 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · agen
 라이브: 2025 노벨→"그건 내 지식 이후의 일이라 정확히 알 수 없어"(confident-wrong 사라짐), 정상 질문(리스트뒤집기·대한민국 수도 서울)은 hedge 없이 confident(over-hedge 없음). mutation-RED(힌트 제거→테스트 FAIL). Opus가 over-hedge 리스크 적대 검증 clean.
 리뷰지점: over-hedge가 핵심 리스크(아는 것도 hedge하면 회귀) — 힌트 문구를 "현재 날짜 이후 최신 사건"으로 스코프해 "대한민국 수도"엔 미발동. Opus 라이브 2종 confident 확인.
 리스크/백로그: (A) 개선은 부분적(모델 지식-컷오프 자체는 못 고침, honesty-lead만). (B) 정적 라인이 [Active Context] 동적 섹션에 있음(캐시 관점 minor, 날짜 caveat라 co-locate 합당). (C) colorize 회귀(fire17 flag)·감사 갭 ①②③④ 여전히 backlog.
+
+## fire 19 · 2026-07-12 · <commit>
+meta: value-class=moat-enforcement · pkg=ci(github-workflows)+scripts · kind=ci-wiring · verdict=PASS(opus, 완전결정론 게이트) · firesSinceDrill=8
+probe: 8-axis 라이브(암산 방법·우선순위 프레임워크·무례유저·동음이의·반사실·다중제약·복합감정·자기지식). 7/10 GOOD(암산·Eisenhower·무례유저 침착·반사실 추론·다중제약 3개 다 지킴·합격했는데 안 기쁨 복합감정 검증·화낼 줄 아냐 정직). 프로버 WEAK 3: (1)반사실 응답 truncation — 재현 시 1515자 완결(환경 노이즈, fire5/9/13 재발) (2)메뉴 2개만·(3)책 clarification generic = 주관적 UX. → 라이브 DRY(재현성 결정론 결함 없음).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · self-eval:test에 ci-drift-gates.test.mjs 2/2 추가
+무엇: EXHAUSTION — 노이즈 강제 대신 감사 갭 ④로 전환. check:prompt-seam(정체성 단일소스 seam)+check:secret-guard-coverage(시크릿 가드 커버리지)를 .github/workflows/ci.yml `check` 잡에 배선. 둘 다 no-Ollama 결정론. meta-test(scripts/ci-drift-gates.test.mjs)가 ci.yml 파싱해 두 호출 존재 검증.
+왜: 감사(B)가 "정체성 게이트가 로컬 self-eval에만, GitHub CI엔 없음 — 사람 PR이 우회 가능" 지적. 해자 "존재→강제". self-eval은 check:prompt-seam만 돌리고 secret-guard-coverage는 유닛테스트뿐 — CI가 유일 자동 집행 경로. 다양성: ci/scripts(전 fire들과 다른 pkg,kind).
+행동 acceptance: meta-test가 실제 ci.yml 내용을 regex 검증(선언-only 아님)+mutation-RED(스텝 제거→테스트 FAIL). 배선된 두 가드가 real 확인(prompt-seam이 "I am Muse" 패러프레이즈 포착·secret-guard가 무가드 write툴 포착, 각 유닛테스트 4/4·7/7). ci.yml YAML 유효(yaml@2.9.0 파싱, 스텝 올바른 잡/순서).
+리뷰지점: CI-config는 GitHub Actions를 로컬서 못 돌리므로 meta-test(실제 yml 파싱)+배선된 가드의 자체 테스트가 로컬 authoritative 증명. Opus가 두 가드의 real-ness를 위반 주입으로 확인.
+리스크/백로그: 감사 갭 ①(캐시경계)②(학습user-model)③(provenance)는 여전히 backlog·colorize 회귀(fire17)도. lesson: 프로버 truncation 주장은 재현 필수 — 느린 로컬모델 스트리밍 히컵을 defect로 오인(fire5/9/13/19).
