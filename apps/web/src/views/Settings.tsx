@@ -7,6 +7,7 @@ import { useI18n } from "../i18n/index.js";
 import { normalizeApiBaseUrl } from "../lib/apiUrl.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { StringKey } from "../i18n/strings.js";
 import type { ContactsResponse, DaemonFlagsResponse, ModelsResponse } from "../api/types.js";
 import { summarizeFlags } from "./settings-flags.js";
 
@@ -18,6 +19,42 @@ interface SetupSection {
 type SetupStatus = Record<string, SetupSection & Record<string, unknown>> & {
   readonly model?: { readonly muse_model?: string; readonly providerKeys?: readonly string[] } & SetupSection;
 };
+
+interface HealthResponse {
+  readonly status?: string;
+  readonly version?: string;
+}
+
+const SETUP_KEYS = ["model", "mcp", "notes", "tasks", "voice", "messaging", "proactive"] as const;
+const SETUP_LABEL_KEYS: Readonly<Record<string, StringKey>> = {
+  mcp: "settings.setup.mcp",
+  messaging: "settings.setup.messaging",
+  model: "settings.setup.model",
+  notes: "settings.setup.notes",
+  proactive: "settings.setup.proactive",
+  tasks: "settings.setup.tasks",
+  voice: "settings.setup.voice"
+};
+
+/** Section = card + one plain-language line saying WHY it exists. The
+ * page reads top-down as: what's running → daily knobs → advanced. */
+function Section({ title, explain, count, children }: {
+  title: string;
+  explain: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <Card title={title} {...(count !== undefined ? { count } : {})}>
+        <p className="subtle" style={{ fontSize: 12, marginBottom: 10, marginTop: 0 }}>
+          {explain}
+        </p>
+        {children}
+      </Card>
+    </div>
+  );
+}
 
 export function SettingsView({
   client,
@@ -34,6 +71,10 @@ export function SettingsView({
   const [url, setUrl] = useState(apiUrl);
   const [tok, setTok] = useState(token);
 
+  const health = useQuery({
+    queryFn: () => client.get<HealthResponse>("/api/health"),
+    queryKey: ["health", client.baseUrl]
+  });
   const setup = useQuery({
     queryFn: () => client.get<SetupStatus>("/api/setup/status"),
     queryKey: ["setup", client.baseUrl]
@@ -42,25 +83,84 @@ export function SettingsView({
     queryFn: () => client.get<ModelsResponse>("/api/models"),
     queryKey: ["models", client.baseUrl]
   });
-  const daemonFlags = useQuery({
-    queryFn: () => client.get<DaemonFlagsResponse>("/api/settings/daemon-flags"),
-    queryKey: ["daemon-flags", client.baseUrl]
-  });
 
   const sectionOk = (s?: SetupSection) => Boolean(s?.ok ?? s?.ready ?? s?.configured);
   const setupRows: readonly [string, SetupSection | undefined][] = setup.data
-    ? (["model", "mcp", "notes", "tasks", "voice", "messaging", "proactive"] as const).map((k) => [
-        k,
-        setup.data?.[k] as SetupSection | undefined
-      ])
+    ? SETUP_KEYS.map((k) => [k, setup.data?.[k] as SetupSection | undefined])
     : [];
 
   return (
     <div className="content-narrow">
       <p className="eyebrow">{t("group.system")}</p>
       <h1 className="page-title">{t("settings.title")}</h1>
+      <p className="muted" style={{ marginTop: 4 }}>
+        {t("settings.subtitle")}
+      </p>
+      <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 10 }}>
+        <Badge tone={health.data?.status === "ok" ? "ok" : "err"}>
+          {t(health.data?.status === "ok" ? "settings.serverHealthy" : "settings.serverUnreachable")}
+        </Badge>
+        {health.data?.version && (
+          <span className="subtle mono" style={{ fontSize: 11 }}>
+            {t("settings.server")} {health.data.version}
+          </span>
+        )}
+      </div>
 
-      <Card title={t("settings.connection")} className="lifted">
+      <Section title={t("settings.language")} explain={t("settings.sec.language")}>
+        <div className="row" style={{ borderBottom: "none" }}>
+          <div className="row-main">
+            <div className="row-title">{lang === "ko" ? "한국어" : "English"}</div>
+          </div>
+          <div className="lang-toggle">
+            <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>
+              English
+            </button>
+            <button className={lang === "ko" ? "active" : ""} onClick={() => setLang("ko")}>
+              한국어
+            </button>
+          </div>
+        </div>
+      </Section>
+
+      <Section title={t("settings.activeModel")} explain={t("settings.sec.model")}>
+        <AsyncBlock loading={models.isLoading} error={models.error}>
+          <div className="row">
+            <div className="row-main">
+              <div className="row-title mono">
+                {(setup.data?.model?.muse_model as string) ?? models.data?.active ?? "—"}
+              </div>
+              <div className="row-meta">{t("settings.modelsAvailable", { n: models.data?.models?.length ?? 0 })}</div>
+            </div>
+            <Badge tone="accent" dot={false}>
+              local
+            </Badge>
+          </div>
+        </AsyncBlock>
+      </Section>
+
+      <Section title={t("settings.setupStatus")} explain={t("settings.sec.setup")}>
+        <AsyncBlock loading={setup.isLoading} error={setup.error} empty={setupRows.length === 0}>
+          {setupRows.map(([name, section]) => (
+            <div className="row" key={name}>
+              <div className="row-main">
+                <div className="row-title">{t(SETUP_LABEL_KEYS[name] ?? "settings.setup.model")}</div>
+              </div>
+              <Badge tone={sectionOk(section) ? "ok" : "neutral"}>
+                {sectionOk(section) ? t("settings.ready") : t("settings.notSet")}
+              </Badge>
+            </div>
+          ))}
+        </AsyncBlock>
+      </Section>
+
+      <DaemonsSection client={client} />
+
+      <div style={{ marginTop: 16 }}>
+        <ContactsSection client={client} />
+      </div>
+
+      <Section title={t("settings.connectionAdvanced")} explain={t("settings.sec.connection")}>
         {(() => {
           const norm = normalizeApiBaseUrl(url);
           const showError = url.trim().length > 0 && !norm.valid;
@@ -93,99 +193,69 @@ export function SettingsView({
             </div>
           );
         })()}
-      </Card>
-
-      <div style={{ marginTop: 16 }}>
-        <Card title={t("settings.language")}>
-          <div className="row" style={{ borderBottom: "none" }}>
-            <div className="row-main">
-              <div className="row-title">{lang === "ko" ? "한국어" : "English"}</div>
-            </div>
-            <div className="lang-toggle">
-              <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>
-                English
-              </button>
-              <button className={lang === "ko" ? "active" : ""} onClick={() => setLang("ko")}>
-                한국어
-              </button>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <Card title={t("settings.activeModel")}>
-          <AsyncBlock loading={models.isLoading} error={models.error}>
-            <div className="row">
-              <div className="row-main">
-                <div className="row-title mono">
-                  {(setup.data?.model?.muse_model as string) ?? models.data?.active ?? "—"}
-                </div>
-                <div className="row-meta">{t("settings.modelsAvailable", { n: models.data?.models?.length ?? 0 })}</div>
-              </div>
-              <Badge tone="accent" dot={false}>
-                local
-              </Badge>
-            </div>
-          </AsyncBlock>
-        </Card>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <Card title={t("settings.setupStatus")}>
-          <AsyncBlock loading={setup.isLoading} error={setup.error} empty={setupRows.length === 0}>
-            {setupRows.map(([name, section]) => (
-              <div className="row" key={name}>
-                <div className="row-main">
-                  <div className="row-title" style={{ textTransform: "capitalize" }}>
-                    {name}
-                  </div>
-                </div>
-                <Badge tone={sectionOk(section) ? "ok" : "neutral"}>
-                  {sectionOk(section) ? t("settings.ready") : t("settings.notSet")}
-                </Badge>
-              </div>
-            ))}
-          </AsyncBlock>
-        </Card>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <ContactsSection client={client} />
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <Card title={t("settings.daemons")}>
-          {(() => {
-            const flags = daemonFlags.data?.flags ?? [];
-            const sum = summarizeFlags(flags);
-            return (
-              <>
-                <p className="subtle" style={{ marginBottom: 8, fontSize: 12 }}>
-                  {t("settings.daemonsSummary", { enabled: sum.enabled, total: sum.total })}
-                </p>
-                <AsyncBlock loading={daemonFlags.isLoading} error={daemonFlags.error} empty={flags.length === 0}>
-                  {flags.map((flag) => (
-                    <div className="row" key={flag.key}>
-                      <div className="row-main">
-                        <div className="row-title">{flag.label}</div>
-                      </div>
-                      <Badge tone={flag.enabled ? "ok" : "neutral"}>
-                        {flag.enabled ? t("settings.on") : t("settings.off")}
-                      </Badge>
-                    </div>
-                  ))}
-                </AsyncBlock>
-              </>
-            );
-          })()}
-        </Card>
-      </div>
+      </Section>
 
       <p className="subtle" style={{ marginTop: 24, fontSize: 12 }}>
         {t("settings.credit")}
       </p>
     </div>
+  );
+}
+
+/** Daemon toggles — same PATCH seam as the Integrations tab. Channel
+ * daemons apply live; the rest persist and note the pending restart. */
+function DaemonsSection({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const [restartNote, setRestartNote] = useState<string | null>(null);
+
+  const daemonFlags = useQuery({
+    queryFn: () => client.get<DaemonFlagsResponse>("/api/settings/daemon-flags"),
+    queryKey: ["daemon-flags", client.baseUrl]
+  });
+  const toggle = useMutation({
+    mutationFn: (input: { key: string; enabled: boolean }) =>
+      client.patch<{ appliedLive: boolean }>("/api/settings/daemon-flags", { enabled: input.enabled, key: input.key }),
+    onSuccess: (result, input) => {
+      setRestartNote(result.appliedLive ? null : input.key);
+      void queryClient.invalidateQueries({ queryKey: ["daemon-flags", client.baseUrl] });
+    }
+  });
+
+  const flags = daemonFlags.data?.flags ?? [];
+  const sum = summarizeFlags(flags);
+
+  return (
+    <Section title={t("settings.daemons")} explain={t("settings.sec.daemons")}>
+      <p className="subtle" style={{ fontSize: 12, marginBottom: 8 }}>
+        {t("settings.daemonsSummary", { enabled: sum.enabled, total: sum.total })}
+      </p>
+      <AsyncBlock loading={daemonFlags.isLoading} error={daemonFlags.error} empty={flags.length === 0}>
+        {flags.map((flag) => (
+          <div className="row" key={flag.key}>
+            <div className="row-main">
+              <div className="row-title">{flag.label}</div>
+              {restartNote === flag.key && (
+                <div className="row-meta">{t("settings.daemon.appliedRestart")}</div>
+              )}
+            </div>
+            <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+              <Badge tone={flag.enabled ? "ok" : "neutral"}>
+                {flag.enabled ? t("settings.on") : t("settings.off")}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={toggle.isPending}
+                onClick={() => toggle.mutate({ enabled: !flag.enabled, key: flag.key })}
+              >
+                {flag.enabled ? t("int.daemon.turnOff") : t("int.daemon.turnOn")}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </AsyncBlock>
+    </Section>
   );
 }
 
