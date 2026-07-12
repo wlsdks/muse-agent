@@ -265,7 +265,7 @@ Total: **552** variables.
 | `MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_MAX_OUTPUT_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_WORKING_BUDGET_TOKENS` | packages/autoconfigure |
-| `MUSE_LOCAL_ONLY` | apps/cli, packages/autoconfigure, packages/model, packages/policy |
+| `MUSE_LOCAL_ONLY` | apps/cli, packages/autoconfigure, packages/model, packages/policy, packages/recall |
 | `MUSE_LOGPROBS` | apps/cli |
 | `MUSE_LOOPBACK_FETCH_HOSTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_FS_ROOTS` | packages/autoconfigure |
