@@ -31,6 +31,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **Encrypt your calendar on disk.** Set `MUSE_CALENDAR_ENCRYPT=true` (with your
+  `MUSE_MEMORY_KEY`) and Muse stores your local calendar — event titles,
+  locations, notes — as an encrypted file at rest instead of plain text. It
+  reads back transparently, and a wrong key fails safely without ever
+  destroying the encrypted data.
+
 - **Secrets in command output stay out of the model.** When Muse runs a shell
   command or a skill, any API keys or tokens printed to its output are now
   masked before the result is handed to the model, so a stray `env` dump or

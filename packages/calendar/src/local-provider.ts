@@ -2,6 +2,12 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
+import {
+  calendarEncryptionEnabled,
+  decryptCalendarEnvelope,
+  encryptCalendarEnvelope,
+  isEncryptedCalendarEnvelope
+} from "./calendar-encryption.js";
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 import { CalendarProviderError, CalendarValidationError } from "./errors.js";
 import { expandRecurringEvent } from "./ics-parse.js";
@@ -17,6 +23,8 @@ import type {
 export interface LocalCalendarProviderOptions {
   readonly file: string;
   readonly idFactory?: () => string;
+  /** Defaults to `process.env`; tests inject `MUSE_MEMORY_KEY` / `MUSE_CALENDAR_ENCRYPT`. */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 interface PersistedEvent {
@@ -42,10 +50,12 @@ export class LocalCalendarProvider implements CalendarProvider {
   readonly id = "local";
   private readonly file: string;
   private readonly idFactory: () => string;
+  private readonly env: NodeJS.ProcessEnv;
 
   constructor(options: LocalCalendarProviderOptions) {
     this.file = options.file;
     this.idFactory = options.idFactory ?? (() => `cal_${randomUUID()}`);
+    this.env = options.env ?? process.env;
   }
 
   describe(): CalendarProviderInfo {
@@ -176,6 +186,25 @@ export class LocalCalendarProvider implements CalendarProvider {
       return [];
     }
 
+    if (isEncryptedCalendarEnvelope(parsed)) {
+      // A decrypt failure (wrong MUSE_MEMORY_KEY / tamper) is NOT corruption —
+      // it must propagate and MUST NOT fall into the quarantine path below,
+      // which would move the user's only copy of the ciphertext aside.
+      let decrypted: string;
+      try {
+        decrypted = decryptCalendarEnvelope(parsed, this.env);
+      } catch (error) {
+        throw new CalendarProviderError(this.id, "DECRYPT_FAILED", (error as Error).message, error);
+      }
+
+      try {
+        parsed = JSON.parse(decrypted) as unknown;
+      } catch {
+        await quarantineCorruptStore(this.file);
+        return [];
+      }
+    }
+
     if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { events?: unknown }).events)) {
       await quarantineCorruptStore(this.file);
       return [];
@@ -213,6 +242,11 @@ export class LocalCalendarProvider implements CalendarProvider {
     }));
 
     const payload = `${JSON.stringify({ events: persisted }, null, 2)}\n`;
+    // Format-preserving: once a store is encrypted it STAYS encrypted even if
+    // MUSE_CALENDAR_ENCRYPT is later unset — an env flip must never silently
+    // decrypt a file at rest on the next write.
+    const shouldEncrypt = calendarEncryptionEnabled(this.env) || (await isCalendarFileCurrentlyEncrypted(this.file));
+    const content = shouldEncrypt ? `${JSON.stringify(encryptCalendarEnvelope(payload, this.env))}\n` : payload;
     const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
 
     await fs.mkdir(dirname(this.file), { recursive: true });
@@ -220,9 +254,18 @@ export class LocalCalendarProvider implements CalendarProvider {
     // are private user data. The credential-store sibling in this
     // package already uses 0o600 + chmod; default umask would
     // otherwise leave the schedule world-readable on a shared box.
-    await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
+    await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
+  }
+}
+
+async function isCalendarFileCurrentlyEncrypted(file: string): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    return isEncryptedCalendarEnvelope(JSON.parse(raw));
+  } catch {
+    return false;
   }
 }
 

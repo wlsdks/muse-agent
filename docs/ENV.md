@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **549** variables.
+Total: **550** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -107,6 +107,7 @@ Total: **549** variables.
 | `MUSE_CALDAV_URL` | packages/autoconfigure |
 | `MUSE_CALDAV_USERNAME` | packages/autoconfigure |
 | `MUSE_CALENDAR_ENABLED` | packages/autoconfigure |
+| `MUSE_CALENDAR_ENCRYPT` | packages/calendar |
 | `MUSE_CALENDAR_FILE` | apps/cli, packages/autoconfigure, packages/mcp |
 | `MUSE_CALENDAR_ICS_FILE` | packages/autoconfigure |
 | `MUSE_CALENDAR_PROVIDERS` | apps/cli, packages/autoconfigure |
@@ -292,7 +293,7 @@ Total: **549** variables.
 | `MUSE_MCP_RECONNECT_MAX_ATTEMPTS` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_MAX_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
-| `MUSE_MEMORY_KEY` | apps/cli, packages/memory, packages/stores |
+| `MUSE_MEMORY_KEY` | apps/cli, packages/calendar, packages/memory, packages/stores |
 | `MUSE_MENTION` | apps/api |
 | `MUSE_MESSAGING_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MESSAGING_LIBNOTIFY_ENABLED` | packages/autoconfigure, packages/messaging |
