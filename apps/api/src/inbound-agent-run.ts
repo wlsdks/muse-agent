@@ -4,6 +4,7 @@ import {
   casualResponseFor,
   classifyCasualPrompt,
   classifyChannelIntent,
+  classifyMetaPrompt,
   containsHangul,
   extractFollowupPromises,
   guardAgainstUnbackedActionClaim,
@@ -28,6 +29,7 @@ import {
   type ThreadedAgentRun,
   type ThreadTurn
 } from "@muse/messaging";
+import { describeCapabilities } from "@muse/prompts";
 import { gateChatAnswerGrounding } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 import { queryContacts, readFollowups, upsertFollowup, type PersistedFollowup } from "@muse/stores";
@@ -366,6 +368,16 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     const casualKind = classifyCasualPrompt(latestUserText);
     if (casualKind) {
       return casualResponseFor(casualKind, containsHangul(latestUserText));
+    }
+    // Deterministic capability fast-path (parity with `muse ask` / `muse chat`):
+    // a "what can you do?" meta prompt gets the SAME honest, job-grouped describer
+    // answer instead of free-composing on the local model — the over-claim/leak
+    // risk the CLI meta string was written to prevent, previously absent on the
+    // channel path. Env-armed status is 1:1-owner detail (which integrations are
+    // connected), so a shared/group turn gets the env-neutral form — everything
+    // shown as "available", never revealing the owner's config.
+    if (classifyMetaPrompt(latestUserText)) {
+      return describeCapabilities(scope === "shared" ? {} : env, containsHangul(latestUserText));
     }
     // Conversational fast-path (S3, completing the assistant rhythm): a
     // message `classifyChannelIntent` reads as pure smalltalk — a kind of

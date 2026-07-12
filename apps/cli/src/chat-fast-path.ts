@@ -11,13 +11,14 @@
 
 import { classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery } from "@muse/agent-core";
 import { resolveNotesDir } from "@muse/autoconfigure";
+import { describeCapabilities } from "@muse/prompts";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
-import { DESKTOP_META_EN, DESKTOP_META_KO, formatContactDetails, formatNotesOverview, formatReminderList, formatTaskList } from "./chat-fast-path-format.js";
+import { formatContactDetails, formatNotesOverview, formatReminderList, formatTaskList } from "./chat-fast-path-format.js";
 
 export interface ChatFastPathResult {
   readonly response: string;
@@ -34,7 +35,15 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
   // capability answer BEFORE any model call — the local model otherwise
   // over-claims and (observed) injects an unrelated note into the reply.
   if (classifyMetaPrompt(message)) {
-    return { response: /[가-힣]/u.test(message) ? DESKTOP_META_KO : DESKTOP_META_EN, runId: "local-meta", toolsUsed: [] };
+    // Env-aware at call time (process.env) so the answer reflects which
+    // integrations are actually armed — "Email: connected" only when the token
+    // is set, "available — set X" otherwise. Never over-claims a capability the
+    // user hasn't configured.
+    return {
+      response: describeCapabilities(process.env, /[가-힣]/u.test(message)),
+      runId: "local-meta",
+      toolsUsed: []
+    };
   }
 
   // "내 노트 뭐 있어?" / "what notes do I have" wants the INVENTORY, but top-K

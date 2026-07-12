@@ -7,6 +7,7 @@
 
 import { casualResponseFor, classifyActionRequest, classifyCasualPrompt, classifyMetaPrompt, containsHangul, type CasualPromptKind } from "@muse/agent-core";
 import { evaluateArithmeticExpression } from "@muse/mcp";
+import { describeCapabilities, describeCapabilitiesEn, type CapabilityEnv } from "@muse/prompts";
 import { parseReminderDueAt } from "@muse/stores";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
@@ -27,14 +28,16 @@ export const CASUAL_RESPONSES: Record<CasualPromptKind, string> = {
   thanks: casualResponseFor("thanks")
 };
 
-// An ACCURATE, honest description of what Muse actually does — so a "what can
-// you do?" question doesn't make the local model free-compose an OVER-CLAIMED
-// answer ("I can manage your schedule…") that then gets a grounding warning.
-// Honesty about its OWN capabilities is the same edge as honesty about recall.
-export const META_RESPONSE =
-  "I answer questions from your own notes and quote the exact source — and I tell you \"I'm not sure\" instead of guessing. " +
-  "Everything runs locally on your machine; nothing leaves. " +
-  "Add notes with `muse read <file> --save-to-notes <id>`, then ask me anything you've saved — or run `muse demo` to see a cited answer and an honest refusal in about 30 seconds.";
+// An ACCURATE, honest, JOB-GROUPED description of what Muse actually does — so
+// a "what can you do?" question doesn't make the local model free-compose an
+// OVER-CLAIMED answer ("I can manage your schedule…") that then gets a
+// grounding warning, and doesn't collapse the whole deep product down to the
+// notes-citation slice. Sourced from the shared deterministic describer
+// (@muse/prompts) so every meta surface answers identically and stays honest
+// as the product grows. The env-neutral EN form kept here as `META_RESPONSE`
+// preserves the existing export/test surface; the live meta branch below is
+// language- AND env-aware.
+export const META_RESPONSE = describeCapabilitiesEn({});
 
 // Honest guide for an action request on the chat-only path — so Muse never says
 // "I'll remind you…" without actually doing it (a false promise).
@@ -76,7 +79,8 @@ export interface DeterministicAnswerOptions {
  */
 export function tryDeterministicAnswer(
   query: string,
-  options: DeterministicAnswerOptions
+  options: DeterministicAnswerOptions,
+  env: CapabilityEnv = process.env
 ): DeterministicAnswer | null {
   const casualKind = classifyCasualPrompt(query);
   if (casualKind) {
@@ -143,7 +147,8 @@ export function tryDeterministicAnswer(
   }
 
   if (classifyMetaPrompt(query)) {
-    return { answer: META_RESPONSE, jsonPayload: { answer: META_RESPONSE, meta: true, query } };
+    const answer = describeCapabilities(env, containsHangul(query));
+    return { answer, jsonPayload: { answer, meta: true, query } };
   }
 
   if (!options.withTools && classifyActionRequest(query)) {

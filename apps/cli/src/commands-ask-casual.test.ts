@@ -30,12 +30,24 @@ describe("ACTION_GUIDE — honest, never a false promise of action", () => {
   });
 });
 
-describe("META_RESPONSE — honest, non-over-claimed capability description", () => {
+describe("META_RESPONSE — honest, job-grouped capability description", () => {
   it("describes the REAL value prop (notes recall, honest 'I'm not sure', local) without over-claiming", () => {
     expect(META_RESPONSE).toMatch(/notes/iu);
     expect(META_RESPONSE).toMatch(/locally|local/iu);
     expect(META_RESPONSE).toMatch(/not sure/iu);
     // The over-claim the local model invents ("manage your schedule") must not be here.
     expect(META_RESPONSE).not.toMatch(/manage your schedule/iu);
+  });
+
+  it("is no longer the notes-only slice — it names the deeper jobs too (calendar, actions, chat channel)", () => {
+    expect(META_RESPONSE).toMatch(/calendar/iu);
+    expect(META_RESPONSE).toMatch(/Email/u);
+    expect(META_RESPONSE).toMatch(/Telegram/u);
+  });
+
+  it("never over-claims an un-armed integration — shows its setup command, not 'connected'", () => {
+    // The env-neutral META_RESPONSE is built with no integrations armed.
+    expect(META_RESPONSE).toContain("set MUSE_GMAIL_TOKEN");
+    expect(META_RESPONSE).not.toContain("Email: connected");
   });
 });

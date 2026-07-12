@@ -1563,3 +1563,35 @@ describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", 
     expect(reply).not.toContain("📌");
   });
 });
+
+// Capability describer fast-path (parity with `muse ask` / `muse chat`): a
+// "뭐 할 수 있어?" meta prompt must route to the deterministic, honest,
+// job-grouped describer — NOT free-compose on the model (the over-claim/leak
+// risk the CLI meta string was written to prevent, previously absent here).
+describe("createInboundAgentRun capability describer fast-path (channel parity)", () => {
+  it("routes a KO meta prompt to the describer, never the full model run", async () => {
+    const run = buildRun({ output: "FULL_RUN_SENTINEL — the model composed this" });
+    const reply = await run({
+      messages: [{ content: "뭐 할 수 있어?", role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).not.toContain("FULL_RUN_SENTINEL");
+    expect(reply).toContain("개인 JARVIS");
+    expect(reply).toContain("텔레그램");
+  });
+
+  it("answers an EN meta prompt in English via the describer", async () => {
+    const run = buildRun({ output: "FULL_RUN_SENTINEL" });
+    const reply = await run({
+      messages: [{ content: "what can you do?", role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).not.toContain("FULL_RUN_SENTINEL");
+    expect(reply).toContain("personal JARVIS");
+    expect(reply).toContain("Telegram");
+  });
+});

@@ -5,17 +5,20 @@
  * public ones are re-exported from `chat-repl.ts` to preserve its surface.
  */
 
+import { describeCapabilitiesEn, describeCapabilitiesKo } from "@muse/prompts";
+
 // A question ABOUT Muse ("뭐 할 수 있어?") gets a DETERMINISTIC, honest answer.
 // Free-composing on the local model over-claims AND was observed dumping an
 // unrelated note (the user's wifi password) into a "what can you do?" reply.
-// Every clause here is a capability actually verified to work — honesty about
-// what Muse can do is the same edge as honesty about recall.
-export const DESKTOP_META_KO =
-  "저는 당신의 노트와 메모에서 답을 찾아 출처까지 함께 알려드려요. 모르면 추측하지 않고 \"잘 모르겠어요\"라고 솔직히 말씀드려요. " +
-  "할 일·리마인더·일정도 추가하고 정리해드릴 수 있어요. 모든 건 이 기기 안에서만 처리되고 밖으로 나가지 않습니다.";
-export const DESKTOP_META_EN =
-  "I answer from your own notes and memos and quote the exact source — and if I'm not sure, I say so instead of guessing. " +
-  "I can also add and organize your tasks, reminders, and calendar events. Everything runs on this device and nothing leaves it.";
+// Sourced from the shared, env-aware capability describer (@muse/prompts) so the
+// desktop/chat surface answers identically to `muse ask` and Telegram, and
+// legibly covers the whole product (memory, calendar, briefings, actions, chat
+// channel, orchestration) rather than the notes-only slice — while still never
+// over-claiming an integration that isn't set up. `chat-fast-path.ts` calls the
+// describer directly with the live env; these env-neutral constants preserve the
+// existing re-export surface.
+export const DESKTOP_META_KO = describeCapabilitiesKo({});
+export const DESKTOP_META_EN = describeCapabilitiesEn({});
 
 /**
  * Render a notes-corpus inventory for "내 노트 뭐 있어?" / "what notes do I have".

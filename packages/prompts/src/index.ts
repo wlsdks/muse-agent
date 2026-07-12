@@ -7,6 +7,12 @@ export * from "./exemplar-retriever.js";
 
 export { composeIdentityPrompt, MUSE_IDENTITY_CORE, MUSE_IDENTITY_LEAD } from "./identity-core.js";
 export {
+  describeCapabilities,
+  describeCapabilitiesEn,
+  describeCapabilitiesKo,
+  type CapabilityEnv
+} from "./capability-describer.js";
+export {
   composeSurfacePrompt,
   composeSurfacePromptSegments,
   COMPANION_PERSONA_TEXT,
