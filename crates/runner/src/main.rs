@@ -375,11 +375,17 @@ fn append_capped(kept: &mut Vec<u8>, chunk: &[u8], max_output_bytes: usize) -> b
 // NODE_OPTIONS (--require), shell startup (BASH_ENV/ENV), interpreter opt/path
 // injection (perl/python/ruby), and git's command-exec hooks.
 const UNSAFE_ENV_EXACT: &[&str] = &[
-    "NODE_OPTIONS",
+    "NODE_OPTIONS", "NODE_PATH",
     "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
     "PERL5OPT", "PERL5DB", "PERLLIB", "PERL5LIB",
-    "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT",
-    "RUBYOPT", "RUBYLIB",
+    "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT", "PYTHONHOME",
+    "RUBYOPT", "RUBYLIB", "GEM_HOME", "GEM_PATH",
+    // JVM honors -javaagent via *_JAVA_OPTIONS on startup; CLASSPATH/LESSOPEN same class.
+    "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "LESSOPEN",
+    // PATH is the ONLY resolution path for a bare command name (a `/` is rejected),
+    // so a model-set PATH redirects a guard-passing name to an attacker binary.
+    // Strip it; the runner-set PATH (above) resolves normal commands.
+    "PATH",
     "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
     // GIT_CONFIG* point git at an attacker config (core.sshCommand / core.pager)
     // — a second path to the command-exec hooks above.
@@ -556,6 +562,22 @@ mod tests {
 
         assert!(!response.ok);
         assert_eq!(response.error.as_deref(), Some("command must not be blank"));
+    }
+
+    #[test]
+    fn strips_path_and_code_injection_env_vars() {
+        // PATH would redirect a bare command name (a `/` is rejected) to an
+        // attacker binary, bypassing the command guard; *_JAVA_OPTIONS / PYTHONHOME
+        // / loader vars are the same interpreter-startup code-exec class.
+        for key in [
+            "PATH", "NODE_OPTIONS", "NODE_PATH", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
+            "JDK_JAVA_OPTIONS", "PYTHONHOME", "CLASSPATH", "LESSOPEN", "GEM_HOME",
+            "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_SSH_COMMAND",
+        ] {
+            assert!(!is_safe_env_key(key), "{key} must be rejected");
+        }
+        assert!(is_safe_env_key("MUSE_OK"));
+        assert!(is_safe_env_key("TERM"));
     }
 
     #[test]

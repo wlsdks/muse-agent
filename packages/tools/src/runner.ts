@@ -312,11 +312,19 @@ function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
  * hooks (`GIT_SSH_COMMAND`/`GIT_EXTERNAL_DIFF`/…).
  */
 const UNSAFE_ENV_EXACT: ReadonlySet<string> = new Set([
-  "NODE_OPTIONS",
+  "NODE_OPTIONS", "NODE_PATH",
   "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
   "PERL5OPT", "PERL5DB", "PERLLIB", "PERL5LIB",
-  "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT",
-  "RUBYOPT", "RUBYLIB",
+  "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT", "PYTHONHOME",
+  "RUBYOPT", "RUBYLIB", "GEM_HOME", "GEM_PATH",
+  // JVM reads *_JAVA_OPTIONS on startup and honors `-javaagent:` — code exec on
+  // any java/javac/gradle/mvn. CLASSPATH / LESSOPEN are the same module/hook class.
+  "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "LESSOPEN",
+  // PATH is the ONLY resolution path for a bare command name (the runner rejects
+  // a `/` in the command), so a model-set PATH redirects a guard-passing name
+  // (`git`) to an attacker binary — fully bypassing the command guard. Strip it;
+  // the runner's own PATH resolves normal commands.
+  "PATH",
   "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
   // GIT_CONFIG* point git at an attacker-controlled config that can set
   // core.sshCommand / core.pager / core.fsmonitor — a second path to the same

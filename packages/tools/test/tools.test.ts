@@ -1096,6 +1096,23 @@ describe("Rust runner tool", () => {
     expect(ok.maxOutputBytes).toBe(1024);
   });
 
+  it("strips code-injection env vars — a model PATH can't redirect a bare command to an attacker binary", () => {
+    const req = parseRunnerCommandRequest({
+      command: "git",
+      env: {
+        PATH: "/tmp/evil",
+        NODE_OPTIONS: "--require /tmp/x",
+        JAVA_TOOL_OPTIONS: "-javaagent:/tmp/e.jar",
+        PYTHONHOME: "/tmp",
+        LD_PRELOAD: "/tmp/x.so",
+        GIT_SSH_COMMAND: "/tmp/evil.sh",
+        MUSE_OK: "1"
+      }
+    } as never);
+    // only the benign var survives; every code-exec vector (incl. PATH) is dropped
+    expect(req.env).toEqual({ MUSE_OK: "1" });
+  });
+
   describe("command-line split repair (local model packs the whole line into `command`)", () => {
     it("splits a whitespace command into executable + args when no args were given", () => {
       const req = parseRunnerCommandRequest({ command: "node /tmp/report.mjs" });
