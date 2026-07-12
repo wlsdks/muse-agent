@@ -103,3 +103,43 @@ describe("createComposeAck", () => {
     expect(called).toBe(false);
   });
 });
+
+// FIX B (register mirror): the ack's own default tone is casual ("like a
+// quick text"), so without a register signal it can drift to 반말 even on a
+// 존댓말 user turn — mismatching the full agent run's reply in the same
+// conversation (that reply DOES mirror register). The system prompt must
+// carry the SAME detected register `register-mirror.ts` computes.
+describe("createComposeAck register mirror (FIX B)", () => {
+  function captureSystemPrompt(): { readonly composeAck: ReturnType<typeof createComposeAck>; readonly prompts: string[] } {
+    const prompts: string[] = [];
+    const composeAck = createComposeAck({
+      model: "gemma4:12b",
+      modelProvider: {
+        generate: async (request) => {
+          prompts.push((request.messages[0]?.content as string) ?? "");
+          return { id: "1", model: "gemma4:12b", output: "on it" };
+        }
+      }
+    });
+    return { composeAck, prompts };
+  }
+
+  it("존댓말 user turn → the system prompt names 존댓말", async () => {
+    const { composeAck, prompts } = captureSystemPrompt();
+    await composeAck({ latestUserText: "오늘 일정 알려주세요" });
+    expect(prompts[0]).toContain("존댓말");
+  });
+
+  it("반말 user turn → the system prompt names 반말", async () => {
+    const { composeAck, prompts } = captureSystemPrompt();
+    await composeAck({ latestUserText: "오늘 일정 알려줘" });
+    expect(prompts[0]).toContain("반말");
+  });
+
+  it("English turn → no register line added (nothing to mirror)", async () => {
+    const { composeAck, prompts } = captureSystemPrompt();
+    await composeAck({ latestUserText: "what's on my calendar tomorrow?" });
+    expect(prompts[0]).not.toContain("존댓말");
+    expect(prompts[0]).not.toContain("반말");
+  });
+});

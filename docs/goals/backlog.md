@@ -1,13 +1,14 @@
 # Muse dev backlog — the living ledger
 
 - ★ USER-SIM FUEL (2026-07-12, Haiku 페르소나 3종 × 실파이프라인 시뮬레이션 → Opus 아티팩트-우선 교차감사; 도구 scripts/channel-sim.mjs; 상세 감사는 세션 기록):
-  - ◦ [HIGH] false-done 리마인더 — "다음달 5일 딸 생일"/"금요일 GPU" 요청에 모델은 "기억해둘게" 확답하나 followups.json 미생성(요일·절대날짜 파싱 룰 부재, followup-detector.ts는 내일/N시간뒤만); 파싱 실패 시 확답 금지의 결정론 신호 + 요일·절대일자 룰 추가. 정체성(약속=근거) 직결 최우선.
-  - ◦ [HIGH] 자모 인사 오라우팅 — ㅎㅇ/ㅂㅂ가 casual 미스→위임 ack+10초 런("확인했어 다 되면 알려줄게"); HANGUL_RE가 호환자모 제외 + 패턴에 자모 축약형 부재(casual-prompt*.ts).
-  - ◦ [HIGH] 호칭 접미사가 감사/인사 매치 파괴 — "고마워 뮤즈"→위임 ack(바닐라 "고마워"는 3ms canned); greeting/thanks/farewell 3패턴에 trailing 호칭군(뮤즈|muse)(야|님)? 부착.
-  - ◦ [HIGH] 장문 존댓말서 명시적 기억요청 팩트 유실 — 순자의 딸 생일이 팩트 추출조차 안 됨(단문은 됨); "기억해줘/잊지마" 커밋 발화는 결정론 팩트-후보 백스톱.
+  - ✓ [HIGH] false-done 리마인더 — fix-wave (요일·절대날짜 룰 + 미예약 시 결정론 정직 caveat; 라이브 재프로브로 8/5 followup 실생성 확인)
+  - ✓ [HIGH] 자모 인사 오라우팅 — fix-wave (HANGUL_RE 자모 블록 + ㅎㅇ/ㅂㅂ/ㄱㅅ 패턴; ㅎㅇ→casual 3ms 재확인)
+  - ✓ [HIGH] 호칭 접미사 — fix-wave (VOCATIVE_SUFFIX 3패턴 공통; 고마워 뮤즈→4ms canned)
+  - ✓ [HIGH] 장문 기억요청 팩트 유실 — fix-wave (결정론 팩트 백스톱, 순자 케이스 rescue pin)
   - ◦ [MED] 채널 주간집계가 schedule/tasks 스토어 미참조(userModel.schedule 항상 빈 배열 — 채널 풀런이 일정성 발화를 영속화 안 함).
-  - ◦ [MED] ack(반말)와 풀런(존댓말) 레지스터 불일치 — 한 턴 안에서 충돌; 스레드 최근 발화 레지스터 감지해 3프롬프트 공통 고정.
-  - ◦ [LOW] 휘발성 사실("오늘 저녁 7시")의 durable 승격 + 미요청 self-followup 노이즈; 시효성 표현 제외 + commissive 게이트 KO 확장.
+  - ✓ [MED] 레지스터 불일치 — fix-wave (기존 detectKoreanRegister 재사용, ack+chat 프롬프트에 미러 라인)
+  - ✓ [LOW] 휘발성 사실·미요청 self-followup — fix-wave (ephemeral 가드 + korean-* commissive 게이트 봉쇄)
+  - ◦ ephemeral 가드 고유명사 오탐 — "오늘의집"/"내일배움카드"류 고유명사 value가 시효성으로 오분류돼 durable 승격 거부됨(LOW-MODERATE); 토큰 뒤 시간표현 동반 요구로 정밀화 (fix-wave 판정자 후속).
   - ◦ 시뮬 인프라 개선 — per-turn route+reply 풀 로그 캡처(스레드 12msg 캡이 감사 증거를 자름); 페르소나-로테이션 시뮬 루프는 진안 지시 시 등록.
 
 - ★ RESPONSE-EXPERIENCE (2026-07-12, 진안 직접 요청 — 20m 자율루프 `response-experience`의 전용 큐; 어시스턴트 응답 경험을 계속 더 좋게. 기반: 채널 대화 리듬(잡담 fast-path·복창 ack·인용 완료보고)·개입 예산+다이제스트·원터치 veto, 전부 main 머지됨):

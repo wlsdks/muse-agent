@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import type { UserMemory, UserMemoryStore } from "@muse/memory";
 import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
-import { appendLastProactiveDelivery, avoidedSourceKeys, readTrustLedger } from "@muse/stores";
+import { appendLastProactiveDelivery, avoidedSourceKeys, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { createInboundAgentRun } from "../src/inbound-agent-run.js";
@@ -16,7 +16,10 @@ import { createInboundAgentRun } from "../src/inbound-agent-run.js";
 // never produced is dropped BY CODE before the reply leaves for the channel,
 // and a properly grounded answer passes through byte-identical.
 
-const NOW = () => new Date("2026-07-11T09:00:00.000Z");
+// Relative, not pinned: handleInboundVetoReply runs on the real wall clock
+// inside createInboundAgentRun, so a pinned date turns these into time-bomb
+// tests that go red the day after they were written.
+const NOW = () => new Date(Date.now() - 60 * 60 * 1000);
 
 function buildRun(result: {
   readonly output: string;
@@ -1185,5 +1188,130 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
 
     expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
     expect(calls).toEqual([]);
+  });
+});
+
+// False-done honest-caveat backstop (FIX A): when the user asked Muse to
+// remember something date-shaped THIS turn and no followup actually got
+// captured, the model's confident "기억해둘게" promise gets a code-appended
+// honest caveat — never left to the model to remember to say.
+describe("createInboundAgentRun false-done remember-intent backstop", () => {
+  const REMEMBER_KO = "8월 5일 아침에 알려달라고 기억해줘";
+  const REMEMBER_EN = "remind me tomorrow morning about the dentist";
+
+  function buildRemember(dir: string, output: string) {
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => ({ response: { output }, toolsUsed: [] })
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_FOLLOWUPS_FILE: followupsFile,
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    return { followupsFile, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry }) };
+  }
+
+  it("remember-intent + nothing scheduled this turn → the KO caveat is appended", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    const { run } = buildRemember(dir, "그때 알려줄게!");
+    const reply = await run({ messages: [{ content: REMEMBER_KO, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("그때 알려줄게!");
+    expect(reply).toContain("예약이 안 됐어");
+  });
+
+  it("remember-intent (EN) + nothing scheduled this turn → the EN caveat is appended", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    // Phrased as "I'll remember" (not "I'll remind you…") so it does NOT also
+    // trip the separate, pre-existing honest-action guard's ACTION_PROMISE_RE
+    // — this test isolates the NEW backstop, not the old one.
+    const { run } = buildRemember(dir, "Got it, I'll remember that for you!");
+    const reply = await run({ messages: [{ content: REMEMBER_EN, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("Got it, I'll remember that for you!");
+    expect(reply).toContain("wasn't actually scheduled");
+  });
+
+  it("remember-intent + a followup WAS captured this turn (store count strictly grew) → no caveat", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    // Simulates the real agent-core followup-capture-hook: by the time
+    // agentRuntime.run() resolves, the promise it captured is already
+    // persisted (its afterComplete hook is awaited before run() returns).
+    const agentRuntime = {
+      run: async () => {
+        const captured: PersistedFollowup = {
+          createdAt: NOW().toISOString(),
+          id: "fu_1",
+          scheduledFor: new Date(NOW().getTime() + 3_600_000).toISOString(),
+          status: "scheduled",
+          summary: "remind about the dentist",
+          userId: "log:owner-1"
+        };
+        await writeFollowups(followupsFile, [captured]);
+        return { response: { output: "그때 알려줄게!" }, toolsUsed: [] };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_FOLLOWUPS_FILE: followupsFile,
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    const run = createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+    const reply = await run({ messages: [{ content: REMEMBER_KO, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe("그때 알려줄게!");
+    expect(reply).not.toContain("예약이 안 됐어");
+  });
+
+  it("PRE-EXISTING scheduled followups don't mask a miss — the count must STRICTLY GROW this turn, not just be non-zero", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    const followupsFile = join(dir, "followups.json");
+    const existing: PersistedFollowup = {
+      createdAt: NOW().toISOString(),
+      id: "fu_old",
+      scheduledFor: new Date(NOW().getTime() + 3_600_000).toISOString(),
+      status: "scheduled",
+      summary: "an earlier unrelated promise",
+      userId: "log:owner-1"
+    };
+    await writeFollowups(followupsFile, [existing]);
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = { run: async () => ({ response: { output: "그때 알려줄게!" }, toolsUsed: [] }) };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_FOLLOWUPS_FILE: followupsFile,
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    const run = createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+    const reply = await run({ messages: [{ content: REMEMBER_KO, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("예약이 안 됐어");
+  });
+
+  it("plain chat (no remember-intent) → no caveat, no followups-file read side effect on the reply", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    const { run } = buildRemember(dir, "answer [from a.md].");
+    const reply = await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).not.toContain("예약이 안 됐어");
+    expect(reply).not.toContain("wasn't actually scheduled");
+  });
+
+  it("a date mention with NO remember-verb → no caveat (not a remember-intent turn)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-remember-"));
+    const { run } = buildRemember(dir, "내일 미팅 오후 3시야.");
+    const reply = await run({ messages: [{ content: "내일 미팅 몇시야?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe("내일 미팅 오후 3시야.");
   });
 });

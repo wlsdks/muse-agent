@@ -3,6 +3,7 @@ import {
   parseBoolean,
   resolveActionLogFile,
   resolveContactsFile,
+  resolveFollowupsFile,
   resolveLastProactiveDeliveryFile,
   resolvePendingApprovalsFile,
   type MuseEnvironment
@@ -19,7 +20,7 @@ import {
 } from "@muse/messaging";
 import { gateChatAnswerGrounding } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
-import { queryContacts } from "@muse/stores";
+import { queryContacts, readFollowups } from "@muse/stores";
 
 import { adoptChannelOwner, parseAllowedChats, readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
@@ -27,6 +28,7 @@ import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { handleInboundVetoReply } from "./inbound-veto-handler.js";
+import { detectUnscheduledRememberIntent } from "./remember-intent.js";
 import { resolveProactiveTrustFile } from "./tick-daemons.js";
 
 /**
@@ -91,6 +93,42 @@ export interface InboundAgentRunOptions {
  */
 const UNPAIRED_CHAT_NOTICE =
   "This bot is a private personal assistant and only talks to its paired owner.";
+
+// False-done backstop (the guard layer, not the parser): when the user asked
+// Muse to remember something date-shaped this turn and NO followup actually
+// got persisted, the model's reply can still confidently promise ("기억해둘게,
+// 미리 알려줄게") — a false-done. This caveat is CODE-appended, never model
+// text, so it can never be dropped by a bad generation.
+const REMEMBER_CAVEAT_KO =
+  "라고 했지만, 지금 이 형식의 날짜 알림은 예약이 안 됐어 — '8월 5일 아침에 알려줘'처럼 다시 말해줘!";
+const REMEMBER_CAVEAT_EN =
+  "— but a reminder for that wasn't actually scheduled in this format. Try phrasing it like 'remind me on August 5th morning'!";
+
+function appendUnscheduledRememberCaveat(output: string, latestUserText: string): string {
+  const caveat = containsHangul(latestUserText) ? REMEMBER_CAVEAT_KO : REMEMBER_CAVEAT_EN;
+  return output.length === 0 ? caveat : `${output}\n\n${caveat}`;
+}
+
+/**
+ * "Did this turn actually schedule a followup?" — observed the least invasive
+ * way reachable from apps/api: the runtime hook that captures a self-followup
+ * promise (`packages/agent-core`'s `followup-capture-hook.ts`) lives inside
+ * `agentRuntime.run()`, which is an opaque dependency here (built + wired in
+ * `packages/autoconfigure`, out of this worker's scope) — its `afterComplete`
+ * hook is `await`ed before `run()` resolves, so by the time this returns, any
+ * followup persisted THIS turn is already on disk. Rather than widen
+ * `InboundAgentRuntime`'s return type (which every fake in every existing
+ * test would then need to grow), this compares the SAME user's
+ * `readFollowups` "scheduled" count immediately before vs. after the call —
+ * a strictly-increased count is proof a followup was captured this turn.
+ * Read-only (never creates the file) and userId-scoped, so it costs nothing
+ * on a machine with no followups store yet and never confuses one user's
+ * turn with another's.
+ */
+async function countScheduledFollowups(followupsFile: string, userId: string): Promise<number> {
+  const followups = await readFollowups(followupsFile).catch(() => []);
+  return followups.filter((followup) => followup.userId === userId && followup.status === "scheduled").length;
+}
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
   const { agentRuntime, composeAck, composeChatReply, env, model, registry, userMemoryStore } = options;
@@ -241,16 +279,25 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         await notify(ack).catch(() => undefined);
       }
     }
+    // The channel identity is the user-memory scope for this chat, so the
+    // auto-extract hook grows the knows-you model from channel
+    // conversations. A SHARED chat gets a DISTINCT scope
+    // (`{providerId}:shared:{source}`), never the owner's own
+    // `{providerId}:{source}` id: personal facts must never inject into a
+    // group turn, and group chatter must never pollute the owner's user
+    // model.
+    const runUserId = scope === "shared" ? `${providerId}:shared:${source}` : `${providerId}:${source}`;
+    // False-done backstop setup (see `countScheduledFollowups` doc comment):
+    // only bother reading the followups store at all when this turn actually
+    // LOOKS like a remember-with-a-date ask — the overwhelmingly common case
+    // (a normal question, an action request with no date, small talk) never
+    // touches the followups file.
+    const rememberIntent = detectUnscheduledRememberIntent(latestUserText);
+    const followupsFile = resolveFollowupsFile(env);
+    const scheduledBefore = rememberIntent ? await countScheduledFollowups(followupsFile, runUserId) : 0;
     const result = await agentRuntime.run({
       messages,
-      // The channel identity is the user-memory scope for this chat, so
-      // the auto-extract hook grows the knows-you model from channel
-      // conversations. A SHARED chat gets a DISTINCT scope
-      // (`{providerId}:shared:{source}`), never the owner's own
-      // `{providerId}:{source}` id: personal facts must never inject into
-      // a group turn, and group chatter must never pollute the owner's
-      // user model.
-      metadata: { userId: scope === "shared" ? `${providerId}:shared:${source}` : `${providerId}:${source}` },
+      metadata: { userId: runUserId },
       model,
       toolApprovalGate: createChannelApprovalGate({
         providerId,
@@ -296,6 +343,17 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       firstResult: { response: { output: gate.answer }, toolsUsed: result.toolsUsed ?? [] },
       query: latestUserText
     });
-    return honest.response.output;
+    if (!rememberIntent) {
+      return honest.response.output;
+    }
+    // The user asked to remember something date-shaped — confirm a followup
+    // actually landed THIS turn (the count strictly grew) before trusting
+    // the model's own claim; a same-or-lower count means nothing was
+    // captured, so the reply gets the honest caveat appended by code.
+    const scheduledAfter = await countScheduledFollowups(followupsFile, runUserId);
+    if (scheduledAfter > scheduledBefore) {
+      return honest.response.output;
+    }
+    return appendUnscheduledRememberCaveat(honest.response.output, latestUserText);
   };
 }

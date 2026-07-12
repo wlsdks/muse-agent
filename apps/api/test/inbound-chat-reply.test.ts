@@ -210,3 +210,55 @@ describe("createComposeChatReply", () => {
     expect(seenMessages[0]?.content).toContain("[removed: injected instruction]");
   });
 });
+
+// FIX B (register mirror): the chat fast-path's own default tone is casual
+// ("1 to 3 short, natural sentences"), so without a register signal it can
+// drift to 반말 even on a 존댓말 user turn — mismatching the full agent run's
+// reply in the same conversation. The system prompt must carry the SAME
+// detected register `register-mirror.ts` computes (the delegation ack uses
+// the identical helper).
+describe("createComposeChatReply register mirror (FIX B)", () => {
+  function captureSystemPrompt(): { readonly composeChatReply: ReturnType<typeof createComposeChatReply>; readonly prompts: string[] } {
+    const prompts: string[] = [];
+    const composeChatReply = createComposeChatReply({
+      model: "gemma4:12b",
+      modelProvider: {
+        generate: async (request) => {
+          prompts.push((request.messages[0]?.content as string) ?? "");
+          return { id: "1", model: "gemma4:12b", output: "그렇구나~" };
+        }
+      }
+    });
+    return { composeChatReply, prompts };
+  }
+
+  it("존댓말 user turn → the system prompt names 존댓말", async () => {
+    const { composeChatReply, prompts } = captureSystemPrompt();
+    await composeChatReply({ latestUserText: "오늘 좀 피곤해요", thread: [] });
+    expect(prompts[0]).toContain("존댓말");
+  });
+
+  it("반말 user turn → the system prompt names 반말", async () => {
+    const { composeChatReply, prompts } = captureSystemPrompt();
+    await composeChatReply({ latestUserText: "오늘 좀 피곤해", thread: [] });
+    expect(prompts[0]).toContain("반말");
+  });
+
+  it("English turn → no register line added (nothing to mirror)", async () => {
+    const { composeChatReply, prompts } = captureSystemPrompt();
+    await composeChatReply({ latestUserText: "I'm a bit tired today", thread: [] });
+    expect(prompts[0]).not.toContain("존댓말");
+    expect(prompts[0]).not.toContain("반말");
+  });
+
+  it("register line + persona snapshot both present in the same prompt", async () => {
+    const { composeChatReply, prompts } = captureSystemPrompt();
+    await composeChatReply({
+      latestUserText: "오늘 좀 피곤해요",
+      personaSnapshot: [{ source: "persona:fact:hobby", text: "hobby: climbing" }],
+      thread: []
+    });
+    expect(prompts[0]).toContain("존댓말");
+    expect(prompts[0]).toContain("이 사실들은 알고 있는 것");
+  });
+});

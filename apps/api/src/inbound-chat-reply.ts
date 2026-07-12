@@ -1,6 +1,8 @@
 import { citedSourcesIn, escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 
+import { formalityInstructionLine } from "./register-mirror.js";
+
 const MAX_CHAT_REPLY_LENGTH = 400;
 
 /** The composer's own signal that it read the message as a real request, not smalltalk — the caller must fall through to the ack + full run instead. */
@@ -79,13 +81,22 @@ function safePersonaLine(text: string): string {
   return escapeSystemPromptMarkers(neutralizeInjectionSpans(text));
 }
 
-function buildChatReplySystemPrompt(personaSnapshot: readonly ChatPersonaSnapshotLine[]): string {
+/**
+ * Threads the SAME detected-register line the delegation ack uses
+ * (`register-mirror.ts`) — without it, this composer's own casual default
+ * tone ("1 to 3 short, natural sentences") can drift to 반말 even on a
+ * 존댓말 user turn, mismatching the full agent run's reply in the same
+ * conversation.
+ */
+function buildChatReplySystemPrompt(personaSnapshot: readonly ChatPersonaSnapshotLine[], latestUserText: string): string {
+  const registerLine = formalityInstructionLine(latestUserText);
+  const base = registerLine ? `${CHAT_REPLY_SYSTEM_PROMPT} ${registerLine}` : CHAT_REPLY_SYSTEM_PROMPT;
   if (personaSnapshot.length === 0) {
-    return CHAT_REPLY_SYSTEM_PROMPT;
+    return base;
   }
   const knownLines = personaSnapshot.map((line) => `  - ${safePersonaLine(line.text)}`).join("\n");
   return (
-    `${CHAT_REPLY_SYSTEM_PROMPT} ` +
+    `${base} ` +
     "이 사실들은 알고 있는 것 — 자연스럽게 활용하되 여기 없는 사실은 언급 금지 " +
     "(these are things you already know about the user — use them naturally " +
     "where relevant, but never state a fact, name, or number that is NOT " +
@@ -132,7 +143,7 @@ export function createComposeChatReply(
       const response = await Promise.race([
         deps.modelProvider.generate({
           messages: [
-            { content: buildChatReplySystemPrompt(personaSnapshot ?? []), role: "system" },
+            { content: buildChatReplySystemPrompt(personaSnapshot ?? [], latestUserText), role: "system" },
             ...thread.map((turn) => ({ content: turn.content, role: turn.role })),
             { content: latestUserText, role: "user" as const }
           ],

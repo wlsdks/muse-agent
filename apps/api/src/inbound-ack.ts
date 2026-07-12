@@ -1,6 +1,8 @@
 import { citedSourcesIn } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 
+import { formalityInstructionLine } from "./register-mirror.js";
+
 /**
  * Deterministic guard on a model-composed acknowledgment: collapses
  * newlines, trims, and rejects anything that looks like a factual claim
@@ -47,6 +49,19 @@ const ACK_SYSTEM_PROMPT =
   "know when it's done.\"). Do not answer the request, invent any facts, " +
   "numbers, or cite any source — you are only confirming you understood.";
 
+/**
+ * The ack prompt above is written toward a CASUAL default tone ("like a
+ * quick text") — with no register signal of its own, it drifts toward 반말
+ * even when the user's own turn was 존댓말, a jarring mismatch against the
+ * full agent run's reply (which DOES mirror register — see
+ * `register-mirror.ts`). Threading the SAME detected register here keeps
+ * the two replies in one turn from disagreeing on formality.
+ */
+function buildAckSystemPrompt(latestUserText: string): string {
+  const registerLine = formalityInstructionLine(latestUserText);
+  return registerLine ? `${ACK_SYSTEM_PROMPT} ${registerLine}` : ACK_SYSTEM_PROMPT;
+}
+
 export interface ComposeAckDeps {
   readonly modelProvider: Pick<ModelProvider, "generate">;
   readonly model: string;
@@ -84,7 +99,7 @@ export function createComposeAck(
       const response = await Promise.race([
         deps.modelProvider.generate({
           messages: [
-            { content: ACK_SYSTEM_PROMPT, role: "system" },
+            { content: buildAckSystemPrompt(latestUserText), role: "system" },
             { content: latestUserText, role: "user" }
           ],
           model: deps.model,
