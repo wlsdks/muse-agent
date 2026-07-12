@@ -72,7 +72,7 @@ export { addReflections, listReflections, readReflections, selectReflectionsForR
 export type { NewReflection, StoredReflection } from "./reflections-store.js";
 export { adjustSkillReward, isSkillAvoided, readSkillRewards, SKILL_AVOID_BELOW } from "./skill-rewards-store.js";
 export { incrementSuppressionBlocked, querySuppressedLessons, readSuppressedLessons, recordSuppressedLesson } from "./suppressed-lessons-store.js";
-export { addToQuarantine, listPending, readQuarantine, setQuarantineStatus } from "./swarm-quarantine-store.js";
+export { addToQuarantine, buildSwarmSkillDraft, listPending, readQuarantine, setQuarantineStatus } from "./swarm-quarantine-store.js";
 export type { SwarmQuarantineEntry } from "./swarm-quarantine-store.js";
 export { askTimeWeaknessNudge, isMasteredWeakness, readWeaknesses, recordTimeParseWeakness, recordWeakness, recordWeaknessResolved, remediationHint, renderAskTimeNudge, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage } from "./weakness-ledger.js";
 export type { AskTimeNudge, DevFixableWeakness, WeaknessEntry } from "./weakness-ledger.js";

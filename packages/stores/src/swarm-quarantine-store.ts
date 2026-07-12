@@ -111,6 +111,17 @@ export async function addToQuarantine(file: string, input: AddToQuarantineInput)
   return entry;
 }
 
+/** Build the execute-gated authored-skill draft for a promoted swarm skill.
+ * Shared by the CLI (`muse swarm promote`) and the API promote route so the
+ * two surfaces can never drift on what a promotion produces. */
+export function buildSwarmSkillDraft(entry: SwarmQuarantineEntry): { readonly name: string; readonly description: string; readonly body: string } {
+  return {
+    body: entry.content,
+    description: `Shared by ${entry.fromPeerId} via the Muse swarm (execute-gated — guidance only until you grant it tools).`,
+    name: `swarm-${entry.fromPeerId}-${entry.id.slice(0, 8)}`.replace(/[^a-z0-9-]/giu, "-")
+  };
+}
+
 /** Pure: the still-pending entries (most recent first). */
 export function listPending(entries: readonly SwarmQuarantineEntry[]): readonly SwarmQuarantineEntry[] {
   return [...entries].filter((e) => e.status === "pending").sort((a, b) => b.receivedAtMs - a.receivedAtMs);

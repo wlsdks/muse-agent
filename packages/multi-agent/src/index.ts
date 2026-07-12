@@ -50,7 +50,7 @@ export { inheritParentToolDeny } from "./sub-agent-tools.js";
 
 export type { AgentWorker } from "./workers.js";
 export { NoAgentWorkerError, RuleBasedAgentWorker, RuntimeAgentWorker } from "./workers.js";
-export { MultiAgentOrchestrator, SupervisorAgent } from "./orchestrator.js";
+export { MultiAgentOrchestrator, OrchestrationCancelledError, SupervisorAgent } from "./orchestrator.js";
 export { buildOrchestrationResponse } from "./orchestration-fan-in.js";
 export type {
   BackgroundOrchestrationHandle,

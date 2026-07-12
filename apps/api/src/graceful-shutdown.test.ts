@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import { createGracefulShutdown } from "./graceful-shutdown.js";
+
+// The deadline is the contract: a hung cron drain or lingering socket
+// must never keep a "stopped" server alive (observed live: a zombie
+// still holding the Telegram long-poll against its replacement).
+
+describe("graceful shutdown", () => {
+  it("drains then closes, and a second call is a no-op", async () => {
+    const calls: string[] = [];
+    const shutdown = createGracefulShutdown({
+      closeServer: async () => {
+        calls.push("close");
+      },
+      drainScheduler: async () => {
+        calls.push("drain");
+      },
+      exit: () => undefined,
+      forceExitAfterMs: 1000
+    });
+    await shutdown();
+    await shutdown();
+    expect(calls).toEqual(["drain", "close"]);
+  });
+
+  it("a hung drain force-exits at the deadline instead of lingering forever", async () => {
+    const logs: string[] = [];
+    let exited: number | undefined;
+    const shutdown = createGracefulShutdown({
+      closeServer: async () => undefined,
+      drainScheduler: () => new Promise(() => undefined),
+      exit: (code) => {
+        exited = code;
+      },
+      forceExitAfterMs: 30,
+      log: (m) => logs.push(m)
+    });
+    void shutdown();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(exited).toBe(0);
+    expect(logs.some((l) => l.includes("forcing exit"))).toBe(true);
+  });
+
+  it("a fast drain never trips the deadline", async () => {
+    let exited: number | undefined;
+    const shutdown = createGracefulShutdown({
+      closeServer: async () => undefined,
+      drainScheduler: async () => undefined,
+      exit: (code) => {
+        exited = code;
+      },
+      forceExitAfterMs: 30
+    });
+    await shutdown();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(exited).toBeUndefined();
+  });
+});

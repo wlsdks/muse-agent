@@ -136,6 +136,14 @@ export class SupervisorAgent {
   }
 }
 
+/** Thrown when a run stops because the user cancelled it — callers show "stopped", not "broke". */
+export class OrchestrationCancelledError extends Error {
+  constructor(runId: string) {
+    super(`orchestration ${runId} cancelled by user`);
+    this.name = "OrchestrationCancelledError";
+  }
+}
+
 export class MultiAgentOrchestrator {
   private readonly workers: readonly AgentWorker[];
   private readonly idFactory: () => string;
@@ -189,6 +197,13 @@ export class MultiAgentOrchestrator {
    * at the deadline so the caller's existing catch marks it `failed` and the run
    * continues — the same path a throwing worker takes.
    */
+  /** Cooperative cancel: the shared run registry carries the flag, so it
+   *  reaches this run even though route handlers build a fresh orchestrator
+   *  per request. */
+  private isCancelled(runId: string): boolean {
+    return this.runRegistry?.get(runId)?.status === "cancelled";
+  }
+
   private async runWorkerWithDeadline(worker: AgentWorker, input: AgentRunInput): Promise<AgentRunResult> {
     return withDeadline(() => worker.run(input), this.workerTimeoutMs, `worker "${worker.id}"`);
   }
@@ -317,6 +332,21 @@ export class MultiAgentOrchestrator {
         ...(error instanceof Error ? { error: error.message } : {})
       });
       throw error;
+    }
+
+    if (this.isCancelled(runId)) {
+      this.recordHistory({
+        completedCount: results.filter((r) => r.status === "completed").length,
+        error: "cancelled by user",
+        failedCount: results.filter((r) => r.status === "failed").length,
+        finishedAt: this.clock(),
+        mode,
+        runId,
+        startedAt,
+        status: "failed",
+        workerCount: selectedWorkers.length
+      });
+      throw new OrchestrationCancelledError(runId);
     }
 
     if (!results.some((result) => result.status === "completed")) {
@@ -494,6 +524,10 @@ export class MultiAgentOrchestrator {
     let currentInput = input;
 
     for (const worker of workers) {
+      if (this.isCancelled(input.runId!)) {
+        results.push({ error: "cancelled before start", status: "failed", workerId: worker.id });
+        continue;
+      }
       const { step, handoffOutput, failure } = await this.runWorkerStep(
         input.runId!,
         worker,

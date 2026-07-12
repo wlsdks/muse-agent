@@ -7,6 +7,7 @@ import { NoticeToaster } from "../components/NoticeToaster.js";
 import { Badge, Icon } from "../components/ui.js";
 import { I18nProvider, useI18n } from "../i18n/index.js";
 import { ActivityView } from "../views/Activity.js";
+import { AgentsView } from "../views/Agents.js";
 import { BoardView } from "../views/Board.js";
 import { CalendarView } from "../views/Calendar.js";
 import { AutonomyView } from "../views/Autonomy.js";
@@ -43,6 +44,7 @@ type ViewId =
   | "chat"
   | "tasks"
   | "board"
+  | "agents"
   | "calendar"
   | "reminders"
   | "messaging"
@@ -75,6 +77,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", key: "c", labelKey: "nav.chat" },
   { Component: TasksView, group: "group.workspace", icon: Icon.task, id: "tasks", key: "k", labelKey: "nav.tasks" },
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", key: "b", labelKey: "nav.board" },
+  { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", key: "x", labelKey: "nav.agents" },
   { Component: CalendarView, group: "group.workspace", icon: Icon.calendar, id: "calendar", key: "l", labelKey: "nav.calendar" },
   { Component: RemindersView, group: "group.workspace", icon: Icon.bell, id: "reminders", key: "r", labelKey: "nav.reminders" },
   { Component: MessagingView, group: "group.workspace", icon: Icon.mail, id: "messaging", key: "i", labelKey: "nav.messaging" },

@@ -5,6 +5,7 @@ import {
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
+  OrchestrationCancelledError,
   SubAgentRunRegistry,
   detectFanInConflicts,
   detectFanInRedundancy,
@@ -136,6 +137,32 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     };
   });
 
+  // User-facing stop for a live run. Cooperative: the registry flags the
+  // run cancelled; the orchestrator refuses to start further workers and
+  // finalizes the run as cancelled. An in-flight model call still settles
+  // in the background but can no longer flip the run's terminal status.
+  server.post("/api/multi-agent/runs/:runId/cancel", async (request, reply) => {
+    const { runId } = request.params as { runId: string };
+    const existing = runRegistry.get(runId);
+    if (!existing) {
+      return reply.status(404).send({ code: "RUN_NOT_FOUND", message: `no run "${runId}"` } satisfies ApiError);
+    }
+    if (existing.status !== "running") {
+      return reply.status(409).send({
+        code: "RUN_NOT_RUNNING",
+        message: `run is already ${existing.status}`
+      } satisfies ApiError);
+    }
+    runRegistry.cancel(runId);
+    // Take the whole tree down: child worker runs die with the parent.
+    for (const child of runRegistry.children(runId)) {
+      if (child.status === "running") {
+        runRegistry.cancel(child.runId, "parent run cancelled");
+      }
+    }
+    return { cancelled: true, runId };
+  });
+
   server.get("/api/multi-agent/orchestrations/:runId", async (request, reply) => {
     const { runId } = request.params as { readonly runId: string };
 
@@ -239,6 +266,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
         runId: orchestration.runId
       };
     } catch (error) {
+      if (error instanceof OrchestrationCancelledError) {
+        return reply.status(200).send({ cancelled: true, ...(input.runId ? { runId: input.runId } : {}) });
+      }
       // Server-side log only; the raw message can leak internals.
       reply.log.error({ err: error }, "multi-agent orchestration failed");
       return reply.status(500).send({

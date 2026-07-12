@@ -414,6 +414,64 @@ export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
 }
 
+export interface OrchestrationEntry {
+  readonly runId: string;
+  readonly mode: string;
+  readonly status: "completed" | "failed";
+  readonly workerCount: number;
+  readonly completedCount: number;
+  readonly failedCount: number;
+  readonly startedAt: string;
+  readonly finishedAt: string;
+  readonly durationMs: number;
+  readonly error?: string;
+}
+export interface OrchestrationsResponse {
+  readonly entries: readonly OrchestrationEntry[];
+  readonly total: number;
+}
+export interface OrchestrationStats {
+  readonly totalRuns: number;
+  readonly completedRuns: number;
+  readonly failedRuns: number;
+  readonly avgDurationMs: number;
+  readonly p95DurationMs: number;
+  readonly lastRunAt: string | null;
+}
+export interface SubAgentRunRow {
+  readonly runId: string;
+  readonly parentRunId?: string;
+  readonly status: "running" | "completed" | "failed" | "timed-out" | "cancelled";
+  readonly startedAt: string;
+  readonly finishedAt?: string;
+  readonly error?: string;
+}
+export interface SubAgentRunsResponse {
+  readonly activeCount: number;
+  readonly runs: readonly SubAgentRunRow[];
+}
+export interface OrchestrateResponse {
+  readonly runId?: string;
+  readonly mode?: string;
+  readonly response?: { readonly output: string };
+  readonly results?: readonly { readonly workerId: string; readonly status: string; readonly error?: string }[];
+  readonly background?: boolean;
+  readonly orchestrationId?: string;
+  readonly cancelled?: boolean;
+}
+export interface SwarmPendingEntry {
+  readonly id: string;
+  readonly kind: string;
+  readonly content: string;
+  readonly fromPeerId: string;
+  readonly receivedAtIso: string;
+  readonly label?: string;
+}
+export interface SwarmPendingResponse {
+  readonly entries: readonly SwarmPendingEntry[];
+  readonly total: number;
+}
+
 export interface DoctorCheck {
   readonly id: string;
   readonly severity: "ok" | "warn" | "error";

@@ -69,6 +69,8 @@ import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
 import { registerJourneyRoutes } from "./journey-routes.js";
 import { registerDoctorRoutes } from "./doctor-routes.js";
+import { FileOrchestrationHistoryStore } from "./orchestration-history-file.js";
+import { registerSwarmRoutes } from "./swarm-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
@@ -235,6 +237,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
     defaultModel: options.defaultModel,
+    historyStore: new FileOrchestrationHistoryStore(),
     modelProvider: options.modelProvider,
     embed: createGateEmbedder(process.env),
     ...(resolveWorkerTimeoutMs(process.env) !== undefined
@@ -497,6 +500,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     daemonSettingsFile,
     daemonStatus: () => channelDaemons.status()
   });
+
+  registerSwarmRoutes(server, { authService });
 
   registerDoctorRoutes(server, {
     applyDaemonToggle,

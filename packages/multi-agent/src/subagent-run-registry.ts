@@ -9,7 +9,7 @@
  * no code copied — clean Muse implementation).
  */
 
-export type SubAgentRunStatus = "running" | "completed" | "failed" | "timed-out";
+export type SubAgentRunStatus = "running" | "completed" | "failed" | "timed-out" | "cancelled";
 
 export interface SubAgentRunRecord {
   readonly runId: string;
@@ -46,7 +46,7 @@ interface MutableRunRecord {
   error?: string;
 }
 
-const TERMINAL_STATUSES = new Set<SubAgentRunStatus>(["completed", "failed", "timed-out"]);
+const TERMINAL_STATUSES = new Set<SubAgentRunStatus>(["completed", "failed", "timed-out", "cancelled"]);
 
 function freeze(record: MutableRunRecord): SubAgentRunRecord {
   return Object.freeze({ ...record });
@@ -144,6 +144,26 @@ export class SubAgentRunRegistry {
     record.status = "timed-out";
     record.finishedAt = this.now();
     record.error = error;
+    return true;
+  }
+
+  /**
+   * User-requested stop. Terminal like fail/timeout, but recorded as its
+   * own status so an operator can tell "I stopped it" from "it broke".
+   * The orchestrator polls for this between worker steps (cooperative) —
+   * an in-flight model call still settles, but its run stays cancelled
+   * (terminal statuses are never overwritten).
+   */
+  cancel(runId: string, reason = "cancelled by user"): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || TERMINAL_STATUSES.has(record.status)) {
+      return false;
+    }
+
+    record.status = "cancelled";
+    record.finishedAt = this.now();
+    record.error = reason;
     return true;
   }
 

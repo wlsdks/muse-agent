@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
-import { addToQuarantine, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
+import { addToQuarantine, buildSwarmSkillDraft, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";
@@ -139,14 +139,7 @@ export function renderPending(entries: readonly SwarmQuarantineEntry[]): string 
   return lines.join("\n");
 }
 
-/** Build the execute-gated authored-skill draft for a promoted swarm skill. */
-export function buildSwarmSkillDraft(entry: SwarmQuarantineEntry): { readonly name: string; readonly description: string; readonly body: string } {
-  return {
-    body: entry.content,
-    description: `Shared by ${entry.fromPeerId} via the Muse swarm (execute-gated — guidance only until you grant it tools).`,
-    name: `swarm-${entry.fromPeerId}-${entry.id.slice(0, 8)}`.replace(/[^a-z0-9-]/giu, "-")
-  };
-}
+export { buildSwarmSkillDraft } from "@muse/stores";
 
 function findPending(entries: readonly SwarmQuarantineEntry[], id: string): SwarmQuarantineEntry | undefined {
   return entries.find((e) => e.status === "pending" && (e.id === id || e.id.startsWith(id)));
