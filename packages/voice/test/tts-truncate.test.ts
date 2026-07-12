@@ -25,6 +25,19 @@ describe("truncateForTts (MED-2)", () => {
   it("maxChars<=0 disables truncation", () => {
     expect(truncateForTts("anything at all", 0)).toBe("anything at all");
   });
+
+  it("never leaves a lone surrogate when the cap lands mid-emoji (no space/sentence boundary nearby)", () => {
+    const LONE_SURROGATE = /[\ud800-\udfff]/u;
+    const text = `${"a".repeat(9)}😀${"a".repeat(9)}`; // cap 10 lands on the emoji's high surrogate (index 9)
+    const out = truncateForTts(text, 10);
+    expect(LONE_SURROGATE.test(out)).toBe(false);
+    expect(out).toBe(`${"a".repeat(9)} (truncated)`);
+  });
+
+  it("Korean input under the cap is returned byte-identical", () => {
+    const ko = "안녕하세요 반갑습니다 좋은 하루 되세요";
+    expect(truncateForTts(ko, 8_000)).toBe(ko);
+  });
 });
 
 function capturingTts(seen: TtsRequest[]): TextToSpeechProvider {

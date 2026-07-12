@@ -10,13 +10,15 @@
  * common case — so short replies are never altered.
  */
 
+import { truncateUtf16Safe } from "@muse/shared";
+
 const TRUNCATION_CUE = " (truncated)";
 
 export function truncateForTts(text: string, maxChars = 8_000): string {
   if (maxChars <= 0 || text.length <= maxChars) {
     return text;
   }
-  const window = text.slice(0, maxChars);
+  const window = truncateUtf16Safe(text, maxChars);
   // Prefer the last sentence terminator in the window, else the last word
   // break, else a hard cut — never mid-word if a space is available.
   const lastSentence = Math.max(window.lastIndexOf(". "), window.lastIndexOf("! "), window.lastIndexOf("? "));
@@ -25,5 +27,5 @@ export function truncateForTts(text: string, maxChars = 8_000): string {
     : window.lastIndexOf(" ") > maxChars * 0.5
       ? window.lastIndexOf(" ")
       : maxChars;
-  return `${text.slice(0, cut).trimEnd()}${TRUNCATION_CUE}`;
+  return `${truncateUtf16Safe(text, cut).trimEnd()}${TRUNCATION_CUE}`;
 }

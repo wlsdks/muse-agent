@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **No more garbled emoji or CJK when Muse shortens text.** Recall snippets,
+  tool descriptions, knowledge summaries, and text-to-speech previews now cut on
+  safe character boundaries, so an emoji or CJK-extension character sitting right
+  at the length limit is dropped cleanly instead of leaving a broken half-character.
+
 - **Encrypt your calendar on disk.** Set `MUSE_CALENDAR_ENCRYPT=true` (with your
   `MUSE_MEMORY_KEY`) and Muse stores your local calendar — event titles,
   locations, notes — as an encrypted file at rest instead of plain text. It

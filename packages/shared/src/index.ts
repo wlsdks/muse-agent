@@ -192,15 +192,36 @@ export function truncateErrorBody(body: string | undefined, cap: number = DEFAUL
   if (trimmed.length <= cap) {
     return trimmed;
   }
-  let head = trimmed.slice(0, cap);
-  // `slice` cuts on UTF-16 units; a boundary inside an astral char
-  // leaves a lone high surrogate — invalid UTF-8 a downstream JSON
-  // error body / Telegram-Discord forward can 400. Drop the orphan.
-  const last = head.charCodeAt(head.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) {
-    head = head.slice(0, -1);
-  }
+  const head = truncateUtf16Safe(trimmed, cap);
   return `${head}…`;
+}
+
+/**
+ * UTF-16-safe substring: like `text.slice(start, end)` but never returns a
+ * lone surrogate half — drops a leading lone LOW surrogate (start split a
+ * pair) and a trailing lone HIGH surrogate (end split a pair), so an astral
+ * char (emoji / CJK-extension) is never cut into invalid UTF-16.
+ * Byte-identical to `slice()` when no pair sits on either boundary.
+ */
+export function sliceUtf16Safe(text: string, start: number, end: number): string {
+  let s = Math.max(0, Math.min(start, text.length));
+  let e = Math.max(s, Math.min(end, text.length));
+  const lead = text.charCodeAt(s);
+  if (s > 0 && lead >= 0xdc00 && lead <= 0xdfff) s += 1;
+  if (e > s) {
+    const tail = text.charCodeAt(e - 1);
+    if (tail >= 0xd800 && tail <= 0xdbff) e -= 1;
+  }
+  return text.slice(s, e);
+}
+
+/**
+ * UTF-16-safe head truncation: the first `cap` units, minus a trailing lone
+ * high surrogate. `truncateUtf16Safe(t, n)` === `sliceUtf16Safe(t, 0, n)`.
+ */
+export function truncateUtf16Safe(text: string, cap: number): string {
+  if (cap <= 0) return "";
+  return sliceUtf16Safe(text, 0, cap);
 }
 
 export function createCancellationToken(): CancellationToken {

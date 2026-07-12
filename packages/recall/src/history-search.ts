@@ -1,4 +1,5 @@
 import { bm25Scores, cosineSimilarity, fuseByReciprocalRank, lexicalTokens } from "@muse/agent-core";
+import { sliceUtf16Safe, truncateUtf16Safe } from "@muse/shared";
 
 /**
  * One searchable item from the user's own past — a chat session/episode, a note,
@@ -203,14 +204,14 @@ export function searchHistoryHybrid(
 function buildSnippet(text: string, queryTokens: ReadonlySet<string>, snippetChars: number): string {
   const matchIndex = firstMatchIndex(text, queryTokens);
   if (matchIndex < 0 || text.length <= snippetChars) {
-    return text.slice(0, snippetChars).trim();
+    return truncateUtf16Safe(text, snippetChars).trim();
   }
   const half = Math.floor(snippetChars / 2);
   const start = Math.max(0, matchIndex - half);
   const end = Math.min(text.length, start + snippetChars);
   const prefix = start > 0 ? "…" : "";
   const suffix = end < text.length ? "…" : "";
-  return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+  return `${prefix}${sliceUtf16Safe(text, start, end).trim()}${suffix}`;
 }
 
 function firstMatchIndex(text: string, queryTokens: ReadonlySet<string>): number {

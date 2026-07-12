@@ -1,5 +1,5 @@
 import type { ModelTool } from "@muse/model";
-import { isRecord } from "@muse/shared";
+import { isRecord, truncateUtf16Safe } from "@muse/shared";
 
 import { ToolRegistryError, type MuseTool, type ToolDescriptionIssue } from "./index.js";
 
@@ -105,7 +105,7 @@ export function shortenToolDescription(text: string, maxChars = 200): string {
     return firstParagraph;
   }
 
-  return `${firstParagraph.slice(0, Math.max(0, maxChars - 1))}...`;
+  return `${truncateUtf16Safe(firstParagraph, Math.max(0, maxChars - 1))}...`;
 }
 
 function visitTool(

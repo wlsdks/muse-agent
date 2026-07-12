@@ -1,4 +1,4 @@
-import { finiteOr } from "@muse/shared";
+import { finiteOr, truncateUtf16Safe } from "@muse/shared";
 import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk, type KnowledgeMatch } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/domain-tools";
 import type { MuseTool } from "@muse/tools";
@@ -362,7 +362,7 @@ export async function assembleKnowledgeCorpus(
       if (followup.summary.trim().length === 0) {
         continue;
       }
-      const text = followup.summary.length > maxChars ? followup.summary.slice(0, maxChars) : followup.summary;
+      const text = followup.summary.length > maxChars ? truncateUtf16Safe(followup.summary, maxChars) : followup.summary;
       chunks.push({ source: labelSource("followup", followup.summary, followup.id), text });
     }
   }
