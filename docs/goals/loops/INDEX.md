@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|---|
 | `recall-spine` | 개인 기억/회상 비서 golden path 강화 | [recall-spine.md](recall-spine.md) | 9 | `aa224dceb` | v2.1.0 | RETIRED — 9 fires merged to main (FF), worktree+branch removed, cron `ffe5773d` deleted (진안 directive) |
 | `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 148 | `177a6c9b` | v1.14.0 | active (cron, session-only) |
-| `a-plus-roadmap` | A+ 로드맵 §10.3 집행 (main worktree) | [a-plus-roadmap.md](a-plus-roadmap.md) | 51 | `83beadab2` | v2.x | session-driven (cron `964ac861` deleted; 진안 세션 계속; fire 51=honest revert D6-S1a/b 중복→recall-promotion.ts 기존구현 발견, D6-S1c already-satisfied) |
+| `a-plus-roadmap` | A+ 로드맵 §10.3 집행 (main worktree) | [a-plus-roadmap.md](a-plus-roadmap.md) | 52 | `4e46612aa` | v2.x | session-driven (cron `964ac861` deleted; 진안 세션 계속; fire 52=D6-S3 메모리 외부-편집 drift 가드; codegraph 사전확인으로 중복 재발 방지) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | superseded → re-registered as `agent-core-cognition` (v1.14.0, cron 42e5d7ba) |
 | `agent-core-cognition` | agent-core 인지 코어 강화 (worktree `agent-core-enhance`) | [agent-core-cognition.md](agent-core-cognition.md) | 63 | `dad16a57` | v1.14.0 | STOPPED fire 63 (Jinan directive; cron 42e5d7ba deleted) |
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 16 | `1f4b4b1d` | v1.14.0 | active (cron `291e935d`, session-only) |

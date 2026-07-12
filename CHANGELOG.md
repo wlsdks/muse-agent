@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **Muse won't silently overwrite a memory file you edited by hand.** If your
+  user-memory file is changed outside Muse (a manual edit, another tool) while
+  Muse is mid-write, Muse now stops instead of clobbering it, backs up the
+  changed file, and tells you to reconcile — your edit is never lost.
+
 - **No more garbled emoji or CJK when Muse shortens text.** Recall snippets,
   tool descriptions, knowledge summaries, and text-to-speech previews now cut on
   safe character boundaries, so an emoji or CJK-extension character sitting right

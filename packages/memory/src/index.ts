@@ -489,6 +489,7 @@ export {
 // keyed by userId.
 export {
   FileUserMemoryStore,
+  MemoryExternalEditError,
   type FileUserMemoryStoreOptions
 } from "./memory-user-store-file.js";
 export {

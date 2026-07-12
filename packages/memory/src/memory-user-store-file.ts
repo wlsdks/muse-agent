@@ -65,6 +65,24 @@ type StoredMemory = {
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
 
+/**
+ * Thrown when a write's compare-and-swap guard finds the on-disk file has
+ * changed since it was read inside the current lock — a manual edit, a patch
+ * tool, or a lock-bypassing writer landed during the window. Muse refuses to
+ * clobber it; the external content is preserved on disk (and snapshotted to
+ * `backupPath`) rather than overwritten by Muse's own pending write.
+ */
+export class MemoryExternalEditError extends Error {
+  readonly file: string;
+  readonly backupPath: string;
+  constructor(file: string, backupPath: string) {
+    super(`user-memory file was edited outside Muse since it was read (an external/manual edit). Muse refused to overwrite it to avoid losing that change. The current on-disk content was backed up to ${backupPath}; reconcile it, then retry.`);
+    this.name = "MemoryExternalEditError";
+    this.file = file;
+    this.backupPath = backupPath;
+  }
+}
+
 function defaultPath(): string {
   return join(homedir(), ".muse", "user-memory.json");
 }
@@ -240,19 +258,19 @@ export class FileUserMemoryStore implements UserMemoryStore {
 
   async deleteByUserId(userId: string): Promise<boolean> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
-      const { file: data, encrypted } = await this.read();
+      const { file: data, encrypted, raw } = await this.read();
       if (!data.users[userId]) {
         return false;
       }
       const { [userId]: _dropped, ...rest } = data.users;
-      await this.write({ ...data, users: rest }, encrypted);
+      await this.write({ ...data, users: rest }, encrypted, { raw });
       return true;
     }));
   }
 
   private async patch(userId: string, mutator: (existing: UserMemory) => UserMemory): Promise<UserMemory> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
-      const { file: data, encrypted } = await this.read();
+      const { file: data, encrypted, raw } = await this.read();
       const existingStored = data.users[userId];
       // One-time convergence of the orphaned legacy "default" bucket (see
       // findByUserId): the first write under the resolved user adopts the
@@ -276,7 +294,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
         delete users["default"];
       }
       const next: StoredFile = { ...data, users };
-      await this.write(next, encrypted);
+      await this.write(next, encrypted, { raw });
       return updated;
     }));
   }
@@ -290,18 +308,17 @@ export class FileUserMemoryStore implements UserMemoryStore {
 
   // Returns the parsed file AND whether it was encrypted at rest, so a write can
   // PRESERVE the format (an encrypted store stays encrypted) without a side flag.
+  // Also returns the exact raw bytes read (`raw`), so a subsequent write can
+  // compare-and-swap against them to detect an external edit landing during the
+  // lock window; `raw` is undefined when the file was absent or quarantined,
+  // since those degrade to an empty baseline anyway.
   // NEVER writes — the only write from a read path was the corrupt-PLAINTEXT
   // quarantine; an encrypted store with a WRONG key THROWS (fail-closed) instead,
   // because quarantining/emptying its ciphertext would lose the confided life.
-  private async read(): Promise<{ readonly file: StoredFile; readonly encrypted: boolean }> {
-    let raw: string;
-    try {
-      raw = await readFile(this.file, "utf8");
-    } catch (cause) {
-      if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
-        return { encrypted: false, file: emptyFile() };
-      }
-      throw cause;
+  private async read(): Promise<{ readonly file: StoredFile; readonly encrypted: boolean; readonly raw: string | undefined }> {
+    const raw = await this.readRawOrUndefined();
+    if (raw === undefined) {
+      return { encrypted: false, file: emptyFile(), raw: undefined };
     }
     let parsed: unknown;
     try {
@@ -311,7 +328,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
       // envelope, so it never lands here). Quarantine + degrade to empty as
       // before — a corrupt plaintext memory must not crash EVERY run.
       await this.quarantineCorrupt();
-      return { encrypted: false, file: emptyFile() };
+      return { encrypted: false, file: emptyFile(), raw: undefined };
     }
     if (isEncryptedMemoryEnvelope(parsed)) {
       const plaintext = decryptMemoryEnvelope(parsed, this.env); // THROWS on wrong key / tamper — fail closed
@@ -321,9 +338,20 @@ export class FileUserMemoryStore implements UserMemoryStore {
       } catch {
         throw new Error("user-memory decrypted but its contents are not valid JSON — refusing to overwrite; restore the .plaintext-backup file.");
       }
-      return { encrypted: true, file: coerceStoredFile(inner) };
+      return { encrypted: true, file: coerceStoredFile(inner), raw };
     }
-    return { encrypted: false, file: coerceStoredFile(parsed) };
+    return { encrypted: false, file: coerceStoredFile(parsed), raw };
+  }
+
+  private async readRawOrUndefined(): Promise<string | undefined> {
+    try {
+      return await readFile(this.file, "utf8");
+    } catch (cause) {
+      if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw cause;
+    }
   }
 
   private async quarantineCorrupt(): Promise<void> {
@@ -334,8 +362,29 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }
   }
 
-  private async write(data: StoredFile, encrypted: boolean): Promise<void> {
+  // `expected` is the raw bytes `read()` saw at the start of the current lock.
+  // When passed, this re-reads the CURRENT on-disk bytes right before the
+  // atomic rename and compares — an optimistic-concurrency / compare-and-swap
+  // guard. The encrypted-envelope raw string differs byte-for-byte on any
+  // external edit exactly like plaintext does, so the same compare protects
+  // both store formats without a second decrypt. A mismatch means something
+  // outside this lock (a manual edit, a patch tool, a lock-bypassing writer)
+  // changed the file since it was read, so the pending write is REFUSED rather
+  // than silently clobbering that change; the on-disk content is snapshotted
+  // first so it is never lost. Omitting `expected` reproduces today's
+  // behavior exactly — the guard is opt-in per call site.
+  private async write(data: StoredFile, encrypted: boolean, expected?: { readonly raw: string | undefined }): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true });
+    if (expected) {
+      const currentRaw = await this.readRawOrUndefined();
+      if (currentRaw !== expected.raw) {
+        const backupPath = `${this.file}.bak.${Date.now().toString()}`;
+        if (currentRaw !== undefined) {
+          await writeFile(backupPath, currentRaw, { mode: 0o600 });
+        }
+        throw new MemoryExternalEditError(this.file, backupPath);
+      }
+    }
     const serialized = JSON.stringify(data, null, 2);
     const payload = encrypted
       ? `${JSON.stringify(encryptMemoryEnvelope(serialized, this.env), null, 2)}\n`
@@ -375,14 +424,14 @@ export class FileUserMemoryStore implements UserMemoryStore {
    */
   async encryptAtRest(): Promise<{ readonly alreadyEncrypted: boolean; readonly backupPath?: string }> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
-      const { file: data, encrypted } = await this.read();
+      const { file: data, encrypted, raw } = await this.read();
       if (encrypted) {
         return { alreadyEncrypted: true };
       }
       const backupPath = `${this.file}.plaintext-backup-${this.now().toISOString().replace(/[:.]/gu, "-")}`;
       await mkdir(dirname(this.file), { recursive: true });
       await writeFile(backupPath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-      await this.write(data, true);
+      await this.write(data, true, { raw });
       return { alreadyEncrypted: false, backupPath };
     }));
   }
@@ -394,11 +443,11 @@ export class FileUserMemoryStore implements UserMemoryStore {
    */
   async decryptAtRest(): Promise<{ readonly alreadyPlaintext: boolean }> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
-      const { file: data, encrypted } = await this.read();
+      const { file: data, encrypted, raw } = await this.read();
       if (!encrypted) {
         return { alreadyPlaintext: true };
       }
-      await this.write(data, false);
+      await this.write(data, false, { raw });
       return { alreadyPlaintext: false };
     }));
   }

@@ -442,3 +442,12 @@ ratchet: 로드맵 잔여 [ ] = 12/65(D6-S1c 체크·a/b honest 정정) · self-
 - 리뷰지점: 독립 Opus 감사가 recall-promotion.ts 전수+데몬 배선 확인→REDUNDANT/DESIGN-TENSION 판정, 방어 아닌 revert 권장. 진안이 AskUserQuestion으로 현상유지 결정. 빌드 clean(dangling ref 0)·lint 0/0. self-eval testFiles -2는 의도(중복 제거).
 - lesson: ★새 역량 빌드 전 **codegraph/grep으로 기존 구현 필수 확인** — recall-promotion.ts(memory 패키지)를 안 봐서 agent-core에 중복 스코어를 2 fire 낭비. 로드맵 슬라이스 전제("아직 없음")를 코드로 검증 안 하면 중복 생산. shipped 작업이 중복/부적절로 판명되면 방어 말고 독립 evaluator 판정+정직 revert. 전략 포크(불변 적용 범위)는 코드로 밀지 말고 진안 표면화.
 - 다음 = D-E1c(self-eval 커밋훅+CI 결정론분) 또는 D6-S3(외부-편집 drift). D-E1b(공유 pre-push 훅)는 계속 신중 이연.
+
+## fire 52 · 2026-07-12 · skill v2.x · 4e46612aa
+meta: slice=D6-S3 · wave=W5 · pkg=@muse/memory · kind=memory-external-edit-drift-guard · verdict=PASS · firesSinceDrill=1
+ratchet: 로드맵 잔여 [ ] = 11/65(D6-S3 체크) · self-eval pass · fabrication 0 · memory +6 유닛(external-edit test, testFiles 1405→1406)
+- 무엇: ①기준선 green. ②교훈 적용: 빌드 전 codegraph/grep으로 D6-S3 미구현 확인(memory-user-store-file은 withFileLock만·외부편집 감지 없음, "round-trip"은 JSON 직렬화일 뿐). ③D6-S3(무결성): FileUserMemoryStore가 락 안 read→write 사이 외부편집(수동·patch·락-미경유)을 compare-and-swap로 차단. read()가 raw on-disk bytes 반환→write(data,encrypted,expected?)가 atomic write 직전 재읽기, currentRaw !== expected.raw면 .bak.<ts>(복사, 원본 미삭제)+MemoryExternalEditError throw로 clobber 차단. raw 비교라 plaintext/encrypted 모두 감지. patch/deleteByUserId/encryptAtRest/decryptAtRest 4경로 배선. Opus nit(테스트명 VQ-7) 제거.
+- 왜: VQ-7 확정 — 락은 자체 writer만 보호, 외부편집(hermes memory_tool 케이스)은 clobber됨. 유저 confided memory를 조용히 덮어쓰면 안 됨(교정-망각·데이터 안전). compare-and-swap로 optimistic concurrency.
+- 리뷰지점: Opus PASS — 외부편집 never clobber/destroy(throw-before-write+.bak copy not move, 디스크에 외부내용 잔존 검증)·byte-identical when 미engaged(47 기존 무수정)·encrypted drift 감지(raw 비교)·normal write false-positive 없음(currentRaw===expected)·mutation-RED 양방향 독립 재현(drift check 제거→clobber RED). ★codegraph 사전확인으로 fire 51 중복실수 재발 방지.
+- 리스크: 낮음. opt-in per-call(expected 없으면 무변경). 외부편집을 삭제 아닌 백업(Muse 데이터 파괴 금지 준수). 다음 = D-E1c(self-eval 커밋훅+CI) 또는 D6-S4(provenance 태그). D-E1b(공유 pre-push 훅)는 신중 이연.
+- lesson: 무결성 compare-and-swap는 read시 raw 캡처→write 직전 재읽기 비교가 핵심; raw(pre-parse) 비교라 plaintext/encrypted 무관 동작. 외부-변경 감지 시 삭제 아닌 .bak 복사+throw로 유저 데이터 절대 파괴 안 함. ★교훈 실천: 이번엔 빌드 전 codegraph로 기존구현 부재 확인 후 진행(fire 51 중복 재발 방지).
