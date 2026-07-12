@@ -36,7 +36,13 @@
  * `@muse/recall` re-exports these from here for its own call sites.
  */
 
-const MARKER_KEYWORDS = "note|feed|session|task|event|reminder|contact|memory|command|commit|action";
+import { stripInjectionEvasionChars } from "./injection.js";
+
+// Every grounding-block class whose `<<kind …>>` fence and `[kind: …]` citation
+// an attacker could forge. MUST list every live class — `browsing` emits a real
+// `<<browsing N — host>>` fence + `[browsing: host]` citation, so omitting it
+// left that class's break-out un-neutralized.
+const MARKER_KEYWORDS = "note|feed|session|task|event|reminder|contact|memory|command|commit|action|browsing";
 
 const REPLACEMENTS: readonly (readonly [RegExp, string])[] = [
   // The wrapper CLOSER — the key break-out token.
@@ -52,7 +58,12 @@ const REPLACEMENTS: readonly (readonly [RegExp, string])[] = [
  * forge inside untrusted content. Pure; idempotent (a second pass is a no-op).
  */
 export function escapeSystemPromptMarkers(text: string): string {
-  let out = text;
+  // Strip zero-width / control evasion chars FIRST: a marker with a ZWSP
+  // spliced into the keyword (a U+200B between `en` and `d` of `<<end>>`)
+  // reads as the real fence to the model but slips the literal regexes below.
+  // Same defense the injection-pattern path already runs — the two must not be
+  // asymmetric. Structural whitespace (tab/newline/CR) is preserved.
+  let out = stripInjectionEvasionChars(text);
   for (const [pattern, replacement] of REPLACEMENTS) {
     out = out.replace(pattern, replacement);
   }
