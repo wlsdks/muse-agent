@@ -3385,6 +3385,7 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ [보안감사·fable5발굴] zero-width/control로 `escapeSystemPromptMarkers` 우회(`<<en[ZWSP]d>>` 생존) + `browsing` 클래스 MARKER_KEYWORDS 누락 → fence/citation 위조. fix: stripInjectionEvasionChars 선행+browsing 추가(8190f5066)·9 test·mutation-RED
 - ✓ [보안감사·fable5발굴] 주석없는 외부 MCP 도구 `risk:"read"` 기본값→승인게이트 스킵(자율 아웃바운드). fix: fail-close `write` 기본값, readOnlyHint:true만 read(1712f5e6f)·유닛+통합 test·mutation-RED
 - ◦ [보안감사·fs clean] fable5 파일시스템/샌드박스 스카우트: `resolveSafePath`(realpath+deny+O_NOFOLLOW)·id→filename 새니타이저·seatbelt SBPL 전부 견고, 재현가능 escape 0(clean). 아웃바운드 승인게이트 나머지 경로도 fail-close 확인
+- ◦ [보안 sweep-2 계획] fable5 5-스카우트 심층 감사 → 13 findings(2 HIGH: grounding-reverify raw evidence·runner PATH override; 5 MED; 나머지 LOW/INFO), 전부 trace/repro 검증. 우선순위 계획: docs/strategy/security-sweep-2-plan.md. P0=그라운딩판정자 sanitize+PATH strip, P1=API auth fail-close·크레덴셜 암호화·feed SSRF·zip-bomb cap
 - ◦ [선행·타루프] byte-hygiene 실패: packages/shared/test/utf16-safe.test.ts:43 raw byte (D-KO-S1 e287c94f6) — D-KO-S1 소유자 수리
 
 - ✓ credential_extraction 과차단(도어락 잠김 self-help 차단) 수정 — forgot/unlock veto (prompt-system fire 16)
