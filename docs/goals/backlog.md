@@ -3389,3 +3389,21 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ◦ [선행·CRITICAL·타루프] colorize가 NO_COLOR/non-TTY/plain 모드서 ANSI emit — 7 테스트 실패(tty-color·muse-banner·program), CLI/code-quality 루프 소유
 
 - ✓ CI에 check:prompt-seam+check:secret-guard-coverage 배선(정체성/시크릿 해자 사람PR 강제) — prompt-system fire 19 (감사 갭4)
+
+## A+ 로드맵 — 남은 3개 감사 갭 (2026-07-12, 진안 승인: 순차 전부 + 캐시 클라우드까지)
+리서치 종합 아티팩트: 3-갭 구현 계획 (Opus 리서처 A/B/C, arXiv+openclaw/hermes 소스 근거).
+- **[1순위·해자] 인젝션 provenance** (FIDES sink-gate 서브셋 arXiv 2505.23643) — untrusted 툴출력-유래 인자가 액추에이터 sink에 못 닿게 결정론 taint. Muse가 양쪽 절반 보유(capToolOutput untrusted 라벨 + toolApprovalGate sink) 미연결.
+  - S1 ◦ 기반: taint-ledger.ts + actuator-provenance-gate.ts + provenance-tokens.ts(추출) + 유닛테스트 (무배선)
+  - S2 ◦ 아웃바운드-only sink 배선(capToolOutput→ledger, executeToolCall→draft-first) + AgentDojo식 deny-on-injection eval(pass^3)
+  - S3 ◦ write/execute 전체 sink 확대 + trusted 기준 확장 + eval:adversarial CI
+  - S4 ◦ confidentiality 축(secret exfil 차단)
+- **[2순위·전략] 학습 user-model** (Honcho式 2층, honesty-wall이 차별점; Mem0 라우터 2504.19413, 개인화-오염 2601.11000) — Muse ~70% 보유.
+  - S1 ◦ 공유 런타임 레이어 승격(recall/user-model-layer.ts, buildMusePersona 리프트, runtime-assembly 배선→전 surface)
+  - S2 ◦ per-turn top-K 관련성 + provenance 태그 + IrrelAcc 네거티브
+  - S3 ◦ communication-style 누적기(memory/communication-style.ts, "style" 슬롯, Mem0 ADD/UPDATE/NOOP)
+  - S4 ◦ 정직성 하드닝 + 크로스세션 라이브 eval(pass^3) + 날조 가드 + grounding 게이트 격리
+- **[3순위·클라우드까지] 캐시 인지 배치** (gemma4 SWA라 로컬 원천불가 #21468 — 정직 문서화; Anthropic cache_control read=0.1×)
+  - S1 ◦ 죽은 마커 제거(전 어댑터 stripPromptCacheBoundary) + 로컬 prefill 실측 프로브(qwen 증명·gemma4 한계 기록)
+  - S2 ◦ Anthropic cache_control breakpoint(splitPromptCacheBoundary+AnthropicPromptCache 연결, 1024토큰 최소, 툴정의 포함) — 진안 승인
+  - S3 ◦ (선택) Gemini implicit + 2번째 breakpoint
+역할: 계획=Fable/Opus, 구현=Opus(설계/red)·Sonnet(정형), 슬라이스마다 라이브검증+독립 Opus 게이트+commit/push.
