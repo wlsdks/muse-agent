@@ -65,6 +65,7 @@ import { type AgentDef } from "./commands-agents.js";
 import { type ChatGrounding } from "./chat-grounding.js";
 import { groupProactiveNotice, imminentItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
 import { formatCurrentContextLine } from "./muse-persona.js";
+import { selectDrainedProactiveTurns } from "./proactive-consume.js";
 
 export { runChatInk } from "./chat-ink-run.js";
 
@@ -378,14 +379,16 @@ export function MuseChatApp(props: {
       const unseenJobs = pickUnseen(completed, seenRef.current);
       const unseenNudges = pickUnseen(nudges, seenRef.current);
       if (unseen.length === 0 && unseenJobs.length === 0 && unseenNudges.length === 0) return;
-      for (const item of [...unseen, ...unseenJobs, ...unseenNudges]) seenRef.current.add(item.id);
       const grouped = groupProactiveNotice(unseen, now);
-      setTurns((prev) => [
-        ...prev,
-        ...(grouped ? [{ role: "proactive" as const, text: grouped }] : []),
-        ...unseenJobs.map((item) => ({ role: "proactive" as const, text: item.text })),
-        ...unseenNudges.map((item) => ({ role: "proactive" as const, text: item.text }))
-      ]);
+      // Re-check idle HERE, not just at tick start: the awaits above can outlast
+      // the idle window (the user started a turn while the poll was in flight).
+      // Consuming (and marking seen) only when still idle keeps a completion
+      // event from being inserted mid-generation; a busy-deferred item stays
+      // unseen so it re-surfaces on the next idle tick instead of being lost.
+      const drained = selectDrainedProactiveTurns({ grouped, idleAtConsume: idleRef.current, unseenJobs, unseenNudges });
+      if (drained.length === 0) return;
+      for (const item of [...unseen, ...unseenJobs, ...unseenNudges]) seenRef.current.add(item.id);
+      setTurns((prev) => [...prev, ...drained]);
     };
     const first = setTimeout(() => { void tick(); }, 1500);
     const timer = setInterval(() => { void tick(); }, PROACTIVE_POLL_MS);

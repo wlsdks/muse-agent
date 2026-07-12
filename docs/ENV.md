@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **551** variables.
+Total: **552** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -351,6 +351,7 @@ Total: **551** variables.
 | `MUSE_OLLAMA_NUM_PREDICT` | apps/cli, packages/autoconfigure, packages/model |
 | `MUSE_OLLAMA_NUM_THREAD` | packages/autoconfigure, packages/model |
 | `MUSE_OLLAMA_PROBE_CONTEXT` | packages/autoconfigure, packages/model |
+| `MUSE_ORCHESTRATION_HISTORY_FILE` | apps/api |
 | `MUSE_OUTPUT_GUARDS_ENABLED` | packages/autoconfigure |
 | `MUSE_OUTPUT_GUARD_PII_MASK_ENABLED` | packages/autoconfigure |
 | `MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_CANARY_TOKENS` | packages/autoconfigure |
@@ -498,7 +499,7 @@ Total: **551** variables.
 | `MUSE_STATUS_SCHEMA_VERSION` | apps/cli |
 | `MUSE_STREAM_IDLE_TIMEOUT_MS` | packages/agent-core, packages/autoconfigure |
 | `MUSE_SUPPRESSED_LESSONS_FILE` | packages/autoconfigure |
-| `MUSE_SWARM_QUARANTINE_FILE` | apps/cli |
+| `MUSE_SWARM_QUARANTINE_FILE` | apps/api, apps/cli |
 | `MUSE_TAGLINE` | apps/cli |
 | `MUSE_TAGLINE_NO_MODEL` | apps/api |
 | `MUSE_TAGLINE_STATE_FILE` | apps/api |

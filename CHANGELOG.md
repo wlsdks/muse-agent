@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **Background-job "done" notices no longer interrupt mid-answer.** When a
+  background job finishes while Muse is generating a reply, its completion notice
+  now waits for the reply to finish instead of getting spliced into the middle —
+  and it's never dropped; it appears at the next quiet moment.
+
 - **Muse won't silently overwrite a memory file you edited by hand.** If your
   user-memory file is changed outside Muse (a manual edit, another tool) while
   Muse is mid-write, Muse now stops instead of clobbering it, backs up the

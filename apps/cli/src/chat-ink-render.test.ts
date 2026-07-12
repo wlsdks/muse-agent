@@ -1,6 +1,6 @@
 import { render } from "ink-testing-library";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createContextualGroundingLookup } from "./chat-ink-core.js";
 import { MuseChatApp } from "./chat-ink.js";
@@ -218,6 +218,56 @@ describe("MuseChatApp render — slash command echo + output", () => {
     unmount();
     expect(frame).toContain("📌 Following up");
     expect(frame).toContain("💡 월요일마다 보고서 만드시던데");
+  });
+
+  it("defers a job-completion whose fetch resolves after the user starts a new turn — not inserted mid-generation, and not lost", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveJobs: (items: readonly { id: string; text: string }[]) => void = () => undefined;
+      const jobsPromise = new Promise<readonly { id: string; text: string }[]>((res) => { resolveJobs = res; });
+      const jobCompletions = (): Promise<readonly { id: string; text: string }[]> => jobsPromise;
+      let resolveStream: () => void = () => undefined;
+      const streamGate = new Promise<void>((res) => { resolveStream = res; });
+      async function* slowStream(): AsyncGenerator<{ type: string }> {
+        await streamGate;
+        yield { type: "done" };
+      }
+
+      const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+        jobCompletions,
+        stream: () => slowStream()
+      })));
+
+      // First proactive tick fires at ~1500ms; its jobCompletions() fetch is
+      // left pending on purpose so we can flip busy mid-flight.
+      await vi.advanceTimersByTimeAsync(1500);
+
+      stdin.write("hello");
+      await vi.advanceTimersByTimeAsync(10);
+      stdin.write("\r");
+      await vi.advanceTimersByTimeAsync(10);
+
+      // The fetch resolves NOW — after the turn started, so the chat is busy.
+      resolveJobs([{ id: "job:1", text: "✓ Background job done: build" }]);
+      await vi.advanceTimersByTimeAsync(50);
+
+      // A completion must NOT be inserted while a turn is in flight.
+      expect(lastFrame()).not.toContain("Background job done");
+
+      // The turn finishes (busy → false) …
+      resolveStream();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(lastFrame()).not.toContain("Background job done");
+
+      // … and the deferred item — never marked seen — resurfaces on the next
+      // idle poll instead of being lost.
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(lastFrame()).toContain("Background job done");
+
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders the launch brief as an opening turn when recap is set", async () => {

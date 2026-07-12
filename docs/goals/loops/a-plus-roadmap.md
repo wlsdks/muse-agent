@@ -460,3 +460,12 @@ ratchet: 로드맵 잔여 [ ] = 10/65(D6-S4 체크) · self-eval pass · fabrica
 - 리뷰지점: Opus PASS — non-vacuous(tick이 promote+fade 실동작하며 user 사실 잔존, no-op면 무의미)·mutation flips(recalled- scope 제거→user 사실 삭제 RED, non-vacuous assertion은 여전히 통과=실동작 증명)·올바른 불변(user 사실 잔존, user-트리거 forget 무손상)·프로덕션 무변경(verify-first 준수).
 - 리스크: 낮음. test-only. ★fire 51 교훈 2연속 실천(D6-S3·D6-S4 둘 다 verify-first로 기존구현/불변 확인 후 진행 — 중복 재발 0). 발견한 recalled_ 버그는 별개 슬라이스로 backlog. 다음 = D-E1c(self-eval 커밋훅, CI파트는 진안이 CI 안 돌려 N/A) 또는 D6-S5. D-E1b(공유 훅) 신중 이연.
 - lesson: 로드맵 "계약(mutation)" 수용은 이미 성립하는 불변을 **non-vacuous 핀 테스트**로 잠그는 것 — 실 store+실 경로로 자율 tick이 진짜 일하게(promote+fade 발화) 한 뒤 user 데이터 잔존 assert, 그리고 mutation(가드 제거)로 RED 확인. 가드가 이미 있으면 신설 말고 테스트만(중복 회피). 테스트 작성 중 인접 버그(recalled_ 미매칭) 발견 시 scope 밖이면 고치지 말고 backlog 기록.
+
+## fire 54 · 2026-07-12 · skill v2.x · 753b47004
+meta: slice=D3-S3 · wave=W5 · pkg=apps/cli · kind=idle-drain-contract+gap-fix · verdict=PASS · firesSinceDrill=3
+ratchet: 로드맵 잔여 [ ] = 9/65(D3-S3 체크) · self-eval pass(envInventory baseline-repair) · fabrication 0 · cli +5 순수+1 통합 유닛(proactive-consume, testFiles 1407→1411)
+- 무엇: ①기준선 green. ②verify-first(코드 정독)로 D3-S3 narrow 갭 발견: chat-ink tick이 idle을 시작(359)에만 체크, async fetch 후 setTurns(383) 직전 미체크(376은 unmount만)→fetch 중 busy 플립 시 생성 중 삽입 가능(idleRef는 render마다 동기 갱신). ③fix+핀: 순수 selectDrainedProactiveTurns({idleAtConsume,grouped,jobs,nudges}) 추출(busy면 [])→tick이 awaits 후 idleRef.current 재체크. **미손실 교정**: seen-marking을 consume 후(drained>0)로 이동→busy-deferred 완료는 unseen 유지→다음 idle poll 재출현(marked-but-never-shown 방지). ④baseline-repair: foreign apps/api env→docs:env.
+- 왜: hermes async_delegation(완료큐→idle 윈도우만 드레인). "생성 중 삽입 불가" 계약 부재였고, verify-first가 삽입-시점 미재체크 갭까지 발견. 완료 알림이 답변 중간에 끼면 UX 파손+deferred 손실은 이벤트 유실.
+- 리뷰지점: Opus PASS — busy→미삽입(idleRef awaits 후 재체크, setTurns는 drained>0만)·deferred 미손실(seen-marking consume 후, 통합테스트가 busy중 미표시 AND 다음 poll 재출현 양쪽 검증=non-vacuous)·공통케이스 보존(59 무수정)·mutation flips 양쪽(순수+통합 둘 다 RED)·순수 헬퍼 진짜 순수.
+- 리스크: 낮음. 공통 idle-path 무변경, busy-fetch 엣지만 defer(fix). UI 로직을 순수 헬퍼로 추출해 React 렌더 없이 계약 유닛화. 다음 = D3-S6(eval:orchestration 래칫, 📈) 또는 D2-S7(eval:adversarial 확장, 📈). D-E1b/c 공유 훅 신중 이연.
+- lesson: UI(useEffect) 안의 계약은 결정 로직을 순수 헬퍼로 추출하면 React 렌더 없이 유닛화 가능(+풀-컴포넌트 통합 1개로 배선 검증). async 사이 상태 플립(busy) 갭은 "소비 시점 재체크"로 닫되, dedup-marking(seen)을 소비 후로 옮겨야 deferred가 손실 안 됨(marked-but-never-shown이 fix보다 나쁜 버그). verify-first가 로드맵 "핀"을 "fix+핀"으로 격상.
