@@ -36,7 +36,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired } from "@muse/stores";
+import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired, withProcessLock } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
@@ -80,9 +80,44 @@ export interface RunDuePatternNoticesSummary {
   readonly delivered: number;
   readonly errors: readonly string[];
   readonly fired: readonly PatternMatch[];
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  read, send, or mark was attempted at all. Absent on every other path. */
+  readonly outcome?: "lock-held";
 }
 
+/**
+ * Fire due pattern notices. The whole select→send→mark section runs under
+ * the cross-process `withProcessLock` (`${options.patternsFiredFile}.firing.lock`,
+ * the same generalized lock the reminder/followup/checkin/objective ticks use —
+ * `@muse/stores/digest-lock.ts`) because the api daemon's tick
+ * (`apps/api/src/pattern-tick.ts`) and the CLI daemon's tick
+ * (`daemon-delivery-ticks.ts`'s `makePatternTick`) read the SAME patterns-fired
+ * sidecar: `readPatternsFired` is read ONCE per tick (not mutual exclusion), so
+ * without a real lock both daemons can read the same match as un-fired and both
+ * deliver it before either records the cooldown. A LIVE held lock returns
+ * `outcome: "lock-held"` immediately with no send attempted; a broken lock
+ * (non-contention fs error) fails OPEN — the tick still runs unlocked rather
+ * than silently skipping pattern notices.
+ */
 export async function runDuePatternNotices(options: RunDuePatternNoticesOptions): Promise<RunDuePatternNoticesSummary> {
+  const lockPath = `${options.patternsFiredFile}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDuePatternNoticesUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { delivered: 0, errors: [], fireable: 0, fired: [], outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
+    // rather than silencing pattern notices.
+    return {
+      ...lockOutcome.value,
+      errors: [`pattern-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOptions): Promise<RunDuePatternNoticesSummary> {
   const now = options.now ?? (() => new Date());
   const signals = await aggregateActivitySignals({
     now: () => now().getTime(),

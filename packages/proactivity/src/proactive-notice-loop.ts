@@ -71,6 +71,7 @@ import {
   recordProactiveHeartbeat,
   sourceKey,
   withinDailyCap,
+  withProcessLock,
   writeProactiveFired,
   type ProactiveFiredEntry,
   type TrustLedgerEntry
@@ -297,6 +298,9 @@ export interface RunDueProactiveNoticesSummary {
    * user understands why nothing fired during a focus window.
    */
   readonly sessionLockedUntil?: string;
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  read, send, or mark was attempted at all. Absent on every other path. */
+  readonly outcome?: "lock-held";
 }
 
 /**
@@ -314,16 +318,59 @@ export async function runDueProactiveNotices(
   if (heartbeatDir) {
     await recordProactiveHeartbeat(heartbeatDir, "alive", now).catch(() => false);
   }
-  const summary = await runDueProactiveNoticesInner(options);
+  const summary = await runProactiveTickLocked(options);
   // `fired` marks a CLEAN pass. The inner loop catches per-item delivery
   // failures into `summary.errors` rather than throwing, so a tick that
   // reached items but failed EVERY delivery would otherwise still look
   // healthy. Gate on an empty error list so a persistently-failing ticker
   // (alive fresh, fired stale) is distinguishable from a healthy idle one.
+  // A lock-held tick also has zero errors, so it is marked `fired` too —
+  // this daemon did nothing WRONG this tick, another daemon just owned it.
   if (heartbeatDir && summary.errors.length === 0) {
     await recordProactiveHeartbeat(heartbeatDir, "fired", now).catch(() => false);
   }
   return summary;
+}
+
+/**
+ * The whole select→send→mark tick — calendar/task fetch, optional Phase-D
+ * synthesis + reverify, per-item delivery, and the trailing sidecar write —
+ * runs under the cross-process `withProcessLock`
+ * (`${options.sidecarFile}.firing.lock`, the same generalized lock the
+ * reminder/followup/checkin/objective ticks use — `@muse/stores/digest-lock.ts`)
+ * because the api daemon's `proactive-tick` and the CLI daemon's
+ * `makeProactiveTick` read the SAME sidecar file: `writeProactiveFired` is one
+ * write at the END of the tick, not mutual exclusion, so without a real lock
+ * both daemons can read the same imminent item as un-fired and both deliver it
+ * before either records it. This critical section is LARGER than the other
+ * four loops' (a calendar/task fetch plus, per item, an optional LLM synthesis
+ * and grounding reverify) — but `withProcessLock`'s own heartbeat refreshes the
+ * lock file's mtime on an unref'd `staleMs / 3` interval for as long as the
+ * section runs, so a legitimately slow tick never has its lock stolen
+ * mid-work. That is what makes wrapping the WHOLE tick (rather than only the
+ * final sidecar write) safe here. A LIVE held lock returns
+ * `outcome: "lock-held"` immediately with nothing fetched or sent; a broken
+ * lock (non-contention fs error) fails OPEN — the tick still runs unlocked
+ * rather than silently skipping proactive notices.
+ */
+async function runProactiveTickLocked(
+  options: RunDueProactiveNoticesOptions
+): Promise<RunDueProactiveNoticesSummary> {
+  const lockPath = `${options.sidecarFile}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDueProactiveNoticesUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { errors: [], fired: 0, imminent: 0, outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
+    // rather than silencing proactive notices.
+    return {
+      ...lockOutcome.value,
+      errors: [`proactive-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
 }
 
 /**
@@ -339,7 +386,7 @@ function resolveHeartbeatDir(options: RunDueProactiveNoticesOptions): string | u
   return options.sidecarFile ? dirname(options.sidecarFile) : undefined;
 }
 
-async function runDueProactiveNoticesInner(
+async function runDueProactiveNoticesUnderLock(
   options: RunDueProactiveNoticesOptions
 ): Promise<RunDueProactiveNoticesSummary> {
   const now = options.now ?? (() => new Date());
