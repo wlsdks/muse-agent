@@ -171,7 +171,7 @@ ratchet: lint fail→pass · self-eval exit 1→0 · identity 무영향(apps/cli
 리스크/백로그: [선행·타루프·CRITICAL] colorize가 NO_COLOR/non-TTY/plain 모드에서도 ANSI escape를 emit하는 회귀 — 7 테스트 실패(tty-color·muse-banner·program: "still respects NO_COLOR", "renders MUSE wordmark plain mode", "emits no ANSI in plain mode", "today overdue", "colorize NO_COLOR+isTty+force"). 내 변경과 무관(colorize.ts 안 만짐), CLI 렌더링 도메인 → CLI/code-quality 루프 소유. self-eval엔 없어 baseline 회귀 아니나 test:changed가 module-graph로 surface.
 lesson: 크로스루프 lint 유입이 다른 루프의 self-eval baseline을 red로 만듦 — 규칙 ①이 흡수하나, 근본은 유입 루프가 lint를 안 돌린 것. colorize 회귀는 별개 큰 이슈로 flag만(오프테마 1슬라이스 규율).
 
-## fire 18 · 2026-07-12 · <commit>
+## fire 18 · 2026-07-12 · ec529914c
 meta: value-class=prompt-quality · pkg=@muse/agent-core · kind=context-injection · verdict=PASS(opus, deterministic-focus 게이트 stall 없이 완료) · firesSinceDrill=7
 probe: 8-axis 라이브(모호 antecedent·한글 숫자·암묵단위·persona 전환·거절 grace·3단어 제약·설날 세배·모르는 것). 7/8 GOOD(친구 화남→맥락 질문·삼천오백+이천이백=5700·서울-부산 hedge·훔쳐보기 거절·정확히 3단어·새해복). WEAK: 시간적 추론 — "2025년 노벨문학상 누가 받았어?"(오늘 2026-07)에 "아직 발표 안 됐어 + 지금은 2026년도 아니야"(이중 오류, 과거를 미래로).
 ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · agent-core 3030 tests · self-eval 무회귀
