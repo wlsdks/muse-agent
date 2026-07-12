@@ -118,7 +118,13 @@ export function ChatView({ client }: { client: ApiClient }) {
     if (!stickToBottomRef.current) {
       return;
     }
-    scrollRef.current?.scrollTo({ behavior: "smooth", top: scrollRef.current.scrollHeight });
+    // Instant, not smooth: this fires on every streamed token, and a smooth
+    // animation dispatches intermediate `scroll` events at positions short of
+    // the (still-growing) bottom — `onScroll` would sample one past the
+    // threshold, latch stick OFF mid-stream, and never recover (no further
+    // scroll events fire once parked). An instant jump lands one event AT the
+    // bottom, keeping the tail engaged. It also removes the load-time whoosh.
+    scrollRef.current?.scrollTo({ behavior: "auto", top: scrollRef.current.scrollHeight });
   }, [turns, activeTool]);
 
   // Auto-speak the last assistant turn once it finishes streaming.

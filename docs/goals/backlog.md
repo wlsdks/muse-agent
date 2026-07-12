@@ -3363,6 +3363,12 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ eval:orchestration 래칫: MAST step-repetition·unaware-of-termination + 용량거부 라이브 pass^3 — a-plus-roadmap fire 56 (D3-S6)
 - ✓ 웹 채팅 스마트-테일 스크롤(위로 읽는 중 yank 없음, 하단근처만 tail) + 실브라우저 측정 — a-plus-roadmap fire 57 (D7-S3)
 - ✓ calendar 암호화 전 plaintext 백업(키 분실 복구용 `.plaintext-backup-<ts>`, 형제-감사=calendar 유일 갭) — a-plus-roadmap fire 58
+- ✓ [audit] dangerous-command 루트-와이프 우회 마감: `rm -rf --no-preserve-root /`(GNU rm이 순수 `rm -rf /`는 거부→이게 진짜 파괴형)·doas 래퍼·chmod/chown 인터스퍼스 long-flag — 공유 `FLAGS`(short|long) 토큰; 40 test·mutation-RED·false-positive 0·Opus PASS
+- ✓ [audit] 웹 채팅 스마트-테일 OFF-래치 수정: 스트리밍 follow smooth→auto(smooth 중간 scroll 이벤트가 빠른 스트림서 stick=false 래치→미회복); 실브라우저 확인(auto=1이벤트·distance0)
+- ✓ [audit] `MUSE_EVAL_REPEAT=0/NaN`이 eval:orchestration 게이트를 0회 실행으로 무력화 → finite/min≥1 floor
+- ◦ [audit-followup] calendar 크로스-프로세스 파일 락(inline O_EXCL, `FileUserMemoryStore.withFileLock` 미러): 백업-레이스 ciphertext·백업 read IO-error fail-open·기존 unlocked lost-update 동시 마감(auditor TOP FIX, 락 테스트 포함)
+- ◦ [audit-followup] dangerous-command 잔여: (a) FLAGS/R-clause 백트래킹 tighten(손수 8KB `-R`-반복 ~231ms 다항식, R-clause atomic화)·(b) quote/backslash verb-split(`\rm`·`r''m`)·(c) command/exec/nice/timeout 래퍼
+- ◦ [audit-followup] multi-agent: `selectWorkers` `workerIds` 미-dedup(반복 벡터)·용량 silent-drop `droppedWorkerIds` 신호 부재·termination 케이스 `SubAgentRunRegistry` `timed-out` 미검증
 - ◦ [선행·타루프] byte-hygiene 실패: packages/shared/test/utf16-safe.test.ts:43 raw byte (D-KO-S1 e287c94f6) — D-KO-S1 소유자 수리
 
 - ✓ credential_extraction 과차단(도어락 잠김 self-help 차단) 수정 — forgot/unlock veto (prompt-system fire 16)
