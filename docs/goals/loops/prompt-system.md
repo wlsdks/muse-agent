@@ -69,3 +69,13 @@ ratchet: identity 12/12 ×2(영어 프로브 3개도 영어로 "I'm Muse"/"No, I
 라이브: EN1 한국어→영어(EN 562/KO 0), EN2 중간전환→전부 영어(EN 540/KO 0), 한국어 대조군 유지, "React랑 Vue 차이"(tech-term, Hangul 있음)→한국어 유지(오탐 없음). mutation RED 확인(latin 조건 반전→"fires" 3테스트 FAIL).
 리뷰지점: 함정 발견+회피 — dominant-latin만으론 "React랑 Vue 비교"(latin 우세)가 오탐 → "Hangul 하나라도 있으면 한국어" 가드 추가로 정확. Opus가 romanized 한국어("annyeong")는 no-Hangul→발화하지만 모델이 여전히 한국어로 우아하게 처리(비-defect edge) 확인.
 리스크/백로그: (A) han/kana(중국어/일본어) 지배 입력은 여전히 한국어 default(측정된 케이스 아님·이 사용자 언어 아님 → 타깃 유지, 필요시 확장). (B) romanized 한국어는 no-Hangul이라 발화하나 모델이 문맥으로 해소.
+
+## fire 8 · 2026-07-12 · <commit>
+meta: value-class=identity-hardening · pkg=@muse/prompts · kind=invariant-guard · verdict=PASS(opus adversarial) · firesSinceDrill=8
+probe: 이번 fire는 3-감사관(코드 내부·경쟁사 기준선·라이브 실측) 병렬 아키텍처 감사가 프로브 데이터. 판정 B+(openclaw/hermes급, 정체성 배터리만 확실히 앞섬). 순위 갭: ①캐시경계 죽은기능 ②"Learns you"가 폼-미러링이지 학습 user-model 아님 ③인젝션 정적regex vs IFC ④게이트 CI 미배선 ⑤정체성 primacy 관습(코드 아님). C의 낙관을 A가 반증(캐시경계 소비 어댑터 0), B의 오판("register static") 코드로 정정(per-turn 동적 맞음, C 라이브 3/3).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · adversarialCases 26 유지 · prompts 120 tests
+무엇: 갭 ⑤ 수정 — composeSurfacePrompt에서 caller/registry 레이어 priority를 열린구간 (-1000, 500) = [-999,499]로 clamp(clampCallerPriorityBetweenAnchors). 정체성(-1000)과 surface-role(500)이 한 stable 섹션서 comparePromptLayers(priority asc, tiebreak id.localeCompare)로 함께 정렬되므로, priority ≤ -1000 & id가 "identity-core" 앞이거나 ≥ 500 & role id 뒤인 caller가 정체성 앞/역할 뒤로 슬립 가능했음. clamp로 어떤 caller도 앵커와 tiebreak 안 만남.
+왜: 감사가 "정체성 primacy가 매직넘버 관습이지 코드 강제 아님" 발견. 우선순위 (a) 정체성/안전 하드닝. 다양성 RATCHET: 최근 prompt-layer가 agent-core에 몰림 → pkg=@muse/prompts, kind=invariant-guard로 전환.
+행동 acceptance(방어적 불변식): 악성 caller priority(±99999)를 주입해도 조립된 출력 문자열에서 정체성이 항상 첫째·role이 항상 마지막(indexOf 검증), 양끝 동시·정상레이어 대조 포함. mutation-RED(clamp 제거→attacker 3테스트 RED 양방향, 정상 GREEN). undefined priority는 그대로(comparePromptLayers 100 default, 이미 구간 내).
+리뷰지점: Opus가 우회 4종 empirical 프로브 — 토큰ceiling 루프도 clamp후 실행·preview(segments)는 구조적으로 정체성 index0 고정이라 무취약·dynamic-section 공격자는 캐시경계 뒤 유지·정상 2레이어(100/200) 상대순서 보존.
+리스크/백로그: 감사 갭 ①②③④는 backlog에 기록(루프가 순서대로). ②(학습 user-model)는 좌우명 정렬상 최전략 큰 슬라이스.
