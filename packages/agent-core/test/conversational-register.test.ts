@@ -88,6 +88,23 @@ describe("classifyCasualTurn — the measured brevity probes", () => {
   it("is NOT casual for an empty string", () => {
     expect(classifyCasualTurn("")).toBe(false);
   });
+
+  // An affective musing/observation is casual chatter — it must get the gentle
+  // brevity instruction (no follow-up question), NOT the lead-with-answer nudge
+  // whose "더 자세히 알려줄까?" tail turns "오늘 날씨 좋다" into forced helpfulness.
+  it("is casual for an affective musing / observation statement", () => {
+    for (const musing of ["오늘 날씨 좋다", "이 노래 좋다", "커피 맛있다", "날씨 진짜 좋네", "저 강아지 귀여워", "아 배부르다"]) {
+      expect(classifyCasualTurn(musing)).toBe(true);
+    }
+  });
+
+  it("does NOT treat a request that merely CONTAINS the adjective as a musing", () => {
+    // The affective predicate must be the SENTENCE-FINAL word — a request that
+    // merely contains "좋" mid-sentence is a real task, not casual chatter, so
+    // it must NOT be swept into the brevity path.
+    expect(classifyCasualTurn("날씨 좋으면 산책 계획 짜줘")).toBe(false);
+    expect(classifyCasualTurn("기분 좋게 해주는 노래 추천해줘")).toBe(false);
+  });
 });
 
 describe("buildRegisterBrevityLayer", () => {
