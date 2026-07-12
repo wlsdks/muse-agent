@@ -1,6 +1,7 @@
 import { createAgentRuntime } from "@muse/agent-core";
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, createChromeDevToolsMcpServer, withChromeDevToolsRisk, type McpConnection } from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";
 
@@ -62,7 +63,10 @@ describe("P18 audit — perceive + gated action compose in one web-control run",
     await runtime.run({
       messages: [{ content: "Read this signup page, then fill and submit the form for me", role: "user" }],
       model: "provider/model",
-      runId: "p18-seam"
+      runId: "p18-seam",
+      toolExposureAuthority: createToolExposureAuthority({
+        allowedToolNames: ["chrome-devtools.take_snapshot", "chrome-devtools.fill_form"]
+      })
     });
 
     // Perceived: the read tool actually ran in the browser.

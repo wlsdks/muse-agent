@@ -1,6 +1,7 @@
 import { createAgentRuntime } from "@muse/agent-core";
 import { GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, createGitHubMcpServer, withOfficialMcpRisk, type McpConnection } from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";
 
@@ -110,7 +111,8 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
     await runtime.run({
       messages: [{ content: "Open a GitHub issue titled 'Bug: crash on launch' on octo/muse", role: "user" }],
       model: "provider/model",
-      runId: "official-write-deny"
+      runId: "official-write-deny",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["github.create_issue"] })
     });
 
     expect(callTool, "denied write must never reach the wire").not.toHaveBeenCalled();
@@ -120,11 +122,13 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
   it("a FAILING gate (timeout / undeliverable approval) is fail-close ⇒ no external mutation", async () => {
     const callTool = vi.fn(async () => "issue created: #42");
     const tools = await buildTools(callTool);
+    const gateInputs: { risk: string; arguments: unknown }[] = [];
 
     const runtime = createAgentRuntime({
       maxToolCalls: 2,
       modelProvider: provider("create_issue", CREATE_ISSUE_ARGS),
-      toolApprovalGate: async () => {
+      toolApprovalGate: async (input) => {
+        gateInputs.push({ arguments: input.toolCall.arguments, risk: input.risk });
         throw new Error("approval channel timed out");
       },
       toolExposurePolicy: exposeWriteTools,
@@ -134,15 +138,18 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
     await runtime.run({
       messages: [{ content: "Open a GitHub issue on octo/muse", role: "user" }],
       model: "provider/model",
-      runId: "official-write-timeout"
+      runId: "official-write-timeout",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["github.create_issue"] })
     });
 
     expect(callTool, "a gate that cannot deliver a decision must block the write").not.toHaveBeenCalled();
+    expect(gateInputs).toContainEqual({ arguments: CREATE_ISSUE_ARGS, risk: "write" });
   });
 
   it("ABSENT consent (gate returns not-allowed without an explicit confirm) ⇒ no external mutation", async () => {
     const callTool = vi.fn(async () => "issue created: #42");
     const tools = await buildTools(callTool);
+    const gateInputs: { risk: string; arguments: unknown }[] = [];
 
     const runtime = createAgentRuntime({
       maxToolCalls: 2,
@@ -150,7 +157,10 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
       // No recorded consent for this send class ⇒ fail-closed: the gate
       // returns allowed:false (the absent-consent default), never letting
       // the agent's own judgement send.
-      toolApprovalGate: async () => ({ allowed: false, reason: "no recorded scoped consent for create_issue" }),
+      toolApprovalGate: async (input) => {
+        gateInputs.push({ arguments: input.toolCall.arguments, risk: input.risk });
+        return { allowed: false, reason: "no recorded scoped consent for create_issue" };
+      },
       toolExposurePolicy: exposeWriteTools,
       toolRegistry: new ToolRegistry(tools)
     });
@@ -158,10 +168,12 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
     await runtime.run({
       messages: [{ content: "Open a GitHub issue on octo/muse", role: "user" }],
       model: "provider/model",
-      runId: "official-write-absent-consent"
+      runId: "official-write-absent-consent",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["github.create_issue"] })
     });
 
     expect(callTool).not.toHaveBeenCalled();
+    expect(gateInputs).toContainEqual({ arguments: CREATE_ISSUE_ARGS, risk: "write" });
   });
 
   it("CONFIRMED path ⇒ create_issue fires exactly once with the right args (the gate isn't blanket-blocking)", async () => {
@@ -180,7 +192,8 @@ describe("external official-MCP write tool is fail-close draft-first (outbound-s
     await runtime.run({
       messages: [{ content: "Yes, open that GitHub issue on octo/muse", role: "user" }],
       model: "provider/model",
-      runId: "official-write-confirmed"
+      runId: "official-write-confirmed",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["github.create_issue"] })
     });
 
     expect(callTool).toHaveBeenCalledTimes(1);

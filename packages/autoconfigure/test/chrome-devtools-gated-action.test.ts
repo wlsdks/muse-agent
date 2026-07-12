@@ -1,6 +1,7 @@
 import { createAgentRuntime } from "@muse/agent-core";
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, createChromeDevToolsMcpServer, withChromeDevToolsRisk, type McpConnection } from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";
 
@@ -90,7 +91,8 @@ describe("P18 bullet 2 — state-changing Chrome action is gated draft-first", (
     await runtime.run({
       messages: [{ content: "Fill and submit the signup form on this page", role: "user" }],
       model: "provider/model",
-      runId: "p18-gate-deny"
+      runId: "p18-gate-deny",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["chrome-devtools.fill_form"] })
     });
 
     // Fail-close: the form was NEVER actually submitted in the browser.
@@ -102,13 +104,15 @@ describe("P18 bullet 2 — state-changing Chrome action is gated draft-first", (
   it("a FAILING gate (timeout / undeliverable approval) is fail-close → no external effect", async () => {
     const callTool = vi.fn(async () => "submitted");
     const tools = await buildTools(callTool);
+    const gateInputs: { risk: string; arguments: unknown }[] = [];
 
     const runtime = createAgentRuntime({
       maxToolCalls: 2,
       modelProvider: provider("fill_form", { submit: true }),
       // A gate that cannot deliver a decision (rejects/throws) must NOT
       // let the action through — the runtime treats it as fail-close.
-      toolApprovalGate: async () => {
+      toolApprovalGate: async (input) => {
+        gateInputs.push({ arguments: input.toolCall.arguments, risk: input.risk });
         throw new Error("approval channel timed out");
       },
       toolExposurePolicy: exposeWriteTools,
@@ -118,10 +122,12 @@ describe("P18 bullet 2 — state-changing Chrome action is gated draft-first", (
     await runtime.run({
       messages: [{ content: "Fill and submit the signup form on this page", role: "user" }],
       model: "provider/model",
-      runId: "p18-gate-timeout"
+      runId: "p18-gate-timeout",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["chrome-devtools.fill_form"] })
     });
 
     expect(callTool).not.toHaveBeenCalled();
+    expect(gateInputs).toContainEqual({ arguments: { submit: true }, risk: "write" });
   });
 
   it("read perception (take_snapshot) is NOT gated — it runs without approval", async () => {

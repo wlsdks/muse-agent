@@ -43,5 +43,8 @@
     "@muse/tools": "workspace:*",
     "@muse/voice": "workspace:*",
     "kysely": "^0.29.2"
+  },
+  "devDependencies": {
+    "@muse/policy": "workspace:*"
   }
 }
