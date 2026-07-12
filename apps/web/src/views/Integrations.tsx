@@ -378,6 +378,11 @@ function ProviderCard({
             )}
           </div>
         )}
+        {provider.configured && !provider.pairedOwner && provider.pairingCode && (
+          <div className="banner" style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <span>{t("int.pairing.code", { code: provider.pairingCode })}</span>
+          </div>
+        )}
         {pairingReset && !provider.pairedOwner && <div className="banner">{t("int.pairing.resetDone")}</div>}
         {resetPairing.error && <div className="banner err">{(resetPairing.error as Error).message}</div>}
         {provider.configured && (

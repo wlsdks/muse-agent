@@ -382,6 +382,8 @@ export interface MessagingSetupProvider {
   readonly registered: boolean;
   readonly source: "env" | "file" | null;
   readonly pairedOwner?: string;
+  /** One-time pairing code to send to the bot — present only while configured AND unpaired. */
+  readonly pairingCode?: string;
 }
 export interface MessagingSetupResponse {
   readonly providers: readonly MessagingSetupProvider[];

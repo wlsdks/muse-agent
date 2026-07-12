@@ -23,7 +23,15 @@ function build(options: {
   const dir = mkdtempSync(join(tmpdir(), "muse-setup-routes-"));
   const credentialsFile = join(dir, "messaging.json");
   const registry = new MessagingProviderRegistry();
-  const env = { MUSE_DOT_DIR_SENTINEL: dir, ...options.env };
+  // Pin BOTH channel-state files into the temp dir — a configured-but-
+  // unpaired provider now mints a pairing code on GET, which must never
+  // touch the real ~/.muse on the machine running this test.
+  const env = {
+    MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+    MUSE_CHANNEL_PAIRING_CODES_FILE: join(dir, "channel-pairing-codes.json"),
+    MUSE_DOT_DIR_SENTINEL: dir,
+    ...options.env
+  };
   const server = Fastify({ logger: false });
   registerMessagingSetupRoutes(server, {
     credentialsFile,
@@ -236,7 +244,7 @@ describe("POST /api/messaging/setup/:providerId/test-send", () => {
     const server = Fastify({ logger: false });
     registerMessagingSetupRoutes(server, {
       credentialsFile: join(dir, "messaging.json"),
-      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile },
+      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile, MUSE_CHANNEL_PAIRING_CODES_FILE: join(dir, "channel-pairing-codes.json") },
       registry,
       verifyToken: async () => ({ ok: true })
     });
@@ -279,7 +287,7 @@ describe("pairing surface", () => {
     const server = Fastify({ logger: false });
     registerMessagingSetupRoutes(server, {
       credentialsFile: join(dir, "messaging.json"),
-      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile },
+      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile, MUSE_CHANNEL_PAIRING_CODES_FILE: join(dir, "channel-pairing-codes.json") },
       registry: new MessagingProviderRegistry(),
       verifyToken: async () => ({ ok: true })
     });
@@ -289,20 +297,82 @@ describe("pairing surface", () => {
     expect(body.providers.find((p) => p.id === "discord")?.pairedOwner).toBeUndefined();
   });
 
-  it("DELETE …/pairing resets the owner so the NEXT chat re-pairs", async () => {
+  it("GET mints a pairing code for a configured-but-unpaired provider, and omits one once paired", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pair-code-"));
+    const ownersFile = join(dir, "channel-owners.json");
+    const { adoptChannelOwner } = await import("../src/channel-owner-store.js");
+    await adoptChannelOwner(ownersFile, "discord", "already-owner");
+    const server = Fastify({ logger: false });
+    registerMessagingSetupRoutes(server, {
+      credentialsFile: join(dir, "messaging.json"),
+      env: {
+        MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+        MUSE_CHANNEL_PAIRING_CODES_FILE: join(dir, "channel-pairing-codes.json"),
+        MUSE_DISCORD_BOT_TOKEN: "disc-token",
+        MUSE_TELEGRAM_BOT_TOKEN: "123:secret"
+      },
+      registry: new MessagingProviderRegistry(),
+      verifyToken: async () => ({ ok: true })
+    });
+    const response = await server.inject({ method: "GET", url: "/api/messaging/setup" });
+    const body = response.json() as { providers: { id: string; pairingCode?: string; pairedOwner?: string }[] };
+    const telegram = body.providers.find((p) => p.id === "telegram");
+    // Configured (env token), no owner yet — a 6-digit code is minted.
+    expect(telegram?.pairingCode).toMatch(/^\d{6}$/u);
+    // Already paired (discord) — no code is offered even though configured.
+    const discord = body.providers.find((p) => p.id === "discord");
+    expect(discord?.pairedOwner).toBe("already-owner");
+    expect(discord?.pairingCode).toBeUndefined();
+    // Never configured (slack) — no code either.
+    expect(body.providers.find((p) => p.id === "slack")?.pairingCode).toBeUndefined();
+  });
+
+  it("GET returns the SAME code across repeated calls until it's consumed or reset", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pair-code-stable-"));
+    const server = Fastify({ logger: false });
+    registerMessagingSetupRoutes(server, {
+      credentialsFile: join(dir, "messaging.json"),
+      env: {
+        MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+        MUSE_CHANNEL_PAIRING_CODES_FILE: join(dir, "channel-pairing-codes.json"),
+        MUSE_TELEGRAM_BOT_TOKEN: "123:secret"
+      },
+      registry: new MessagingProviderRegistry(),
+      verifyToken: async () => ({ ok: true })
+    });
+    const first = (await server.inject({ method: "GET", url: "/api/messaging/setup" }))
+      .json() as { providers: { id: string; pairingCode?: string }[] };
+    const second = (await server.inject({ method: "GET", url: "/api/messaging/setup" }))
+      .json() as { providers: { id: string; pairingCode?: string }[] };
+    expect(first.providers.find((p) => p.id === "telegram")?.pairingCode)
+      .toBe(second.providers.find((p) => p.id === "telegram")?.pairingCode);
+  });
+
+  it("DELETE …/pairing resets the owner AND the pairing code, so the next GET mints a fresh code", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pair-reset-"));
     const ownersFile = join(dir, "channel-owners.json");
+    const pairingCodesFile = join(dir, "channel-pairing-codes.json");
     const { adoptChannelOwner, readChannelOwner } = await import("../src/channel-owner-store.js");
     await adoptChannelOwner(ownersFile, "telegram", "8303165569");
     const server = Fastify({ logger: false });
     registerMessagingSetupRoutes(server, {
       credentialsFile: join(dir, "messaging.json"),
-      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile },
+      env: { MUSE_CHANNEL_OWNERS_FILE: ownersFile, MUSE_CHANNEL_PAIRING_CODES_FILE: pairingCodesFile, MUSE_TELEGRAM_BOT_TOKEN: "123:secret" },
       registry: new MessagingProviderRegistry(),
       verifyToken: async () => ({ ok: true })
     });
+    const beforeReset = (await server.inject({ method: "GET", url: "/api/messaging/setup" }))
+      .json() as { providers: { id: string; pairingCode?: string }[] };
+    // Already paired, so no code is minted yet.
+    expect(beforeReset.providers.find((p) => p.id === "telegram")?.pairingCode).toBeUndefined();
+
     const response = await server.inject({ method: "DELETE", url: "/api/messaging/setup/telegram/pairing" });
     expect(response.statusCode).toBe(200);
     expect(await readChannelOwner(ownersFile, "telegram")).toBeUndefined();
+
+    const afterReset = (await server.inject({ method: "GET", url: "/api/messaging/setup" }))
+      .json() as { providers: { id: string; pairingCode?: string }[] };
+    // Unpaired again — a fresh code is minted for the NEXT pairing attempt.
+    expect(afterReset.providers.find((p) => p.id === "telegram")?.pairingCode).toMatch(/^\d{6}$/u);
   });
 });

@@ -22,10 +22,10 @@ tool fail-open. This sweep goes deeper.
 | ✅P2 | #6 Missed code-exec env vars (JAVA_TOOL_OPTIONS, PYTHONHOME, …) | runner | MED | FIXED with #2 | done |
 | **P2** | #7 Timeout kill ignores process tree → orphans + runner wedge | runner | MED | ✅ rustc repro | M (killpg/setsid) |
 | **P2** | #8 `resolvesByOverlap` accepts forged citation on ONE shared token | grounding | MED | ✅ traced | S (require ≥2 / ratio) |
-| **P2** | #9 TOFU channel pairing: first stranger claims the public bot | auth | MED (design) | ✅ traced | M (one-time pairing code) |
+| ✅P2 | #9 TOFU channel pairing: first stranger claims the public bot (FIXED — one-time pairing code, attempt-capped + constant-time) | auth | MED (design) | ✅ traced | M (one-time pairing code) |
 | **P3** | #10 `/api/multi-agent/*` routes lack per-route auth guard | api | LOW | ✅ traced | S (add guard) |
 | **P3** | #11 DNS-rebinding TOCTOU on fetch/MCP (industry-wide) | web | LOW | ✅ traced | L (pinning resolver) |
-| **P3** | #12 `adoptChannelOwner` misleading comment (no real TOCTOU) | auth | INFO | ✅ traced | XS (fix comment) |
+| ✅P3 | #12 `adoptChannelOwner` misleading comment (no real TOCTOU) (FIXED — comment corrected to the real single-process guarantee) | auth | INFO | ✅ traced | XS (fix comment) |
 
 ## P0 — fix immediately (both undermine a CORE security property)
 
@@ -99,8 +99,18 @@ change resolution. **Effort S–M (touches Rust — cargo test + clippy).**
   citation on ONE shared content token. Tighten to ≥2 tokens or a coverage ratio.
   Partially defended on ask (coverage floor) and unreachable on chat (notes-only).
   Effort S.
-- **#9** Replace TOFU bot pairing with a one-time pairing code shown in the web
-  console (already a tracked TODO). Effort M.
+- **#9 FIXED.** TOFU bot pairing replaced with a one-time pairing code:
+  `channel-owner-store.ts` generates a 6-digit code (`getOrCreatePairingCode`,
+  cryptographically random), exposed via the authenticated
+  `GET /api/messaging/setup` (web console Integrations) and
+  `muse messaging pairing-code <provider>`. `createInboundAgentRun` no longer
+  auto-adopts the first 1:1 message — adoption requires
+  `verifyPairingCodeAttempt` to match in constant time
+  (`timingSafeEqual`), is single-use (consumed on match), and is
+  attempt-capped (`PAIRING_CODE_MAX_ATTEMPTS`, code invalidated after 5 wrong
+  guesses). An already-paired owner (pre-existing owners file) is preserved
+  unchanged. Shared/group scope and the approval-reply/veto fences are
+  untouched.
 
 ## P3 — backlog / accept
 
@@ -109,8 +119,10 @@ change resolution. **Effort S–M (touches Rust — cargo test + clippy).**
 - **#11** DNS-rebinding TOCTOU on fetch/MCP — industry-wide; needs a custom
   resolver/agent that pins the vetted IP. Effort L. Accept-for-now (loopback bind
   + post-redirect re-check mitigate).
-- **#12** Fix the misleading "first-writer wins on re-read" comment in
-  `channel-owner-store.ts:36` (no real TOCTOU — sequential processing). Effort XS.
+- **#12 FIXED.** The misleading "first-writer wins on re-read" comment in
+  `channel-owner-store.ts` (there was no re-read) now states the real
+  guarantee: single-process sequential inbound processing, not a
+  standalone race guard.
 
 ## Confirmed DEFENDED (no action) — recorded so we don't re-scout
 

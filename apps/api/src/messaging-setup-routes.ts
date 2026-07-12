@@ -23,7 +23,14 @@ import {
   type TokenVerification
 } from "@muse/messaging";
 
-import { readChannelOwner, removeChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
+import {
+  getOrCreatePairingCode,
+  readChannelOwner,
+  removeChannelOwner,
+  removePairingCode,
+  resolveChannelOwnersFile,
+  resolveChannelPairingCodesFile
+} from "./channel-owner-store.js";
 import { requireAuthenticated } from "./server-helpers.js";
 
 import type { ServerOptions } from "./server.js";
@@ -118,24 +125,34 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     }
     const fromFile = new Set(await store.list());
     const ownersFile = resolveChannelOwnersFile(gate.env);
+    const pairingCodesFile = resolveChannelPairingCodesFile(gate.env);
     const owners = Object.fromEntries(
       await Promise.all(CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)]))
     ) as Record<string, string | undefined>;
     return {
-      providers: CONNECTABLE.map((provider) => {
+      providers: await Promise.all(CONNECTABLE.map(async (provider) => {
         const envToken = gate.env[provider.envKey]?.trim();
         const source = envToken ? "env" : fromFile.has(provider.id) ? "file" : null;
+        const configured = source !== null;
         const pairedOwner = owners[provider.id];
+        // A pairing code is only meaningful once the provider is connected
+        // AND no owner has claimed it yet — this is the code the owner
+        // reads here and sends to the bot to complete pairing (P2 #9: TOFU
+        // adoption replaced by this one-time code).
+        const pairingCode = configured && !pairedOwner
+          ? await getOrCreatePairingCode(pairingCodesFile, provider.id, new Date())
+          : undefined;
         return {
-          configured: source !== null,
+          configured,
           ...(pairedOwner ? { pairedOwner } : {}),
+          ...(pairingCode ? { pairingCode } : {}),
           displayName: provider.displayName,
           docsUrl: provider.docsUrl,
           id: provider.id,
           registered: gate.registry.has(provider.id),
           source
         };
-      })
+      }))
     };
   });
 
@@ -177,9 +194,13 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     if (!provider) {
       return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
-    // TOFU reset: the very next chat to message the bot becomes the new
-    // owner — the UI tells the user to message it themselves immediately.
-    await removeChannelOwner(resolveChannelOwnersFile(gate.env), provider.id);
+    // Pairing reset: clear the owner AND the in-flight pairing code, so the
+    // next GET mints a fresh code and pairing must go through it again —
+    // never falls back to auto-adopting whoever messages next.
+    await Promise.all([
+      removeChannelOwner(resolveChannelOwnersFile(gate.env), provider.id),
+      removePairingCode(resolveChannelPairingCodesFile(gate.env), provider.id)
+    ]);
     return { ok: true };
   });
 

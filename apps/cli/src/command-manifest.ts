@@ -520,6 +520,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "hasOptions": false,
     "subcommands": [
       "inbox",
+      "pairing-code",
       "providers",
       "send"
     ]

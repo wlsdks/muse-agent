@@ -2968,6 +2968,37 @@ describe("cli program", () => {
     }
   });
 
+  it("messaging pairing-code prints the code for a configured-but-unpaired provider, and a clear message once paired", async () => {
+    const fakeSetupResponse = (providers: readonly Record<string, unknown>[]) =>
+      async () => new Response(JSON.stringify({ providers }), { status: 200 });
+
+    const { io: io1, output: output1 } = captureOutput();
+    const program1 = createProgram({
+      ...io1,
+      fetch: fakeSetupResponse([{ configured: true, id: "telegram", pairingCode: "048213" }])
+    });
+    await program1.parseAsync(["node", "muse", "messaging", "pairing-code", "telegram"], { from: "node" });
+    expect(output1.join("")).toContain("048213");
+    expect(output1.join("")).toContain("telegram");
+
+    const { io: io2, output: output2 } = captureOutput();
+    const program2 = createProgram({
+      ...io2,
+      fetch: fakeSetupResponse([{ configured: true, id: "telegram", pairedOwner: "8303165569" }])
+    });
+    await program2.parseAsync(["node", "muse", "messaging", "pairing-code", "telegram"], { from: "node" });
+    expect(output2.join("")).toContain("already paired");
+    expect(output2.join("")).not.toContain("048213");
+
+    const { io: io3, output: output3 } = captureOutput();
+    const program3 = createProgram({
+      ...io3,
+      fetch: fakeSetupResponse([{ configured: false, id: "telegram" }])
+    });
+    await program3.parseAsync(["node", "muse", "messaging", "pairing-code", "telegram"], { from: "node" });
+    expect(output3.join("")).toContain("not connected");
+  });
+
   it("setup (default) prints a status summary covering model, mcp, calendar, notes, tasks, voice", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-setup-status-"));
     const tasksFile = path.join(root, "tasks.json");

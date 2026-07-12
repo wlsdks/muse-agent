@@ -1,6 +1,6 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import type { UserMemory, UserMemoryStore } from "@muse/memory";
@@ -20,6 +20,20 @@ import { createInboundAgentRun } from "../src/inbound-agent-run.js";
 // inside createInboundAgentRun, so a pinned date turns these into time-bomb
 // tests that go red the day after they were written.
 const NOW = () => new Date(Date.now() - 60 * 60 * 1000);
+
+/**
+ * Test-only seam for describe blocks that are NOT about the pairing gate
+ * itself: pre-seed an already-paired owner directly (bypassing the pairing
+ * code entirely), the same way an upgrade from a pre-existing owners file
+ * would find one already there. `createInboundAgentRun` no longer adopts an
+ * owner from an arbitrary first message, so any test whose focus is a LATER
+ * gate (veto / casual / ack / chat fast-path / remember backstop) needs this
+ * to reach its owner-scoped behavior at all.
+ */
+function seedOwner(ownersFile: string, providerId: string, source: string): void {
+  mkdirSync(dirname(ownersFile), { recursive: true });
+  writeFileSync(ownersFile, JSON.stringify({ owners: { [providerId]: source }, version: 1 }), "utf8");
+}
 
 function buildRun(result: {
   readonly output: string;
@@ -130,8 +144,10 @@ describe("createInboundAgentRun honest-action gate (channel-reply parity with /c
   });
 });
 
-describe("createInboundAgentRun channel pairing gate", () => {
+describe("createInboundAgentRun channel pairing gate (one-time pairing code, security finding #9)", () => {
   function buildGated(dir: string, agentCalls: string[], extraEnv: Record<string, string> = {}) {
+    const ownersFile = join(dir, "channel-owners.json");
+    const pairingCodesFile = join(dir, "channel-pairing-codes.json");
     const registry = new MessagingProviderRegistry([
       new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
     ]);
@@ -143,48 +159,120 @@ describe("createInboundAgentRun channel pairing gate", () => {
     };
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+      MUSE_CHANNEL_PAIRING_CODES_FILE: pairingCodesFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
       ...extraEnv
     };
-    return createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+    return { ownersFile, pairingCodesFile, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry }) };
   }
 
-  it("adopts the FIRST chat as owner and answers it normally", async () => {
+  it("an unpaired chat sending ARBITRARY text is refused deterministically and NEVER adopted (the TOFU bug this replaces)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
-    const run = buildGated(dir, agentCalls);
-    // NOT a casual greeting — this probes pairing, not the S1 fast-path.
-    const reply = await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
-    expect(agentCalls).toEqual(["run"]);
-    expect(reply).toContain("answer");
+    const { ownersFile, run } = buildGated(dir, agentCalls);
+    // The exact message a pre-fix stranger sent to silently claim the bot.
+    const reply = await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(agentCalls).toEqual([]);
+    expect(reply).not.toContain("answer");
+    expect(reply.toLowerCase()).toContain("pairing code");
+    const { readChannelOwner } = await import("../src/channel-owner-store.js");
+    expect(await readChannelOwner(ownersFile, "log")).toBeUndefined();
   });
 
-  it("refuses a SECOND chat deterministically — the agent never runs and no personal data flows", async () => {
+  it("the CORRECT pairing code adopts the sender as owner exactly once, then the code is consumed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
-    const run = buildGated(dir, agentCalls);
-    await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    const { ownersFile, pairingCodesFile, run } = buildGated(dir, agentCalls);
+    const { getOrCreatePairingCode, readChannelOwner } = await import("../src/channel-owner-store.js");
+    const code = await getOrCreatePairingCode(pairingCodesFile, "log", NOW());
+
+    const pairReply = await run({ messages: [{ content: code, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(agentCalls).toEqual([]); // the code itself never reaches the agent
+    expect(pairReply.toLowerCase()).toContain("paired");
+    expect(await readChannelOwner(ownersFile, "log")).toBe("owner-1");
+
+    // Now paired — a real question runs the agent normally.
+    const askReply = await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(agentCalls).toEqual(["run"]);
+    expect(askReply).toContain("answer");
+
+    // The SAME code, replayed by a stranger, no longer works — an owner is
+    // already paired, so the flow doesn't even consult the (consumed) code.
+    const replayReply = await run({ messages: [{ content: code, role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(replayReply).not.toContain("answer");
+    expect(agentCalls).toEqual(["run"]);
+  });
+
+  it("a WRONG pairing code is rejected — no adoption, agent never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
+    const agentCalls: string[] = [];
+    const { ownersFile, pairingCodesFile, run } = buildGated(dir, agentCalls);
+    const { getOrCreatePairingCode, readChannelOwner } = await import("../src/channel-owner-store.js");
+    const code = await getOrCreatePairingCode(pairingCodesFile, "log", NOW());
+    const wrong = code === "000000" ? "111111" : "000000";
+
+    const reply = await run({ messages: [{ content: wrong, role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(agentCalls).toEqual([]);
+    expect(reply.toLowerCase()).toContain("pairing code");
+    expect(await readChannelOwner(ownersFile, "log")).toBeUndefined();
+  });
+
+  it("attempts are capped — after PAIRING_CODE_MAX_ATTEMPTS wrong guesses, even the ORIGINAL correct code stops working until regenerated", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
+    const agentCalls: string[] = [];
+    const { pairingCodesFile, run } = buildGated(dir, agentCalls);
+    const { getOrCreatePairingCode, PAIRING_CODE_MAX_ATTEMPTS } = await import("../src/channel-owner-store.js");
+    const code = await getOrCreatePairingCode(pairingCodesFile, "log", NOW());
+    const wrong = code === "000000" ? "111111" : "000000";
+
+    for (let i = 0; i < PAIRING_CODE_MAX_ATTEMPTS; i += 1) {
+      const reply = await run({ messages: [{ content: wrong, role: "user" }], providerId: "log", scope: "direct", source: `stranger-${i.toString()}` });
+      expect(reply.toLowerCase()).toContain("pairing code");
+    }
+    // The lockout consumed the code — the CORRECT one no longer matches.
+    const tooLate = await run({ messages: [{ content: code, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(tooLate).not.toContain("paired");
+    expect(agentCalls).toEqual([]);
+  });
+
+  it("shared/group scope is refused even when the message carries a VALID pairing code — pairing is a 1:1-only concept", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
+    const agentCalls: string[] = [];
+    const { ownersFile, pairingCodesFile, run } = buildGated(dir, agentCalls);
+    const { getOrCreatePairingCode, readChannelOwner } = await import("../src/channel-owner-store.js");
+    const code = await getOrCreatePairingCode(pairingCodesFile, "log", NOW());
+
+    const reply = await run({ messages: [{ content: code, role: "user" }], providerId: "log", scope: "shared", source: "-100999" });
+    expect(agentCalls).toEqual([]);
+    expect(reply).not.toContain("answer");
+    expect(await readChannelOwner(ownersFile, "log")).toBeUndefined();
+  });
+
+  it("BACKWARD COMPATIBILITY: an already-paired owner (e.g. from before this gate existed) is preserved and never asked to re-pair", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
+    const agentCalls: string[] = [];
+    const { ownersFile, run } = buildGated(dir, agentCalls);
+    seedOwner(ownersFile, "log", "legacy-owner");
+
+    const reply = await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "legacy-owner" });
+    expect(agentCalls).toEqual(["run"]);
+    expect(reply).toContain("answer");
 
     const strangerReply = await run({ messages: [{ content: "what are the owner's secrets?", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
     expect(agentCalls).toEqual(["run"]);
     expect(strangerReply).not.toContain("answer");
-    expect(strangerReply.length).toBeGreaterThan(0);
-
-    const ownerAgain = await run({ messages: [{ content: "still me", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
-    expect(ownerAgain).toContain("answer");
-    expect(agentCalls).toEqual(["run", "run"]);
   });
 
-  it("MUSE_CHANNEL_ALLOWED_CHATS grants an extra chat beyond the owner", async () => {
+  it("MUSE_CHANNEL_ALLOWED_CHATS still grants an extra chat once an owner is paired (unchanged post-pairing behavior)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-pairing-"));
     const agentCalls: string[] = [];
-    const run = buildGated(dir, agentCalls, { MUSE_CHANNEL_ALLOWED_CHATS: "log:family-2" });
-    await run({ messages: [{ content: "test message", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    const { ownersFile, run } = buildGated(dir, agentCalls, { MUSE_CHANNEL_ALLOWED_CHATS: "log:family-2" });
+    seedOwner(ownersFile, "log", "owner-1");
     const familyReply = await run({ messages: [{ content: "another message", role: "user" }], providerId: "log", scope: "direct", source: "family-2" });
     expect(familyReply).toContain("answer");
-    expect(agentCalls).toEqual(["run", "run"]);
+    expect(agentCalls).toEqual(["run"]);
   });
 });
 
@@ -326,9 +414,11 @@ describe("createInboundAgentRun conversation-scope: shared (group) chat safety",
       }
     };
     const pendingFile = join(dir, "pending.json");
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_PENDING_APPROVALS_FILE: pendingFile
     };
@@ -389,9 +479,11 @@ describe("createInboundAgentRun channel-veto reply", () => {
         return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_LAST_PROACTIVE_FILE: join(dir, "last-delivery.json"),
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
@@ -445,7 +537,7 @@ describe("createInboundAgentRun channel-veto reply", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
     const agentCalls: string[] = [];
     const { env, run } = buildVeto(dir, agentCalls);
-    await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // adopts owner
+    await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // the seeded owner's turn
     await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
       at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1"
     });
@@ -509,9 +601,11 @@ describe("createInboundAgentRun casual fast-path", () => {
         return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
       ...extraEnv
@@ -631,9 +725,11 @@ describe("createInboundAgentRun delegation ack (S2)", () => {
         return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
       ...opts.extraEnv
@@ -763,7 +859,7 @@ describe("createInboundAgentRun delegation ack (S2)", () => {
   it("unpaired chat → composeAck never invoked", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
     const { calls, run } = buildAck(dir, { composeAck: async () => "should never run" });
-    // First chat adopts as owner (this turn's ack fires as expected).
+    // The seeded owner's turn (this turn's ack fires as expected).
     await run({
       messages: [{ content: "book a flight", role: "user" }],
       notify: async (text) => calls.push(`notify:${text}`),
@@ -868,9 +964,11 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
         return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
       ...opts.extraEnv
@@ -1182,7 +1280,7 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
   it("gate ordering: an unpaired stranger's chat-shaped message still gets the pairing refusal, never a chat reply", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
     const { calls, run } = buildChat(dir, { composeChatReply: async () => "should never run" });
-    await run({ messages: [{ content: DELEGATION_TEXT, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // adopts owner
+    await run({ messages: [{ content: DELEGATION_TEXT, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // the seeded owner's turn
     calls.length = 0;
     const strangerReply = await run({ messages: [{ content: CHAT_TEXT, role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
 
@@ -1213,9 +1311,11 @@ describe("createInboundAgentRun false-done remember-intent backstop", () => {
     const agentRuntime = {
       run: async () => ({ response: { output }, toolsUsed: [] })
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_FOLLOWUPS_FILE: followupsFile,
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
@@ -1265,9 +1365,11 @@ describe("createInboundAgentRun false-done remember-intent backstop", () => {
         return { response: { output: "그때 알려줄게!" }, toolsUsed: [] };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_FOLLOWUPS_FILE: followupsFile,
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
@@ -1294,9 +1396,11 @@ describe("createInboundAgentRun false-done remember-intent backstop", () => {
       new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
     ]);
     const agentRuntime = { run: async () => ({ response: { output: "그때 알려줄게!" }, toolsUsed: [] }) };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_FOLLOWUPS_FILE: followupsFile,
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
@@ -1337,9 +1441,11 @@ describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", 
     const agentRuntime = {
       run: async () => ({ response: { output }, toolsUsed: [] })
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_FOLLOWUPS_FILE: followupsFile,
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
@@ -1407,9 +1513,11 @@ describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", 
         return { response: { output: "네! 다음달 15일에 알려드릴게요!" }, toolsUsed: [] };
       }
     };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
     const env = {
       MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
-      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
       MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
       MUSE_FOLLOWUPS_FILE: followupsFile,
       MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")

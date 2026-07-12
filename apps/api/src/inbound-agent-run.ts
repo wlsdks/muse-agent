@@ -32,7 +32,15 @@ import { gateChatAnswerGrounding } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 import { queryContacts, readFollowups, upsertFollowup, type PersistedFollowup } from "@muse/stores";
 
-import { adoptChannelOwner, parseAllowedChats, readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
+import {
+  adoptChannelOwner,
+  extractPairingCodeCandidate,
+  parseAllowedChats,
+  readChannelOwner,
+  resolveChannelOwnersFile,
+  resolveChannelPairingCodesFile,
+  verifyPairingCodeAttempt
+} from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
@@ -103,6 +111,15 @@ export interface InboundAgentRunOptions {
  */
 const UNPAIRED_CHAT_NOTICE =
   "This bot is a private personal assistant and only talks to its paired owner.";
+
+// Pairing-code gate (replaces TOFU adoption): until an owner is paired, NO
+// sender is told whether they sent no code / the wrong code / a locked-out
+// code — a single generic notice avoids handing an attacker a brute-force
+// oracle over which state they're in.
+const PAIRING_CODE_REQUIRED_NOTICE =
+  "This bot is a private personal assistant. To link this chat, send the one-time pairing code shown in the Muse web console (Integrations) or printed by `muse messaging pairing-code <provider>`.";
+const PAIRING_CODE_SUCCESS_NOTICE =
+  "This chat is now paired as the owner — talk to Muse normally from here.";
 
 // False-done backstop (the guard layer, not the parser): when the user asked
 // Muse to remember something date-shaped this turn and NO followup actually
@@ -247,25 +264,48 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // "shared", never silently the safer-looking "direct".
     const scope = effectiveScope(rawScope);
     const ownersFile = resolveChannelOwnersFile(env);
+    const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
     if (scope === "shared") {
-      // NEVER adopt a group/channel chat as the TOFU owner — that would
-      // let the first random group message claim ownership of the agent.
+      // NEVER adopt a group/channel chat as owner — that would let the
+      // first random group message claim ownership of the agent. A
+      // pairing code (below) is a 1:1-only concept and never applies here.
       const groupAllowed = parseBoolean(env.MUSE_CHANNEL_GROUP_ENABLED, false)
         && parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`);
       if (!groupAllowed) {
         return UNPAIRED_CHAT_NOTICE;
       }
     } else {
-      // Pairing gate — a public bot handle is discoverable by anyone, so
-      // an un-paired 1:1 chat is refused deterministically before any
-      // approval handling or agent turn can touch personal state.
-      const owner = (await readChannelOwner(ownersFile, providerId))
-        ?? (await adoptChannelOwner(ownersFile, providerId, source));
-      if (source !== owner && !parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`)) {
-        return UNPAIRED_CHAT_NOTICE;
+      // Pairing gate — a public bot handle is discoverable by anyone, so an
+      // un-paired 1:1 chat is refused deterministically before any approval
+      // handling or agent turn can touch personal state. An ALREADY-paired
+      // owner (an existing owners-file entry, from before this gate existed
+      // or from a prior pairing) is preserved unchanged and never asked to
+      // re-pair — the code gate applies ONLY to the first-ever adoption.
+      const existingOwner = await readChannelOwner(ownersFile, providerId);
+      if (existingOwner) {
+        if (source !== existingOwner && !parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`)) {
+          return UNPAIRED_CHAT_NOTICE;
+        }
+      } else {
+        // No owner yet — adoption requires a valid one-time pairing code the
+        // owner reads out-of-band (web console / `muse messaging
+        // pairing-code`), never auto-adopted from whoever messages first.
+        // A single generic notice covers "no code sent" / "wrong code" /
+        // "attempts exhausted" alike, so a stranger gets no signal about
+        // which of those states they're in (no brute-force oracle).
+        const candidate = extractPairingCodeCandidate(latestUserText);
+        const verdict = candidate === undefined
+          ? "no_code"
+          : await verifyPairingCodeAttempt(resolveChannelPairingCodesFile(env), providerId, candidate);
+        if (verdict !== "matched") {
+          return PAIRING_CODE_REQUIRED_NOTICE;
+        }
+        // Adopted — confirm immediately and stop; the pairing-code text
+        // itself is not a real question, so it never reaches the agent.
+        await adoptChannelOwner(ownersFile, providerId, source);
+        return PAIRING_CODE_SUCCESS_NOTICE;
       }
     }
-    const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
     // Approval-reply hijack guard: a pending approval is 1:1-scoped state
     // (outbound-safety — only the paired owner may confirm a draft), so a
     // "yes" from a group/shared chat must NEVER be interpreted as a

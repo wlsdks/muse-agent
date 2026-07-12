@@ -100,6 +100,45 @@ export function registerMessagingCommands(
     });
 
   messaging
+    .command("pairing-code")
+    .description("Print a provider's one-time pairing code — send it to the bot from your own chat to link it (security finding #9: replaces silent first-message adoption)")
+    .argument("<provider>", "Provider id: telegram | discord | slack | line | matrix")
+    .option("--json", "Print the raw provider entry instead of formatted text")
+    .action(async (provider: string, options: { readonly json?: boolean }, command) => {
+      const payload = await helpers.apiRequest(io, command, "/api/messaging/setup") as {
+        readonly providers?: readonly {
+          readonly id: string;
+          readonly configured: boolean;
+          readonly pairedOwner?: string;
+          readonly pairingCode?: string;
+        }[];
+      };
+      const entry = payload.providers?.find((candidate) => candidate.id === provider);
+      if (!entry) {
+        io.stderr(`unknown messaging provider "${provider}"\n`);
+        process.exitCode = 1;
+        return;
+      }
+      if (options.json) {
+        helpers.writeOutput(io, entry);
+        return;
+      }
+      if (!entry.configured) {
+        io.stdout(`${provider} is not connected yet — connect it first (web console Integrations, or POST /api/messaging/setup/${provider}).\n`);
+        return;
+      }
+      if (entry.pairedOwner) {
+        io.stdout(`${provider} is already paired — no code needed. Use "reset pairing" in the web console to re-pair a different chat.\n`);
+        return;
+      }
+      if (!entry.pairingCode) {
+        io.stdout(`No active pairing code for ${provider} yet — try again in a moment.\n`);
+        return;
+      }
+      io.stdout(`Pairing code for ${provider}: ${entry.pairingCode}\nSend this code as a message to the bot from the chat you want to link as its owner.\n`);
+    });
+
+  messaging
     .command("inbox")
     .description("Fetch recent inbound messages (Phase 2.a — Telegram + Discord; one-shot, no offset state)")
     .argument("<provider>", "Provider id: telegram | discord (Slack/LINE inbound coming later)")
