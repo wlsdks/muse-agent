@@ -415,3 +415,12 @@ ratchet: 로드맵 잔여 [ ] = 15/65(D-E1→a/b/c 분해, a 체크) · self-eva
 - 리뷰지점: Opus PASS — over-exclusion threat SAFE(contamination은 detector 결과서만 set, score 결과서 파생 안 함; behavior-fail case C가 total 유지 검증)·정밀성(benign "failed launch"/"30s timeout"/"supports vision" 미flag)·byte-identical(excluded 추가만)·mutation-RED 양방향(detector 무력화·over-exclusion→"no over-exclusion" assertion RED)·훅/CI/package src 무접촉.
 - 리스크: 낮음. 결정론·additive·zero blast radius(공유 훅 무변경). D-E1b(pre-push 확장+훅 실차단 증명)는 공유 push 인프라라 신중 fire로 이연(진안 확인). 다음 = D-E1b 또는 D6-S1a. ※foreign reflection-guard.test.mjs 실패는 타루프 proactivity(내 것 아님).
 - lesson: eval 오염 필터의 핵심 위협은 over-exclusion(진짜 실패 은폐→pass rate 인플레) — contamination을 detector에서만 결정하고 score 결과와 분리, total 증가를 오염체크 後로 배치하면 behavior 실패는 절대 제외 안 됨. mutation으로 over-exclusion을 RED로 잡는 게 이 클래스의 핵심 가드. 공유 인프라(pre-push 훅) 변경은 blast radius 크면 결정론 부분부터 분해.
+
+## fire 49 · 2026-07-12 · skill v2.x · c541292b4
+meta: slice=D6-S1a · wave=W5 · pkg=@muse/agent-core · kind=deterministic-consolidation-score · verdict=PASS · firesSinceDrill=7
+ratchet: 로드맵 잔여 [ ] = 14/65(D6-S1a 체크) · self-eval pass · fabrication 0 · agent-core +12 property 유닛(consolidation-score.test, testFiles 1404→1405)
+- 무엇: ①기준선 green. ②D6-S1a(내가 방향 결정 — 진안 "방향은 니가"): sleep-consolidation 결정론 승격 스코어. scoreConsolidationCandidate(signals,nowMs,opts) = frequency(log2(1+hits)) × recency(half-life 2^(-ageDays/14d)) × diversity(distinctQueries 1..2/neutral). 입력 {hits,createdMs,lastHitMs,distinctQueries?}=RecallHitStats 실형 일치(distinctQueries는 원장 미추적이라 optional-정직). isConsolidationCandidate(score,threshold). 순수 selection-only(zero imports·no write=D6 자동쓰기금지 불변 구조적).
+- 왜: D6-S1(L)을 a(스코어)/b(draft 제안)/c(데몬)로 분해. openclaw dreaming 승격스코어(6요소·반감기14d) 참조하되 기본OFF·자동쓰기금지·LLM없음(Muse식 교정-망각 원칙). D-E1b(공유 pre-push 훅)는 blast radius 커서 이연 → 깔끔한 bounded 결정론 슬라이스 선택.
+- 리뷰지점: Opus PASS — no-write/순수 selection 불변(zero imports·frozen-input 무변경 유닛)·monotonicity(hits/recency/half-life 0.5/diversity 정확)·boundary 가드(hits≤0·non-finite·future-clamp)·grounded 입력(RecallHitStats 일치·distinctQueries honestly optional)·mutation-RED 양방향 독립 재현.
+- 리스크: 낮음. 순수 함수·미배선(승격 write는 D6-S1b draft-first, 데몬은 D6-S1c). 자동쓰기금지 D6 불변을 함수가 side-effect-free라 구조적으로 보장. 다음 = D6-S1b(승격을 proactive draft 카드+자동쓰기-없음 계약 mutation).
+- lesson: 결정론 스코어의 입력은 실제 저장되는 신호(RecallHitStats hits/lastHitMs)에 grounded해야 — distinct-query처럼 원장 미추적 신호는 optional+neutral fallback으로 spec-complete하되 정직히 표기. no-write 불변은 함수를 순수(zero import)로 만들어 구조적으로 보장하고 frozen-input 유닛으로 증명.

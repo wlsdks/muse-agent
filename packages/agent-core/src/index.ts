@@ -613,6 +613,13 @@ export { RUN_TOOL_PLAN_EXEMPLAR_BANK } from "./tool-plan-exemplars.js";
 export { applyToolExemplars } from "./context-transforms.js";
 export { summarizeTokenConfidence, type TokenConfidenceSummary } from "./token-confidence.js";
 export { baseLevelActivation, computeActivationBoost } from "./actr-activation.js";
+export {
+  DEFAULT_CONSOLIDATION_HALF_LIFE_DAYS,
+  DEFAULT_CONSOLIDATION_THRESHOLD,
+  isConsolidationCandidate,
+  scoreConsolidationCandidate,
+  type ConsolidationCandidateSignals
+} from "./consolidation-score.js";
 export { adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses, type NoticeResponseStats } from "./sdt-criterion.js";
 export { splitCompoundQuery } from "./compound-query.js";
 export {
