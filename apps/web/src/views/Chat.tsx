@@ -81,7 +81,17 @@ export function ChatEmptyState({
 export function ChatView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const token = readToken();
-  const { activeTool, error, pending, reset, send, turns } = useChatStream(client.baseUrl, token);
+  const { activeTool, error, pending, reset, send, thinking, turns } = useChatStream(client.baseUrl, token);
+  const [elapsedS, setElapsedS] = useState(0);
+  useEffect(() => {
+    if (!pending) {
+      setElapsedS(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedS(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [pending]);
   const voice = useVoice(client.baseUrl, token);
   const [draft, setDraft] = useState("");
   const [autoSpeak, setAutoSpeak] = useState(false);
@@ -136,7 +146,14 @@ export function ChatView({ client }: { client: ApiClient }) {
                   turn.text ? (
                     <Markdown text={turn.text} />
                   ) : pending ? (
-                    <span className="spinner" />
+                    <span className="thinking-line">
+                      <span className="spinner" />
+                      {thinking || elapsedS > 0 ? (
+                        <span className="subtle" style={{ fontSize: 13 }}>
+                          {t("chat.thinking")}{elapsedS >= 3 ? ` · ${elapsedS}s` : ""}
+                        </span>
+                      ) : null}
+                    </span>
                   ) : null
                 ) : (
                   turn.text

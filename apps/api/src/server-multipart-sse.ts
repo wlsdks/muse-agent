@@ -81,6 +81,14 @@ export async function* toSseStream(
   let assembled = "";
   const evidence: ChatGroundingSource[] = [];
   const toolNames = new Set<string>();
+  // The first frame leaves BEFORE any model/recall work, so the client can
+  // show a live "thinking" state instantly instead of a dead connection —
+  // the answer itself only arrives post-gate, which can take a minute on
+  // a local 12B model.
+  yield `event: stage
+data: thinking
+
+`;
   for await (const event of events) {
     if (event.type === "text-delta") {
       assembled += event.text;

@@ -34,6 +34,7 @@ export function useChatStream(baseUrl: string, token: string) {
   const [turns, setTurns] = useState<readonly ChatTurn[]>(() => loadTranscript());
   const [pending, setPending] = useState(false);
   const [activeTool, setActiveTool] = useState<string>("");
+  const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const draftRef = useRef<ChatTurn | null>(null);
 
@@ -65,6 +66,7 @@ export function useChatStream(baseUrl: string, token: string) {
       setError(null);
       setPending(true);
       setActiveTool("");
+      setThinking(false);
 
       const userTurn: ChatTurn = { role: "user", text };
       const draft: ChatTurn = { citations: [], role: "assistant", text: "", tools: [] };
@@ -81,7 +83,7 @@ export function useChatStream(baseUrl: string, token: string) {
       };
 
       try {
-        const res = await fetch(new URL("/api/chat", baseUrl).toString(), {
+        const res = await fetch(new URL("/api/chat/stream", baseUrl).toString(), {
           body: JSON.stringify({ message: text }),
           headers: {
             accept: "text/event-stream",
@@ -126,7 +128,7 @@ export function useChatStream(baseUrl: string, token: string) {
             if (!data) {
               continue;
             }
-            handleEvent(eventName, data, commit, setActiveTool);
+            handleEvent(eventName, data, commit, setActiveTool, setThinking);
           }
         }
       } catch (cause) {
@@ -139,6 +141,7 @@ export function useChatStream(baseUrl: string, token: string) {
         });
       } finally {
         setActiveTool("");
+        setThinking(false);
         setPending(false);
         draftRef.current = null;
       }
@@ -146,16 +149,40 @@ export function useChatStream(baseUrl: string, token: string) {
     [baseUrl, pending, token]
   );
 
-  return { activeTool, error, pending, reset, send, turns };
+  return { activeTool, error, pending, reset, send, thinking, turns };
 }
 
 function handleEvent(
   eventName: string,
   dataLine: string,
   commit: (mut: (t: ChatTurn) => void) => void,
-  setActiveTool: (name: string) => void
+  setActiveTool: (name: string) => void,
+  setThinking: (on: boolean) => void
 ): void {
+  if (eventName === "stage") {
+    setThinking(true);
+    return;
+  }
+
+  // The gated answer is AUTHORITATIVE: the grounding gate may have replaced
+  // a fabricated/uncited claim after the raw tokens streamed by.
+  if (eventName === "grounding") {
+    try {
+      const payload = JSON.parse(dataLine) as { answer?: string };
+      if (typeof payload.answer === "string" && payload.answer.length > 0) {
+        commit((t) => {
+          t.text = payload.answer!;
+        });
+      }
+    } catch {
+      /* ignore malformed grounding frame */
+    }
+    setThinking(false);
+    return;
+  }
+
   if (eventName === "done") {
+    setThinking(false);
     try {
       const payload = JSON.parse(dataLine) as ChatResponse;
       commit((t) => {
@@ -177,6 +204,7 @@ function handleEvent(
   }
 
   if (eventName === "delta" || eventName === "message") {
+    setThinking(false);
     let chunk = dataLine;
     try {
       const payload = JSON.parse(dataLine) as { delta?: string; content?: string };

@@ -1044,6 +1044,11 @@ button {
   color: var(--primary-hover);
 }
 
+.thinking-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
 .spinner {
   width: 16px;
   height: 16px;

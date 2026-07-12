@@ -43,3 +43,20 @@ describe("sseData", () => {
     expect(sseData("a\n\nb")).toBe("a\ndata:  \ndata: b");
   });
 });
+
+describe("toSseStream opening stage frame", () => {
+  it("emits stage:thinking BEFORE the first runtime event, so the client shows life instantly", async () => {
+    async function* slowRuntime(): AsyncIterable<{ type: "text-delta"; text: string; runId: string }> {
+      yield { runId: "r", text: "hello", type: "text-delta" };
+    }
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    const frames: string[] = [];
+    for await (const frame of toSseStream(slowRuntime() as never, "compat")) {
+      frames.push(frame);
+      if (frames.length >= 2) break;
+    }
+    expect(frames[0]).toContain("event: stage");
+    expect(frames[0]).toContain("thinking");
+    expect(frames[1]).toContain("event: message");
+  });
+});
