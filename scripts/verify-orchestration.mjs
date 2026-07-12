@@ -15,7 +15,11 @@ import { MultiAgentOrchestrator, RuleBasedAgentWorker, createWorkerResult } from
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const WALL_CLOCK_CAP_MS = 180_000;
-const REPEAT = Number(process.env.MUSE_EVAL_REPEAT ?? 3);
+// Floor at 1: a pass^k gate whose k parses to 0/NaN (`MUSE_EVAL_REPEAT=0`, "",
+// "three") would run the cases ZERO times and still print "clean" — a gate that
+// can be silently disabled. Coerce anything non-finite/<1 back to the default.
+const parsedRepeat = Number(process.env.MUSE_EVAL_REPEAT ?? 3);
+const REPEAT = Number.isFinite(parsedRepeat) && parsedRepeat >= 1 ? Math.floor(parsedRepeat) : 3;
 
 const instructionInput = { messages: [{ content: "Plan a 30-minute morning run for tomorrow.", role: "user" }], model: MODEL };
 
