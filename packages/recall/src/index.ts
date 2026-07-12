@@ -45,3 +45,4 @@ export * from "./pipeline.js";
 export * from "./citation-stream.js";
 export * from "./chat-answer-gate.js";
 export * from "./user-persona.js";
+export * from "./user-model-slots.js";

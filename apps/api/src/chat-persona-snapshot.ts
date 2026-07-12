@@ -13,7 +13,7 @@
 
 import type { UserMemory, UserMemoryStore } from "@muse/memory";
 import type { ConversationScope } from "@muse/messaging";
-import type { ChatGroundingSource } from "@muse/recall";
+import { type ChatGroundingSource, isGoalKey, isVetoKey } from "@muse/recall";
 
 /** Hard cap on rendered lines — keeps the channel system prompt small on local Qwen. */
 const MAX_SNAPSHOT_LINES = 10;
@@ -77,7 +77,7 @@ export async function loadChatPersonaSnapshot(input: {
   // slots are behavioral guardrails, not the kind of small-talk fact a
   // casual reply should surface, so only the plain preferences count here.
   const preferences = Object.entries(memory.preferences ?? {})
-    .filter(([key, value]) => typeof value === "string" && !key.startsWith("veto:") && !key.startsWith("goal:"));
+    .filter(([key, value]) => typeof value === "string" && !isVetoKey(key) && !isGoalKey(key));
   const factsByKey = new Map(facts);
   // Ordered by PRIORITY_FACT_KEYS itself (name, then language), not by the
   // store's insertion order — a name/language section that flipped order

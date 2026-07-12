@@ -16,7 +16,13 @@
  */
 
 import { composeIdentityPrompt } from "@muse/prompts";
-import { defangMemoryInjection as defangMemoryValue } from "@muse/recall";
+import {
+  CONTESTED_FACT_MARK,
+  PROVISIONAL_FACT_MARK,
+  STALE_FACT_MARK,
+  classifyPreferenceSlots,
+  defangMemoryInjection as defangMemoryValue
+} from "@muse/recall";
 
 interface JarvisPersonaMemory {
   readonly facts: Readonly<Record<string, string>>;
@@ -89,14 +95,6 @@ export function personaEntryCap(): number {
   return Number.isFinite(raw) && raw >= 1 ? Math.trunc(raw) : 40;
 }
 
-// Point-of-use fact-caution marks — the EXACT strings from
-// `buildMemoryContextBlock` (packages/recall/src/select.ts). Kept
-// identical so chat's persona surfaces the same volatile/once-seen
-// caution `muse ask` does (contested takes precedence over provisional).
-const CONTESTED_FACT_MARK = " (value has changed before — confirm it's current)";
-const PROVISIONAL_FACT_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
-const STALE_FACT_MARK = " (last confirmed a while ago — may be out of date)";
-
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
   userId: string,
@@ -113,14 +111,7 @@ export function buildMusePersona(
   // Split them so buildMusePersona renders each under its own
   // header — JARVIS doesn't lump "I don't drink coffee" in with
   // "speak Korean".
-  const plainPrefs: [string, string][] = [];
-  const vetoes: [string, string][] = [];
-  const goals: [string, string][] = [];
-  for (const [key, value] of Object.entries(memory.preferences)) {
-    if (key.startsWith("veto:")) vetoes.push([key.slice(5), value]);
-    else if (key.startsWith("goal:")) goals.push([key.slice(5), value]);
-    else plainPrefs.push([key, value]);
-  }
+  const { plain: plainPrefs, vetoes, goals } = classifyPreferenceSlots(memory.preferences);
   // Cap to the 5 most recent topics. The auto-extractor appends in
   // chronological order, so the tail is the freshest. Dedupe defensively
   // — a buggy extractor that re-emits the same topic shouldn't bloat

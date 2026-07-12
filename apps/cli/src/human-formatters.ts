@@ -10,6 +10,8 @@
  * site can `io.stdout(formatted)` directly.
  */
 
+import { isGoalKey, isVetoKey } from "@muse/recall";
+
 interface HumanTaskRow {
   readonly id: string;
   readonly title: string;
@@ -199,9 +201,9 @@ export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): 
   const vetoes: { key: string; value: string }[] = [];
   const goals: { key: string; value: string }[] = [];
   for (const entry of prefEntries) {
-    if (entry.key.startsWith("veto:")) {
+    if (isVetoKey(entry.key)) {
       vetoes.push({ key: entry.key.slice(5), value: entry.value });
-    } else if (entry.key.startsWith("goal:")) {
+    } else if (isGoalKey(entry.key)) {
       goals.push({ key: entry.key.slice(5), value: entry.value });
     } else {
       plainPrefs.push(entry);
