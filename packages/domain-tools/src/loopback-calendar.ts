@@ -1,5 +1,4 @@
 import type {
-  CalendarEvent,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProviderRegistry
@@ -8,11 +7,22 @@ import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from
 
 import { computeAvailability } from "@muse/mcp-shared";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
-import { formatDueLocal } from "@muse/mcp-shared";
 import { readBoolean, readString, readStringArray, errorMessage } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
-import { hasTimeComponent, isoDateHeadRoundTrips, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import { syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
+import {
+  eventLocal,
+  parseIsoDate,
+  resolveEventByRef,
+  resolveEventForAction,
+  serializeEvent,
+  type EventRefLike,
+  type EventRefResolution
+} from "./calendar-server-helpers.js";
+
+export type { EventRefLike, EventRefResolution };
+export { resolveEventByRef };
 
 /** Recurrence cadences the calendar `add` tool accepts (mapped to an RRULE FREQ). */
 const CALENDAR_CADENCES = new Set(["daily", "weekly", "monthly", "yearly"]);
@@ -27,6 +37,11 @@ const CALENDAR_CADENCES = new Set(["daily", "weekly", "monthly", "yearly"]);
  * `loopback.ts` so consumers (`packages/mcp/src/index.ts`,
  * autoconfigure, the existing tests) keep working without
  * import-site edits.
+ *
+ * The event-ref resolver, serialize/format helpers, and the time-anchoring
+ * parser live in `calendar-server-helpers.ts` — this file keeps only the
+ * tool surface (name/description/schema/execute wiring), byte-stable for
+ * tool-calling.
  */
 
 export interface CalendarMcpServerOptions {
@@ -37,34 +52,6 @@ export interface CalendarMcpServerOptions {
 
 export function createCalendarMcpServer(options: CalendarMcpServerOptions): LoopbackMcpServer {
   const { registry, remindersFile } = options;
-
-  // List a generous window and resolve the agent's event ref (id OR title word)
-  // so update/delete don't force a list→find-id→act chain. Returns the matched
-  // event, or an error payload (ambiguous → candidates with local times).
-  const resolveEventForAction = async (
-    ref: string,
-    providerId: string | undefined
-  ): Promise<{ readonly event: EventRefLike } | { readonly error: string; readonly candidates?: JsonValue }> => {
-    const from = new Date(Date.now() - 30 * 86_400_000);
-    const to = new Date(Date.now() + 365 * 86_400_000);
-    let events;
-    try {
-      events = await registry.listEvents({ from, to }, providerId);
-    } catch (error) {
-      return { error: errorMessage(error) };
-    }
-    const resolution = resolveEventByRef(events, ref);
-    if (resolution.status === "ambiguous") {
-      return {
-        candidates: resolution.candidates.map((event) => ({ id: event.id, startsAtLocal: eventLocal(event.startsAt, false), title: event.title })) as JsonValue,
-        error: `"${ref}" matches multiple events — say which one`
-      };
-    }
-    if (resolution.status !== "resolved") {
-      return { error: `event not found: ${ref}` };
-    }
-    return { event: resolution.event };
-  };
 
   return {
     description: "Personal calendar (provider-neutral: local file, Google Calendar, CalDAV, macOS).",
@@ -360,7 +347,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           if (!updateGuard.safe) {
             return { blocked: true, error: updateGuard.notice, kinds: updateGuard.kinds as JsonValue };
           }
-          const resolved = await resolveEventForAction(ref, readString(args, "providerId"));
+          const resolved = await resolveEventForAction(registry, ref, readString(args, "providerId"));
           if ("error" in resolved) {
             return resolved.candidates ? { candidates: resolved.candidates, error: resolved.error } : { error: resolved.error };
           }
@@ -469,7 +456,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           if (!ref) {
             return { error: "id (or a distinct word from the event title) is required" };
           }
-          const resolved = await resolveEventForAction(ref, readString(args, "providerId"));
+          const resolved = await resolveEventForAction(registry, ref, readString(args, "providerId"));
           if ("error" in resolved) {
             return resolved.candidates ? { candidates: resolved.candidates, error: resolved.error } : { error: resolved.error };
           }
@@ -501,91 +488,3 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
   };
 }
 
-export interface EventRefLike {
-  readonly id: string;
-  readonly providerId: string;
-  readonly title: string;
-  readonly startsAt: Date;
-  // The resolved events come from `listEvents` (full CalendarEvents), so this is
-  // present at runtime; optional only so hand-built test fixtures stay valid.
-  readonly endsAt?: Date;
-}
-
-export type EventRefResolution =
-  | { readonly status: "resolved"; readonly event: EventRefLike }
-  | { readonly status: "ambiguous"; readonly candidates: readonly EventRefLike[] }
-  | { readonly status: "not-found" };
-
-/**
- * Resolve a calendar event the agent named — its exact id OR a distinct word
- * from its title ('dentist') — so `update` / `delete` work in ONE shot instead
- * of forcing the small model to chain list → find-id → act. Exact-id wins;
- * otherwise a case-insensitive title-substring match: a unique hit resolves, two+
- * return the candidates (never guess), zero is not-found. Pure (mirrors
- * resolveReminderRef / resolveTaskRef).
- */
-export function resolveEventByRef(events: readonly EventRefLike[], ref: string): EventRefResolution {
-  const trimmed = ref.trim();
-  if (trimmed.length === 0) {
-    return { status: "not-found" };
-  }
-  const byId = events.find((event) => event.id === trimmed);
-  if (byId) {
-    return { event: byId, status: "resolved" };
-  }
-  const lower = trimmed.toLowerCase();
-  const byTitle = events.filter((event) => event.title.toLowerCase().includes(lower));
-  if (byTitle.length === 1) {
-    return { event: byTitle[0]!, status: "resolved" };
-  }
-  if (byTitle.length > 1) {
-    return { candidates: byTitle, status: "ambiguous" };
-  }
-  return { status: "not-found" };
-}
-
-// The local-timezone rendering the chat model should echo. An all-day event
-// has no meaningful clock time (its startsAt is local midnight), so show the
-// date only — otherwise `formatDueLocal` would read it back as "12:00 AM".
-function eventLocal(when: Date, allDay: boolean): string {
-  return allDay
-    ? when.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" })
-    : formatDueLocal(when.toISOString());
-}
-
-function serializeEvent(event: CalendarEvent): JsonObject {
-  return {
-    allDay: event.allDay,
-    endsAtIso: event.endsAt.toISOString(),
-    endsAtLocal: eventLocal(event.endsAt, event.allDay),
-    id: event.id,
-    providerId: event.providerId,
-    startsAtIso: event.startsAt.toISOString(),
-    startsAtLocal: eventLocal(event.startsAt, event.allDay),
-    title: event.title,
-    ...(event.location ? { location: event.location } : {}),
-    ...(event.notes ? { notes: event.notes } : {}),
-    ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] as JsonValue } : {}),
-    ...(event.url ? { url: event.url } : {})
-  };
-}
-
-function parseIsoDate(value: string | undefined, anchor: () => Date = () => new Date()): Date | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
-  if (dateHead) {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      // `new Date("2026-02-30")` silently rolls over to Mar 2 — accepting it would
-      // schedule the event ~2 days off. A real date round-trips its Y-M-D through
-      // Date.UTC unchanged; a rolled-over one does not. Mirrors parseTaskDueAt.
-      if (isoDateHeadRoundTrips(Number(dateHead[1]), Number(dateHead[2]), Number(dateHead[3]))) {
-        return parsed;
-      }
-      return undefined;
-    }
-  }
-  return resolveRelativeTimePhrase(value, anchor);
-}

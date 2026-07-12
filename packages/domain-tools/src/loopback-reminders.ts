@@ -3,23 +3,34 @@ import { randomUUID } from "node:crypto";
 import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
-import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readReminderHistory } from "@muse/stores";
-import { recordTimeParseWeakness, recordWeakness } from "@muse/stores";
 import {
-  compareRemindersByDueAt,
   filterReminders,
   fireReminder,
   parseReminderDueAt,
-  normalizeReminderRecurrence,
   mutateReminders,
   readReminders,
   readReminderStatusFilter,
-  resolveReminderRef,
   serializeReminderForModel,
   type PersistedReminder
 } from "@muse/stores";
+import { reconcileSnoozeDueAt, resolveRecurrenceForAdd, resolveSnoozeAnchor } from "./reminder-recurrence.js";
+import {
+  parseFiredAt,
+  recordDueAtParseWeakness,
+  resolveReminderRefOrError,
+  serializeSortedReminders
+} from "./reminders-server-helpers.js";
+
+export { reconcileSnoozeDueAt, resolveRecurrenceForAdd, resolveSnoozeAnchor } from "./reminder-recurrence.js";
+export {
+  parseFiredAt,
+  recordDueAtParseWeakness,
+  resolveReminderRefOrError,
+  serializeSortedReminders,
+  type ReminderRefLookup
+} from "./reminders-server-helpers.js";
 
 /**
  * `muse.reminders` loopback MCP server — passive personal
@@ -167,23 +178,10 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             // Whetstone (agent-path sibling of `calendar add`): the
             // deterministic parser couldn't resolve this dueAt phrase — record the
             // time-parse weakness so a recurring misread surfaces. Fail-soft.
-            if (options.weaknessesFile) {
-              try {
-                await recordTimeParseWeakness(dueAtRaw, true, { recordWeakness, weaknessesFile: options.weaknessesFile });
-              } catch { /* ledger write must never surface as a tool error */ }
-            }
+            await recordDueAtParseWeakness(dueAtRaw, options.weaknessesFile);
             return { error: parsed.message };
           }
-          // Coerce, never reject: a one-time reminder whose `recurrence` the
-          // model filled with "none"/"once" (instead of omitting) must still be
-          // CREATED, not dropped — otherwise a multi-step "add the event AND
-          // remind me" request silently loses the reminder.
-          // Deterministic fallback: when the local model fills the recurring
-          // TIME ("매주 월요일 아침 9시") but FORGETS the `recurrence` arg, infer
-          // the cadence from the phrase so a weekly reminder doesn't silently
-          // become one-time. The explicit arg always wins.
-          const recurrenceArg = readString(args, "recurrence") ?? recurrenceFromPhrase(dueAtRaw);
-          const { recurrence, note: recurrenceNote } = normalizeReminderRecurrence(recurrenceArg);
+          const { recurrence, note: recurrenceNote } = resolveRecurrenceForAdd(dueAtRaw, readString(args, "recurrence"));
           // `via` is deliberately NOT model-settable: the chat model can't ground
           // a delivery destination and was observed FABRICATING one (a made-up
           // telegram chat id), which would mis-route the reminder. Reminders fire
@@ -256,14 +254,8 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const status = readReminderStatusFilter(readString(args, "status"));
           const reminders = await readReminders(file);
           const filtered = filterReminders(reminders, status, now);
-          const sorted = [...filtered].sort(compareRemindersByDueAt);
-          const shownList = sorted.slice(0, maxListEntries);
-          return {
-            reminders: shownList.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
-            shown: shownList.length,
-            status,
-            total: sorted.length
-          };
+          const result = serializeSortedReminders(filtered, maxListEntries, now);
+          return { reminders: result.reminders, shown: result.shown, status, total: result.total };
         },
         inputSchema: {
           additionalProperties: false,
@@ -296,17 +288,9 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const needle = query.toLowerCase();
           const all = await readReminders(file);
           const scoped = filterReminders(all, status, now);
-          const matches = scoped
-            .filter((reminder) => reminder.text.toLowerCase().includes(needle))
-            .sort(compareRemindersByDueAt);
-          const shownMatches = matches.slice(0, maxListEntries);
-          return {
-            query,
-            reminders: shownMatches.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
-            shown: shownMatches.length,
-            status,
-            total: matches.length
-          };
+          const matches = scoped.filter((reminder) => reminder.text.toLowerCase().includes(needle));
+          const result = serializeSortedReminders(matches, maxListEntries, now);
+          return { query, reminders: result.reminders, shown: result.shown, status, total: result.total };
         },
         inputSchema: {
           additionalProperties: false,
@@ -335,45 +319,25 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: "id is required" };
           }
           const reminders = await readReminders(file);
-          const resolution = resolveReminderRef(reminders, ref);
-          if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple reminders — say which one`, candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue };
+          const lookup = resolveReminderRefOrError(reminders, ref);
+          if (!lookup.ok) {
+            return lookup.response;
           }
-          if (resolution.status !== "resolved") {
-            return { error: `reminder not found: ${ref}` };
-          }
-          const index = reminders.findIndex((reminder) => reminder.id === resolution.reminder.id);
+          const index = reminders.findIndex((reminder) => reminder.id === lookup.reminder.id);
           const dueAtRaw = readString(args, "dueAt")?.trim();
           let nextDueAt: string;
           if (dueAtRaw && dueAtRaw.length > 0) {
-            // A bare time-of-day ("오후 6시로 바꿔줘") on a still-FUTURE reminder keeps
-            // its DATE — you're rescheduling it, not snoozing a firing one. A
-            // firing/overdue reminder snoozes to later TODAY (now-anchor), the
-            // ordinary snooze meaning. Date-bearing phrases resolve against now.
             const existingDue = new Date(reminders[index]!.dueAt);
             const haveExisting = !Number.isNaN(existingDue.getTime());
-            const anchor = isTimeOnlyPhrase(dueAtRaw) && haveExisting && existingDue.getTime() > now().getTime()
-              ? () => startOfLocalDay(existingDue)
-              : now;
+            const anchor = resolveSnoozeAnchor(dueAtRaw, existingDue, haveExisting, now);
             const parsed = parseReminderDueAt(dueAtRaw, anchor);
             if (parsed instanceof Error) {
               // Whetstone (in-file sibling of `add`): a snooze/reschedule dueAt the
               // deterministic parser can't resolve is the same time-parse signal. Fail-soft.
-              if (options.weaknessesFile) {
-                try {
-                  await recordTimeParseWeakness(dueAtRaw, true, { recordWeakness, weaknessesFile: options.weaknessesFile });
-                } catch { /* ledger write must never surface as a tool error */ }
-              }
+              await recordDueAtParseWeakness(dueAtRaw, options.weaknessesFile);
               return { error: parsed.message };
             }
-            // A bare DATE ("다음 주 월요일로 옮겨줘") keeps the reminder's time-of-day,
-            // not the resolver's default midnight. The UTC-midnight check excludes
-            // a relative OFFSET ("in 30 minutes"), which resolves to now-plus-delta.
-            const isDateOnly = !/^\d{4}-\d{2}-\d{2}T/u.test(dueAtRaw) && !isTimeOnlyPhrase(dueAtRaw)
-              && !hasTimeComponent(dueAtRaw) && isUtcMidnight(new Date(parsed));
-            nextDueAt = isDateOnly && haveExisting
-              ? withTimeOfDay(new Date(parsed), existingDue).toISOString()
-              : parsed;
+            nextDueAt = reconcileSnoozeDueAt(dueAtRaw, parsed, existingDue, haveExisting);
           } else {
             // Default snooze: 10 minutes from now. The LLM can still
             // override with an explicit phrase when the user is more
@@ -387,7 +351,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           };
           try {
             await mutateReminders(file, (current) => {
-              const i = current.findIndex((reminder) => reminder.id === resolution.reminder.id);
+              const i = current.findIndex((reminder) => reminder.id === lookup.reminder.id);
               if (i < 0) return current;
               const updated = [...current];
               updated[i] = { ...current[i]!, dueAt: nextDueAt, status: "pending" };
@@ -427,34 +391,25 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: "id is required" };
           }
           const firedAtRaw = readString(args, "firedAt")?.trim();
-          let firedAt: string;
-          if (firedAtRaw && firedAtRaw.length > 0) {
-            const parsed = new Date(firedAtRaw);
-            if (Number.isNaN(parsed.getTime())) {
-              return { error: `firedAt must be a parseable ISO-8601 timestamp (got ${JSON.stringify(firedAtRaw)})` };
-            }
-            firedAt = parsed.toISOString();
-          } else {
-            firedAt = now().toISOString();
+          const firedAt = parseFiredAt(firedAtRaw, now);
+          if (firedAt instanceof Error) {
+            return { error: firedAt.message };
           }
           const reminders = await readReminders(file);
-          const resolution = resolveReminderRef(reminders, ref);
-          if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple reminders — say which one`, candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue };
+          const lookup = resolveReminderRefOrError(reminders, ref);
+          if (!lookup.ok) {
+            return lookup.response;
           }
-          if (resolution.status !== "resolved") {
-            return { error: `reminder not found: ${ref}` };
-          }
-          const next = fireReminder(reminders, resolution.reminder.id, firedAt);
+          const next = fireReminder(reminders, lookup.reminder.id, firedAt);
           if (!next) {
             return { error: `reminder not found: ${ref}` };
           }
           try {
-            await mutateReminders(file, (current) => fireReminder(current, resolution.reminder.id, firedAt) ?? current);
+            await mutateReminders(file, (current) => fireReminder(current, lookup.reminder.id, firedAt) ?? current);
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          const fired = next.find((reminder) => reminder.id === resolution.reminder.id) as PersistedReminder;
+          const fired = next.find((reminder) => reminder.id === lookup.reminder.id) as PersistedReminder;
           return { reminder: serializeReminderForModel(fired, now) as JsonValue };
         },
         inputSchema: {
@@ -481,19 +436,16 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: "id is required" };
           }
           const reminders = await readReminders(file);
-          const resolution = resolveReminderRef(reminders, ref);
-          if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple reminders — say which one`, candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue };
-          }
-          if (resolution.status !== "resolved") {
-            return { error: `reminder not found: ${ref}` };
+          const lookup = resolveReminderRefOrError(reminders, ref);
+          if (!lookup.ok) {
+            return lookup.response;
           }
           try {
-            await mutateReminders(file, (current) => current.filter((reminder) => reminder.id !== resolution.reminder.id));
+            await mutateReminders(file, (current) => current.filter((reminder) => reminder.id !== lookup.reminder.id));
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { id: resolution.reminder.id, removed: true };
+          return { id: lookup.reminder.id, removed: true };
         },
         inputSchema: {
           additionalProperties: false,
