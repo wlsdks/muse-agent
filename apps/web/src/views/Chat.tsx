@@ -7,6 +7,7 @@ import { Markdown } from "../components/markdown.js";
 import { Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { readToken } from "../lib/token-storage.js";
+import { shouldStickToBottom } from "./chat-autoscroll.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { StringKey, Translate } from "../i18n/index.js";
@@ -99,8 +100,24 @@ export function ChatView({ client }: { client: ApiClient }) {
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const spokenRef = useRef<number>(turns.length);
+  const stickToBottomRef = useRef(true);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+    stickToBottomRef.current = shouldStickToBottom({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight
+    });
+  };
 
   useEffect(() => {
+    if (!stickToBottomRef.current) {
+      return;
+    }
     scrollRef.current?.scrollTo({ behavior: "smooth", top: scrollRef.current.scrollHeight });
   }, [turns, activeTool]);
 
@@ -135,7 +152,7 @@ export function ChatView({ client }: { client: ApiClient }) {
 
   return (
     <div className="chat" style={{ margin: "-24px", height: "calc(100% + 48px)" }}>
-      <div className="chat-scroll" ref={scrollRef}>
+      <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="chat-thread">
           <ChatEmptyState hasMessages={turns.length > 0} onPickStarter={pickStarter} />
           {turns.map((turn, i) => (

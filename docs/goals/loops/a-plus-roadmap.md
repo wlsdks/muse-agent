@@ -487,3 +487,12 @@ ratchet: 로드맵 잔여 [ ] = 6/65(D3-S6 체크) · self-eval pass · fabricat
 - 리뷰지점: Opus 독립 PASS — mutation-RED 3/3 non-vacuous(각 어서션 기대 뒤집기→RED, md5 byte복원)·어서션이 실 orchestrator 동작 일치(withDeadline 리젝 문자열·slice 절단·step status=completed|failed)·pass^3 실게이트(단일 iteration 실패→exit1)·skip 시맨틱(결정론 케이스는 Ollama-down도 게이트)·주석정책 clean(D3-S4 슬라이스마커 제거).
 - 리스크: 낮음. 테스트-only(orchestrator src 무변경). 발견: step-level status는 completed|failed만, `timed-out`은 opt-in SubAgentRunRegistry에만(어서션은 failed로). 다음 = D7-S3(스마트-테일 터미널+실브라우저) 또는 D-KO-S3(i18n 카탈로그, 저우선). D-E1b/c(공유 훅) 신중 이연 지속.
 - lesson: 멀티에이전트 MAST 배터리 래칫은 결정론 rule-based 워커로 orchestrator seam(workerTimeoutMs·maxWorkers)을 직접 구동하면 LLM 없이 pass^3 안정 검증 가능 — 실 `withDeadline`/`selectWorkers` 경로를 mock 없이 채점. 어서션 문자열(deadline error·status enum)은 소스에서 실값 확인 후 박아야(추측 금지). 주석에 슬라이스ID(D3-S4) 넣지 말 것(정책 위반, 커밋 전 스캔으로 적발).
+
+## fire 57 · 2026-07-12 · skill v2.x · a336479e5
+meta: slice=D7-S3 · wave=W5 · pkg=apps/web · kind=ux-smart-tail-scroll · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 5/65(D7-S3 체크) · self-eval pass · fabrication 0 · apps/web +1 유닛파일(chat-autoscroll, 7 test) · 실브라우저 측정 PASS
+- 무엇: ①기준선 green. ②로드맵 다음 액션가능 = D7-S3(D-E1b/c 공유훅 이연, D6-S2/D7-S4 attended skip). ③verify-first: Chat.tsx line 103-105가 turns/activeTool 변경마다 무조건 하단 스크롤=위로 읽는 중 매 토큰 yank. 순수 shouldStickToBottom(하단거리≤80) 추출+유닛+Chat.tsx 배선(stickToBottomRef 기본true=마운트점프·onScroll이 실지오메트리로 갱신·이펙트 stick일때만). ④실브라우저 측정(chrome-devtools, dist preview:4747, tall 40 주입): 실오버플로·하단 stick true·위로300px stick false·바운드·blowout0.
+- 왜: 로드맵 "스마트-테일(웹콘솔)+실브라우저 측정", hermes terminal-output 패턴. 스트리밍 중 위로 읽으면 매 토큰 하단으로 끌려가 방해=UX 파손. 하단근처만 tail이 표준 해법.
+- 리뷰지점: Opus 독립 PASS — 공식 correct(distance≤threshold, `<=`경계·overscroll)·배선 정확(마운트점프 보존·early-return이 yank 차단·onScroll이 같은 ref)·무관동작 무변경(+18/-1)·mutation-RED 2종 non-vacuous·실측이 레이아웃불변+결정입력 증명(numbers). 한계: turns-이펙트는 백엔드 없이 브라우저서 트리거 불가→지오메트리/결정은 실측, 이펙트-게이팅은 코드리뷰+유닛(정직한 분할).
+- 리스크: 낮음. apps/web UI-only(Vite island, TS ref graph 밖). 유저-가시=CHANGELOG 추가. 발견: 스무스-스크롤 애니 중 단발 stick=false 자가치유(스트리밍 델타는 <threshold라 무영향, Opus 확인). 다음 = D-KO-S3(i18n 카탈로그, 저우선·리팩터리스크>이득) — 남은 액션가능 큐 D-E1b/c(공유훅 이연)·attended 제외 시 D-KO-S3만.
+- lesson: 웹 UI 스크롤 슬라이스는 결정 로직을 순수 함수로 추출→유닛(mutation-RED)+실브라우저로 실 지오메트리 측정(scrollHeight/scrollTop/clientHeight)이 정석. React state(turns) 이펙트는 백엔드 없이 브라우저서 못 트리거하니, 이펙트가 소비하는 지오메트리/결정을 실측하고 이펙트-게이팅은 코드리뷰+유닛으로 분할하는 게 정직(가짜 e2e 만들지 말 것). testing.md UI규칙=numbers 측정.

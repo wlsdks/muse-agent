@@ -10,6 +10,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Scroll up to read without getting yanked back down.** The chat view now
+  keeps following new messages only while you're already near the bottom. If
+  you scroll up to re-read something while Muse is still replying, it leaves
+  you there instead of snapping you to the latest line; scroll back down and
+  it resumes following.
+
 - **Save a new contact — with your confirmation.** "save Ada's number as a
   contact" now adds the person to your Apple Contacts, but only after you
   confirm the exact name, phone, and email. If you decline (or Muse can't ask
