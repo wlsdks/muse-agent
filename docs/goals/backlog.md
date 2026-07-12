@@ -16,6 +16,8 @@
   - ◦ background-exit 잠재 레이스 — 현재 cli 단일 콜러 + mark-before-send 관례(크래시 시 드롭 위험)라 우선순위 낮음; api 콜러 추가 시 같은 클래스 합류 (fire 12 스윕 노트).
   - ✓ withProcessLock 하트비트 횡단 보강 — response-experience fire 17 (staleMs/3 mtime 하트비트+foreign-nonce 가드, 6개 락 사이트 전부 상속)
   - ✓ 채널 대화형 fast-path — big-turn A: classifyChannelIntent 3중 게이트(위임신호0+대화신호1+·80자↓, 회상-의문형은 위임 강제 — 판정자 적대 프로브 27입력 누수 0) → composeChatReply 단일 추론(PASS 센티널·인용 거부·15s·fail-open→풀 파이프라인) → 인용-스트립 백스톱 게이트(한계 정직 문서화+BOUNDARY pin); 순서 pairing→approval→veto→casual→CHAT→ack→run; eval:channel-rhythm 20/20 ×3; MUSE_CHANNEL_CHAT 기본 on.
+  - ✓ 잡담 개인화+스냅샷 grounding — deep-turn: loadChatPersonaSnapshot(owner-1:1 전용, 공유챗 봉인, ≤10줄·중화·fail-open) → chat 프롬프트+게이트 evidence 동시 주입; 인젝션 프로브 8종 중화 확인; eval 개인화 3케이스 pass^3. 한계 정직 명세: 게이트는 인용-기반만(무인용 발명은 여전히 통과 — no-facts 프롬프트+보수 분류기가 실방어).
+  - ◦ eval 개인화 KO 양성 케이스 취약 — "이름이 뭐였지 기억나?"가 PASS 센티널을 밟을 수 있음(회상형 문형이라 오히려 준정상 동작); 문형을 순수 잡담형으로 교체 검토 (deep-turn 판정자 노트).
   - ◦ 라이브 배터리 부하-강건화 — misgrounding 등 LLM 배터리가 동시 루프 Ollama 포화에서 transient abstain으로 헛-FAIL(fire 1·13 반복 관측, 3회 재실행으로 매번 반증); retry/quorum 또는 abstain≠misgrounded 구분으로 배터리 자체를 강건화 (fire 13 판정자 권고).
   - ✓ digest-lock EACCES 코너 — response-experience fire 19 (stat-프로브: exists→contended[win32 보존], ENOENT/stat-err→fail-open; 드릴 스펙 1:1)
   - ✓ ack 카피/톤 개선 — response-experience fire 16 (관측-진단 기반 프롬프트 재작성: 격식 preamble 금지·동일언어 마무리 약속, 판별력 검증된 token-set 스코어러 pin)

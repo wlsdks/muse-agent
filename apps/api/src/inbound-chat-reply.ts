@@ -1,4 +1,4 @@
-import { citedSourcesIn } from "@muse/agent-core";
+import { citedSourcesIn, escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 
 const MAX_CHAT_REPLY_LENGTH = 400;
@@ -59,6 +59,41 @@ export interface ThreadTurnLike {
   readonly content: string;
 }
 
+/** The subset of `ChatGroundingSource` this module needs — kept local so it
+ *  has no `@muse/recall` dependency for a single 2-field shape. */
+export interface ChatPersonaSnapshotLine {
+  readonly source: string;
+  readonly text: string;
+}
+
+/**
+ * Snapshot lines are USER-STORED memory (facts/preferences an earlier turn
+ * taught Muse) reaching a model prompt AND, via the composed reply, channel
+ * output — the same threat shape as the recap/digest surfaces
+ * (`commands-recap.ts`, `digest-flush.ts`): a poisoned stored value could try
+ * to inject an instruction or forge a grounding marker. Apply the SAME
+ * `escapeSystemPromptMarkers(neutralizeInjectionSpans(...))` composition
+ * those surfaces use before the line ever reaches the system prompt.
+ */
+function safePersonaLine(text: string): string {
+  return escapeSystemPromptMarkers(neutralizeInjectionSpans(text));
+}
+
+function buildChatReplySystemPrompt(personaSnapshot: readonly ChatPersonaSnapshotLine[]): string {
+  if (personaSnapshot.length === 0) {
+    return CHAT_REPLY_SYSTEM_PROMPT;
+  }
+  const knownLines = personaSnapshot.map((line) => `  - ${safePersonaLine(line.text)}`).join("\n");
+  return (
+    `${CHAT_REPLY_SYSTEM_PROMPT} ` +
+    "이 사실들은 알고 있는 것 — 자연스럽게 활용하되 여기 없는 사실은 언급 금지 " +
+    "(these are things you already know about the user — use them naturally " +
+    "where relevant, but never state a fact, name, or number that is NOT " +
+    "listed here):\n" +
+    `${knownLines}`
+  );
+}
+
 /**
  * Builds `InboundAgentRunOptions.composeChatReply`: one short single-inference
  * call answering a conversational channel turn directly, with no tools. Fail-
@@ -69,9 +104,15 @@ export interface ThreadTurnLike {
  */
 export function createComposeChatReply(
   deps: ComposeChatReplyDeps
-): (input: { readonly latestUserText: string; readonly thread: readonly ThreadTurnLike[] }) => Promise<string | null> {
+): (input: {
+  readonly latestUserText: string;
+  readonly thread: readonly ThreadTurnLike[];
+  /** The owner-scope "knows-you" snapshot (`loadChatPersonaSnapshot`) —
+   *  omitted/empty on a shared/group turn or when nothing is stored yet. */
+  readonly personaSnapshot?: readonly ChatPersonaSnapshotLine[];
+}) => Promise<string | null> {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_CHAT_REPLY_TIMEOUT_MS;
-  return async ({ latestUserText, thread }) => {
+  return async ({ latestUserText, thread, personaSnapshot }) => {
     if (latestUserText.trim().length === 0) {
       return null;
     }
@@ -91,7 +132,7 @@ export function createComposeChatReply(
       const response = await Promise.race([
         deps.modelProvider.generate({
           messages: [
-            { content: CHAT_REPLY_SYSTEM_PROMPT, role: "system" },
+            { content: buildChatReplySystemPrompt(personaSnapshot ?? []), role: "system" },
             ...thread.map((turn) => ({ content: turn.content, role: turn.role })),
             { content: latestUserText, role: "user" as const }
           ],

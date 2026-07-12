@@ -17,7 +17,14 @@
  * no citation marker, KO prompt → Hangul reply. A fourth scenario asserts
  * `classifyChannelIntent` (agent-core) routes genuine delegation requests to
  * "delegation" — the conservative default that keeps the S3 composer from
- * ever firing on a real ask.
+ * ever firing on a real ask. A fifth scenario proves the personalization
+ * slice: `loadChatPersonaSnapshot` seeds a small fake `UserMemoryStore` with
+ * one real fact, `createComposeChatReply` gets the resulting snapshot as
+ * `personaSnapshot`, and the REAL local model answers — asserting the reply
+ * is well-formed (2 positive cases; the model MAY draw on the seeded fact but
+ * its exact phrasing is never pinned, per agent-testing.md) plus one negative
+ * case: a fact NOT in the snapshot is asked about, and the reply must never
+ * state the specific planted-absent literal as fact.
  *
  * LOCAL OLLAMA ONLY (gemma4:12b by default); skips (exit 0) when unreachable.
  * Each live-model case is run MUSE_EVAL_REPEAT times (default 2) and must
@@ -28,6 +35,7 @@ import { pathToFileURL } from "node:url";
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { citedSourcesIn, classifyCasualPrompt, classifyChannelIntent } from "../packages/agent-core/dist/index.js";
+import { loadChatPersonaSnapshot } from "../apps/api/dist/chat-persona-snapshot.js";
 import { createComposeAck } from "../apps/api/dist/inbound-ack.js";
 import { createComposeChatReply } from "../apps/api/dist/inbound-chat-reply.js";
 import { runEvalSuite } from "./eval-harness.mjs";
@@ -41,6 +49,8 @@ const DELEGATION_LABEL = "delegation ack (composeAck restates the request, in th
 const CASUAL_LABEL = "casual small-talk (classifyCasualPrompt handles it upstream — composer never runs)";
 const CHAT_FASTPATH_LABEL = "chat fast-path (composeChatReply answers conversationally, in the user's language)";
 const CHAT_CLASSIFY_LABEL = "chat-intent classifier (a real delegation request must route to \"delegation\")";
+const PERSONA_POSITIVE_LABEL = "personalization — positive (composeChatReply gets a real persona snapshot, no fabrication beyond it)";
+const PERSONA_NEGATIVE_LABEL = "personalization — negative (a fact absent from the snapshot is never stated as fact)";
 
 // Each case's `literal` is a token the restatement can't reasonably drop
 // without losing the point of the request — the echo-check proxy for
@@ -82,6 +92,43 @@ const CHAT_CLASSIFY_DELEGATION_CASES = [
   { note: "KO reminder-set delegation", prompt: "내일 아침 회의 리마인더 설정해줘" },
   { note: "EN reminder-set delegation", prompt: "remind me to call mom tomorrow" }
 ];
+
+// Personalization golden set: each case seeds a tiny fake UserMemoryStore
+// (facts/preferences), runs it through the REAL loadChatPersonaSnapshot, and
+// feeds the resulting snapshot into the REAL composeChatReply — proving the
+// whole "knows-you" plumbing, not just the composer in isolation.
+const PERSONA_POSITIVE_CASES = [
+  {
+    facts: { name: "진안" },
+    language: "ko",
+    note: "KO name-recall smalltalk — snapshot carries the user's name",
+    prompt: "나 이름이 뭐였지 ㅋㅋ 기억나?"
+  },
+  {
+    facts: { hobby: "rock climbing" },
+    language: "en",
+    note: "EN hobby-aware smalltalk — snapshot carries a real hobby fact",
+    prompt: "ugh so tired today, remind me why I even started climbing lol"
+  }
+];
+
+const PERSONA_NEGATIVE_CASE = {
+  facts: { name: "진안" },
+  // A specific figure that is NOWHERE in the seeded snapshot — the reply
+  // must never state it as if it were a known fact.
+  note: "a fact absent from the snapshot must never be stated as fact",
+  plantedAbsentLiteral: "9,999,999",
+  prompt: "내 연봉이 정확히 얼마였지 ㅋㅋ"
+};
+
+function fakeMemoryStore(memory) {
+  return {
+    deleteByUserId: async () => true,
+    findByUserId: async () => memory,
+    upsertFact: async () => memory,
+    upsertPreference: async () => memory
+  };
+}
 
 async function ollamaReachable() {
   try {
@@ -154,6 +201,25 @@ function scoreChatClassifyDelegation(intent, testCase) {
     : { ok: false, detail: `classifyChannelIntent returned "${intent}" for "${testCase.prompt}" — a real ask would wrongly get the chat fast-path` };
 }
 
+// Positive personalization case: baseline chat-reply hygiene only — the
+// model MAY draw on the seeded snapshot fact, but its exact phrasing is
+// never pinned (agent-testing.md: don't pin a model-INVENTED echo).
+function scorePersonaPositive(reply, testCase) {
+  return scoreChatReply(reply, testCase);
+}
+
+// Negative personalization case: baseline hygiene PLUS the specific
+// planted-absent literal (a fact the snapshot never carried) must never
+// appear in the reply as if it were a known fact.
+function scorePersonaNegative(reply, testCase) {
+  const base = scoreChatReply(reply, testCase);
+  if (!base.ok) return base;
+  if (reply.includes(testCase.plantedAbsentLiteral)) {
+    return { ok: false, detail: `reply states the planted-absent literal "${testCase.plantedAbsentLiteral}" as fact: ${reply}` };
+  }
+  return { ok: true, detail: `chat reply (no planted-absent literal leaked): ${reply}` };
+}
+
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:channel-rhythm skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
@@ -163,16 +229,29 @@ async function main() {
   const composeAck = createComposeAck({ model: MODEL, modelProvider: provider });
   const composeChatReply = createComposeChatReply({ model: MODEL, modelProvider: provider });
 
+  const solvePersonalized = async (testCase) => {
+    const memory = { facts: testCase.facts ?? {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "eval:owner" };
+    const snapshot = await loadChatPersonaSnapshot({
+      providerId: "eval",
+      scope: "direct",
+      source: "owner",
+      userMemoryStore: fakeMemoryStore(memory)
+    });
+    return composeChatReply({ latestUserText: testCase.prompt, personaSnapshot: snapshot ?? [], thread: [] });
+  };
   const solve = async (testCase, scenario) => {
     if (scenario.label === CASUAL_LABEL) return classifyCasualPrompt(testCase.prompt);
     if (scenario.label === CHAT_CLASSIFY_LABEL) return classifyChannelIntent(testCase.prompt);
     if (scenario.label === CHAT_FASTPATH_LABEL) return composeChatReply({ latestUserText: testCase.prompt, thread: [] });
+    if (scenario.label === PERSONA_POSITIVE_LABEL || scenario.label === PERSONA_NEGATIVE_LABEL) return solvePersonalized(testCase);
     return composeAck({ latestUserText: testCase.prompt });
   };
   const score = (observed, testCase, scenario) => {
     if (scenario.label === CASUAL_LABEL) return scoreCasual(observed, testCase);
     if (scenario.label === CHAT_CLASSIFY_LABEL) return scoreChatClassifyDelegation(observed, testCase);
     if (scenario.label === CHAT_FASTPATH_LABEL) return scoreChatReply(observed, testCase);
+    if (scenario.label === PERSONA_POSITIVE_LABEL) return scorePersonaPositive(observed, testCase);
+    if (scenario.label === PERSONA_NEGATIVE_LABEL) return scorePersonaNegative(observed, testCase);
     return scoreAck(observed, testCase);
   };
 
@@ -183,7 +262,9 @@ async function main() {
       { cases: DELEGATION_CASES, label: DELEGATION_LABEL },
       { cases: CASUAL_CASES, label: CASUAL_LABEL },
       { cases: CHAT_FASTPATH_CASES, label: CHAT_FASTPATH_LABEL },
-      { cases: CHAT_CLASSIFY_DELEGATION_CASES, label: CHAT_CLASSIFY_LABEL }
+      { cases: CHAT_CLASSIFY_DELEGATION_CASES, label: CHAT_CLASSIFY_LABEL },
+      { cases: PERSONA_POSITIVE_CASES, label: PERSONA_POSITIVE_LABEL },
+      { cases: [PERSONA_NEGATIVE_CASE], label: PERSONA_NEGATIVE_LABEL }
     ],
     score,
     solve,

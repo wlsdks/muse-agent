@@ -8,6 +8,7 @@ import {
   type MuseEnvironment
 } from "@muse/autoconfigure";
 import { runActuatorByName } from "@muse/domain-tools";
+import type { UserMemoryStore } from "@muse/memory";
 import {
   createChannelApprovalGate,
   effectiveScope,
@@ -23,6 +24,7 @@ import { queryContacts } from "@muse/stores";
 import { adoptChannelOwner, parseAllowedChats, readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
+import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { handleInboundVetoReply } from "./inbound-veto-handler.js";
 import { resolveProactiveTrustFile } from "./tick-daemons.js";
@@ -65,7 +67,14 @@ export interface InboundAgentRunOptions {
   readonly composeChatReply?: (input: {
     readonly latestUserText: string;
     readonly thread: readonly ThreadTurn[];
+    readonly personaSnapshot?: readonly { readonly source: string; readonly text: string }[];
   }) => Promise<string | null>;
+  /**
+   * Backs the chat fast-path's "knows-you" snapshot (`loadChatPersonaSnapshot`).
+   * Optional — a caller that omits it simply never personalizes the fast path
+   * (the branch behaves exactly as before: no snapshot, empty evidence).
+   */
+  readonly userMemoryStore?: UserMemoryStore;
 }
 
 /**
@@ -84,7 +93,7 @@ const UNPAIRED_CHAT_NOTICE =
   "This bot is a private personal assistant and only talks to its paired owner.";
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
-  const { agentRuntime, composeAck, composeChatReply, env, model, registry } = options;
+  const { agentRuntime, composeAck, composeChatReply, env, model, registry, userMemoryStore } = options;
   return async ({ messages, providerId, source, scope: rawScope, notify }) => {
     // Conversation-scope capability profile (P7-3, the sequel to TOFU
     // pairing): a group/shared chat gets a STRICTLY narrower posture than
@@ -190,24 +199,30 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       && composeChatReply
       && classifyChannelIntent(latestUserText) === "chat"
     ) {
-      const chatReply = await composeChatReply({ latestUserText, thread: messages }).catch(() => null);
+      // Owner-scope-only "knows-you" snapshot (chat-persona-snapshot.ts): a
+      // few bounded, citable lines from the SAME memory scope the auto-
+      // extract hook writes (`${providerId}:${source}`). `null` on a
+      // shared/group turn, an unavailable store, or a load error all
+      // collapse to `[]` here — the fail-open contract this whole branch
+      // already runs under (empty snapshot = behaves exactly as before).
+      const personaSnapshot = (await loadChatPersonaSnapshot({ providerId, scope, source, userMemoryStore }).catch(() => null)) ?? [];
+      const chatReply = await composeChatReply({ latestUserText, personaSnapshot, thread: messages }).catch(() => null);
       if (chatReply !== null) {
         // Run the SAME gate the full agent path applies below
-        // (gateChatAnswerGrounding), but be precise about what it buys on
-        // THIS path: with an empty evidence list (no tool ran for a chat-
-        // only turn) it is a CITATION-STRIPPING BACKSTOP ONLY — it drops a
-        // sentence that cites a source, but an UNCITED invented fact passes
-        // it untouched (there is nothing to check it against). This is NOT
-        // fabrication=0 for this branch. The real anti-fabrication controls
-        // here are upstream: `createComposeChatReply`'s system prompt
-        // forbids inventing facts/schedules/memories and hands a real ask
-        // back via the "PASS" sentinel, its guard rejects any citation
-        // marker outright, and `classifyChannelIntent` is conservative
-        // enough that a genuine recall/lookup question never reaches this
-        // branch in the first place (chat-intent.ts). This call stays here
-        // only so a stray citation-shaped string still gets stripped, same
-        // as the full path.
-        const chatGate = gateChatAnswerGrounding({ answer: chatReply, evidence: [], question: latestUserText });
+        // (gateChatAnswerGrounding), now against REAL evidence — the persona
+        // snapshot just loaded — instead of an empty list. What this buys:
+        // the citation-validity check and the reported grounding verdict now
+        // have a real referent (a citation naming something OUTSIDE the
+        // snapshot is still dropped by code). It is STILL NOT fabrication=0
+        // for a plain uncited sentence: `enforceAnswerCitations` only ever
+        // inspects CITED text, so an invented fact with no "[from …]" marker
+        // at all passes through untouched regardless of the evidence list —
+        // that gap is unchanged by adding the snapshot. The anti-fabrication
+        // defense for an UNCITED claim stays upstream: `createComposeChatReply`'s
+        // no-facts system prompt (now told exactly which snapshot lines it
+        // MAY draw on), the "PASS" sentinel for a genuine ask, and
+        // `classifyChannelIntent`'s conservative default.
+        const chatGate = gateChatAnswerGrounding({ answer: chatReply, evidence: personaSnapshot, question: latestUserText });
         return chatGate.answer;
       }
     }

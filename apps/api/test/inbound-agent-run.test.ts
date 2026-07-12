@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
+import type { UserMemory, UserMemoryStore } from "@muse/memory";
 import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
 import { appendLastProactiveDelivery, avoidedSourceKeys, readTrustLedger } from "@muse/stores";
 import { describe, expect, it } from "vitest";
@@ -846,12 +847,15 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
       readonly composeChatReply?: (input: {
         readonly latestUserText: string;
         readonly thread: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+        readonly personaSnapshot?: readonly { readonly source: string; readonly text: string }[];
       }) => Promise<string | null>;
       readonly composeAck?: (input: { readonly latestUserText: string }) => Promise<string | null>;
       readonly extraEnv?: Record<string, string>;
+      readonly userMemoryStore?: UserMemoryStore;
     } = {}
   ) {
     const calls: string[] = [];
+    const personaSnapshots: (readonly { readonly source: string; readonly text: string }[] | undefined)[] = [];
     const registry = new MessagingProviderRegistry([
       new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
     ]);
@@ -869,8 +873,13 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
       ...opts.extraEnv
     };
     const composeChatReply = opts.composeChatReply
-      ? async (input: { readonly latestUserText: string; readonly thread: readonly { readonly role: "user" | "assistant"; readonly content: string }[] }) => {
+      ? async (input: {
+          readonly latestUserText: string;
+          readonly thread: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+          readonly personaSnapshot?: readonly { readonly source: string; readonly text: string }[];
+        }) => {
           calls.push(`composeChatReply:${input.latestUserText}`);
+          personaSnapshots.push(input.personaSnapshot);
           return opts.composeChatReply!(input);
         }
       : undefined;
@@ -886,9 +895,10 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
       ...(composeChatReply ? { composeChatReply } : {}),
       env,
       model: "default",
-      registry
+      registry,
+      ...(opts.userMemoryStore ? { userMemoryStore: opts.userMemoryStore } : {})
     });
-    return { calls, run };
+    return { calls, personaSnapshots, run };
   }
 
   const CHAT_TEXT = "오늘 좀 피곤하네 ㅋㅋ";
@@ -1029,7 +1039,7 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
     expect(reply).not.toContain("900,000");
   });
 
-  it("BOUNDARY: with empty evidence, gateChatAnswerGrounding is NOT fabrication=0 — an UNCITED invented fact passes through unchanged (the real defense here is composeChatReply's own no-facts prompt + PASS sentinel + the conservative classifier, NOT this gate)", async () => {
+  it("BOUNDARY: with no userMemoryStore configured (no snapshot → empty evidence), an UNCITED invented fact passes through unchanged (the real defense here is composeChatReply's own no-facts prompt + PASS sentinel + the conservative classifier, NOT this gate)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
     const { run } = buildChat(dir, {
       // No citation marker at all — the gate has nothing to check an
@@ -1047,6 +1057,114 @@ describe("createInboundAgentRun chat fast-path (S3)", () => {
     });
 
     expect(reply).toBe("그건 900,000원이야.");
+  });
+
+  function fakePersonaStore(byUserId: Readonly<Record<string, UserMemory>>): UserMemoryStore {
+    return {
+      deleteByUserId: async () => true,
+      findByUserId: async (userId: string) => byUserId[userId],
+      upsertFact: async (userId: string) => {
+        throw new Error(`unexpected upsertFact(${userId})`);
+      },
+      upsertPreference: async (userId: string) => {
+        throw new Error(`unexpected upsertPreference(${userId})`);
+      }
+    };
+  }
+
+  const OWNER_1_MEMORY: UserMemory = {
+    facts: { hobby: "climbing", name: "진안" },
+    preferences: {},
+    recentTopics: [],
+    updatedAt: NOW(),
+    userId: "log:owner-1"
+  };
+
+  it("BOUNDARY STILL HOLDS with a real persona snapshot: an UNCITED invented fact NOT in the snapshot still passes through unchanged — enforceAnswerCitations only ever inspects CITED sentences, so adding evidence closes the citation-referent gap, not the general free-text one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
+    const { run } = buildChat(dir, {
+      composeChatReply: async () => "그건 900,000원이야.", // rent is nowhere in the snapshot, and uncited
+      userMemoryStore: fakePersonaStore({ "log:owner-1": OWNER_1_MEMORY })
+    });
+    const reply = await run({
+      messages: [{ content: CHAT_TEXT, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toBe("그건 900,000원이야.");
+  });
+
+  it("the chat fast-path loads the owner-scope persona snapshot and passes the SAME lines to composeChatReply and to the grounding gate's evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
+    const { personaSnapshots, run } = buildChat(dir, {
+      // Cite a snapshot source directly — this only proves the gate's
+      // citation machinery now has a real referent to resolve against; the
+      // production system prompt itself forbids citing at all. One sentence
+      // (period, not "!", so `enforceAnswerCitations`' sentence splitter
+      // keeps the citation attached to the claim it grounds).
+      composeChatReply: async () => "등산 좋아하는구나 [from persona:fact:hobby].",
+      userMemoryStore: fakePersonaStore({ "log:owner-1": OWNER_1_MEMORY })
+    });
+    const reply = await run({
+      messages: [{ content: CHAT_TEXT, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(personaSnapshots[0]).toEqual(
+      expect.arrayContaining([{ source: "persona:fact:hobby", text: "hobby: climbing" }])
+    );
+    // The citation resolves against the loaded snapshot, so the WHOLE
+    // sentence (not just the marker) survives unchanged.
+    expect(reply).toContain("등산 좋아하는구나");
+  });
+
+  it("a citation naming something OUTSIDE the persona snapshot is still stripped by the gate", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
+    const { run } = buildChat(dir, {
+      composeChatReply: async () => "그건 900,000원이야 [from persona:fact:rent].",
+      userMemoryStore: fakePersonaStore({ "log:owner-1": OWNER_1_MEMORY })
+    });
+    const reply = await run({
+      messages: [{ content: CHAT_TEXT, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).not.toContain("900,000");
+  });
+
+  it("scope discipline at the call site: a shared/group chat NEVER gets a persona snapshot even when a userMemoryStore is configured", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-"));
+    let queried = false;
+    const groupUserMemoryStore: UserMemoryStore = {
+      deleteByUserId: async () => true,
+      findByUserId: async () => {
+        queried = true;
+        return OWNER_1_MEMORY;
+      },
+      upsertFact: async () => OWNER_1_MEMORY,
+      upsertPreference: async () => OWNER_1_MEMORY
+    };
+    const { personaSnapshots, run } = buildChat(dir, {
+      composeChatReply: async () => "다들 피곤하구나 ㅋㅋ",
+      extraEnv: { MUSE_CHANNEL_ALLOWED_CHATS: "log:-100999", MUSE_CHANNEL_GROUP_ENABLED: "true" },
+      userMemoryStore: groupUserMemoryStore
+    });
+
+    await run({
+      messages: [{ content: CHAT_TEXT, role: "user" }],
+      providerId: "log",
+      scope: "shared",
+      source: "-100999"
+    });
+
+    expect(queried).toBe(false);
+    expect(personaSnapshots[0]).toEqual([]);
   });
 
   it("gate ordering: casual 'hi' is answered by the S1 canned reply, never the chat composer", async () => {
