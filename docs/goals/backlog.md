@@ -140,7 +140,7 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 
 ## ★ 2026-07-03 found-during-DS-7: withFileLock 재시도 경합이 풀 스위트 병렬 부하에서 flaky (pre-existing, DS-3와 무관)
 
-- ◦ packages/stores 54개 테스트 파일이 vitest 병렷 워커로 동시 실행될 때 consent/objectives/veto/proposed-action-concurrency의 50-병렬-writer 테스트가 간헐적으로 `EEXIST .lock` + 이어지는 `ENOTEMPTY rmdir`로 실패 (격리 실행 시 16/16 그린 — 로드 유발, 로직 버그 아님). encrypted-file.js의 락 재시도 backoff/횟수가 시스템 부하 하 50-writer 경합을 못 버팀. FIX 후보: 재시도 횟수/backoff 상한 상향 또는 지수 백오프 jitter 추가, mkdir으로 잔여 락 디렉토리 정리 로직 점검.
+- ✓ stores 파일-락 경합 강화 (2026-07-12): withFileLock 고정 50ms×240회(12s)+무jitter → decorrelated-jitter 지수 백오프(25→250ms 캡)+wall-clock 30s 포기(LOCK_STALE_MS 정합, 롤링-컨텐션 fake-timer 테스트 포함) — 게이트: stores full-suite 병렬 부하 pass^3 (이전 간헐 3-4파일 red → 3회 연속 67파일/549 green), mutation RED 확인, 독립평가자 PASS 5/5
 
 ## ★ 2026-07-03 delta-scout ROUND 2 (7/2 이후 신규 251+104 커밋, 3독립 스카우트) — Tier 1 5건 즉시착수, 내부품질 렌즈가 "이 방향 소진" 명시적 신호
 

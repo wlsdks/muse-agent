@@ -78,8 +78,25 @@ export async function isFileEncryptedAtRest(file: string): Promise<boolean> {
 }
 
 const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 50;
-const LOCK_MAX_ATTEMPTS = 240; // ~12s before giving up on a live holder — 50 parallel writers on a slow runner exceed 3s
+// A live holder is given the SAME 30s as the stale-steal threshold — a holder
+// that has genuinely lived that long is about to be treated as stale by
+// probeLock anyway, so giving up any earlier would starve a waiter for no
+// reason and giving up later would just duplicate the steal path.
+const LOCK_GIVE_UP_MS = LOCK_STALE_MS;
+const LOCK_RETRY_BASE_MS = 25;
+const LOCK_RETRY_CAP_MS = 250;
+
+/**
+ * Decorrelated-jitter exponential backoff for a contended lock retry: base 25ms,
+ * doubling per attempt, capped at 250ms, then widened by a [0.5, 1.5) jitter
+ * factor so N parallel writers who all hit EEXIST in the same tick don't retry
+ * in lockstep (the fixed 50ms interval this replaces caused exactly that herd).
+ */
+export function computeLockRetryDelay(attempt: number): number {
+  const exponential = Math.min(LOCK_RETRY_CAP_MS, LOCK_RETRY_BASE_MS * 2 ** attempt);
+  const jitter = 0.5 + Math.random();
+  return exponential * jitter;
+}
 
 type LockProbe = "live" | "stale" | "vanished";
 
@@ -121,6 +138,7 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
   await fs.mkdir(dirname(file), { recursive: true });
   const lockPath = `${file}.lock`;
   const nonce = `${process.pid.toString()}-${randomUUID()}`;
+  const startedAt = Date.now();
   let acquired = false;
   for (let attempt = 0; !acquired; attempt += 1) {
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
@@ -147,10 +165,10 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
         await fs.unlink(lockPath).catch(() => undefined);
         continue;
       }
-      if (attempt >= LOCK_MAX_ATTEMPTS) {
+      if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
         throw new Error(`${file} is locked by another write in progress — retry shortly`, { cause });
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+      await new Promise<void>((resolve) => setTimeout(resolve, computeLockRetryDelay(attempt)));
     } finally {
       await handle?.close().catch(() => undefined);
     }
