@@ -5,7 +5,7 @@ import { DEFAULT_EXEMPLAR_HEADER } from "./exemplar-retriever.js";
 
 export * from "./exemplar-retriever.js";
 
-export { composeIdentityPrompt, MUSE_IDENTITY_CORE } from "./identity-core.js";
+export { composeIdentityPrompt, MUSE_IDENTITY_CORE, MUSE_IDENTITY_LEAD } from "./identity-core.js";
 export {
   composeSurfacePrompt,
   composeSurfacePromptSegments,

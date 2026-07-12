@@ -28,6 +28,20 @@ test("still flags the original two literals (backward compatible)", () => {
   assert.ok(lineAssertsIdentity("너는 뮤즈다"));
 });
 
+test("flags the MIXED EN+KO / KO+latin forms the same-script guard once missed", () => {
+  // The exact shape a hand-rolled channel prompt used to evade the gate:
+  // an English copula bound to the Korean name.
+  for (const s of [
+    "You are 뮤즈 (Muse), a friendly personal companion",
+    "you're 뮤즈",
+    "I am 뮤즈",
+    "너는 Muse야",
+    "저는 Muse입니다"
+  ]) {
+    assert.ok(lineAssertsIdentity(s), `should flag mixed-script identity binding: ${s}`);
+  }
+});
+
 test("does NOT flag benign, non-identity-binding Muse mentions", () => {
   for (const s of [
     "Muse is a local-first personal agent.",

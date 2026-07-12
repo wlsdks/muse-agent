@@ -25,6 +25,18 @@ export const MUSE_IDENTITY_CORE = [
 ].join("\n");
 
 /**
+ * The compact one-line identity name-binding, for a surface that must state
+ * who Muse is but cannot carry the full MUSE_IDENTITY_CORE (e.g. the channel
+ * small-talk fast-path, a single short inference where the whole block would
+ * be disproportionate). The name binding lives HERE, in the single source, so
+ * a compact surface composes from it instead of hand-typing "You are 뮤즈" —
+ * which would re-open the divergent-identity drift the seam exists to close
+ * (and evade check:prompt-seam, whose matcher this exact mixed EN+KO form once
+ * slipped through).
+ */
+export const MUSE_IDENTITY_LEAD = "You are 뮤즈 (Muse)";
+
+/**
  * Prepend the identity core to a surface's own role/task instructions.
  * `roleSuffix` stays that surface's text unchanged — only the identity
  * sentence is shared.
