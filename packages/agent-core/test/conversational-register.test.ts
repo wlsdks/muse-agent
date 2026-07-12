@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildLanguageMirrorLayer,
   buildRegisterBrevityLayer,
   classifyCasualTurn,
   detectBrevityRequest,
   detectDetailRequest,
   detectKoreanRegister,
+  LANGUAGE_MIRROR_LAYER_ID,
   REGISTER_BREVITY_LAYER_ID
 } from "../src/index.js";
 
@@ -132,6 +134,39 @@ describe("buildRegisterBrevityLayer", () => {
     // No 존댓말/반말 ending signal here either ("줄이야" -> 반말 ending "야"),
     // so the register line fires but brevity must NOT.
     expect(layer?.content).not.toContain("1~2문장");
+  });
+});
+
+describe("buildLanguageMirrorLayer — non-Korean turns get a reply-in-that-language layer", () => {
+  it("fires on a pure-English self-question (the measured Korean-leak case)", () => {
+    const layer = buildLanguageMirrorLayer("What can you do for me?");
+    expect(layer).toBeDefined();
+    expect(layer?.id).toBe(LANGUAGE_MIRROR_LAYER_ID);
+    expect(layer?.section).toBe("dynamic");
+    expect(layer?.content).toContain("same language");
+  });
+
+  it("fires on an English task request (the mid-answer-switch case)", () => {
+    const layer = buildLanguageMirrorLayer("Summarize the pros and cons of remote work in 3 bullets.");
+    expect(layer).toBeDefined();
+  });
+
+  it("does NOT fire on a Korean turn (default — no instruction needed)", () => {
+    expect(buildLanguageMirrorLayer("너는 이름이 뭐야?")).toBeUndefined();
+    expect(buildLanguageMirrorLayer("오늘 일정 알려줘")).toBeUndefined();
+  });
+
+  it("does NOT fire on a Korean turn that name-drops English tech terms (any Hangul ⇒ Korean)", () => {
+    // Latin letters here outnumber the Hangul, but the user is clearly speaking
+    // Korean — a single 가-힣 must keep the reply Korean, or "React랑 Vue 비교"
+    // would flip to an all-English answer.
+    expect(buildLanguageMirrorLayer("React랑 Vue 비교해줘")).toBeUndefined();
+    expect(buildLanguageMirrorLayer("이거 영어로 번역해줘: 나는 내일 회의가 있어")).toBeUndefined();
+  });
+
+  it("does NOT fire on a symbol/number-only turn (no dominant Latin language)", () => {
+    expect(buildLanguageMirrorLayer("1 + 1 = ?")).toBeUndefined();
+    expect(buildLanguageMirrorLayer("")).toBeUndefined();
   });
 });
 

@@ -3331,4 +3331,4 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ D5-S3 2026-07-12 — canUseNativeTools 死코드→실게이트(VQ-2): AgentRuntime 요청경로에 assertModelCanUseTools 배선, tools 노출+capability-부재 모델→명시적 ModelToolCallingUnsupportedError(조용한 무시 대신). fail-open(tools0·미지·listModels-throw→무차단)+per-instance 캐시. 6 behavioral(run 경로)·mutation-RED 양방향·Opus PASS. 텍스트 프로토콜 파서=별도 L 이연. 다음 = D5-S4(MUSE_MODEL_FALLBACKS 명시 체인)
 
 - ✓ credential_extraction 인젝션 오탐(비밀번호 관리 팁 차단) 수정 — prompt-system fire 6
-- ◦ 언어 미러링: 영어 입력에 한국어 응답 — 영어턴만 미러링하는 dynamic PromptLayer (prompt-system 발굴)
+- ✓ 언어 미러링: 비-한국어 입력에 그 언어로 답하는 결정론 PromptLayer(buildLanguageMirrorLayer) — prompt-system fire 7

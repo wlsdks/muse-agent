@@ -280,11 +280,14 @@ export {
 export { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
 export { casualResponseFor, containsHangul } from "./casual-prompt-responses.js";
 export {
+  buildLanguageMirrorLayer,
   buildRegisterBrevityLayer,
   classifyCasualTurn,
   detectBrevityRequest,
   detectDetailRequest,
   detectKoreanRegister,
+  LANGUAGE_MIRROR_LAYER_ID,
+  LANGUAGE_MIRROR_LAYER_PRIORITY,
   REGISTER_BREVITY_LAYER_ID,
   REGISTER_BREVITY_LAYER_PRIORITY,
   type PersonaRegister,

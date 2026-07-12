@@ -29,7 +29,7 @@ import {
 } from "@muse/prompts";
 
 import { renderActiveContextSection, type ActiveContextProvider, type ActiveContextSnapshot } from "./active-context.js";
-import { buildRegisterBrevityLayer, type PersonaRegister } from "./conversational-register.js";
+import { buildLanguageMirrorLayer, buildRegisterBrevityLayer, type PersonaRegister } from "./conversational-register.js";
 import {
   renderEpisodicSection,
   type EpisodicRecallProvider,
@@ -503,15 +503,21 @@ export function applyPromptLayers(
   // would inject "1~2문장으로 짧게" and truncate that synthesis. Callers mark
   // those runs with `metadata.internalTurn`.
   const isInternalTurn = context.input.metadata?.["internalTurn"] === true;
+  const turnUserText = latestUserPrompt(context.input.messages);
   const registerBrevityLayer = isInternalTurn
     ? undefined
-    : buildRegisterBrevityLayer({
-        personaRegister,
-        userText: latestUserPrompt(context.input.messages)
-      });
-  const composedLayers: readonly PromptLayer[] = registerBrevityLayer
-    ? [...registryLayers, registerBrevityLayer]
-    : registryLayers;
+    : buildRegisterBrevityLayer({ personaRegister, userText: turnUserText });
+  // A non-Korean (English) turn gets a deterministic "reply in that language"
+  // layer — the identity core's soft "follow the user's language" line alone
+  // let a Korean-primed 12B answer English self-questions in Korean. Suppressed
+  // on internal turns for the same reason register/brevity is (machine-authored
+  // fact sheets are not the user speaking a language to mirror).
+  const languageMirrorLayer = isInternalTurn ? undefined : buildLanguageMirrorLayer(turnUserText);
+  const composedLayers: readonly PromptLayer[] = [
+    ...registryLayers,
+    ...(languageMirrorLayer ? [languageMirrorLayer] : []),
+    ...(registerBrevityLayer ? [registerBrevityLayer] : [])
+  ];
   const systemPrompt = composeSurfacePrompt("chat", {}, { ...resolveContext, layers: composedLayers });
 
   return {
