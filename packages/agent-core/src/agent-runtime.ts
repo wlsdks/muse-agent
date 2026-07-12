@@ -65,6 +65,7 @@ import { joinUserMessages } from "./internals.js";
 import {
   checkActuatorProvenance,
   describeProvenanceTaint,
+  EXECUTE_SINK_ARG_NAMES,
   OUTBOUND_SEND_SINK_ARG_NAMES,
   OUTBOUND_SEND_TOOL_NAMES
 } from "./actuator-provenance-gate.js";
@@ -1039,24 +1040,38 @@ export class AgentRuntime {
   }
 
   /**
-   * Provenance warning for an OUTBOUND-SEND call whose sink args derive from
+   * Provenance warning for an actuator call whose sink args derive from
    * untrusted tool output (the run's taint ledger) rather than the user's own
-   * messages this run. Returns `undefined` for anything that isn't an
-   * outbound-send tool, when the ledger is empty/absent, or when no sink arg is
-   * tainted — so ordinary sends and non-send tools carry no extra friction.
+   * messages this run. Covers two actuator classes: OUTBOUND-SEND tools (sink =
+   * recipient/subject/body/url) and EXECUTE-risk tools (sink = the command/code
+   * payload) — a poisoned tool result must not silently supply a send's
+   * recipient nor an RCE command. Execute-risk tools are already always gated,
+   * so this only enriches that confirm. Returns `undefined` for read/write
+   * non-send tools, when the ledger is empty/absent, or when no sink arg is
+   * tainted — so ordinary calls carry no extra friction.
    */
-  private outboundProvenanceWarning(
+  private actuatorProvenanceWarning(
     context: AgentRunContext,
-    toolCall: ModelToolCall
+    toolCall: ModelToolCall,
+    risk: "read" | "write" | "execute"
   ): string | undefined {
     const ledger = context.taintLedger;
-    if (!ledger || !OUTBOUND_SEND_TOOL_NAMES.includes(toolCall.name)) {
+    if (!ledger) {
       return undefined;
     }
+    const isOutboundSend = OUTBOUND_SEND_TOOL_NAMES.includes(toolCall.name);
+    const isExecute = risk === "execute";
+    if (!isOutboundSend && !isExecute) {
+      return undefined;
+    }
+    const sinkArgNames = [
+      ...(isOutboundSend ? OUTBOUND_SEND_SINK_ARG_NAMES : []),
+      ...(isExecute ? EXECUTE_SINK_ARG_NAMES : [])
+    ];
     const check = checkActuatorProvenance({
       args: toolCall.arguments ?? {},
       ledger,
-      sinkArgNames: OUTBOUND_SEND_SINK_ARG_NAMES,
+      sinkArgNames,
       trustedHaystack: joinUserMessages(context.input.messages)
     });
     return check.untrustedDerived ? describeProvenanceTaint(check) : undefined;
@@ -1112,20 +1127,22 @@ export class AgentRuntime {
 
     await this.invokeHooks("beforeTool", context, toolCall);
 
-    // Injection-provenance gate (outbound-send class only): if this outbound
-    // actuator's sink args (to/subject/body/url) carry content that traces to
-    // UNTRUSTED tool output and NOT to the user's own message, the send must
-    // not proceed silently — a poisoned tool result must never supply a send's
-    // arguments on the agent's own judgement (outbound-safety.md, FIDES-style
+    // Injection-provenance gate (outbound-send OR execute class): if this
+    // actuator's sink args (a send's to/subject/body/url, or an execute tool's
+    // command/code payload) carry content that traces to UNTRUSTED tool output
+    // and NOT to the user's own message, the call must not proceed silently — a
+    // poisoned tool result must never supply a send's recipient nor an RCE
+    // command on the agent's own judgement (outbound-safety.md, FIDES-style
     // taint gate arXiv:2505.23643). The warning is threaded INTO the single
-    // draft-first confirm below (no second prompt); with no confirm path at
-    // all it fail-closes. Computed BEFORE the gate so it enriches that one gate
-    // call rather than adding a second one.
-    const provenanceWarning = this.outboundProvenanceWarning(context, toolCall);
+    // approval confirm below (no second prompt); with no confirm path at all it
+    // fail-closes. Execute-risk tools are already always gated, so this enriches
+    // that existing confirm. `risk` is resolved once here so both the warning
+    // and the gate call use it — computed BEFORE the gate.
+    const risk = this.resolveToolRisk(toolCall.name);
+    const provenanceWarning = this.actuatorProvenanceWarning(context, toolCall, risk);
 
     const approvalGate = context.input.toolApprovalGate ?? this.toolApprovalGate;
     if (approvalGate) {
-      const risk = this.resolveToolRisk(toolCall.name);
       let decision: ToolApprovalGateDecision;
       try {
         decision = await approvalGate({
@@ -1151,11 +1168,11 @@ export class AgentRuntime {
         return executed;
       }
     } else if (provenanceWarning) {
-      // A tainted outbound send with NO approval gate has no draft-first
-      // confirm to route to — fail-close, never a silent send.
+      // A tainted actuator call with NO approval gate has no confirm to route
+      // to — fail-close, never a silent send or execute.
       const executed = blockedToolResult(
         toolCall,
-        `Error: outbound send blocked (injection-provenance): ${provenanceWarning}. Confirm this content explicitly before sending.`
+        `Error: actuator call blocked (injection-provenance): ${provenanceWarning}. Confirm this content explicitly before proceeding.`
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;

@@ -44,6 +44,22 @@ export const OUTBOUND_SEND_SINK_ARG_NAMES: readonly string[] = [
 ];
 
 /**
+ * The argument keys on an execute-risk tool that carry the command/code payload
+ * to be run (a shell line, a script, an interpreter input). Execute-risk tools
+ * are already always approval-gated, so restricting the taint check to these
+ * payload args enriches the confirm that already happens without adding one.
+ */
+export const EXECUTE_SINK_ARG_NAMES: readonly string[] = [
+  "command",
+  "cmd",
+  "code",
+  "script",
+  "shell",
+  "input",
+  "args"
+];
+
+/**
  * Human-readable reason naming each tainted arg and the untrusted source it
  * traces to — surfaced on the draft-first confirm so the user sees WHY a send
  * was flagged ("`to` traces to untrusted tool:web_fetch, not your message").
