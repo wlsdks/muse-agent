@@ -620,6 +620,13 @@ export {
   scoreConsolidationCandidate,
   type ConsolidationCandidateSignals
 } from "./consolidation-score.js";
+export {
+  buildConsolidationProposalNotice,
+  runConsolidationProposalPass,
+  CONSOLIDATION_PROPOSAL_KIND,
+  type ConsolidationProposalCandidate,
+  type ConsolidationProposalPassDeps
+} from "./consolidation-proposal.js";
 export { adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses, type NoticeResponseStats } from "./sdt-criterion.js";
 export { splitCompoundQuery } from "./compound-query.js";
 export {

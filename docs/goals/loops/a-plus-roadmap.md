@@ -424,3 +424,12 @@ ratchet: 로드맵 잔여 [ ] = 14/65(D6-S1a 체크) · self-eval pass · fabric
 - 리뷰지점: Opus PASS — no-write/순수 selection 불변(zero imports·frozen-input 무변경 유닛)·monotonicity(hits/recency/half-life 0.5/diversity 정확)·boundary 가드(hits≤0·non-finite·future-clamp)·grounded 입력(RecallHitStats 일치·distinctQueries honestly optional)·mutation-RED 양방향 독립 재현.
 - 리스크: 낮음. 순수 함수·미배선(승격 write는 D6-S1b draft-first, 데몬은 D6-S1c). 자동쓰기금지 D6 불변을 함수가 side-effect-free라 구조적으로 보장. 다음 = D6-S1b(승격을 proactive draft 카드+자동쓰기-없음 계약 mutation).
 - lesson: 결정론 스코어의 입력은 실제 저장되는 신호(RecallHitStats hits/lastHitMs)에 grounded해야 — distinct-query처럼 원장 미추적 신호는 optional+neutral fallback으로 spec-complete하되 정직히 표기. no-write 불변은 함수를 순수(zero import)로 만들어 구조적으로 보장하고 frozen-input 유닛으로 증명.
+
+## fire 50 · 2026-07-12 · skill v2.x · 6e0aba72e
+meta: slice=D6-S1b · wave=W5 · pkg=@muse/agent-core · kind=consolidation-draft-proposal · verdict=PASS · firesSinceDrill=8
+ratchet: 로드맵 잔여 [ ] = 13/65(D6-S1b 체크) · self-eval pass · fabrication 0 · agent-core +5 유닛(consolidation-proposal.test, testFiles 1405→1406)
+- 무엇: ①기준선 green. ②D6-S1b: sleep-consolidation 후보를 draft 제안으로. runConsolidationProposalPass({candidates,nowMs,nowIso,threshold,publish,promote?}) — D6-S1a 스코어로 필터(isConsolidationCandidate)→above-threshold만 draft 제안 notice publish(AgentInitiatedNotice kind="memory_consolidation_proposal", "오래 보관할까요?...승인해야 durable 승격", sourceId=memoryId). buildConsolidationProposalNotice 순수. **자동쓰기-없음 계약**: deps.promote(durable writer)는 deps에 있으나 절대 호출 안 함(교정-망각 불변), 타입/주석에만·호출부 0.
+- 왜: D6-S1(sleep-consolidation)의 draft-first 절반. 교정-망각 원칙 — Muse는 유저 승인 없이 durable memory write 금지. 스코어(D6-S1a)로 후보만 선정, 승격은 유저 확인(D6-S1c 데몬) 시에만. outbound-safety deny/no-effect 패턴을 memory 승격에 적용.
+- 리뷰지점: Opus PASS — no-auto-write 불변(promote 타입/주석에만·미호출, 테스트가 all-strong 후보에도 promote 0회 assert=weak-suppress로 거짓통과 불가)·mutation-RED 양방향 독립 재현(auto-write 주입→promote spy RED·threshold 반전→selection RED)·실 D6-S1a 스코어 배선(재구현 아님)·notice shape(kind/sourceId/confirmation text)·Date-free(nowMs/nowIso 입력).
+- 리스크: 낮음. 미배선(데몬 소비=D6-S1c). 자동쓰기금지 불변을 deps.promote 미호출로 계약화하고 mutation으로 가드. D6-S1 sleep-consolidation의 score(a)+proposal(b) 완성, 데몬 정합(c) 잔여. 다음 = D6-S1c(데몬 배선·loop-v2 Sleep 정합) 또는 D-E1b. ※foreign encrypted-file.ts diff는 타루프.
+- lesson: draft-first/자동쓰기-없음 계약은 write 능력(promote)을 deps에 두되 "절대 호출 안 함"으로 명문화하고, mutation(promote 호출 주입)→spy RED로 가드하면 계약이 실효. no-write 테스트는 반드시 강한 후보(모두 above-threshold)로 검증해야 함 — weak-suppress로 promote 0회가 되는 거짓통과를 배제.
