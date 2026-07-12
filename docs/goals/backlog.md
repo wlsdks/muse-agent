@@ -3359,4 +3359,5 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ drift-lint 브로드닝(패러프레이즈 정체성 문자열 포착, 리터럴 2개→매처) — prompt-system fire 9 (감사 A#3)
 
 - ✓ 주민등록번호(RRN) 평문저장 차단 — secret-persistence 가드 national-id 패턴 (prompt-system fire 13)
+- ✓ eval:adversarial 결정론-가드 카테고리 확대(topology-bypass·obfuscation, 10→19 케이스) — a-plus-roadmap fire 55 (D2-S7)
 - ◦ [선행·타루프] byte-hygiene 실패: packages/shared/test/utf16-safe.test.ts:43 raw byte (D-KO-S1 e287c94f6) — D-KO-S1 소유자 수리
