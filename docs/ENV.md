@@ -97,7 +97,7 @@ Total: **549** variables.
 | `MUSE_BROWSING_SYNC_INTERVAL_MINUTES` | apps/cli |
 | `MUSE_BUDGET_MONTHLY_LIMIT_USD` | packages/autoconfigure |
 | `MUSE_BUDGET_WARNING_PERCENT` | packages/autoconfigure |
-| `MUSE_BUILD_ID` | apps/api |
+| `MUSE_BUILD_ID` | apps/api, apps/desktop |
 | `MUSE_CACHE_BOUNDARY` | packages/prompts |
 | `MUSE_CACHE_BOUNDARY_MARKER` | apps/api, packages/prompts |
 | `MUSE_CACHE_ENABLED` | packages/autoconfigure |

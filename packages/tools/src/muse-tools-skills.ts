@@ -18,7 +18,7 @@
 
 import { spawn } from "node:child_process";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { redactSecretsInText, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import { readOptionalNumber, readOptionalString } from "./muse-tools-helpers.js";
@@ -183,11 +183,13 @@ export function createSkillRunTool(registry: SkillRegistryView, options: SkillRu
           stdin,
           timeoutMs
         });
+        // Skill subprocess output is untrusted and can echo a secret (an env
+        // dump, a config print) — mask before it enters the model context.
         return {
           exitCode: result.exitCode,
           ...(result.signal ? { signal: result.signal } : {}),
-          stderr: result.stderr,
-          stdout: result.stdout,
+          stderr: redactSecretsInText(result.stderr),
+          stdout: redactSecretsInText(result.stdout),
           timedOut: result.timedOut
         };
       } catch (cause) {

@@ -370,3 +370,12 @@ ratchet: 로드맵 잔여 [ ] = 19/65(D2-S3 체크) · self-eval pass(baseline-r
 - 리뷰지점: Opus PASS — 독립 우회 프로빙(전각 sudo/슬래시·ANSI 변형·전각 틸데 모두 차단)·DETECTION-only 실검증(zero 외부 caller, executor runner.ts:257 등 원본 실행)·no-over-block(인용내 전각·benign ANSI echo safe, quote-awareness 유지)·ReDoS-safe(char-class 단일 quantifier)·기존 27 무수정·mutation-RED 양방향 독립 재현.
 - 리스크: 낮음. 순수 결정론 변환·additive. ⚠️ foreign apps/api WIP가 working-tree 더럽힘(내 commit 미포함, 명시 add) — 그 loop의 envInventory 회귀를 docs:env로 임시 봉합, 그 loop 커밋 시 재생성. ⚠️ 워커가 격리검증에 git stash 사용(금지 사항)했으나 무손상(stash list 비어있음·내 변경/foreign 그대로) — 향후 워커 브리핑에 git stash 금지 명시. 배치 진행중(진안 지시). 다음 = D2-S4(runner stdout→모델 시크릿 마스킹, VQ-4 확인 후).
 - lesson: 보안 난독화-해제 확장은 DETECTION-only 변형(원본 미변경)을 정규화 파이프라인 front에 추가하면 clean 입력 no-op으로 기존 게이트 무수정 보장. 동시-루프가 shared 메인 워크트리서 env 추가하면 내 self-eval envInventory가 foreign하게 red될 수 있음 — docs:env 재생성으로 봉합(생성 파일이라 안전). 워커에 git stash 금지를 브리핑에 명시해야(격리 검증 유혹).
+
+## fire 44 · 2026-07-12 · skill v2.x · 39d715ccb
+meta: slice=D2-S4 · wave=W4 · pkg=@muse/tools · kind=security-secret-masking · verdict=PASS · firesSinceDrill=2
+ratchet: 로드맵 잔여 [ ] = 18/65(D2-S4 체크) · self-eval pass(baseline-repair 후) · fabrication 0 · tools +5 test(119/119)
+- 무엇: ①기준선 green. ②D2-S4(🔒): redactSecretsInText를 subprocess 출력→모델 2 sink 배선 — runner.ts run_command + 형제-감사로 찾은 muse-tools-skills.ts skill_run(둘 다 stdout/stderr raw로 모델 유출되던 동일 취약클래스). truncation 무결: capTruncated를 capped-but-unredacted 길이로 계산 후 redact(redact가 길이 바꿔 flag 오염 방지). ③baseline-repair: foreign apps/api env 또 늘어 envInventory red→docs:env 재동기.
+- 왜: VQ-4 확정(runner.ts:88-100 redact 없이 raw 반환). openclaw secret-mask 참조. 명령/스킬이 env 덤프·config 프린트로 시크릿 출력하면 모델 컨텍스트로 유출 → 반환 직전 마스킹.
+- 리뷰지점: Opus PASS — 두 sink RETURN 경로 실배선(import만 아님)·마스킹 behavioral(sk-proj/AKIA/ghp raw 제거+[redacted-)·truncation 실검증(mid-secret cut→truncated:true·benign→false·기존 truncated 보존)·no over-mask(benign byte-identical toBe)·perf 실측 256KB 17.7ms<250ms(SECRET_PATTERNS ReDoS-safe)·제3형제 없음(다른 exec는 regex.exec)·mutation-RED 양방향 독립 재현.
+- 리스크: 낮음. additive 마스킹(capping/decode 무변경). ⚠️ foreign apps/api WIP env 지속 증가로 매 fire docs:env 재동기 필요(noise). 워커 git stash 미사용(브리핑 반영). 배치 진행중. 다음 = D2-S5(calendar 스토어 암호화, reflections 템플릿 재사용, 라운드트립 3종).
+- lesson: subprocess 출력→모델 sink는 형제가 여러 개(run_command·skill_run) — 한 곳 배선 시 형제-감사로 동일 클래스 전부 배선. 길이-의존 flag(truncation)가 있는 곳에 변환(redact) 추가 시 flag를 변환-전 길이로 계산해 무결 유지. 시크릿 마스커 대형출력 perf는 실측 벤치로 ReDoS 부재 증명(수용 "성능무해").

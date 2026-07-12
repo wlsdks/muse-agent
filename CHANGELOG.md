@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **Secrets in command output stay out of the model.** When Muse runs a shell
+  command or a skill, any API keys or tokens printed to its output are now
+  masked before the result is handed to the model, so a stray `env` dump or
+  config print can't leak a credential into the conversation.
+
 - **Harder to disguise a destructive command.** Muse's block on catastrophic
   shell commands (like `rm -rf /`) now sees through look-alike full-width
   characters and embedded ANSI color codes, so a disguised version can't slip

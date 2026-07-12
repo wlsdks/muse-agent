@@ -173,6 +173,17 @@ describe("muse.skills.run allowlist enforcement", () => {
     expect(out.stdout).not.toContain("�");
   });
 
+  it("masks a secret in the skill subprocess's stdout before returning to the model", async () => {
+    const fakeChild = makeFakeChild({ exitCode: 0, stdout: "leaked key: ghp_abcdefghijklmnopqrstuvwxyzABCDEF\n" });
+    spawnMock.mockReturnValueOnce(fakeChild);
+    const tool = createSkillRunTool(makeRegistry([gh]), { spawnImpl: spawnMock as never });
+    const out = (await tool.execute({ command: "gh pr list", name: "gh" }, { runId: "r-1" })) as {
+      readonly stdout: string;
+    };
+    expect(out.stdout).toContain("[redacted-");
+    expect(out.stdout).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+  });
+
   it("survives an EPIPE on the child's stdin (binary exited before consuming stdin) without crashing the parent", async () => {
     // Pre-fix runChild wrote/ended child.stdin with no `error` listener.
     // A binary that exits while the parent is writing closes the pipe and

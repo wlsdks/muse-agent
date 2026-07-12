@@ -1002,6 +1002,79 @@ describe("Rust runner tool", () => {
     expect(result.truncated).toBe(true);
   });
 
+  it("masks a secret in stdout and stderr before returning to the model", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null,
+        ok: true,
+        status: 0,
+        stderr: "warning: AKIAIOSFODNN7EXAMPLE seen in stderr too",
+        stdout: "token: sk-proj-abcdefghijklmnopqrstuvwxyz done",
+        timedOut: false,
+        truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node" }, { runId: "run-5" }) as { stdout: string; stderr: string };
+    expect(result.stdout).toContain("[redacted-");
+    expect(result.stdout).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    expect(result.stderr).toContain("[redacted-");
+    expect(result.stderr).not.toContain("AKIAIOSFODNN7EXAMPLE");
+  });
+
+  it("computes `truncated` on pre-redaction length so masking a secret doesn't corrupt the flag", async () => {
+    // "sk-proj-..." is 45 chars; capping at 10 truncates mid-secret, and the
+    // capped-but-unredacted length compare (not the redacted-and-shrunk one)
+    // must still detect the cut.
+    const raw = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890";
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: raw, timedOut: false, truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node", maxOutputBytes: 10 }, { runId: "run-6" }) as {
+      truncated: boolean;
+    };
+    expect(result.truncated).toBe(true);
+  });
+
+  it("does not over-mask secret-free output (benign text passes through unchanged)", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: "all tests passed\n42 ok", timedOut: false, truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node" }, { runId: "run-7" }) as { stdout: string; truncated: boolean };
+    expect(result.stdout).toBe("all tests passed\n42 ok");
+    expect(result.truncated).toBe(false);
+  });
+
+  it("masks secrets sprinkled into a large (~256KB) output without pathological slowdown", async () => {
+    const chunk = "benign log line filler text that repeats many times to build volume\n";
+    const repeats = Math.ceil((256 * 1024) / chunk.length);
+    const filler = chunk.repeat(repeats);
+    const raw =
+      filler.slice(0, filler.length / 2) +
+      "leaked ghp_abcdefghijklmnopqrstuvwxyzABCDEF token\n" +
+      filler.slice(filler.length / 2) +
+      "\nAKIAIOSFODNN7EXAMPLE\n";
+
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: raw, timedOut: false, truncated: false
+      })
+    });
+
+    const start = performance.now();
+    const result = await tool.execute({ command: "node" }, { runId: "run-8" }) as { stdout: string; truncated: boolean };
+    const elapsedMs = performance.now() - start;
+
+    expect(result.stdout).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+    expect(result.stdout).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(result.stdout).toContain("[redacted-");
+    expect(result.stdout).toContain("benign log line filler text that repeats many times to build volume");
+    expect(elapsedMs).toBeLessThan(250);
+  });
+
   it("rejects blank runner commands before spawning the child process", () => {
     expect(() => parseRunnerCommandRequest({ command: " " })).toThrow("run_command requires");
   });

@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { isRecord } from "@muse/shared";
+import { isRecord, redactSecretsInText } from "@muse/shared";
 import { spawn, type ChildProcess } from "node:child_process";
 
 import type { JsonObject } from "@muse/shared";
@@ -93,13 +93,21 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
       const response = await invoke(request);
 
       const cap = request.maxOutputBytes;
-      const stdout = cap !== undefined ? response.stdout.slice(0, cap) : response.stdout;
-      const stderr = cap !== undefined ? response.stderr.slice(0, cap) : response.stderr;
+      const cappedStdout = cap !== undefined ? response.stdout.slice(0, cap) : response.stdout;
+      const cappedStderr = cap !== undefined ? response.stderr.slice(0, cap) : response.stderr;
       // A model-supplied cap that actually shortened either stream MUST flip
       // `truncated` — otherwise the model reads partial output as if it were the
       // whole thing and concludes wrongly (e.g. "tests passed" off a cut log).
       // OR with the runner's own flag; never flip a genuine `true` back to false.
-      const capTruncated = stdout.length < response.stdout.length || stderr.length < response.stderr.length;
+      // Computed on the CAPPED-but-UNREDACTED strings — redaction changes length
+      // (a secret collapses to `[redacted-...]`), which would corrupt this compare.
+      const capTruncated = cappedStdout.length < response.stdout.length || cappedStderr.length < response.stderr.length;
+
+      // Subprocess output is untrusted and can echo a secret (an env dump, a
+      // config print, a leaked credential in a log line) — mask before it
+      // enters the model context.
+      const stdout = redactSecretsInText(cappedStdout);
+      const stderr = redactSecretsInText(cappedStderr);
 
       const failureKind = classifyRunnerFailure({ status: response.status, stderr, timedOut: response.timedOut, error: response.error });
       return {
