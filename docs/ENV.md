@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **554** variables.
+Total: **555** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -220,15 +220,15 @@ Total: **554** variables.
 | `MUSE_GCAL_REFRESH_TOKEN` | packages/autoconfigure |
 | `MUSE_GITHUB_MCP_ENABLED` | packages/autoconfigure |
 | `MUSE_GIT_REFLOG_FILE` | apps/cli, packages/recall |
-| `MUSE_GMAIL_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_GMAIL_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
 | `MUSE_GROUNDING_MIN_COSINE` | apps/cli, packages/agent-core |
 | `MUSE_HEAVY_MODEL` | apps/api, apps/cli |
 | `MUSE_HISTORY_SEARCH_EMBED_MODEL` | packages/autoconfigure |
 | `MUSE_HISTORY_SEARCH_ENABLED` | packages/autoconfigure |
 | `MUSE_HISTORY_SEARCH_HYBRID` | packages/autoconfigure |
 | `MUSE_HOME` | apps/cli |
-| `MUSE_HOMEASSISTANT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
-| `MUSE_HOMEASSISTANT_URL` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_HOMEASSISTANT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
+| `MUSE_HOMEASSISTANT_URL` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
 | `MUSE_HOME_WATCH_CONFIG` | apps/api, apps/cli |
 | `MUSE_HOME_WATCH_DESTINATION` | apps/api |
 | `MUSE_HOME_WATCH_ENABLED` | apps/api |
@@ -239,6 +239,7 @@ Total: **554** variables.
 | `MUSE_HUD` | apps/cli |
 | `MUSE_HUD_SEGMENTS` | apps/cli |
 | `MUSE_IDENTITY_CORE` | apps/api, packages/prompts |
+| `MUSE_IDENTITY_LEAD` | apps/api, packages/prompts |
 | `MUSE_IDENTITY_VERIFY_ROUNDS` | apps/api |
 | `MUSE_IDLE_LEARNING_ENABLED` | apps/cli |
 | `MUSE_INBOUND_AUTO_APPROVE` | apps/api |
@@ -272,7 +273,7 @@ Total: **554** variables.
 | `MUSE_LOOPBACK_FETCH_HOSTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_FS_ROOTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_MCP_ENABLED` | packages/autoconfigure |
-| `MUSE_MACOS_ACTUATORS` | apps/cli |
+| `MUSE_MACOS_ACTUATORS` | apps/cli, packages/prompts |
 | `MUSE_MACOS_CALENDAR_NAME` | packages/autoconfigure |
 | `MUSE_MATH_ENABLED` | packages/autoconfigure |
 | `MUSE_MATRIX_ACCESS_TOKEN` | apps/api, packages/autoconfigure |
@@ -514,7 +515,7 @@ Total: **554** variables.
 | `MUSE_TASK_MEMORY_PERSIST` | packages/autoconfigure |
 | `MUSE_TASK_MEMORY_RETENTION_MS` | packages/autoconfigure |
 | `MUSE_TELEGRAM_ACK_REACTION` | apps/api |
-| `MUSE_TELEGRAM_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_TELEGRAM_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
 | `MUSE_TELEGRAM_INBOX_FILE` | packages/autoconfigure |
 | `MUSE_TELEGRAM_LONG_POLL_SECONDS` | apps/api |
 | `MUSE_TELEGRAM_OFFSET_FILE` | packages/autoconfigure |
