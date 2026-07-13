@@ -102,14 +102,17 @@ export function councilMemberSupports(utterances: readonly CouncilUtterance[]): 
  * replace the Jaccard absFloor (0.08) when a `councilMemberSupportsSemantic` vector is
  * fed to `screenCouncilOutliers`.
  *
- * Jaccard lives in ~[0, 0.2] for council text; nomic cosine lives in ~[0.1, 0.9].
- * At cosine ~0.9 two texts agree (cross-lingual or paraphrase); ~0.1 they are
- * semantically unrelated. Setting the floor at 0.4 keeps agreeing peers (cosine ≥ 0.6+)
- * and quarantines genuine outliers (cosine ≤ 0.2). A single threshold applies to both
- * directions — proven by the fake-embedder test pairs; tune on a live KO/EN battery
- * (backlog item: calibrate COSINE_ABS_FLOOR on real nomic council runs).
+ * Calibrated on the live embedder (nomic-embed-text-v2-moe, eval:council-floors):
+ * genuinely AGREEING cross-lingual/paraphrase members' mean pairwise cosine ranges
+ * 0.25–0.55 depending on phrasing, while a semantically unrelated member sits ≤ 0.05.
+ * The floor must sit BELOW the worst genuine agreement and ABOVE the noise band —
+ * the original 0.4 put real agreeing KO/EN members inside the candidate zone, so in
+ * a high-median (echo-similar majority) panel a cross-lingual agreeing peer phrased
+ * at cosine ~0.3 would satisfy BOTH screen conditions and be false-dropped. 0.15
+ * keeps ~1.6x headroom under the weakest measured agreement (0.246) and ~3x over
+ * the unrelated band (0.03–0.05). eval:council-floors pins the separation live.
  */
-export const COSINE_ABS_FLOOR = 0.4;
+export const COSINE_ABS_FLOOR = 0.15;
 
 /**
  * Each member's mean pairwise embedding cosine-similarity to all OTHER members.

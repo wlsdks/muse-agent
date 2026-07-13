@@ -81,15 +81,15 @@ export function screenCouncilOutliers(
  * Cosine floor for the QUESTION↔ANSWER relevance gate (arXiv:2503.13657 — MAST FM-2.3
  * task derailment; arXiv:2507.14649 — semantic consistency signal).
  *
- * Set LOWER than the peer-peer outlier floor (COSINE_ABS_FLOOR = 0.4) because a
- * question and its on-topic answer are NOT paraphrases of each other — the embedding
- * space places them closer than random but still well below same-meaning pairs.
- * nomic question↔relevant-answer cosine is typically ~0.35–0.6; off-topic ~0.05–0.25.
- * A floor of 0.3 keeps all on-topic peers (incl. KO paraphrase + cross-lingual EN)
- * while dropping genuinely unrelated utterances. Tune on a live KO/EN battery
- * (backlog: calibrate on real nomic council runs — smoke:live stalls prevent live check).
+ * A question and its on-topic answer are NOT paraphrases of each other — the embedding
+ * space places them closer than random but below same-meaning pairs. Live-calibrated
+ * (eval:council-floors, nomic-embed-text-v2-moe): on-topic answers measure ≥ 0.30
+ * (zero-token-overlap KO paraphrase 0.30, cross-lingual EN ~0.36, direct KO ~0.74)
+ * while off-topic/derailed utterances measure ≤ 0.04. The original 0.3 floor left
+ * ZERO margin under the weakest on-topic phrasing — one drift away from a false
+ * drop; 0.25 keeps headroom on both sides of the measured separation band.
  */
-export const QUESTION_RELEVANCE_FLOOR = 0.3;
+export const QUESTION_RELEVANCE_FLOOR = 0.25;
 
 export interface RelevanceScreenResult {
   readonly kept: readonly CouncilUtterance[];

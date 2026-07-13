@@ -29,6 +29,7 @@ const BATTERIES = [
   "../apps/cli/scripts/verify-vision-actions.mjs", // grounded vision: image → routed action
   "verify-multihop.mjs", // second-hop AUGMENT: same-base inline+hop vs no-hop, fail-close on regression
   "eval-channel-rhythm.mjs", // channel delegation-ack quality + upstream casual fast-path
+  "eval-council-floors.mjs", // live KO/EN calibration of the council screening floors (real embedder)
 ];
 
 const results = [];

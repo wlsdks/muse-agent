@@ -378,15 +378,28 @@ describe("screenCouncilOutliers — semantic path (precomputedSupports + cosine 
   });
 
   it("COSINE_ABS_FLOOR is applied as default absFloor when precomputedSupports are present", () => {
-    // With Jaccard floor (0.08), a cosine support of 0.3 would NOT be caught.
-    // With COSINE_ABS_FLOOR (~0.4), it IS caught.
+    // With Jaccard floor (0.08), a cosine support of 0.10 would NOT be caught.
+    // With COSINE_ABS_FLOOR (0.15), it IS caught. A support in the 0.25–0.55
+    // band is a genuinely AGREEING cross-lingual/paraphrase member on the live
+    // embedder (eval:council-floors) and must NOT be a screening candidate.
     const u1 = { peerId: "a", reasoning: "x" };
     const u2 = { peerId: "b", reasoning: "y" };
     const u3 = { peerId: "c", reasoning: "z" };
-    // Member c has support 0.3: below COSINE_ABS_FLOOR but above Jaccard 0.08
-    const semanticSupports = [0.75, 0.75, 0.3];
+    // Member c has support 0.10: below COSINE_ABS_FLOOR but above Jaccard 0.08
+    const semanticSupports = [0.75, 0.75, 0.1];
     const { excluded } = screenCouncilOutliers([u1, u2, u3], { precomputedSupports: semanticSupports });
     expect(excluded.map((e) => e.peerId)).toContain("c");
+  });
+
+  it("an agreement-band support (0.3 — real cross-lingual agreement) is NOT screened", () => {
+    const u1 = { peerId: "a", reasoning: "x" };
+    const u2 = { peerId: "b", reasoning: "y" };
+    const u3 = { peerId: "c", reasoning: "z" };
+    // 0.3 is inside the measured live agreement band (0.25–0.55); under the
+    // old 0.4 floor this member was a candidate and could be false-dropped.
+    const semanticSupports = [0.75, 0.75, 0.3];
+    const { excluded } = screenCouncilOutliers([u1, u2, u3], { precomputedSupports: semanticSupports });
+    expect(excluded).toEqual([]);
   });
 
   it("back-compat: no precomputedSupports → Jaccard path, byte-identical to original", () => {
@@ -400,9 +413,12 @@ describe("screenCouncilOutliers — semantic path (precomputedSupports + cosine 
     expect(excluded.map((e) => e.peerId)).toContain("dave");
   });
 
-  it("COSINE_ABS_FLOOR is ~0.4 (pinned — proves thresholds are calibrated for cosine range)", () => {
-    expect(COSINE_ABS_FLOOR).toBeGreaterThanOrEqual(0.35);
-    expect(COSINE_ABS_FLOOR).toBeLessThanOrEqual(0.55);
+  it("COSINE_ABS_FLOOR is pinned inside the live separation band (noise <0.05 … agreement >0.24)", () => {
+    // Calibrated by eval:council-floors on the real embedder: unrelated
+    // members measure ≤0.05, the weakest genuine agreement 0.246. The floor
+    // must sit strictly between the two bands.
+    expect(COSINE_ABS_FLOOR).toBeGreaterThanOrEqual(0.08);
+    expect(COSINE_ABS_FLOOR).toBeLessThanOrEqual(0.2);
   });
 });
 
@@ -743,10 +759,12 @@ describe("screenOffTopicUtterancesSemantic — semantic relevance gate (arXiv:25
     expect(kept.map((u) => u.peerId)).toEqual(["a", "b"]);
   });
 
-  // QUESTION_RELEVANCE_FLOOR is calibrated for question↔answer (lower than COSINE_ABS_FLOOR).
-  it("QUESTION_RELEVANCE_FLOOR is calibrated for question↔answer similarity (~0.3, below COSINE_ABS_FLOOR=0.4)", () => {
+  // QUESTION_RELEVANCE_FLOOR gates question↔answer cosine — a different
+  // quantity from the peer-peer support floor, so the two are pinned
+  // independently (live: on-topic ≥0.30 incl. zero-overlap KO paraphrase;
+  // off-topic/derail ≤0.04 — eval:council-floors).
+  it("QUESTION_RELEVANCE_FLOOR is calibrated for question↔answer similarity (~0.3)", () => {
     expect(QUESTION_RELEVANCE_FLOOR).toBeGreaterThanOrEqual(0.2);
-    expect(QUESTION_RELEVANCE_FLOOR).toBeLessThan(COSINE_ABS_FLOOR); // lower than peer-peer floor
     expect(QUESTION_RELEVANCE_FLOOR).toBeLessThanOrEqual(0.35);
   });
 });
