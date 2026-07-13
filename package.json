@@ -25,6 +25,7 @@
     "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
     "deadcode": "knip",
     "guard:core": "node scripts/guard-immutable.mjs",
+    "check:api-boot": "node scripts/check-api-boot.mjs",
     "check:capabilities": "node scripts/check-capabilities-drift.mjs",
     "check:prompt-seam": "node scripts/check-prompt-seam.mjs",
     "check:secret-guard-coverage": "node scripts/check-secret-guard-coverage.mjs",

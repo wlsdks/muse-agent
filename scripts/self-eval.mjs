@@ -219,6 +219,11 @@ function main() {
   gates.capabilities = gateExit("pnpm -s check:capabilities");
   gates.promptSeam = gateExit("pnpm -s check:prompt-seam");
   gates.envInventory = gateExit("pnpm -s check:env");
+  gates.commentMarkers = gateExit("pnpm -s lint:comments");
+  // Gate runnability: a stale install/dist kills the API server at import
+  // time and every live smoke gate silently rots with it — surface that as a
+  // scoreboard regression, not a surprise at the next manual smoke run.
+  gates.apiBoot = gateExit("pnpm -s check:api-boot");
   gates.testFiles = { status: "pass", value: countTestFiles() };
   // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
   // "so the agent discovers work itself"). Only emit this count WHEN the file
