@@ -5,6 +5,15 @@ export interface ActuatorProvenanceResult {
   untrustedDerived: boolean;
   taintedArgs: { name: string; sources: string[] }[];
   matchedSources: string[];
+  /**
+   * The CONFIDENTIALITY axis (FIDES arXiv:2505.23643): args carrying content that
+   * came from the user's OWN stores — their notes, calendar, contacts — but NOT
+   * from anything they typed this turn. An outbound send built from that content
+   * is data LEAVING the box that the user never wrote into the message: the exfil
+   * half of the provenance problem, and a different harm from an injection.
+   */
+  privateDerived: boolean;
+  privateArgs: string[];
 }
 
 /**
@@ -64,6 +73,10 @@ export const EXECUTE_SINK_ARG_NAMES: readonly string[] = [
  * traces to — surfaced on the draft-first confirm so the user sees WHY a send
  * was flagged ("`to` traces to untrusted tool:web_fetch, not your message").
  */
+export function describeProvenanceExfil(result: ActuatorProvenanceResult): string {
+  return `${result.privateArgs.map((name) => `\`${name}\``).join(", ")} carr${result.privateArgs.length === 1 ? "ies" : "y"} content from your own notes/records that you did not type in this message — confirm you want it to leave`;
+}
+
 export function describeProvenanceTaint(result: ActuatorProvenanceResult): string {
   return result.taintedArgs
     .map(({ name, sources }) => {
@@ -125,10 +138,16 @@ export function checkActuatorProvenance(input: {
   ledger: TaintLedger;
   trustedHaystack: string;
   sinkArgNames?: readonly string[];
+  /**
+   * When set, args are ALSO classified against the user's own first-party stores
+   * (the confidentiality axis). Pass the ledger's `firstPartyHaystack()`.
+   */
+  privateHaystack?: string;
 }): ActuatorProvenanceResult {
-  const { args, ledger, trustedHaystack, sinkArgNames } = input;
+  const { args, ledger, trustedHaystack, sinkArgNames, privateHaystack } = input;
   const taintedArgs: { name: string; sources: string[] }[] = [];
   const matchedSources: string[] = [];
+  const privateArgs: string[] = [];
   const names = sinkArgNames ?? Object.keys(args);
   for (const name of names) {
     const value = args[name];
@@ -136,16 +155,54 @@ export function checkActuatorProvenance(input: {
       continue;
     }
     const result = argDerivesFromUntrusted(value, ledger, trustedHaystack);
-    if (result.tainted) {
-      taintedArgs.push({ name, sources: result.sources });
-      for (const source of result.sources) {
+    // Split the taint by ORIGIN. Every tool result is recorded untrusted, so a
+    // send built from the user's OWN note used to read "traces to untrusted
+    // tool:muse.notes.search" — a false injection alarm that trains the user to
+    // click through the one warning that matters. An arg whose tokens appear ONLY
+    // in first-party spans is not an injection risk; it is a CONFIDENTIALITY one,
+    // and it is reported as such below. (If the note quotes a page fetched this
+    // run, that page's own span still matches and the injection warning fires —
+    // the strict posture for send/execute is preserved.)
+    const thirdPartySources = result.sources.filter((source) => !isFirstPartyReadTool(source.replace(/^tool:/u, "")));
+    if (result.tainted && thirdPartySources.length > 0) {
+      taintedArgs.push({ name, sources: thirdPartySources });
+      for (const source of thirdPartySources) {
         if (!matchedSources.includes(source)) {
           matchedSources.push(source);
         }
       }
     }
+    // Confidentiality: the arg carries content from the user's own stores that
+    // they did NOT type this turn. Reuses the same token-overlap primitive, with
+    // the first-party corpus as the needle-source instead of the untrusted one.
+    if (privateHaystack !== undefined && privateHaystack.trim().length > 0
+      && argDerivesFromCorpus(value, privateHaystack, trustedHaystack)) {
+      privateArgs.push(name);
+    }
   }
-  return { untrustedDerived: taintedArgs.length > 0, taintedArgs, matchedSources };
+  return {
+    matchedSources,
+    privateArgs,
+    privateDerived: privateArgs.length > 0,
+    taintedArgs,
+    untrustedDerived: taintedArgs.length > 0
+  };
+}
+
+/**
+ * True when `value` carries content tokens that appear in `corpus` but NOT in
+ * `trustedHaystack` (what the user themselves typed). Same shape as
+ * `argDerivesFromUntrusted`, over an arbitrary corpus — used for the first-party
+ * (private) classification.
+ */
+export function argDerivesFromCorpus(value: string, corpus: string, trustedHaystack: string): boolean {
+  const valueTokens = contentTokens(value);
+  if (valueTokens.length === 0) {
+    return false;
+  }
+  const corpusTokens = contentTokenSet(corpus);
+  const userTokens = contentTokenSet(trustedHaystack);
+  return valueTokens.some((token) => corpusTokens.has(token) && !userTokens.has(token));
 }
 
 /**

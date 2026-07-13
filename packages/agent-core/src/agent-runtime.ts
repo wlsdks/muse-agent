@@ -64,6 +64,7 @@ import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment
 import { joinUserMessages } from "./internals.js";
 import {
   checkActuatorProvenance,
+  describeProvenanceExfil,
   describeProvenanceTaint,
   EXECUTE_SINK_ARG_NAMES,
   OUTBOUND_SEND_SINK_ARG_NAMES,
@@ -1095,9 +1096,27 @@ export class AgentRuntime {
       args: toolCall.arguments ?? {},
       ledger,
       sinkArgNames,
-      trustedHaystack
+      trustedHaystack,
+      // The confidentiality axis applies to content LEAVING the box or being
+      // executed — not to a write into the user's own stores (S3b already trusts
+      // first-party content there, and warning that "your note contains your
+      // note" would be noise).
+      ...(isOutboundSend || isExecute ? { privateHaystack: ledger.firstPartyHaystack() } : {})
     });
-    return check.untrustedDerived ? describeProvenanceTaint(check) : undefined;
+    // Two DIFFERENT harms, and until now they read identically: a send built from
+    // a poisoned web page and a send built from the user's own note both said
+    // "traces to untrusted tool:X". That trains the user to click through the one
+    // warning that matters. Name them separately — injection (third-party content
+    // steering an action) and exfiltration (the user's private content leaving in
+    // words they never typed).
+    const notes: string[] = [];
+    if (check.untrustedDerived) {
+      notes.push(describeProvenanceTaint(check));
+    }
+    if (check.privateDerived) {
+      notes.push(describeProvenanceExfil(check));
+    }
+    return notes.length > 0 ? notes.join(" · ") : undefined;
   }
 
   private async executeToolCall(

@@ -49,6 +49,8 @@ export {
 export {
   argDerivesFromUntrusted,
   checkActuatorProvenance,
+  argDerivesFromCorpus,
+  describeProvenanceExfil,
   describeProvenanceTaint,
   EXECUTE_SINK_ARG_NAMES,
   OUTBOUND_SEND_SINK_ARG_NAMES,
