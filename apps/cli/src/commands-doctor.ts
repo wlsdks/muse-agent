@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, runnerSandboxPostureCheck, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, runnerSandboxPostureCheck, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { backgroundStoreFile } from "./commands-background.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
@@ -27,7 +27,7 @@ export { embedModelCheck } from "./commands-doctor-checks.js";
 export { parseNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 export { findOllamaModelTag } from "./commands-doctor-ollama.js";
 export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
-export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, privacyRoutingCheck, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, privacyRoutingCheck, promptCacheHealth, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
@@ -346,6 +346,21 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   checks.push(webEgressCheck(env));
   checks.push(privacyRoutingCheck(env));
   checks.push(ollamaPerfPostureCheck(await readOllamaPerfEnv(env)));
+  // MEASURE the prompt cache rather than guessing at the server's env (which we
+  // cannot see). Ollama's DEFAULT splits the KV cache across parallel slots, so
+  // Muse's stable prefix — identity + persona + memory + tool defs, thousands of
+  // byte-identical tokens every turn — never hits it, and every turn AND every
+  // tool-loop round re-pays the full prompt-eval. Measured on a 12B model: 3163ms
+  // cold -> 66ms warm with the cache alive, vs ~2400ms EVERY time without.
+  if (muse_model?.startsWith("ollama/") === true) {
+    const probe = await probeOllamaPromptCache({
+      baseUrl: resolveOllamaUrl(),
+      model: muse_model.slice("ollama/".length)
+    });
+    if (probe) {
+      checks.push({ name: "prompt cache", ...promptCacheHealth(probe) });
+    }
+  }
   checks.push(museSpeedEnvCheck(readMuseSpeedEnv(env)));
 
   // At-rest encryption — the discretion ("can't tell anyone") half of the

@@ -140,6 +140,47 @@ All three are **Apache 2.0** — free for any use including commercial.
 Apple-Silicon (M-series) Macs use Metal acceleration automatically.
 Intel Macs and Linux/Windows CPUs work too, just 3–5× slower.
 
+## ⚡ The single biggest latency win: `OLLAMA_NUM_PARALLEL=1`
+
+**Ollama's default configuration silently defeats its own prompt cache**, and it
+costs you seconds on *every* turn.
+
+Muse sends a large STABLE PREFIX every turn — identity, persona, learned memory,
+tool definitions: thousands of tokens that are byte-identical from one turn to the
+next. A working KV prefix cache makes that prefix free after the first turn.
+Ollama's default splits the KV cache across parallel slots, so the prefix never
+hits, and **Muse re-pays the full prompt-eval on every turn AND on every round of
+a tool loop.**
+
+Measured on a 12B model (identical 1.6K-token prompt, four times in a row):
+
+| | run 1 | run 2 | run 3 | run 4 |
+|---|---|---|---|---|
+| Ollama default | 2402ms | 2406ms | 2425ms | 2427ms |
+| `OLLAMA_NUM_PARALLEL=1` | 3163ms | **75ms** | **69ms** | **66ms** |
+
+That is a **~40x** difference on a warm prefix. On Muse's real ~10K-token prompts
+it is the dominant cost of a turn.
+
+```bash
+# macOS (Ollama.app): set it for the server, then restart Ollama
+launchctl setenv OLLAMA_NUM_PARALLEL 1
+# or, running the server yourself:
+OLLAMA_NUM_PARALLEL=1 ollama serve
+```
+
+The trade-off is real but almost certainly worth it for Muse: one slot means one
+request at a time per model. Muse is a single-user assistant — it does not need
+concurrent slots, and it *does* need the cache.
+
+`muse doctor` measures this directly (it sends the same prefix twice and compares
+Ollama's own `prompt_eval_duration`), so you never have to take this on faith:
+
+```
+⚠ prompt cache: prompt cache DEFEATED — a repeated 1622-token prefix still costs
+  2139ms (vs 2274ms cold, 94%). Fix: restart Ollama with OLLAMA_NUM_PARALLEL=1.
+```
+
 ## What "Local" gets you
 
 | Concern | Cloud LLM (Gemini / GPT / Claude) | Local LLM (Ollama + Qwen) |

@@ -17,8 +17,7 @@ import {
   platformPostureCheck,
   toolResultCapAdvisoryCheck,
   voiceSetupChecks,
-  volatileMountCheck
-} from "./commands-doctor-checks.js";
+  volatileMountCheck, promptCacheHealth } from "./commands-doctor-checks.js";
 
 describe("privacyRoutingCheck — mirrors resolvePrivacyRoutedModel's own precedence", () => {
   it("off by default (no env set)", () => {
@@ -429,5 +428,31 @@ describe("platformPostureCheck", () => {
     expect(check.detail).toContain("os-integrations=windows");
     expect(check.detail).toContain("MUSE_WINDOWS_ACTUATORS");
     expect(check.detail).toContain("CI-verified only");
+  });
+});
+
+describe("promptCacheHealth — Ollama's prefix cache is MEASURED, not guessed", () => {
+  it("warns when a repeated prefix costs about as much as a cold one (the cache is defeated)", () => {
+    // The real reading from a default Ollama install: 2274ms cold, 2139ms warm.
+    const r = promptCacheHealth({ coldMs: 2274, tokens: 1622, warmMs: 2139 });
+    expect(r.status).toBe("warn");
+    expect(r.detail).toContain("DEFEATED");
+    expect(r.detail).toContain("OLLAMA_NUM_PARALLEL=1");
+  });
+
+  it("passes when the repeat is nearly free (the cache is alive)", () => {
+    // The real reading with OLLAMA_NUM_PARALLEL=1: 3163ms cold, 66ms warm.
+    const r = promptCacheHealth({ coldMs: 3163, tokens: 1622, warmMs: 66 });
+    expect(r.status).toBe("ok");
+    expect(r.detail).toContain("prompt cache OK");
+  });
+
+  it("does not warn on a borderline-but-real speedup (half the cold cost)", () => {
+    expect(promptCacheHealth({ coldMs: 1000, tokens: 500, warmMs: 400 }).status).toBe("ok");
+    expect(promptCacheHealth({ coldMs: 1000, tokens: 500, warmMs: 600 }).status).toBe("warn");
+  });
+
+  it("never divides by zero on a degenerate probe", () => {
+    expect(promptCacheHealth({ coldMs: 0, tokens: 0, warmMs: 0 }).status).toBe("warn");
   });
 });

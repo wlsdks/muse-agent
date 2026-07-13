@@ -2832,12 +2832,9 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   in a different def position — the audit's "no keywords" claim was PARTIALLY wrong). Plan probes:
   노트→muse.notes.search 1st, 지난번 대화→episode.search 1st, 할일 검색→tasks.search 1st.
   Still bare (low-traffic tail, fine): context/messaging/followup/pattern/status/skills.
-- ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
-  rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
-  browse intent?), KV prefix reuse across rounds, smaller tool list (above).
-  · UPDATE (local-speed fire 2): `MUSE_OLLAMA_NUM_BATCH` now wires Ollama's `num_batch` (prompt-eval
-  batch size) opt-in — a larger batch directly attacks that 40s prompt-eval cost. Verify the real win
-  with `bench:local` on a long prompt once Ollama is up + tune the recommended value.
+- ✓ **ROOT CAUSE FOUND (2026-07-13, fable5): Ollama's DEFAULT config defeats its own prompt cache.** The ~90s/turn is not a Muse problem — it is that the KV prefix cache never hits, so EVERY turn and EVERY tool-loop round re-pays the full prompt-eval. Measured (identical 1.6K-token prompt ×4): Ollama default = 2402/2406/2425/2427ms (no cache at all, even on a byte-identical repeat); `OLLAMA_NUM_PARALLEL=1` = 3163/**75**/**69**/**66**ms — **~40x** on a warm prefix. Muse's stable-prefix architecture was already correct; the runtime config was killing it. Shipped: `muse doctor` now MEASURES this (sends the same prefix twice, compares Ollama's own `prompt_eval_duration`) and names the fix; documented in setup-local-llm.md.
+  · ✗ **DISPROVEN: `MUSE_OLLAMA_NUM_BATCH` does nothing.** The old hypothesis ("a larger batch attacks the prompt-eval cost") is false on this hardware — measured flat and slightly WORSE at larger batches (unset 6488ms / 512: 6159 / 1024: 6477 / 2048: 6855 / 4096: 7076ms on a 4.4K-token prompt). Do not default it on; do not re-propose it.
+  · ◦ Residual (real, smaller): prompt SIZE itself. gemma4:12b evaluates ~650 tok/s cold, so a 10K-token prompt is ~15s cold even with the cache — a prompt diet under `--with-tools` still pays off on the FIRST turn of a session.
 - ◦ **cascade routing C2/C3 (decomposed local-speed fire 3; FrugalGPT arXiv:2305.05176)** — fire 3
   shipped C1: the escalation-decision primitive `shouldEscalateToHeavy(confidence, threshold)` +
   `planTieredRun` optional `priorConfidence`/`escalateThreshold` (a fast-classified task with a KNOWN

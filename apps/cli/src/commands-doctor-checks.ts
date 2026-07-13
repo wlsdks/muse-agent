@@ -823,3 +823,97 @@ export function toolResultCapAdvisoryCheck(env: Record<string, string | undefine
     return { detail: "could not evaluate MUSE_MAX_TOOL_OUTPUT_CHARS — skipped", name, status: "ok" };
   }
 }
+
+export interface PromptCacheProbe {
+  readonly coldMs: number;
+  readonly warmMs: number;
+  readonly tokens: number;
+}
+
+/**
+ * Verdict on Ollama's prompt (KV prefix) cache, from a MEASURED probe rather than
+ * a guessed env var — the server's environment is not visible to us, and the
+ * symptom is what matters.
+ *
+ * The cache is what makes Muse's stable prefix (identity + persona + memory +
+ * tool definitions — thousands of tokens that are byte-identical every turn)
+ * free after the first turn. When it works, a repeated prefix costs ~2% of a cold
+ * one. When it does not, EVERY turn — and every round of a tool loop — re-pays
+ * the full prompt-eval, which on a 12B model is seconds per thousand tokens.
+ *
+ * Measured on this box: with the cache alive, an identical 1.6K-token prompt goes
+ * 3163ms (cold) -> 66-75ms (warm), a 40x difference. With Ollama's DEFAULT
+ * multi-slot configuration, the same prompt costs ~2400ms EVERY time — the KV
+ * cache is split across parallel slots and the prefix never hits. `ollama serve`
+ * with OLLAMA_NUM_PARALLEL=1 restores it.
+ */
+export function promptCacheHealth(probe: PromptCacheProbe): { readonly detail: string; readonly status: "ok" | "warn" } {
+  const ratio = probe.coldMs > 0 ? probe.warmMs / probe.coldMs : 1;
+  // A working prefix cache makes the repeat nearly free. Half the cold cost is a
+  // generous bar — a real cache lands near 2%, a defeated one at ~100%.
+  if (ratio <= 0.5) {
+    return {
+      detail: `prompt cache OK — a repeated ${probe.tokens.toString()}-token prefix costs ${probe.warmMs.toString()}ms vs ${probe.coldMs.toString()}ms cold (${Math.round(ratio * 100).toString()}%)`,
+      status: "ok"
+    };
+  }
+  return {
+    detail:
+      `prompt cache DEFEATED — a repeated ${probe.tokens.toString()}-token prefix still costs ${probe.warmMs.toString()}ms (vs ${probe.coldMs.toString()}ms cold, ${Math.round(ratio * 100).toString()}%). ` +
+      "Muse re-pays the full prompt-eval on EVERY turn and every tool-loop round. Ollama's default splits the KV cache across parallel slots, so the prefix never hits. " +
+      "Fix: restart Ollama with OLLAMA_NUM_PARALLEL=1 (measured here: 40x faster on a warm prefix).",
+    status: "warn"
+  };
+}
+
+/**
+ * Probe Ollama's prompt cache: send the SAME ~1.5K-token prefix twice and compare
+ * the server's own `prompt_eval_duration`. Two requests, `num_predict: 1`, so the
+ * cost is the prompt processing we are measuring and nothing else.
+ *
+ * Fail-soft: an unreachable server, a missing model, or any error returns
+ * undefined and the check is skipped — a doctor probe must never be the reason a
+ * command fails.
+ */
+export async function probeOllamaPromptCache(options: {
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly fetchImpl?: typeof fetch;
+  readonly timeoutMs?: number;
+}): Promise<PromptCacheProbe | undefined> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 60_000;
+  const prompt = `${"context filler sentence. ".repeat(400)}\nQ: summarize.`;
+
+  const once = async (): Promise<{ ms: number; tokens: number } | undefined> => {
+    try {
+      const res = await fetchImpl(`${options.baseUrl.replace(/\/+$/u, "")}/api/generate`, {
+        body: JSON.stringify({
+          keep_alive: "5m",
+          model: options.model,
+          options: { num_predict: 1, temperature: 0 },
+          prompt,
+          stream: false
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (!res.ok) return undefined;
+      const body = (await res.json()) as { prompt_eval_duration?: number; prompt_eval_count?: number };
+      return {
+        ms: Math.round((body.prompt_eval_duration ?? 0) / 1e6),
+        tokens: body.prompt_eval_count ?? 0
+      };
+    } catch {
+      return undefined;
+    }
+  };
+
+  const cold = await once();
+  const warm = await once();
+  if (!cold || !warm || cold.ms <= 0) {
+    return undefined;
+  }
+  return { coldMs: cold.ms, tokens: cold.tokens, warmMs: warm.ms };
+}
