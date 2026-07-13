@@ -40,7 +40,7 @@ describe("sliceUtf16Safe", () => {
   });
 
   it("leaves no lone surrogate when a boundary falls inside a ZWJ emoji sequence", () => {
-    const text = "👩‍💻x"; // woman + ZWJ + laptop, astral parts on both sides of the ZWJ
+    const text = "\u{1F469}\u200D\u{1F4BB}x"; // woman + ZWJ + laptop, astral parts on both sides of the ZWJ
     for (let cut = 0; cut <= text.length; cut++) {
       const result = sliceUtf16Safe(text, 0, cut);
       expect(LONE_SURROGATE.test(result)).toBe(false);
