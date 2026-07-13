@@ -32,3 +32,6 @@ ratchet: testFiles +0 (extended eval-harness.test) · harness det-test 41/41 · 
 - **Why:** brief-CoT가 gemma4 툴선택을 돕는지 측정-우선(논문만으로 기본 안 바꿈). 다양성: fire 1(agent-core/egress)·fire 2(stores/consent)와 다른 (scripts/measurement-tooling)로 전환 — 모노컬처(security 2연속) 탈출. termination·eval:tools IrrelAcc·P4는 scout서 covered/clean 확인, C3/C4는 design-heavy-3rd-security라 defer(backlog decompose 유지).
 - **Review point:** ④b Opus PASS — byte-identical-off를 실제 옛 소스와 대조 검증(eval:tools 게이트 무회귀), ON이 provider.generate 도달(fire-1 drop 아님), production reach 0. Finding 6(tautological RED-proof 테스트) 정리-삭제. 라이브 A/B는 로컬 Ollama라 예산 무관, 백그라운드 실행.
 - **Risk:** finding(측정치)이 이 fire 커밋엔 미포함 — 계측 도구는 즉시 사용가능(usable now, dead infra 아님), A/B 결과는 백그라운드 완료 시 P3 doc에 기록. measure-before-build로 P3a(어댑터) premature 회피.
+
+### fire 3 · FINDING (live A/B completed)
+brief-CoT A/B measured (gemma4:12b, repeat=1): baseline(thinking-off) 374/376=99% vs brief-CoT 373/376=99% → NEUTRAL/미세 손해. 베이스라인 포화(99%)로 헤드룸 無 → thinking-off 기본값 데이터-확증, P3a 어댑터 모드 안 만듦(dead infra 회피). lesson: 논문 이득도 자기 베이스라인이 이미 포화면 transfer 안 됨 — measure-first가 premature infra를 정확히 막음.

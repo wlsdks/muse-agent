@@ -38,15 +38,21 @@ Companion to `agent-principles-2026.md` (vendor guidance) and
   composed identity prompt. 9 cases STABLE 3/3; no sycophancy gap surfaced — the
   identity-core anti-flattery line holds under adversarial pressure (honest
   negative finding). adversarialCases 26→35.
-- **P3 — brief-CoT tool-calling A/B (#3). ◑ INSTRUMENT SHIPPED (agent-reliability fire 3);
-  measurement recording.** eval:tools gains an opt-in `MUSE_EVAL_BRIEF_COT` arm that
+- **P3 — brief-CoT tool-calling A/B (#3). ✓ MEASURED — thinking-off default confirmed
+  (agent-reliability fire 3).** eval:tools gains an opt-in `MUSE_EVAL_BRIEF_COT` arm that
   prepends a bounded (~20-word) reasoning nudge before tool selection; the default
   (flag unset) is BYTE-IDENTICAL to today's thinking-off eval (deterministically proven
-  + ④b-verified). Live A/B (baseline vs brief-CoT, gemma4:12b) measures whether the
-  nudge raises selection accuracy WITHOUT lowering IrrelAcc. **Finding: <recorded on the
-  live run's completion>.** Decision rule (measure-before-build): HELPS at equal IrrelAcc
-  → P3a adapter mode warranted; HURTS/NEUTRAL → the thinking-off default is CONFIRMED
-  with data and P3a is NOT built (avoid dead infra). Production default unchanged either way.
+  + ④b-verified).
+  **Finding (measured 2026-07-14, gemma4:12b, repeat=1): baseline (thinking-off) 374/376
+  = 99% vs brief-CoT 373/376 = 99% — NEUTRAL / marginally worse.** The tool-selection
+  baseline is already SATURATED at 99%, so there is no headroom for a reasoning nudge to
+  help; the ~20-word step marginally hurts (one case). The paper's brief-CoT benefit does
+  NOT transfer to gemma4 at this saturation point. **Verdict: thinking-off default
+  CONFIRMED with data — P3a (adapter capped-scratch mode) is NOT built (would be dead
+  infra).** The measure-first instrument caught this before any production change; the
+  opt-in arm stays for re-measuring on a future model swap or a harder golden set.
+  (repeat=1 is directional; the conclusion is robust because the baseline is saturated,
+  not because of the 1-case delta.)
 - **P4 — tool-use-tax audit (#4). ✓ CLEAN (fire 2).** Tool schemas carry no model-precomputed
   args (*Iso/duration/offset/epoch); Muse doesn't route pure computation through tools.
 
