@@ -21,7 +21,6 @@ export type {
   VerifiedSource
 } from "./types.js";
 
-// Context Engineering surfaces (Phases 1–4)
 export {
   DefaultActiveContextProvider,
   renderActiveContextSection,

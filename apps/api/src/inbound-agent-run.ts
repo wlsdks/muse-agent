@@ -505,7 +505,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     if (!rememberIntent) {
       return honest.response.output;
     }
-    // FIX N1 — deterministic user-side scheduling runs BEFORE the caveat
+    // Deterministic user-side scheduling runs BEFORE the caveat
     // check, so the caveat's before/after count naturally sees whatever it
     // scheduled: no separate branch, no double-append. `turnNow` anchors
     // BOTH this extraction and the confirmation echo below to the same

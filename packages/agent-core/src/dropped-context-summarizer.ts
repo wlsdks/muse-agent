@@ -1,5 +1,5 @@
 /**
- * CMP-2 production summarizer: turns a Muse `ModelProvider` into a
+ * Production summarizer: turns a Muse `ModelProvider` into a
  * `DroppedContextSummarizer` the runtime can inject. It runs the SAME
  * local model the agent already uses (a second cheap call) over the
  * compacted-away turns to produce a short recap.

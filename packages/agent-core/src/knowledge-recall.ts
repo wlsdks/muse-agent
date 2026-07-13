@@ -83,7 +83,6 @@ export {
 } from "./grounding-verifier.js";
 export type { AllowedCitations, CitationEnforcement } from "./grounding-citations.js";
 
-// The split sibling modules — the definitions that used to live in this file.
 export * from "./recall-scoring.js";
 export * from "./recall-citations.js";
 export * from "./recall-verdict.js";

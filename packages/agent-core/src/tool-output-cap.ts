@@ -42,7 +42,7 @@ export function capToolOutput(
   if (!maxChars || maxChars <= 0) {
     return safe;
   }
-  // D5: scale the per-tool budget by importance class so calendar /
+  // Scale the per-tool budget by importance class so calendar /
   // tasks / notes results get more retention than a noisy web-fetch
   // dump. `scoreToolOutputImportance` uses the same name-prefix
   // heuristic as `inferDomain`, neutral 1.0 fallback.

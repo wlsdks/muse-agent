@@ -37,10 +37,6 @@ export interface ApiError {
   readonly message: string;
 }
 
-// ---------------------------------------------------------------------------
-// Chat runners
-// ---------------------------------------------------------------------------
-
 export async function runChat(
   body: unknown,
   reply: { status(statusCode: number): { send(payload: unknown): void } },
@@ -186,10 +182,6 @@ export async function runMultipartChat(
   return runChat(parsed.value, reply, options, "compat", authUserId);
 }
 
-// ---------------------------------------------------------------------------
-// Web search policy injection
-// ---------------------------------------------------------------------------
-
 /**
  * Applies web search policy to the run input before it reaches the agent
  * runtime. Reads the per-request override from `body.metadata.tools.web_search`
@@ -231,10 +223,6 @@ function extractWebSearchOverride(body: unknown): boolean | undefined {
   const flag = tools.web_search;
   return typeof flag === "boolean" ? flag : undefined;
 }
-
-// ---------------------------------------------------------------------------
-// Chat parsers
-// ---------------------------------------------------------------------------
 
 export function parseMultipartChatBody(value: unknown): ParseResult<JsonObject> {
   if (!isRecord(value) || !isRecord(value.fields) || !Array.isArray(value.files)) {
@@ -441,10 +429,6 @@ import { sendAgentError } from "./server-agent-error.js";
 
 export { unwrapErrorMessage } from "./server-agent-error.js";
 
-// ---------------------------------------------------------------------------
-// Other parsers
-// ---------------------------------------------------------------------------
-
 export function parseAgentSpecInput(value: unknown): ParseResult<AgentSpecInput> {
   if (!isRecord(value) || typeof value.name !== "string" || value.name.trim().length === 0) {
     return invalid("INVALID_AGENT_SPEC", "Body must include a non-empty name");
@@ -573,10 +557,6 @@ export {
   supportedCompatApiVersions,
   toSpringPathTemplate
 } from "./server-http-plumbing.js";
-
-// ---------------------------------------------------------------------------
-// Auth identity
-// ---------------------------------------------------------------------------
 
 export {
   attachAuthIdentity,

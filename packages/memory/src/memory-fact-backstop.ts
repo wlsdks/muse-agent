@@ -98,7 +98,7 @@ export function extractDeterministicFactCandidates(
     const relationKey = RELATION_KEY_BY_NOUN[birthdayMatch[1] ?? ""];
     const date = (birthdayMatch[2] ?? "").trim();
     if (relationKey && date) {
-      // FIX N5b: a relative "다음달 N일" stored VERBATIM goes stale the
+      // A relative "다음달 N일" stored VERBATIM goes stale the
       // moment the calendar rolls over — resolve to the absolute month at
       // extraction time so recall never speaks a date that used to be
       // "next month" but no longer is.

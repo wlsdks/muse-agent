@@ -589,7 +589,7 @@ export class AgentRuntime {
       this.userMemoryMaxEntries
     );
     let preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
-    // CMP-2: when a compaction fired and an aux summarizer is configured,
+    // When a compaction fired and an aux summarizer is configured,
     // summarize the dropped window with the cheap aux model and append it to
     // the deterministic [Conversation summary …] block. Fail-open — an empty
     // result leaves the deterministic summary untouched (no aux call when
@@ -1415,7 +1415,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 }
 
 /**
- * Append a CMP-2 auxiliary-model dropped-context summary to the
+ * Append an auxiliary-model dropped-context summary to the
  * deterministic `[Conversation summary …]` system message, preserving the
  * deterministic floor (the `[Key details]`/pinned-entity blocks). Returns
  * the array unchanged when `aux` is blank or no compaction-summary message

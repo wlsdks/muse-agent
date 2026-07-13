@@ -1,5 +1,5 @@
 /**
- * Crash-detection marker for the chat-session lifecycle (SES-3 / SES-10).
+ * Crash-detection marker for the chat-session lifecycle.
  *
  * Muse flushes a session's turns to long-term memory in an END-of-session
  * pipeline. If the process dies first (crash / kill / power loss) that

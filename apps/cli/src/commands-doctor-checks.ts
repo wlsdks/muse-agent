@@ -410,7 +410,7 @@ export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
   // falls back to f16 KV (no memory/speed gain) unless OLLAMA_FLASH_ATTENTION=1
   // AND the model's arch supports flash attention. Flag the wasted setting
   // specifically — the generic "set flash" line below hides that q8_0/q4_0 is
-  // currently doing nothing. (Ollama FAQ + ollama/ollama#13337 + PR #6279.)
+  // currently doing nothing.
   if (kvQuantized && !flashOn) {
     return {
       detail: `OLLAMA_KV_CACHE_TYPE=${kv ?? ""} is set but INERT without OLLAMA_FLASH_ATTENTION=1 — Ollama silently falls back to f16 KV (no memory gain). Set OLLAMA_FLASH_ATTENTION=1 on the server (needs a flash-attention-capable model) to actually halve KV memory`,

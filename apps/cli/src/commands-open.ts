@@ -59,12 +59,10 @@ async function safeReadJson(path: string): Promise<unknown | undefined> {
 async function scanAll(prefix: string): Promise<readonly Hit[]> {
   const hits: Hit[] = [];
 
-  // Reminders
   for (const r of await readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")).catch(() => [])) {
     if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: r as unknown as Record<string, unknown> });
   }
 
-  // Followups
   for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
     if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: f as unknown as Record<string, unknown> });
   }
@@ -74,7 +72,6 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
     if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: o as unknown as Record<string, unknown> });
   }
 
-  // Episodes
   const episodesDoc = await safeReadJson(envOr("MUSE_EPISODES_FILE", "episodes.json")) as { episodes?: readonly Record<string, unknown>[] } | undefined;
   for (const e of episodesDoc?.episodes ?? []) {
     const id = e["id"];
@@ -88,12 +85,10 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "pattern", id, record: p });
   }
 
-  // Proactive history
   for (const entry of await readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")).catch(() => [])) {
     if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: entry as unknown as Record<string, unknown> });
   }
 
-  // Tasks
   for (const t of await readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")).catch(() => [])) {
     if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: t as unknown as Record<string, unknown> });
   }

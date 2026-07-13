@@ -264,7 +264,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // Only filter the proper shape — a malformed array-shaped facts/preferences
         // (or non-array vetoes/goals) is left untouched so the downstream sanitizer
         // still rejects it instead of being silently coerced.
-        // FIX 1 (rescue): the LLM auto-extract pass drops key items buried in
+        // The LLM auto-extract pass drops key items buried in
         // long, rambling text even though the same request phrased tersely
         // extracts fine. When the user's turn carries an explicit "remember
         // this" commit marker, deterministically extract date/name/preference
@@ -275,7 +275,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         const groundedFacts = payload.facts && !factsIsArray
           ? dropModelAssertedValues(payload.facts, boundedUser, boundedAssistant)
           : undefined;
-        // FIX 2: a fact VALUE that reads as a same-day-relative, time-decaying
+        // A fact VALUE that reads as a same-day-relative, time-decaying
         // phrase ("오늘 저녁 7시") is rejected from durable fact promotion — it
         // belongs to a followup, not permanent memory (memory-ephemeral-value-guard.ts).
         const finalFacts = !factsIsArray && (groundedFacts !== undefined || Object.keys(backstopCandidates).length > 0)
@@ -570,8 +570,8 @@ async function persist(
   const vetoSlots = sanitizeSlotArray(payload.vetoes, limits.maxVetoes, limits.maxKey, limits.maxValue);
   const goalSlots = sanitizeSlotArray(payload.goals, limits.maxGoals, limits.maxKey, limits.maxValue);
 
-  // parallelise the writes. Pre-iter-51 this loop ran 16
-  // sequential `await store.upsertX(...)` calls per turn (5 facts +
+  // Parallelise the writes: run sequentially this would be 16
+  // `await store.upsertX(...)` round trips per turn (5 facts +
   // 5 prefs + 3 vetoes + 3 goals). For an `InMemoryUserMemoryStore`
   // that's a fixed cost in microseconds — fine. For a Kysely-backed
   // `KyselyUserMemoryStore` against Postgres each call is a round

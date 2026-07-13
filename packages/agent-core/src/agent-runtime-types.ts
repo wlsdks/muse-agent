@@ -141,7 +141,7 @@ export interface AgentRuntimeOptions {
   readonly requestTimeoutMs?: number;
   readonly contextWindow?: ConversationTrimOptions;
   /**
-   * Optional auxiliary-model summarizer (CMP-2). When set AND a compaction
+   * Optional auxiliary-model summarizer. When set AND a compaction
    * fired this turn, the messages dropped by the trim are summarized by
    * this injected model and the result is appended to the deterministic
    * `[Conversation summary …]` block. Fail-open: any error/empty result

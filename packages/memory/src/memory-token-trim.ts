@@ -288,8 +288,8 @@ function trimByImportance(
   let totalTokens = currentTokens;
   const skipCount = firstNonSystemIndex(messages);
   // Both `protectedIndex` and `totalMessagesForScoring` MUST decrement
-  // alongside each removal. Pre-iter-27 they were captured once
-  // up-front, which created two coupled bugs:
+  // alongside each removal, captured fresh each time rather than once
+  // up-front — capturing them once up front created two coupled bugs:
   //
   //   1. `protectedIndex` stale → the for-loop guard
   //      `index < protectedIndex` kept iterating up to the original
