@@ -203,13 +203,17 @@ try {
   await record("POST /api/chat — NATURAL one-shot tool selection (no explicit 'call X' instruction)", async () => {
     // The human's priority: the local model must pick the RIGHT tool in
     // ONE shot from a natural request, not only when told which tool to
-    // call. A bare "what day is it in Seoul?" should select time_now on
-    // its own. A failure here is the exact one-shot-selection defect to
-    // fix (tighten the tool description / shrink the exposed set), not a
-    // harness bug.
+    // call. The question must target a fact OUTSIDE the injected
+    // [Active Context]: that block carries the server-local (Seoul)
+    // wall-clock time AND weekday, so a Seoul-weekday question is
+    // answerable without any tool — a correct in-context answer, not a
+    // selection defect. Los Angeles sits across the date line from
+    // Seoul, so its weekday genuinely requires time_now. A failure here
+    // is the exact one-shot-selection defect to fix (tighten the tool
+    // description / shrink the exposed set), not a harness bug.
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
-        message: "What day of the week is it right now in Seoul (Asia/Seoul)? Answer with just the weekday.",
+        message: "What day of the week is it right now in Los Angeles? Answer with just the weekday.",
         runId: "live-tool-natural"
       }),
       headers: { "content-type": "application/json" },
