@@ -15,6 +15,7 @@
 import { CalendarProviderRegistry } from "@muse/calendar";
 import {
   createAgentRuntime,
+  createCorrectionCaptureHook,
   createFollowupCaptureHook,
   createModelDroppedContextSummarizer,
   InMemoryAgentInitiatedNoticeBroker,
@@ -39,7 +40,10 @@ import {
   InMemoryResponseCache
 } from "@muse/cache";
 import { createLoopbackMcpMuseTools, type LoopbackMcpServer, type McpManager, type McpTransportConnector, type McpSecurityPolicyProvider, type McpSecurityPolicyStore, type McpServerInput, type McpServerStore } from "@muse/mcp";
-import { defaultSchedulerPauseFile, isSchedulerPaused, upsertFollowup, type PersistedFollowup } from "@muse/stores";
+import { randomUUID } from "node:crypto";
+
+import { resolveLearningPauseFile } from "./provider-paths.js";
+import { defaultSchedulerPauseFile, enqueueLearnEvent, isLearningPaused, isSchedulerPaused, resolveLearnQueueFile, upsertFollowup, type PersistedFollowup } from "@muse/stores";
 import { createContextReferenceMcpServer, createDefaultLoopbackMcpServers, createFetchMcpServer, createFilesystemMcpServer, type MessageApprovalGate, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import {
   createUserMemoryAutoExtractHook,
@@ -924,6 +928,29 @@ function buildHooksAndContextProviders(params: {
       ...(reviewPreferencesArm ? { reviewPreferences: reviewPreferencesArm } : {}),
       ...(reviewSkillArm ? { reviewSkill: reviewSkillArm } : {})
     }),
+    // Correction capture — on EVERY surface, not just the interactive TUI.
+    // The distiller's only caller was the `muse chat` end-of-session pipeline, so
+    // one-shot `muse ask`, the web chat, Telegram and every API caller READ the
+    // playbook but never wrote to it: a heavily-used install could still have an
+    // empty playbook because the user corrected Muse on the surfaces that were not
+    // listening. The hook only ENQUEUES (append-only, no model call, no added
+    // latency); the existing distiller turns the queue into strategies at session
+    // end or on the daemon tick.
+    ...(parseBoolean(env.MUSE_PLAYBOOK_DISTILL_ENABLED, true)
+      ? [createCorrectionCaptureHook({
+        enqueue: async (event) => {
+          await enqueueLearnEvent(resolveLearnQueueFile(env), {
+            correction: event.correction,
+            enqueuedAtMs: Date.now(),
+            id: `learn_${randomUUID()}`,
+            priorAnswer: event.priorAnswer,
+            userId: event.userId,
+            ...(event.request ? { request: event.request } : {})
+          });
+        },
+        isPaused: async () => isLearningPaused(resolveLearningPauseFile(env))
+      })]
+      : []),
     ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)
       ? [createFollowupCaptureHook({
         persist: async (captured: CapturedFollowup) => {

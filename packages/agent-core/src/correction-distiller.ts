@@ -66,6 +66,87 @@ function isCorrectionTurn(text: string): boolean {
   return CORRECTION_PATTERNS.some((re) => re.test(text));
 }
 
+/**
+ * The REDIRECT class — the way people actually teach an assistant.
+ *
+ * A correction declares an error ("아니야", "that's wrong"). A redirect never
+ * does: it just restates HOW the answer should have come out — "결론부터 말해줘",
+ * "더 짧게", "표로 정리해줘", "be more concise". Measured on realistic turns,
+ * CORRECTION_PATTERNS alone recall 3 of 15; the twelve it misses are all
+ * redirects. Since this detector is the sole feed for distillation, credit and
+ * decay, that recall was a hard ceiling on everything downstream.
+ *
+ * What separates a redirect from a NEW REQUEST is what it is ABOUT. Both are
+ * imperatives; only the redirect is about the FORM of the answer just given.
+ * "표로 정리해줘" comments on the last answer. "내일 회의 잡아줘" opens a new task.
+ * So the test is not "is this an imperative" (that fires on every request) but
+ * "does it carry a manner/form directive" — length, format, language, register,
+ * inclusion/exclusion, or a standing "from now on".
+ *
+ * Recall-first on purpose. Capture is append-only and costs nothing; the
+ * distiller downstream already runs four precision gates (informativeness,
+ * support, verbatim ceiling, polarity) plus an LLM credit step before anything
+ * reaches the playbook, and a strategy still lands on probation. A false
+ * positive here is discarded a step later; a false negative is a lesson the
+ * user taught and Muse threw away forever.
+ */
+const REDIRECT_PATTERNS: readonly RegExp[] = [
+  // length / verbosity / difficulty / tone — the manner of the answer itself
+  /(짧게|간단(히|하게)|간결|줄여|요약해)/u,
+  /(길게|자세히|구체적으로|상세|쉽게|풀어서)/u,
+  /너무\s*(길|짧|장황|복잡|많|어려|딱딱)/u,
+  /(말투|어투|톤)\S*\s*(가|이|는|을)?\s*\S*(딱딱|어색|이상|별로)/u,
+  /\b(shorter|longer|be\s+more\s+concise|too\s+(long|short|verbose|wordy)|in\s+detail|more\s+detail|tl;?dr)\b/iu,
+  // ordering / structure / format
+  /(결론부터|요점만|핵심만|한\s*줄로)/u,
+  /(표로|목록으로|불릿|번호|코드로|예시로)\s*/u,
+  /\b(bullet\s*points?|as\s+a\s+table|numbered\s+list|in\s+code|with\s+an?\s+example)\b/iu,
+  /\b(lead\s+with|start\s+with|answer\s+first|no\s+preamble)\b/iu,
+  // language / register / tone
+  /(한국어로|영어로|한글로)\s*(답|말|써|해)/u,
+  /(존댓말|반말|편하게\s*말|딱딱하지)/u,
+  /\b(in\s+(korean|english)|less\s+formal|drop\s+the\s+(disclaimer|caveat))\b/iu,
+  // inclusion / exclusion. The negated verb must be an ANSWERING verb: "이모지
+  // 쓰지 마" shapes the reply, "숙제 하지 마" is an instruction about the world and
+  // teaches Muse nothing about how to answer. A bare 하지\s*마 cannot tell them
+  // apart, so it is deliberately not a marker.
+  /(빼고|제외하고|생략하고)/u,
+  /(넣지|쓰지|적지|말하지|붙이지|보여주지)\s*마/u,
+  /\S+\s*말고\s*\S/u,
+  /(포함해|같이\s*(줘|달라|보여)|덧붙여|추가해)/u,
+  /\b(skip\s+the|leave\s+out|without\s+the|don'?t\s+(include|add|mention)|include\s+the|also\s+(give|show|add))\b/iu,
+  // Standing directives — the most valuable class of all, since they apply to
+  // every future answer. But "항상"/"always" are common words: "항상 이런 식이야?"
+  // is a question and "always is a strong word" is prose. So the marker only
+  // counts when an ANSWERING verb follows it — that is what makes it a directive
+  // rather than a mention.
+  /(앞으로는?|다음부터|항상|늘|매번|절대)[^?!。]{0,30}?(줘|해|해라|하자|말고|써|쓰지|적어|보여|알려|답해|답변|정리|시작)/u,
+  /\b(always|never|from\s+now\s+on|next\s+time|going\s+forward)\b[^.?!]{0,40}?\b(use|say|give|show|add|include|cite|write|answer|reply|skip|avoid|start|lead|keep|make|put)\b/iu,
+  /\bstop\s+\w+ing\b/iu,
+  // autonomy / process
+  /(물어보지\s*말고|묻지\s*말고|그냥\s*해)/u,
+  /\b(just\s+do\s+it|don'?t\s+ask|stop\s+asking)\b/iu
+];
+
+/**
+ * True when the turn tells Muse HOW to answer rather than asking it something
+ * new. A question mark alone does not disqualify — "더 짧게 해줄래?" is a
+ * directive — but a turn with no manner/form marker at all is a new request and
+ * must not be mistaken for a lesson.
+ */
+export function isRedirectTurn(text: string): boolean {
+  return REDIRECT_PATTERNS.some((re) => re.test(text));
+}
+
+/**
+ * The single funnel: everything the user does to teach Muse how to answer.
+ * A correction (explicit error) and a redirect (restated form) both belong —
+ * they differ in how the downstream treats them, not in whether they are heard.
+ */
+export function isTeachingTurn(text: string): boolean {
+  return isCorrectionTurn(text) || isRedirectTurn(text);
+}
+
 // Minimum meaningful-token count for residual content after marker removal.
 // Floor = 2: a single stop-word slip-through could pass a floor of 1; two
 // distinct content tokens reliably signal a directive (e.g. "use bullet points").
@@ -114,7 +195,7 @@ export function detectCorrections(
   for (let index = 1; index < turns.length; index += 1) {
     const turn = turns[index]!;
     const prior = turns[index - 1]!;
-    if (turn.role !== "user" || prior.role !== "assistant" || !isCorrectionTurn(turn.content)) {
+    if (turn.role !== "user" || prior.role !== "assistant" || !isTeachingTurn(turn.content)) {
       continue;
     }
     const request = index >= 2 && turns[index - 2]!.role === "user" ? turns[index - 2]!.content : undefined;
