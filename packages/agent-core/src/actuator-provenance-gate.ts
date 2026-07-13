@@ -205,6 +205,66 @@ export function argDerivesFromCorpus(value: string, corpus: string, trustedHayst
   return valueTokens.some((token) => corpusTokens.has(token) && !userTokens.has(token));
 }
 
+function ngramSet(tokens: readonly string[], size: number): Set<string> {
+  const spans = new Set<string>();
+  for (let index = 0; index + size <= tokens.length; index += 1) {
+    spans.add(tokens.slice(index, index + size).join(" "));
+  }
+  return spans;
+}
+
+/**
+ * Confidentiality signal for a NON-URL egress leaf (a header value, a form
+ * field): true iff `leafValue` carries a run of >= `minSpan` CONSECUTIVE
+ * content tokens that also appear as a consecutive span in the user's own
+ * first-party corpus, and that SAME span is absent from what the user typed
+ * this turn. Deliberately stronger than `argDerivesFromCorpus`'s
+ * single-token `.some()` overlap: fire-1 shipped that check and it was rolled
+ * back for rubber-stamping on any shared common word (a header's
+ * "application/json" tripping on a note that happens to also contain the
+ * word "json" anywhere). A 2-gram match is a real phrase, not incidental
+ * vocabulary overlap, so it survives the rollback's lesson.
+ *
+ * Documented residuals (this is a WARN-only audit signal, not the security
+ * boundary — the URL-egress deny + the send/execute single-token taint gate
+ * are the actual defenses):
+ * - A single opaque credential token (`sk-…`, no separators) is ONE token and
+ *   can never form a 2-gram, so a lone secret in a header value is not flagged
+ *   here (fire-4 redaction covers it in a URL; a lone secret in a non-URL leaf
+ *   whose exact value is also in a same-run note is a niche this misses).
+ * - `contentTokens` does not strip stopwords, so a common adjacent pair
+ *   ("application json" from a Content-Type header + a chatty note) can still
+ *   emit one spurious audit line. Cheapest hardening if it shows up: a
+ *   stopword/entropy filter on the n-gram, NOT raising minSpan (which would
+ *   weaken real-phrase detection).
+ */
+export function sharesPrivateSpan(
+  leafValue: string,
+  privateHaystack: string,
+  trustedHaystack: string,
+  minSpan = 2
+): boolean {
+  if (privateHaystack.trim().length === 0) {
+    return false;
+  }
+  const leafTokens = contentTokens(leafValue);
+  if (leafTokens.length < minSpan) {
+    return false;
+  }
+  const leafSpans = ngramSet(leafTokens, minSpan);
+  if (leafSpans.size === 0) {
+    return false;
+  }
+  const privateSpans = ngramSet(contentTokens(privateHaystack), minSpan);
+  const trustedSpans = ngramSet(contentTokens(trustedHaystack), minSpan);
+  for (const span of leafSpans) {
+    if (privateSpans.has(span) && !trustedSpans.has(span)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * WRITE-risk sink args — the free-text fields a write actuator PERSISTS into the
  * user's own stores (a note body, a task title, a memory value, an event

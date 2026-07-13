@@ -52,6 +52,7 @@ export {
   argDerivesFromCorpus,
   describeProvenanceExfil,
   describeProvenanceTaint,
+  sharesPrivateSpan,
   EXECUTE_SINK_ARG_NAMES,
   OUTBOUND_SEND_SINK_ARG_NAMES,
   OUTBOUND_SEND_TOOL_NAMES,

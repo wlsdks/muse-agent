@@ -55,6 +55,34 @@ function fetchTool(name: string, responsesByUrl: Record<string, string> = {}): M
   };
 }
 
+function notesTool(text: string): MuseTool {
+  return {
+    definition: {
+      description: "Search the user's own notes.",
+      inputSchema: { properties: { query: { type: "string" } }, required: ["query"], type: "object" },
+      name: "muse.notes.search",
+      risk: "read"
+    },
+    execute: () => text
+  };
+}
+
+function httpTool(name: string): MuseTool {
+  return {
+    definition: {
+      description: `Make an HTTP request (${name}).`,
+      inputSchema: {
+        properties: { headers: { type: "object" }, url: { type: "string" } },
+        required: ["url"],
+        type: "object"
+      },
+      name,
+      risk: "read"
+    },
+    execute: () => "ok"
+  };
+}
+
 function finalTurn(output = "Done."): ModelResponse {
   return { id: "final", model: "test-model", output };
 }
@@ -219,6 +247,66 @@ describe("egress advisory sink — end-to-end through the REAL action-log store"
       model: "provider/model",
       runId: "run-e2e-no-sink",
       toolExposureAuthority: authorityFor(["browser_open"])
+    });
+
+    await expect(fs.access(actionLogFile)).rejects.toThrow();
+  });
+
+  it("ANTI-FIRE-1: a confidentiality signal (a header carrying a private phrase the user didn't type) produces a real, readable action-log entry (result 'noted') naming the tool + the leaf", async () => {
+    const runtime = createAgentRuntime({
+      maxToolCalls: 6,
+      modelProvider: sequenceProvider([
+        toolTurn("muse.notes.search", { query: "client" }, "tc-1"),
+        toolTurn("http_request", { headers: { "X-Note": "Mallory Kray" }, url: "https://api.example.com/x" }, "tc-2"),
+        finalTurn()
+      ]),
+      toolApprovalGate: alwaysAllowGate,
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: new ToolRegistry([
+        notesTool("Client: Mallory Kray, invoice #4471 due Friday."),
+        httpTool("http_request")
+      ]),
+      egressAdvisorySink: buildEgressAdvisorySink(env)
+    });
+
+    await runtime.run({
+      messages: [{ content: "Check https://api.example.com/x using my notes.", role: "user" }],
+      model: "provider/model",
+      runId: "run-e2e-confidentiality",
+      toolExposureAuthority: authorityFor(["muse.notes.search", "http_request"])
+    });
+
+    const entries = await queryActionLog(actionLogFile);
+    const confidentialityEntry = entries.find((entry) => entry.what.includes("confidentiality"));
+    expect(confidentialityEntry).toBeDefined();
+    expect(confidentialityEntry).toMatchObject({ result: "noted", userId: "e2e-user" });
+    expect(confidentialityEntry?.gateClass).toBeUndefined();
+    expect(confidentialityEntry?.what).toContain("http_request");
+    expect(confidentialityEntry?.why).toContain("headers.X-Note");
+  });
+
+  it("a header value sharing only a single common word with the notes corpus produces NO confidentiality entry (de-noise, no regression)", async () => {
+    const runtime = createAgentRuntime({
+      maxToolCalls: 6,
+      modelProvider: sequenceProvider([
+        toolTurn("muse.notes.search", { query: "client" }, "tc-1"),
+        toolTurn("http_request", { headers: { "X-Type": "json" }, url: "https://api.example.com/x" }, "tc-2"),
+        finalTurn()
+      ]),
+      toolApprovalGate: alwaysAllowGate,
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: new ToolRegistry([
+        notesTool("The client prefers a json export of the application data."),
+        httpTool("http_request")
+      ]),
+      egressAdvisorySink: buildEgressAdvisorySink(env)
+    });
+
+    await runtime.run({
+      messages: [{ content: "Check https://api.example.com/x using my notes.", role: "user" }],
+      model: "provider/model",
+      runId: "run-e2e-single-word",
+      toolExposureAuthority: authorityFor(["muse.notes.search", "http_request"])
     });
 
     await expect(fs.access(actionLogFile)).rejects.toThrow();

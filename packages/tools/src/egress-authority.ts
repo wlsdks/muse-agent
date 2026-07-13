@@ -195,6 +195,42 @@ export function collectUrlsFromValue(value: unknown, depth = 0): string[] {
   return [];
 }
 
+export interface NonUrlLeaf {
+  /** Dotted/indexed path to the leaf (e.g. "headers.X-Note", "fields[0].value"). */
+  readonly path: string;
+  readonly text: string;
+}
+
+/**
+ * Recursively walk every string leaf of an arbitrary value that does NOT
+ * itself contain a URL — the confidentiality axis's complement to
+ * `collectUrlsFromValue`. A URL leaf is the OTHER gate's job (this file's
+ * `authorizeEgressForValue`); a leaf that mixes a URL with prose is excluded
+ * WHOLE, not stripped, so the two checks never double-report the same text.
+ * Depth-bounded identically to `collectUrlsFromValue`.
+ */
+export function collectNonUrlStringLeaves(value: unknown, path = "", depth = 0): NonUrlLeaf[] {
+  if (depth > MAX_WALK_DEPTH) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0 && extractUrlsFromText(value).length === 0
+      ? [{ path, text: value }]
+      : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      collectNonUrlStringLeaves(item, path ? `${path}[${index.toString()}]` : `[${index.toString()}]`, depth + 1)
+    );
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, item]) =>
+      collectNonUrlStringLeaves(item, path ? `${path}.${key}` : key, depth + 1)
+    );
+  }
+  return [];
+}
+
 export type EgressDecisionKind = "allow" | "confirm" | "deny";
 
 export interface EgressDecision {

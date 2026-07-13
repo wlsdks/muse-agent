@@ -219,6 +219,7 @@ export {
 export {
   authorizeEgress,
   authorizeEgressForValue,
+  collectNonUrlStringLeaves,
   collectUrlsFromValue,
   createEgressAuthority,
   extractUrlsFromText,
@@ -227,5 +228,6 @@ export {
   type EgressAuthority,
   type EgressDecision,
   type EgressDecisionKind,
+  type NonUrlLeaf,
   type NormalizedEgressUrl
 } from "./egress-authority.js";

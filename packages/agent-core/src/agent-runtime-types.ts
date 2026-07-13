@@ -320,7 +320,13 @@ export type ToolApprovalGate = (
  */
 export interface EgressAdvisory {
   readonly toolName: string;
-  readonly decision: Exclude<EgressDecisionKind, "allow">;
+  /**
+   * "confirm"/"deny" are the URL rule's own decisions (URL-leaf gated).
+   * "confidentiality" is a DIFFERENT axis — a NON-URL leaf (e.g. a header
+   * value) carrying a private phrase the user didn't type this turn — and
+   * never blocks; it rides the same sink purely to get a durable record.
+   */
+  readonly decision: Exclude<EgressDecisionKind, "allow"> | "confidentiality";
   readonly reason: string;
   /** The candidate URL the decision was about, when the gate resolved one. */
   readonly url?: string;

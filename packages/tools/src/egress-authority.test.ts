@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   authorizeEgress,
   authorizeEgressForValue,
+  collectNonUrlStringLeaves,
   collectUrlsFromValue,
   createEgressAuthority,
   DEFAULT_EGRESS_FAN_OUT_CAP,
@@ -225,6 +226,38 @@ describe("authorizeEgress — the allow/confirm/deny decision", () => {
     it("default cap is 3", () => {
       expect(DEFAULT_EGRESS_FAN_OUT_CAP).toBe(3);
     });
+  });
+});
+
+describe("collectNonUrlStringLeaves — the confidentiality axis's complement to collectUrlsFromValue", () => {
+  it("returns a header value leaf, naming its path, alongside a separate url leaf", () => {
+    const leaves = collectNonUrlStringLeaves({
+      url: "https://api.example/x",
+      headers: { "X-Note": "Mallory Kray account" }
+    });
+    expect(leaves).toEqual([{ path: "headers.X-Note", text: "Mallory Kray account" }]);
+  });
+
+  it("walks arrays with an indexed path", () => {
+    const leaves = collectNonUrlStringLeaves({ fields: [{ value: "plain text" }, { value: "https://a.example/1" }] });
+    expect(leaves).toEqual([{ path: "fields[0].value", text: "plain text" }]);
+  });
+
+  it("excludes a leaf that itself carries a URL, even mixed with prose — the URL rule owns that leaf", () => {
+    const leaves = collectNonUrlStringLeaves({ note: "Contact us at https://x.example about Mallory Kray" });
+    expect(leaves).toEqual([]);
+  });
+
+  it("returns empty for a value with no string leaves at all", () => {
+    expect(collectNonUrlStringLeaves({ a: 1, b: true, c: null })).toEqual([]);
+  });
+
+  it("does not stack-overflow on a deeply nested payload", () => {
+    let value: unknown = "plain text";
+    for (let i = 0; i < 100; i += 1) {
+      value = { nested: value };
+    }
+    expect(() => collectNonUrlStringLeaves(value)).not.toThrow();
   });
 });
 

@@ -51,3 +51,11 @@ ratchet: testFiles +0 (extended eval-harness.test +5) · harness det-test 46/46 
 - **Why:** floor가 1이라 must-refuse/judge 안전배터리가 조용히 k=1로 lucky-pass 가능. 다양성: fires 1-4(security 3+측정1)에서 **eval-hardening value-class로 전환**(모노컬처 탈출) — 원자성·C4-b vein은 OUTCOME-테스트 부적합/fuzzy라 이걸 택함.
 - **Review point:** ④b Opus FAIL(incomplete) — 형제-감사 미완: eval:judge(agent-testing.md가 이름으로 지목한 grounding-judge 안전통제)를 unmarked k=2로 남김. 내가 마크+기본 3+형제-감사(MUST_CORRECT/recall-quality/sandbox 결정론 등 검토결과) backlog 문서화. grounding-tier k≥5는 라이브 5/5 선검증 필요라 backlog. 뮤테이션으로 floor load-bearing 확인(비활성화→RED 2).
 - **Risk:** eval:adversarial·eval:judge 기본 2→3=런타임 ~1.5× 느림(CI 예산無라 수용). k=3이 5/5 아닌 케이스를 노출하면 진짜 발견(슬라이스가 만든 게 아님). 비-safety 배터리는 byte-identical(k=1 유지).
+
+## fire 6 · 2026-07-14 · <commit-pending>
+meta: value-class=security-hardening · pkg=@muse/agent-core+@muse/tools · kind=egress-confidentiality · verdict=PASS(④b, nit) · firesSinceDrill=6
+ratchet: testFiles +1 (egress-confidentiality-advisory.test) · agent-core 1239t/tools 243t/autoconfigure 311t pass · fabrication 0 · self-eval green
+- **What:** C4-a 재개 — 비-URL egress 잎(header 값)이 first-party 코퍼스의 ≥2 연속-토큰 스팬(사용자 미타이핑)을 실으면 "confidentiality" advisory를 fire-4 egressAdvisorySink로 → action-log 감사. `sharesPrivateSpan`(멀티-토큰 de-noise) + `collectNonUrlStringLeaves`. fire 1 롤백분의 정식 재구현.
+- **Why:** header-값 exfil 채널(Opus가 S5서 지목)이 URL 규칙 사각. fire 1의 두 롤백 사유(no-surface·단일-단어 노이즈)를 정면 수정: (1) fire-4 sink로 surface(end-to-end action-log 파일 검증), (2) 단일토큰 .some→2-gram 스팬. value-first: fire 4 seam이 unblock한 egress 완성.
+- **Review point:** ④b Opus PASS — fire-1 두 실패모드 진짜 해결 확인(파일-영속 read-back+mutation; 2-gram이 단일-단어 노이즈 제거). residual 2개(단일 opaque 시크릿 미탐·stopword 2-gram)는 warn-only·charter외·zero→additive라 documented-residual. nit(독스트링에 residual 명시) 적용. 감사 레코드는 leaf PATH만 기록(private 값 미유출 확인).
+- **Risk:** de-noise 캘리브레이션 residual(위, backlog화). 다양성: fire 1 (agent-core+tools/egress-confidentiality)의 (pkg,kind) 반복(2회째, ratchet ≥6/8 여전히 미달) — fire 5 eval-hardening 뒤라 모노컬처 아님, egress 스레드 완성.

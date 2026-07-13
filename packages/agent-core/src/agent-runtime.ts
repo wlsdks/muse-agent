@@ -57,6 +57,7 @@ import {
   authorizeEgressForValue,
   coerceToolArguments,
   coerceEnumArguments,
+  collectNonUrlStringLeaves,
   createEgressAuthority,
   nearestToolName,
   toModelTool,
@@ -73,6 +74,7 @@ import {
   checkActuatorProvenance,
   describeProvenanceExfil,
   describeProvenanceTaint,
+  sharesPrivateSpan,
   EXECUTE_SINK_ARG_NAMES,
   isFirstPartyReadTool,
   OUTBOUND_SEND_SINK_ARG_NAMES,
@@ -1301,6 +1303,34 @@ export class AgentRuntime {
         });
       } catch {
         // Fail-soft: an audit sink must never crash or block the run.
+      }
+    }
+    // Confidentiality axis (S5 follow-up, fire-1 redo): the URL rule above only
+    // inspects URL leaves, so a private phrase placed in a NON-URL leaf of this
+    // SAME egress-candidate call (a header value, a form field) is invisible to
+    // it. `egressDecision` truthy already means this call carries a URL — i.e.
+    // it IS a network call; a pure non-network call never reaches here. Fire-
+    // and-record only, same sink, never blocks — the URL rule alone owns
+    // allow/confirm/deny.
+    if (egressDecision && context.egressAdvisorySink) {
+      const privateHaystack = context.taintLedger?.firstPartyHaystack() ?? "";
+      if (privateHaystack.trim().length > 0) {
+        const typedHaystack = joinUserMessages(context.input.messages);
+        const leaves = collectNonUrlStringLeaves(toolCall.arguments ?? {});
+        const flagged = leaves.find((leaf) => sharesPrivateSpan(leaf.text, privateHaystack, typedHaystack));
+        if (flagged) {
+          try {
+            await context.egressAdvisorySink({
+              decision: "confidentiality",
+              reason: `\`${flagged.path}\` carries content from your own notes/records that you did not type in this message`,
+              runId: context.runId,
+              toolName: toolCall.name,
+              ...(egressUserId ? { userId: egressUserId } : {})
+            });
+          } catch {
+            // Fail-soft: an audit sink must never crash or block the run.
+          }
+        }
       }
     }
 

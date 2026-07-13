@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { argDerivesFromUntrusted, checkActuatorProvenance } from "../src/actuator-provenance-gate.js";
+import { argDerivesFromUntrusted, checkActuatorProvenance, sharesPrivateSpan } from "../src/actuator-provenance-gate.js";
 import { createTaintLedger } from "../src/taint-ledger.js";
 
 describe("argDerivesFromUntrusted", () => {
@@ -168,5 +168,41 @@ describe("checkActuatorProvenance", () => {
       trustedHaystack: ""
     });
     expect(result.untrustedDerived).toBe(false);
+  });
+});
+
+describe("sharesPrivateSpan — confidentiality de-noise (fire-1 redo: 2-token span, not single-token overlap)", () => {
+  it("flags a multi-token private phrase copied verbatim into the leaf", () => {
+    const privateHaystack = "Client: Mallory Kray, invoice #4471 due Friday.";
+    expect(sharesPrivateSpan("X-Note: Mallory Kray", privateHaystack, "check the api status")).toBe(true);
+  });
+
+  it("does NOT flag a single common word shared with the corpus (the fire-1 rubber-stamp)", () => {
+    const privateHaystack = "The client prefers a json export of the application data.";
+    // "json" alone is one content token — never enough to form a 2-gram, so
+    // it can never match regardless of what else the corpus contains.
+    expect(sharesPrivateSpan("json", privateHaystack, "check the api")).toBe(false);
+  });
+
+  it("does NOT flag a 2-token phrase that only shares its INDIVIDUAL words, not the consecutive pair, with the corpus", () => {
+    const privateHaystack = "The application accepts a json payload for this endpoint.";
+    // "application" and "json" both appear in the corpus, but never adjacent
+    // as "application json" — the old single-token check would have flagged
+    // this; the consecutive-span check must not.
+    expect(sharesPrivateSpan("application/json", privateHaystack, "")).toBe(false);
+  });
+
+  it("does NOT flag a span the user typed this turn, even though it also matches the private corpus", () => {
+    const privateHaystack = "Client: Mallory Kray, invoice #4471 due Friday.";
+    expect(sharesPrivateSpan("X-Note: Mallory Kray", privateHaystack, "please look up Mallory Kray for me")).toBe(false);
+  });
+
+  it("does NOT flag a clean leaf with no private span at all", () => {
+    const privateHaystack = "Client: Mallory Kray, invoice #4471 due Friday.";
+    expect(sharesPrivateSpan("X-Request-Id: abc123", privateHaystack, "")).toBe(false);
+  });
+
+  it("empty private corpus never flags (fail-open)", () => {
+    expect(sharesPrivateSpan("X-Note: Mallory Kray", "", "")).toBe(false);
   });
 });
