@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  findConsent,
   hasConsent,
+  isConsentActive,
   readConsents,
   recordConsent,
   serializeConsent,
@@ -58,6 +60,67 @@ describe("recordConsent", () => {
     const all = await readConsents(file);
     expect(all).toHaveLength(1);
     expect(all[0]?.note).toBe("re-approved");
+  });
+});
+
+// TTL / expiry on standing-objective consents (outbound-safety.md rule 5 +
+// least-privilege time-bound permissions): a consent past its expiresAt is
+// treated as ABSENT — fail-closed — never as a still-good grant.
+describe("expiry — a consent past its expiresAt is treated as ABSENT", () => {
+  const NOW = new Date("2026-06-10T12:00:00Z");
+
+  it("findConsent returns undefined for a consent whose expiresAt is in the PAST relative to `now`", async () => {
+    await recordConsent(file, consent({ expiresAt: "2026-06-10T11:59:59Z" }));
+    expect(await findConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBeUndefined();
+  });
+
+  it("findConsent returns the consent when expiresAt is in the FUTURE relative to `now`", async () => {
+    await recordConsent(file, consent({ expiresAt: "2026-06-10T12:00:01Z" }));
+    const found = await findConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW);
+    expect(found?.id).toBe("c1");
+  });
+
+  it("findConsent returns the consent when expiresAt is ABSENT (back-compat, no expiry)", async () => {
+    await recordConsent(file, consent());
+    const found = await findConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW);
+    expect(found?.id).toBe("c1");
+  });
+
+  it("hasConsent mirrors findConsent: false when expired, true when future or absent expiresAt", async () => {
+    await recordConsent(file, consent({ expiresAt: "2026-06-10T11:59:59Z" }));
+    expect(await hasConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBe(false);
+
+    await recordConsent(file, consent({ expiresAt: "2026-06-10T12:00:01Z" }));
+    expect(await hasConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBe(true);
+
+    await recordConsent(file, consent({ expiresAt: undefined }));
+    expect(await hasConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBe(true);
+  });
+
+  it("isConsentActive: absent ⇒ active, future ⇒ active, past ⇒ inactive, unparseable ⇒ INACTIVE (fail-closed — a credential gate must not authorise on a corrupt timestamp)", () => {
+    expect(isConsentActive(consent(), NOW)).toBe(true);
+    expect(isConsentActive(consent({ expiresAt: "2026-06-10T12:00:01Z" }), NOW)).toBe(true);
+    expect(isConsentActive(consent({ expiresAt: "2026-06-10T11:59:59Z" }), NOW)).toBe(false);
+    expect(isConsentActive(consent({ expiresAt: "not-a-date" }), NOW)).toBe(false);
+  });
+
+  it("SECURITY: a consent with a corrupt/unparseable expiresAt fails CLOSED — findConsent + hasConsent both refuse it (a partial-write/tampered timestamp must not authorise forever)", async () => {
+    await recordConsent(file, consent({ expiresAt: "garbage-not-a-timestamp" }));
+    expect(await findConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBeUndefined();
+    expect(await hasConsent(file, { objectiveId: "o1", scope: "github:issues:write", userId: "u" }, NOW)).toBe(false);
+  });
+
+  it("readConsents stays a RAW reader — it does not filter expired records out (expiry is enforced at findConsent/hasConsent)", async () => {
+    await recordConsent(file, consent({ expiresAt: "2020-01-01T00:00:00Z" }));
+    const all = await readConsents(file);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.expiresAt).toBe("2020-01-01T00:00:00Z");
+  });
+
+  it("round-trips expiresAt through writeConsents/readConsents (isRecord validator accepts it)", async () => {
+    await recordConsent(file, consent({ expiresAt: "2026-07-01T00:00:00Z" }));
+    const all = await readConsents(file);
+    expect(all[0]?.expiresAt).toBe("2026-07-01T00:00:00Z");
   });
 });
 

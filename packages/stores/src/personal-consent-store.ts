@@ -44,8 +44,32 @@ export interface ScopedConsent {
   readonly allowedHost?: string;
   /** ISO timestamp the consent was recorded. */
   readonly grantedAt: string;
+  /**
+   * Optional ISO timestamp after which the consent no longer authorises
+   * action — least-privilege time-bound permission (an old "always allow
+   * scope X" must not authorise forever). Absent = no expiry, matching
+   * every consent recorded before this field existed (back-compatible).
+   */
+  readonly expiresAt?: string;
   /** Optional human note ("approved in chat 2026-05-19"). */
   readonly note?: string;
+}
+
+/**
+ * A consent authorises action only while it has not passed its
+ * `expiresAt`. Absent expiresAt ⇒ active (back-compat with every consent
+ * recorded before this field existed). A PRESENT-but-unparseable expiresAt
+ * ⇒ INACTIVE (fail-closed): this gate releases a scoped credential to a
+ * third party, an irreversible outbound effect, so a corrupted/partial-write
+ * timestamp must deny, not authorise forever. (This deliberately diverges
+ * from `isProposalActionable`, whose expired state is merely inert — the
+ * blast radius here is a credential leaving the box.) `now` past the parsed
+ * instant ⇒ inactive.
+ */
+export function isConsentActive(consent: ScopedConsent, now: Date): boolean {
+  if (consent.expiresAt === undefined) return true;
+  const expiry = Date.parse(consent.expiresAt);
+  return !Number.isNaN(expiry) && now.getTime() <= expiry;
 }
 
 export async function readConsents(file: string): Promise<readonly ScopedConsent[]> {
@@ -100,30 +124,42 @@ export async function recordConsent(file: string, consent: ScopedConsent): Promi
 
 /**
  * Fail-closed consent check: returns true ONLY when a consent
- * record matches the user, objective AND the exact scope. Any
- * read/parse problem degrades to `false` (no consent ⇒ no action)
- * — the safe direction for a guard.
+ * record matches the user, objective AND the exact scope, AND is
+ * not past its `expiresAt`. Any read/parse problem, or an expired
+ * match, degrades to `false` (no consent ⇒ no action) — the safe
+ * direction for a guard.
  */
 export async function hasConsent(
   file: string,
-  query: { readonly userId: string; readonly objectiveId: string; readonly scope: string }
+  query: { readonly userId: string; readonly objectiveId: string; readonly scope: string },
+  now: Date = new Date()
 ): Promise<boolean> {
-  return (await findConsent(file, query)) !== undefined;
+  return (await findConsent(file, query, now)) !== undefined;
 }
 
 /**
  * Returns the matching consent RECORD (or undefined), so a caller that
  * needs more than a yes/no — e.g. the destination-host binding in
  * `performConsentedAction` — can read it. Same fail-closed read semantics
- * as `hasConsent`: any read/parse problem yields undefined.
+ * as `hasConsent`: any read/parse problem yields undefined, and so does a
+ * match whose `expiresAt` is in the past relative to `now` (default the
+ * real clock) — an expired consent is treated as ABSENT, never returned,
+ * so the caller can't tell "expired" from "never granted" without a
+ * second, duplicate lookup. This is centralised here so EVERY consumer
+ * (today: `performConsentedAction`) gets expiry enforcement for free.
  */
 export async function findConsent(
   file: string,
-  query: { readonly userId: string; readonly objectiveId: string; readonly scope: string }
+  query: { readonly userId: string; readonly objectiveId: string; readonly scope: string },
+  now: Date = new Date()
 ): Promise<ScopedConsent | undefined> {
   const all = await readConsents(file);
   return all.find(
-    (c) => c.userId === query.userId && c.objectiveId === query.objectiveId && c.scope === query.scope
+    (c) =>
+      c.userId === query.userId
+      && c.objectiveId === query.objectiveId
+      && c.scope === query.scope
+      && isConsentActive(c, now)
   );
 }
 
@@ -135,6 +171,7 @@ export function serializeConsent(consent: ScopedConsent): JsonObject {
     scope: consent.scope,
     userId: consent.userId,
     ...(consent.allowedHost ? { allowedHost: consent.allowedHost } : {}),
+    ...(consent.expiresAt ? { expiresAt: consent.expiresAt } : {}),
     ...(consent.note ? { note: consent.note } : {})
   };
 }
@@ -150,6 +187,7 @@ function isScopedConsent(value: unknown): value is ScopedConsent {
     typeof c.objectiveId === "string" &&
     typeof c.scope === "string" &&
     (c.allowedHost === undefined || typeof c.allowedHost === "string") &&
+    (c.expiresAt === undefined || typeof c.expiresAt === "string") &&
     typeof c.grantedAt === "string"
   );
 }

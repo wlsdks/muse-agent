@@ -106,6 +106,50 @@ describe("performConsentedAction — fail-closed scoped-consent gate (outbound-s
     expect(calls).toHaveLength(0);
   });
 
+  // TTL / expiry (outbound-safety.md rule 5 + least-privilege time-bound
+  // permissions): an old "always allow scope X" consent must not authorise
+  // forever. An expired consent is treated as ABSENT — fail-closed.
+  it("refuses with NO HTTP when the recorded consent's expiresAt is in the PAST relative to the injected clock", async () => {
+    await recordConsent(consentFile, {
+      allowedHost: "api.test",
+      expiresAt: "2026-06-20T11:59:59Z",
+      grantedAt: "2026-05-31T00:00:00Z",
+      id: "c1",
+      objectiveId: OBJ,
+      scope: SCOPE,
+      userId: "u1"
+    });
+    const { calls, fetchImpl } = recordingFetch();
+    const out = await performConsentedAction(base(fetchImpl, { now: () => new Date("2026-06-20T12:00:00Z") }));
+    expect(out).toMatchObject({ performed: false });
+    expect((out as { reason: string }).reason).toContain("no recorded consent");
+    expect(calls).toHaveLength(0); // the scoped credential is never resolved into a request
+  });
+
+  it("performs the action when the recorded consent's expiresAt is in the FUTURE relative to the injected clock", async () => {
+    await recordConsent(consentFile, {
+      allowedHost: "api.test",
+      expiresAt: "2026-06-20T12:00:01Z",
+      grantedAt: "2026-05-31T00:00:00Z",
+      id: "c1",
+      objectiveId: OBJ,
+      scope: SCOPE,
+      userId: "u1"
+    });
+    const { calls, fetchImpl } = recordingFetch(() => new Response("", { status: 201 }));
+    const out = await performConsentedAction(base(fetchImpl, { now: () => new Date("2026-06-20T12:00:00Z") }));
+    expect(out).toEqual({ performed: true, status: 201 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("performs the action when the recorded consent has NO expiresAt (existing behavior byte-identical)", async () => {
+    await grant();
+    const { calls, fetchImpl } = recordingFetch(() => new Response("", { status: 201 }));
+    const out = await performConsentedAction(base(fetchImpl, { now: () => new Date("2026-06-20T12:00:00Z") }));
+    expect(out).toEqual({ performed: true, status: 201 });
+    expect(calls).toHaveLength(1);
+  });
+
   it("a recorded VETO overrides prior consent and refuses BEFORE the consent check (no HTTP)", async () => {
     await grant(); // consent exists...
     await recordVeto(vetoFile, { id: "v1", objectiveId: OBJ, reason: "stop", scope: SCOPE, userId: "u1", vetoedAt: "2026-05-31T01:00:00Z" });

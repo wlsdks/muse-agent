@@ -74,6 +74,7 @@ export async function performConsentedAction(
   options: PerformConsentedActionOptions
 ): Promise<ConsentedActionOutcome> {
   const now = options.now ?? (() => new Date());
+  const at = now();
   const idFactory = options.idFactory ?? (() => `act_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`);
   // The request body IS the content of the state-changing action; record it
   // secret-scrubbed + length-capped (the log is long-lived and may sync). The
@@ -90,7 +91,7 @@ export async function performConsentedAction(
       result,
       userId: options.userId,
       what: `consented action: ${options.request.method ?? "POST"} ${options.request.url} (scope ${options.scope})${bodyNote}`,
-      when: now().toISOString(),
+      when: at.toISOString(),
       why: `standing-objective ${options.objectiveId}: consented action for scope ${options.scope}`
     });
   };
@@ -109,14 +110,18 @@ export async function performConsentedAction(
     }
   }
 
-  const consent = await findConsent(options.consentFile, {
-    objectiveId: options.objectiveId,
-    scope: options.scope,
-    userId: options.userId
-  });
+  const consent = await findConsent(
+    options.consentFile,
+    { objectiveId: options.objectiveId, scope: options.scope, userId: options.userId },
+    at
+  );
   if (!consent) {
-    // Fail-closed: no recorded consent ⇒ the credential is never
-    // resolved, no request is ever made.
+    // Fail-closed: no recorded consent for the exact scope, OR the only
+    // matching record is past its expiresAt (findConsent treats an expired
+    // consent as absent) ⇒ the credential is never resolved, no request is
+    // ever made. One generic reason for both: distinguishing "expired" from
+    // "never granted" here would mean re-reading consents unfiltered and
+    // duplicating findConsent's expiry check in a second place.
     const reason = `no recorded consent for scope ${options.scope}`;
     await log("refused", reason);
     return { performed: false, reason };
