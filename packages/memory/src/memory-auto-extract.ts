@@ -225,9 +225,18 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
       if (!userPrompt || !assistantOutput) {
         return;
       }
-      // Throttle gate — skip silently within the cooldown window.
-      // Fail-open: a lost extraction beats blocking later runs.
-      if (extractionCooldownMs > 0) {
+      // The throttle used to be content-BLIND: one extraction per user per 60s,
+      // whichever turn happened to land in the window. Measured against a realistic
+      // conversation at ordinary typing pace (~15s between turns), that dropped
+      // SEVEN of seven memory-bearing turns — "I'm allergic to penicillin" and "lol"
+      // had exactly the same chance of surviving, because the gate never looked at
+      // either. This is why the one learning surface that is live for a default user
+      // had learned nothing: not bad extraction, but almost no extraction at all.
+      //
+      // So the throttle now only applies to turns that carry no self-disclosure. A
+      // turn where the user says something ABOUT THEMSELVES is never rate-limited —
+      // those are rare, they are the entire point, and they do not come back.
+      if (extractionCooldownMs > 0 && !hasSelfDisclosure(userPrompt)) {
         const lastFiredAt = lastFiredByUser.get(userId);
         const nowMs = now();
         if (lastFiredAt !== undefined && nowMs - lastFiredAt < extractionCooldownMs) {
@@ -469,6 +478,40 @@ function readSessionId(context: AgentRunContextView): string | undefined {
   const candidate = context.input.metadata?.sessionId;
   return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
 }
+
+/**
+ * Does this turn say something about the USER?
+ *
+ * A deterministic pre-filter, and deliberately so: mem0's 32-day audit of 10,134
+ * extracted memories found 97.8% were junk, and — the part worth internalising —
+ * swapping in a bigger model made it WORSE, because a better model follows an
+ * over-collecting prompt more faithfully. The bottleneck was never the model. The
+ * only gate that held in Muse's own audit was likewise code, not prompt: the
+ * extraction prompt explicitly forbids inference and gemma4 inferred anyway, stably,
+ * at temperature 0.
+ *
+ * Recall-first, because a false positive here costs one cheap LLM call that the
+ * schema, the provenance gate and the ephemeral guard will then throw away, while a
+ * false negative loses a fact about the user forever. "What's the capital of
+ * Portugal?" carries no self-disclosure and can wait behind the throttle; "I'm
+ * allergic to penicillin" cannot, and never could.
+ */
+export function hasSelfDisclosure(text: string): boolean {
+  return SELF_DISCLOSURE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+const SELF_DISCLOSURE_PATTERNS: readonly RegExp[] = [
+  // English: first person about oneself, or a standing instruction
+  /\bi(?:'m| am| was| have|'ve| like| love| hate| prefer| need| want| live| work| use| don'?t| can'?t| never| always)\b/iu,
+  /\bmy\s+\w+/iu,
+  /\b(remember|note) that\b/iu,
+  /\b(never|always|from now on|going forward)\b/iu,
+  // Korean: self-reference, preference, possession, standing instruction
+  /(나는|난|내가|저는|제가|나도|저도)\s*\S/u,
+  /(내|제|우리)\s*\w*(집|회사|가족|친구|일|팀|폰|차|이름|생일)/u,
+  /(좋아해|싫어해|선호|알레르기|못\s*먹|안\s*먹|다녀|살아|살고|일해|쓰고\s*있)/u,
+  /(기억해|기억해줘|앞으로는?|다음부터|항상|절대)/u
+];
 
 function latestUserMessage(context: AgentRunContextView): string | undefined {
   const messages = context.input.messages;
