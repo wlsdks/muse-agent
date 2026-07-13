@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createAgentRuntime } from "@muse/agent-core";
 import { createWebActionTool, type WebActionApprovalGate } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -42,15 +43,19 @@ function logFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-p17-web-")), "action-log.json");
 }
 
-function run(tool: ReturnType<typeof createWebActionTool>) {
+function run(
+  tool: ReturnType<typeof createWebActionTool>,
+  toolApprovalGate: () => { readonly allowed: boolean; readonly reason?: string } = () => ({ allowed: true })
+) {
   return createAgentRuntime({
     maxToolCalls: 1,
     modelProvider: sequenceProvider([
       { id: "tool", model: "m", output: "Acting.", toolCalls: [{ arguments: { summary: "Book a table at 7pm", url: "https://book.test/reserve" }, id: "tc-1", name: "web_action" }] },
       { id: "final", model: "m", output: "Done." }
     ]),
+    toolApprovalGate,
     toolRegistry: new ToolRegistry([tool])
-  }).run({ messages: [{ content: "book a table", role: "user" }], metadata: { localMode: true }, model: "provider/model" });
+  }).run({ messages: [{ content: "book a table at https://book.test/reserve", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["web_action"], localMode: true }) });
 }
 
 describe("P17 seam — the agent invokes the gated web_action tool", () => {
@@ -63,6 +68,15 @@ describe("P17 seam — the agent invokes the gated web_action tool", () => {
   it("DENY: the agent calls web_action but the fail-closed gate blocks it — NO request", async () => {
     const { fetchImpl, calls } = recordingFetch();
     await run(createWebActionTool({ actionLogFile: logFile(), approvalGate: deny, fetchImpl, userId: "stark" }));
+    expect(calls).toHaveLength(0);
+  });
+
+  it("DENY: the outer runtime gate blocks an otherwise approved actuator — NO request", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    await run(
+      createWebActionTool({ actionLogFile: logFile(), approvalGate: approve, fetchImpl, lookup: async () => [{ address: "93.184.216.34", family: 4 }], userId: "stark" }),
+      () => ({ allowed: false, reason: "runtime approval declined" })
+    );
     expect(calls).toHaveLength(0);
   });
 });

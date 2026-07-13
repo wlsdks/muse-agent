@@ -23,16 +23,16 @@ describe("detectTerminalBackground", () => {
 
 describe("colorize background-aware contrast", () => {
   it("suppresses dim on a known light background (grey-on-white is unreadable)", () => {
-    expect(colorize("note", "dim", { force: true, background: "light" })).toBe("note"); // plain
+    expect(colorize("note", "dim", { env: {}, force: true, background: "light" })).toBe("note"); // plain
   });
 
   it("still dims on dark / unknown backgrounds", () => {
-    expect(colorize("note", "dim", { force: true, background: "dark" })).toContain("\x1b[2m");
-    expect(colorize("note", "dim", { force: true, background: "unknown" })).toContain("\x1b[2m");
+    expect(colorize("note", "dim", { env: {}, force: true, background: "dark" })).toContain("\x1b[2m");
+    expect(colorize("note", "dim", { env: {}, force: true, background: "unknown" })).toContain("\x1b[2m");
   });
 
   it("only affects dim — other colours render normally even on a light background", () => {
-    expect(colorize("warn", "red", { force: true, background: "light" })).toBe("\x1b[31mwarn\x1b[0m");
+    expect(colorize("warn", "red", { env: {}, force: true, background: "light" })).toBe("\x1b[31mwarn\x1b[0m");
   });
 
   it("still respects NO_COLOR / non-TTY (dim returns plain regardless of background)", () => {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createAgentRuntime } from "@muse/agent-core";
 import { GmailEmailProvider, createEmailSendTool, type EmailApprovalGate } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import type { Contact } from "@muse/stores";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
@@ -52,6 +53,7 @@ function runtimeWith(tool: ReturnType<typeof createEmailSendTool>, args: Record<
       { id: "tool", model: "m", output: "Sending.", toolCalls: [{ arguments: args, id: "tc-1", name: "email_send" }] },
       { id: "final", model: "m", output: "Done." }
     ]),
+    toolApprovalGate: () => ({ allowed: true }),
     toolRegistry: new ToolRegistry([tool])
   });
 }
@@ -64,7 +66,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => SOLO, sender, userId: "stark" });
     await runtimeWith(tool, { body: "the Q3 summary", subject: "Q3", to: "Bob" })
-      .run({ messages: [{ content: "email Bob the Q3 summary", role: "user" }], metadata: { localMode: true }, model: "provider/model" });
+      .run({ messages: [{ content: "email Bob the Q3 summary", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(1);
     expect(sends[0]).toMatchObject({ bearer: true });
     expect(sends[0]!.url).toContain("/messages/send");
@@ -74,7 +76,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: deny, contacts: () => SOLO, sender, userId: "stark" });
     await runtimeWith(tool, { body: "hi", subject: "Q3", to: "Bob" })
-      .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model" });
+      .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(0);
   });
 
@@ -82,7 +84,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => TWO_BOBS, sender, userId: "stark" });
     await runtimeWith(tool, { body: "hi", subject: "Q3", to: "Bob" })
-      .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model" });
+      .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(0);
   });
 });

@@ -37,7 +37,7 @@ describe("renderMuseBanner", () => {
     const plain = renderMuseBanner({ isTty: false });
     expect(plain).not.toContain("\x1b[");
 
-    const coloured = renderMuseBanner({ force: true });
+    const coloured = renderMuseBanner({ env: {}, force: true });
     expect(coloured).toContain("\x1b[38"); // truecolor mascot art when colour is forced
   });
 });

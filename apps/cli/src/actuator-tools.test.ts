@@ -7,6 +7,7 @@ import { createContactsAddTool } from "@muse/domain-tools";
 import { createFsWriteTools } from "@muse/fs";
 import { readPendingApprovals } from "@muse/messaging";
 import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, describe, expect, it } from "vitest";
@@ -336,11 +337,13 @@ describe("buildActuatorTools — the agent invokes a wired tool through its clac
         },
         { id: "final", model: "m", output: "Done." }
       ]),
+      toolApprovalGate: () => ({ allowed: true }),
       toolRegistry: new ToolRegistry([...tools])
     }).run({
-      messages: [{ content: "book a table at 7pm", role: "user" }],
+      messages: [{ content: "book a table at http://example.test/book", role: "user" }],
       metadata: { localMode: true },
-      model: "provider/model"
+      model: "provider/model",
+      toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["web_action"], localMode: true })
     });
   }
 

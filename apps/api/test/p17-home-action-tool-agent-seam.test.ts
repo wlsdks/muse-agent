@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createAgentRuntime } from "@muse/agent-core";
 import { createHomeActionTool, type WebActionApprovalGate } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -49,8 +50,9 @@ function run(tool: ReturnType<typeof createHomeActionTool>) {
       { id: "tool", model: "m", output: "Acting.", toolCalls: [{ arguments: { entity: "light.living_room", service: "light.turn_off" }, id: "tc-1", name: "home_action" }] },
       { id: "final", model: "m", output: "Done." }
     ]),
+    toolApprovalGate: () => ({ allowed: true }),
     toolRegistry: new ToolRegistry([tool])
-  }).run({ messages: [{ content: "turn off the living room lights", role: "user" }], metadata: { localMode: true }, model: "provider/model" });
+  }).run({ messages: [{ content: "turn off the living room lights", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["home_action"], localMode: true }) });
 }
 
 function deps(gate: WebActionApprovalGate, fetchImpl: typeof fetch) {

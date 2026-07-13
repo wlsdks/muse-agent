@@ -465,7 +465,8 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // cold -> 66ms warm with the cache alive, vs ~2400ms EVERY time without.
   if (muse_model?.startsWith("ollama/") === true) {
     const probe = await probeOllamaPromptCache({
-      baseUrl: resolveOllamaUrl(),
+      baseUrl: resolveOllamaUrl(env),
+      fetchImpl: runtime.fetchImpl,
       model: muse_model.slice("ollama/".length)
     });
     if (probe) {

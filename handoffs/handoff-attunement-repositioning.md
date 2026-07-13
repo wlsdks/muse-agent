@@ -10,7 +10,7 @@ updated: 2026-07-13
 - **작업 이름:** attunement-repositioning
 - **한 줄 목표:** Muse를 한 사람의 일상과 업무를 함께 이어서 이해하고, 언제 어떻게 도울지
   점점 더 잘 맞추는 개인 AI로 설명한다.
-- **현재 단계:** `BLOCKED`
+- **현재 단계:** `DONE`
 - **담당:** 오케스트레이터 `/root`
 
 ## 1. 계획
@@ -80,15 +80,15 @@ updated: 2026-07-13
   current/roadmap 정직성, 쉬운 설명, thread binding, outcome/permission invariant 모두 통과.
 - GitHub description exact 확인: `Building a personal AI that learns how you live and work,
   then gets better at knowing when and how to help. Local-first, any model.`
-- 전체 `pnpm check`: build와 대부분의 테스트는 통과했으나 최신 `main`의 기존
-  egress-authorization 변경과 seam 테스트가 맞지 않아 4개 동작 테스트가 red이고,
-  doctor local-only 테스트 1개가 timeout(총 5개). 실패 파일은 이번 diff에 없다.
+- 전체 `pnpm check`: build와 전체 workspace test가 PASS. egress seam 4건은 최신의 genuine
+  tool exposure authority·runtime approval·사용자 제공 URL을 fixture에 명시해 안전 policy를
+  약화하지 않고 복구했다. doctor prompt-cache probe는 주입된 env/fetch를 사용하도록 고쳤고,
+  주입 URL/fetch를 검증하는 regression test를 추가했다. ambient `NO_COLOR`에 흔들리던 ANSI
+  golden test도 독립 환경을 명시해 안정화했다.
 
 ## 열린 질문
 
-- 현재 `main`의 egress seam/doctor 회귀를 별도 범위로 수정할 권한을 받을지, 다른 작업에서
-  main이 green이 될 때까지 병합을 기다릴지 결정이 필요하다. fail-closed completion gate 때문에
-  이 상태에서는 local `main` merge와 새 개발 branch 생성을 진행하지 않는다.
+- 없음. 전체 gate가 green이며 다음 단계는 local `main` 병합과 Personal Continuity Slice A이다.
 
 ## 상태 로그
 
@@ -104,3 +104,7 @@ updated: 2026-07-13
 - 2026-07-13 · 독립 평가자 · EVAL · 최종 제품 기준 6/6 PASS, 치명 finding 없음.
 - 2026-07-13 · 오케스트레이터 · BLOCKED · 최신 main의 기존 egress seam 4건과 doctor timeout
   1건 때문에 전체 completion gate 실패; 병합·새 branch 생성 보류.
+- 2026-07-14 · 오케스트레이터 · BUILD/EVAL · fixture/runtime injection drift를 안전하게 복구.
+  전체 `pnpm check`, lint, comments, prompt seam, capability gate PASS.
+- 2026-07-14 · 오케스트레이터 · DONE · 문서 정체성 작업의 completion gate를 통과했고,
+  Personal Continuity Slice A handoff로 인계.

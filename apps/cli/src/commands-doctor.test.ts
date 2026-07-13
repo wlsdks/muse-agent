@@ -80,6 +80,32 @@ describe("local doctor runtime ownership", () => {
     expect(homeUrlReads).toBe(0);
     expect(homeTokenReads).toBe(0);
   });
+
+  it("uses the injected Ollama URL and fetch for both prompt-cache requests", async () => {
+    const urls: string[] = [];
+    const report = await runLocalDoctor({
+      env: {
+        HOME: "/tmp/muse-doctor-prompt-cache",
+        MUSE_LOCAL_ONLY: "true",
+        MUSE_MODEL: "ollama/test-model",
+        OLLAMA_BASE_URL: "http://injected-ollama.test:11434"
+      },
+      fetchImpl: async (input) => {
+        const url = String(input);
+        urls.push(url);
+        if (url.endsWith("/api/generate")) {
+          return new Response(JSON.stringify({ prompt_eval_count: 17, prompt_eval_duration: 10_000_000 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ models: [{ name: "test-model" }] }), { status: 200 });
+      },
+      homeDir: "/tmp/muse-doctor-prompt-cache"
+    });
+
+    expect(urls.filter((url) => url.endsWith("/api/generate"))).toHaveLength(2);
+    expect(urls).not.toHaveLength(0);
+    expect(urls.every((url) => url.startsWith("http://injected-ollama.test:11434/"))).toBe(true);
+    expect(report.checks.some((check) => check.name === "prompt cache")).toBe(true);
+  });
 });
 
 describe("conformal abstention calibration (muse doctor --calibration)", () => {
