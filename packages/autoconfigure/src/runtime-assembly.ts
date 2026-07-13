@@ -73,8 +73,8 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 
-import { loadUserPersonaSync, resolvePersonaFilePath, resolveRuntimePersonaLayerSync } from "@muse/recall";
-import { InMemoryPromptLayerRegistry } from "@muse/prompts";
+import { loadUserPersonaSync, PersonaHotReloadRegistry, resolvePersonaFilePath } from "@muse/recall";
+import type { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import { RuntimeSettings } from "@muse/runtime-settings";
 import {
@@ -250,13 +250,14 @@ export interface MuseRuntimeAssembly {
   /**
    * The SAME registry instance `agentRuntime` resolves its L1 personality
    * layer from (docs/strategy/prompt-architecture.md, decision D2 + S3).
-   * Seeded at startup from `~/.config/muse/persona.md` (or
-   * `MUSE_PERSONA_MD_FILE`); the prompt-persona API routes mutate THIS
-   * instance on save so a hot-applied persona.md changes the very next
+   * A `PersonaHotReloadRegistry` over `~/.config/muse/PERSONA.md` (or
+   * `MUSE_PERSONA_MD_FILE`): the prompt-persona API routes mutate THIS
+   * instance on save, and a direct file edit is picked up by a stat check
+   * on the next resolve — either way the change applies to the very next
    * turn without a restart.
    */
   readonly promptLayerRegistry: InMemoryPromptLayerRegistry;
-  /** The resolved persona.md path this assembly loaded at startup. */
+  /** The resolved PERSONA.md path this assembly loaded at startup. */
   readonly personaFilePath: string;
   readonly calendar: CalendarProviderRegistry;
   readonly notesProviderRegistry?: NotesProviderRegistry;
@@ -370,14 +371,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const db = options.db;
   // Sync read: createMuseRuntimeAssembly is called synchronously from dozens
   // of CLI command sites, so the startup persona load can't await. A broken
-  // or absent persona.md is fail-open here — see resolveRuntimePersonaLayerSync.
+  // or absent PERSONA.md is fail-open (default bluebird layer — see
+  // resolveRuntimePersonaLayerSync), and the hot-reload registry stat-checks
+  // the file on every resolve so a DIRECT file edit applies to the next turn
+  // in long-lived processes, same as a save through the persona API.
   const personaFilePath = resolvePersonaFilePath(env);
-  const promptLayerRegistry = new InMemoryPromptLayerRegistry();
-  // Absent/invalid persona.md now yields the default bluebird personality
-  // layer (not undefined), so every install registers a warm character rather
-  // than running the flagship chat surface with no personality at all.
-  promptLayerRegistry.register(resolveRuntimePersonaLayerSync(personaFilePath));
-  // The explicit persona.md `register` setting (docs/strategy/
+  const promptLayerRegistry = new PersonaHotReloadRegistry(personaFilePath);
+  // The explicit PERSONA.md `register` setting (docs/strategy/
   // prompt-architecture.md §4) — WINS over per-turn 반말/존댓말 detection in
   // applyPromptLayers. Same fail-open posture as the layer load above: an
   // absent/invalid file just yields undefined (detection alone decides).

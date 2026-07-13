@@ -1,9 +1,10 @@
 /**
  * User-manageable personality layer (docs/strategy/prompt-architecture.md,
- * decision D2 + the S3 admin surface). `~/.config/muse/persona.md` (override
- * `MUSE_PERSONA_MD_FILE`) carries tone/personality ONLY — optional YAML-lite
- * frontmatter (`register`/`maxWords`/`language`) plus a free-text body — and
- * REPLACES the L1 personality layer in `composeSurfacePrompt`'s stack.
+ * decision D2 + the S3 admin surface). `~/.config/muse/PERSONA.md` (override
+ * `MUSE_PERSONA_MD_FILE`; a pre-rename lowercase `persona.md` is still
+ * honored) carries tone/personality ONLY — optional YAML-lite frontmatter
+ * (`register`/`maxWords`/`language`) plus a free-text body — and REPLACES
+ * the L1 personality layer in `composeSurfacePrompt`'s stack.
  *
  * Lives in `@muse/recall`, not `@muse/prompts`, because it needs BOTH the
  * `PromptLayer` shape (from `@muse/prompts`) and the deterministic injection
@@ -15,12 +16,13 @@
  * for the load-time scan.
  */
 
-import { promises as fs, readFileSync } from "node:fs";
+import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
-import type { PromptLayer } from "@muse/prompts";
+import { InMemoryPromptLayerRegistry } from "@muse/prompts";
+import type { PromptLayer, PromptLayerContext } from "@muse/prompts";
 
 export type PersonaRegister = "존댓말" | "반말";
 
@@ -179,9 +181,24 @@ export function renderPersonaMarkdown(frontmatter: PersonaFrontmatter, body: str
   return lines.length === 0 ? `${trimmedBody}\n` : `---\n${lines.join("\n")}\n---\n\n${trimmedBody}\n`;
 }
 
-export function resolvePersonaFilePath(env: NodeJS.ProcessEnv = process.env): string {
+/**
+ * Canonical file is uppercase `PERSONA.md` (the SOUL.md/AGENTS.md
+ * convention); installs that predate the rename keep working because a
+ * still-present lowercase `persona.md` wins when no uppercase file exists.
+ * Read AND write sites share this resolution, so a legacy install keeps
+ * reading and saving the same file instead of forking into two.
+ */
+export function resolvePersonaFilePath(
+  env: NodeJS.ProcessEnv = process.env,
+  configDir: string = join(homedir(), ".config", "muse")
+): string {
   const override = env.MUSE_PERSONA_MD_FILE?.trim();
-  return override && override.length > 0 ? override : join(homedir(), ".config", "muse", "persona.md");
+  if (override && override.length > 0) return override;
+  const canonical = join(configDir, "PERSONA.md");
+  if (existsSync(canonical)) return canonical;
+  const legacy = join(configDir, "persona.md");
+  if (existsSync(legacy)) return legacy;
+  return canonical;
 }
 
 export type PersonaContentResult =
@@ -254,11 +271,11 @@ export function loadUserPersonaSync(filePath: string = resolvePersonaFilePath())
 /**
  * Runtime convenience: absent OR invalid file -> the default bluebird
  * personality layer (warm, understated, an occasional light joke) rather than
- * NO character. A fresh install with no persona.md previously got `undefined`
+ * NO character. A fresh install with no persona file previously got `undefined`
  * here, so the flagship chat surface ran with zero personality while the
  * bluebird/tagline surfaces had one — Muse read as a generic voice box. Fail
  * OPEN to the default so every install has a consistent warm character (a user
- * persona.md still overrides it). The typed `reason` a broken file produces is
+ * PERSONA.md still overrides it). The typed `reason` a broken file produces is
  * for `loadUserPersona`'s caller (the save/preview API), not this path.
  */
 export async function resolveRuntimePersonaLayer(filePath: string = resolvePersonaFilePath()): Promise<PromptLayer> {
@@ -271,6 +288,93 @@ export function resolveRuntimePersonaLayerSync(filePath: string = resolvePersona
   const result = loadUserPersonaSync(filePath);
   if (!result.exists) return defaultPersonaLayer();
   return result.ok ? result.layer : defaultPersonaLayer();
+}
+
+interface PersonaFileSignature {
+  readonly ino: number;
+  readonly mtimeMs: number;
+  readonly size: number;
+}
+
+function statPersonaSignature(filePath: string): PersonaFileSignature | undefined {
+  try {
+    const stats = statSync(filePath);
+    return { ino: stats.ino, mtimeMs: stats.mtimeMs, size: stats.size };
+  } catch {
+    return undefined;
+  }
+}
+
+function personaSignaturesEqual(a: PersonaFileSignature | undefined, b: PersonaFileSignature | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.ino === b.ino && a.mtimeMs === b.mtimeMs && a.size === b.size;
+}
+
+/**
+ * Prompt-layer registry whose L1 personality entry hot-applies DIRECT edits
+ * to PERSONA.md: `resolve`/`list` stat the file first (ino/size/mtime — the
+ * cost is one statSync, not a read) and re-run the full load path
+ * (frontmatter validation + injection scan + fail-open bluebird default)
+ * only when the signature changed. Without this, a long-lived process (API
+ * server, channel daemon) only picked up persona changes made through the
+ * save API; a `vim ~/.config/muse/PERSONA.md` edit was invisible until
+ * restart. The save API's register/unregister also records the file's
+ * post-save signature so a save is never followed by a redundant re-read —
+ * and a registry mutation is never clobbered by a stale-signature refresh.
+ */
+export class PersonaHotReloadRegistry extends InMemoryPromptLayerRegistry {
+  private signature: PersonaFileSignature | undefined;
+
+  constructor(private readonly personaFilePath: string) {
+    super();
+    this.refreshPersonaLayer();
+  }
+
+  override register(layer: PromptLayer): void {
+    super.register(layer);
+    if (layer.id === PERSONALITY_LAYER_ID) {
+      this.signature = statPersonaSignature(this.personaFilePath);
+    }
+  }
+
+  override unregister(id: string): boolean {
+    const removed = super.unregister(id);
+    if (id === PERSONALITY_LAYER_ID) {
+      this.signature = statPersonaSignature(this.personaFilePath);
+    }
+    return removed;
+  }
+
+  override resolve(context: PromptLayerContext): readonly PromptLayer[] {
+    this.refreshPersonaIfChanged();
+    return super.resolve(context);
+  }
+
+  override list(): readonly PromptLayer[] {
+    this.refreshPersonaIfChanged();
+    return super.list();
+  }
+
+  private refreshPersonaIfChanged(): void {
+    if (!personaSignaturesEqual(statPersonaSignature(this.personaFilePath), this.signature)) {
+      this.refreshPersonaLayer();
+    }
+  }
+
+  // Mirrors the save API's semantics (prompt-routes applyPersonaToRegistry):
+  // a whitespace-only body means "no personality override", so the entry is
+  // unregistered rather than registered empty. Absent/invalid files never
+  // land here empty — resolveRuntimePersonaLayerSync fails open to the
+  // default bluebird layer, which is always non-empty.
+  private refreshPersonaLayer(): void {
+    this.signature = statPersonaSignature(this.personaFilePath);
+    const layer = resolveRuntimePersonaLayerSync(this.personaFilePath);
+    if (layer.content.trim().length > 0) {
+      super.register(layer);
+    } else {
+      super.unregister(PERSONALITY_LAYER_ID);
+    }
+  }
 }
 
 /**

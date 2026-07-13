@@ -10,7 +10,7 @@ hand-assembled prompt paths collapse into one seam. Companion:
 ```
 STABLE PREFIX (cached, byte-identical per session)
   L0 identity-core      buildIdentityCore(locale)            ~40 tok
-  L1 personality        ~/.config/muse/persona.md OR default  ~60 tok
+  L1 personality        ~/.config/muse/PERSONA.md OR default  ~60 tok
   L2 surface-role       SURFACE_ROLES[surface]                ~40 tok
   L3 behavioral-rules   grounding-abstention + memory-is-DATA + tool policy
   L4 provider-overlay   providerStablePrefix (model-family tone)
@@ -33,7 +33,7 @@ shared-scope channels force neutral register and scope-filter D1 out.
   (`packages/prompts/src/compose.ts`, `MuseSurface` enum, `SURFACE_ROLES`);
   delegates to the existing `buildLayeredSystemPrompt` + layer registry.
   Rejected: parallel per-surface builders sharing only a constant.
-- **D2** `~/.config/muse/persona.md` (tone/personality ONLY; Zod frontmatter
+- **D2** `~/.config/muse/PERSONA.md` (tone/personality ONLY; Zod frontmatter
   `register/maxWords/language`; body through neutralizeInjectionSpans +
   escapeSystemPromptMarkers at LOAD; invalid ⇒ default bluebird layer;
   file REPLACES L1). **No user-authored facts file** — hand-written facts
@@ -74,7 +74,7 @@ one eval case. Zero new hardcoded identity strings, ever.
 
 The user-editable half gets first-class management + experimentation:
 
-1. **Persona editor** (web console view): edit `~/.config/muse/persona.md`
+1. **Persona editor** (web console view): edit `~/.config/muse/PERSONA.md`
    (frontmatter register/maxWords/language + body) with Zod validation and
    the injection scan running at SAVE time; invalid ⇒ rejected with the
    reason, never silently defaulted.

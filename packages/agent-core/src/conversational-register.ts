@@ -271,7 +271,7 @@ export function buildLanguageMirrorLayer(userText: string): PromptLayer | undefi
 
 export interface RegisterBrevityLayerInput {
   readonly userText: string;
-  /** From `persona.md`'s `register` frontmatter — WINS over detection when set. */
+  /** From `PERSONA.md`'s `register` frontmatter — WINS over detection when set. */
   readonly personaRegister?: PersonaRegister;
 }
 
@@ -313,8 +313,8 @@ function selectBrevityLine(userText: string): string | undefined {
 /**
  * Build the register-mirroring + brevity dynamic layer for the CURRENT
  * turn's user text, or `undefined` when neither signal applies (nothing to
- * add). An explicit persona.md register always wins over per-turn
- * detection; detection only fills in when persona.md has no opinion
+ * add). An explicit PERSONA.md register always wins over per-turn
+ * detection; detection only fills in when PERSONA.md has no opinion
  * (absent file or "unknown" — no Hangul / no ending signal).
  */
 export function buildRegisterBrevityLayer(input: RegisterBrevityLayerInput): PromptLayer | undefined {

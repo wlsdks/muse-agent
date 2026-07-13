@@ -1,7 +1,7 @@
 /**
  * The S3 user-manageable prompt surface (docs/strategy/prompt-architecture.md
  * §S3): a persona editor, a read-only composed-prompt preview, and a local
- * A/B experiment runner over `~/.config/muse/persona.md`.
+ * A/B experiment runner over `~/.config/muse/PERSONA.md`.
  *
  * `GET`/`PUT /api/prompt/persona` both work over the raw markdown file text
  * (frontmatter fence + body) — the web's `prompt-lab-logic.ts` renders that
@@ -42,7 +42,7 @@ import type { ServerOptions } from "./server-options.js";
 
 export interface PromptRoutesOptions {
   readonly authService: ServerOptions["authService"];
-  /** Override the persona.md path (tests). Defaults to `resolvePersonaFilePath()`. */
+  /** Override the PERSONA.md path (tests). Defaults to `resolvePersonaFilePath()`. */
   readonly personaFilePath?: string;
   /** The SAME registry instance the assembled agentRuntime reads its L1 layer from. */
   readonly promptLayerRegistry?: InMemoryPromptLayerRegistry;

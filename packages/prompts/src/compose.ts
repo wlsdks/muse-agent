@@ -7,7 +7,7 @@
  *
  * Layer order (the canonical stack from the architecture doc):
  *   L0 identity-core   — MUSE_IDENTITY_CORE, always first
- *   L1 personality      — caller-supplied via ctx.layers (persona.md etc.)
+ *   L1 personality      — caller-supplied via ctx.layers (PERSONA.md etc.)
  *   L2 surface-role      — SURFACE_ROLES[surface], always after personality
  *   L3+ behavioral-rules / provider-overlay — caller-supplied via ctx.layers
  *   ------------------- MUSE_CACHE_BOUNDARY (always exactly one) ---------

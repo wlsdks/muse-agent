@@ -175,7 +175,7 @@ export interface AgentRuntimeOptions {
   readonly toolExemplarTopK?: number;
   readonly promptLayerRegistry?: PromptLayerRegistry;
   /**
-   * The `persona.md` `register` frontmatter setting (docs/strategy/
+   * The `PERSONA.md` `register` frontmatter setting (docs/strategy/
    * prompt-architecture.md §4), read once at startup alongside the
    * personality `PromptLayer`. WINS over per-turn 반말/존댓말 detection —
    * the user configured it deliberately. Undefined ⇒ detection alone

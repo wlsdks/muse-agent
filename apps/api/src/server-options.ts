@@ -59,7 +59,7 @@ export interface ServerOptions {
    * preview / A/B experiment routes (`prompt-routes.ts`).
    */
   readonly promptLayerRegistry?: InMemoryPromptLayerRegistry;
-  /** The persona.md path `promptLayerRegistry` was seeded from at startup. */
+  /** The PERSONA.md path `promptLayerRegistry` was seeded from at startup. */
   readonly personaFilePath?: string;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettings;

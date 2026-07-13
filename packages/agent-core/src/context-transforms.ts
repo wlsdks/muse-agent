@@ -475,7 +475,7 @@ export async function persistConversationSummaryFromRequest(
  * `systemPrompt` reached the model with none). `composeSurfacePrompt`
  * always runs now; registry layers, when present, ADD on top of it.
  *
- * `personaRegister` is the explicit `persona.md` `register` setting
+ * `personaRegister` is the explicit `PERSONA.md` `register` setting
  * (undefined when unconfigured) — it and the current turn's user text feed
  * `buildRegisterBrevityLayer` (docs/strategy/prompt-architecture.md §4 D2),
  * a dynamic layer that mirrors the user's 반말/존댓말 register and, on a
