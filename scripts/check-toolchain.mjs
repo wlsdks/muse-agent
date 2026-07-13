@@ -4,15 +4,23 @@
 //
 // TS 7.0 ships no programmatic compiler API (it lands in 7.1), so
 // typescript-eslint and knip — which import `typescript` directly — crash on it.
-// The split is: `typescript` (the module) stays at 6, and `typescript7` is an
-// npm alias whose `tsc` binary wins in node_modules/.bin. Measured on this repo:
-// a clean full build goes 17.4s -> 3.2s, output is byte-complete (1622 .d.ts),
-// tests pass against the TS7-emitted dist, and lint stays green.
+// The split is Microsoft's own side-by-side configuration, and it is
+// deterministic BY CONSTRUCTION rather than by luck:
+//   `typescript`  -> npm:@typescript/typescript6  (the official compat package —
+//                    re-exports the 6.0 API for typescript-eslint / knip / the
+//                    IDE; its binary is `tsc6`, so it can never shadow `tsc`)
+//   `typescript7` -> npm:typescript@7             (the SOLE provider of `tsc`,
+//                    so every package's `tsc -b` runs the Go compiler)
 //
-// That split relies on pnpm's bin-linking order, which is deterministic but not
-// contractual. If it ever flips, builds would silently fall back to the slow
-// compiler — or, worse, lint would start resolving TS7 and crash. This gate makes
-// either outcome a loud failure instead of a silent one.
+// Measured on this repo (3 reps each, <5% spread):
+//   clean full build   8850ms -> 1325ms  (6.7x)
+//   1-file rebuild      580ms ->  168ms  (3.5x)   <- the actual inner loop
+//   agent-core check    480ms ->  102ms  (4.7x)
+//
+// The gate exists because a dependency bump could silently undo the split: a
+// `typescript` that resolves to 7 would crash lint (no compiler API before 7.1),
+// and a `tsc` that resolves to 6 would quietly hand back the slow build. Both are
+// loud failures now.
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
