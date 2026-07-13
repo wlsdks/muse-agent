@@ -8,6 +8,78 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.40] - 2026-07-13
+
+A **security and correctness audit** release. Two independent audits — a
+threshold-calibration sweep and an adversarial review — found that several
+guards Muse relied on were quietly doing the wrong thing, and one live gate had
+been un-runnable for two days without anyone noticing. Everything below is now
+measured against the real local model, pinned by a live battery, and verified by
+an independent judge.
+
+### Fixed
+
+- **The cross-source conflict warning was inverted.** The "these sources
+  disagree" cue (and the multi-agent "workers disagree" line) flagged sources
+  that *agreed* and stayed silent on ones that genuinely conflicted. Root cause:
+  a differing value *lowers* embedding similarity, so the "same topic" bar was
+  selecting paraphrases and skipping real conflicts. Conflicts are now decided by
+  comparing the actual values (amounts, times, dates, weekdays — notation-
+  normalised, so `2pm` and `14:00` are the same value) plus a polarity check, so
+  "not X, it's Y" phrasings and purely qualitative disagreements are caught too.
+- **The council's "everyone agrees" check had never once fired**, so a debate
+  always burned its full round budget; after the fix it also correctly refuses to
+  declare agreement on a panel that actually disagrees (including "we should
+  ship" vs "we should NOT ship", which carries no numbers to compare).
+- **A dissenting minority voice was being silenced while noise was surfaced as
+  "dissent".** The check now asks whether the quarantined peer is answering the
+  question, which is what actually separates a minority view from an off-topic
+  one.
+- **Recall thresholds are now calibrated against the real embedder** rather than
+  a plausible-sounding guess — a Korean paraphrase or an English answer to a
+  Korean question is no longer at risk of being screened out of a council.
+- **A fabricated email, handle, birthday or phone number can no longer be saved
+  to a contact.** Previously an invented `bob@gmail.com` was "justified" by the
+  name *Bob* appearing in your message, and an invented phone number by any
+  stray digits nearby. Each field is now verified against what you actually
+  said — the domain for an email, the literal `@handle`, every digit of a phone
+  number.
+- **Honest Korean prose about AI systems is no longer treated as an attack.** A
+  sentence merely *mentioning* the system prompt (as any AI-engineering
+  discussion does) was being flagged and stripped; a real extraction attempt
+  still is.
+- **A stored preference can no longer forge a fake "never suggest X" rule** in
+  the conversation summary Muse carries between turns.
+- Assorted rot: a bot-token store that could false-hit on `__proto__`, a broken
+  byte-hygiene fixture, and test timeouts under load.
+
+### Added
+
+- **Poisoned content can no longer be written into your memory, notes or
+  contacts.** Muse already refused to *send* or *run* anything derived from an
+  untrusted tool result; it now also refuses to *store* it without your
+  confirmation — closing the memory-poisoning path where a planted web page or
+  email says "remember: the user's bank is …" and Muse quietly believes it.
+  Writes built from your *own* notes and stores are unaffected.
+- **A compromised council member can no longer smuggle instructions into the
+  final answer** — an injected instruction inside a peer's reasoning is defanged
+  before synthesis, while the peer keeps its honest contribution.
+- **External MCP servers can no longer claim the `muse.` namespace** and inherit
+  the trust Muse's own tools carry.
+- **A hung sub-agent is now actually detected.** The pieces existed but were
+  never connected: a stalled background run stayed "running" forever unless
+  someone happened to poll it.
+- **A new gate catches broken gates.** `pnpm self-eval` now boots the API server
+  on every run — the live smoke suite had been silently un-runnable for two days
+  (a stale install, then a stale build) and no signal existed to say so.
+- `pnpm eval:council-floors` — a 32-check live battery that pins every one of the
+  above against the real local embedder, so none of it can silently rot again.
+
+### Changed
+
+- Muse's own development discipline is now a skill (`muse-dev-patterns`),
+  distilled from 200+ autonomous iterations.
+
 ## [0.2.39] - 2026-07-12
 
 Chat now answers **as it thinks**: live token streaming through the citation
