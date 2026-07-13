@@ -1,4 +1,5 @@
 import { cosineSimilarity } from "./episodic-recall.js";
+import { detectPairwiseContradictions } from "./evidence-conflicts.js";
 import { lexicalTokens } from "./knowledge-recall.js";
 
 // Jaccard similarity between two token sets (arXiv:2503.05856 — outlier screen).
@@ -172,15 +173,20 @@ export function hasCouncilConsensus(
 }
 
 /**
- * Cosine-scale agreement threshold for the semantic ReConcile consensus gate
- * (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse): agreeing peers (including
- * cross-lingual KO+EN via the multilingual embedder) score cosine ≥0.6; genuinely
- * divergent peers score ≤0.25. 0.5 sits cleanly in the gap. Distinct from
- * COSINE_ABS_FLOOR (0.4): that is the outlier-screen floor for quarantining a
- * deceptive member; this is the consensus bar every member must clear to stop the
- * debate — a stricter gate (higher bar for "we agree") makes the early-exit safe.
+ * Topic-coherence bar for the semantic ReConcile consensus gate (arXiv:2309.13007
+ * + arXiv:2507.14649 — Cleanse). It is the FIRST half of the gate; the value-
+ * conflict detector is the second (see hasCouncilConsensusSemantic).
+ *
+ * LIVE-CALIBRATED (eval:council-floors). The original 0.5 was set on the belief
+ * that agreeing peers score ≥0.6 — measured, a fully AGREEING KO/EN panel's
+ * weakest member support is 0.319, so the gate could NEVER fire and the debate
+ * early-exit was dead code on any multilingual or paraphrase-diverse panel.
+ * 0.25 sits below that band and well above the unrelated-member band (0.03-0.05),
+ * so an off-topic panel still fails the bar. Distinct from COSINE_ABS_FLOOR
+ * (0.15) — that quarantines a single deceptive member; this asks whether the
+ * WHOLE panel is talking about one thing.
  */
-export const DEFAULT_COUNCIL_AGREE_AT_COSINE = 0.5;
+export const DEFAULT_COUNCIL_AGREE_AT_COSINE = 0.25;
 
 /**
  * Semantic ReConcile consensus gate (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse):
@@ -201,7 +207,17 @@ export async function hasCouncilConsensusSemantic(
   if (n <= 1) return true;
   const agreeAt = opts?.agreeAt ?? DEFAULT_COUNCIL_AGREE_AT_COSINE;
   const supports = await councilMemberSupportsSemantic(utterances, embed);
-  return supports.every((s) => s >= agreeAt);
+  if (!supports.every((s) => s >= agreeAt)) return false;
+  // Pairwise prose cosine measures TOPIC, not AGREEMENT — measured, a member who
+  // disagrees on the VALUES while discussing the same subject scores HIGHER (0.56)
+  // than a genuinely agreeing cross-lingual member (0.32). So a cosine bar alone
+  // cannot be a consensus gate: set high it never fires (the old 0.5 was above the
+  // agreement band entirely — the debate could never early-exit), set low it
+  // declares consensus over an unresolved disagreement, which is the dangerous
+  // direction. Cosine answers "same subject"; the value-conflict detector answers
+  // "same answer" — consensus needs BOTH.
+  const conflicts = await detectPairwiseContradictions(utterances.map((u) => u.reasoning), embed);
+  return conflicts.length === 0;
 }
 
 /**

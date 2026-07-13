@@ -9,16 +9,23 @@ import {
 } from "../src/index.js";
 
 // Dissent-surfacing advisory (Hear Both Sides, arXiv:2603.20640): a consensus
-// -outlier the majority set aside, whose reasoning materially diverges from the
-// answer, is surfaced as a caution — never re-admitted.
+// -outlier the majority set aside, which is nonetheless ANSWERING THE QUESTION, is
+// surfaced as a caution — never re-admitted. The axis is question-relevance, not
+// distance from the answer: a genuine dissent embeds CLOSE to the answer (same
+// subject), while noise embeds far from BOTH — the old low-cosine-to-answer test
+// surfaced exactly the wrong peers (measured; see selectDissentingExclusions).
 
+const QUESTION = "should we ship this quarter?";
 const utterances: readonly CouncilUtterance[] = [
-  { peerId: "alice", reasoning: "alice reasoning supporting the plan" },
-  { peerId: "carol", reasoning: "carol dissent against the plan" }
+  { peerId: "alice", reasoning: "alice reasoning supporting the plan to ship" },
+  { peerId: "carol", reasoning: "carol argues against shipping this quarter" }
 ];
-// answer ≈ alice, orthogonal to carol.
+// carol is ON-TOPIC to the question (a minority view) but far from the answer;
+// noise is far from the question too.
 const VEC = (t: string): readonly number[] =>
-  t.includes("carol") ? [0, 1, 0] : t.includes("synthes") || t.includes("alice") ? [1, 0, 0] : [0, 0, 1];
+  t.includes("noise") ? [0, 0, 1]
+    : t.includes("carol") || t.includes("against shipping") ? [0.6, 0.8, 0]
+      : [1, 0, 0];
 const stubEmbed = async (t: string): Promise<readonly number[]> => VEC(t);
 
 const answerWith = (excludedPeers: CouncilAnswer["excludedPeers"]): CouncilAnswer => ({
@@ -26,14 +33,36 @@ const answerWith = (excludedPeers: CouncilAnswer["excludedPeers"]): CouncilAnswe
 });
 
 describe("selectDissentingExclusions (Hear Both Sides arXiv:2603.20640)", () => {
-  it("surfaces a consensus-outlier whose reasoning diverges from the answer", async () => {
-    const out = await selectDissentingExclusions(answerWith([{ peerId: "carol", reason: "consensus-outlier" }]), utterances, stubEmbed);
+  it("surfaces a consensus-outlier that is answering the QUESTION (a minority view)", async () => {
+    const out = await selectDissentingExclusions(
+      answerWith([{ peerId: "carol", reason: "consensus-outlier" }]),
+      utterances,
+      stubEmbed,
+      { question: QUESTION }
+    );
     expect(out).toEqual(["carol"]);
   });
 
-  it("does NOT surface a quarantined peer whose reasoning agrees with the answer (cosine ≥ floor)", async () => {
-    const embed = async (t: string): Promise<readonly number[]> => (t.includes("carol") ? [0.95, 0.05, 0] : [1, 0, 0]); // carol ≈ answer
-    const out = await selectDissentingExclusions(answerWith([{ peerId: "carol", reason: "consensus-outlier" }]), utterances, embed);
+  it("does NOT surface a quarantined peer that is NOISE (unrelated to the question)", async () => {
+    const noisy: readonly CouncilUtterance[] = [
+      { peerId: "alice", reasoning: "alice reasoning supporting the plan to ship" },
+      { peerId: "carol", reasoning: "unrelated noise about baseball scores" }
+    ];
+    const out = await selectDissentingExclusions(
+      answerWith([{ peerId: "carol", reason: "consensus-outlier" }]),
+      noisy,
+      stubEmbed,
+      { question: QUESTION }
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("without a question the advisory stays SILENT (relevance cannot be assessed — fail-soft)", async () => {
+    const out = await selectDissentingExclusions(
+      answerWith([{ peerId: "carol", reason: "consensus-outlier" }]),
+      utterances,
+      stubEmbed
+    );
     expect(out).toEqual([]);
   });
 
@@ -48,7 +77,7 @@ describe("selectDissentingExclusions (Hear Both Sides arXiv:2603.20640)", () => 
 
   it("fail-soft: an embedder that throws surfaces nothing (today's silent behaviour)", async () => {
     const throwing = async (): Promise<readonly number[]> => { throw new Error("embedder down"); };
-    expect(await selectDissentingExclusions(answerWith([{ peerId: "carol", reason: "consensus-outlier" }]), utterances, throwing)).toEqual([]);
+    expect(await selectDissentingExclusions(answerWith([{ peerId: "carol", reason: "consensus-outlier" }]), utterances, throwing, { question: QUESTION })).toEqual([]);
   });
 
   it("exports a sane dissent floor", () => {
@@ -83,6 +112,6 @@ describe("synthesizeCouncilAnswer → selectDissentingExclusions — end-to-end 
     // carol was quarantined as a consensus-outlier before synthesis...
     expect(answer!.excludedPeers?.some((e) => e.peerId === "carol" && e.reason === "consensus-outlier")).toBe(true);
     // ...and surfaces as dissent (her reasoning diverges from the answer).
-    expect(await selectDissentingExclusions(answer!, panel, panelEmbed)).toEqual(["carol"]);
+    expect(await selectDissentingExclusions(answer!, panel, panelEmbed, { question: "should we ship?" })).toEqual(["carol"]);
   });
 });

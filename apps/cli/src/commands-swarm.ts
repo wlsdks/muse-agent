@@ -544,7 +544,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       };
       const answer = await synthesizeCouncilAnswer(question, utterances, { embed: embedFn, model: model!, modelProvider: modelProvider!, reverify });
       // Surface a materially-dissenting peer the outlier screen set aside (Hear Both Sides).
-      const dissenting = answer ? await selectDissentingExclusions(answer, utterances, embedFn) : [];
+      const dissenting = answer ? await selectDissentingExclusions(answer, utterances, embedFn, { question }) : [];
       io.stdout(`${renderCouncilResult(question, utterances, answer, conformistCaution, dissenting)}\n`);
     });
 

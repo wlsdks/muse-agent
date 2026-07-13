@@ -375,12 +375,14 @@ export async function screenUnfaithfulContributors(
 }
 
 /**
- * Cosine floor below which a quarantined peer's reasoning is a GENUINE dissent
- * from the synthesized answer (not a near-paraphrase the screen caught for some
- * other reason). Conservative (0.35): surface only a peer that materially argued
- * differently, not one quarantined on a borderline support score.
+ * Retained for back-compat with callers that pin the dissent bar explicitly. The
+ * dissent check now runs on QUESTION-relevance (see selectDissentingExclusions),
+ * which has its own calibrated floor (QUESTION_RELEVANCE_FLOOR) — this constant is
+ * no longer read by the default path. Its old meaning (dissent ⟺ cosine to the
+ * answer BELOW 0.35) was inverted: a genuine dissent scores 0.667 against the
+ * answer, an unrelated peer 0.051.
  */
-export const COUNCIL_DISSENT_COSINE_FLOOR = 0.35;
+export const COUNCIL_DISSENT_COSINE_FLOOR = QUESTION_RELEVANCE_FLOOR;
 
 /**
  * Dissent-surfacing advisory ("Hear Both Sides", arXiv:2603.20640 — retain
@@ -390,42 +392,62 @@ export const COUNCIL_DISSENT_COSINE_FLOOR = 0.35;
  * the renderer drops that field — so a lone peer the majority OUTVOTED vanishes
  * invisibly (a confidently-presented majority answer that buried a correct
  * minority is overconfidence-adjacent). This returns the peerIds of
- * consensus-outlier exclusions whose reasoning SEMANTICALLY diverges from the
- * answer (embedding cosine < `threshold`), so the caller can surface ONE caution
- * line. ADVISORY-ONLY (arXiv:2511.07784): it never re-admits the peer, alters the
- * answer/contributors, or touches the grounding gate. Semantic (the cumulative
- * lesson — divergence isn't a lexical signal). Fail-soft: no embed / throw / empty
- * vector / no exclusions ⇒ [] (today's silent behaviour). Pure over the injected
- * embedder + exported for direct coverage.
+ * consensus-outlier exclusions that are a genuine minority VIEW rather than noise,
+ * so the caller can surface ONE caution line.
+ *
+ * The axis is relevance to the QUESTION, not distance from the answer — the old
+ * cosine-below-a-floor test was inverted. Measured: a genuine dissent ("아니야, 월세는
+ * 130만원이고 납부일은 3일이야" against an answer saying 25일/90만원) scores 0.667
+ * AGAINST the answer, well above the old 0.35 floor, so it was never surfaced —
+ * while an unrelated peer scores 0.051 and WAS surfaced as "dissent". Naturally:
+ * dissent is about the same subject, so it embeds CLOSE to the answer. What
+ * separates a minority view from noise is whether the peer is answering the
+ * QUESTION at all — and unlike a value-conflict test, that also covers a purely
+ * qualitative dissent ("ship gradually" vs "do not ship"), which carries no
+ * comparable value token.
+ *
+ * `question` is optional only for back-compat; absent, relevance cannot be assessed
+ * and the advisory stays SILENT (`[]`), matching the module's fail-soft contract —
+ * the live caller always passes it. ADVISORY-ONLY
+ * (arXiv:2511.07784) — it never re-admits the peer, alters the answer/contributors,
+ * or touches the grounding gate, so an over-surfaced caution line costs a sentence,
+ * never correctness. Fail-soft: embed throws / empty vector ⇒ [] (silent).
  */
 export async function selectDissentingExclusions(
   answer: CouncilAnswer,
   utterances: readonly CouncilUtterance[],
   embed: (text: string) => Promise<readonly number[]>,
-  threshold: number = COUNCIL_DISSENT_COSINE_FLOOR
+  opts?: { readonly question?: string; readonly relevanceFloor?: number }
 ): Promise<string[]> {
   const excluded = (answer.excludedPeers ?? []).filter((e) => e.reason === "consensus-outlier");
   if (excluded.length === 0 || answer.answer.trim().length === 0) return [];
   const reasoningById = new Map(utterances.map((u) => [u.peerId, u.reasoning]));
-  let answerVec: readonly number[];
+  const question = opts?.question?.trim() ?? "";
+  const floor = opts?.relevanceFloor ?? QUESTION_RELEVANCE_FLOOR;
+
+  const candidates = excluded
+    .map((exclusion) => ({ peerId: exclusion.peerId, reasoning: reasoningById.get(exclusion.peerId) ?? "" }))
+    .filter((candidate) => candidate.reasoning.trim().length > 0);
+  if (candidates.length === 0 || question.length === 0) return [];
+
+  let questionVec: readonly number[];
   try {
-    answerVec = await embed(answer.answer);
+    questionVec = await embed(question);
   } catch {
     return [];
   }
-  if (answerVec.length === 0) return [];
+  if (questionVec.length === 0) return [];
+
   const dissenting: string[] = [];
-  for (const exclusion of excluded) {
-    const reasoning = reasoningById.get(exclusion.peerId);
-    if (reasoning === undefined || reasoning.trim().length === 0) continue;
+  for (const candidate of candidates) {
     let vec: readonly number[];
     try {
-      vec = await embed(reasoning);
+      vec = await embed(candidate.reasoning);
     } catch {
       return [];
     }
     if (vec.length === 0) continue;
-    if (cosineSimilarity(answerVec, vec) < threshold) dissenting.push(exclusion.peerId);
+    if (cosineSimilarity(questionVec, vec) >= floor) dissenting.push(candidate.peerId);
   }
   return dissenting;
 }

@@ -24,6 +24,7 @@ import {
   QUESTION_RELEVANCE_FLOOR,
   councilMemberSupportsSemantic,
   detectPairwiseContradictions,
+  hasCouncilConsensusSemantic,
   screenCouncilOutliers,
   screenOffTopicUtterancesSemantic
 } from "../packages/agent-core/dist/index.js";
@@ -209,6 +210,43 @@ for (const c of conflictCases) {
     c.want === 0 ? found === 0 : found > 0,
     `found=${found}, want ${c.want === 0 ? "none" : "conflict"}`
   );
+}
+
+// ---- Consensus gate: it must FIRE on genuine agreement and stay silent on
+// an unresolved value disagreement. Pairwise prose cosine measures TOPIC, not
+// AGREEMENT (a same-topic dissenter outscores an agreeing cross-lingual peer),
+// so the gate is cosine AND no-value-conflict; the old cosine-only bar sat
+// above the agreement band entirely and could never fire.
+const consensusCases = [
+  {
+    want: true,
+    label: "agreeing KO/KO-paraphrase/EN panel reaches consensus (debate can early-exit)",
+    panel: [
+      { peerId: "ko", reasoning: "월세 납부일은 매달 25일이고 금액은 90만원이야." },
+      { peerId: "ko-para", reasoning: "임대료는 스물다섯째 날에 자동이체되도록 되어 있어." },
+      { peerId: "en", reasoning: "The rent is due on the 25th of each month, 900,000 KRW." }
+    ]
+  },
+  {
+    want: false,
+    label: "a value-disagreeing panel does NOT reach consensus",
+    panel: [
+      { peerId: "a", reasoning: "월세는 매달 25일에 나가고 금액은 90만원이야." },
+      { peerId: "b", reasoning: "월세는 매달 3일에 나가고 금액은 130만원이야." }
+    ]
+  },
+  {
+    want: false,
+    label: "an off-topic panel does NOT reach consensus",
+    panel: [
+      { peerId: "a", reasoning: "월세 납부일은 매달 25일이야." },
+      { peerId: "b", reasoning: "The Dodgers won last night's game five to three." }
+    ]
+  }
+];
+for (const c of consensusCases) {
+  const reached = await hasCouncilConsensusSemantic(c.panel, embed);
+  check(`consensus: ${c.label}`, reached === c.want, `reached=${reached}, want ${c.want}`);
 }
 
 console.log(report.join("\n"));
