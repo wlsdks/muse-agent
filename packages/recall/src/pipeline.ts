@@ -163,8 +163,9 @@ export interface GroundedRecallInput {
   readonly sources: GroundedRecallSources;
   readonly options: GroundedRecallOptions;
   readonly runtime: GroundedRecallRuntime;
-  /** Absent or `{}` ⇒ byte-identical to the extras-free pipeline (the API and
-   *  MCP callers pass none). See `GroundedRecallExtras`. */
+  /** Absent or `{}` ⇒ byte-identical to the extras-free pipeline (the MCP
+   *  caller passes none; the CLI and the API ask route both pass
+   *  `refineChunks`). See `GroundedRecallExtras`. */
   readonly extras?: GroundedRecallExtras;
 }
 

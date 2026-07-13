@@ -115,12 +115,18 @@ export function registerAskRoutes(server: FastifyInstance, options: AskRoutesOpt
       ...(topK !== undefined ? { topK } : {})
     };
     const sources: GroundedRecallInput["sources"] = { notesDir: options.notesDir, notesIndexFile: options.notesIndexFile };
+    // CLI parity: near-duplicate dedup + the "Lost in the Middle"
+    // (arXiv:2307.03172) edge-placement reorder previously ran only for
+    // `muse ask`, so the web console's ask answered from an unrefined,
+    // middle-buried chunk order on the same question.
+    const extras: GroundedRecallInput["extras"] = { refineChunks: true };
 
     if (wantsEventStream(request)) {
       reply.header("content-type", "text/event-stream; charset=utf-8");
       reply.header("cache-control", "no-cache");
       reply.header("x-accel-buffering", "no");
       const streamInput: GroundedRecallInput = {
+        extras,
         options: recallOptions,
         query: question,
         runtime: {
@@ -134,6 +140,7 @@ export function registerAskRoutes(server: FastifyInstance, options: AskRoutesOpt
     }
 
     const result: GroundedRecallResult = await runGroundedRecall({
+      extras,
       options: recallOptions,
       query: question,
       runtime: { embedFn, generateAnswer: options.generateAnswer },
