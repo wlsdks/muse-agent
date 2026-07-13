@@ -249,6 +249,32 @@ for (const c of consensusCases) {
   check(`consensus: ${c.label}`, reached === c.want, `reached=${reached}, want ${c.want}`);
 }
 
+// ---- Regression pins from the independent adversarial review (2026-07-13).
+// Each of these SHIPPED green and was still wrong; they are the battery's
+// memory of that.
+const reviewCases = [
+  { want: 0, label: "notation variant 2pm vs 14:00 is NOT a conflict", texts: ["The meeting is at 2pm in the main room.", "The meeting is at 14:00 in the main room."] },
+  { want: 0, label: "notation variant 90만원 vs 900,000원 is NOT a conflict", texts: ["월세는 90만원입니다.", "월세는 900,000원입니다."] },
+  { want: 1, label: "the correcting phrasing that quotes the rival value IS a conflict (KO)", texts: ["월세는 90만원입니다.", "월세는 90만원이 아니라 130만원입니다."] },
+  { want: 1, label: "the correcting phrasing that quotes the rival value IS a conflict (EN)", texts: ["The meeting is at 2pm.", "The meeting is not at 2pm, it is at 4pm."] },
+  { want: 0, label: "a negated sentence on a DIFFERENT statement is NOT a conflict", texts: ["월세는 매달 25일에 나가.", "관리비는 포함되지 않아."] }
+];
+for (const c of reviewCases) {
+  const found = (await detectPairwiseContradictions(c.texts, embed)).length;
+  check(`review: ${c.label}`, c.want === 0 ? found === 0 : found > 0, `found=${found}`);
+}
+
+const qualitativeCases = [
+  { want: false, label: "EN qualitative disagreement (ship / do NOT ship) is NOT consensus", panel: [{ peerId: "a", reasoning: "We should ship the feature now, the risk is low." }, { peerId: "b", reasoning: "We should not ship the feature now, the risk is high." }] },
+  { want: false, label: "KO qualitative disagreement (이사 / 이사하지 않음) is NOT consensus", panel: [{ peerId: "a", reasoning: "이사하는 게 좋겠어, 지금이 적기야." }, { peerId: "b", reasoning: "이사하지 않는 게 좋겠어, 지금은 적기가 아니야." }] },
+  { want: false, label: "3-peer hire / do-not-hire / hire is NOT consensus", panel: [{ peerId: "a", reasoning: "We should hire this candidate." }, { peerId: "b", reasoning: "We should not hire this candidate." }, { peerId: "c", reasoning: "We should hire this candidate." }] },
+  { want: true, label: "a panel that AGREES while both being negated still reaches consensus", panel: [{ peerId: "a", reasoning: "지금은 이사하지 않는 게 좋겠어." }, { peerId: "b", reasoning: "이사는 하지 않는 편이 나아." }] }
+];
+for (const c of qualitativeCases) {
+  const reached = await hasCouncilConsensusSemantic(c.panel, embed);
+  check(`review: ${c.label}`, reached === c.want, `reached=${reached}`);
+}
+
 console.log(report.join("\n"));
 if (failures.length > 0) {
   console.error(`\neval:council-floors FAILED — ${failures.length} case(s): ${failures.join("; ")}`);

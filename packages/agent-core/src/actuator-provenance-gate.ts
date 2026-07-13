@@ -167,9 +167,20 @@ export const WRITE_SINK_ARG_NAMES: readonly string[] = [
   "description",
   "summary",
   "value",
+  "key",
   "fact",
   "location",
-  "tags"
+  "tags",
+  // Contact fields: `add_contact` is risk:"write" and PERSISTS these, so a
+  // poisoned page could otherwise plant a whole person (name + phone + email +
+  // relationship) into the address book — which later becomes a first-party
+  // trusted store via find_contact, and a recipient for an outbound send.
+  "name",
+  "phone",
+  "email",
+  "handle",
+  "relationship",
+  "birthday"
 ];
 
 /**
@@ -196,11 +207,19 @@ const FIRST_PARTY_READ_PREFIXES: readonly string[] = [
   "muse.history."
 ];
 
+/**
+ * EXACT first-party tool names. `knowledge_search` and `today_brief` are
+ * deliberately ABSENT despite reading the user's own stores: their corpora are
+ * MIXED — `createNotesKnowledgeSearchTool` is wired with `emailSource` (Gmail)
+ * and the feeds/browsing corpora alongside notes/tasks/calendar. Trusting a
+ * mixed reader would let a planted email or feed item cancel its own taint by
+ * being read back through it — the S3b threat model reached through the front
+ * door. A tool is first-party only when EVERY byte it can return is the user's
+ * own authored content.
+ */
 const FIRST_PARTY_READ_TOOL_NAMES: readonly string[] = [
-  "knowledge_search",
   "find_contact",
-  "recall_facts",
-  "today_brief"
+  "recall_facts"
 ];
 
 export function isFirstPartyReadTool(toolName: string): boolean {

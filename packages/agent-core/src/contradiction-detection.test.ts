@@ -306,3 +306,63 @@ describe("detectPairwiseContradictions — value-token discrimination (measured 
     expect(pairs).toEqual([]);
   });
 });
+
+// Independent-review regression pins (2026-07-13). Each of these shipped GREEN
+// and was still wrong — the review found them with concrete inputs.
+describe("detectPairwiseContradictions — notation + polarity (adversarial review)", () => {
+  const embed = async (t: string): Promise<readonly number[]> => {
+    const lower = t.toLowerCase();
+    if (lower.includes("dodgers")) return [0, 1];
+    // Opposite-polarity same-statement pairs measure ~0.9 live; same-statement
+    // value variants ~0.79; a negated DIFFERENT statement ~0.24.
+    const theta = /관리비|different/u.test(lower) ? 1.33 : /not|않|아니|4pm|130/u.test(lower) ? 0.45 : 0;
+    return [Math.cos(theta), Math.sin(theta)];
+  };
+
+  it("a notation variant (2pm vs 14:00) is NOT a conflict", async () => {
+    expect(
+      await detectPairwiseContradictions(
+        ["The meeting is at 2pm in the main room.", "The meeting is at 14:00 in the main room."],
+        embed
+      )
+    ).toEqual([]);
+  });
+
+  it("a Korean myriad/comma notation variant (90만원 vs 900,000원) is NOT a conflict", async () => {
+    expect(
+      await detectPairwiseContradictions(["월세는 90만원입니다.", "월세는 900,000원입니다."], embed)
+    ).toEqual([]);
+  });
+
+  it("the correcting phrasing that QUOTES the rival value is still a conflict (superset values)", async () => {
+    const pairs = await detectPairwiseContradictions(
+      ["월세는 90만원입니다.", "월세는 90만원이 아니라 130만원입니다."],
+      embed
+    );
+    expect(pairs).toHaveLength(1);
+  });
+
+  it("qualitative disagreement with NO value tokens is a conflict (polarity)", async () => {
+    const pairs = await detectPairwiseContradictions(
+      ["We should ship the feature now.", "We should not ship the feature now."],
+      embed
+    );
+    expect(pairs).toHaveLength(1);
+  });
+
+  it("a negated sentence on a DIFFERENT statement is NOT a conflict", async () => {
+    expect(
+      await detectPairwiseContradictions(["월세는 매달 25일에 나가.", "관리비는 포함되지 않아."], embed)
+    ).toEqual([]);
+  });
+
+  it("'now' does not read as the negation 'no' (word-boundary matching)", async () => {
+    // Both affirmative → same polarity → no polarity conflict.
+    expect(
+      await detectPairwiseContradictions(
+        ["We should ship the feature now.", "We should ship the feature now, definitely."],
+        embed
+      )
+    ).toEqual([]);
+  });
+});

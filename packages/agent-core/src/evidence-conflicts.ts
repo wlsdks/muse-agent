@@ -44,6 +44,19 @@ export interface ContradictionPair {
 const CONTRADICTION_TOPIC_SIM_MIN = 0.6;
 const CONTRADICTION_STATEMENT_OVERLAP_MIN = 0.5;
 
+/**
+ * Cosine at which two statements are the SAME statement, for the polarity test
+ * only. Polarity conflict cannot lean on the lexical skeleton overlap: Korean is
+ * agglutinative, so "이사하는" and "이사하지" are different tokens and an opposed
+ * KO pair's overlap collapses to 0.2 — below the skeleton gate, which then
+ * silently drops the disagreement. Cosine is script-neutral, and the separation
+ * is wide: measured, opposite-polarity SAME-statement pairs sit at 0.875-0.912
+ * (KO 이사/유지 0.875, EN ship/not-ship 0.912, KO 채용/거절 0.895) while a
+ * negated sentence on a DIFFERENT statement sits at 0.13-0.24. 0.75 keeps a wide
+ * margin on both sides.
+ */
+const POLARITY_TOPIC_SIM_MIN = 0.75;
+
 const WEEKDAY_MONTH_VALUES = new Set([
   "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
   "january", "february", "march", "april", "may", "june",
@@ -63,15 +76,76 @@ const WEEKDAY_MONTH_VALUES = new Set([
  */
 function valueTokens(text: string): Set<string> {
   const out = new Set<string>();
-  for (const run of text.match(/\d+/gu) ?? []) {
-    out.add(String(Number(run)));
+  const lower = text.toLowerCase();
+
+  // NOTATION-NORMALISE before comparing, or a notation variant reads as a
+  // different value and an AGREEING pair is flagged — the exact failure this
+  // detector exists to prevent. Clock times collapse to minutes-since-midnight
+  // ("2pm" and "14:00" are both 840); Korean myriad/hundred-million multipliers
+  // and thousands separators collapse to a plain number ("90만원" and
+  // "900,000원" are both 900000).
+  const consumed: [number, number][] = [];
+  const claim = (match: RegExpMatchArray): void => {
+    const start = match.index ?? 0;
+    consumed.push([start, start + match[0].length]);
+  };
+
+  for (const m of lower.matchAll(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/gu)) {
+    const hour12 = Number(m[1]);
+    const minutes = Number(m[2] ?? "0");
+    const hour24 = m[3] === "pm" ? (hour12 % 12) + 12 : hour12 % 12;
+    out.add(`t${String(hour24 * 60 + minutes)}`);
+    claim(m);
   }
+  for (const m of lower.matchAll(/(\d{1,2}):(\d{2})/gu)) {
+    out.add(`t${String(Number(m[1]) * 60 + Number(m[2]))}`);
+    claim(m);
+  }
+  for (const m of lower.matchAll(/([\d,]+)\s*(억|만)/gu)) {
+    const base = Number((m[1] ?? "0").replace(/,/gu, ""));
+    const scale = m[2] === "억" ? 100_000_000 : 10_000;
+    out.add(String(base * scale));
+    claim(m);
+  }
+  for (const m of lower.matchAll(/\d[\d,]*\d|\d/gu)) {
+    const start = m.index ?? 0;
+    if (consumed.some(([from, to]) => start >= from && start < to)) {
+      continue;
+    }
+    out.add(String(Number((m[0] ?? "0").replace(/,/gu, ""))));
+  }
+
   for (const token of lexicalTokens(text)) {
     if (WEEKDAY_MONTH_VALUES.has(token)) {
       out.add(token);
     }
   }
   return out;
+}
+
+// Latin markers match on WORD boundaries — a substring test reads the "no" in
+// "now" as a negation, which flipped an affirmative peer to negated and made an
+// opposed panel look unanimously negative (both sides "negated" ⇒ same polarity
+// ⇒ no conflict ⇒ false consensus). Korean is agglutinative, so its markers are
+// matched as substrings, but `안` is required to be a standalone word for the
+// same reason (안전 / 안내 are not negations).
+const NEGATION_EN = /\b(?:not|never|no|cannot|can't|won't|shouldn't|don't|doesn't|didn't|isn't|aren't|without)\b|n't\b/u;
+const NEGATION_KO = ["아니", "않", "말고", "없", "못하", "못 "];
+const NEGATION_KO_STANDALONE = /(?:^|\s)안(?:\s|$)/u;
+
+/**
+ * Whether a statement is NEGATED. Qualitative disagreement carries no value
+ * token at all ("we should ship" vs "we should NOT ship"), so a value-only
+ * comparison is blind to it — and the natural correcting phrasing ("월세는
+ * 90만원이 아니라 130만원입니다") quotes the rival value, making its value set a
+ * SUPERSET and defeating the mutual-difference test too. Polarity closes both:
+ * same statement, opposite polarity = disagreement, whatever the values do.
+ */
+function isNegated(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (NEGATION_EN.test(lower)) return true;
+  if (NEGATION_KO_STANDALONE.test(lower)) return true;
+  return NEGATION_KO.some((marker) => lower.includes(marker));
 }
 
 /**
@@ -159,13 +233,17 @@ export async function detectPairwiseContradictions(
       const tokA = skeletonTokens(a);
       const tokB = skeletonTokens(b);
       const unionSize = new Set([...tokA, ...tokB]).size;
-      if (unionSize === 0) continue;
       let intersect = 0;
       for (const t of tokA) {
         if (tokB.has(t)) intersect++;
       }
-      const overlapRatio = intersect / unionSize;
-      if (overlapRatio < statementOverlapMin) continue;
+      const overlapRatio = unionSize === 0 ? 0 : intersect / unionSize;
+      const sameStatementLexically = unionSize > 0 && overlapRatio >= statementOverlapMin;
+      // Polarity conflict qualifies "same statement" by COSINE instead — the
+      // lexical skeleton is unusable across Korean particle drift (see
+      // POLARITY_TOPIC_SIM_MIN).
+      const polarityConflict = isNegated(a) !== isNegated(b) && topicSim >= POLARITY_TOPIC_SIM_MIN;
+      if (!sameStatementLexically && !polarityConflict) continue;
 
       // Value-difference gate. Both notes must assert a value, and each must assert
       // one the other does not — a MUTUAL difference at the value level. This is what
@@ -175,10 +253,17 @@ export async function detectPairwiseContradictions(
       //   real conflict("2pm" / "4pm", "90만원" / "130만원") → mutual difference → PAIR
       const valA = valueTokens(a);
       const valB = valueTokens(b);
-      if (valA.size === 0 || valB.size === 0) continue;
       const aHasOwn = [...valA].some((v) => !valB.has(v));
       const bHasOwn = [...valB].some((v) => !valA.has(v));
-      if (!aHasOwn || !bHasOwn) continue;
+      // A value conflict still requires the LEXICAL same-statement gate (a mutual
+      // value difference between two loosely-related sentences is noise).
+      const valuesConflict =
+        sameStatementLexically && valA.size > 0 && valB.size > 0 && aHasOwn && bHasOwn;
+      // Polarity disagreement is a conflict even when the values agree (or one
+      // side has none): "we should ship" vs "we should NOT ship" carries no value
+      // token at all, and "90만원이 아니라 130만원" quotes the rival value so its
+      // value set is a SUPERSET — both are invisible to a value-only test.
+      if (!valuesConflict && !polarityConflict) continue;
 
       // aIndex = i (the earlier index in the array); no score-based ordering
       // because score reflects query relevance, not recency.

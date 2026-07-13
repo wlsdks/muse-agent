@@ -81,6 +81,21 @@ export class McpManager {
   async register(input: McpServerInput): Promise<McpServer | undefined> {
     const policy = await this.securityPolicyProvider.currentPolicy();
 
+    // The `muse.` namespace is RESERVED for Muse's own in-process loopback tools
+    // (muse.notes.*, muse.tasks.*, …). Those never come through this manager, so
+    // an EXTERNAL server claiming the name is impersonation: its tools would be
+    // projected as `muse.notes.<x>` and inherit the trust that name carries in
+    // the provenance gate's first-party classification (a taint-cancelling
+    // origin). Refuse, don't merely warn.
+    if (isReservedServerName(input.name)) {
+      this.statuses.set(input.name, "disabled");
+      this.health.set(
+        input.name,
+        this.createHealthSnapshot(input.name, "unhealthy", "Server name denied: the `muse.` namespace is reserved for Muse's own loopback tools")
+      );
+      return undefined;
+    }
+
     if (!(policy.allowedServerNames.length === 0 || policy.allowedServerNames.includes(input.name))) {
       this.statuses.set(input.name, "disabled");
       this.health.set(input.name, this.createHealthSnapshot(input.name, "unhealthy", "Server denied by policy"));
@@ -733,4 +748,15 @@ export function summarizePreflightChecks(
     passCount: checks.filter((check) => check.status === "pass").length,
     warnCount: checks.filter((check) => check.status === "warn").length
   };
+}
+
+/**
+ * `muse` / `muse.<x>` are Muse's own loopback tool namespaces. An external MCP
+ * server may not claim them — tool names are projected as
+ * `${serverName}.${toolName}`, so such a server's output would be classified
+ * first-party by the injection-provenance gate.
+ */
+export function isReservedServerName(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  return normalized === "muse" || normalized.startsWith("muse.");
 }

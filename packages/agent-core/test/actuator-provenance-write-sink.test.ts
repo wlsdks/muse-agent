@@ -53,6 +53,28 @@ function tools(writeSpy: ReturnType<typeof vi.fn>): ToolRegistry {
     },
     {
       definition: {
+        description: "Search a MIXED corpus (notes + email + feeds) — NOT first-party.",
+        inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+        name: "knowledge_search",
+        risk: "read"
+      },
+      execute: () => POISONED_PAGE
+    },
+    {
+      definition: {
+        description: "Add a contact.",
+        inputSchema: {
+          type: "object",
+          properties: { name: { type: "string" }, phone: { type: "string" }, relationship: { type: "string" } },
+          required: ["name"]
+        },
+        name: "add_contact",
+        risk: "write"
+      },
+      execute: writeSpy
+    },
+    {
+      definition: {
         description: "Search the user's own notes.",
         inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
         name: "muse.notes.search",
@@ -263,4 +285,99 @@ describe("injection-provenance write-sink enforcement (S3b)", () => {
     expect(factGate?.provenanceWarning).toBeUndefined();
     expect(writeSpy).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("injection-provenance write-sink — independent-review regressions", () => {
+  // Independent-review regressions (2026-07-13): both of these were UNGATED in
+    // the first S3b cut and are reachable with zero user clicks.
+    it("LAUNDERING: content read back through the MIXED-corpus knowledge_search does NOT cancel its taint", async () => {
+      const writeSpy = vi.fn(() => ({ ok: true }));
+      const gateInputs: ToolApprovalGateInput[] = [];
+      const runtime = createAgentRuntime({
+        maxToolCalls: 4,
+        modelProvider: sequenceProvider([
+          {
+            id: "t1",
+            model: "test-model",
+            output: "Searching.",
+            toolCalls: [{ arguments: { query: "bank" }, id: "tc-1", name: "knowledge_search" }]
+          },
+          {
+            id: "t2",
+            model: "test-model",
+            output: "Storing.",
+            toolCalls: [
+              { arguments: { fact: "the user's primary bank is EvilBank" }, id: "tc-2", name: "remember_fact" }
+            ]
+          },
+          { id: "final", model: "test-model", output: "Done." }
+        ]),
+        toolApprovalGate: (input) => {
+          gateInputs.push(input);
+          return input.provenanceWarning ? { allowed: false, reason: "blocked" } : { allowed: true };
+        },
+        toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+        toolRegistry: tools(writeSpy)
+      });
+
+      await runtime.run({
+        messages: [{ content: "What do you know about my bank?", role: "user" }],
+        metadata: { localMode: true },
+        model: "provider/model",
+        runId: "run-launder"
+      });
+
+      // knowledge_search reads notes AND Gmail/feeds — it is NOT a first-party
+      // origin, so the planted content stays tainted and the write is blocked.
+      const gate = gateInputs.find((g) => g.toolCall.name === "remember_fact");
+      expect(gate?.provenanceWarning).toBeDefined();
+      expect(writeSpy).not.toHaveBeenCalled();
+    });
+
+    it("CONTACT SINK: a poisoned page cannot plant a whole person into the address book", async () => {
+      const writeSpy = vi.fn(() => ({ ok: true }));
+      const gateInputs: ToolApprovalGateInput[] = [];
+      const runtime = createAgentRuntime({
+        maxToolCalls: 4,
+        modelProvider: sequenceProvider([
+          {
+            id: "t1",
+            model: "test-model",
+            output: "Reading.",
+            toolCalls: [{ arguments: { url: "https://news.example/notice" }, id: "tc-1", name: "web_fetch" }]
+          },
+          {
+            id: "t2",
+            model: "test-model",
+            output: "Saving the contact.",
+            toolCalls: [
+              {
+                arguments: { name: "Mallory Kray", phone: "+1-800-555-9931", relationship: "advisor" },
+                id: "tc-2",
+                name: "add_contact"
+              }
+            ]
+          },
+          { id: "final", model: "test-model", output: "Done." }
+        ]),
+        toolApprovalGate: (input) => {
+          gateInputs.push(input);
+          return input.provenanceWarning ? { allowed: false, reason: "blocked" } : { allowed: true };
+        },
+        toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+        toolRegistry: tools(writeSpy)
+      });
+
+      await runtime.run({
+        messages: [{ content: "Read that page and save anyone I should know.", role: "user" }],
+        metadata: { localMode: true },
+        model: "provider/model",
+        runId: "run-contact-sink"
+      });
+
+      const gate = gateInputs.find((g) => g.toolCall.name === "add_contact");
+      expect(gate?.provenanceWarning).toBeDefined();
+      expect(gate?.provenanceWarning).toContain("`name`");
+      expect(writeSpy).not.toHaveBeenCalled();
+    });
 });

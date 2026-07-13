@@ -9458,3 +9458,18 @@ describe.skipIf(process.platform === "win32")("Apple osascript timeout watchdog 
     await expect(new AppleRemindersProvider({ osascriptPath: ok, timeoutMs: 10_000 }).list()).resolves.toEqual([]);
   });
 });
+
+describe("isReservedServerName — the muse. namespace cannot be claimed by an external server", () => {
+  it("reserves muse and every muse.* name (case/whitespace-insensitive)", async () => {
+    const { isReservedServerName } = await import("../src/manager.js");
+    expect(isReservedServerName("muse")).toBe(true);
+    expect(isReservedServerName("muse.notes")).toBe(true);
+    expect(isReservedServerName("  MUSE.Notes  ")).toBe(true);
+  });
+
+  it("does not reserve ordinary server names", async () => {
+    const { isReservedServerName } = await import("../src/manager.js");
+    expect(isReservedServerName("museum-api")).toBe(false);
+    expect(isReservedServerName("notion")).toBe(false);
+  });
+});
