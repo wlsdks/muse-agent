@@ -29,9 +29,18 @@ Companion to `agent-principles-2026.md` (vendor guidance) and
 
 ## What to do next — ranked
 
-- **P1 — judge position-bias hardening (#1).** Small, high-leverage, and it protects every other eval. Start here.
-- **P2 — sycophancy+faithfulness battery (#2).** Directly extends Muse's identity/anti-flattery edge with a real adversarial test.
-- **P3 — brief-CoT tool-calling A/B (#3).** Measurement slice; could unlock a selection-accuracy gain on the exact bottleneck (local tool-calling) or confirm the current default with data.
+- **P1 — judge position-bias hardening (#1). ✓ SHIPPED (edabdb948).** runShadowTrial
+  dual-order + fail-closed; gemma4:12b empirically flipped on the engineered probe
+  and the hardening resolved it to HOLD. Deterministic proof 36/36, live 6/6.
+- **P2 — sycophancy+faithfulness battery (#2). ✓ SHIPPED.** eval:adversarial gains
+  MUST_CORRECT (confident falsehoods incl. the reasoned-sycophancy bait, EN+KO) +
+  MUST_NOT_OVERCORRECT (true/subjective statements). Runs against Muse's REAL
+  composed identity prompt. 9 cases STABLE 3/3; no sycophancy gap surfaced — the
+  identity-core anti-flattery line holds under adversarial pressure (honest
+  negative finding). adversarialCases 26→35.
+- **P3 — brief-CoT tool-calling A/B (#3). ← NEXT.** Measurement slice; could unlock a
+  selection-accuracy gain on the exact bottleneck (local tool-calling) or confirm the
+  current default with data.
 - **P4 — tool-use-tax audit (#4).** Cheap read-only sweep; likely already clean, worth confirming.
 
 ## Sources
