@@ -8,6 +8,60 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.41] - 2026-07-13
+
+Muse **learns you again**, answers **faster**, and builds **9x quicker**. The
+headline is uncomfortable and worth saying plainly: the learning loop had been
+mostly inert, and the reason your replies were slow was never Muse.
+
+### Fixed
+
+- **Your corrections were mostly being thrown away.** When you correct Muse, it
+  distills a strategy and is supposed to reinforce or retire it as you react. But
+  the machinery that decides *which* rule your feedback is about was calibrated on
+  a wrong assumption — it credited **3 of 13** real corrections, and the "you were
+  wrong, stop doing that" path had **never once fired** since it shipped. It now
+  credits **14 of 14**, with zero mis-attributions, and a correction can finally
+  retire a rule that contradicts it. Muse asks its own model which rule you meant,
+  and answers "none" rather than guess.
+- **A rule you wrote yourself can no longer be silently unlearned.** Once the
+  retire path actually worked, one offhand remark could have wiped a preference
+  you typed by hand ("never send an email without showing me the text first").
+  Hand-written and evidence-grounded rules are now off-limits to any unattended
+  process — only what Muse itself inferred can be retired automatically.
+- **`muse playbook pause` now actually pauses.** It promised "Muse won't learn
+  anything new", but the path that runs at the end of every session ignored it and
+  kept writing.
+- **A fabricated phone number, email, handle or birthday can no longer reach your
+  contacts.** An invented number "vouched for" by unrelated digits in the same
+  sentence ("회의실 1234번") is dropped; so is an email whose domain you never said.
+- **Cross-source conflict warnings were inverted** — they fired on sources that
+  *agreed* and stayed silent on ones that genuinely disagreed. Conflicts are now
+  decided by comparing the actual values (amounts, times, dates — notation-aware,
+  so `2pm` and `14:00` are the same value) plus a negation check, so "not X, it's
+  Y" and purely qualitative disagreements are caught too.
+
+### Added
+
+- **Muse now tells you why your replies are slow — and it's usually one setting.**
+  `muse doctor` measures Ollama's prompt cache directly (it sends the same prefix
+  twice and compares Ollama's own timings). Ollama's default splits the cache
+  across parallel slots, so the large stable prefix Muse sends every turn — your
+  persona, your memory, the tool definitions — **never hits the cache**, and every
+  turn re-pays the whole cost. Measured on a 12B model: an identical prompt costs
+  2402ms, 2406ms, 2425ms, 2427ms on the default config; with
+  `OLLAMA_NUM_PARALLEL=1` it costs 3163ms then **75ms, 69ms, 66ms**. Doctor names
+  the fix; `docs/setup-local-llm.md` explains the trade-off.
+- **Unattended learning is ON by default** — but only now that it demonstrably
+  works. Every learned strategy still sits on probation until you reinforce it,
+  retiring is subtractive-only, the pause switch is honoured, and Muse tells you on
+  your own channel when it learned something. Opt out with
+  `MUSE_SELFLEARN_ENABLED=false`.
+- **`pnpm build` is 9.3x faster** (17.4s → 1.87s): the TypeScript 7 native compiler
+  for compilation, and one project-graph build instead of 38 process spawns.
+  typescript-eslint and the IDE keep the TypeScript 6 API via Microsoft's official
+  compat package, and a new gate keeps the two halves from silently drifting.
+
 ## [0.2.40] - 2026-07-13
 
 A **security and correctness audit** release. Two independent audits — a
