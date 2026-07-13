@@ -378,6 +378,8 @@ export {
   produceGroundedCouncilReasoning,
   COUNCIL_ATTRIBUTION_COSINE_FLOOR,
   COUNCIL_DISSENT_COSINE_FLOOR,
+  defangCouncilInjections,
+  type InjectionDefangResult,
   QUESTION_RELEVANCE_FLOOR,
   rankUtterancesBySupport,
   screenCouncilOutliers,

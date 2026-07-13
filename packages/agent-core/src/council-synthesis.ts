@@ -33,6 +33,7 @@ import {
 } from "./council-consensus.js";
 import {
   collapseEchoUtterances,
+  defangCouncilInjections,
   dedupeUtterancesByPeer,
   rankUtterancesBySupport,
   screenCouncilOutliers,
@@ -194,7 +195,13 @@ export async function synthesizeCouncilAnswer(
   utterances: readonly CouncilUtterance[],
   options: CouncilModelOptions
 ): Promise<CouncilAnswer | null> {
-  const usable = dedupeUtterancesByPeer(utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0));
+  const deduped = dedupeUtterancesByPeer(utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0));
+  // Defang injected instruction spans in peer reasoning BEFORE any other screen
+  // reads it: a compromised member's instruction must never reach the synthesis
+  // prompt, and neutralising it first also stops it from perturbing the
+  // relevance/support cosines the later screens compute. Sentence-scoped, so a
+  // peer keeps its honest reasoning (see defangCouncilInjections).
+  const usable = defangCouncilInjections(deduped).utterances.filter((u) => u.reasoning.trim().length > 0);
   if (question.trim().length === 0 || usable.length === 0) return null;
 
   // Question-relevance gate (arXiv:2503.13657 — MAST FM-2.3 task derailment;
