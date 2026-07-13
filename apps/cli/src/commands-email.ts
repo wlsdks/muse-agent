@@ -8,7 +8,8 @@
 
 import { join } from "node:path";
 
-import { resolveActionLogFile, resolveContactsFile, resolveNotesDir } from "@muse/autoconfigure";
+import { resolveActionLogFile, resolveContactsFile, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
 import { queryContacts } from "@muse/stores";
 import { GmailEmailProvider, extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
@@ -25,6 +26,8 @@ interface SendOptions {
 }
 
 export interface EmailCommandDeps {
+  /** Test-only env seam. Public CLI continues to use process.env. */
+  readonly env?: MuseEnvironment;
   readonly approvalGate?: EmailApprovalGate;
   readonly sender?: EmailSender;
   /** Test seam for `email reply` — reads the message being replied to. */
@@ -37,6 +40,18 @@ export interface EmailCommandDeps {
 }
 
 export function registerEmailCommands(program: Command, io: ProgramIO, deps: EmailCommandDeps = {}): void {
+  const env: MuseEnvironment = deps.env ?? process.env;
+  const rejectWhenLocalOnly = (mode: "send" | "reply" | "forward" | "sync"): boolean => {
+    // A dependency-injected env is a test/composition input, not an opt-out
+    // capability. It may tighten ambient false, but cannot reopen Gmail when
+    // the process itself is already local-only.
+    if (!isLocalOnlyEnabled(process.env) && !isLocalOnlyEnabled(env)) {
+      return false;
+    }
+    io.stderr(`muse email ${mode}: Gmail is disabled while MUSE_LOCAL_ONLY=true. This does not disable other integration surfaces.\n`);
+    process.exitCode = 1;
+    return true;
+  };
   const email = program.command("email").description("Email — sync your inbox into recall (`sync`) + draft-first send / reply / forward");
 
   email
@@ -47,13 +62,14 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .requiredOption("--body <text>", "Message body")
     .option("--user <id>", "User identity for the action log", "stark")
     .action(async (options: SendOptions) => {
-      const sender = deps.sender ?? buildGmailSender(io);
+      if (rejectWhenLocalOnly("send")) return;
+      const sender = deps.sender ?? buildGmailSender(io, env);
       if (!sender) {
         io.stderr("muse email send: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.send scope).\n");
         process.exitCode = 1;
         return;
       }
-      const contactsFile = deps.contactsFile ?? resolveContactsFile(process.env as Record<string, string | undefined>);
+      const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
       const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
         io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
         return confirm({ message: "Send this email?" }).then((answer) =>
@@ -63,7 +79,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       });
 
       const outcome = await sendEmailWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
         approvalGate: gate,
         body: options.body ?? "",
         contacts: await queryContacts(contactsFile),
@@ -95,7 +111,8 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .requiredOption("--body <text>", "The reply text to send back to the sender")
     .option("--user <id>", "User identity for the action log", "stark")
     .action(async (options: { readonly id?: string; readonly body?: string; readonly user?: string }) => {
-      const provider = buildGmailProvider(io);
+      if (rejectWhenLocalOnly("reply")) return;
+      const provider = buildGmailProvider(io, env);
       const reader = deps.reader ?? provider;
       const sender = deps.sender ?? provider;
       if (!reader || !sender) {
@@ -124,7 +141,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
             : { approved: true });
       });
       const outcome = await replyEmailWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
         approvalGate: gate,
         body: options.body ?? "",
         recipientName: message.from,
@@ -149,7 +166,8 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .option("--note <text>", "Optional note to prepend above the forwarded message")
     .option("--user <id>", "User identity for the action log", "stark")
     .action(async (options: { readonly id?: string; readonly to?: string; readonly note?: string; readonly user?: string }) => {
-      const provider = buildGmailProvider(io);
+      if (rejectWhenLocalOnly("forward")) return;
+      const provider = buildGmailProvider(io, env);
       const reader = deps.reader ?? provider;
       const sender = deps.sender ?? provider;
       if (!reader || !sender) {
@@ -164,7 +182,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         return;
       }
       const { body, subject } = composeForward(message, options.note);
-      const contactsFile = deps.contactsFile ?? resolveContactsFile(process.env as Record<string, string | undefined>);
+      const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
       const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
         io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
         return confirm({ message: "Forward this email?" }).then((answer) =>
@@ -173,7 +191,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
             : { approved: true });
       });
       const outcome = await sendEmailWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
         approvalGate: gate,
         body,
         contacts: await queryContacts(contactsFile),
@@ -202,7 +220,8 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .description("Pull your recent emails into local notes so `muse ask` can recall them (Gmail; needs MUSE_GMAIL_TOKEN, read-only)")
     .option("--limit <n>", "How many recent inbox emails to sync (default 20, max 100)", "20")
     .action(async (options: { readonly limit?: string }) => {
-      const provider = deps.emailSource ?? buildGmailReader(io);
+      if (rejectWhenLocalOnly("sync")) return;
+      const provider = deps.emailSource ?? buildGmailReader(io, env);
       if (!provider) {
         io.stderr("muse email sync: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.readonly scope).\n");
         process.exitCode = 1;
@@ -210,7 +229,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       }
       const raw = Number((options.limit ?? "20").trim());
       const limit = Number.isFinite(raw) && raw > 0 ? Math.min(100, Math.trunc(raw)) : 20;
-      const notesDir = deps.notesDir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
+      const notesDir = deps.notesDir ?? resolveNotesDir(env);
       let written: number;
       try {
         written = await syncEmailsToNotes(provider, notesDir, limit);
@@ -228,19 +247,19 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     });
 }
 
-function buildGmailReader(io: ProgramIO): EmailProvider | undefined {
-  const token = process.env.MUSE_GMAIL_TOKEN?.trim();
+function buildGmailReader(io: ProgramIO, env: MuseEnvironment): EmailProvider | undefined {
+  const token = env.MUSE_GMAIL_TOKEN?.trim();
   return token ? new GmailEmailProvider(token, io.fetch ?? globalThis.fetch) : undefined;
 }
 
-function buildGmailProvider(io: ProgramIO): GmailEmailProvider | undefined {
-  const token = process.env.MUSE_GMAIL_TOKEN?.trim();
+function buildGmailProvider(io: ProgramIO, env: MuseEnvironment): GmailEmailProvider | undefined {
+  const token = env.MUSE_GMAIL_TOKEN?.trim();
   if (!token) {
     return undefined;
   }
   return new GmailEmailProvider(token, io.fetch ?? globalThis.fetch);
 }
 
-function buildGmailSender(io: ProgramIO): EmailSender | undefined {
-  return buildGmailProvider(io);
+function buildGmailSender(io: ProgramIO, env: MuseEnvironment): EmailSender | undefined {
+  return buildGmailProvider(io, env);
 }

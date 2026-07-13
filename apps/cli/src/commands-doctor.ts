@@ -16,7 +16,6 @@ import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
-import { backgroundStoreFile } from "./commands-background.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
@@ -29,23 +28,23 @@ export { findOllamaModelTag } from "./commands-doctor-ollama.js";
 export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
 export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, privacyRoutingCheck, selfLearningCheck, weaknessFuelCheck, webEgressCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
-import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
+import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 import { runRunOutcomesDoctor } from "./commands-doctor-outcomes.js";
 export { formatRunOutcomes } from "./commands-doctor-outcomes.js";
 import { isRecord } from "@muse/shared";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
-import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
-import { defaultBeliefProvenanceFile } from "@muse/memory";
-import { defaultSchedulerPauseFile, isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readSchedulerPauseState, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
+import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveWeaknessesFile, type MuseEnvironment, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
+import { isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readSchedulerPauseState, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
 import { defaultCredentialPath } from "./credential-store.js";
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
-import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
+import { loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import { atRestDoctorCheck, collectPrivacyPosture } from "./commands-privacy.js";
@@ -60,6 +59,84 @@ export interface DoctorCommandHelpers {
     method?: "GET" | "POST" | "PUT" | "DELETE"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
+  /** Private local-doctor runtime seam used by isolated tests. */
+  readonly localRuntime?: DoctorLocalRuntimeOptions;
+}
+
+export interface DoctorLocalPaths {
+  readonly museHome: string;
+  readonly mcpFile: string;
+  readonly backgroundFile: string;
+  readonly beliefProvenanceFile: string;
+  readonly credentialFile: string;
+  readonly episodeIndexFile: string;
+  readonly schedulerPauseFile: string;
+  readonly proactiveHeartbeatDir: string;
+  readonly launchAgentFile: string;
+  readonly notesIndexFile: string;
+  readonly privacyUserMemoryFile: string;
+}
+
+export interface DoctorLocalRuntime {
+  readonly env: MuseEnvironment;
+  readonly homeDir: string;
+  readonly fetchImpl: typeof globalThis.fetch;
+  readonly paths: DoctorLocalPaths;
+}
+
+export interface DoctorLocalRuntimeOptions {
+  readonly env?: MuseEnvironment;
+  readonly homeDir?: string;
+  readonly fetchImpl?: typeof globalThis.fetch;
+  readonly paths?: Partial<DoctorLocalPaths>;
+}
+
+function doctorPath(env: MuseEnvironment, museHome: string, envKey: string, filename: string): string {
+  const explicit = env[envKey]?.trim();
+  return explicit && explicit.length > 0 ? explicit : join(museHome, filename);
+}
+
+/** Resolve local-doctor inputs once, before any diagnostic reader runs. */
+export function resolveDoctorLocalRuntime(options: DoctorLocalRuntimeOptions = {}): DoctorLocalRuntime {
+  const env: MuseEnvironment = options.env ?? process.env;
+  const homeDir = options.homeDir?.trim() || env.HOME?.trim() || homedir();
+  const museHome = env.MUSE_HOME?.trim() || join(homeDir, ".muse");
+  // Give legacy helpers an owned HOME and sidecar path without spreading or
+  // enumerating the supplied environment. This is important for local-only
+  // credential-protecting Proxy inputs.
+  const defaults: DoctorLocalPaths = {
+    backgroundFile: doctorPath(env, museHome, "MUSE_BACKGROUND_PROCESSES_FILE", "background-processes.json"),
+    beliefProvenanceFile: doctorPath(env, museHome, "MUSE_BELIEF_PROVENANCE_FILE", "belief-provenance.json"),
+    credentialFile: defaultCredentialPath(homeDir),
+    episodeIndexFile: doctorPath(env, museHome, "MUSE_EPISODES_INDEX_FILE", "episodes-index.json"),
+    launchAgentFile: "",
+    mcpFile: doctorPath(env, museHome, "MUSE_MCP_CONFIG", "mcp.json"),
+    museHome,
+    notesIndexFile: doctorPath(env, museHome, "MUSE_NOTES_INDEX_FILE", "notes-index.json"),
+    privacyUserMemoryFile: doctorPath(env, museHome, "MUSE_USER_MEMORY_FILE", "user-memory.json"),
+    proactiveHeartbeatDir: "",
+    schedulerPauseFile: doctorPath(env, museHome, "MUSE_SCHEDULER_PAUSE_FILE", "scheduler-paused.json")
+  };
+  const partialPaths = options.paths ?? {};
+  const pathsWithoutDerived = { ...defaults, ...partialPaths };
+  const sidecar = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim();
+  const proactiveHeartbeatDir = partialPaths.proactiveHeartbeatDir
+    ?? (sidecar && sidecar.length > 0 ? dirname(sidecar) : museHome);
+  const launchAgentEnv = Object.create(env) as NodeJS.ProcessEnv;
+  Object.defineProperty(launchAgentEnv, "HOME", {
+    configurable: true,
+    enumerable: true,
+    value: homeDir,
+    writable: false
+  });
+  const launchAgentFile = partialPaths.launchAgentFile
+    ?? resolveLaunchAgentFile(launchAgentEnv);
+  return {
+    env,
+    fetchImpl: options.fetchImpl ?? globalThis.fetch,
+    homeDir,
+    paths: { ...pathsWithoutDerived, launchAgentFile, proactiveHeartbeatDir }
+  };
 }
 
 export interface DoctorSummary {
@@ -144,7 +221,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         return;
       }
       const renderLocal = async (): Promise<"ok" | "warn" | "fail"> => {
-        const report = await runLocalDoctor();
+        const report = await runLocalDoctor(helpers.localRuntime);
         if (options.json || options.full) {
           helpers.writeOutput(io, report);
         } else {
@@ -315,14 +392,39 @@ export function officialMcpChecks(env: Record<string, string | undefined>): Loca
 
 
 
-interface LocalDoctorReport {
+export interface LocalDoctorReport {
   readonly generatedAt: string;
   readonly checks: readonly LocalCheck[];
   readonly worst: "ok" | "warn" | "fail";
 }
 
 
-async function runLocalDoctor(): Promise<LocalDoctorReport> {
+function createDoctorEnvironmentView(merged: MuseEnvironment, runtime: DoctorLocalRuntime): MuseEnvironment {
+  // Inherit direct reads from the already-safe model projection, but give every
+  // legacy helper an explicit runtime-owned path. No source spread/ownKeys is
+  // involved, so a local-only poison env remains safe.
+  const view = Object.create(merged) as Record<string, string | undefined>;
+  const values: Record<string, string> = {
+    HOME: runtime.homeDir,
+    MUSE_BACKGROUND_PROCESSES_FILE: runtime.paths.backgroundFile,
+    MUSE_BELIEF_PROVENANCE_FILE: runtime.paths.beliefProvenanceFile,
+    MUSE_DAEMON_PLIST_FILE: runtime.paths.launchAgentFile,
+    MUSE_EPISODES_INDEX_FILE: runtime.paths.episodeIndexFile,
+    MUSE_HOME: runtime.paths.museHome,
+    MUSE_MCP_CONFIG: runtime.paths.mcpFile,
+    MUSE_NOTES_INDEX_FILE: runtime.paths.notesIndexFile,
+    MUSE_PROACTIVE_SIDECAR_FILE: join(runtime.paths.proactiveHeartbeatDir, ".doctor-heartbeat-sidecar"),
+    MUSE_SCHEDULER_PAUSE_FILE: runtime.paths.schedulerPauseFile,
+    MUSE_USER_MEMORY_FILE: runtime.paths.privacyUserMemoryFile
+  };
+  for (const [key, value] of Object.entries(values)) {
+    Object.defineProperty(view, key, { configurable: true, enumerable: true, value, writable: false });
+  }
+  return view;
+}
+
+export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions = {}): Promise<LocalDoctorReport> {
+  const runtime = resolveDoctorLocalRuntime(runtimeOptions);
   const checks: LocalCheck[] = [];
 
   // Merge ~/.muse/models.json keys into the env view so the model
@@ -331,7 +433,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // (no shell export) gets a misleading "no MUSE_MODEL / provider
   // key — chat/ask/brief will fail" — even though chat/ask/brief
   // actually work because the runtime does its own merge at boot.
-  const env = mergeModelKeysFromFile({ ...process.env });
+  const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
 
   // Model env — mirrors the runtime's resolveDefaultModel so local-only's
   // "ambient cloud keys ignored" guarantee is reported truthfully.
@@ -350,13 +452,16 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
 
   // At-rest encryption — the discretion ("can't tell anyone") half of the
   // identity, alongside the cloud-egress ("can't reach a cloud") posture above.
-  checks.push(atRestDoctorCheck(await collectPrivacyPosture(env)));
-  checks.push({ name: "scheduler", ...schedulerPauseCheck(await readSchedulerPauseState(defaultSchedulerPauseFile(env))) });
-  checks.push({ name: "background", ...backgroundProcessCheck(await readBackgroundProcesses(backgroundStoreFile())) });
+  checks.push(atRestDoctorCheck(await collectPrivacyPosture(env, {
+    homeDir: runtime.homeDir,
+    userMemoryFile: runtime.paths.privacyUserMemoryFile
+  })));
+  checks.push({ name: "scheduler", ...schedulerPauseCheck(await readSchedulerPauseState(runtime.paths.schedulerPauseFile)) });
+  checks.push({ name: "background", ...backgroundProcessCheck(await readBackgroundProcesses(runtime.paths.backgroundFile)) });
   checks.push(await readProactiveHeartbeatCheck(env));
 
   // ~/.muse layout
-  const muse_home = resolveMuseEnvPath(process.env.MUSE_HOME, join(homedir(), ".muse"));
+  const muse_home = runtime.paths.museHome;
   try {
     const stat = await fs.stat(muse_home);
     if (!stat.isDirectory()) {
@@ -380,9 +485,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
 
   // Sensitive-file permission drift — generalizes the live finding
   // (recall-hits.json found at 644) to every store Muse writes 0600 by
-  // default. `defaultCredentialPath` can throw on a fully-stripped env
-  // (no HOME at all); that's a config problem the check reports as
-  // "unreadable" rather than crashing doctor over.
+  // default. The path list is resolved from this local-doctor runtime once.
   const sensitiveTargets: SensitiveFileTarget[] = [
     { label: "user-memory.json", path: join(muse_home, "user-memory.json") },
     { label: "action-log.json", path: resolveActionLogFile(env) },
@@ -390,14 +493,9 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     { label: "contacts.json", path: resolveContactsFile(env) },
     { label: "reflections.json", path: resolveReflectionsFile(env) },
     { label: "weaknesses.json", path: resolveWeaknessesFile(env) },
-    { label: "belief-provenance.json", path: defaultBeliefProvenanceFile() }
+    { label: "belief-provenance.json", path: runtime.paths.beliefProvenanceFile }
   ];
-  try {
-    sensitiveTargets.push({ label: "credentials.json", path: defaultCredentialPath() });
-  } catch {
-    // no resolvable HOME — the credential store itself is unreachable, not
-    // something this advisory check should crash over.
-  }
+  sensitiveTargets.push({ label: "credentials.json", path: runtime.paths.credentialFile });
   checks.push(permissionModeDriftCheck(await readSensitiveFileModes(sensitiveTargets)));
 
   // Tool-result-cap advisory — a `MUSE_MAX_TOOL_OUTPUT_CHARS` set too low
@@ -405,7 +503,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   checks.push(toolResultCapAdvisoryCheck(env));
 
   // mcp.json
-  const mcp_path = resolveMuseEnvPath(process.env.MUSE_MCP_CONFIG, join(muse_home, "mcp.json"));
+  const mcp_path = runtime.paths.mcpFile;
   try {
     const raw = await fs.readFile(mcp_path, "utf8");
     try {
@@ -432,12 +530,12 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // ::1 while Ollama binds IPv4 — + models.json merge + trailing
   // slash trim). Otherwise doctor can falsely report "not
   // reachable" while `muse ask` works.
-  const ollama_base = resolveOllamaUrl();
+  const ollama_base = resolveOllamaUrl(env);
   let ollamaModels: readonly OllamaTagsEntry[] | undefined;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
-    const r = await fetch(`${ollama_base}/api/tags`, { signal: controller.signal });
+    const r = await runtime.fetchImpl(`${ollama_base}/api/tags`, { signal: controller.signal });
     clearTimeout(timeout);
     if (r.ok) {
       const j = await r.json() as { models?: unknown[] };
@@ -473,7 +571,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // who hasn't reindexed yet still learns the model is missing
   // (consistent with the `muse setup local` proactive nudge).
   if (ollamaModels) {
-    const notesIndexPath = join(muse_home, "notes-index.json");
+    const notesIndexPath = runtime.paths.notesIndexFile;
     const indexedModel = await readNotesIndexEmbedModel(notesIndexPath);
     const embedModel = indexedModel ?? DEFAULT_EMBED_MODEL;
     const match = findOllamaModelTag(ollamaModels, embedModel);
@@ -486,12 +584,12 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // searchable right now? (recall / ask / `today --connect` return nothing if
   // the index was never built or has gone stale since notes changed.)
   {
-    const notesIndexPath = join(muse_home, "notes-index.json");
+    const notesIndexPath = runtime.paths.notesIndexFile;
     const exists = existsSync(notesIndexPath);
     let stale = false;
     if (exists) {
       try {
-        stale = await isNotesIndexStale(resolveNotesDir(process.env as Record<string, string | undefined>), notesIndexPath);
+        stale = await isNotesIndexStale(resolveNotesDir(env), notesIndexPath);
       } catch {
         stale = false;
       }
@@ -503,8 +601,8 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // sessions searchable? (recall episodes / `today --connect`).
   {
     try {
-      const episodeCount = (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).length;
-      const index = await loadEpisodeIndex(defaultEpisodeIndexFile());
+      const episodeCount = (await readEpisodes(resolveEpisodesFile(env))).length;
+      const index = await loadEpisodeIndex(runtime.paths.episodeIndexFile);
       const indexedCount = index?.entries.length ?? 0;
       checks.push({ name: "episode index", ...episodeIndexHealth({ episodeCount, indexedCount }) });
     } catch {
@@ -514,7 +612,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
 
   // Outbound messengers (Telegram/Discord/Slack/LINE) — opt-in; surface which
   // are wired so the user knows why `muse messaging send` has/has no target.
-  checks.push({ name: "messaging", ...messagingConfigCheck(process.env as Record<string, string | undefined>) });
+  checks.push({ name: "messaging", ...messagingConfigCheck(env) });
 
   // Focus / Do-Not-Disturb toggling (mac_system_set focus_on/focus_off) rides a
   // named user Shortcut — report whether those shortcuts exist. Only meaningful
@@ -535,9 +633,18 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     checks.push(check);
   }
 
-  // SecretSource posture — which local vault readers the resolver will use
-  // (boolean only; never a secret value).
-  checks.push(secretSourcesCheck(env));
+  // SecretSource posture — local-only env projections intentionally do not
+  // enumerate arbitrary source keys. Keep the status honest without turning a
+  // privacy report into an environment inventory.
+  if (isLocalOnlyEnabled(env)) {
+    checks.push({
+      detail: "environment secret inventory omitted under MUSE_LOCAL_ONLY=true; local vault readers remain on-demand",
+      name: "secret sources",
+      status: "ok"
+    });
+  } else {
+    checks.push(secretSourcesCheck(env));
+  }
 
   // Platform posture — which OS-dependent surfaces are active on this box.
   checks.push(platformPostureCheck());
@@ -549,14 +656,14 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // on `format=json`, which would silently send every search through
   // the DDG fallback. Better to surface that here than discover it
   // mid-conversation.
-  const searxng_url = process.env.MUSE_SEARXNG_URL?.trim();
+  const searxng_url = env.MUSE_SEARXNG_URL?.trim();
   if (searxng_url && searxng_url.length > 0) {
     const base = searxng_url.replace(/\/+$/u, "");
     let health_ok: boolean;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1500);
-      const r = await fetch(`${base}/healthz`, { signal: controller.signal });
+      const r = await runtime.fetchImpl(`${base}/healthz`, { signal: controller.signal });
       clearTimeout(timeout);
       health_ok = r.ok;
     } catch {
@@ -573,7 +680,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 2_500);
-        const r = await fetch(`${base}/search?q=health&format=json`, {
+        const r = await runtime.fetchImpl(`${base}/search?q=health&format=json`, {
           headers: { "accept": "application/json" },
           signal: controller.signal
         });
@@ -639,13 +746,13 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   }
 
   // web-watch config — only reported when actually configured.
-  const webWatchVerdict = classifyWebWatchConfig(process.env.MUSE_WEB_WATCH_CONFIG);
+  const webWatchVerdict = classifyWebWatchConfig(env.MUSE_WEB_WATCH_CONFIG);
   if (webWatchVerdict) {
     checks.push({ name: "web-watch config", ...webWatchVerdict });
   }
 
   // home-alerts config — only reported when actually configured.
-  const homeAlertsVerdict = classifyHomeAlertsConfig(process.env.MUSE_BRIEFING_HOME_ALERTS);
+  const homeAlertsVerdict = classifyHomeAlertsConfig(env.MUSE_BRIEFING_HOME_ALERTS);
   if (homeAlertsVerdict) {
     checks.push({ name: "home-alerts config", ...homeAlertsVerdict });
   }
@@ -653,7 +760,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // self-learning autonomy: is Muse actually set up to learn while idle?
   checks.push(selfLearningCheck({
     enabled: parseBoolean(env.MUSE_IDLE_LEARNING_ENABLED, false),
-    installed: existsSync(resolveLaunchAgentFile(process.env)),
+    installed: existsSync(resolveLaunchAgentFile(env as NodeJS.ProcessEnv)),
     paused: await isLearningPaused(resolveLearningPauseFile(env)).catch(() => false)
   }));
 

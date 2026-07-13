@@ -47,7 +47,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; platform?: DaemonHelpers["platform"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; platform?: DaemonHelpers["platform"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -68,6 +68,7 @@ async function runDaemon(
       ...(opts.selfLearnDistill ? { selfLearnDistill: opts.selfLearnDistill } : {}),
       ...(opts.contradictionClassify ? { contradictionClassify: opts.contradictionClassify } : {}),
       ...(opts.emailSyncProvider ? { emailSyncProvider: opts.emailSyncProvider } : {}),
+      ...(opts.makeEmailSyncTick ? { makeEmailSyncTick: opts.makeEmailSyncTick } : {}),
       ...(opts.messagingPoll ? { messagingPoll: opts.messagingPoll } : {}),
       ...(opts.consolidateMerge ? { consolidateMerge: opts.consolidateMerge } : {}),
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
@@ -1436,6 +1437,54 @@ describe("muse daemon — continuous email-sync tick (always-on email→recall)"
 
     expect(res.stdout).not.toContain("email-sync:");
     expect(existsSync(join(env.MUSE_NOTES_DIR, "email", "m1.md"))).toBe(false);
+  });
+
+  it("never constructs the Gmail sync factory under local-only, even with enabled poison credentials", async () => {
+    const env = tmpEnv();
+    env.MUSE_LOCAL_ONLY = "true";
+    env.MUSE_EMAIL_SYNC_ENABLED = "true";
+    Object.defineProperty(env, "MUSE_GMAIL_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        throw new Error("Gmail token must not be read in local-only mode");
+      }
+    });
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const makeEmailSyncTick = vi.fn(() => async () => undefined);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env,
+      makeEmailSyncTick,
+      registry
+    });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(makeEmailSyncTick).not.toHaveBeenCalled();
+  });
+
+  it("does not let an injected false downgrade ambient local-only before the Gmail factory", async () => {
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    process.env.MUSE_LOCAL_ONLY = "true";
+    try {
+      const env = tmpEnv();
+      env.MUSE_LOCAL_ONLY = "false";
+      env.MUSE_EMAIL_SYNC_ENABLED = "true";
+      const registry = new MessagingProviderRegistry([capturingProvider([])]);
+      const makeEmailSyncTick = vi.fn(() => async () => undefined);
+
+      const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+        env,
+        makeEmailSyncTick,
+        registry
+      });
+
+      expect(res.exitCode).toBeUndefined();
+      expect(makeEmailSyncTick).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previous;
+    }
   });
 
   it("--status reports email-sync enabled when the gate + token are set", async () => {

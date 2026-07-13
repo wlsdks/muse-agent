@@ -15,6 +15,7 @@ import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "
 import { addContact, defaultBackgroundProcessesFile, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
 import { collectDatedNotes, createBackgroundListTool, createBrowsingSearchTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
+import { isLocalOnlyEnabled } from "@muse/model";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
 
@@ -117,6 +118,10 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
   const webReadLoopbackTools = loopback.webRead;
   const mathLoopbackTools = loopback.math;
   const searchLoopbackTools = loopback.search;
+  // Evaluate the posture once, before any Gmail property read. The env passed
+  // by runtime assembly is already a safe projection under local-only, but
+  // this gate keeps the registry independently fail-closed as well.
+  const localOnly = isLocalOnlyEnabled(env);
 
   // Expose `knowledge_search` over the user's live
   // notes when opted in. Off by default — it embeds the corpus per
@@ -128,7 +133,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     }
     const embedModel = env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe";
     const tasksProvider = tasksRegistry?.primary();
-    const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
+    const gmailToken = localOnly ? undefined : env.MUSE_GMAIL_TOKEN?.trim();
     const emailSource = gmailToken ? new GmailEmailProvider(gmailToken) : undefined;
     return [createNotesKnowledgeSearchTool({
       embed: createCachingEmbedder(createOllamaEmbedder(embedModel)),
@@ -215,6 +220,9 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
   // Email READ tool (email_recent) — perception, read-only. Opt-in via
   // the Gmail token (the same gate the email knowledge source uses).
   const emailReadTools: MuseTool[] = (() => {
+    if (localOnly) {
+      return [];
+    }
     const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
     if (!gmailToken) {
       return [];

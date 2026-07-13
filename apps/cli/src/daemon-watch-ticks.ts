@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { parseBoolean, type MessagingPollDispatchers } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
 import { GmailEmailProvider, selectUpcomingConflicts, type EmailProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { runDueObjectives, type AmbientNoticeRunner, type EvidenceRecord, type ObjectiveEvaluation, type WebWatchRunner } from "@muse/proactivity";
@@ -193,6 +194,10 @@ export interface MakeEmailSyncTickDeps {
 export function makeEmailSyncTick(deps: MakeEmailSyncTickDeps): () => Promise<void> {
   const { env: e, notesDir, limit, intervalMs, lastRunMs, stdout, emailSyncProvider } = deps;
   return async (): Promise<void> => {
+    // Defense in depth: daemon registration normally omits this entire
+    // callback under local-only, and a direct lower-level call must not read
+    // Gmail token/provider either.
+    if (isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e)) return;
     if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return;
     const token = e.MUSE_GMAIL_TOKEN?.trim();
     const provider = emailSyncProvider ?? (token ? new GmailEmailProvider(token) : undefined);

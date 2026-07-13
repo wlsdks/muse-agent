@@ -6,11 +6,28 @@
  */
 
 import { embed as embedCore, type EmbedOptions } from "@muse/recall";
+import { isLocalOnlyEnabled } from "@muse/model";
+import type { MuseEnvironment } from "@muse/autoconfigure";
 
 import { resolveOllamaUrl } from "./ollama-url.js";
 
 export { cosineSimilarity, DEFAULT_EMBED_TIMEOUT_MS, type EmbedOptions } from "@muse/recall";
 
-export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
-  return embedCore(text, model, { baseUrlResolver: resolveOllamaUrl, ...options });
+export async function embed(
+  text: string,
+  model: string,
+  options: EmbedOptions = {},
+  env: MuseEnvironment = process.env
+): Promise<number[]> {
+  // Never let an injected false option weaken a process-level local-only
+  // posture. The supplied env is also authoritative for the URL resolver so
+  // an MCP composition does not drift back to ambient process.env.
+  const requireLocalOnly = isLocalOnlyEnabled(process.env)
+    || isLocalOnlyEnabled(env)
+    || options.requireLocalOnly === true;
+  return embedCore(text, model, {
+    baseUrlResolver: () => resolveOllamaUrl(env),
+    ...options,
+    ...(requireLocalOnly ? { requireLocalOnly: true } : {})
+  });
 }

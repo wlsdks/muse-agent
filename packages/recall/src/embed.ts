@@ -17,8 +17,8 @@ export { cosineSimilarity } from "@muse/agent-core";
 
 export const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
 
-function resolveEmbedTransportBaseUrl(baseUrl: string): string {
-  if (!isLocalOnlyEnabled(process.env)) {
+function resolveEmbedTransportBaseUrl(baseUrl: string, requireLocalOnly?: true): string {
+  if (!isLocalOnlyEnabled(process.env) && requireLocalOnly !== true) {
     return baseUrl;
   }
   const canonical = canonicalizeLocalOnlyModelBaseUrl("ollama", baseUrl);
@@ -41,6 +41,12 @@ export interface EmbedOptions {
   /** Resolve the Ollama base URL; defaults to `OLLAMA_BASE_URL` or localhost. */
   readonly baseUrlResolver?: () => string;
   /**
+   * One-way caller posture signal. `true` can add the local-only transport
+   * wall; `false` is intentionally not representable and cannot weaken an
+   * ambient local-only process.
+   */
+  readonly requireLocalOnly?: true;
+  /**
    * Hard wall-clock cap on the embeddings POST. Ollama's cold-model
    * load can wedge a request for minutes; without this every RAG
    * caller (`muse ask`, `muse notes reindex`, `muse recall`, the
@@ -53,7 +59,7 @@ export interface EmbedOptions {
 
 export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const baseUrl = resolveEmbedTransportBaseUrl((options.baseUrlResolver ?? envOllamaUrl)());
+  const baseUrl = resolveEmbedTransportBaseUrl((options.baseUrlResolver ?? envOllamaUrl)(), options.requireLocalOnly);
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
     ? (options.timeoutMs as number)
     : DEFAULT_EMBED_TIMEOUT_MS;

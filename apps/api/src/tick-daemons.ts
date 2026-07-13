@@ -21,6 +21,7 @@ import { join } from "node:path";
 
 import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
+import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
 
 import type { ServerOptions } from "./server.js";
@@ -289,7 +290,8 @@ function buildKnowledgeEnricherIfEnabled(
 export function startSituationalBriefingDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
-  options: ServerOptions
+  options: ServerOptions,
+  localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env)
 ): void {
   const target = resolveMessagingTarget(env.MUSE_BRIEFING_PROVIDER, env.MUSE_BRIEFING_DESTINATION, options);
   if (!target || !options.objectivesFile || !options.briefingSidecarFile) {
@@ -326,7 +328,9 @@ export function startSituationalBriefingDaemonIfConfigured(
   const weatherOpt = weatherLocation && weatherLocation.length > 0
     ? { weatherLocation, weatherProvider: new OpenMeteoWeatherProvider() }
     : {};
-  const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
+  // The server's frozen integration posture is the authority. Do not let a
+  // raw ambient value reopen Gmail after buildServer has resolved it.
+  const gmailToken = localOnly ? undefined : env.MUSE_GMAIL_TOKEN?.trim();
   const emailOpt = gmailToken && gmailToken.length > 0
     ? { emailProvider: new GmailEmailProvider(gmailToken) }
     : {};

@@ -113,6 +113,23 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     expect(tools.map((t) => t.definition.name)).toContain("web_action");
   });
 
+  it("does not read or construct Gmail actuators under injected local-only", () => {
+    const localEnv = env({ MUSE_LOCAL_ONLY: "true" });
+    Object.defineProperty(localEnv, "MUSE_GMAIL_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        throw new Error("Gmail token must not be read while local-only");
+      }
+    });
+
+    const tools = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
+    const summary = summarizeActuators(localEnv);
+
+    expect(tools.map((tool) => tool.definition.name)).not.toContain("email_send");
+    expect(summary.unavailable.find((item) => item.name === "email_send")?.hint).toContain("MUSE_LOCAL_ONLY=true");
+  });
+
   it("adds home_action only when both Home Assistant env vars are set", () => {
     const partial = buildActuatorTools({
       confirmAction: async () => true,

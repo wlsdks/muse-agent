@@ -179,4 +179,35 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(result.status).toBe("no-tool");
     expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["x"]);
   });
+
+  it("local-only keeps a pending Gmail approval and never reads its credential or sends", async () => {
+    const f = file();
+    await recordPendingApproval(f, entry({ id: "gmail-local" }));
+    let gmailReads = 0;
+    const localEnv: Record<string, string | undefined> = { MUSE_LOCAL_ONLY: "true" };
+    Object.defineProperty(localEnv, "MUSE_GMAIL_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        gmailReads += 1;
+        throw new Error("Gmail credential must not be read while local-only");
+      }
+    });
+    const { calls, fetchImpl } = recordingFetch();
+
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      env: localEnv,
+      fetchImpl,
+      id: "gmail-local",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+
+    expect(result).toEqual({ status: "no-tool", tool: "email_send" });
+    expect(gmailReads).toBe(0);
+    expect(calls).toEqual([]);
+    expect((await listPendingApprovals(f)).map((item) => item.id)).toEqual(["gmail-local"]);
+  });
 });

@@ -567,7 +567,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startFollowupDaemonIfConfigured(env, server, options);
   startPatternDaemonIfConfigured(env, server, options);
   startConsolidateDaemonIfConfigured(env, server, options, phaseDWiring);
-  startSituationalBriefingDaemonIfConfigured(env, server, options);
+  startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
   startObjectivesDaemonIfConfigured(env, server, options);
   startAmbientDaemonIfConfigured(env, server, options);
   startWebWatchDaemonIfConfigured(env, server, options);

@@ -164,7 +164,10 @@ function createSnapshotStatusEnvironmentView(
   // key merge cannot overwrite a suggested model with `undefined`.
   const visibleValues = new Map<string, string>();
   for (const key of SNAPSHOT_VISIBLE_STATUS_ENV_KEYS) {
-    if (key === "MUSE_LOCAL_ONLY") {
+    // Gmail is deliberately not even read from the source when the frozen
+    // snapshot is local-only. Status can report it as disabled without
+    // probing a credential-protecting environment.
+    if (key === "MUSE_LOCAL_ONLY" || (integrationEnv.localOnly && key === "MUSE_GMAIL_TOKEN")) {
       continue;
     }
     const value = sourceEnv[key];
@@ -183,6 +186,9 @@ function createSnapshotStatusEnvironmentView(
     get(_target, property) {
       if (property === "MUSE_LOCAL_ONLY") {
         return localOnly;
+      }
+      if (integrationEnv.localOnly && property === "MUSE_GMAIL_TOKEN") {
+        return undefined;
       }
       if (isSnapshotHiddenIntegrationKey(property)) {
         return undefined;
@@ -369,7 +375,7 @@ export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | u
         return { detail: `🔒 on, but OLLAMA_BASE_URL points off-box (${embedBase}) — the embedder fails closed, so recall/memory embedding refuses; point OLLAMA_BASE_URL at localhost`, enabled, status: "fail" };
       }
       return {
-        detail: "🔒 on — cloud model + voice egress blocked; Muse interactive public-web tools (T2-A1), external MCP transports (T2-A2), and T2-B1 standard remote calendar/messaging assembly/setup disabled; local file, exported ICS, and macOS Calendar.app remain available (set MUSE_MACOS_CALENDAR_NAME to scope Calendar.app); not a complete all-egress audit",
+        detail: "🔒 on — cloud model + voice egress blocked and Gmail standard paths disabled; Muse interactive public-web tools (T2-A1), external MCP transports (T2-A2), and T2-B1 standard remote calendar/messaging assembly/setup disabled; local file, exported ICS, and macOS Calendar.app remain available (set MUSE_MACOS_CALENDAR_NAME to scope Calendar.app); not a complete all-egress audit",
         enabled,
         status: "ok"
       };
@@ -401,11 +407,16 @@ export interface ActuatorReadinessSnapshot {
 }
 
 export function readActuatorReadiness(env: Readonly<Record<string, string | undefined>>): ActuatorReadinessSnapshot {
-  const email = Boolean(env.MUSE_GMAIL_TOKEN?.trim());
+  const localOnly = isLocalOnlyEnabled(env);
+  // Read local-only before Gmail. A credential-protecting env Proxy is a
+  // valid composition input and this status row must not become a probe.
+  const email = localOnly ? false : Boolean(env.MUSE_GMAIL_TOKEN?.trim());
   const home = Boolean(env.MUSE_HOMEASSISTANT_URL?.trim() && env.MUSE_HOMEASSISTANT_TOKEN?.trim());
   const hints: string[] = [];
   if (!email) {
-    hints.push("set MUSE_GMAIL_TOKEN for email_send");
+    hints.push(localOnly
+      ? "Gmail email_send is disabled while MUSE_LOCAL_ONLY=true"
+      : "set MUSE_GMAIL_TOKEN for email_send");
   }
   if (!home) {
     hints.push("set MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN for home_action");
@@ -581,15 +592,20 @@ export function buildModelSection(
  * process.env.
  */
 export async function collectSetupStatusJson(options: {
+  /** Test/composition seam; CLI callers retain the process-env default. */
+  readonly env?: MuseEnvironment;
   readonly integrationEnv?: ResolvedIntegrationEnvironment;
 } = {}): Promise<SetupStatusSnapshot> {
   const integrationEnv = options.integrationEnv;
-  const statusEnv = mergeModelKeysFromFile(integrationEnv
-    ? createSnapshotStatusEnvironmentView(process.env as MuseEnvironment, integrationEnv)
-    : process.env as MuseEnvironment);
+  const sourceEnv: MuseEnvironment = options.env ?? process.env;
+  const statusEnv = integrationEnv
+    ? mergeModelKeysFromFile(createSnapshotStatusEnvironmentView(sourceEnv, integrationEnv), {
+      localOnlyOverride: integrationEnv.localOnly
+    })
+    : mergeModelKeysFromFile(sourceEnv);
   const env = statusEnv;
   const integrationLocalOnly = integrationEnv?.localOnly ?? isLocalOnlyEnabled(statusEnv);
-  const home = homedir();
+  const home = env.HOME?.trim() || homedir();
 
   const modelKeysFile = env.MUSE_MODEL_KEYS_FILE?.trim() && env.MUSE_MODEL_KEYS_FILE.trim().length > 0
     ? env.MUSE_MODEL_KEYS_FILE.trim()

@@ -61,7 +61,7 @@ Total: **557** variables.
 | `MUSE_AUX_JUDGE_MODEL` | packages/autoconfigure |
 | `MUSE_AUX_REWRITE_MODEL` | packages/autoconfigure |
 | `MUSE_AUX_VISION_MODEL` | packages/autoconfigure |
-| `MUSE_BACKGROUND_PROCESSES_FILE` | packages/stores |
+| `MUSE_BACKGROUND_PROCESSES_FILE` | apps/cli, packages/stores |
 | `MUSE_BACKGROUND_REVIEW_ENABLED` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_BACKGROUND_REVIEW_MEMORY_TURNS` | apps/cli, packages/autoconfigure |
 | `MUSE_BACKGROUND_REVIEW_SKILL_ARM` | packages/autoconfigure |
@@ -179,7 +179,7 @@ Total: **557** variables.
 | `MUSE_EMAIL_SYNC_LIMIT` | apps/cli |
 | `MUSE_EMBED_MODEL` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_EPISODES_FILE` | apps/cli, packages/autoconfigure |
-| `MUSE_EPISODES_INDEX_FILE` | packages/recall |
+| `MUSE_EPISODES_INDEX_FILE` | apps/cli, packages/recall |
 | `MUSE_EPISODIC_MEMORY_ENABLED` | apps/api, apps/cli |
 | `MUSE_EPISODIC_MEMORY_MAX_ENTRIES` | apps/cli |
 | `MUSE_EPISODIC_RECALL_EMBED` | packages/autoconfigure |
@@ -459,7 +459,7 @@ Total: **557** variables.
 | `MUSE_SCHEDULER_MAX_EXECUTIONS` | packages/autoconfigure |
 | `MUSE_SCHEDULER_MAX_JOBS` | packages/autoconfigure |
 | `MUSE_SCHEDULER_OWNER_ID` | packages/autoconfigure |
-| `MUSE_SCHEDULER_PAUSE_FILE` | packages/stores |
+| `MUSE_SCHEDULER_PAUSE_FILE` | apps/cli, packages/stores |
 | `MUSE_SEARCH_ENABLED` | packages/autoconfigure |
 | `MUSE_SEARXNG_ENGINES` | apps/cli, packages/autoconfigure |
 | `MUSE_SEARXNG_URL` | apps/cli, packages/autoconfigure, packages/domain-tools |

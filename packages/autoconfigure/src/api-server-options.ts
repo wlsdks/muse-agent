@@ -22,16 +22,21 @@ import {
   resolveTelegramInboxFile
 } from "./personal-providers.js";
 
-import { createMuseRuntimeAssembly, type ApiServerAssemblyOptions } from "./index.js";
+import { createMuseRuntimeAssembly, type ApiServerAssemblyOptions, type MuseEnvironment } from "./index.js";
 import { resolveIntegrationEnvironment } from "./integration-environment.js";
 
 export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
-  const env = mergeModelKeysFromFile(options.env ?? process.env);
+  const source: MuseEnvironment = options.env ?? process.env;
+  const integrationEnv = resolveIntegrationEnvironment(source, {
+    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+  });
+  const env = mergeModelKeysFromFile(source, {
+    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+  });
   // One effective env feeds both the runtime assembly and the narrow API
   // integration snapshot. Reusing raw options.env here would let setup routes
   // disagree with the registry the runtime actually assembled.
-  const assembly = createMuseRuntimeAssembly({ ...options, env });
-  const integrationEnv = resolveIntegrationEnvironment(env);
+  const assembly = createMuseRuntimeAssembly({ ...options, env, localOnlyOverride: integrationEnv.localOnly });
 
   return {
     admin: {

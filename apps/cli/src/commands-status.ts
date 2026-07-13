@@ -18,8 +18,8 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot } from "@muse/autoconfigure";
-import { defaultBeliefProvenanceFile, FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
+import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot, type MuseEnvironment } from "@muse/autoconfigure";
+import { FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
 import { readFollowups, readObjectives, readReminders } from "@muse/stores";
 import { readSessionLock } from "@muse/proactivity";
 import { summariseEpisodesRows, summariseFollowupsRows, summariseObjectivesRows, summarisePatternsFiredRows, summariseRemindersRows } from "@muse/domain-tools";
@@ -28,13 +28,11 @@ import type { Command } from "commander";
 
 import {
   BUILTIN_PERSONAS,
-  defaultPersonaFile,
   isBuiltinPersonaId,
   readPersonaStore,
   resolveActivePersonaPreamble
 } from "./persona-store.js";
 import { formatRelativeTime } from "./human-formatters.js";
-import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { readTrust } from "./commands-trust.js";
 
@@ -67,9 +65,80 @@ interface StatusOptions {
   readonly suggestions?: boolean;
 }
 
-function envValue(key: string): string | undefined {
-  const v = process.env[key]?.trim();
+export interface StatusPaths {
+  readonly userMemoryFile: string;
+  readonly tasksFile: string;
+  readonly proactiveHistoryFile: string;
+  readonly messagingLogFile: string;
+  readonly followupsFile: string;
+  readonly episodesFile: string;
+  readonly patternsFiredFile: string;
+  readonly remindersFile: string;
+  readonly objectivesFile: string;
+  readonly sessionLockFile: string;
+  readonly tokenCostFile: string;
+  readonly notesIndexFile: string;
+  readonly personaFile: string;
+  readonly beliefProvenanceFile: string;
+  readonly trustFile: string;
+}
+
+export interface StatusRuntime {
+  readonly env: MuseEnvironment;
+  readonly homeDir: string;
+  readonly paths: StatusPaths;
+  readonly readTrust: (userKey: string) => ReturnType<typeof readTrust>;
+}
+
+export interface StatusRuntimeOptions {
+  readonly env?: MuseEnvironment;
+  readonly homeDir?: string;
+  readonly paths?: Partial<StatusPaths>;
+  readonly readTrust?: StatusRuntime["readTrust"];
+}
+
+function envValue(runtime: StatusRuntime, key: string): string | undefined {
+  const v = runtime.env[key]?.trim();
   return v && v.length > 0 ? v : undefined;
+}
+
+function statusPath(env: MuseEnvironment, homeDir: string, envKey: string, filename: string): string {
+  const explicit = env[envKey]?.trim();
+  return explicit && explicit.length > 0 ? explicit : join(homeDir, ".muse", filename);
+}
+
+/**
+ * Resolve all status paths once. The command never falls back to global HOME
+ * after this point, which keeps injected/local-only runtime snapshots from
+ * accidentally inspecting a developer's real personal stores.
+ */
+export function resolveStatusRuntime(options: StatusRuntimeOptions = {}): StatusRuntime {
+  const env: MuseEnvironment = options.env ?? process.env;
+  const homeDir = options.homeDir?.trim() || env.HOME?.trim() || homedir();
+  const defaults: StatusPaths = {
+    beliefProvenanceFile: statusPath(env, homeDir, "MUSE_BELIEF_PROVENANCE_FILE", "belief-provenance.json"),
+    episodesFile: statusPath(env, homeDir, "MUSE_EPISODES_FILE", "episodes.json"),
+    followupsFile: statusPath(env, homeDir, "MUSE_FOLLOWUPS_FILE", "followups.json"),
+    messagingLogFile: statusPath(env, homeDir, "MUSE_MESSAGING_LOG_FILE", "notifications.log"),
+    notesIndexFile: statusPath(env, homeDir, "MUSE_NOTES_INDEX_FILE", "notes-index.json"),
+    objectivesFile: statusPath(env, homeDir, "MUSE_OBJECTIVES_FILE", "objectives.json"),
+    patternsFiredFile: statusPath(env, homeDir, "MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"),
+    personaFile: statusPath(env, homeDir, "MUSE_PERSONA_FILE", "persona.json"),
+    proactiveHistoryFile: statusPath(env, homeDir, "MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json"),
+    remindersFile: statusPath(env, homeDir, "MUSE_REMINDERS_FILE", "reminders.json"),
+    sessionLockFile: statusPath(env, homeDir, "MUSE_SESSION_LOCK_FILE", "session-lock.json"),
+    tasksFile: statusPath(env, homeDir, "MUSE_TASKS_FILE", "tasks.json"),
+    tokenCostFile: statusPath(env, homeDir, "MUSE_TOKEN_COST_TODAY_FILE", "token-cost-today.json"),
+    trustFile: statusPath(env, homeDir, "MUSE_TRUST_FILE", "trust.json"),
+    userMemoryFile: statusPath(env, homeDir, "MUSE_USER_MEMORY_FILE", "user-memory.json")
+  };
+  const paths: StatusPaths = { ...defaults, ...options.paths };
+  return {
+    env,
+    homeDir,
+    paths,
+    readTrust: options.readTrust ?? ((userKey) => readTrust(userKey, paths.trustFile))
+  };
 }
 
 async function safeReadJson(path: string): Promise<unknown | undefined> {
@@ -100,65 +169,8 @@ async function fileSize(path: string): Promise<number | undefined> {
   }
 }
 
-function defaultUserId(): string {
-  return envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
-}
-
-function defaultUserMemoryFile(): string {
-  return envValue("MUSE_USER_MEMORY_FILE") ?? join(homedir(), ".muse", "user-memory.json");
-}
-
-function defaultTasksFile(): string {
-  return envValue("MUSE_TASKS_FILE") ?? join(homedir(), ".muse", "tasks.json");
-}
-
-function defaultProactiveHistoryFile(): string {
-  return envValue("MUSE_PROACTIVE_HISTORY_FILE") ?? join(homedir(), ".muse", "proactive-history.json");
-}
-
-function defaultFollowupsFile(): string {
-  return envValue("MUSE_FOLLOWUPS_FILE") ?? join(homedir(), ".muse", "followups.json");
-}
-
-function defaultObjectivesFile(): string {
-  return envValue("MUSE_OBJECTIVES_FILE") ?? join(homedir(), ".muse", "objectives.json");
-}
-
-function defaultEpisodesFile(): string {
-  return envValue("MUSE_EPISODES_FILE") ?? join(homedir(), ".muse", "episodes.json");
-}
-
-function defaultPatternsFiredFile(): string {
-  return envValue("MUSE_PATTERNS_FIRED_FILE") ?? join(homedir(), ".muse", "patterns-fired.json");
-}
-
-function defaultRemindersFile(): string {
-  return envValue("MUSE_REMINDERS_FILE") ?? join(homedir(), ".muse", "reminders.json");
-}
-
-function defaultLogFile(): string {
-  return envValue("MUSE_MESSAGING_LOG_FILE") ?? join(homedir(), ".muse", "notifications.log");
-}
-
-function defaultSessionLockFile(): string {
-  return envValue("MUSE_SESSION_LOCK_FILE") ?? join(homedir(), ".muse", "session-lock.json");
-}
-
-/**
- * Optional path to a sidecar JSON the observability
- * snapshotter (or an operator's cron) writes daily-cost totals
- * into. Default `~/.muse/token-cost-today.json` so an off-the-
- * shelf write lands where `muse status` looks. Shape:
- * `{ totalUsd, totalTokens, runs, asOfIso }` — every field
- * optional so a partial / forward-compatible writer still
- * renders.
- */
-function defaultTokenCostTodayFile(): string {
-  return envValue("MUSE_TOKEN_COST_TODAY_FILE") ?? join(homedir(), ".muse", "token-cost-today.json");
-}
-
-function defaultNotesIndexFile(): string {
-  return envValue("MUSE_NOTES_INDEX_FILE") ?? join(homedir(), ".muse", "notes-index.json");
+function defaultUserId(runtime: StatusRuntime): string {
+  return envValue(runtime, "MUSE_USER_ID") ?? envValue(runtime, "USER") ?? "default";
 }
 
 /**
@@ -222,9 +234,10 @@ const RECENTLY_LEARNED_WINDOW_MS = 30 * 24 * 60 * 60 * 1_000;
 export async function readRecentlyLearnedLine(
   memoryFile: string,
   userId: string,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  env: MuseEnvironment = process.env
 ): Promise<string | undefined> {
-  const memory = await new FileUserMemoryStore({ file: memoryFile }).findByUserId(userId);
+  const memory = await new FileUserMemoryStore({ file: memoryFile, env: env as NodeJS.ProcessEnv }).findByUserId(userId);
   return memory
     ? summarizeRecentlyLearned(projectRecentlyLearned(memory, { sinceMs: nowMs - RECENTLY_LEARNED_WINDOW_MS }))
     : undefined;
@@ -269,18 +282,19 @@ interface ProactiveHistoryEntry {
   readonly text?: string;
 }
 
-async function collectStatus(userId: string) {
-  const userMemoryFile = defaultUserMemoryFile();
-  const tasksFile = defaultTasksFile();
-  const historyFile = defaultProactiveHistoryFile();
-  const logFile = defaultLogFile();
+async function collectStatus(userId: string, runtime: StatusRuntime) {
+  const { env, paths } = runtime;
+  const userMemoryFile = paths.userMemoryFile;
+  const tasksFile = paths.tasksFile;
+  const historyFile = paths.proactiveHistoryFile;
+  const logFile = paths.messagingLogFile;
 
   // Resolve the slot BEFORE reading memory + trust, else the badge
   // shows the slot but facts/prefs/trust come from the bare
   // <user> record (silent divergence when MUSE_PERSONA is set).
-  const slot = resolvePersona(undefined);
+  const slot = env.MUSE_PERSONA?.trim() || undefined;
   const effectiveUserKey = slot ? `${userId}@${slot}` : userId;
-  const personaStore = await readPersonaStore(defaultPersonaFile()).catch(() => undefined);
+  const personaStore = await readPersonaStore(paths.personaFile).catch(() => undefined);
   const activeTemplateId = personaStore?.activeId ?? "default";
   const activePreamble = personaStore ? resolveActivePersonaPreamble(personaStore) : "";
   const builtinDescription = BUILTIN_PERSONAS.find((p) => p.id === activeTemplateId)?.description;
@@ -288,17 +302,17 @@ async function collectStatus(userId: string) {
   // Read through the store API (not a raw JSON parse) so status sees exactly
   // what ask/chat/recall see — including the encrypted-at-rest format and the
   // legacy "default"-bucket healing a raw read would miss.
-  const personaMemory = await new FileUserMemoryStore({ file: userMemoryFile })
+  const personaMemory = await new FileUserMemoryStore({ file: userMemoryFile, env: env as NodeJS.ProcessEnv })
     .findByUserId(effectiveUserKey)
     .catch(() => undefined);
   const persona = personaMemory
     ? { facts: personaMemory.facts, preferences: personaMemory.preferences, updatedAt: personaMemory.updatedAt.toISOString() }
     : undefined;
 
-  const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey).catch(() => undefined);
-  const recentlyForgottenLine = await readRecentlyForgottenLine(defaultBeliefProvenanceFile()).catch(() => undefined);
+  const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey, Date.now(), env).catch(() => undefined);
+  const recentlyForgottenLine = await readRecentlyForgottenLine(paths.beliefProvenanceFile).catch(() => undefined);
 
-  const trust = await readTrust(effectiveUserKey).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
+  const trust = await runtime.readTrust(effectiveUserKey).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
   const routineHours = persona?.facts?.routine_active_hours;
   const routineDays = persona?.facts?.routine_active_days;
 
@@ -314,42 +328,42 @@ async function collectStatus(userId: string) {
   const historyDoc = await safeReadJson(historyFile) as { entries?: readonly ProactiveHistoryEntry[] } | undefined;
   const lastNotice = historyDoc?.entries?.[historyDoc.entries.length - 1];
 
-  const followups = await readFollowups(defaultFollowupsFile()).catch(() => [] as const);
+  const followups = await readFollowups(paths.followupsFile).catch(() => [] as const);
   const followupsByStatus = summariseFollowupsRows(followups, userId);
 
-  const episodesDoc = await safeReadJson(defaultEpisodesFile()) as { episodes?: readonly unknown[] } | undefined;
+  const episodesDoc = await safeReadJson(paths.episodesFile) as { episodes?: readonly unknown[] } | undefined;
   const episodesSummary = summariseEpisodesRows(episodesDoc?.episodes ?? [], userId);
 
-  const patternsFiredDoc = await safeReadJson(defaultPatternsFiredFile()) as { fired?: readonly unknown[] } | undefined;
+  const patternsFiredDoc = await safeReadJson(paths.patternsFiredFile) as { fired?: readonly unknown[] } | undefined;
   const patternsSummary = summarisePatternsFiredRows(patternsFiredDoc?.fired ?? []);
   // 1-3 "you usually do X around now" hints from the
   // patterns-fired sidecar.
   const suggestions = suggestPatternHints(patternsFiredDoc?.fired ?? [], new Date());
 
-  const reminders = await readReminders(defaultRemindersFile()).catch(() => [] as const);
+  const reminders = await readReminders(paths.remindersFile).catch(() => [] as const);
   const remindersSummary = summariseRemindersRows(reminders, now);
 
-  const objectives = await readObjectives(defaultObjectivesFile()).catch(() => [] as const);
+  const objectives = await readObjectives(paths.objectivesFile).catch(() => [] as const);
   const objectivesSummary = summariseObjectivesRows(objectives, userId);
 
   // Do-Not-Disturb: the proactive loop skips firing while a session
   // lock is active, so the dashboard must surface it — else a user
   // who locked DND glances here, sees no notices, and is confused.
-  const sessionLockUntil = await readSessionLock(defaultSessionLockFile(), new Date()).catch(() => undefined);
+  const sessionLockUntil = await readSessionLock(paths.sessionLockFile, new Date()).catch(() => undefined);
 
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
 
-  const tokenCost = await readTokenCostToday(defaultTokenCostTodayFile());
-  const rag = await readRagStatus(defaultNotesIndexFile());
+  const tokenCost = await readTokenCostToday(paths.tokenCostFile);
+  const rag = await readRagStatus(paths.notesIndexFile);
 
   return {
     // Bump only on breaking field renames/removals (not additive
     // changes) — jq pipelines branch on this.
     schemaVersion: MUSE_STATUS_SCHEMA_VERSION,
-    ...resolveModelInfo(),
-    providers: summariseProviders(),
-    localOnly: evaluateLocalOnlyPosture(process.env),
+    ...resolveModelInfo(env),
+    providers: summariseProviders(env),
+    localOnly: evaluateLocalOnlyPosture(env),
     persona: {
       factCount: persona?.facts ? Object.keys(persona.facts).length : 0,
       preferenceCount: persona?.preferences ? Object.keys(persona.preferences).length : 0,
@@ -534,8 +548,8 @@ export function suggestPatternHints(
  * matches the `muse doctor` warn-detail format
  * ("inferred from GEMINI_API_KEY").
  */
-function resolveModelInfo(): { model?: string; modelInferredFrom?: string; modelLocalOnlyIgnoredKey?: string } {
-  const merged = mergeModelKeysFromFile({ ...process.env });
+function resolveModelInfo(sourceEnv: MuseEnvironment): { model?: string; modelInferredFrom?: string; modelLocalOnlyIgnoredKey?: string } {
+  const merged = mergeModelKeysFromFile(sourceEnv);
   const explicit = (merged.MUSE_MODEL?.trim() || merged.MUSE_DEFAULT_MODEL?.trim() || "") || undefined;
   if (explicit) {
     return { model: explicit };
@@ -585,7 +599,7 @@ function resolveModelInfo(): { model?: string; modelInferredFrom?: string; model
  * exist on a fresh install (mergeModelKeysFromFile returns the
  * input env unchanged in that case).
  */
-function summariseProviders() {
+function summariseProviders(sourceEnv: MuseEnvironment) {
   const checks: ReadonlyArray<{ id: string; envKey: string }> = [
     { envKey: "GEMINI_API_KEY", id: "gemini" },
     { envKey: "ANTHROPIC_API_KEY", id: "anthropic" },
@@ -593,7 +607,7 @@ function summariseProviders() {
     { envKey: "OPENROUTER_API_KEY", id: "openrouter" },
     { envKey: "OLLAMA_BASE_URL", id: "ollama" }
   ];
-  const merged = mergeModelKeysFromFile({ ...process.env });
+  const merged = mergeModelKeysFromFile(sourceEnv);
   const configured: string[] = [];
   for (const check of checks) {
     const v = merged[check.envKey];
@@ -617,7 +631,7 @@ function summariseProviders() {
 export function formatPrivacyPosture(posture: LocalOnlyStatusSnapshot): string {
   if (posture.enabled) {
     return posture.status === "ok"
-      ? "🔒 local-only on (default) — cloud egress blocked"
+      ? "🔒 local-only on (default) — cloud model routes + Gmail standard paths blocked (not a complete all-egress audit)"
       : "⚠ local-only on but degraded — run `muse doctor`";
   }
   return posture.status === "warn"
@@ -809,7 +823,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       }
 }
 
-export function registerStatusCommand(program: Command, io: ProgramIO): void {
+export function registerStatusCommand(program: Command, io: ProgramIO, runtimeOptions: StatusRuntimeOptions = {}): void {
   program
     .command("status")
     .description("At-a-glance dashboard: persona + model + imminent tasks + last notice")
@@ -822,18 +836,22 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       "Refresh interval in seconds when --watch is set (default 5, clamped to [1, 3600])"
     )
     .action(async (options: StatusOptions) => {
-      const userId = options.user ?? defaultUserId();
+      // Resolve at command execution, not registration: existing CLI callers
+      // and test harnesses may set env immediately before parseAsync. An
+      // injected runtime remains deterministic because its options are reused.
+      const runtime = resolveStatusRuntime(runtimeOptions);
+      const userId = options.user ?? defaultUserId(runtime);
 
       if (options.json) {
         // --watch is ignored with --json (a watch loop emitting JSON
         // every tick is a stream consumer's job, not status's).
-        const snap = await collectStatus(userId);
+        const snap = await collectStatus(userId, runtime);
         io.stdout(`${JSON.stringify(snap, null, 2)}\n`);
         return;
       }
 
       if (!options.watch) {
-        const snap = await collectStatus(userId);
+        const snap = await collectStatus(userId, runtime);
         renderStatus(io, snap);
         if (options.suggestions) renderSuggestions(io, snap.suggestions);
         return;
@@ -851,7 +869,7 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       try {
         while (!stopped) {
           io.stdout("\x1b[2J\x1b[H");
-          const snap = await collectStatus(userId);
+          const snap = await collectStatus(userId, resolveStatusRuntime(runtimeOptions));
           renderStatus(io, snap);
           if (options.suggestions) renderSuggestions(io, snap.suggestions);
           io.stdout(`\n  (watching every ${(intervalMs / 1000).toString()}s — Ctrl-C to exit)\n`);

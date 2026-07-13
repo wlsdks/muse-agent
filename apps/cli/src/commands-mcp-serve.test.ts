@@ -22,7 +22,8 @@ import { InMemoryUserMemoryStore } from "@muse/memory";
 import { LocalDirNotesProvider } from "@muse/domain-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildMcpServeTools, type McpServeDependencies } from "./mcp-serve-tools.js";
+import { buildMcpServeTools, resolveMcpServeDependencies, type McpServeDependencies } from "./mcp-serve-tools.js";
+import { runMcpServeCommand } from "./commands-mcp-serve.js";
 
 describe("muse mcp serve (in-process e2e)", () => {
   let notesDir: string;
@@ -36,6 +37,7 @@ describe("muse mcp serve (in-process e2e)", () => {
     deps = {
       answerModel: undefined,
       answerTemperature: 0.6,
+      baseUrlResolver: () => "http://127.0.0.1:11434",
       embedFn: async () => {
         throw new Error("no local Ollama in this test");
       },
@@ -102,6 +104,65 @@ describe("muse mcp serve (in-process e2e)", () => {
       fetchSpy.mockRestore();
       await client.close();
       await server.close();
+    }
+  });
+
+  it("passes the injected local-only environment through runMcpServeCommand into the real guarded dependency resolver", async () => {
+    const modelFile = join(notesDir, "models.json");
+    writeFileSync(modelFile, JSON.stringify({ providers: { ollama: { token: "http://198.51.100.8:11434" } } }), "utf8");
+    const injectedEnv = {
+      HOME: notesDir,
+      MUSE_LOCAL_ONLY: "true",
+      MUSE_MODEL: "diagnostic/smoke",
+      MUSE_MODEL_KEYS_FILE: modelFile,
+      MUSE_MODEL_PROVIDER_ID: "diagnostic",
+      MUSE_NOTES_DIR: notesDir,
+      MUSE_NOTES_INDEX_FILE: join(notesDir, "notes-index.json"),
+      MUSE_USER_MEMORY_FILE: join(notesDir, "user-memory.json"),
+      OLLAMA_BASE_URL: "http://198.51.100.8:11434"
+    };
+    const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+    const originalFetch = globalThis.fetch;
+    const stderr: string[] = [];
+    let receivedEnv: unknown;
+    let resolvedDeps: McpServeDependencies | undefined;
+    let capturedServer: unknown;
+    let stdioCalls = 0;
+    process.env.MUSE_LOCAL_ONLY = "false";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new Error("the command-entry local-only guard must reject before fetch");
+    });
+
+    try {
+      await runMcpServeCommand({ stderr: (message) => stderr.push(message), stdout: () => {} }, {
+        env: injectedEnv,
+        resolveDependencies: (env = process.env) => {
+          receivedEnv = env;
+          resolvedDeps = resolveMcpServeDependencies(env);
+          return resolvedDeps;
+        },
+        runStdioMcpServer: async (server, onListening) => {
+          capturedServer = server;
+          stdioCalls += 1;
+          onListening?.();
+        }
+      });
+
+      expect(receivedEnv).toBe(injectedEnv);
+      expect(receivedEnv).not.toBe(process.env);
+      expect(stdioCalls).toBe(1);
+      expect(capturedServer).toBeDefined();
+      expect(stderr.join("")).toContain("listening on stdio (6 tools)");
+      expect(resolvedDeps?.modelProvider?.id).toBe("diagnostic");
+      expect(() => resolvedDeps?.baseUrlResolver()).toThrow(/local.only|loopback|cloud provider/iu);
+      await expect(resolvedDeps?.embedFn("private command-entry text", "nomic-embed-text-v2-moe"))
+        .rejects.toThrow(/local.only|loopback|cloud provider/iu);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      globalThis.fetch = originalFetch;
+      if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
     }
   });
 });

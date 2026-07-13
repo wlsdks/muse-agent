@@ -46,7 +46,7 @@ import {
   renderKnowledgeMatches
 } from "@muse/agent-core";
 import type { JsonObject, JsonValue } from "@muse/shared";
-import type { ModelProvider } from "@muse/model";
+import { canonicalizeLocalOnlyModelBaseUrl, isLocalOnlyEnabled, type ModelProvider } from "@muse/model";
 import type { MuseTool } from "@muse/tools";
 
 import { embed } from "./embed.js";
@@ -59,6 +59,8 @@ export interface McpServeDependencies {
   readonly notesProvider: NotesProvider;
   readonly embedModel: string;
   readonly embedFn: (text: string, model: string) => Promise<readonly number[]>;
+  /** The one guarded model URL resolver shared by direct embed + stale reindex. */
+  readonly baseUrlResolver: () => string;
   readonly userMemoryStore: UserMemoryStore;
   readonly userId: string;
   readonly modelProvider?: ModelProvider;
@@ -71,6 +73,14 @@ export interface McpServeDependencies {
   readonly listTasks: (status: "open" | "done" | "all") => Promise<readonly Task[]>;
 }
 
+/** Private/test-only MCP bootstrap seam; not exposed over the MCP protocol. */
+export interface McpServeDependencyRuntime {
+  /** A one-way strictness input for local stdio composition. */
+  readonly requireLocalOnly?: true;
+  /** Observes the post-merge environment without creating a second read path. */
+  readonly onResolvedMcpEnvironment?: (env: MuseEnvironment, effectiveLocalOnly: boolean) => void;
+}
+
 /**
  * `MUSE_USER_ID` / `USER` / `"default"` — the same base identity
  * `resolveMemoryUserId` (commands-memory.ts) computes without a persona
@@ -81,15 +91,44 @@ function resolveMcpUserId(env: MuseEnvironment): string {
   return env.MUSE_USER_ID?.trim() || env.USER?.trim() || "default";
 }
 
-export function resolveMcpServeDependencies(rawEnv: MuseEnvironment = process.env): McpServeDependencies {
-  const env = mergeModelKeysFromFile(rawEnv);
+export function resolveMcpServeDependencies(
+  rawEnv: MuseEnvironment = process.env,
+  runtime: McpServeDependencyRuntime = {}
+): McpServeDependencies {
+  // This must stay ahead of model-file merging: the normal false/unset merge
+  // preserves legacy raw-env spreading, while any true source must first be
+  // projected into the Gmail-safe local-only overlay.
+  const effectiveLocalOnly = isLocalOnlyEnabled(process.env)
+    || isLocalOnlyEnabled(rawEnv)
+    || runtime.requireLocalOnly === true;
+  const env = effectiveLocalOnly
+    ? mergeModelKeysFromFile(rawEnv, { localOnlyOverride: true })
+    : mergeModelKeysFromFile(rawEnv);
+  runtime.onResolvedMcpEnvironment?.(env, effectiveLocalOnly);
+  const baseUrlResolver = (): string => {
+    const resolved = resolveOllamaUrl(env);
+    if (!effectiveLocalOnly) {
+      return resolved;
+    }
+    const canonical = canonicalizeLocalOnlyModelBaseUrl("ollama", resolved);
+    // Ollama's canonicalizer supplies a numeric-loopback default, but keep a
+    // defensive throw shape if that invariant ever changes.
+    if (!canonical) {
+      throw new Error("MUSE_LOCAL_ONLY requires a loopback Ollama URL");
+    }
+    return canonical;
+  };
   const notesDir = resolveNotesDir(env);
   const calendar = new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) });
   const tasks = new LocalFileTasksProvider({ file: resolveTasksFile(env) });
   return {
     answerModel: resolveDefaultModel(env),
     answerTemperature: resolveAnswerTemperature(env),
-    embedFn: (text, model) => embed(text, model),
+    baseUrlResolver,
+    embedFn: (text, model) => embed(text, model, {
+      baseUrlResolver,
+      ...(effectiveLocalOnly ? { requireLocalOnly: true } : {})
+    }, env),
     embedModel: DEFAULT_EMBED_MODEL,
     listCalendarEvents: (range) => calendar.listEvents(range),
     listTasks: (status) => tasks.list(status),
@@ -183,8 +222,11 @@ async function bestEffortReindex(deps: McpServeDependencies): Promise<void> {
   try {
     const stale = await isNotesIndexStale(deps.notesDir, deps.notesIndexFile);
     if (stale) {
+      // Preflight the guarded resolver before reindexNotes can hit its
+      // fail-soft per-chunk path and persist an empty index.
+      deps.baseUrlResolver();
       await reindexNotes({
-        baseUrlResolver: resolveOllamaUrl,
+        baseUrlResolver: deps.baseUrlResolver,
         dir: deps.notesDir,
         indexPath: deps.notesIndexFile,
         model: deps.embedModel

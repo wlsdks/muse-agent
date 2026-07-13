@@ -210,7 +210,7 @@ describe("suggestPatternHints", () => {
 describe("formatPrivacyPosture", () => {
   it("shows a concise locked badge when local-only is on and healthy", () => {
     expect(formatPrivacyPosture({ detail: "🔒 on (default) — cloud LLM + voice egress blocked (fail-closed to local)", enabled: true, status: "ok" }))
-      .toBe("🔒 local-only on (default) — cloud egress blocked");
+      .toBe("🔒 local-only on (default) — cloud model routes + Gmail standard paths blocked (not a complete all-egress audit)");
   });
 
   it("flags a degraded local-only posture and points at `muse doctor` for the precise reason", () => {

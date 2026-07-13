@@ -45,6 +45,7 @@ import {
   resolveUserSkillsDir,
   resolveWorkspaceSkillsDir
 } from "./provider-paths.js";
+import { isLocalOnlyEnabled } from "@muse/model";
 
 export {
   resolveActionLogFile,
@@ -117,9 +118,107 @@ export {
  * Sync read by design — `createMuseRuntimeAssembly` is sync and
  * reads env directly; the file fallback rides the same path.
  */
-export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
+export interface MergeModelKeysFromFileOptions {
+  /**
+   * A composition-owned local-only posture. This is deliberately a narrow
+   * internal seam: API snapshots and local MCP bootstraps must not re-read a
+   * contradictory ambient value while materialising model settings.
+   */
+  readonly localOnlyOverride?: boolean;
+}
+
+const GMAIL_ENV_KEY = "MUSE_GMAIL_TOKEN";
+const LOCAL_ONLY_ENV_KEY = "MUSE_LOCAL_ONLY";
+
+/**
+ * A bounded env projection used only when local-only is effective (or a
+ * caller supplied a frozen override). It never enumerates the source env:
+ * `models.json` remains available, ordinary non-model values remain lazily
+ * readable, and Gmail is absent from every reflective surface under
+ * local-only. This matters for a source that is a credential-protecting
+ * Proxy: spreading it would invoke `ownKeys` before the registry can apply
+ * its Gmail gate.
+ */
+function createModelEnvironmentOverlay(
+  source: MuseEnvironment,
+  materialized: Readonly<Record<string, string | undefined>>,
+  localOnly: boolean
+): MuseEnvironment {
+  const values = new Map<string, string>();
+  for (const [key, value] of Object.entries(materialized)) {
+    if (value !== undefined) {
+      values.set(key, value);
+    }
+  }
+  values.set(LOCAL_ONLY_ENV_KEY, localOnly ? "true" : "false");
+
+  // A fresh target avoids Proxy invariant interaction with an arbitrary
+  // source Proxy. Every virtual own property is configurable.
+  const target = Object.create(null) as Record<string, never>;
+  return new Proxy(target, {
+    defineProperty: () => false,
+    deleteProperty: () => false,
+    get(_target, property) {
+      if (typeof property !== "string") {
+        return Reflect.get(source, property);
+      }
+      if (property === GMAIL_ENV_KEY && localOnly) {
+        return undefined;
+      }
+      if (values.has(property)) {
+        return values.get(property);
+      }
+      // Do not turn this into a spread or `Object.keys(source)`: direct reads
+      // preserve normal env access without exposing unrelated credentials.
+      return source[property];
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      if (typeof property === "string" && values.has(property)) {
+        return {
+          configurable: true,
+          enumerable: true,
+          value: values.get(property),
+          writable: false
+        };
+      }
+      // In particular, Gmail has no descriptor in local-only mode. Unknown
+      // source fields are intentionally lazy-only rather than reflected.
+      return undefined;
+    },
+    has(_target, property) {
+      if (property === GMAIL_ENV_KEY && localOnly) {
+        return false;
+      }
+      if (typeof property === "string" && values.has(property)) {
+        return true;
+      }
+      return typeof property === "symbol" ? Reflect.has(source, property) : property in source;
+    },
+    ownKeys() {
+      // `values` is source-independent and includes MUSE_LOCAL_ONLY exactly
+      // once. Do not reflect or enumerate the source here.
+      return [...values.keys()];
+    },
+    preventExtensions: () => false,
+    set: () => false
+  }) as MuseEnvironment;
+}
+
+export function mergeModelKeysFromFile(
+  env: MuseEnvironment,
+  options: MergeModelKeysFromFileOptions = {}
+): MuseEnvironment {
+  // Explicit false is meaningful: it freezes the composition snapshot and
+  // must not lazily forward a contradictory source MUSE_LOCAL_ONLY=true.
+  const frozenLocalOnly = options.localOnlyOverride;
+  const sourceLocalOnly = frozenLocalOnly === undefined && isLocalOnlyEnabled(env);
+  const projected = frozenLocalOnly !== undefined || sourceLocalOnly;
+  const effectiveLocalOnly = frozenLocalOnly ?? sourceLocalOnly;
   const file = readCredentialsSync(resolveModelKeysFile(env), env);
-  if (Object.keys(file).length === 0) {
+  // The historical false/unset branch intentionally keeps its exact raw-env
+  // precedence and early returns. Only the projection branch must avoid raw
+  // enumeration/reflection.
+  if (Object.keys(file).length === 0 && !projected) {
     return env;
   }
   const fileKeyForEnv: Record<string, string | undefined> = {};
@@ -151,7 +250,7 @@ export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
       }
     }
   }
-  if (Object.keys(fileKeyForEnv).length === 0) {
+  if (Object.keys(fileKeyForEnv).length === 0 && !projected) {
     return env;
   }
   // Env wins on conflict, BUT an empty/whitespace-only env value
@@ -162,6 +261,17 @@ export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
   if (firstSuggestedModel !== undefined) {
     fileKeyForEnv["MUSE_MODEL"] = firstSuggestedModel;
   }
+  if (projected) {
+    const materialized: Record<string, string | undefined> = { ...fileKeyForEnv };
+    for (const key of Object.keys(fileKeyForEnv)) {
+      const envValue = env[key];
+      materialized[key] = typeof envValue === "string" && envValue.trim().length > 0
+        ? envValue
+        : fileKeyForEnv[key];
+    }
+    return createModelEnvironmentOverlay(env, materialized, effectiveLocalOnly);
+  }
+
   const merged: Record<string, string | undefined> = { ...fileKeyForEnv, ...env };
   for (const key of Object.keys(fileKeyForEnv)) {
     const envValue = env[key];
@@ -292,4 +402,3 @@ function toCatalogEntry(skill: Skill): SkillCatalogEntry {
       : {})
   };
 }
-

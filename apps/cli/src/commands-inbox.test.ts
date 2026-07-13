@@ -71,6 +71,56 @@ describe("muse inbox", () => {
     process.exitCode = prevExit;
     if (prevTok !== undefined) process.env.MUSE_GMAIL_TOKEN = prevTok;
   });
+
+  it("rejects local-only before an injected Gmail provider is touched", async () => {
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    let calls = 0;
+    const output: string[] = [];
+    const program = new Command();
+    program.exitOverride();
+    registerInboxCommand(
+      program,
+      { stderr: (message) => output.push(message), stdout: (message) => output.push(message) },
+      { listRecent: async () => { calls += 1; return INBOX; } },
+      undefined,
+      { MUSE_GMAIL_TOKEN: "poison", MUSE_LOCAL_ONLY: "true" }
+    );
+    await program.parseAsync(["node", "muse", "inbox"]);
+    expect(calls).toBe(0);
+    expect(output.join("")).toContain("Gmail is disabled while MUSE_LOCAL_ONLY=true");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prevExit;
+  });
+
+  it("does not let an injected false downgrade ambient local-only", async () => {
+    const prevExit = process.exitCode;
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    process.exitCode = 0;
+    process.env.MUSE_LOCAL_ONLY = "true";
+    try {
+      let calls = 0;
+      const output: string[] = [];
+      const program = new Command();
+      program.exitOverride();
+      registerInboxCommand(
+        program,
+        { stderr: (message) => output.push(message), stdout: (message) => output.push(message) },
+        { listRecent: async () => { calls += 1; return INBOX; } },
+        undefined,
+        { MUSE_LOCAL_ONLY: "false" }
+      );
+      await program.parseAsync(["node", "muse", "inbox"]);
+
+      expect(calls).toBe(0);
+      expect(output.join("")).toContain("Gmail is disabled while MUSE_LOCAL_ONLY=true");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExit;
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previous;
+    }
+  });
 });
 
 describe("muse inbox <id> — read one message's full body", () => {

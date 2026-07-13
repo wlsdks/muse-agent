@@ -45,13 +45,26 @@ export interface PrivacyPosture {
   readonly anyEncrypted: boolean;
 }
 
-function memoryFile(env: Env): string {
-  return env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
+export interface PrivacyPostureRuntime {
+  readonly homeDir?: string;
+  readonly userMemoryFile?: string;
 }
 
-function storeDefs(env: Env): readonly { name: string; path: string; encryptable: boolean; encryptCommand?: string }[] {
+function memoryFile(env: Env, runtime: PrivacyPostureRuntime = {}): string {
+  const explicit = runtime.userMemoryFile?.trim();
+  if (explicit && explicit.length > 0) return explicit;
+  const configured = env.MUSE_USER_MEMORY_FILE?.trim();
+  if (configured && configured.length > 0) return configured;
+  const runtimeHome = runtime.homeDir?.trim();
+  if (runtimeHome && runtimeHome.length > 0) return join(runtimeHome, ".muse", "user-memory.json");
+  const envHome = env.HOME?.trim();
+  if (envHome && envHome.length > 0) return join(envHome, ".muse", "user-memory.json");
+  return join(homedir(), ".muse", "user-memory.json");
+}
+
+function storeDefs(env: Env, runtime: PrivacyPostureRuntime = {}): readonly { name: string; path: string; encryptable: boolean; encryptCommand?: string }[] {
   return [
-    { encryptCommand: "muse memory encrypt", encryptable: true, name: "user-memory", path: memoryFile(env) },
+    { encryptCommand: "muse memory encrypt", encryptable: true, name: "user-memory", path: memoryFile(env, runtime) },
     { encryptCommand: "muse episode encrypt", encryptable: true, name: "episodes", path: resolveEpisodesFile(env) },
     { encryptCommand: "muse actions encrypt", encryptable: true, name: "action-log", path: resolveActionLogFile(env) },
     { encryptCommand: "muse contacts encrypt", encryptable: true, name: "contacts", path: resolveContactsFile(env) },
@@ -69,8 +82,8 @@ function storeDefs(env: Env): readonly { name: string; path: string; encryptable
  * sniff the per-store encrypt commands use); a missing file is reported as
  * not-created (never a false "plaintext"). No decryption, no key needed.
  */
-export async function collectPrivacyPosture(env: Env): Promise<PrivacyPosture> {
-  const stores = await Promise.all(storeDefs(env).map(async (def) => {
+export async function collectPrivacyPosture(env: Env, runtime: PrivacyPostureRuntime = {}): Promise<PrivacyPosture> {
+  const stores = await Promise.all(storeDefs(env, runtime).map(async (def) => {
     const exists = existsSync(def.path);
     const encrypted = exists && def.encryptable ? await isFileEncryptedAtRest(def.path).catch(() => false) : false;
     return {

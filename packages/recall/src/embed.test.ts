@@ -127,6 +127,28 @@ describe("embed — MUSE_LOCAL_ONLY cloud-egress guard", () => {
     expect(result).toEqual([0.5]);
   });
 
+  it("treats requireLocalOnly as one-way: explicit true tightens transport and an unsafe false cannot weaken ambient local-only", async () => {
+    let calls = 0;
+    const fetchImpl: typeof globalThis.fetch = async (...args) => {
+      calls += 1;
+      return okJson({ embedding: [0.5] })(...args);
+    };
+    process.env.MUSE_LOCAL_ONLY = "false";
+    await expect(embed("private", "m", {
+      baseUrlResolver: () => "http://192.168.1.50:11434",
+      fetchImpl,
+      requireLocalOnly: true
+    })).rejects.toThrow(/local-only|cloud provider/u);
+    process.env.MUSE_LOCAL_ONLY = "true";
+    await expect(embed("private", "m", {
+      baseUrlResolver: () => "http://192.168.1.50:11434",
+      fetchImpl,
+      // Runtime input can be untyped JS; false must remain powerless.
+      ...( { requireLocalOnly: false } as unknown as { requireLocalOnly?: true })
+    })).rejects.toThrow(/local-only|cloud provider/u);
+    expect(calls).toBe(0);
+  });
+
   it("canonicalizes actual local-only embedding fetches to numeric loopback and refuses ambiguous bases before fetch", async () => {
     process.env.MUSE_LOCAL_ONLY = "true";
     delete process.env.OLLAMA_BASE_URL;

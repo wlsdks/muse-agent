@@ -19,7 +19,7 @@ import { recordPendingApproval } from "@muse/messaging";
 import { appendActionLog, queryContacts, resolveContact } from "@muse/stores";
 import { GmailEmailProvider, createEmailForwardTool, createEmailReplyTool, createEmailSendTool, createHomeActionTool, createWebActionTool, createAllowlistPathValidator, type EmailApprovalGate, type HostLookup, type MessageApprovalGate, type WebActionApprovalGate } from "@muse/domain-tools";
 import { defaultFileReadRoots, type FsWriteApprovalGate, type FsWriteDraft } from "@muse/fs";
-import { isWebEgressAllowed } from "@muse/model";
+import { isLocalOnlyEnabled, isWebEgressAllowed } from "@muse/model";
 import {
   createMacAppOpenTool,
   createMacAppReadTool,
@@ -80,13 +80,18 @@ export interface ActuatorSummary {
  */
 export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   const webEgress = isWebEgressAllowed(env);
+  const localOnly = isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(env);
   const armed: string[] = webEgress ? ["web_action"] : [];
   const unavailable: { name: string; hint: string }[] = [];
   if (!webEgress) {
     unavailable.push({ hint: "web egress is off (unset MUSE_WEB_EGRESS)", name: "web_action" });
   }
 
-  if (env.MUSE_GMAIL_TOKEN?.trim()) {
+  if (localOnly) {
+    unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_send" });
+    unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_reply" });
+    unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_forward" });
+  } else if (env.MUSE_GMAIL_TOKEN?.trim()) {
     armed.push("email_send", "email_reply", "email_forward");
   } else {
     unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_send" });
@@ -438,6 +443,9 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
 
 export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const { env, io, userId } = deps;
+  // The injected env is allowed to add strictness, never remove the ambient
+  // local-only wall used by a running personal assistant.
+  const localOnly = isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(env);
   const fetchImpl = deps.fetchImpl ?? io.fetch ?? globalThis.fetch;
   const confirmAction =
     deps.confirmAction ??
@@ -457,7 +465,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
     tools.push(createWebActionTool({ actionLogFile, approvalGate: webGate, fetchImpl, ...(deps.lookup ? { lookup: deps.lookup } : {}), userId }));
   }
 
-  const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
+  const gmailToken = localOnly ? undefined : env.MUSE_GMAIL_TOKEN?.trim();
   if (gmailToken) {
     const contactsFile = resolveContactsFile(env);
     const emailGate = buildEmailApprovalGate({

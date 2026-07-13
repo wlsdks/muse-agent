@@ -49,6 +49,52 @@ describe("muse email send — surface", () => {
     expect(r.exitCode).toBeUndefined();
   });
 
+  it("closes every Gmail subcommand before injected sender/reader/source callbacks under local-only", async () => {
+    let calls = 0;
+    const provider = {
+      getMessage: async () => { calls += 1; return undefined; },
+      listRecent: async () => { calls += 1; return []; },
+      sendEmail: async () => { calls += 1; return undefined; }
+    };
+    const base: EmailCommandDeps = {
+      emailSource: provider,
+      env: { MUSE_GMAIL_TOKEN: "poison", MUSE_LOCAL_ONLY: "true" },
+      reader: provider,
+      sender: provider
+    };
+    for (const args of [
+      ["send", "--to", "Anyone", "--subject", "s", "--body", "b"],
+      ["reply", "--id", "m1", "--body", "b"],
+      ["forward", "--id", "m1", "--to", "Anyone"],
+      ["sync"]
+    ]) {
+      const result = await run(args, base);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain("Gmail is disabled while MUSE_LOCAL_ONLY=true");
+    }
+    expect(calls).toBe(0);
+  });
+
+  it("does not let an injected false downgrade ambient local-only", async () => {
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    process.env.MUSE_LOCAL_ONLY = "true";
+    try {
+      const fix = fixtures([{ email: "alice@example.com", id: "c_a", name: "Alice" }]);
+      const { sender, sends } = recordingSender();
+      const result = await run(
+        ["send", "--to", "Alice", "--subject", "Hi", "--body", "hello"],
+        { ...fix, env: { MUSE_LOCAL_ONLY: "false" }, sender }
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain("Gmail is disabled while MUSE_LOCAL_ONLY=true");
+      expect(sends).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previous;
+    }
+  });
+
   it("DENY: no send, exit 1", async () => {
     const fix = fixtures([{ email: "alice@example.com", id: "c_a", name: "Alice" }]);
     const { sender, sends } = recordingSender();

@@ -299,6 +299,12 @@ export interface ApiServerAssemblyOptions {
   readonly db?: Kysely<MuseDatabase>;
   readonly env?: MuseEnvironment;
   /**
+   * Composition-only posture freeze used by the API boundary. It is not a
+   * user-facing setting: ordinary CLI/runtime assembly continues to derive
+   * local-only from `env`.
+   */
+  readonly localOnlyOverride?: boolean;
+  /**
    * Caller-supplied tools merged into the runtime registry. The CLI
    * uses this to inject surface-specific tools it builds with its own
    * confirmation gate (e.g. the `--actuators` email/web/home tools,
@@ -347,7 +353,9 @@ export function assertAuthConfigCoherent(
 }
 
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
-  const env = mergeModelKeysFromFile(options.env ?? process.env);
+  const env = mergeModelKeysFromFile(options.env ?? process.env, {
+    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+  });
   const db = options.db;
   // Sync read: createMuseRuntimeAssembly is called synchronously from dozens
   // of CLI command sites, so the startup persona load can't await. A broken

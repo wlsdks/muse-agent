@@ -8,7 +8,8 @@
  * flow is a future slice; for now the user supplies the token.
  */
 
-import { resolveContactsFile } from "@muse/autoconfigure";
+import { resolveContactsFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
 import { queryContacts } from "@muse/stores";
 import { extractEmailAddress, GmailEmailProvider, summarizeInbox, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
@@ -90,7 +91,9 @@ export function registerInboxCommand(
   program: Command,
   io: ProgramIO,
   provider?: EmailProvider & Partial<EmailReader>,
-  isKnownSender?: (from: string) => boolean
+  isKnownSender?: (from: string) => boolean,
+  /** Test-only env seam; production keeps process.env. */
+  env: MuseEnvironment = process.env
 ): void {
   program
     .command("inbox")
@@ -99,9 +102,16 @@ export function registerInboxCommand(
     .option("--limit <n>", "How many recent messages to read (1-50, default 10)")
     .option("--json", "Emit the message summaries (or, with an id, the full message) as JSON")
     .action(async (id: string | undefined, options: InboxOptions) => {
+      // The injected env can only make the command stricter; a false test
+      // value must not weaken an ambient local-only process.
+      if (isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(env)) {
+        io.stderr("muse inbox: Gmail is disabled while MUSE_LOCAL_ONLY=true. This does not disable other integration surfaces.\n");
+        process.exitCode = 1;
+        return;
+      }
       let email = provider;
       if (!email) {
-        const token = process.env.MUSE_GMAIL_TOKEN?.trim();
+        const token = env.MUSE_GMAIL_TOKEN?.trim();
         if (!token) {
           io.stderr("muse inbox: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.readonly scope).\n");
           process.exitCode = 1;
@@ -129,7 +139,7 @@ export function registerInboxCommand(
         io.stdout(`${JSON.stringify(messages, null, 2)}\n`);
         return;
       }
-      const known = isKnownSender ?? await buildInboxKnownSender(process.env as Record<string, string | undefined>);
+      const known = isKnownSender ?? await buildInboxKnownSender(env);
       io.stdout(`${summarizeInbox(messages)}\n`);
       for (const message of messages) {
         io.stdout(`[${shortMessageId(message.id)}] ${formatInboxLine(message, known(message.from))}\n`);

@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,11 +6,11 @@ import { InMemoryUserMemoryStore } from "@muse/memory";
 import { LocalDirNotesProvider, type Task } from "@muse/domain-tools";
 import { readPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import type { CalendarEvent } from "@muse/calendar";
-import type { ModelProvider } from "@muse/model";
+import { isLocalOnlyEnabled, type ModelProvider } from "@muse/model";
 import type { MuseToolContext } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildMcpServeTools, type McpServeDependencies } from "./mcp-serve-tools.js";
+import { buildMcpServeTools, resolveMcpServeDependencies, type McpServeDependencies } from "./mcp-serve-tools.js";
 
 const context: MuseToolContext = { runId: "test-run" };
 
@@ -18,6 +18,7 @@ function baseDeps(overrides: Partial<McpServeDependencies> = {}, notesDir: strin
   return {
     answerModel: undefined,
     answerTemperature: 0.6,
+    baseUrlResolver: () => "http://127.0.0.1:11434",
     embedFn: async () => {
       throw new Error("ECONNREFUSED — no local Ollama in this test");
     },
@@ -122,6 +123,35 @@ describe("buildMcpServeTools", () => {
       const museRecall = tools.find((tool) => tool.definition.name === "muse_recall")!;
       await expect(museRecall.execute({ question: "what embedder do I use?" }, context))
         .rejects.toThrow(/local model unreachable/iu);
+    });
+
+    it("preserves a stale index byte-for-byte when the guarded reindex resolver rejects before mutation", async () => {
+      const indexPath = join(notesDir, "notes-index.json");
+      writeFileSync(join(notesDir, "private.md"), "A private note that must not be reindexed through a remote URL.\n", "utf8");
+      const priorBytes = JSON.stringify({
+        builtAtIso: "2000-01-01T00:00:00.000Z",
+        files: [],
+        model: "nomic-embed-text-v2-moe",
+        version: 1
+      });
+      writeFileSync(indexPath, priorBytes, "utf8");
+      let resolverCalls = 0;
+      const tools = buildMcpServeTools(baseDeps({
+        answerModel: "ollama/test",
+        baseUrlResolver: () => {
+          resolverCalls += 1;
+          throw new Error("remote model URL rejected under local-only");
+        },
+        embedFn: async () => [1, 0],
+        modelProvider: { generate: async () => ({ output: "I'm not sure." }) } as unknown as ModelProvider,
+        notesIndexFile: indexPath
+      }, notesDir));
+      const museRecall = tools.find((tool) => tool.definition.name === "muse_recall")!;
+
+      await expect(museRecall.execute({ question: "what is in my private note?" }, context)).resolves.toMatchObject({ refusal: true });
+
+      expect(resolverCalls).toBe(1);
+      expect(readFileSync(indexPath, "utf8")).toBe(priorBytes);
     });
   });
 
@@ -437,5 +467,301 @@ describe("buildMcpServeTools", () => {
 
       await expect(proposeAction.execute({ action: "add_reminder", draft: "some draft" }, context)).rejects.toThrow(/disk full/iu);
     });
+  });
+});
+
+describe("resolveMcpServeDependencies — local bootstrap posture", () => {
+  it("keeps the all-false plain-env model and remote-transport compatibility path intact", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-mcp-all-false-"));
+    const modelFile = join(root, "models.json");
+    const previousHome = process.env.HOME;
+    const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+    const originalFetch = globalThis.fetch;
+    const fetchUrls: string[] = [];
+    writeFileSync(modelFile, JSON.stringify({ providers: { ollama: { token: "http://198.51.100.8:11434" } } }), "utf8");
+    process.env.HOME = root;
+    process.env.MUSE_LOCAL_ONLY = "false";
+    globalThis.fetch = (async (input) => {
+      fetchUrls.push(String(input));
+      return new Response(JSON.stringify({ embedding: [1, 0] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+
+    try {
+      let observed: Record<string, unknown> | undefined;
+      const deps = resolveMcpServeDependencies({
+        HOME: root,
+        MUSE_LOCAL_ONLY: "false",
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_KEYS_FILE: modelFile,
+        MUSE_MODEL_PROVIDER_ID: "diagnostic",
+        MUSE_NOTES_DIR: join(root, "notes"),
+        MUSE_USER_MEMORY_FILE: join(root, "user-memory.json"),
+        OLLAMA_BASE_URL: "http://198.51.100.8:11434"
+      }, {
+        onResolvedMcpEnvironment: (env, effective) => {
+          observed = {
+            effective,
+            localOnly: env.MUSE_LOCAL_ONLY,
+            predicate: isLocalOnlyEnabled(env)
+          };
+        }
+      });
+
+      expect(observed).toEqual({ effective: false, localOnly: "false", predicate: false });
+      expect(deps.modelProvider?.id).toBe("diagnostic");
+      expect(deps.baseUrlResolver()).toBe("http://198.51.100.8:11434");
+      await expect(deps.embedFn("legacy remote model compatibility", "nomic-embed-text-v2-moe"))
+        .resolves.toEqual([1, 0]);
+      expect(fetchUrls).toEqual(["http://198.51.100.8:11434/api/embeddings"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses ambient local-only before model merge and preserves stale indexes through the real muse_recall path", async () => {
+    const previousHome = process.env.HOME;
+    const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    process.env.MUSE_LOCAL_ONLY = "true";
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      throw new Error("remote fetch must be rejected before transport");
+    }) as typeof globalThis.fetch;
+
+    try {
+      for (const scenario of [
+        {
+          label: "existing stale index",
+          priorBytes: JSON.stringify({
+            builtAtIso: "2000-01-01T00:00:00.000Z",
+            files: [],
+            model: "nomic-embed-text-v2-moe",
+            version: 1
+          })
+        },
+        { label: "absent stale index", priorBytes: undefined }
+      ]) {
+        const root = mkdtempSync(join(tmpdir(), "muse-mcp-ambient-local-only-"));
+        const notesDir = join(root, "notes");
+        const indexPath = join(root, "notes-index.json");
+        const modelFile = join(root, "models.json");
+        const traps = { descriptor: 0, get: 0, has: 0, ownKeys: 0 };
+        mkdirSync(notesDir, { recursive: true });
+        writeFileSync(join(notesDir, "private.md"), "A private note must never reach a remote embedder.\n", "utf8");
+        writeFileSync(modelFile, JSON.stringify({ providers: { ollama: { token: "http://198.51.100.8:11434" } } }), "utf8");
+        if (scenario.priorBytes !== undefined) {
+          writeFileSync(indexPath, scenario.priorBytes, "utf8");
+        }
+
+        const source = new Proxy({
+          HOME: root,
+          MUSE_GMAIL_TOKEN: "must-not-read",
+          MUSE_LOCAL_ONLY: "false",
+          MUSE_MODEL: "diagnostic/smoke",
+          MUSE_MODEL_KEYS_FILE: modelFile,
+          MUSE_MODEL_PROVIDER_ID: "diagnostic",
+          MUSE_NOTES_DIR: notesDir,
+          MUSE_NOTES_INDEX_FILE: indexPath,
+          MUSE_USER_MEMORY_FILE: join(root, "user-memory.json"),
+          OLLAMA_BASE_URL: "http://198.51.100.8:11434"
+        }, {
+          get(target, property, receiver) {
+            if (property === "MUSE_GMAIL_TOKEN") {
+              traps.get += 1;
+              throw new Error("Gmail get");
+            }
+            return Reflect.get(target, property, receiver);
+          },
+          getOwnPropertyDescriptor(target, property) {
+            if (property === "MUSE_GMAIL_TOKEN") {
+              traps.descriptor += 1;
+              throw new Error("Gmail descriptor");
+            }
+            return Reflect.getOwnPropertyDescriptor(target, property);
+          },
+          has(target, property) {
+            if (property === "MUSE_GMAIL_TOKEN") {
+              traps.has += 1;
+              throw new Error("Gmail has");
+            }
+            return Reflect.has(target, property);
+          },
+          ownKeys() {
+            traps.ownKeys += 1;
+            throw new Error("Gmail source ownKeys");
+          }
+        });
+        let observed: Record<string, unknown> | undefined;
+
+        try {
+          // B case: an injected false must not weaken an ambient true before
+          // nonempty models.json is merged or any provider/tool is assembled.
+          process.env.HOME = root;
+          const deps = resolveMcpServeDependencies(source, {
+            onResolvedMcpEnvironment: (env, effective) => {
+              observed = {
+                descriptor: Object.getOwnPropertyDescriptor(env, "MUSE_LOCAL_ONLY")?.value,
+                effective,
+                has: "MUSE_LOCAL_ONLY" in env,
+                localOnly: env.MUSE_LOCAL_ONLY,
+                ownKeys: Object.keys(env),
+                predicate: isLocalOnlyEnabled(env)
+              };
+            }
+          });
+          expect(observed).toMatchObject({ descriptor: "true", effective: true, has: true, localOnly: "true", predicate: true });
+          expect(observed?.ownKeys).toContain("MUSE_LOCAL_ONLY");
+          expect(observed?.ownKeys).not.toContain("MUSE_GMAIL_TOKEN");
+          expect(deps.modelProvider?.id).toBe("diagnostic");
+
+          // Direct embedding and stale reindex share the same guarded URL;
+          // neither may reach global fetch while the model URL is remote.
+          await expect(deps.embedFn("private note", "nomic-embed-text-v2-moe"))
+            .rejects.toThrow(/local.only|loopback|cloud provider/iu);
+          let preflightCalls = 0;
+          const tools = buildMcpServeTools({
+            ...deps,
+            baseUrlResolver: () => {
+              preflightCalls += 1;
+              return deps.baseUrlResolver();
+            }
+          });
+          const museRecall = tools.find((tool) => tool.definition.name === "muse_recall")!;
+
+          await expect(museRecall.execute({ question: "what is in my private note?" }, context))
+            .resolves.toMatchObject({ notesUnavailable: true });
+
+          expect(preflightCalls).toBe(1);
+          expect(fetchCalls).toBe(0);
+          expect(traps).toEqual({ descriptor: 0, get: 0, has: 0, ownKeys: 0 });
+          if (scenario.priorBytes !== undefined) {
+            expect(readFileSync(indexPath, "utf8")).toBe(scenario.priorBytes);
+          } else {
+            expect(existsSync(indexPath)).toBe(false);
+          }
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
+    }
+  });
+
+  it("permits the same production muse_recall stale reindex through a loopback Ollama URL", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-mcp-loopback-reindex-"));
+    const notesDir = join(root, "notes");
+    const indexPath = join(root, "notes-index.json");
+    const modelFile = join(root, "models.json");
+    const previousHome = process.env.HOME;
+    const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+    const originalFetch = globalThis.fetch;
+    const fetchUrls: string[] = [];
+    mkdirSync(notesDir, { recursive: true });
+    writeFileSync(join(notesDir, "loopback.md"), "A loopback-only note can be indexed locally.\n", "utf8");
+    writeFileSync(modelFile, JSON.stringify({ providers: { ollama: { token: "http://127.0.0.1:11434" } } }), "utf8");
+    process.env.HOME = root;
+    process.env.MUSE_LOCAL_ONLY = "false";
+    globalThis.fetch = (async (input) => {
+      fetchUrls.push(String(input));
+      return new Response(JSON.stringify({ embedding: [1, 0] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+
+    try {
+      const deps = resolveMcpServeDependencies({
+        HOME: root,
+        MUSE_LOCAL_ONLY: "true",
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_KEYS_FILE: modelFile,
+        MUSE_MODEL_PROVIDER_ID: "diagnostic",
+        MUSE_NOTES_DIR: notesDir,
+        MUSE_NOTES_INDEX_FILE: indexPath,
+        MUSE_USER_MEMORY_FILE: join(root, "user-memory.json"),
+        OLLAMA_BASE_URL: "http://127.0.0.1:11434"
+      });
+      expect(deps.baseUrlResolver()).toBe("http://127.0.0.1:11434");
+      const museRecall = buildMcpServeTools(deps).find((tool) => tool.definition.name === "muse_recall")!;
+
+      await expect(museRecall.execute({ question: "what note can be indexed locally?" }, context)).resolves.toBeTypeOf("object");
+
+      expect(existsSync(indexPath)).toBe(true);
+      expect(JSON.parse(readFileSync(indexPath, "utf8"))).toMatchObject({
+        files: expect.arrayContaining([expect.objectContaining({ chunks: expect.any(Array) })]),
+        model: "nomic-embed-text-v2-moe"
+      });
+      expect(fetchUrls.length).toBeGreaterThan(0);
+      expect(fetchUrls.every((url) => url.startsWith("http://127.0.0.1:11434/api/embeddings"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("freezes requireLocalOnly before model merge without enumerating a Gmail-poison source", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-mcp-local-bootstrap-"));
+    const modelFile = join(root, "models.json");
+    writeFileSync(modelFile, JSON.stringify({ providers: { ollama: { token: "http://198.51.100.8:11434" } } }), "utf8");
+    const source = new Proxy({
+      HOME: root,
+      MUSE_GMAIL_TOKEN: "must-not-read",
+      MUSE_LOCAL_ONLY: "false",
+      MUSE_MODEL: "diagnostic/smoke",
+      MUSE_MODEL_KEYS_FILE: modelFile,
+      MUSE_MODEL_PROVIDER_ID: "diagnostic",
+      MUSE_NOTES_DIR: join(root, "notes"),
+      OLLAMA_BASE_URL: "http://198.51.100.8:11434"
+    }, {
+      get(target, property, receiver) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail get");
+        return Reflect.get(target, property, receiver);
+      },
+      getOwnPropertyDescriptor(target, property) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail descriptor");
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      has(target, property) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail has");
+        return Reflect.has(target, property);
+      },
+      ownKeys() {
+        throw new Error("Gmail source ownKeys");
+      }
+    });
+    let observed: Record<string, unknown> | undefined;
+    try {
+      const deps = resolveMcpServeDependencies(source, {
+        onResolvedMcpEnvironment: (env, effective) => {
+          observed = {
+            descriptor: Object.getOwnPropertyDescriptor(env, "MUSE_LOCAL_ONLY")?.value,
+            effective,
+            has: "MUSE_LOCAL_ONLY" in env,
+            localOnly: env.MUSE_LOCAL_ONLY,
+            ownKeys: Object.keys(env),
+            predicate: isLocalOnlyEnabled(env)
+          };
+        },
+        requireLocalOnly: true
+      });
+      expect(observed).toMatchObject({ descriptor: "true", effective: true, has: true, localOnly: "true", predicate: true });
+      expect(observed?.ownKeys).toContain("MUSE_LOCAL_ONLY");
+      expect(() => deps.baseUrlResolver()).toThrow(/local.only|loopback|cloud provider/iu);
+      await expect(deps.embedFn("private note", "nomic-embed-text")).rejects.toThrow(/local.only|loopback|cloud provider/iu);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

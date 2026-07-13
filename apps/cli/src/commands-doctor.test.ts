@@ -21,12 +21,46 @@ import {
   parseAlpha,
   weaknessFuelCheck,
   parseNotesIndexEmbedModel,
+  resolveDoctorLocalRuntime,
   resolveMuseEnvPath,
+  runLocalDoctor,
   selfLearningCheck,
   webEgressCheck,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
 import type { WeaknessEntry } from "@muse/stores";
+
+describe("local doctor runtime ownership", () => {
+  it("uses its injected paths and never reads a poisoned Gmail credential in local-only mode", async () => {
+    let gmailReads = 0;
+    const env: NodeJS.ProcessEnv = {
+      HOME: "/tmp/muse-doctor-runtime",
+      MUSE_LOCAL_ONLY: "true"
+    };
+    Object.defineProperty(env, "MUSE_GMAIL_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        gmailReads += 1;
+        throw new Error("Gmail must not be read by local doctor");
+      }
+    });
+    const runtime = resolveDoctorLocalRuntime({ env, homeDir: "/tmp/muse-doctor-runtime" });
+
+    expect(runtime.paths.credentialFile).toBe("/tmp/muse-doctor-runtime/.config/muse/credentials.json");
+    expect(runtime.paths.launchAgentFile).toBe("/tmp/muse-doctor-runtime/Library/LaunchAgents/com.muse.daemon.plist");
+    expect(runtime.paths.museHome).toBe("/tmp/muse-doctor-runtime/.muse");
+
+    const report = await runLocalDoctor({
+      env,
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir: "/tmp/muse-doctor-runtime"
+    });
+
+    expect(report.checks.length).toBeGreaterThan(0);
+    expect(gmailReads).toBe(0);
+  });
+});
 
 describe("conformal abstention calibration (muse doctor --calibration)", () => {
   it("parseAlpha clamps to (0,1), defaults 0.1 on bad input", () => {

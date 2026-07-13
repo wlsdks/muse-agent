@@ -1112,6 +1112,54 @@ describe("autoconfigure", () => {
     expect(merged.CEREBRAS_API_KEY).toBe("from-file-cerebras");
   });
 
+  it("freezes local-only override reflection before a nonempty model merge and never enumerates a Gmail-poison source", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const { isLocalOnlyEnabled } = await import("@muse/model");
+    const root = mkdtempSync(join(tmpdir(), "muse-local-model-overlay-"));
+    const file = join(root, "models.json");
+    writeFileSync(file, JSON.stringify({ providers: { ollama: { token: "http://127.0.0.1:11434" } } }), "utf8");
+
+    const poison = (sourceLocalOnly: string): Record<string, string | undefined> => new Proxy({
+      HOME: root,
+      MUSE_GMAIL_TOKEN: "must-not-read",
+      MUSE_LOCAL_ONLY: sourceLocalOnly,
+      MUSE_MODEL_KEYS_FILE: file,
+      MUSE_WEB_EGRESS: "true"
+    }, {
+      get(target, property, receiver) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail get");
+        return Reflect.get(target, property, receiver);
+      },
+      getOwnPropertyDescriptor(target, property) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail descriptor");
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      has(target, property) {
+        if (property === "MUSE_GMAIL_TOKEN") throw new Error("Gmail has");
+        return Reflect.has(target, property);
+      },
+      ownKeys() {
+        throw new Error("source ownKeys");
+      }
+    });
+
+    const forcedLocal = mergeModelKeysFromFile(poison("false"), { localOnlyOverride: true });
+    expect(forcedLocal.MUSE_LOCAL_ONLY).toBe("true");
+    expect("MUSE_LOCAL_ONLY" in forcedLocal).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(forcedLocal, "MUSE_LOCAL_ONLY")?.value).toBe("true");
+    expect(Object.keys(forcedLocal)).toContain("MUSE_LOCAL_ONLY");
+    expect(forcedLocal.MUSE_GMAIL_TOKEN).toBeUndefined();
+    expect("MUSE_GMAIL_TOKEN" in forcedLocal).toBe(false);
+    expect(Object.getOwnPropertyDescriptor(forcedLocal, "MUSE_GMAIL_TOKEN")).toBeUndefined();
+    expect(forcedLocal.MUSE_WEB_EGRESS).toBe("true");
+    expect(isLocalOnlyEnabled(forcedLocal)).toBe(true);
+
+    const forcedNormal = mergeModelKeysFromFile(poison("true"), { localOnlyOverride: false });
+    expect(forcedNormal.MUSE_LOCAL_ONLY).toBe("false");
+    expect(isLocalOnlyEnabled(forcedNormal)).toBe(false);
+    expect(forcedNormal.OLLAMA_BASE_URL).toBe("http://127.0.0.1:11434");
+  });
+
   it("buildMessagingRegistry honours env tokens, the credentials file, and env-overrides-file", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

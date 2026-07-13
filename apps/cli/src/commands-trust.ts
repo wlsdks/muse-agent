@@ -280,7 +280,8 @@ export function registerTrustCommands(program: Command, io: ProgramIO): void {
  * runtime can call this to gate tool calls. Today it's exposed for
  * `muse status` and similar surfaces.
  */
-export async function readTrust(userKey: string): Promise<TrustEntry> {
-  const file = await readTrustFile(trustPath());
-  return entryFor(file, userKey);
+export async function readTrust(userKey: string, file?: string): Promise<TrustEntry> {
+  const resolvedFile = file ?? trustPath();
+  const fileData = await readTrustFile(resolvedFile);
+  return entryFor(fileData, userKey);
 }
