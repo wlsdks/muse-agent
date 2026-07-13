@@ -19,6 +19,7 @@ import {
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
 import { defaultBeliefProvenanceFile } from "@muse/memory";
+import { SubAgentRunRegistry } from "@muse/multi-agent";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -233,6 +234,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     admin: options.admin,
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService))
   });
+  // One registry instance shared by the routes AND the AgentRuntime's
+  // liveness heartbeat. The runtime is a single shared instance built
+  // before this registry can exist, so the heartbeat is late-bound here —
+  // orchestration registers the parent runId and workers run under that
+  // same runId, so each model-loop beat refreshes the right record and a
+  // hung run becomes detectStalled-visible instead of "running" forever.
+  const multiAgentRunRegistry = new SubAgentRunRegistry();
+  options.agentRuntime?.setHeartbeat?.((runId) => {
+    multiAgentRunRegistry.heartbeat(runId);
+  });
   registerMultiAgentRoutes(server, {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
@@ -241,6 +252,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     modelProvider: options.modelProvider,
     embed: createGateEmbedder(process.env),
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
+    runRegistry: multiAgentRunRegistry,
     ...(resolveWorkerTimeoutMs(process.env) !== undefined
       ? { workerTimeoutMs: resolveWorkerTimeoutMs(process.env) }
       : {})

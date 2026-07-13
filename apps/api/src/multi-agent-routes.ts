@@ -84,6 +84,22 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
   const historyStore = options.historyStore ?? new InMemoryOrchestrationHistoryStore();
   const runRegistry = options.runRegistry ?? new SubAgentRunRegistry();
 
+  // Background stall sweep. The on-read sweep in GET /runs makes a hung run
+  // observable only to a caller who polls — with nobody watching, a stalled
+  // record stays "running" forever and every consumer keyed on terminal
+  // parents (orphan recovery, cancel-children) never fires. Unref'd (never
+  // keeps the process alive) and cleared on server close.
+  const sweepMs = resolveStallSweepMs(process.env);
+  if (sweepMs > 0) {
+    const sweepTimer = setInterval(() => {
+      runRegistry.markStalledAsTimedOut();
+    }, sweepMs);
+    sweepTimer.unref?.();
+    server.addHook("onClose", async () => {
+      clearInterval(sweepTimer);
+    });
+  }
+
   // Per-route auth gate (defense-in-depth beside the global preHandler). Returns
   // true when the request may proceed; when it returns false the gate already
   // sent the 401. No gate configured (tests) ⇒ allow.
@@ -614,6 +630,20 @@ export function resolveWorkerTimeoutMs(env: NodeJS.ProcessEnv): number | undefin
   }
   const parsed = Number.parseInt(raw, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Interval for the background stalled-run sweep. Whole-token decimal ms only
+ * (a typo'd "30s" must fall back, not silently become 30); `0` disables the
+ * sweep (the on-read sweep in GET /runs still applies). Default 30s — well
+ * inside any realistic per-run timeout, and a sweep is just a Map scan.
+ */
+export function resolveStallSweepMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.MUSE_MULTI_AGENT_STALL_SWEEP_MS?.trim();
+  if (raw === undefined || raw.length === 0 || !/^\d+$/u.test(raw)) {
+    return 30_000;
+  }
+  return Number.parseInt(raw, 10);
 }
 
 export function resolveOrchestrateTierModels(defaultModel: string, env: NodeJS.ProcessEnv): TierModels {

@@ -230,7 +230,7 @@ export class AgentRuntime {
   private readonly systemPromptTokenBudget?: number;
   private readonly maxRunWallclockMs: number;
   private readonly streamIdleTimeoutMs?: number;
-  private readonly heartbeat?: (runId: string) => void;
+  private heartbeat?: (runId: string) => void;
   private readonly maxToolOutputChars: number;
   private readonly toolCallMiddleware?: readonly ToolCallMiddleware[];
   private readonly contextReferenceStore?: ContextReferenceStore;
@@ -354,6 +354,18 @@ export class AgentRuntime {
     if (!this.modelProvider && !this.modelRegistry) {
       throw new ModelRoutingError("AgentRuntime requires either modelProvider or modelRegistry");
     }
+  }
+
+  /**
+   * Late-bind the per-run liveness heartbeat. The registry that consumes
+   * these beats (SubAgentRunRegistry) is constructed by the API server
+   * AFTER the shared AgentRuntime — and @muse/autoconfigure cannot depend
+   * on @muse/multi-agent without inverting the package graph — so the
+   * wiring seam is post-construction. The model loop reads the current
+   * callback per run, so beats flow on the next run after binding.
+   */
+  setHeartbeat(heartbeat: (runId: string) => void): void {
+    this.heartbeat = heartbeat;
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
