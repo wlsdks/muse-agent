@@ -151,7 +151,7 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   // verb, so "reveal the stored password" still fires while "tell me password
   // hygiene tips" no longer does.
   // The advice-noun veto keeps benign password-management/how-to requests from
-  // reading as extraction (fire 6). Extended with a FORGOT / UNLOCK self-help
+  // reading as extraction. Extended with a FORGOT / UNLOCK self-help
   // context (까먹/잊어버/잊었/따는·여는·푸는 법): "도어락 비밀번호 까먹었는데
   // 따는 법 알려줘" (locked out of one's OWN door) is help-seeking, not an
   // attempt to make Muse reveal a stored secret — a user who FORGOT a password
