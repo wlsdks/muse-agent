@@ -34,6 +34,11 @@ jobs:
       # so a hardcoded-identity string or an unguarded write tool can't merge.
       - run: pnpm check:prompt-seam
       - run: pnpm check:secret-guard-coverage
+      # The build runs on TypeScript 7 (native) while the `typescript` MODULE stays
+      # on the 6.0 API for typescript-eslint / knip (TS7.0 ships no compiler API).
+      # A dependency bump could silently undo that split — a `tsc` that resolves to
+      # 6 hands back the slow build, a `typescript` that resolves to 7 crashes lint.
+      - run: pnpm check:toolchain
       - run: pnpm check
   check-windows:
     runs-on: windows-latest

@@ -45,7 +45,7 @@ function main() {
   const problems = [];
   if (parseMajor(binVersion) !== EXPECTED_BUILD_MAJOR) {
     problems.push(
-      `the \`tsc\` binary is v${binVersion.trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5x faster; the \`typescript7\` alias provides it)`
+      `the \`tsc\` binary is v${binVersion.trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5-7x faster; the \`@typescript/native\` alias provides it)`
     );
   }
   if (parseMajor(moduleVersion) !== EXPECTED_MODULE_MAJOR) {
