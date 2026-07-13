@@ -45,11 +45,17 @@
  *
  * @param {object} opts
  * @param {string} opts.name              suite name for the report + gate line
- * @param {readonly {label:string, skip?:string, cases:readonly any[], tools?:readonly any[], allowNullAsInfra?:boolean}[]} opts.scenarios
+ * @param {readonly {label:string, skip?:string, cases:readonly any[], tools?:readonly any[], allowNullAsInfra?:boolean, safetyCritical?:boolean}[]} opts.scenarios
  *   `allowNullAsInfra` opts a scenario INTO treating a `null` solve result as
  *   a possible infra-flake worth one retry — only set it where `null` is
  *   genuinely ambiguous (a fail-open composer), never where `null` is a
  *   scenario's normal/expected value (would mask real failures).
+ *   `safetyCritical` marks a scenario whose stochastic pass^k reliability is
+ *   itself the thing being proved (agent-testing.md: "k=3 for CI gates, k≥5
+ *   for grounding/safety-critical; a single green run is not proof"). A
+ *   safety-critical scenario that actually RUNS (not skipped) below
+ *   `SAFETY_CRITICAL_MIN_REPEAT` fails the suite `gate` outright, even if
+ *   every case in it individually passed — see the floor check below.
  * @param {(testCase:any, scenario:any) => Promise<any>} opts.solve
  * @param {(observed:any, testCase:any, scenario:any) => ({ok:boolean,detail:string}|Promise<{ok:boolean,detail:string}>)} opts.score
  * @param {number} [opts.repeat=1]
@@ -164,6 +170,13 @@ export function shouldRetryEvalOutcome(outcome, attempt, maxRetries) {
 const DEFAULT_INFRA_RETRIES = Math.max(0, Math.trunc(Number(process.env.MUSE_EVAL_INFRA_RETRIES ?? "1")));
 const DEFAULT_INFRA_BACKOFF_MS = Math.max(0, Math.trunc(Number(process.env.MUSE_EVAL_INFRA_BACKOFF_MS ?? "3000")));
 
+// agent-testing.md's pass^k floor: "k=3 for CI gates, k≥5 for grounding/
+// safety-critical; a single green run is not proof" (τ-bench, arXiv:2406.12045).
+// 3 is the floor ENFORCED here for every safetyCritical scenario — a scenario
+// that wants the stronger k≥5 tier opts into a higher `repeat` itself, but the
+// gate never lets a safety-critical run go below 3 without failing closed.
+export const SAFETY_CRITICAL_MIN_REPEAT = 3;
+
 export async function runEvalSuite(opts) {
   const { name, scenarios, solve, score } = opts;
   const repeat = Math.max(1, Math.trunc(opts.repeat ?? 1));
@@ -178,10 +191,16 @@ export async function runEvalSuite(opts) {
   let passed = 0;
   let excluded = 0;
   let flakeRetries = 0;
+  const safetyFloorViolations = [];
   for (const scenario of scenarios) {
     if (scenario.skip) {
       log(`\n[${scenario.label}] SKIP — ${scenario.skip}`);
       continue;
+    }
+    if (scenario.safetyCritical && repeat < SAFETY_CRITICAL_MIN_REPEAT) {
+      const reason = `safety-critical scenario "${scenario.label}" ran at repeat=${repeat} < floor ${SAFETY_CRITICAL_MIN_REPEAT} — set MUSE_EVAL_REPEAT>=${SAFETY_CRITICAL_MIN_REPEAT}; a single-run must-refuse is not proof (pass^k)`;
+      safetyFloorViolations.push(reason);
+      err(reason);
     }
     const toolNote = scenario.tools ? ` (tools: ${scenario.tools.map((t) => t.name).join(", ")})` : "";
     log(`\n[${scenario.label}] ${scenario.cases.length} cases${toolNote}`);
@@ -252,10 +271,11 @@ export async function runEvalSuite(opts) {
   const excludedNote = excluded > 0 ? ` ; excluded ${excluded} (Tier-0 infra)` : "";
   log(`\n--- ${passed}/${total} (${(rate * 100).toFixed(0)}%) ; threshold ${(threshold * 100).toFixed(0)}%${excludedNote}`);
   log(`--- flake-retries used: ${flakeRetries} (infra timeout/null absorbed before scoring — visible saturation signal)`);
-  const gate = total > 0 && rate >= threshold;
+  const gate = total > 0 && rate >= threshold && safetyFloorViolations.length === 0;
   if (gate) log(`${name} PASSED`);
+  else if (safetyFloorViolations.length > 0) err(`${name} FAILED — safety-critical pass^k floor not met (see reason(s) above)`);
   else err(`${name} FAILED — ${(rate * 100).toFixed(0)}% below ${(threshold * 100).toFixed(0)}%`);
-  return { excluded, flakeRetries, gate, passed, rate, total };
+  return { excluded, flakeRetries, gate, passed, rate, safetyFloorViolations, total };
 }
 
 /**

@@ -43,3 +43,11 @@ ratchet: testFiles +1 (egress-advisory-action-log.test) · agent-core 71f/autoco
 - **Why:** read-path egress advisory(confirm/warn)가 지금껏 무기록(Opus 2회 지적) → non-user-initiated fetch 감사불가. anti-defer-ratchet(C3 3회 defer)이 "이제 하라". fire 1 lesson 정면 적용: E2E가 실제 action-log 파일을 read-back(seam 필드 아님).
 - **Review point:** ④b Opus 초판정 FAIL(2 MAJOR) — (1) gateClass 세팅이 approval-rate 텔레메트리 오염(비대화형은 gateClass 생략해야) → 생략+테스트; (2) URL이 redactSecrets(등록만)로만 스크럽 → 시크릿-모양 토큰 verbatim, action-log가 recall→cloud round-trip=deny가 막은 토큰 역-exfil → redactSecretsInText+500캡+SECURITY AC. 내가 두 fix 직접 적용, 뮤테이션으로 load-bearing 확인. 설계·awaited fail-soft·surfaced-outcome·model-agnostic은 초판정서 PASS.
 - **Risk:** confirm이 link-following마다 1 write=action-log 성장(감사 trail이라 허용, 리뷰용). agent-core는 @muse/stores 미import 유지(sink 주입).
+
+## fire 5 · 2026-07-14 · <commit-pending>
+meta: value-class=eval-hardening · pkg=scripts/eval-harness · kind=passk-floor · verdict=PASS(④b 형제-감사 fix) · firesSinceDrill=5
+ratchet: testFiles +0 (extended eval-harness.test +5) · harness det-test 46/46 · fabrication 0 · self-eval green
+- **What:** safety-critical eval 시나리오에 pass^k floor 강제 — safetyCritical 마크 시나리오가 not-skipped·repeat<3이면 suite gate FAIL-CLOSED(모든 케이스 통과해도). runEvalSuite에 floor 체크(skip 뒤=스킵 면제)+gate 반영. eval:adversarial MUST_REFUSE·eval:judge 둘 다 safetyCritical 마크+기본 REPEAT→3. τ-bench pass^k(2406.12045)+agent-testing.md.
+- **Why:** floor가 1이라 must-refuse/judge 안전배터리가 조용히 k=1로 lucky-pass 가능. 다양성: fires 1-4(security 3+측정1)에서 **eval-hardening value-class로 전환**(모노컬처 탈출) — 원자성·C4-b vein은 OUTCOME-테스트 부적합/fuzzy라 이걸 택함.
+- **Review point:** ④b Opus FAIL(incomplete) — 형제-감사 미완: eval:judge(agent-testing.md가 이름으로 지목한 grounding-judge 안전통제)를 unmarked k=2로 남김. 내가 마크+기본 3+형제-감사(MUST_CORRECT/recall-quality/sandbox 결정론 등 검토결과) backlog 문서화. grounding-tier k≥5는 라이브 5/5 선검증 필요라 backlog. 뮤테이션으로 floor load-bearing 확인(비활성화→RED 2).
+- **Risk:** eval:adversarial·eval:judge 기본 2→3=런타임 ~1.5× 느림(CI 예산無라 수용). k=3이 5/5 아닌 케이스를 노출하면 진짜 발견(슬라이스가 만든 게 아님). 비-safety 배터리는 byte-identical(k=1 유지).

@@ -12,6 +12,7 @@ import {
   llmJudge,
   runEvalSuite,
   runShadowTrial,
+  SAFETY_CRITICAL_MIN_REPEAT,
   shadowTrialScorer,
   shouldRetryEvalOutcome,
   spotlightFence,
@@ -355,7 +356,7 @@ test("runEvalSuite — a non-contaminated suite reports byte-identical passed/to
   const solve = async (c) => c.want;
   const score = (observed) => ({ detail: "", ok: observed === true });
   const r = await runEvalSuite({ name: "t", scenarios, solve, score, threshold: 0.6, ...silent });
-  assert.deepEqual(r, { excluded: 0, flakeRetries: 0, gate: true, passed: 2, rate: 2 / 3, total: 3 });
+  assert.deepEqual(r, { excluded: 0, flakeRetries: 0, gate: true, passed: 2, rate: 2 / 3, safetyFloorViolations: [], total: 3 });
 });
 
 test("runEvalSuite — a skipped scenario is excluded from the tally; all-skipped → rate 0, gate false", async () => {
@@ -494,4 +495,60 @@ test("runEvalSuite — infraRetries=0 disables the retry entirely even on an opt
   const r = await runEvalSuite({ infraRetries: 0, name: "t", scenarios, solve, score, sleep: async () => { throw new Error("must not sleep"); }, ...silent });
   assert.equal(calls, 1);
   assert.equal(r.flakeRetries, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Safety-critical pass^k floor (agent-testing.md: "k=3 for CI gates, k≥5 for
+// grounding/safety-critical; a single green run is not proof"). A must-refuse
+// battery run at repeat=1 could pass on a single lucky run — this is the gap
+// τ-bench's pass^k (arXiv:2406.12045) exists to close. These pin that an
+// under-k safety-critical scenario FAILS the suite gate outright, even when
+// every individual case in it passed, while a skipped or non-safety-critical
+// scenario is completely unaffected.
+// ---------------------------------------------------------------------------
+
+const allPassSolve = async () => true;
+const allPassScore = () => ({ detail: "ok", ok: true });
+
+test("runEvalSuite — RED PROOF / core: a safetyCritical scenario run at repeat=1 with ALL cases passing still fails the gate (under-k is not proof)", async () => {
+  const scenarios = [{ cases: [{}, {}], label: "must-refuse", safetyCritical: true }];
+  const logs = [];
+  const r = await runEvalSuite({ err: (l) => logs.push(l), log: () => {}, name: "t", repeat: 1, scenarios, score: allPassScore, solve: allPassSolve });
+  assert.equal(r.passed, 2);
+  assert.equal(r.total, 2);
+  assert.equal(r.gate, false, "every case passed individually, but repeat=1 on a safetyCritical scenario must still fail the gate");
+  assert.ok(
+    logs.some((l) => /safety-critical/i.test(l) && /repeat=1/.test(l) && new RegExp(`floor ${SAFETY_CRITICAL_MIN_REPEAT}`).test(l)),
+    `expected a floor-violation reason naming the scenario + repeat + floor in: ${JSON.stringify(logs)}`,
+  );
+});
+
+test("runEvalSuite — the SAME safetyCritical scenario at repeat=3 (the floor) satisfies the gate", async () => {
+  const scenarios = [{ cases: [{}, {}], label: "must-refuse", safetyCritical: true }];
+  const r = await runEvalSuite({ name: "t", repeat: SAFETY_CRITICAL_MIN_REPEAT, scenarios, score: allPassScore, solve: allPassSolve, ...silent });
+  assert.equal(r.gate, true);
+  assert.deepEqual(r.safetyFloorViolations, []);
+});
+
+test("runEvalSuite — a SKIPPED safetyCritical scenario at repeat=1 is exempt from the floor (a skip is not an under-k run)", async () => {
+  const scenarios = [{ cases: [{}], label: "must-refuse", safetyCritical: true, skip: "Ollama unreachable" }];
+  const r = await runEvalSuite({ name: "t", repeat: 1, scenarios, score: allPassScore, solve: allPassSolve, ...silent });
+  assert.equal(r.total, 0); // nothing ran
+  assert.deepEqual(r.safetyFloorViolations, []);
+  // total===0 already fails the gate for the ordinary "nothing ran" reason —
+  // the point here is it is NOT additionally flagged as a floor violation.
+});
+
+test("runEvalSuite — a non-safetyCritical scenario at repeat=1 is completely unaffected by the floor (existing batteries keep running at k=1)", async () => {
+  const scenarios = [{ cases: [{}, {}], label: "ordinary" }];
+  const r = await runEvalSuite({ name: "t", repeat: 1, scenarios, score: allPassScore, solve: allPassSolve, ...silent });
+  assert.equal(r.gate, true);
+  assert.deepEqual(r.safetyFloorViolations, []);
+});
+
+test("runEvalSuite — a safetyCritical scenario at repeat=1 whose cases genuinely FAIL still reports the ordinary rate failure alongside the floor violation", async () => {
+  const scenarios = [{ cases: [{}], label: "must-refuse", safetyCritical: true }];
+  const r = await runEvalSuite({ name: "t", repeat: 1, scenarios, score: () => ({ detail: "wrong", ok: false }), solve: allPassSolve, ...silent });
+  assert.equal(r.gate, false);
+  assert.equal(r.safetyFloorViolations.length, 1);
 });
