@@ -57,7 +57,10 @@ Read these five and you know exactly what kind of agent this is.
    multimodal + grounding-strong — or any weights you run locally), and it's provider-
    neutral: use cloud or local, your choice. Privacy is a first-class **opt-in** — set
    `MUSE_LOCAL_ONLY=true` and cloud egress is **refused in code** (the runtime won't even
-   start against a cloud provider). The deeper it knows you, the more that matters.
+   start against a cloud provider). In the same posture, standard remote Home Assistant
+   paths are disabled before its bearer token is read; only a canonical local HTTP loopback
+   endpoint remains available. That is a scoped integration boundary, not a claim of a
+   complete all-egress audit. The deeper it knows you, the more that matters.
 
 3. **Honest — _it won't make you up._**
    Every answer, proactive nudge, and insight cites the real source it came from; weak

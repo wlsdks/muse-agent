@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalizeLocalOnlyModelBaseUrl, classifyProviderLocality, isLoopbackUrl, LocalOnlyViolationError } from "./local-only-policy.js";
+import { canonicalizeLocalOnlyModelBaseUrl, canonicalizeLocalOnlyRootLoopbackHttpBaseUrl, classifyProviderLocality, isLoopbackUrl, LocalOnlyHttpBaseUrlViolationError, LocalOnlyViolationError } from "./local-only-policy.js";
 
 describe("isLoopbackUrl", () => {
   it("treats localhost / 127.x / ::1 / .localhost as loopback but rejects the wildcard bind address", () => {
@@ -54,6 +54,42 @@ describe("canonicalizeLocalOnlyModelBaseUrl", () => {
       "not a URL"
     ]) {
       expect(() => canonicalizeLocalOnlyModelBaseUrl("ollama", baseUrl), baseUrl).toThrow(LocalOnlyViolationError);
+    }
+  });
+});
+
+describe("canonicalizeLocalOnlyRootLoopbackHttpBaseUrl", () => {
+  it("canonicalizes only a root loopback HTTP endpoint", () => {
+    expect(canonicalizeLocalOnlyRootLoopbackHttpBaseUrl("http://localhost:8123")).toBe("http://127.0.0.1:8123");
+    expect(canonicalizeLocalOnlyRootLoopbackHttpBaseUrl("http://127.4.5.6:8123/")).toBe("http://127.4.5.6:8123");
+    expect(canonicalizeLocalOnlyRootLoopbackHttpBaseUrl("http://[::1]:8123/")).toBe("http://[::1]:8123");
+  });
+
+  it("rejects remote, credential-bearing, query-bearing, and non-root endpoints while model /v1 compatibility remains intact", () => {
+    expect(canonicalizeLocalOnlyModelBaseUrl("ollama", "http://localhost:11434/v1")).toBe("http://127.0.0.1:11434/v1");
+    for (const baseUrl of [
+      "https://localhost:8123",
+      "http://user:secret@localhost:8123",
+      "http://@localhost:8123",
+      "http://localhost:8123/?next=/api",
+      "http://localhost:8123/?",
+      "http://localhost:8123/#api",
+      "http://localhost:8123/#",
+      "http://192.168.0.4:8123",
+      "http://ha.local:8123",
+      "http://127.1:8123",
+      "http://2130706433:8123",
+      "http://127.00.0.1:8123",
+      "http://localhost:8123/api",
+      "http://localhost:8123/v1",
+      "http://localhost:8123/ha/",
+      "http://localhost:8123/./",
+      "http://localhost:8123/%2e",
+      "http://localhost:8123//",
+      "http://localhost:8123/%2f",
+      "http://localhost:8123/%252f"
+    ]) {
+      expect(() => canonicalizeLocalOnlyRootLoopbackHttpBaseUrl(baseUrl), baseUrl).toThrow(LocalOnlyHttpBaseUrlViolationError);
     }
   });
 });

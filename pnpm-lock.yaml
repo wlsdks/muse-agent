@@ -478,6 +478,9 @@ importers:
       '@muse/messaging':
         specifier: workspace:*
         version: link:../messaging
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../proactivity

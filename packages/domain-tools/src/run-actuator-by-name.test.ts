@@ -65,6 +65,28 @@ describe("runActuatorByName", () => {
     expect(calls).toEqual(["http://ha.local:8123/api/services/light/turn_off"]);
   });
 
+  it("home_action: local-only refuses a direct remote dispatcher call before approval or fetch", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    let approvals = 0;
+    const result = await runActuatorByName(
+      "home_action",
+      { entity: "light.living_room", service: "light.turn_off" } as JsonObject,
+      deps({
+        fetchImpl,
+        homeAssistantBaseUrl: "http://ha.local:8123",
+        homeAssistantToken: "tok",
+        localOnly: true,
+        webApprovalGate: () => {
+          approvals += 1;
+          return { approved: true };
+        }
+      })
+    );
+    expect(result).toMatchObject({ ran: false, reason: "failed" });
+    expect(approvals).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
   it("email_send: approve → real Gmail send (HTTP-faked), ran:true; resolves the recipient via contacts", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const contacts: readonly Contact[] = [{ id: "c1", name: "Bob", email: "bob@example.com" }];

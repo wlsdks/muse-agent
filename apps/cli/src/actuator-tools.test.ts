@@ -9,7 +9,7 @@ import { readPendingApprovals } from "@muse/messaging";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { buildActuatorTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
@@ -148,6 +148,36 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     expect(full.map((t) => t.definition.name).sort()).toEqual(["home_action", "web_action"]);
   });
 
+  it("does not arm or reflect a remote Home Assistant token under local-only", () => {
+    let tokenReads = 0;
+    const localEnv = env({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123", MUSE_LOCAL_ONLY: "true" });
+    Object.defineProperty(localEnv, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("HA token must not be read while remote local-only is blocked");
+      }
+    });
+    const built = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
+    const summary = summarizeActuators(localEnv);
+    expect(built.map((tool) => tool.definition.name)).not.toContain("home_action");
+    expect(summary.armed).not.toContain("home_action");
+    expect(summary.unavailable.find((item) => item.name === "home_action")?.hint).toContain("canonical loopback remains available");
+    expect(tokenReads).toBe(0);
+  });
+
+  it("arms a canonical localhost Home Assistant endpoint under local-only", () => {
+    const localEnv = env({
+      MUSE_HOMEASSISTANT_TOKEN: "ha-tok",
+      MUSE_HOMEASSISTANT_URL: "http://localhost:8123/",
+      MUSE_LOCAL_ONLY: "true"
+    });
+    const built = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
+    expect(built.map((tool) => tool.definition.name)).toContain("home_action");
+    expect(summarizeActuators(localEnv).armed).toContain("home_action");
+  });
+
   it("every actuator tool is execute-risk (gated, local-mode only)", () => {
     const tools = buildActuatorTools({
       confirmAction: async () => true,
@@ -158,6 +188,31 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("execute");
     }
+  });
+});
+
+describe.sequential("buildActuatorTools — ambient Home Assistant local-only floor", () => {
+  const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+
+  afterEach(() => {
+    if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+    else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
+  });
+
+  it("does not let an injected false environment reopen remote Home Assistant", () => {
+    process.env.MUSE_LOCAL_ONLY = "true";
+    let tokenReads = 0;
+    const injectedNormal = env({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123", MUSE_LOCAL_ONLY: "false" });
+    Object.defineProperty(injectedNormal, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("HA token must stay unread under ambient strictness");
+      }
+    });
+    expect(buildActuatorTools({ confirmAction: async () => true, env: injectedNormal, io: fakeIo(), userId: "stark" })
+      .map((tool) => tool.definition.name)).not.toContain("home_action");
+    expect(tokenReads).toBe(0);
   });
 });
 

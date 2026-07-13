@@ -52,6 +52,31 @@ describe("resolveHomeAlertLine — surfaces only noteworthy home states", () => 
     );
     expect(line).toBe("Front door is unlocked");
   });
+
+  it("does not read a token or fetch a remote Home Assistant alert under local-only", async () => {
+    let tokenReads = 0;
+    let fetches = 0;
+    const connection = {
+      baseUrl: "http://ha.local:8123",
+      fetchImpl: (async () => {
+        fetches += 1;
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof globalThis.fetch,
+      localOnly: true,
+      retryOptions: noWait
+    } as Record<string, unknown>;
+    Object.defineProperty(connection, "token", {
+      configurable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("remote alert token must not be read");
+      }
+    });
+
+    await expect(resolveHomeAlertLine(connection as never, CHECKS)).resolves.toBeUndefined();
+    expect(tokenReads).toBe(0);
+    expect(fetches).toBe(0);
+  });
 });
 
 function capturingProvider(sent: OutboundMessage[]): MessagingProvider {

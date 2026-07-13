@@ -56,6 +56,23 @@ describe("createHomeActionTool", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("does not let direct tool construction bypass local-only remote containment", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    let approvals = 0;
+    const tool = createHomeActionTool({
+      ...deps(approve, fetchImpl),
+      approvalGate: () => {
+        approvals += 1;
+        return { approved: true };
+      },
+      localOnly: true
+    });
+    const out = await tool.execute({ entity: "light.living_room", service: "light.turn_off" }, ctx);
+    expect(out).toMatchObject({ performed: false, reason: "failed" });
+    expect(approvals).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
   it("rejects a malformed service id (not domain.service) without firing", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const out = await createHomeActionTool(deps(approve, fetchImpl)).execute({ service: "turnoff" }, ctx) as Record<string, unknown>;

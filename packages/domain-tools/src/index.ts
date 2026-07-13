@@ -66,7 +66,17 @@ export { createRecentActionsTool } from "./recent-actions-tool.js";
 export { createRememberFactTool } from "./remember-fact-tool.js";
 export { runActuatorByName } from "./run-actuator-by-name.js";
 export { runDueSituationalBriefing } from "./situational-briefing-loop.js";
-export { listHomeAssistantStates, parseHomeAlertChecks, performHomeActionWithApproval, readHomeAssistantState, resolveHomeAlertLine } from "./smart-home.js";
+export {
+  HOME_ASSISTANT_LOCAL_ONLY_REASON,
+  isHomeAssistantLocalOnlyEffective,
+  listHomeAssistantStates,
+  parseHomeAlertChecks,
+  performHomeActionWithApproval,
+  readHomeAssistantState,
+  resolveHomeAlertLine,
+  resolveHomeAssistantTransportBaseUrl
+} from "./smart-home.js";
+export type { HomeAssistantTransportPolicy, HomeAssistantTransportResolution } from "./smart-home.js";
 export { createHomeActionTool, createHomeEntitiesTool, createHomeStateTool } from "./smart-home-tool.js";
 export { TasksProviderError, TasksProviderRegistry, TasksValidationError } from "./tasks-providers.js";
 export type { Task, TasksProvider } from "./tasks-providers.js";

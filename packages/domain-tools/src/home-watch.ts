@@ -10,10 +10,10 @@
  */
 
 import type { RetryOptions } from "@muse/mcp-shared";
-import { createHomeStateSnapshot } from "./smart-home.js";
+import { createHomeStateSnapshot, resolveHomeAssistantTransportBaseUrl, type HomeAssistantTransportPolicy } from "./smart-home.js";
 import { parseWatchRule, type WebWatch } from "@muse/proactivity";
 
-export interface HomeWatchConnection {
+export interface HomeWatchConnection extends HomeAssistantTransportPolicy {
   readonly baseUrl: string;
   readonly token: string;
   readonly fetchImpl?: typeof globalThis.fetch;
@@ -29,6 +29,10 @@ export interface HomeWatchConnection {
  * Fail-open: malformed JSON / non-array / an invalid entry is skipped.
  */
 export function homeWatchesFromConfig(raw: string, connection: HomeWatchConnection): WebWatch[] {
+  const transport = resolveHomeAssistantTransportBaseUrl(connection.baseUrl, connection);
+  if (!transport.allowed) {
+    return [];
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -59,9 +63,10 @@ export function homeWatchesFromConfig(raw: string, connection: HomeWatchConnecti
       message: e.message,
       rule,
       snapshot: createHomeStateSnapshot({
-        baseUrl: connection.baseUrl,
+        baseUrl: transport.baseUrl,
         entityId: e.entityId,
         token: connection.token,
+        ...(connection.localOnly ? { localOnly: true } : {}),
         ...(connection.fetchImpl ? { fetchImpl: connection.fetchImpl } : {}),
         ...(connection.retryOptions ? { retryOptions: connection.retryOptions } : {})
       }),

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildHomeAssistantServiceCall, performHomeActionWithApproval } from "./smart-home.js";
+import { buildHomeAssistantServiceCall, performHomeActionWithApproval, resolveHomeAssistantTransportBaseUrl } from "./smart-home.js";
 import type { WebActionApprovalGate } from "./web-action.js";
 import { readActionLog } from "@muse/stores";
 
@@ -42,6 +42,30 @@ describe("buildHomeAssistantServiceCall", () => {
   });
 });
 
+describe("Home Assistant local-only transport resolution", () => {
+  it("permits only canonical root loopback endpoints and keeps the model /v1 contract out of HA", () => {
+    expect(resolveHomeAssistantTransportBaseUrl("http://localhost:8123/", { localOnly: true }))
+      .toEqual({ allowed: true, baseUrl: "http://127.0.0.1:8123" });
+    for (const baseUrl of [
+      "http://ha.local:8123",
+      "http://192.168.1.9:8123",
+      "https://localhost:8123",
+      "http://localhost:8123/api",
+      "http://localhost:8123/v1",
+      "http://localhost:8123//",
+      "http://localhost:8123/%2f"
+    ]) {
+      expect(resolveHomeAssistantTransportBaseUrl(baseUrl, { localOnly: true }), baseUrl)
+        .toEqual({ allowed: false, reason: "Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available" });
+    }
+  });
+
+  it("preserves the normal-mode remote compatibility control", () => {
+    expect(resolveHomeAssistantTransportBaseUrl("http://ha.local:8123/", { localOnly: false }))
+      .toEqual({ allowed: true, baseUrl: "http://ha.local:8123/" });
+  });
+});
+
 describe("performHomeActionWithApproval — gated", () => {
   it("CONFIRM: the HA service call fires once with the real shape, logged performed", async () => {
     const { fetchImpl, calls } = recordingFetch();
@@ -59,5 +83,44 @@ describe("performHomeActionWithApproval — gated", () => {
     const outcome = await performHomeActionWithApproval({ ...call, actionLogFile: logFile(), approvalGate: deny, fetchImpl, userId: "stark" });
     expect(outcome).toMatchObject({ performed: false, reason: "denied" });
     expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a direct remote action under local-only before approval, request construction, or fetch", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    let approvals = 0;
+    const outcome = await performHomeActionWithApproval({
+      ...call,
+      actionLogFile: logFile(),
+      approvalGate: () => {
+        approvals += 1;
+        return { approved: true };
+      },
+      baseUrl: "http://ha.local:8123",
+      fetchImpl,
+      localOnly: true,
+      userId: "stark"
+    });
+    expect(outcome).toMatchObject({
+      performed: false,
+      reason: "failed",
+      detail: "Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available"
+    });
+    expect(approvals).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("canonicalizes a local-only localhost action to numeric loopback", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    const outcome = await performHomeActionWithApproval({
+      ...call,
+      actionLogFile: logFile(),
+      approvalGate: approve,
+      baseUrl: "http://localhost:8123/",
+      fetchImpl,
+      localOnly: true,
+      userId: "stark"
+    });
+    expect(outcome).toEqual({ performed: true, status: 200 });
+    expect(calls).toMatchObject([{ url: "http://127.0.0.1:8123/api/services/light/turn_off" }]);
   });
 });

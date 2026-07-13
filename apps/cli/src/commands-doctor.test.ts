@@ -33,6 +33,8 @@ import type { WeaknessEntry } from "@muse/stores";
 describe("local doctor runtime ownership", () => {
   it("uses its injected paths and never reads a poisoned Gmail credential in local-only mode", async () => {
     let gmailReads = 0;
+    let homeTokenReads = 0;
+    let homeUrlReads = 0;
     const env: NodeJS.ProcessEnv = {
       HOME: "/tmp/muse-doctor-runtime",
       MUSE_LOCAL_ONLY: "true"
@@ -43,6 +45,22 @@ describe("local doctor runtime ownership", () => {
       get: () => {
         gmailReads += 1;
         throw new Error("Gmail must not be read by local doctor");
+      }
+    });
+    Object.defineProperty(env, "MUSE_HOMEASSISTANT_URL", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        homeUrlReads += 1;
+        throw new Error("doctor config validation must not inspect Home Assistant URLs");
+      }
+    });
+    Object.defineProperty(env, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        homeTokenReads += 1;
+        throw new Error("doctor config validation must not inspect Home Assistant tokens");
       }
     });
     const runtime = resolveDoctorLocalRuntime({ env, homeDir: "/tmp/muse-doctor-runtime" });
@@ -59,6 +77,8 @@ describe("local doctor runtime ownership", () => {
 
     expect(report.checks.length).toBeGreaterThan(0);
     expect(gmailReads).toBe(0);
+    expect(homeUrlReads).toBe(0);
+    expect(homeTokenReads).toBe(0);
   });
 });
 

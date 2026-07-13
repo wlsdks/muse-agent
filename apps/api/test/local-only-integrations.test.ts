@@ -205,26 +205,27 @@ describe.sequential("T2-B1 API local-only integration containment", () => {
     }
   }, 60_000);
 
-  it("honors explicit false over ambient true and rejects contradictory direct options before registration", async () => {
+  it("lets an actually strict process dominate a source-false API snapshot across setup, status, and daemon posture", async () => {
     const root = await mkdtemp(join(tmpdir(), "muse-api-local-only-precedence-"));
     const previous = process.env.MUSE_LOCAL_ONLY;
     try {
       process.env.MUSE_LOCAL_ONLY = "true";
       await writeFile(join(root, "models.json"), JSON.stringify({ providers: {} }));
-      const normal = createApiServerOptions({
+      const strict = createApiServerOptions({
         env: {
           ...localOnlyEnv(root),
           MUSE_LINE_CHANNEL_SECRET: "normal-line-secret",
           MUSE_LOCAL_ONLY: "false"
         }
       });
-      expect(normal.integrationEnv.localOnly).toBe(false);
-      const server = buildServer({ ...normal, logger: false });
+      expect(strict.integrationEnv.localOnly).toBe(true);
+      expect(strict.localOnly).toBe(true);
+      const server = buildServer({ ...strict, logger: false });
       try {
         const status = await server.inject({ method: "GET", url: "/api/setup/status" });
-        expect(status.json()).toMatchObject({ localOnly: { enabled: false } });
+        expect(status.json()).toMatchObject({ localOnly: { enabled: true } });
         const webhook = await server.inject({ method: "POST", payload: "{}", url: "/api/messaging/webhooks/line" });
-        expect(webhook.statusCode).not.toBe(404);
+        expect(webhook.statusCode).toBe(404);
       } finally {
         await server.close();
       }
@@ -233,6 +234,24 @@ describe.sequential("T2-B1 API local-only integration containment", () => {
         localOnly: true,
         logger: false
       })).toThrow(/must match/u);
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY; else process.env.MUSE_LOCAL_ONLY = previous;
+      await rm(root, { force: true, recursive: true });
+    }
+  }, 60_000);
+
+  it("preserves source-true plus explicit-false API composition only when the actual process is normal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-api-explicit-normal-"));
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    try {
+      process.env.MUSE_LOCAL_ONLY = "false";
+      await writeFile(join(root, "models.json"), JSON.stringify({ providers: {} }));
+      const normal = createApiServerOptions({
+        env: { ...localOnlyEnv(root), MUSE_LOCAL_ONLY: "true" },
+        localOnlyOverride: false
+      });
+      expect(normal.integrationEnv.localOnly).toBe(false);
+      expect(normal.localOnly).toBe(false);
     } finally {
       if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY; else process.env.MUSE_LOCAL_ONLY = previous;
       await rm(root, { force: true, recursive: true });

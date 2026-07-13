@@ -22,6 +22,8 @@ export interface HomeActionToolDeps {
   readonly approvalGate: WebActionApprovalGate;
   readonly actionLogFile: string;
   readonly userId: string;
+  /** Composition-owned local-only posture; false never overrides ambient strictness. */
+  readonly localOnly?: boolean;
 }
 
 export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
@@ -92,6 +94,7 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
         service: service.slice(dot + 1),
         token: deps.token,
         userId: deps.userId,
+        ...(deps.localOnly ? { localOnly: true } : {}),
         ...(entityId ? { entityId } : {}),
         ...(data ? { data } : {})
       });
@@ -107,6 +110,8 @@ export interface HomeStateToolDeps {
   readonly token: string;
   readonly fetchImpl?: typeof fetch;
   readonly retryOptions?: RetryOptions;
+  /** Composition-owned local-only posture; false never overrides ambient strictness. */
+  readonly localOnly?: boolean;
 }
 
 export function createHomeStateTool(deps: HomeStateToolDeps): MuseTool {
@@ -136,6 +141,7 @@ export function createHomeStateTool(deps: HomeStateToolDeps): MuseTool {
         baseUrl: deps.baseUrl,
         entityId,
         token: deps.token,
+        ...(deps.localOnly ? { localOnly: true } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
         ...(deps.retryOptions ? { retryOptions: deps.retryOptions } : {})
       });
@@ -171,6 +177,7 @@ export function createHomeEntitiesTool(deps: HomeStateToolDeps): MuseTool {
       const all = await listHomeAssistantStates({
         baseUrl: deps.baseUrl,
         token: deps.token,
+        ...(deps.localOnly ? { localOnly: true } : {}),
         ...(domain ? { domain } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
         ...(deps.retryOptions ? { retryOptions: deps.retryOptions } : {})

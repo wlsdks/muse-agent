@@ -60,4 +60,9 @@ describe("shapeDaemonFlags", () => {
       expect(ALL_KEYS).toContain(flag.key);
     }
   });
+
+  it("names the Home Assistant daemon accurately", () => {
+    const homeWatch = shapeDaemonFlags({}).flags.find((flag) => flag.key === "MUSE_HOME_WATCH_ENABLED");
+    expect(homeWatch?.label).toBe("Home Assistant watch daemon");
+  });
 });

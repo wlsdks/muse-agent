@@ -210,4 +210,40 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(calls).toEqual([]);
     expect((await listPendingApprovals(f)).map((item) => item.id)).toEqual(["gmail-local"]);
   });
+
+  it("local-only keeps a pending remote Home Assistant approval without reading its token or sending", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({
+      arguments: { entity: "light.living_room", service: "light.turn_off" },
+      id: "home-local",
+      tool: "home_action"
+    }));
+    let tokenReads = 0;
+    const localEnv: Record<string, string | undefined> = {
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+      MUSE_LOCAL_ONLY: "true"
+    };
+    Object.defineProperty(localEnv, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("HA token must not be read while remote local-only is blocked");
+      }
+    });
+    const { calls, fetchImpl } = recordingFetch();
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      env: localEnv,
+      fetchImpl,
+      id: "home-local",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+    expect(result).toEqual({ status: "no-tool", tool: "home_action" });
+    expect(tokenReads).toBe(0);
+    expect(calls).toEqual([]);
+    expect((await listPendingApprovals(f)).map((item) => item.id)).toEqual(["home-local"]);
+  });
 });

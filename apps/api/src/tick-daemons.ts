@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
@@ -359,11 +359,21 @@ export function startSituationalBriefingDaemonIfConfigured(
   // (notes / contacts), not an echo of what's already shown.
   const briefingEnricher = buildKnowledgeEnricherIfEnabled(env, options, { excludeSourcePrefixes: ["event/", "task/"] });
   const relatedOpt = briefingEnricher ? { relatedKnowledge: briefingEnricher } : {};
-  const haBaseUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
-  const haToken = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-  const homeChecks = parseHomeAlertChecks(env.MUSE_BRIEFING_HOME_ALERTS ?? "");
-  const homeAlertOpt = haBaseUrl && haToken && homeChecks.length > 0
-    ? { homeAlert: () => resolveHomeAlertLine({ baseUrl: haBaseUrl, token: haToken }, homeChecks) }
+  // Classify the HA endpoint before reading its bearer token or alert config.
+  // A remote endpoint under local-only therefore contributes no briefing
+  // callback and cannot turn the daemon start into a credential probe.
+  const homeAssistant = resolveHomeAssistantEnvironment(env, { localOnlyOverride: localOnly });
+  const homeChecks = homeAssistant.status === "configured"
+    ? parseHomeAlertChecks(env.MUSE_BRIEFING_HOME_ALERTS ?? "")
+    : [];
+  const homeAlertOpt = homeAssistant.status === "configured" && homeChecks.length > 0
+    ? {
+        homeAlert: () => resolveHomeAlertLine({
+          baseUrl: homeAssistant.baseUrl,
+          localOnly: homeAssistant.localOnly,
+          token: homeAssistant.token
+        }, homeChecks)
+      }
     : {};
   const birthdayDaysRaw = optionalNumber(env.MUSE_BRIEFING_BIRTHDAY_DAYS);
   const birthdayDays = Number.isFinite(birthdayDaysRaw) ? (birthdayDaysRaw as number) : 7;
@@ -672,14 +682,21 @@ export function startWebWatchDaemonIfConfigured(
 export function startHomeWatchDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
-  options: ServerOptions
+  options: ServerOptions,
+  localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env)
 ): void {
+  // Resolve before config/token/runner construction. A frozen false is not an
+  // escape hatch: the resolver still ORs in actual process local-only.
+  const homeAssistant = resolveHomeAssistantEnvironment(env, { localOnlyOverride: localOnly });
+  if (homeAssistant.status !== "configured") {
+    return;
+  }
   const enabled = parseBoolean(env.MUSE_HOME_WATCH_ENABLED, false);
-  const baseUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
-  const token = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-  const watches = baseUrl && token
-    ? homeWatchesFromConfig(env.MUSE_HOME_WATCH_CONFIG ?? "", { baseUrl, token })
-    : [];
+  const watches = homeWatchesFromConfig(env.MUSE_HOME_WATCH_CONFIG ?? "", {
+    baseUrl: homeAssistant.baseUrl,
+    localOnly: homeAssistant.localOnly,
+    token: homeAssistant.token
+  });
   const target = resolveMessagingTarget(env.MUSE_HOME_WATCH_PROVIDER, env.MUSE_HOME_WATCH_DESTINATION, options);
   if (!enabled || !target || watches.length === 0) {
     return;

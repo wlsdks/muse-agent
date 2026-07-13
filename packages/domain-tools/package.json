@@ -14,6 +14,7 @@
     "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/messaging": "workspace:*",
+    "@muse/model": "workspace:*",
     "@muse/proactivity": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*",

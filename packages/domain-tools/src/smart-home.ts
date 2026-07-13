@@ -12,9 +12,54 @@
  */
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
+import { canonicalizeLocalOnlyRootLoopbackHttpBaseUrl, isLocalOnlyEnabled } from "@muse/model";
 import { performWebActionWithApproval, type WebActionApprovalGate, type WebActionOutcome, type WebActionRequest } from "./web-action.js";
 
-export interface HomeAssistantServiceCall {
+/** The stable operator-facing reason for a local-only Home Assistant refusal. */
+export const HOME_ASSISTANT_LOCAL_ONLY_REASON = "Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available";
+
+export interface HomeAssistantTransportPolicy {
+  /** Composition-owned strictness. `false` can never lower an ambient strict process. */
+  readonly localOnly?: boolean;
+}
+
+export type HomeAssistantTransportResolution =
+  | { readonly allowed: true; readonly baseUrl: string }
+  | { readonly allowed: false; readonly reason: string };
+
+/**
+ * The process posture is the hard floor. A caller may add strictness through
+ * an injected/frozen value but cannot use `false` to reopen an actually
+ * local-only Muse process.
+ */
+export function isHomeAssistantLocalOnlyEffective(policy: HomeAssistantTransportPolicy = {}): boolean {
+  return isLocalOnlyEnabled(process.env) || policy.localOnly === true;
+}
+
+/**
+ * Resolve the only URL a Home Assistant transport may use. In local-only mode
+ * this is deliberately narrower than the model endpoint policy: HA gets a
+ * numeric-loopback HTTP root only, never a LAN/public host or path prefix.
+ */
+export function resolveHomeAssistantTransportBaseUrl(
+  rawBaseUrl: string,
+  policy: HomeAssistantTransportPolicy = {}
+): HomeAssistantTransportResolution {
+  const baseUrl = rawBaseUrl.trim();
+  if (baseUrl.length === 0) {
+    return { allowed: false, reason: "Home Assistant base URL is required" };
+  }
+  if (!isHomeAssistantLocalOnlyEffective(policy)) {
+    return { allowed: true, baseUrl };
+  }
+  try {
+    return { allowed: true, baseUrl: canonicalizeLocalOnlyRootLoopbackHttpBaseUrl(baseUrl) };
+  } catch {
+    return { allowed: false, reason: HOME_ASSISTANT_LOCAL_ONLY_REASON };
+  }
+}
+
+export interface HomeAssistantServiceCall extends HomeAssistantTransportPolicy {
   readonly baseUrl: string;
   readonly token: string;
   readonly domain: string;
@@ -47,7 +92,7 @@ export function buildHomeAssistantServiceCall(
   };
 }
 
-export interface HomeStateQuery {
+export interface HomeStateQuery extends HomeAssistantTransportPolicy {
   readonly baseUrl: string;
   readonly token: string;
   readonly entityId: string;
@@ -71,14 +116,18 @@ export interface HomeState {
  * gracefully instead of crashing the turn.
  */
 export async function readHomeAssistantState(query: HomeStateQuery): Promise<HomeState | undefined> {
-  const base = query.baseUrl.replace(/\/+$/u, "");
+  const transport = resolveHomeAssistantTransportBaseUrl(query.baseUrl, query);
+  if (!transport.allowed) {
+    return undefined;
+  }
+  const base = transport.baseUrl.replace(/\/+$/u, "");
   const url = `${base}/api/states/${encodeURIComponent(query.entityId)}`;
   const fetchImpl = query.fetchImpl ?? globalThis.fetch;
   let response: Response;
   try {
     response = await fetchWithRetry(fetchImpl, url, {
       ...(query.retryOptions ?? {}),
-      init: { headers: { authorization: `Bearer ${query.token}` } }
+      init: { headers: { authorization: `Bearer ${query.token}` }, redirect: "manual" }
     });
   } catch {
     return undefined;
@@ -105,7 +154,7 @@ export async function readHomeAssistantState(query: HomeStateQuery): Promise<Hom
   return { attributes, entityId: query.entityId, state: obj.state };
 }
 
-export interface HomeEntitiesQuery {
+export interface HomeEntitiesQuery extends HomeAssistantTransportPolicy {
   readonly baseUrl: string;
   readonly token: string;
   readonly fetchImpl?: typeof globalThis.fetch;
@@ -122,13 +171,17 @@ export interface HomeEntitiesQuery {
  * `[]` — never throws — on failure or a malformed body.
  */
 export async function listHomeAssistantStates(query: HomeEntitiesQuery): Promise<HomeState[]> {
-  const base = query.baseUrl.replace(/\/+$/u, "");
+  const transport = resolveHomeAssistantTransportBaseUrl(query.baseUrl, query);
+  if (!transport.allowed) {
+    return [];
+  }
+  const base = transport.baseUrl.replace(/\/+$/u, "");
   const fetchImpl = query.fetchImpl ?? globalThis.fetch;
   let response: Response;
   try {
     response = await fetchWithRetry(fetchImpl, `${base}/api/states`, {
       ...(query.retryOptions ?? {}),
-      init: { headers: { authorization: `Bearer ${query.token}` } }
+      init: { headers: { authorization: `Bearer ${query.token}` }, redirect: "manual" }
     });
   } catch {
     return [];
@@ -227,7 +280,7 @@ export function parseHomeAlertChecks(raw: string): HomeAlertCheck[] {
   return out;
 }
 
-export interface HomeAlertConnection {
+export interface HomeAlertConnection extends HomeAssistantTransportPolicy {
   readonly baseUrl: string;
   readonly token: string;
   readonly fetchImpl?: typeof globalThis.fetch;
@@ -246,12 +299,17 @@ export async function resolveHomeAlertLine(
   connection: HomeAlertConnection,
   checks: readonly HomeAlertCheck[]
 ): Promise<string | undefined> {
+  const transport = resolveHomeAssistantTransportBaseUrl(connection.baseUrl, connection);
+  if (!transport.allowed) {
+    return undefined;
+  }
   const alerts: string[] = [];
   for (const check of checks) {
     const state = await readHomeAssistantState({
-      baseUrl: connection.baseUrl,
+      baseUrl: transport.baseUrl,
       entityId: check.entityId,
       token: connection.token,
+      ...(connection.localOnly ? { localOnly: true } : {}),
       ...(connection.fetchImpl ? { fetchImpl: connection.fetchImpl } : {}),
       ...(connection.retryOptions ? { retryOptions: connection.retryOptions } : {})
     });
@@ -283,7 +341,11 @@ export interface PerformHomeActionWithApprovalOptions extends HomeAssistantServi
 export async function performHomeActionWithApproval(
   options: PerformHomeActionWithApprovalOptions
 ): Promise<WebActionOutcome> {
-  const { request, summary } = buildHomeAssistantServiceCall(options);
+  const transport = resolveHomeAssistantTransportBaseUrl(options.baseUrl, options);
+  if (!transport.allowed) {
+    return { detail: transport.reason, performed: false, reason: "failed" };
+  }
+  const { request, summary } = buildHomeAssistantServiceCall({ ...options, baseUrl: transport.baseUrl });
   return performWebActionWithApproval({
     actionLogFile: options.actionLogFile,
     approvalGate: options.approvalGate,

@@ -26,7 +26,7 @@ export interface DaemonFlagsResponse {
 // in the channel-daemon supervisor so the response can carry `running`.
 const DAEMON_FLAGS: readonly (readonly [string, string, boolean, string?])[] = [
   ["MUSE_EPISODIC_MEMORY_ENABLED", "Episodic memory capture", false],
-  ["MUSE_HOME_WATCH_ENABLED", "Home-folder watch daemon", false],
+  ["MUSE_HOME_WATCH_ENABLED", "Home Assistant watch daemon", false],
   ["MUSE_CONFLICT_WATCH_ENABLED", "Calendar conflict watch", false],
   ["MUSE_PROACTIVE_AGENT_TURN", "Proactive agent turn", false],
   ["MUSE_BACKGROUND_REVIEW_ENABLED", "Background review (skill learning)", false],

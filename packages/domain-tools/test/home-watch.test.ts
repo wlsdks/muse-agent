@@ -81,4 +81,32 @@ describe("homeWatchesFromConfig — proactive home monitoring over HA entity sta
     expect((await runner.tick()).delivered).toBe(0); // 503 → snapshot undefined → skip, baseline kept
     expect(delivered).toHaveLength(0);
   });
+
+  it("does not build a remote Home Assistant watch under local-only", () => {
+    let fetched = false;
+    let tokenReads = 0;
+    const fetchImpl = (async () => {
+      fetched = true;
+      return new Response("", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const connection = {
+      baseUrl: "http://ha.local:8123",
+      fetchImpl,
+      localOnly: true
+    } as Record<string, unknown>;
+    Object.defineProperty(connection, "token", {
+      configurable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("remote watch token must not be read");
+      }
+    });
+    const watches = homeWatchesFromConfig(
+      JSON.stringify([{ entityId: "lock.front_door", id: "door", message: "unlocked!", rule: { appears: "unlocked" }, title: "Door" }]),
+      connection as never
+    );
+    expect(watches).toEqual([]);
+    expect(fetched).toBe(false);
+    expect(tokenReads).toBe(0);
+  });
 });

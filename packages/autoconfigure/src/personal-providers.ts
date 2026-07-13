@@ -131,6 +131,27 @@ const GMAIL_ENV_KEY = "MUSE_GMAIL_TOKEN";
 const LOCAL_ONLY_ENV_KEY = "MUSE_LOCAL_ONLY";
 
 /**
+ * Resolve the local-only posture used while materialising the model
+ * environment. The actual process is the non-bypassable floor: a supplied
+ * composition snapshot may add strictness, but a false snapshot must not
+ * reopen an already strict Muse process. Returning `undefined` is deliberate
+ * for the ordinary non-strict/no-override path so its historical raw-env
+ * merge behaviour does not become a broad Proxy projection.
+ */
+export function resolveEffectiveLocalOnlyOverride(
+  sourceEnv: MuseEnvironment,
+  explicitOverride: boolean | undefined
+): boolean | undefined {
+  if (isLocalOnlyEnabled(process.env)) {
+    return true;
+  }
+  if (explicitOverride !== undefined) {
+    return explicitOverride;
+  }
+  return isLocalOnlyEnabled(sourceEnv) ? true : undefined;
+}
+
+/**
  * A bounded env projection used only when local-only is effective (or a
  * caller supplied a frozen override). It never enumerates the source env:
  * `models.json` remains available, ordinary non-model values remain lazily
@@ -208,12 +229,13 @@ export function mergeModelKeysFromFile(
   env: MuseEnvironment,
   options: MergeModelKeysFromFileOptions = {}
 ): MuseEnvironment {
-  // Explicit false is meaningful: it freezes the composition snapshot and
-  // must not lazily forward a contradictory source MUSE_LOCAL_ONLY=true.
-  const frozenLocalOnly = options.localOnlyOverride;
-  const sourceLocalOnly = frozenLocalOnly === undefined && isLocalOnlyEnabled(env);
-  const projected = frozenLocalOnly !== undefined || sourceLocalOnly;
-  const effectiveLocalOnly = frozenLocalOnly ?? sourceLocalOnly;
+  // Work out the strict floor before this function reaches its raw-env merge
+  // branch. In particular, a nonempty models.json must never make an ambient
+  // strict process enumerate a supplied false environment before downstream
+  // credential gates (such as Home Assistant) can classify it.
+  const effectiveOverride = resolveEffectiveLocalOnlyOverride(env, options.localOnlyOverride);
+  const projected = effectiveOverride !== undefined;
+  const effectiveLocalOnly = effectiveOverride === true;
   const file = readCredentialsSync(resolveModelKeysFile(env), env);
   // The historical false/unset branch intentionally keeps its exact raw-env
   // precedence and early returns. Only the projection branch must avoid raw

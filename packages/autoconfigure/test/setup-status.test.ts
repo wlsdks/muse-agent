@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
 import { buildModelSection, collectSetupStatusJson, evaluateLocalOnlyPosture, evaluateWebEgressStatus, readActuatorReadiness, readConfigDefaultModel, readMessagingProviderState, readModelKeyState, readWebSearchEnvSnapshot, resolveVoiceStatus } from "../src/setup-status.js";
@@ -179,7 +179,9 @@ describe("T2-B1 setup-status containment", () => {
       process.env = throwingIntegrationEnv({
         ...Object.fromEntries([...SNAPSHOT_HIDDEN_INTEGRATION_KEYS].map((key) => [key, join(root, `${key}.ambient`)])),
         HOME: root,
-        MUSE_LOCAL_ONLY: "true",
+        // This is the normal/frozen-false compatibility control. Ambient
+        // strictness is covered separately below and must now win there.
+        MUSE_LOCAL_ONLY: "false",
         MUSE_MCP_CONFIG: join(root, "mcp.json"),
         MUSE_MESSAGING_CREDENTIALS_FILE: ambientCredentials,
         MUSE_MODEL_KEYS_FILE: modelFile,
@@ -384,6 +386,103 @@ describe("readActuatorReadiness", () => {
     });
     expect(snap).toMatchObject({ email: true, home: true, status: "ok", web: true });
     expect(snap.nextStep).toBeUndefined();
+  });
+
+  it("refuses remote Home Assistant under local-only before any bearer-token reflection", () => {
+    const counts = { get: 0, getOwnPropertyDescriptor: 0, has: 0, ownKeys: 0 };
+    const env = new Proxy({
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+      MUSE_LOCAL_ONLY: "true"
+    } as Record<string, string | undefined>, {
+      get(target, property, receiver) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.get += 1;
+          throw new Error("token getter must remain untouched");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+      getOwnPropertyDescriptor(target, property) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.getOwnPropertyDescriptor += 1;
+          throw new Error("token descriptor must remain untouched");
+        }
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      has(target, property) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.has += 1;
+          throw new Error("token presence must remain untouched");
+        }
+        return Reflect.has(target, property);
+      },
+      ownKeys(target) {
+        counts.ownKeys += 1;
+        return Reflect.ownKeys(target);
+      }
+    });
+    const status = readActuatorReadiness(env);
+    expect(status).toMatchObject({
+      home: false,
+      homeReason: "Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available"
+    });
+    expect(status.nextStep).toContain("canonical loopback remains available");
+    expect(counts).toEqual({ get: 0, getOwnPropertyDescriptor: 0, has: 0, ownKeys: 0 });
+  });
+});
+
+describe.sequential("T2-B2b Home Assistant setup-status snapshot containment", () => {
+  const previousLocalOnly = process.env.MUSE_LOCAL_ONLY;
+
+  afterEach(() => {
+    if (previousLocalOnly === undefined) delete process.env.MUSE_LOCAL_ONLY;
+    else process.env.MUSE_LOCAL_ONLY = previousLocalOnly;
+  });
+
+  it("keeps a remote token hidden when ambient strictness overrides a frozen false API snapshot", async () => {
+    process.env.MUSE_LOCAL_ONLY = "true";
+    const counts = { get: 0, getOwnPropertyDescriptor: 0, has: 0, ownKeys: 0 };
+    const env = new Proxy({
+      HOME: tmpdir(),
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+      MUSE_LOCAL_ONLY: "false",
+      MUSE_MODEL_KEYS_FILE: "/tmp/muse-status-missing-models.json"
+    } as Record<string, string | undefined>, {
+      get(target, property, receiver) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.get += 1;
+          throw new Error("token getter must remain untouched");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+      getOwnPropertyDescriptor(target, property) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.getOwnPropertyDescriptor += 1;
+          throw new Error("token descriptor must remain untouched");
+        }
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      has(target, property) {
+        if (property === "MUSE_HOMEASSISTANT_TOKEN") {
+          counts.has += 1;
+          throw new Error("token presence must remain untouched");
+        }
+        return Reflect.has(target, property);
+      },
+      ownKeys(target) {
+        counts.ownKeys += 1;
+        return Reflect.ownKeys(target);
+      }
+    });
+    const snapshot = await collectSetupStatusJson({
+      env,
+      integrationEnv: resolveIntegrationEnvironment({ HOME: tmpdir(), MUSE_LOCAL_ONLY: "false" })
+    });
+    expect(snapshot).toMatchObject({
+      actuators: { home: false },
+      localOnly: { enabled: true }
+    });
+    expect(snapshot.actuators.nextStep).toContain("canonical loopback remains available");
+    expect(counts).toEqual({ get: 0, getOwnPropertyDescriptor: 0, has: 0, ownKeys: 0 });
   });
 });
 

@@ -69,4 +69,24 @@ describe("P17 seam — the agent invokes the gated home_action tool", () => {
     await run(createHomeActionTool(deps(deny, fetchImpl)));
     expect(calls).toHaveLength(0);
   });
+
+  it("local-only remote direct-tool refusal reaches neither approval nor Home Assistant", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    let approvals = 0;
+    const tool = createHomeActionTool({
+      ...deps(approve, fetchImpl),
+      approvalGate: () => {
+        approvals += 1;
+        return { approved: true };
+      },
+      localOnly: true
+    });
+    const result = await tool.execute(
+      { entity: "light.living_room", service: "light.turn_off" },
+      { runId: "local-only", userId: "stark" }
+    );
+    expect(result).toMatchObject({ performed: false, reason: "failed" });
+    expect(approvals).toBe(0);
+    expect(calls).toEqual([]);
+  });
 });

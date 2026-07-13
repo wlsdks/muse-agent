@@ -4,6 +4,7 @@ import { createMuseObservabilitySnapshotProvider } from "@muse/observability";
 import { parseOptionalString } from "./env-parsers.js";
 import {
   mergeModelKeysFromFile,
+  resolveEffectiveLocalOnlyOverride,
   resolveActionLogFile,
   resolveBriefingSidecarFile,
   resolveDiscordInboxFile,
@@ -27,16 +28,26 @@ import { resolveIntegrationEnvironment } from "./integration-environment.js";
 
 export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
   const source: MuseEnvironment = options.env ?? process.env;
+  // Calculate the process-backed HA/model strictness before any model-key
+  // merge can take its raw `{ ...env }` branch. Feed that same posture into
+  // the API integration snapshot so setup status and tick daemons cannot
+  // carry a stale false while the assembled runtime is strict. An explicit
+  // false still works when the actual process is not strict.
+  const modelAndHomeLocalOnlyOverride = resolveEffectiveLocalOnlyOverride(source, options.localOnlyOverride);
   const integrationEnv = resolveIntegrationEnvironment(source, {
-    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+    ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
   const env = mergeModelKeysFromFile(source, {
-    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+    ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
   // One effective env feeds both the runtime assembly and the narrow API
   // integration snapshot. Reusing raw options.env here would let setup routes
   // disagree with the registry the runtime actually assembled.
-  const assembly = createMuseRuntimeAssembly({ ...options, env, localOnlyOverride: integrationEnv.localOnly });
+  const assembly = createMuseRuntimeAssembly({
+    ...options,
+    env,
+    ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
+  });
 
   return {
     admin: {

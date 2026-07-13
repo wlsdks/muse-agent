@@ -30,6 +30,7 @@ import {
   resolveProactiveHistoryFile,
   resolveRemindersFile,
   resolveTasksFile,
+  resolveHomeAssistantEnvironment,
   type DecayContradictedDeps,
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
@@ -456,18 +457,23 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // Home-watch: read-only Home Assistant entity-state polling (e.g.
       // "front door unlocked"). Active only with config + HA creds; a
       // firing watch never acts on the home (outbound-safety).
-      const homeWatchRaw = e.MUSE_HOME_WATCH_CONFIG?.trim();
-      const haBaseUrl = e.MUSE_HOMEASSISTANT_URL?.trim();
-      const haToken = e.MUSE_HOMEASSISTANT_TOKEN?.trim();
+      // Classify the endpoint before reading the watch config or HA token. A
+      // blocked remote integration is deliberately inert: no config parser,
+      // runner, tick, or credential access is created for it.
+      const homeAssistant = resolveHomeAssistantEnvironment(e);
       let homeWatchRunner: WebWatchRunner | undefined;
-      if (homeWatchRaw && haBaseUrl && haToken) {
-        const homeWatches = homeWatchesFromConfig(homeWatchRaw, {
-          baseUrl: haBaseUrl,
-          token: haToken,
-          ...(helpers.fetchImpl ? { fetchImpl: helpers.fetchImpl } : {})
-        });
-        if (homeWatches.length > 0) {
-          homeWatchRunner = createWebWatchRunner({ sink: noticeSink, watches: homeWatches });
+      if (homeAssistant.status === "configured") {
+        const homeWatchRaw = e.MUSE_HOME_WATCH_CONFIG?.trim();
+        if (homeWatchRaw) {
+          const homeWatches = homeWatchesFromConfig(homeWatchRaw, {
+            baseUrl: homeAssistant.baseUrl,
+            localOnly: homeAssistant.localOnly,
+            token: homeAssistant.token,
+            ...(helpers.fetchImpl ? { fetchImpl: helpers.fetchImpl } : {})
+          });
+          if (homeWatches.length > 0) {
+            homeWatchRunner = createWebWatchRunner({ sink: noticeSink, watches: homeWatches });
+          }
         }
       }
 
@@ -512,7 +518,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  followup:   ${followupModel ? "enabled" : "disabled (no model resolved)"}\n`);
         io.stdout(`  ambient:    ${ambientRunner ? "enabled" : "disabled (set MUSE_AMBIENT_RULES)"}\n`);
         io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : "disabled (set MUSE_WEB_WATCH_CONFIG)"}\n`);
-        io.stdout(`  home-watch: ${homeWatchRunner ? "enabled" : "disabled (set MUSE_HOME_WATCH_CONFIG + HA creds)"}\n`);
+        io.stdout(`  home-watch: ${homeWatchRunner
+          ? "enabled"
+          : homeAssistant.status === "blocked"
+            ? `disabled (${homeAssistant.reason})`
+            : "disabled (set MUSE_HOME_WATCH_CONFIG + HA creds)"}\n`);
         io.stdout(`  objectives: ${objectivesEvaluate && objectivesActuator ? "enabled" : "disabled (no model resolved)"}\n`);
         io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : "disabled (set MUSE_BRIEFING_ENABLED)"}\n`);
         io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : "disabled (set MUSE_SELFLEARN_ENABLED + a model)"}\n`);

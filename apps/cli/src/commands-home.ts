@@ -6,7 +6,7 @@
  * payments / money movement (out of scope).
  */
 
-import { resolveActionLogFile } from "@muse/autoconfigure";
+import { resolveActionLogFile, resolveHomeAssistantEnvironment, type MuseEnvironment } from "@muse/autoconfigure";
 import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
@@ -25,6 +25,46 @@ export interface HomeCommandDeps {
   readonly actionLogFile?: string;
   readonly baseUrl?: string;
   readonly token?: string;
+  /** Bounded test/composition environment seam; explicit endpoint deps never bypass it. */
+  readonly env?: MuseEnvironment;
+  /** A frozen posture may add strictness but ambient process strictness still wins. */
+  readonly localOnlyOverride?: boolean;
+}
+
+function resolveHomeCommandEnvironment(deps: HomeCommandDeps) {
+  const source = deps.env ?? process.env;
+  // Deliberately use accessors instead of a spread/merge. The resolver reads
+  // local-only then URL before token; a blocked remote URL therefore never
+  // invokes the source token getter, even when explicit URL/token deps exist.
+  const env = Object.create(null) as MuseEnvironment;
+  Object.defineProperties(env, {
+    MUSE_HOMEASSISTANT_TOKEN: {
+      configurable: true,
+      enumerable: true,
+      get: () => deps.token ?? source.MUSE_HOMEASSISTANT_TOKEN
+    },
+    MUSE_HOMEASSISTANT_URL: {
+      configurable: true,
+      enumerable: true,
+      get: () => deps.baseUrl ?? source.MUSE_HOMEASSISTANT_URL
+    },
+    MUSE_LOCAL_ONLY: {
+      configurable: true,
+      enumerable: true,
+      get: () => source.MUSE_LOCAL_ONLY
+    }
+  });
+  return resolveHomeAssistantEnvironment(env, {
+    ...(deps.localOnlyOverride === undefined ? {} : { localOnlyOverride: deps.localOnlyOverride })
+  });
+}
+
+function reportMissingHomeConnection(io: ProgramIO, status: ReturnType<typeof resolveHomeCommandEnvironment>): void {
+  if (status.status === "blocked") {
+    io.stderr(`muse home: ${status.reason}.\n`);
+    return;
+  }
+  io.stderr("muse home: set MUSE_HOMEASSISTANT_URL and MUSE_HOMEASSISTANT_TOKEN (a Home Assistant long-lived access token).\n");
 }
 
 export function registerHomeCommands(program: Command, io: ProgramIO, deps: HomeCommandDeps = {}): void {
@@ -38,10 +78,9 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
     .option("--data <json>", "Extra service data as JSON")
     .option("--user <id>", "User identity for the action log", "stark")
     .action(async (domainService: string, options: CallOptions) => {
-      const baseUrl = deps.baseUrl ?? process.env.MUSE_HOMEASSISTANT_URL?.trim();
-      const token = deps.token ?? process.env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-      if (!baseUrl || !token) {
-        io.stderr("muse home: set MUSE_HOMEASSISTANT_URL and MUSE_HOMEASSISTANT_TOKEN (a Home Assistant long-lived access token).\n");
+      const homeAssistant = resolveHomeCommandEnvironment(deps);
+      if (homeAssistant.status !== "configured") {
+        reportMissingHomeConnection(io, homeAssistant);
         process.exitCode = 1;
         return;
       }
@@ -70,13 +109,14 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
       });
 
       const outcome = await performHomeActionWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(deps.env ?? process.env),
         approvalGate: gate,
-        baseUrl,
+        baseUrl: homeAssistant.baseUrl,
         domain: domainService.slice(0, dot),
         fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+        localOnly: homeAssistant.localOnly,
         service: domainService.slice(dot + 1),
-        token,
+        token: homeAssistant.token,
         userId: options.user ?? "stark",
         ...(options.entity ? { entityId: options.entity } : {}),
         ...(data ? { data } : {})
@@ -95,17 +135,17 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
     .description("Read a Home Assistant entity's current state (read-only, e.g. is the front door locked)")
     .argument("<entity>", "Target entity_id, e.g. 'lock.front_door'")
     .action(async (entityId: string) => {
-      const baseUrl = deps.baseUrl ?? process.env.MUSE_HOMEASSISTANT_URL?.trim();
-      const token = deps.token ?? process.env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-      if (!baseUrl || !token) {
-        io.stderr("muse home: set MUSE_HOMEASSISTANT_URL and MUSE_HOMEASSISTANT_TOKEN (a Home Assistant long-lived access token).\n");
+      const homeAssistant = resolveHomeCommandEnvironment(deps);
+      if (homeAssistant.status !== "configured") {
+        reportMissingHomeConnection(io, homeAssistant);
         process.exitCode = 1;
         return;
       }
       const state = await readHomeAssistantState({
-        baseUrl,
+        baseUrl: homeAssistant.baseUrl,
         entityId,
-        token,
+        localOnly: homeAssistant.localOnly,
+        token: homeAssistant.token,
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {})
       });
       if (state === undefined) {
@@ -123,16 +163,16 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
     .option("--domain <domain>", "Filter to one device type, e.g. 'light' / 'lock' / 'sensor'")
     .option("--state <state>", "Only entities in this state (case-insensitive), e.g. 'on' / 'unlocked' / 'open' — 'what's left on?'")
     .action(async (options: { domain?: string; state?: string }) => {
-      const baseUrl = deps.baseUrl ?? process.env.MUSE_HOMEASSISTANT_URL?.trim();
-      const token = deps.token ?? process.env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-      if (!baseUrl || !token) {
-        io.stderr("muse home: set MUSE_HOMEASSISTANT_URL and MUSE_HOMEASSISTANT_TOKEN (a Home Assistant long-lived access token).\n");
+      const homeAssistant = resolveHomeCommandEnvironment(deps);
+      if (homeAssistant.status !== "configured") {
+        reportMissingHomeConnection(io, homeAssistant);
         process.exitCode = 1;
         return;
       }
       const all = await listHomeAssistantStates({
-        baseUrl,
-        token,
+        baseUrl: homeAssistant.baseUrl,
+        localOnly: homeAssistant.localOnly,
+        token: homeAssistant.token,
         ...(options.domain ? { domain: options.domain } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {})
       });

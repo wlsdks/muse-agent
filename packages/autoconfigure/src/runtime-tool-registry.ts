@@ -13,7 +13,7 @@ import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "@muse/recall";
 import { addContact, defaultBackgroundProcessesFile, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
-import { collectDatedNotes, createBackgroundListTool, createBrowsingSearchTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
+import { collectDatedNotes, createBackgroundListTool, createBrowsingSearchTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, isHomeAssistantLocalOnlyEffective, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
@@ -36,6 +36,7 @@ import {
 } from "./personal-providers.js";
 import { createDayRecapTool } from "./day-recap-tool.js";
 import { createFindItemsTool } from "./find-items-tool.js";
+import { resolveHomeAssistantEnvironment } from "./home-assistant-environment.js";
 import { createOverdueContactsTool, interactionsFromEvents } from "./relationship-tool.js";
 import { createTodayBriefTool } from "./today-brief-tool.js";
 import { createUserMemoryKnowledgeSource } from "./user-memory-knowledge-source.js";
@@ -121,7 +122,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
   // Evaluate the posture once, before any Gmail property read. The env passed
   // by runtime assembly is already a safe projection under local-only, but
   // this gate keeps the registry independently fail-closed as well.
-  const localOnly = isLocalOnlyEnabled(env);
+  const localOnly = isHomeAssistantLocalOnlyEffective({ localOnly: isLocalOnlyEnabled(env) });
 
   // Expose `knowledge_search` over the user's live
   // notes when opted in. Off by default — it embeds the corpus per
@@ -204,16 +205,25 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
 
   // Smart-home READ tools (home_state / home_entities) — perception, no
   // approval gate (unlike the gated home_action write). Opt-in via the
-  // Home Assistant base URL + long-lived token.
+  // Home Assistant base URL + long-lived token. The resolver classifies the
+  // URL before it ever reads the bearer token, so a blocked remote endpoint
+  // cannot become a credential probe through this registry.
   const homeReadTools: MuseTool[] = (() => {
-    const haUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
-    const haToken = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
-    if (!haUrl || !haToken) {
+    const homeAssistant = resolveHomeAssistantEnvironment(env);
+    if (homeAssistant.status !== "configured") {
       return [];
     }
     return [
-      createHomeStateTool({ baseUrl: haUrl, token: haToken }),
-      createHomeEntitiesTool({ baseUrl: haUrl, token: haToken })
+      createHomeStateTool({
+        baseUrl: homeAssistant.baseUrl,
+        localOnly: homeAssistant.localOnly,
+        token: homeAssistant.token
+      }),
+      createHomeEntitiesTool({
+        baseUrl: homeAssistant.baseUrl,
+        localOnly: homeAssistant.localOnly,
+        token: homeAssistant.token
+      })
     ];
   })();
 

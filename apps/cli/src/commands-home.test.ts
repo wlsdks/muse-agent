@@ -148,3 +148,42 @@ describe("muse home entities — --state filter (what's left on?)", () => {
     expect(output).toContain("state 'unlocked'");
   });
 });
+
+describe("muse home — local-only remote containment", () => {
+  it("refuses call/state/entities before approval or fetch even when explicit baseUrl/token deps are supplied", async () => {
+    for (const args of [
+      ["call", "light.turn_off", "--entity", "light.living_room"],
+      ["state", "lock.front_door"],
+      ["entities"]
+    ]) {
+      const { fetchImpl, calls } = recordingFetch();
+      let approvals = 0;
+      const result = await run(args, {
+        actionLogFile: logFile(),
+        approvalGate: () => {
+          approvals += 1;
+          return { approved: true };
+        },
+        env: { MUSE_LOCAL_ONLY: "true" },
+        fetchImpl
+      });
+      expect(result.exitCode, args.join(" ")).toBe(1);
+      expect(result.output, args.join(" ")).toContain("Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true");
+      expect(calls, args.join(" ")).toEqual([]);
+      expect(approvals, args.join(" ")).toBe(0);
+    }
+  });
+
+  it("keeps canonical localhost loopback working under local-only", async () => {
+    const { fetchImpl, calls } = stateFetch(200, JSON.stringify({ attributes: {}, entity_id: "lock.front_door", state: "locked" }));
+    const result = await run(["state", "lock.front_door"], {
+      baseUrl: "http://localhost:8123/",
+      env: { MUSE_LOCAL_ONLY: "true" },
+      fetchImpl,
+      token: "tok"
+    });
+    expect(result.exitCode).toBeUndefined();
+    expect(result.output).toContain("lock.front_door: locked");
+    expect(calls).toEqual(["http://127.0.0.1:8123/api/states/lock.front_door"]);
+  });
+});

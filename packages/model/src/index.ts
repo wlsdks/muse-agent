@@ -516,10 +516,12 @@ export {
 } from "./web-search-policy.js";
 
 export {
+  canonicalizeLocalOnlyRootLoopbackHttpBaseUrl,
   canonicalizeLocalOnlyModelBaseUrl,
   classifyProviderLocality,
   isLocalOnlyEnabled,
   isLoopbackUrl,
+  LocalOnlyHttpBaseUrlViolationError,
   LocalOnlyViolationError,
   type ProviderLocality
 } from "./local-only-policy.js";

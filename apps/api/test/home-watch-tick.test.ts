@@ -1,6 +1,6 @@
 import { homeWatchesFromConfig } from "@muse/domain-tools";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { startWebWatchTick } from "../src/web-watch-tick.js";
 import { startHomeWatchDaemonIfConfigured } from "../src/tick-daemons.js";
@@ -97,5 +97,101 @@ describe("home-watch daemon — end-to-end: a user's MUSE_HOME_WATCH_CONFIG → 
     startHomeWatchDaemonIfConfigured({ ...env, MUSE_HOMEASSISTANT_TOKEN: undefined } as NodeJS.ProcessEnv, off.server as never, options);
     startHomeWatchDaemonIfConfigured({ ...env, MUSE_HOME_WATCH_CONFIG: "[]" } as NodeJS.ProcessEnv, off.server as never, options);
     expect(off.hooks).toHaveLength(0);
+  });
+
+  it("does not read a remote HA token or register a watch under local-only", () => {
+    let tokenReads = 0;
+    const env = {
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+      MUSE_HOME_WATCH_CONFIG: CONFIG,
+      MUSE_HOME_WATCH_DESTINATION: "555",
+      MUSE_HOME_WATCH_ENABLED: "true",
+      MUSE_HOME_WATCH_PROVIDER: "telegram"
+    } as NodeJS.ProcessEnv;
+    Object.defineProperty(env, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("remote HA token must not be read");
+      }
+    });
+    const options = { messaging: new MessagingProviderRegistry([capturingProvider([])]) } as unknown as Parameters<typeof startHomeWatchDaemonIfConfigured>[2];
+    const remote = fakeServer();
+    startHomeWatchDaemonIfConfigured(env, remote.server as never, options, true);
+    expect(remote.hooks).toEqual([]);
+    expect(tokenReads).toBe(0);
+  });
+
+  it("still registers a canonical loopback watch under local-only", () => {
+    const env = {
+      MUSE_HOMEASSISTANT_TOKEN: "ha-tok",
+      MUSE_HOMEASSISTANT_URL: "http://localhost:8123/",
+      MUSE_HOME_WATCH_CONFIG: CONFIG,
+      MUSE_HOME_WATCH_DESTINATION: "555",
+      MUSE_HOME_WATCH_ENABLED: "true",
+      MUSE_HOME_WATCH_PROVIDER: "telegram"
+    } as NodeJS.ProcessEnv;
+    const options = { messaging: new MessagingProviderRegistry([capturingProvider([])]) } as unknown as Parameters<typeof startHomeWatchDaemonIfConfigured>[2];
+    const loopback = fakeServer();
+    startHomeWatchDaemonIfConfigured(env, loopback.server as never, options, true);
+    expect(loopback.hooks.filter((hook) => hook.name === "onClose")).toHaveLength(1);
+  });
+});
+
+describe.sequential("home-watch daemon — ambient Home Assistant local-only floor", () => {
+  const previous = process.env.MUSE_LOCAL_ONLY;
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+    else process.env.MUSE_LOCAL_ONLY = previous;
+  });
+
+  it("does not let a supplied false reopen a remote watch in an actually strict process", () => {
+    process.env.MUSE_LOCAL_ONLY = "true";
+    let tokenReads = 0;
+    const env = {
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+      MUSE_HOME_WATCH_CONFIG: CONFIG,
+      MUSE_HOME_WATCH_DESTINATION: "555",
+      MUSE_HOME_WATCH_ENABLED: "true",
+      MUSE_HOME_WATCH_PROVIDER: "telegram"
+    } as NodeJS.ProcessEnv;
+    Object.defineProperty(env, "MUSE_HOMEASSISTANT_TOKEN", {
+      configurable: true,
+      get: () => {
+        tokenReads += 1;
+        throw new Error("ambient strictness must block before token read");
+      }
+    });
+    const options = { messaging: new MessagingProviderRegistry([capturingProvider([])]) } as unknown as Parameters<typeof startHomeWatchDaemonIfConfigured>[2];
+    const server = fakeServer();
+    startHomeWatchDaemonIfConfigured(env, server.server as never, options, false);
+    expect(server.hooks).toEqual([]);
+    expect(tokenReads).toBe(0);
+  });
+
+  it("does not probe a token when a strict Home Assistant URL is absent or blank", () => {
+    const options = { messaging: new MessagingProviderRegistry([capturingProvider([])]) } as unknown as Parameters<typeof startHomeWatchDaemonIfConfigured>[2];
+    for (const url of [undefined, "   "]) {
+      let tokenReads = 0;
+      const env = {
+        MUSE_HOMEASSISTANT_URL: url,
+        MUSE_HOME_WATCH_CONFIG: CONFIG,
+        MUSE_HOME_WATCH_DESTINATION: "555",
+        MUSE_HOME_WATCH_ENABLED: "true",
+        MUSE_HOME_WATCH_PROVIDER: "telegram"
+      } as NodeJS.ProcessEnv;
+      Object.defineProperty(env, "MUSE_HOMEASSISTANT_TOKEN", {
+        configurable: true,
+        get: () => {
+          tokenReads += 1;
+          throw new Error("blank Home Assistant URL must not read a token");
+        }
+      });
+      const server = fakeServer();
+      startHomeWatchDaemonIfConfigured(env, server.server as never, options, true);
+      expect(server.hooks, String(url)).toEqual([]);
+      expect(tokenReads, String(url)).toBe(0);
+    }
   });
 });

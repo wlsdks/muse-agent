@@ -32,6 +32,7 @@ import { canonicalizeLocalOnlyModelBaseUrl, evaluateWebEgressPosture, isInteract
 import { resolveEmbedderBase } from "./embedder-base.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
 import { createModelProvider, LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "./autoconfigure-model-provider.js";
+import { resolveHomeAssistantEnvironment, type ResolvedHomeAssistantEnvironment } from "./home-assistant-environment.js";
 
 // A supplied ResolvedIntegrationEnvironment is the only authority for the
 // calendar/messaging slice of API setup status. Keep its source fields out of
@@ -55,6 +56,8 @@ const SNAPSHOT_HIDDEN_INTEGRATION_ENV_KEYS = new Set([
   "MUSE_GCAL_CLIENT_ID",
   "MUSE_GCAL_CLIENT_SECRET",
   "MUSE_GCAL_REFRESH_TOKEN",
+  "MUSE_HOMEASSISTANT_TOKEN",
+  "MUSE_HOMEASSISTANT_URL",
   "MUSE_LINE_CHANNEL_ACCESS_TOKEN",
   "MUSE_LINE_CHANNEL_SECRET",
   "MUSE_LINE_INBOX_FILE",
@@ -96,8 +99,6 @@ const SNAPSHOT_VISIBLE_STATUS_ENV_KEYS = new Set([
   "MUSE_CREDENTIALS_ENCRYPT",
   "MUSE_DEFAULT_MODEL",
   "MUSE_GMAIL_TOKEN",
-  "MUSE_HOMEASSISTANT_TOKEN",
-  "MUSE_HOMEASSISTANT_URL",
   "MUSE_LOCAL_ONLY",
   "MUSE_MCP_CONFIG",
   "MUSE_MEMORY_KEY",
@@ -156,9 +157,9 @@ function isSnapshotVisibleStatusEnvironmentKey(property: PropertyKey): property 
  */
 function createSnapshotStatusEnvironmentView(
   sourceEnv: MuseEnvironment,
-  integrationEnv: ResolvedIntegrationEnvironment
+  localOnly: boolean
 ): MuseEnvironment {
-  const localOnly = integrationEnv.localOnly ? "true" : "false";
+  const localOnlyValue = localOnly ? "true" : "false";
   // Snapshot only present, explicitly allowed values. In particular, absent
   // ambient keys must stay absent from ownKeys so `{ ...env }` in the model
   // key merge cannot overwrite a suggested model with `undefined`.
@@ -167,7 +168,7 @@ function createSnapshotStatusEnvironmentView(
     // Gmail is deliberately not even read from the source when the frozen
     // snapshot is local-only. Status can report it as disabled without
     // probing a credential-protecting environment.
-    if (key === "MUSE_LOCAL_ONLY" || (integrationEnv.localOnly && key === "MUSE_GMAIL_TOKEN")) {
+    if (key === "MUSE_LOCAL_ONLY" || (localOnly && key === "MUSE_GMAIL_TOKEN")) {
       continue;
     }
     const value = sourceEnv[key];
@@ -185,9 +186,9 @@ function createSnapshotStatusEnvironmentView(
     deleteProperty: () => false,
     get(_target, property) {
       if (property === "MUSE_LOCAL_ONLY") {
-        return localOnly;
+        return localOnlyValue;
       }
-      if (integrationEnv.localOnly && property === "MUSE_GMAIL_TOKEN") {
+      if (localOnly && property === "MUSE_GMAIL_TOKEN") {
         return undefined;
       }
       if (isSnapshotHiddenIntegrationKey(property)) {
@@ -202,7 +203,7 @@ function createSnapshotStatusEnvironmentView(
     },
     getOwnPropertyDescriptor(_target, property) {
       if (property === "MUSE_LOCAL_ONLY") {
-        return { configurable: true, enumerable: true, value: localOnly, writable: false };
+        return { configurable: true, enumerable: true, value: localOnlyValue, writable: false };
       }
       if (isSnapshotVisibleStatusEnvironmentKey(property) && visibleValues.has(property)) {
         return {
@@ -375,7 +376,7 @@ export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | u
         return { detail: `🔒 on, but OLLAMA_BASE_URL points off-box (${embedBase}) — the embedder fails closed, so recall/memory embedding refuses; point OLLAMA_BASE_URL at localhost`, enabled, status: "fail" };
       }
       return {
-        detail: "🔒 on — cloud model + voice egress blocked and Gmail standard paths disabled; Muse interactive public-web tools (T2-A1), external MCP transports (T2-A2), and T2-B1 standard remote calendar/messaging assembly/setup disabled; local file, exported ICS, and macOS Calendar.app remain available (set MUSE_MACOS_CALENDAR_NAME to scope Calendar.app); not a complete all-egress audit",
+        detail: "🔒 on — cloud model + voice egress blocked and Gmail standard paths disabled; Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available; Muse interactive public-web tools (T2-A1), external MCP transports (T2-A2), and T2-B1 standard remote calendar/messaging assembly/setup disabled; local file, exported ICS, and macOS Calendar.app remain available (set MUSE_MACOS_CALENDAR_NAME to scope Calendar.app); not a complete all-egress audit",
         enabled,
         status: "ok"
       };
@@ -403,15 +404,21 @@ export interface ActuatorReadinessSnapshot {
   readonly web: boolean;
   /** Both MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN present. */
   readonly home: boolean;
+  /** Present only when local-only refused a non-loopback HA endpoint. */
+  readonly homeReason?: string;
   readonly nextStep?: string;
 }
 
-export function readActuatorReadiness(env: Readonly<Record<string, string | undefined>>): ActuatorReadinessSnapshot {
-  const localOnly = isLocalOnlyEnabled(env);
+export function readActuatorReadiness(
+  env: MuseEnvironment,
+  options: { readonly homeAssistant?: ResolvedHomeAssistantEnvironment } = {}
+): ActuatorReadinessSnapshot {
+  const homeAssistant = options.homeAssistant ?? resolveHomeAssistantEnvironment(env);
+  const localOnly = homeAssistant.localOnly;
   // Read local-only before Gmail. A credential-protecting env Proxy is a
   // valid composition input and this status row must not become a probe.
   const email = localOnly ? false : Boolean(env.MUSE_GMAIL_TOKEN?.trim());
-  const home = Boolean(env.MUSE_HOMEASSISTANT_URL?.trim() && env.MUSE_HOMEASSISTANT_TOKEN?.trim());
+  const home = homeAssistant.status === "configured";
   const hints: string[] = [];
   if (!email) {
     hints.push(localOnly
@@ -419,11 +426,14 @@ export function readActuatorReadiness(env: Readonly<Record<string, string | unde
       : "set MUSE_GMAIL_TOKEN for email_send");
   }
   if (!home) {
-    hints.push("set MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN for home_action");
+    hints.push(homeAssistant.status === "blocked"
+      ? homeAssistant.reason
+      : "set MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN for home_action");
   }
   return {
     email,
     home,
+    ...(homeAssistant.status === "blocked" ? { homeReason: homeAssistant.reason } : {}),
     status: email || home ? "ok" : "info",
     web: true,
     ...(hints.length > 0
@@ -598,13 +608,20 @@ export async function collectSetupStatusJson(options: {
 } = {}): Promise<SetupStatusSnapshot> {
   const integrationEnv = options.integrationEnv;
   const sourceEnv: MuseEnvironment = options.env ?? process.env;
+  // Resolve the HA pair before constructing any model/status overlay. In
+  // strict mode the resolver classifies URL first and returns on remote or
+  // blank endpoints without touching the token; neither the overlay nor its
+  // reflective merge can then re-open that credential.
+  const homeAssistant = resolveHomeAssistantEnvironment(sourceEnv, {
+    ...(integrationEnv ? { localOnlyOverride: integrationEnv.localOnly } : {})
+  });
   const statusEnv = integrationEnv
-    ? mergeModelKeysFromFile(createSnapshotStatusEnvironmentView(sourceEnv, integrationEnv), {
-      localOnlyOverride: integrationEnv.localOnly
+    ? mergeModelKeysFromFile(createSnapshotStatusEnvironmentView(sourceEnv, homeAssistant.localOnly), {
+      localOnlyOverride: homeAssistant.localOnly
     })
-    : mergeModelKeysFromFile(sourceEnv);
+    : mergeModelKeysFromFile(sourceEnv, { localOnlyOverride: homeAssistant.localOnly });
   const env = statusEnv;
-  const integrationLocalOnly = integrationEnv?.localOnly ?? isLocalOnlyEnabled(statusEnv);
+  const integrationLocalOnly = homeAssistant.localOnly;
   const home = env.HOME?.trim() || homedir();
 
   const modelKeysFile = env.MUSE_MODEL_KEYS_FILE?.trim() && env.MUSE_MODEL_KEYS_FILE.trim().length > 0
@@ -779,7 +796,7 @@ export async function collectSetupStatusJson(options: {
         ? {}
         : { nextStep: "Set MUSE_REMINDER_DEFAULT_PROVIDER + MUSE_REMINDER_DEFAULT_DESTINATION to enable the reminder firing daemon" })
     },
-    actuators: readActuatorReadiness(env)
+    actuators: readActuatorReadiness(env, { homeAssistant })
   };
 }
 

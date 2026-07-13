@@ -127,6 +127,12 @@ export {
   type ResolvedMessagingProviderEnvironment
 } from "./integration-environment.js";
 
+export {
+  resolveHomeAssistantEnvironment,
+  type ResolvedHomeAssistantEnvironment,
+  type ResolveHomeAssistantEnvironmentOptions
+} from "./home-assistant-environment.js";
+
 export { createGateEmbedder, createOllamaEmbedder } from "./context-engineering-builders.js";
 
 export { distillQueuedCorrections, type DistillQueuedDeps } from "./distill-queue.js";

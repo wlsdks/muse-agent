@@ -571,7 +571,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startObjectivesDaemonIfConfigured(env, server, options);
   startAmbientDaemonIfConfigured(env, server, options);
   startWebWatchDaemonIfConfigured(env, server, options);
-  startHomeWatchDaemonIfConfigured(env, server, options);
+  startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
   startDigestDaemonIfConfigured(env, server, options);
   warmUpModelIfConfigured(env, options);
 

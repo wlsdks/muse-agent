@@ -228,8 +228,8 @@ Total: **557** variables.
 | `MUSE_HISTORY_SEARCH_ENABLED` | packages/autoconfigure |
 | `MUSE_HISTORY_SEARCH_HYBRID` | packages/autoconfigure |
 | `MUSE_HOME` | apps/cli |
-| `MUSE_HOMEASSISTANT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
-| `MUSE_HOMEASSISTANT_URL` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_HOMEASSISTANT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
+| `MUSE_HOMEASSISTANT_URL` | apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_HOME_WATCH_CONFIG` | apps/api, apps/cli |
 | `MUSE_HOME_WATCH_DESTINATION` | apps/api |
 | `MUSE_HOME_WATCH_ENABLED` | apps/api |
@@ -270,7 +270,7 @@ Total: **557** variables.
 | `MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_MAX_OUTPUT_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_WORKING_BUDGET_TOKENS` | packages/autoconfigure |
-| `MUSE_LOCAL_ONLY` | apps/api, apps/cli, packages/autoconfigure, packages/model, packages/policy, packages/recall |
+| `MUSE_LOCAL_ONLY` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools, packages/model, packages/policy, packages/recall |
 | `MUSE_LOGPROBS` | apps/cli |
 | `MUSE_LOOPBACK_FETCH_HOSTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_FS_ROOTS` | packages/autoconfigure |

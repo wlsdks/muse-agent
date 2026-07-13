@@ -47,6 +47,12 @@ describe("listHomeAssistantStates — discover Home Assistant entities", () => {
     expect(await listHomeAssistantStates({ baseUrl: "http://ha.local", fetchImpl: recordingFetch([{ body: "nope", status: 500 }]).fetchImpl, retryOptions: noWait, token: "t" })).toEqual([]);
     expect(await listHomeAssistantStates({ baseUrl: "http://ha.local", fetchImpl: recordingFetch([{ body: "<html>", status: 200 }]).fetchImpl, token: "t" })).toEqual([]);
   });
+
+  it("does not enumerate a remote Home Assistant endpoint under local-only", async () => {
+    const { calls, fetchImpl } = recordingFetch([{ body: STATES, status: 200 }]);
+    await expect(listHomeAssistantStates({ baseUrl: "http://ha.local", fetchImpl, localOnly: true, token: "t" })).resolves.toEqual([]);
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("createHomeEntitiesTool — read-only discovery tool", () => {

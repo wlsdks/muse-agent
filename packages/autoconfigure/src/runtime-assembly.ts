@@ -132,6 +132,7 @@ import {
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
+  resolveEffectiveLocalOnlyOverride,
   resolveActionLogFile,
   resolveEpisodesFile,
   resolveFollowupLlmBudgetFile,
@@ -353,8 +354,14 @@ export function assertAuthConfigCoherent(
 }
 
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
-  const env = mergeModelKeysFromFile(options.env ?? process.env, {
-    ...(options.localOnlyOverride === undefined ? {} : { localOnlyOverride: options.localOnlyOverride })
+  const sourceEnv = options.env ?? process.env;
+  // Compute the process-backed strict floor before model-key merging. Without
+  // this, a supplied `MUSE_LOCAL_ONLY=false` plus a nonempty models.json could
+  // enumerate the raw environment before Home Assistant gets a chance to
+  // reject a remote/blank endpoint without touching its bearer token.
+  const modelAndHomeLocalOnlyOverride = resolveEffectiveLocalOnlyOverride(sourceEnv, options.localOnlyOverride);
+  const env = mergeModelKeysFromFile(sourceEnv, {
+    ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
   const db = options.db;
   // Sync read: createMuseRuntimeAssembly is called synchronously from dozens

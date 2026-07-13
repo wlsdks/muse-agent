@@ -62,6 +62,34 @@ describe("readHomeAssistantState — retry-hardened home perception", () => {
     const state = await readHomeAssistantState({ baseUrl: "http://ha.local", entityId: "lock.front_door", fetchImpl, token: "t" });
     expect(state).toBeUndefined();
   });
+
+  it("does not fetch a remote direct provider under local-only", async () => {
+    const { calls, fetchImpl } = recordingFetch([{ body: lockedBody, status: 200 }]);
+    const state = await readHomeAssistantState({
+      baseUrl: "http://ha.local:8123",
+      entityId: "lock.front_door",
+      fetchImpl,
+      localOnly: true,
+      token: "t"
+    });
+    expect(state).toBeUndefined();
+    expect(calls).toEqual([]);
+  });
+
+  it("canonicalizes localhost and refuses to follow a loopback read redirect", async () => {
+    const { calls, fetchImpl } = recordingFetch([{ body: "", status: 302 }]);
+    const state = await readHomeAssistantState({
+      baseUrl: "http://localhost:8123/",
+      entityId: "lock.front_door",
+      fetchImpl,
+      localOnly: true,
+      token: "t"
+    });
+    expect(state).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("http://127.0.0.1:8123/api/states/lock.front_door");
+    expect(calls[0]!.init?.redirect).toBe("manual");
+  });
 });
 
 describe("createHomeStateTool — read-only agent tool", () => {

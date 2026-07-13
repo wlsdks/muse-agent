@@ -30,6 +30,8 @@ export interface RunActuatorByNameDeps {
   readonly gmailToken?: string;
   readonly homeAssistantBaseUrl?: string;
   readonly homeAssistantToken?: string;
+  /** Composition-owned local-only posture; false never overrides ambient strictness. */
+  readonly localOnly?: boolean;
   /** DNS resolver for SSRF guard on web_action; defaults to the system lookup (tests inject a fake). */
   readonly lookup?: HostLookup;
 }
@@ -87,7 +89,8 @@ export async function runActuatorByName(
       baseUrl: deps.homeAssistantBaseUrl,
       fetchImpl,
       token: deps.homeAssistantToken,
-      userId: deps.userId
+      userId: deps.userId,
+      ...(deps.localOnly ? { localOnly: true } : {})
     }).execute(args, ctx)) as Record<string, unknown>;
     return result["performed"] === true ? { ran: true } : classifyFailure(result);
   }
