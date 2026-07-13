@@ -51,8 +51,15 @@ function buildRun(result: {
       ...(result.toolsUsed ? { toolsUsed: result.toolsUsed } : {})
     })
   };
+  // These describe blocks target gates BEHIND the pairing gate, so the
+  // sender every case uses ("42") is pre-seeded as the paired owner —
+  // otherwise each run stops at the pairing prompt and never reaches the
+  // gate under test.
+  const ownersFile = join(dir, "owners.json");
+  seedOwner(ownersFile, "log", "42");
   const env = {
     MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+    MUSE_CHANNEL_OWNERS_FILE: ownersFile,
     MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
     MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
   };
