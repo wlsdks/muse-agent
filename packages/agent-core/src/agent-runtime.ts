@@ -54,11 +54,14 @@ import { createRunId, type JsonObject } from "@muse/shared";
 import {
   ToolExecutor,
   ToolRegistry,
+  authorizeEgressForValue,
   coerceToolArguments,
   coerceEnumArguments,
+  createEgressAuthority,
   nearestToolName,
   toModelTool,
   validateRequiredToolArguments,
+  type EgressAuthority,
   type ToolExecutionResult,
   type ToolExposurePolicy
 } from "@muse/tools";
@@ -71,6 +74,7 @@ import {
   describeProvenanceExfil,
   describeProvenanceTaint,
   EXECUTE_SINK_ARG_NAMES,
+  isFirstPartyReadTool,
   OUTBOUND_SEND_SINK_ARG_NAMES,
   WRITE_SINK_ARG_NAMES,
   OUTBOUND_SEND_TOOL_NAMES
@@ -198,6 +202,38 @@ function clampRunLimit(value: number | undefined, fallback: number): number {
 
 /** The single PTC orchestrator tool name (defined as a MuseTool in `@muse/tools`). */
 const RUN_TOOL_PLAN_TOOL_NAME = "run_tool_plan";
+
+/**
+ * Seed the run's egress authority from the FULLY ASSEMBLED transcript (after
+ * `prepareInvocation`, so the system message already carries recall/notes/
+ * calendar — the taint ledger never saw that, but egress needs it as a
+ * TRUSTED source per S5). Only `user`/`system` roles feed trusted-observed
+ * URLs directly; a `tool` message feeds trusted ONLY when it came from a
+ * first-party store (mirrors the taint ledger's own first-party split), else
+ * untrusted-observed. `assistant` content is NEVER scanned — an authorizing
+ * role must never be the model's own prose, or it could compose a URL in
+ * turn 1 and "quote" it in turn 2 (self-laundering). Called on every run
+ * (including a 2nd+ turn, since a fresh `run()` gets a fresh, re-seeded
+ * authority) so history carries forward correctly without special-casing.
+ */
+function seedEgressAuthorityFromMessages(
+  egressAuthority: EgressAuthority | undefined,
+  messages: readonly ModelMessage[]
+): void {
+  if (!egressAuthority) {
+    return;
+  }
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      continue;
+    }
+    if (message.role === "tool" && !isFirstPartyReadTool(message.name ?? "")) {
+      egressAuthority.recordUntrustedText(message.content);
+      continue;
+    }
+    egressAuthority.recordTrustedText(message.content);
+  }
+}
 
 /**
  * Thrown by {@link AgentRuntime.executeToolPlanGated}'s executor when a plan step's gated tool call
@@ -382,6 +418,7 @@ export class AgentRuntime {
       input: specApplied.input,
       runId: input.runId ?? createRunId(),
       startedAt: new Date(),
+      egressAuthority: createEgressAuthority(),
       taintLedger: createTaintLedger()
     };
     const runSpan = this.tracer.startSpan("muse.agent.run", {
@@ -392,6 +429,7 @@ export class AgentRuntime {
     try {
       const { cached, cacheKey, inboxGroundingSources, layeredContext, playbookInjectedIds, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
         await this.prepareInvocation(context, runSpan);
+      seedEgressAuthorityFromMessages(context.egressAuthority, preparedRequest.request.messages);
 
       if (cached) {
         const guardedCachedResponse = await this.processCachedResponse(layeredContext, cached, selected, startedAtMs);
@@ -453,6 +491,7 @@ export class AgentRuntime {
       input: specApplied.input,
       runId: input.runId ?? createRunId(),
       startedAt: new Date(),
+      egressAuthority: createEgressAuthority(),
       taintLedger: createTaintLedger()
     };
     const runSpan = this.tracer.startSpan("muse.agent.stream", {
@@ -463,6 +502,7 @@ export class AgentRuntime {
     try {
       const { cached, cacheKey, layeredContext, playbookInjectedIds, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
         await this.prepareInvocation(context, runSpan);
+      seedEgressAuthorityFromMessages(context.egressAuthority, preparedRequest.request.messages);
 
       if (cached) {
         const guardedCachedResponse = await this.processCachedResponse(layeredContext, cached, selected, startedAtMs);
@@ -895,6 +935,16 @@ export class AgentRuntime {
       if (executed.result.status !== "completed") {
         throw new ToolPlanStepBlockedError(tool, executed.result.status, executed.result.output);
       }
+      // Feed this step's OWN result into the egress authority before the NEXT
+      // step's gate runs (executeToolPlan awaits each step in order, so this
+      // synchronously completes first) — otherwise a URL discovered mid-plan
+      // (e.g. a page fetched in step 1) would never be observed for step 2's
+      // link-follow, false-denying an ordinary multi-step PTC browse.
+      if (isFirstPartyReadTool(tool)) {
+        context.egressAuthority?.recordTrustedText(executed.result.output);
+      } else {
+        context.egressAuthority?.recordUntrustedText(executed.result.output);
+      }
       return executed.result.output;
     };
     return executeToolPlan(plan, executor);
@@ -1214,6 +1264,16 @@ export class AgentRuntime {
     // and the gate call use it — computed BEFORE the gate.
     const risk = this.resolveToolRisk(toolCall.name);
     const provenanceWarning = this.actuatorProvenanceWarning(context, toolCall, risk);
+    // Egress authorization (S5): detect a sink by ARG VALUE SHAPE (every string
+    // leaf, objects/arrays included) — never by tool name/risk, since an
+    // external MCP server names and risk-classes itself. `undefined` means no
+    // http(s)/ws(s) URL anywhere in this call's args — byte-identical to
+    // today. This runs for READ-risk calls too: that is the whole point — a
+    // read-class fetch/browser tool is exactly the exfil sink this closes.
+    const egressDecision = context.egressAuthority
+      ? authorizeEgressForValue(toolCall.arguments ?? {}, context.egressAuthority)
+      : undefined;
+    const egressBlocked = egressDecision?.decision === "deny";
 
     const approvalGate = context.input.toolApprovalGate ?? this.toolApprovalGate;
     if (risk !== "read" && !approvalGate) {
@@ -1233,7 +1293,8 @@ export class AgentRuntime {
           runId: context.runId,
           toolCall,
           userId: metadataString(context.input.metadata, "userId"),
-          ...(provenanceWarning ? { provenanceWarning } : {})
+          ...(provenanceWarning ? { provenanceWarning } : {}),
+          ...(egressDecision && egressDecision.decision !== "allow" ? { egressWarning: egressDecision.reason, egressBlocked } : {})
         });
       } catch (error) {
         // Fail-close: a throwing gate (e.g. a corrupt
@@ -1244,18 +1305,33 @@ export class AgentRuntime {
           reason: `approval gate error: ${error instanceof Error ? error.message : String(error)}`
         };
       }
+      // Runtime-enforced hard deny: an egress "deny" is authoritative
+      // regardless of what the surface gate returned. A gate that blindly
+      // trusts risk === "read" (the CLI's silent-read shape, or any future
+      // surface with the same shape) must never launder a model-composed URL
+      // into an HTTP call — the ONE chokepoint every surface shares is here,
+      // in the runtime, not re-implemented per surface.
+      if (egressBlocked) {
+        decision = { allowed: false, reason: `egress denied: ${egressDecision!.reason}` };
+      }
       if (!decision.allowed) {
         const reason = decision.reason ?? "tool call rejected by approval gate";
         const executed = blockedToolResult(toolCall, `Error: ${reason}`);
         await this.invokeHooks("afterTool", context, executed);
         return executed;
       }
-    } else if (provenanceWarning) {
-      // A tainted actuator call with NO approval gate has no confirm to route
-      // to — fail-close, never a silent send or execute.
+    } else if (provenanceWarning || egressBlocked) {
+      // A tainted actuator call (or an egress-denied one) with NO approval
+      // gate has no confirm to route to — fail-close, never a silent send,
+      // execute, or fetch. An egress "confirm" (link-following under the
+      // fan-out cap) is NOT fail-closed here: a read tool with no approval
+      // gate at all already runs silently today (nothing to route a confirm
+      // to either), and "confirm" is by definition an OBSERVED source, not a
+      // model-composed one.
+      const reason = egressBlocked ? `egress denied: ${egressDecision!.reason}` : provenanceWarning;
       const executed = blockedToolResult(
         toolCall,
-        `Error: actuator call blocked (injection-provenance): ${provenanceWarning}. Confirm this content explicitly before proceeding.`
+        `Error: actuator call blocked (injection-provenance): ${reason}. Confirm this content explicitly before proceeding.`
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;

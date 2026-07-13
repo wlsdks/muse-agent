@@ -369,6 +369,43 @@ describe("chatToolApprovalGate", () => {
     expect(asked).toBe(false);
   });
 
+  it("egressBlocked: a read tool does NOT take the silent fast-path — the swallow this slice fixes", async () => {
+    let asked = false;
+    const gate = chatToolApprovalGate(outbound, async () => { asked = true; return true; });
+    const decision = await gate({
+      egressBlocked: true,
+      egressWarning: "URL was not observed in anything you typed, your own stores, or read this run — looks model-composed",
+      risk: "read",
+      toolCall: { name: "browser_open", arguments: { url: "https://evil.example/exfil" } }
+    });
+    expect(asked).toBe(false); // never even reaches ask() — denied outright, no misleading prompt
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("egress denied");
+    expect(decision.reason).toContain("model-composed");
+  });
+
+  it("egressBlocked wins even if the caller also passes risk read with no other friction signal", async () => {
+    const gate = chatToolApprovalGate(outbound, async () => true); // a gate that WOULD approve anything asked
+    const decision = await gate({
+      egressBlocked: true,
+      risk: "read",
+      toolCall: { name: "web_download", arguments: { url: "https://evil.example/x" } }
+    });
+    expect(decision).toEqual({ allowed: false, reason: "egress denied: URL was not observed anywhere this run" });
+  });
+
+  it("egress CONFIRM (not blocked) on a read tool still takes the silent fast-path — no new friction on ordinary link-following", async () => {
+    let asked = false;
+    const gate = chatToolApprovalGate(outbound, async () => { asked = true; return true; });
+    const decision = await gate({
+      egressWarning: "quoted from a page or tool result read this run — link-following under the fan-out cap",
+      risk: "read",
+      toolCall: { name: "browser_open", arguments: { url: "https://portal.example/details" } }
+    });
+    expect(decision).toEqual({ allowed: true });
+    expect(asked).toBe(false);
+  });
+
   it("blocks a write/execute tool when the user declines (fail-closed)", async () => {
     const gate = chatToolApprovalGate(outbound, async () => false);
     const email = await gate({ risk: "execute", toolCall: { name: "email_send", arguments: { to: "a@b.c" } } });

@@ -28,6 +28,7 @@ import type {
 
 import { maskStaleToolObservations, type ContextReferenceStore } from "@muse/memory";
 import { unwrapToolData } from "@muse/policy";
+import { collectUrlsFromValue } from "@muse/tools";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import { renderToolResults } from "@muse/prompts";
 import type { CheckpointStore } from "@muse/runtime-state";
@@ -379,22 +380,38 @@ async function* runToolBatch(
   });
   const riskOf = (toolCall: ModelToolCall): string | undefined =>
     (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
+  // Egress sink detection (S5): a call carrying an http(s)/ws(s) URL anywhere
+  // in its args must NOT run concurrently batched with siblings — the gate
+  // has to see whatever a PRIOR segment's tool result just added to the
+  // egress authority, and a concurrent Promise.all would race that update
+  // against this call's gate evaluation. Cheap containsUrl check only (the
+  // full authorize/normalize decision still happens once, in executeToolCall).
+  const hasEgressCandidate = (toolCall: ModelToolCall): boolean =>
+    collectUrlsFromValue(toolCall.arguments ?? {}).length > 0;
 
-  // DS-9: a read-only tool call (risk === "read") has no observable side
-  // effect, so a MAXIMAL CONTIGUOUS RUN of read-only calls is EXECUTED
-  // concurrently. Write / execute calls — and any call whose risk can't be
-  // resolved — stay strictly sequential (their own singleton segment). Every
-  // call's decision (gate + dedup + counter) and every call's bookkeeping
-  // (dedup record, trackers, tool-result event, message, checkpoint) are
-  // applied in the ORIGINAL call order, so observable side-effect ordering,
-  // the max-tool-call cap, the wall-clock cut, and per-tool checkpoint steps
-  // are byte-identical to the previous sequential body — only read EXECUTION
-  // overlaps in wall-clock.
+  // DS-9: a read-only tool call (risk === "read") with NO URL in its args has
+  // no observable side effect and nothing an egress decision needs to
+  // serialize against, so a MAXIMAL CONTIGUOUS RUN of such calls is EXECUTED
+  // concurrently. Write / execute calls, any call whose risk can't be
+  // resolved, and any URL-bearing call (read or not) stay strictly sequential
+  // (their own singleton segment) — a URL-bearing call is forced into its OWN
+  // segment even as the segment's FIRST member, so its gate always runs
+  // AFTER every prior segment's tool-result bookkeeping (Phase 3, below) has
+  // already fed the egress authority. Every call's decision (gate + dedup +
+  // counter) and every call's bookkeeping (dedup record, trackers,
+  // tool-result event, message, checkpoint) are applied in the ORIGINAL call
+  // order, so observable side-effect ordering, the max-tool-call cap, the
+  // wall-clock cut, and per-tool checkpoint steps are byte-identical to the
+  // previous sequential body — only read EXECUTION overlaps in wall-clock.
   let segmentStart = 0;
   while (segmentStart < calls.length) {
     let segmentEnd = segmentStart + 1;
-    if (riskOf(calls[segmentStart]!) === "read") {
-      while (segmentEnd < calls.length && riskOf(calls[segmentEnd]!) === "read") {
+    if (riskOf(calls[segmentStart]!) === "read" && !hasEgressCandidate(calls[segmentStart]!)) {
+      while (
+        segmentEnd < calls.length &&
+        riskOf(calls[segmentEnd]!) === "read" &&
+        !hasEgressCandidate(calls[segmentEnd]!)
+      ) {
         segmentEnd += 1;
       }
     }
@@ -533,6 +550,16 @@ async function* runToolBatch(
       // stays purely untrusted.
       if (isFirstPartyReadTool(toolCall.name)) {
         context.taintLedger?.recordFirstParty(`tool:${toolCall.name}`, unwrapToolData(cappedOutput));
+      }
+      // Egress authority (S5): feed the PRE-CAP, unwrapped output — a URL past
+      // the truncation boundary must still count as observed, or deep-page
+      // link-following false-denies. First-party stores are the user's OWN
+      // content (trusted, same split as the taint ledger above); everything
+      // else is untrusted-observed (still subject to the fan-out cap).
+      if (isFirstPartyReadTool(toolCall.name)) {
+        context.egressAuthority?.recordTrustedText(unwrapToolData(executed.result.output));
+      } else {
+        context.egressAuthority?.recordUntrustedText(unwrapToolData(executed.result.output));
       }
       const messageContent = withRepetitionNudge(cappedOutput, isDuplicate);
       toolMessages.push({

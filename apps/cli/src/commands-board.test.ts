@@ -47,6 +47,17 @@ describe("boardToolApprovalGate — fail-closed during unattended board executio
     expect(decision.allowed).toBe(false);
     expect(decision.reason).toMatch(/review column/u);
   });
+  it("egressBlocked: a READ tool with a runtime egress deny is NOT auto-allowed on an unattended board run", async () => {
+    const decision = await boardToolApprovalGate({
+      egressBlocked: true,
+      egressWarning: "URL was not observed anywhere this run — looks model-composed",
+      risk: "read",
+      runId: "r",
+      toolCall: call
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("egress denied");
+  });
 });
 
 describe("selectObjectiveSpecsToSeed — standing-objective → board seeding (follow-up #3)", () => {

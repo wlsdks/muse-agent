@@ -274,6 +274,22 @@ export interface ToolApprovalGateInput {
    * absent, the call carries no provenance concern.
    */
   readonly provenanceWarning?: string;
+  /**
+   * Set by the egress-authorization gate (S5) when this call carries an
+   * http(s)/ws(s) URL that is not fully trusted-observed: either a
+   * link-follow under the fan-out cap ("confirm") or a URL that was never
+   * observed anywhere Muse read this run ("deny" — see `egressBlocked`).
+   * Human-readable reason a surface gate MAY show before deciding.
+   */
+  readonly egressWarning?: string;
+  /**
+   * True ONLY when the egress decision is a hard "deny" (a model-composed /
+   * never-observed URL, or the fan-out cap was exceeded). A gate MUST NOT
+   * auto-allow when this is true — the runtime enforces the deny regardless
+   * of what the gate returns, but a surface should still refuse to ask a
+   * misleading "approve?" for a call that cannot proceed.
+   */
+  readonly egressBlocked?: boolean;
 }
 
 export interface ToolApprovalGateDecision {

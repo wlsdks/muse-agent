@@ -22,6 +22,33 @@ describe("createChannelApprovalGate", () => {
     expect(registry.send).not.toHaveBeenCalled();
   });
 
+  it("egressBlocked: a read tool with a runtime egress deny is NOT auto-allowed (same swallow the CLI gate had)", async () => {
+    const registry = fakeRegistry(async () => {});
+    const gate = createChannelApprovalGate({ providerId: "telegram", registry, source: "42" });
+    const decision = await gate({
+      ...gateInput("browser_open", "read", { url: "https://evil.example/exfil" }),
+      egressBlocked: true,
+      egressWarning: "URL was not observed anywhere this run — looks model-composed"
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("egress denied");
+    expect(decision.reason).toContain("model-composed");
+    // No approval-prompt round trip for an egress deny — it isn't a
+    // pending-approval write/execute, it's a hard deny.
+    expect(registry.send).not.toHaveBeenCalled();
+  });
+
+  it("egress CONFIRM (not blocked) on a read tool still passes through silently", async () => {
+    const registry = fakeRegistry(async () => {});
+    const gate = createChannelApprovalGate({ providerId: "telegram", registry, source: "42" });
+    const decision = await gate({
+      ...gateInput("browser_open", "read", { url: "https://portal.example/details" }),
+      egressWarning: "quoted from a page read this run — link-following under the fan-out cap"
+    });
+    expect(decision.allowed).toBe(true);
+    expect(registry.send).not.toHaveBeenCalled();
+  });
+
   it("denies a risky tool and posts an approval prompt carrying the draft", async () => {
     const registry = fakeRegistry(async () => {});
     const gate = createChannelApprovalGate({ providerId: "telegram", registry, source: "42" });

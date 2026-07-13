@@ -215,3 +215,17 @@ export {
   parseNaturalLanguageToolSelection,
   type NlToolSelection
 } from "./nl-tool-selection.js";
+
+export {
+  authorizeEgress,
+  authorizeEgressForValue,
+  collectUrlsFromValue,
+  createEgressAuthority,
+  extractUrlsFromText,
+  normalizeEgressUrl,
+  DEFAULT_EGRESS_FAN_OUT_CAP,
+  type EgressAuthority,
+  type EgressDecision,
+  type EgressDecisionKind,
+  type NormalizedEgressUrl
+} from "./egress-authority.js";

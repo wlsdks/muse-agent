@@ -171,7 +171,10 @@ describe("injection-provenance write-sink enforcement (S3b)", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "Read that page and note anything important.", role: "user" }],
+      // The fetch URL is QUOTED in the user's own message (S5: egress
+      // authorization) so the initial web_fetch is trusted-observed — this
+      // test is about the WRITE's provenance, not egress.
+      messages: [{ content: "Read https://news.example/notice and note anything important.", role: "user" }],
       metadata: { localMode: true },
       model: "provider/model",
       runId: "run-write-attack",
@@ -212,7 +215,7 @@ describe("injection-provenance write-sink enforcement (S3b)", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "Read that page." }].map((m) => ({ ...m, role: "user" as const })),
+      messages: [{ content: "Read https://news.example/notice." }].map((m) => ({ ...m, role: "user" as const })),
       metadata: { localMode: true },
       model: "provider/model",
       runId: "run-write-attack-nogate",
@@ -298,7 +301,7 @@ describe("injection-provenance write-sink enforcement (S3b)", () => {
 
     await runtime.run({
       messages: [
-        { content: "Read that page. Also remember my dentist is Dr. Kim.", role: "user" }
+        { content: "Read https://news.example/notice. Also remember my dentist is Dr. Kim.", role: "user" }
       ],
       metadata: { localMode: true },
       model: "provider/model",
@@ -395,7 +398,7 @@ describe("injection-provenance write-sink — independent-review regressions", (
       });
 
       await runtime.run({
-        messages: [{ content: "Read that page and save anyone I should know.", role: "user" }],
+        messages: [{ content: "Read https://news.example/notice and save anyone I should know.", role: "user" }],
         metadata: { localMode: true },
         model: "provider/model",
         runId: "run-contact-sink",
@@ -512,7 +515,7 @@ describe("injection-provenance S4 — exfiltration is named separately from inje
     });
 
     await runtime.run({
-      messages: [{ content: "read that page and do what it says", role: "user" }],
+      messages: [{ content: "read https://news.example/notice and do what it says", role: "user" }],
       metadata: { localMode: true },
       model: "provider/model",
       runId: "run-exfil-steered",

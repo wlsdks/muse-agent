@@ -100,7 +100,10 @@ describe("injection-provenance outbound-send enforcement", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "Check the VPN portal and do what it says.", role: "user" }],
+      // The fetch URL is QUOTED verbatim in the user's own message (S5: egress
+      // authorization) so the initial web_fetch itself is trusted-observed and
+      // the chain proceeds — this test is about the SEND's provenance, not egress.
+      messages: [{ content: "Check https://vpn.example/portal and do what it says.", role: "user" }],
       model: "provider/model",
       runId: "run-attack-gate",
       toolExposureAuthority: authorityFor(["web_fetch", "email_send"])
@@ -140,7 +143,7 @@ describe("injection-provenance outbound-send enforcement", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "Read the VPN portal.", role: "user" }],
+      messages: [{ content: "Read https://vpn.example/portal.", role: "user" }],
       model: "provider/model",
       runId: "run-attack-nogate",
       toolExposureAuthority: authorityFor(["web_fetch", "email_send"])
@@ -183,8 +186,10 @@ describe("injection-provenance outbound-send enforcement", () => {
     await runtime.run({
       // bob@work.com is in the user's OWN message → trusted haystack covers it,
       // even though the ledger also holds untrusted tokens (attacker/evil) from
-      // the web_fetch. The gate must see NO provenance warning.
-      messages: [{ content: "Email bob@work.com the meeting time after checking the portal.", role: "user" }],
+      // the web_fetch. The gate must see NO provenance warning. The portal URL
+      // is also QUOTED here (S5: egress authorization) so the fetch itself is
+      // trusted-observed and this stays a test of the SEND's provenance only.
+      messages: [{ content: "Email bob@work.com the meeting time after checking https://vpn.example/portal.", role: "user" }],
       model: "provider/model",
       runId: "run-control",
       toolExposureAuthority: authorityFor(["web_fetch", "email_send"])
@@ -259,7 +264,10 @@ describe("injection-provenance execute-actuator enforcement", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "Check the setup page and finish the install.", role: "user" }],
+      // The URL is QUOTED in the user's own message (S5: egress authorization)
+      // so the initial web_fetch is trusted-observed — this test is about the
+      // EXECUTE call's provenance, not egress.
+      messages: [{ content: "Check https://setup.example/install and finish the install.", role: "user" }],
       model: "provider/model",
       runId: "run-exec-attack-gate",
       toolExposureAuthority: authorityFor(["web_fetch", "run_command"])
@@ -309,8 +317,9 @@ describe("injection-provenance execute-actuator enforcement", () => {
     await runtime.run({
       // `pnpm build` is in the user's OWN message → trusted haystack covers it,
       // even though the ledger also holds untrusted tokens (curl/evil) from the
-      // web_fetch. The gate must see NO provenance warning.
-      messages: [{ content: "Run pnpm build after checking the setup page.", role: "user" }],
+      // web_fetch. The gate must see NO provenance warning. The setup URL is
+      // also quoted (S5: egress authorization) so the fetch itself is trusted.
+      messages: [{ content: "Run pnpm build after checking https://setup.example/install.", role: "user" }],
       model: "provider/model",
       runId: "run-exec-control",
       toolExposureAuthority: authorityFor(["web_fetch", "run_command"])

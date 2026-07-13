@@ -12,6 +12,15 @@ export interface ChannelApprovalGateInput {
   readonly risk: "read" | "write" | "execute";
   readonly userId?: string;
   readonly runId: string;
+  /**
+   * Set by the runtime's egress-authorization gate (S5) when this call's
+   * args carry an http(s)/ws(s) URL the runtime could not authorize. The
+   * runtime enforces the deny regardless of what this gate returns, but the
+   * read fast-path below must not silently wave one through either — same
+   * shape as `apps/cli/src/chat-ink-core.ts`'s `chatToolApprovalGate`.
+   */
+  readonly egressWarning?: string;
+  readonly egressBlocked?: boolean;
 }
 
 function clip(value: unknown, max = 60): string {
@@ -101,7 +110,16 @@ export function createChannelApprovalGate(options: {
    */
   readonly scope?: "direct" | "shared";
 }): ChannelApprovalGate {
-  return async ({ toolCall, risk, userId }) => {
+  return async ({ toolCall, risk, userId, egressWarning, egressBlocked }) => {
+    // Checked BEFORE the read fast-path (not folded into its condition) so
+    // TypeScript narrows `risk` to "write" | "execute" below — and so a
+    // model-composed URL is denied regardless of risk, not just for reads.
+    if (egressBlocked) {
+      return {
+        allowed: false,
+        reason: `egress denied: ${egressWarning ?? "URL was not observed anywhere this run"}`
+      };
+    }
     if (risk === "read") {
       return { allowed: true };
     }

@@ -7,7 +7,7 @@ export interface AgentSpecResolver {
   resolve(text: string): Awaitable<AgentSpecResolution | undefined>;
 }
 import type { JsonObject } from "@muse/shared";
-import type { ToolExecutionResult } from "@muse/tools";
+import type { EgressAuthority, ToolExecutionResult } from "@muse/tools";
 import type { ToolApprovalGate } from "./agent-runtime-types.js";
 import type { TaintLedger } from "./taint-ledger.js";
 
@@ -82,6 +82,14 @@ export interface AgentRunContext {
    * reference across the run's derived contexts (created once per run).
    */
   readonly taintLedger?: TaintLedger;
+  /**
+   * Run-scoped egress authority — the observed-URL provenance set (S5): a
+   * URL leaving the box must be quoted from the user's own messages, the
+   * assembled system/context blocks, config, or a page/tool-result read this
+   * run. Shared by reference across the run's derived contexts, same as
+   * {@link taintLedger}.
+   */
+  readonly egressAuthority?: EgressAuthority;
 }
 
 export type GuardDecision =

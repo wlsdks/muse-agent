@@ -328,6 +328,16 @@ export type ApprovalKind = "outbound" | "tool";
 export interface ApprovalGateCall {
   readonly toolCall: { readonly name: string; readonly arguments: Record<string, unknown> };
   readonly risk: "read" | "write" | "execute";
+  /**
+   * Set by the runtime's egress-authorization gate (S5) when this call's args
+   * carry an http(s)/ws(s) URL that was never observed anywhere Muse read
+   * this run (model-composed) or exceeded the link-follow fan-out cap. The
+   * runtime enforces this deny regardless of what this gate returns, but the
+   * gate itself must not take the silent read fast-path for one — see the
+   * `egressBlocked` check below.
+   */
+  readonly egressWarning?: string;
+  readonly egressBlocked?: boolean;
 }
 export interface ApprovalGateDecision {
   readonly allowed: boolean;
@@ -350,12 +360,18 @@ export interface ApprovalGateDecision {
  * take the silent `read` fast-path — a mis-set or spoofed `risk` must not
  * let it bypass confirmation — and the human is shown WHY it needs a closer
  * look before deciding.
+ *
+ * Same for `egressBlocked`: a read tool carrying a URL the runtime's egress
+ * gate could not authorize (S5) must not take the silent fast-path either —
+ * the runtime enforces the deny either way, but this gate blindly returning
+ * `{allowed:true}` for every `risk === "read"` call is exactly the swallow
+ * that let a model-composed exfil URL slip past a naive surface gate.
  */
 export function chatToolApprovalGate(
   outbound: readonly string[],
   ask: (name: string, detail: string, kind: ApprovalKind) => Promise<boolean>
 ): (input: ApprovalGateCall) => Promise<ApprovalGateDecision> {
-  return async ({ toolCall, risk }) => {
+  return async ({ toolCall, risk, egressWarning, egressBlocked }) => {
     const isRunCommand = toolCall.name === "run_command";
     const command = typeof toolCall.arguments.command === "string" ? toolCall.arguments.command : "";
     const args = Array.isArray(toolCall.arguments.args)
@@ -363,7 +379,11 @@ export function chatToolApprovalGate(
       : undefined;
     const topology = isRunCommand ? classifyCommandTopology(command, args) : undefined;
 
-    if (risk === "read" && (topology === undefined || topology.analyzable)) return { allowed: true };
+    if (risk === "read" && !egressBlocked && (topology === undefined || topology.analyzable)) return { allowed: true };
+
+    if (egressBlocked) {
+      return { allowed: false, reason: `egress denied: ${egressWarning ?? "URL was not observed anywhere this run"}` };
+    }
 
     const kind: ApprovalKind = outbound.includes(toolCall.name) ? "outbound" : "tool";
     // `summarizeToolArgs` already stripped untrusted terminal chars and

@@ -92,10 +92,12 @@ export function formatBoard(tasks: readonly AgentTask[]): string {
  * work goes through the review column (a human approves), never a mid-run auto-approval.
  * This is the deterministic guard that keeps the board agentic-yet-safe (outbound-safety.md).
  */
-export const boardToolApprovalGate: ToolApprovalGate = ({ risk }) =>
-  risk === "read"
-    ? { allowed: true }
-    : { allowed: false, reason: "a board task does not auto-approve a write/execute tool — route outbound work through the review column" };
+export const boardToolApprovalGate: ToolApprovalGate = ({ risk, egressWarning, egressBlocked }) =>
+  egressBlocked
+    ? { allowed: false, reason: `egress denied: ${egressWarning ?? "URL was not observed anywhere this run"}` }
+    : risk === "read"
+      ? { allowed: true }
+      : { allowed: false, reason: "a board task does not auto-approve a write/execute tool — route outbound work through the review column" };
 
 /**
  * The production executor: run a board task through the real AGENT RUNTIME — tools (read-only
