@@ -252,7 +252,10 @@ describe("ImapSmtpEmailProvider — auth / network error classification (safety:
 
   it("a hung connect() times out into ImapSmtpNetworkError instead of hanging the caller", async () => {
     const client: ImapMailboxClient = {
-      connect: () => new Promise(() => undefined),
+      connect: () => {
+        const { promise } = Promise.withResolvers<void>();
+        return promise;
+      },
       fetch: async function* () {},
       fetchOne: async () => false,
       logout: async () => undefined,

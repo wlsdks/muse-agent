@@ -1075,7 +1075,10 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
     await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
     const first = (await readProactiveHeartbeat(heartbeatDir)).daemonLoop!.at;
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(() => resolve(), 5);
+    await promise;
+
     await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
     const second = (await readProactiveHeartbeat(heartbeatDir)).daemonLoop!.at;
 
