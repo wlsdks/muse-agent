@@ -62,6 +62,6 @@ export async function readProactiveHeartbeatCheck(
   now: () => Date = () => new Date()
 ): Promise<LocalCheck> {
   const dir = defaultProactiveHeartbeatDir(env);
-  const heartbeat = await readProactiveHeartbeat(dir).catch(() => ({}) as ProactiveHeartbeat);
+  const heartbeat = await readProactiveHeartbeat(dir).catch((): ProactiveHeartbeat => ({}));
   return proactiveHeartbeatCheck(heartbeat, { nowMs: now().getTime() });
 }
