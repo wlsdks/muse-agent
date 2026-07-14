@@ -23,6 +23,22 @@ import {
 import type { FastifyInstance } from "fastify";
 
 const TASK_STATUSES: readonly TaskStatus[] = ["todo", "in_progress", "review", "blocked", "done", "failed"];
+const READ_ONLY_BOARD_ERROR = "board is read-only in this wiring";
+
+function boardReadOnlyError(): Error {
+  return new Error(READ_ONLY_BOARD_ERROR);
+}
+
+function readOnlyBoard(): BoardStore {
+  return {
+    list: async () => {
+      throw boardReadOnlyError();
+    },
+    mutate: async () => {
+      throw boardReadOnlyError();
+    }
+  };
+}
 
 interface BoardStore {
   readonly list: () => Promise<readonly AgentTask[]>;
@@ -37,9 +53,11 @@ export interface BoardRoutesOptions {
 }
 
 export function registerBoardRoutes(server: FastifyInstance, options: BoardRoutesOptions = {}): void {
+  const readOnlyBoardStore = readOnlyBoard();
+
   const board: BoardStore = options.board
     ?? (options.listTasks
-      ? { list: options.listTasks, mutate: () => Promise.reject(new Error("board is read-only in this wiring")) }
+      ? { list: options.listTasks, mutate: readOnlyBoardStore.mutate }
       : new FileAgentTaskBoard());
 
   server.get("/api/board", async (_request, reply) => {
