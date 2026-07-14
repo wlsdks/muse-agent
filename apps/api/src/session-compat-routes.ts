@@ -18,6 +18,7 @@ import {
   toSessionResponse,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export function registerSessionCompatibilityRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/sessions", async (request, reply) => {
@@ -55,8 +56,12 @@ export function registerSessionCompatibilityRoutes(server: FastifyInstance, opti
     exportSession(request, reply, options, "compat")
   );
   server.delete("/api/sessions/:sessionId", async (request, reply) => {
-    const { sessionId } = request.params as { readonly sessionId: string };
+    const sessionId = readRouteParam(request, "sessionId");
     const userId = readAuthUserId(request);
+
+    if (!sessionId) {
+      return reply.status(400).send({ code: "INVALID_SESSION_ID", message: "sessionId is required" });
+    }
 
     if (!userId) {
       return reply.status(401).send({

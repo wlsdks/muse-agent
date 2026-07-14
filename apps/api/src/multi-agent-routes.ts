@@ -23,6 +23,7 @@ import type { ModelMessage, ModelProvider } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 import { createAnswerVerifier, createWorkerSummarizer, createWorkerSynthesizer } from "./multi-agent-workers.js";
+import { readQueryString, readRouteParam } from "./compat-parsers.js";
 
 export interface MultiAgentRouteOptions {
   readonly agentRuntime?: AgentRuntime;
@@ -111,7 +112,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     if (!authed(request, reply)) {
       return;
     }
-    const limitRaw = (request.query as { readonly limit?: string } | undefined)?.limit;
+    const limitRaw = readQueryString(request, "limit");
     let limit: number | undefined;
 
     if (limitRaw !== undefined) {
@@ -188,7 +189,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     if (!authed(request, reply)) {
       return undefined;
     }
-    const { runId } = request.params as { runId: string };
+    const runId = readRouteParam(request, "runId");
+    if (!runId) {
+      return reply.status(400).send({ code: "INVALID_RUN_ID", message: "runId path parameter is required" } satisfies ApiError);
+    }
     const existing = runRegistry.get(runId);
     if (!existing) {
       return reply.status(404).send({ code: "RUN_NOT_FOUND", message: `no run "${runId}"` } satisfies ApiError);
@@ -213,9 +217,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     if (!authed(request, reply)) {
       return undefined;
     }
-    const { runId } = request.params as { readonly runId: string };
+    const runId = readRouteParam(request, "runId");
 
-    if (!runId || runId.length === 0) {
+    if (!runId) {
       return reply.status(400).send({
         code: "INVALID_RUN_ID",
         message: "runId path parameter is required"

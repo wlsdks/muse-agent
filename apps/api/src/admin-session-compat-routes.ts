@@ -30,6 +30,7 @@ import {
   sessionDetail,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export function registerAdminSessionCompatRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   registerSessionRoutes(server, options);
@@ -80,7 +81,11 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
       return reply;
     }
 
-    const { sessionId } = request.params as { readonly sessionId: string };
+    const sessionId = readRouteParam(request, "sessionId");
+    if (!sessionId) {
+      return reply.status(400).send(errorResponse("sessionId is required"));
+    }
+
     const label = readBodyString(request.body, "label");
 
     if (!label) {
@@ -94,7 +99,13 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
       return reply;
     }
 
-    const { sessionId, tagId } = request.params as { readonly sessionId: string; readonly tagId: string };
+    const sessionId = readRouteParam(request, "sessionId");
+    const tagId = readRouteParam(request, "tagId");
+
+    if (!sessionId || !tagId) {
+      return reply.status(400).send(errorResponse("sessionId and tagId are required"));
+    }
+
     const deleted = await deleteSessionTag(options, sessionId, tagId);
 
     if (!deleted) {
@@ -108,8 +119,12 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
       return reply;
     }
 
+    const sessionId = readRouteParam(request, "sessionId");
+    if (!sessionId) {
+      return reply.status(400).send(errorResponse("sessionId is required"));
+    }
+
     const detail = await sessionDetail(request, reply, options);
-    const { sessionId } = request.params as { readonly sessionId: string };
     const tags = await listSessionTags(options, sessionId);
     return isRecord(detail) && "run" in detail ? { ...detail, tags } : detail;
   });
@@ -118,7 +133,11 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
       return reply;
     }
 
-    const { sessionId } = request.params as { readonly sessionId: string };
+    const sessionId = readRouteParam(request, "sessionId");
+
+    if (!sessionId) {
+      return reply.status(400).send(errorResponse("sessionId is required"));
+    }
 
     if (!options.historyStore) {
       return reply.status(404).send({
@@ -134,4 +153,3 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
       : reply.status(404).send({ code: "SESSION_NOT_FOUND", message: `Session not found: ${sessionId}` });
   });
 }
-

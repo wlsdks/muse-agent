@@ -17,6 +17,7 @@ import {
   type ParseResult,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export async function findMcpCompatServer(
   options: CompatibilityRouteOptions,
@@ -30,7 +31,13 @@ export function mcpProxyUnavailable(
   reply: FastifyReply,
   options: CompatibilityRouteOptions
 ) {
-  const { name } = request.params as { readonly name: string };
+  const name = readRouteParam(request, "name");
+  if (!name) {
+    return reply.status(400).send({
+      error: "MCP server name is required",
+      timestamp: nowIso()
+    });
+  }
 
   if (!options.mcp) {
     return reply.status(503).send({
@@ -57,7 +64,14 @@ export async function proxySwaggerSourceRequest(
     return reply;
   }
 
-  const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
+  const name = readRouteParam(request, "name");
+  if (!name) {
+    return reply.status(400).send({
+      error: "MCP server name is required",
+      timestamp: nowIso()
+    });
+  }
+  const serverConfig = await findMcpCompatServer(options, name);
 
   if (!serverConfig) {
     return mcpProxyUnavailable(request, reply, options);
@@ -78,8 +92,8 @@ export async function proxySwaggerSourceRequest(
 }
 
 export function swaggerSourcePath(request: FastifyRequest): string {
-  const { sourceName } = request.params as { readonly sourceName: string };
-  return `/admin/swagger/spec-sources/${encodeURIComponent(sourceName)}`;
+  const sourceName = readRouteParam(request, "sourceName");
+  return `/admin/swagger/spec-sources/${encodeURIComponent(sourceName ?? "")}`;
 }
 
 export function readAdminUrl(config: JsonObject): string | null {

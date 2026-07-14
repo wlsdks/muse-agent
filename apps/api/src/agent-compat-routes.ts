@@ -24,6 +24,7 @@ import {
   toAgentSpecUpdateInput,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export function registerAgentCompatibilityRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/.well-known/agent-card.json", async () => agentCardResponse(options));
@@ -45,7 +46,12 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
       return reply;
     }
 
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+
+    if (!id) {
+      return reply.status(400).send(errorResponse("id is required"));
+    }
+
     const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
     if (!spec) {
@@ -83,7 +89,12 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
       return reply;
     }
 
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+
+    if (!id) {
+      return reply.status(400).send(errorResponse("id is required"));
+    }
+
     const mode = isRecord(request.body) ? parseAgentMode(request.body.mode) : undefined;
 
     if (!isRecord(request.body)) {
@@ -108,7 +119,12 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
       return reply;
     }
 
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+
+    if (!id) {
+      return reply.status(400).send(errorResponse("id is required"));
+    }
+
     const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
     if (!spec) {

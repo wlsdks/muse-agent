@@ -31,6 +31,7 @@ import {
   toCompatRuntimeSetting,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export function registerAdminPlatformCompatRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   registerRuntimeSettingsRoutes(server, options);
@@ -52,7 +53,12 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
       return reply;
     }
 
-    const { key } = request.params as { readonly key: string };
+    const key = readRouteParam(request, "key");
+
+    if (!key) {
+      return reply.status(400).send(errorResponse("key is required"));
+    }
+
     const setting = await options.runtimeSettings.find(key);
     return setting ? toCompatRuntimeSetting(setting) : reply.status(404).send(errorResponse(`설정을 찾을 수 없습니다: ${key}`));
   });
@@ -61,8 +67,13 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
       return reply;
     }
 
-    const { key } = request.params as { readonly key: string };
+    const key = readRouteParam(request, "key");
     const body = toBody(request.body);
+
+    if (!key) {
+      return reply.status(400).send(errorResponse("key is required"));
+    }
+
     const value = readBodyString(body, "value");
 
     if (value === undefined) {
@@ -89,7 +100,12 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
       return reply;
     }
 
-    const { key } = request.params as { readonly key: string };
+    const key = readRouteParam(request, "key");
+
+    if (!key) {
+      return reply.status(400).send(errorResponse("key is required"));
+    }
+
     await options.runtimeSettings.delete(key);
     return reply.status(204).send();
   });

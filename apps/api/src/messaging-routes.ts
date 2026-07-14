@@ -19,6 +19,7 @@ import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
+import { readQueryString, toBody } from "./compat-parsers.js";
 
 interface MessagingRoutesGate {
   readonly authService: ServerOptions["authService"];
@@ -46,15 +47,16 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const query = (request.query as { providerId?: string; limit?: string; source?: string } | undefined) ?? {};
-    const providerId = typeof query.providerId === "string" ? query.providerId.trim() : "";
+    const providerId = readQueryString(request, "providerId");
     if (providerId.length === 0) {
       return reply.status(400).send({
         code: "INVALID_MESSAGING_REQUEST",
         message: "providerId query parameter is required"
       });
     }
-    const limitNum = query.limit ? Number(query.limit) : undefined;
+    const source = readQueryString(request, "source");
+    const limitRaw = readQueryString(request, "limit");
+    const limitNum = limitRaw ? Number(limitRaw) : undefined;
     const opts: { limit?: number; source?: string } = {};
     if (limitNum !== undefined && Number.isFinite(limitNum)) {
       // Normalise at the HTTP boundary so a negative / zero / float
@@ -63,8 +65,8 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
       // path applies internally, sharing one cap constant.
       opts.limit = Math.max(1, Math.min(MAX_READ_LIMIT, Math.trunc(limitNum)));
     }
-    if (typeof query.source === "string" && query.source.length > 0) {
-      opts.source = query.source;
+    if (source && source.length > 0) {
+      opts.source = source;
     }
     try {
       const inbound = await gate.registry.fetchInbound(providerId, Object.keys(opts).length > 0 ? opts : undefined);
@@ -96,11 +98,7 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = request.body as {
-      readonly providerId?: unknown;
-      readonly destination?: unknown;
-      readonly text?: unknown;
-    } | null;
+    const body = toBody(request.body);
     if (!body || typeof body.providerId !== "string" || body.providerId.trim().length === 0) {
       return reply.status(400).send({
         code: "INVALID_MESSAGING_REQUEST",
@@ -168,11 +166,11 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
 
   if (gate.pollNow) {
     const pollNow = gate.pollNow;
-    server.post("/api/messaging/poll", async (request, reply) => {
+  server.post("/api/messaging/poll", async (request, reply) => {
       if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
         return reply;
       }
-      const body = request.body as { readonly providerId?: unknown; readonly source?: unknown } | null;
+      const body = toBody(request.body);
       if (!body || typeof body.providerId !== "string" || body.providerId.trim().length === 0) {
         return reply.status(400).send({
           code: "INVALID_MESSAGING_REQUEST",

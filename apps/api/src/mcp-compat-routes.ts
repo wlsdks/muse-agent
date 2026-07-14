@@ -14,7 +14,7 @@
  *   - GET    /api/mcp/servers/:name/swagger/sources/:sourceName/diff
  */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import {
   errorResponse,
   findMcpCompatServer,
@@ -31,17 +31,57 @@ import {
   toJsonObject,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
+
+async function resolveServer(
+  request: FastifyRequest,
+  options: CompatibilityRouteOptions
+): Promise<Awaited<ReturnType<typeof findMcpCompatServer>> | undefined> {
+  const name = readRouteParam(request, "name");
+  if (!name) {
+    return undefined;
+  }
+  const serverConfig = await findMcpCompatServer(options, name);
+  if (!serverConfig) {
+    return undefined;
+  }
+  return serverConfig;
+}
+
+async function requireServer(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: CompatibilityRouteOptions
+): Promise<Awaited<ReturnType<typeof findMcpCompatServer>> | undefined> {
+  const resolved = await resolveServer(request, options);
+  const serverConfig = resolved;
+
+  if (!serverConfig) {
+    const name = readRouteParam(request, "name");
+
+    if (!name) {
+      reply.status(400).send({
+        code: 400,
+        error: "MCP server name is required"
+      });
+      return undefined;
+    }
+
+    mcpProxyUnavailable(request, reply, options);
+    return undefined;
+  }
+
+  return serverConfig;
+}
 
 export function registerMcpCompatibilityRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/mcp/servers/:name/preflight", async (request, reply) => {
     if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
-
-    const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
-
+    const serverConfig = await requireServer(request, reply, options);
     if (!serverConfig) {
-      return mcpProxyUnavailable(request, reply, options);
+      return reply;
     }
 
     const manager = options.mcp?.manager;
@@ -71,10 +111,9 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
       return reply;
     }
 
-    const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
-
+    const serverConfig = await requireServer(request, reply, options);
     if (!serverConfig) {
-      return mcpProxyUnavailable(request, reply, options);
+      return reply;
     }
 
     return proxyMcpAdminRequest(reply, options.mcp?.manager, serverConfig, "GET", "/admin/access-policy");
@@ -84,10 +123,9 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
       return reply;
     }
 
-    const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
-
+    const serverConfig = await requireServer(request, reply, options);
     if (!serverConfig) {
-      return mcpProxyUnavailable(request, reply, options);
+      return reply;
     }
 
     const parsed = parseMcpAccessPolicy(request.body);
@@ -103,10 +141,9 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
       return reply;
     }
 
-    const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
-
+    const serverConfig = await requireServer(request, reply, options);
     if (!serverConfig) {
-      return mcpProxyUnavailable(request, reply, options);
+      return reply;
     }
 
     return proxyMcpAdminRequest(reply, options.mcp?.manager, serverConfig, "DELETE", "/admin/access-policy");
@@ -116,10 +153,9 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
       return reply;
     }
 
-    const serverConfig = await findMcpCompatServer(options, (request.params as { readonly name: string }).name);
-
+    const serverConfig = await requireServer(request, reply, options);
     if (!serverConfig) {
-      return mcpProxyUnavailable(request, reply, options);
+      return reply;
     }
 
     return proxyMcpAdminRequest(reply, options.mcp?.manager, serverConfig, "POST", "/admin/access-policy/emergency-deny-all");

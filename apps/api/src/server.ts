@@ -573,7 +573,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     : undefined;
   if (sharedActivityTracker) {
     server.addHook("onRequest", async (request) => {
-      const path = (request as { readonly url?: string }).url ?? "";
+      const path = request.url ?? "";
       if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
         sharedActivityTracker.record();
       }

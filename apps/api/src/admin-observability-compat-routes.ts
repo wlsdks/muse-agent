@@ -11,6 +11,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { recordedSpans, recordedTraceEvents } from "./admin-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 import {
   aggregateFailurePatterns,
   dailyUsage,
@@ -21,9 +22,11 @@ import {
   listAllToolCalls,
   readQueryInteger,
   readQueryString,
+  errorResponse,
   toolCallRanking,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+
 
 export function registerAdminObservabilityCompatRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   registerTraceRoutes(server, options);
@@ -47,7 +50,12 @@ function registerTraceRoutes(server: FastifyInstance, options: CompatibilityRout
       return reply;
     }
 
-    const { traceId } = request.params as { readonly traceId: string };
+    const traceId = readRouteParam(request, "traceId");
+
+    if (!traceId) {
+      return reply.status(400).send(errorResponse("traceId is required"));
+    }
+
     const traceEvents = recordedTraceEvents(options.admin?.observability?.traceSink, traceId);
 
     if (traceEvents.length > 0) {

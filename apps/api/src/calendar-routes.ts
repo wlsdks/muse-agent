@@ -19,13 +19,13 @@
 
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import type { ResolvedIntegrationEnvironment } from "@muse/autoconfigure";
-import type { JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 import { syncRemindersOnEventDelete } from "@muse/domain-tools";
 import { resolveRemindersFile } from "@muse/autoconfigure";
+import { isRecord, readBodyString, readQueryString, readRouteParam, toBody, toJsonObject } from "./compat-parsers.js";
 
 interface CalendarRoutesGate {
   readonly authService: ServerOptions["authService"];
@@ -54,8 +54,12 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const query = request.query as { readonly fromIso?: string; readonly toIso?: string; readonly providerId?: string } | undefined;
-    const fromResult = parseOptionalIsoQueryParam(query?.fromIso);
+    const query = {
+      fromIso: readQueryString(request, "fromIso"),
+      providerId: readQueryString(request, "providerId"),
+      toIso: readQueryString(request, "toIso")
+    };
+    const fromResult = parseOptionalIsoQueryParam(query.fromIso);
     if (fromResult.kind === "invalid") {
       return reply.status(400).send({
         code: "INVALID_FROM_ISO",
@@ -63,7 +67,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       });
     }
     const from = fromResult.kind === "explicit" ? fromResult.date : new Date();
-    const toResult = parseOptionalIsoQueryParam(query?.toIso);
+    const toResult = parseOptionalIsoQueryParam(query.toIso);
     if (toResult.kind === "invalid") {
       return reply.status(400).send({
         code: "INVALID_TO_ISO",
@@ -72,7 +76,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     }
     const to = toResult.kind === "explicit" ? toResult.date : new Date(from.getTime() + 30 * 86_400_000);
     try {
-      const events = await gate.registry.listEvents({ from, to }, query?.providerId);
+      const events = await gate.registry.listEvents({ from, to }, query.providerId);
       return {
         events: events.map((event) => ({
           allDay: event.allDay,
@@ -100,15 +104,8 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = (request.body as {
-      title?: string;
-      startsAtIso?: string;
-      endsAtIso?: string;
-      allDay?: boolean;
-      location?: string;
-      notes?: string;
-      providerId?: string;
-    } | undefined) ?? {};
+    const body = toBody(request.body);
+    const providerId = readBodyString(body, "providerId");
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const startsAt = body.startsAtIso ? new Date(body.startsAtIso) : new Date(NaN);
     const endsAt = body.endsAtIso ? new Date(body.endsAtIso) : new Date(NaN);
@@ -119,7 +116,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       return reply.status(400).send({ code: "INVALID_EVENT", message: "startsAtIso and endsAtIso must be parseable ISO timestamps" });
     }
     try {
-      const event = await gate.registry.createEvent(body.providerId, {
+      const event = await gate.registry.createEvent(providerId, {
         endsAt,
         startsAt,
         title,
@@ -148,10 +145,13 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
-    const providerId = (request.query as { providerId?: string } | undefined)?.providerId?.trim();
+    const id = readRouteParam(request, "id");
+    const providerId = readQueryString(request, "providerId");
     if (!providerId) {
       return reply.status(400).send({ code: "PROVIDER_REQUIRED", message: "providerId query parameter is required to delete an event" });
+    }
+    if (!id) {
+      return reply.status(400).send({ code: "INVALID_EVENT_ID", message: "event id is required" });
     }
     try {
       await gate.registry.deleteEvent(providerId, id);
@@ -187,15 +187,17 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const { providerId } = request.params as { readonly providerId: string };
-    const body = request.body;
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    const providerId = readRouteParam(request, "providerId");
+    if (!providerId) {
+      return reply.status(400).send({ code: "INVALID_PROVIDER_ID", message: "providerId is required" });
+    }
+    if (!isRecord(request.body)) {
       return reply.status(400).send({
         code: "INVALID_CREDENTIAL_PAYLOAD",
         message: "Body must be a JSON object of credential key/value pairs"
       });
     }
-    await credentialStore.save(providerId, body as JsonObject);
+    await credentialStore.save(providerId, toJsonObject(request.body));
     return { providerId, saved: true };
   });
 
@@ -206,7 +208,10 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const { providerId } = request.params as { readonly providerId: string };
+    const providerId = readRouteParam(request, "providerId");
+    if (!providerId) {
+      return reply.status(400).send({ code: "INVALID_PROVIDER_ID", message: "providerId is required" });
+    }
     await credentialStore.remove(providerId);
     return reply.status(204).send();
   });
