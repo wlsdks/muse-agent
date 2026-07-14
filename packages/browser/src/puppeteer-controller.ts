@@ -283,21 +283,29 @@ export class PuppeteerBrowserController implements BrowserController {
    * hard-capped so a forever-animating page can't wedge it.
    */
   private async settleDom(page: Page): Promise<void> {
+    type DomSettleWindowState = {
+      readonly [key: string]: {
+        readonly updatedAt: number;
+        observer?: MutationObserver;
+      };
+    };
     await page.evaluate((quietMs: number, marker: string) => {
       const body = document.body;
       if (!body) return;
-      const state = { updatedAt: Date.now() } as { updatedAt: number; observer: MutationObserver };
+      const state: { updatedAt: number; observer?: MutationObserver } = {
+        updatedAt: Date.now()
+      };
       const observer = new MutationObserver(() => {
         state.updatedAt = Date.now();
       });
       observer.observe(body, { attributes: true, childList: true, characterData: true, subtree: true });
       state.observer = observer;
-      (window as unknown as { [key: string]: unknown })[marker] = state;
+      (window as DomSettleWindowState)[marker] = state;
     }, 400, DOM_SETTLE_SIGNAL);
     try {
       await page.waitForFunction(
         (quietMs: number, marker: string) => {
-          const state = (window as unknown as { [key: string]: { updatedAt: number; observer?: MutationObserver } | undefined })[marker];
+          const state = (window as DomSettleWindowState)[marker];
           if (!state?.updatedAt) return true;
           return Date.now() - state.updatedAt >= quietMs;
         },
@@ -312,9 +320,9 @@ export class PuppeteerBrowserController implements BrowserController {
       /* page navigated away mid-wait */
     } finally {
       await page.evaluate((marker: string) => {
-        const state = (window as unknown as { [key: string]: { observer?: MutationObserver } | undefined })[marker];
+        const state = (window as DomSettleWindowState)[marker];
         state?.observer?.disconnect();
-        delete (window as unknown as { [key: string]: unknown })[marker];
+        delete (window as DomSettleWindowState)[marker];
       }, DOM_SETTLE_SIGNAL);
     }
   }
@@ -388,7 +396,7 @@ export class PuppeteerBrowserController implements BrowserController {
         }
       };
       walk(document);
-      const out: Array<{ ref: number; role: string; name: string; url?: string }> = [];
+      const out: SnapshotElement[] = [];
       // Dedup by role+name so a low-spec model sees a compact, distinct list
       // (nav bars repeat the same link many times — noise that wastes context).
       const seen = new Set<string>();
@@ -440,7 +448,7 @@ export class PuppeteerBrowserController implements BrowserController {
         ref += 1;
       }
       return out;
-    }, BROWSER_ELEMENT_CEILING, BROWSER_MAX_NAME)) as SnapshotElement[];
+    }, BROWSER_ELEMENT_CEILING, BROWSER_MAX_NAME));
     this.lastElements = new Map(elements.map((element) => [element.ref, element]));
     // Surface a dialog that fired since the last observation (handled per
     // dialog-policy), then clear it so it's reported exactly once.
@@ -655,7 +663,11 @@ export class PuppeteerBrowserController implements BrowserController {
 
   async screenshotBase64(): Promise<string> {
     const page = await this.ensurePage();
-    return page.screenshot({ encoding: "base64", type: "png" }) as Promise<string>;
+    const screenshot = await page.screenshot({ encoding: "base64", type: "png" });
+    if (typeof screenshot !== "string") {
+      throw new Error("puppeteer screenshot failed: expected base64-encoded payload");
+    }
+    return screenshot;
   }
 
   describeElement(ref: number): SnapshotElement | undefined {

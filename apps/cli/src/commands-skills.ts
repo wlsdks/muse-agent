@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/stores";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { authorSkillsFromSession } from "./chat-author-skills.js";
@@ -122,10 +123,16 @@ Examples:
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
         return;
       }
-      const rewards = await readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>));
+      const rewards = await (async () => {
+        try {
+          return await readSkillRewards(resolveSkillRewardsFile());
+        } catch {
+          return {};
+        }
+      })();
       io.stdout(`Authored skills (${authored.length.toString()}) in ${dir}:\n`);
       for (const skill of authored) {
-        const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+        const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata["muse"] : {};
         const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt.slice(0, 10) : "unknown";
         const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt.slice(0, 10) : "never";
         const reward = rewards[skill.name];
@@ -172,7 +179,7 @@ Examples:
       }
       const dir = resolveAuthoredSkillsDir();
       const store = new AuthoredSkillStore({ dir });
-      const archived = await store.curate(days).catch(() => [] as readonly string[]);
+      const archived = await store.curate(days).catch((): readonly string[] => []);
       if (archived.length === 0) {
         io.stdout(`No authored skills idle beyond ${days.toString()} days — nothing archived.\n`);
         return;

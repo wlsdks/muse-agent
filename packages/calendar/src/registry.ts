@@ -111,13 +111,15 @@ export class CalendarProviderRegistry {
           const message = cause instanceof Error ? cause.message : String(cause);
           failedProviders.push({ providerId: provider.id, message });
           this.onProviderError?.(provider.id, message);
-          return [] as readonly CalendarEvent[];
+          return EMPTY_CALENDAR_EVENTS;
         }
       })
     );
     const events = buckets.flat().sort(compareCalendarEvents);
     return { events, failedProviders };
   }
+
+const EMPTY_CALENDAR_EVENTS: readonly CalendarEvent[] = [];
 
   createEvent(providerId: string | undefined, input: CalendarEventInput): Promise<CalendarEvent> {
     return this.requireOrPrimary(providerId).createEvent(input);

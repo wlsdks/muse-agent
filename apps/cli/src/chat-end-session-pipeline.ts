@@ -13,6 +13,10 @@ import { parseBoolean } from "@muse/autoconfigure";
 import { resolveSkillRewardsFile } from "./commands-skills.js";
 
 type GenerateCapableProvider = { readonly generate: unknown };
+type UmbrellaConsolidation = { readonly umbrella: string; readonly merged: readonly string[] };
+type SessionPreferenceInferenceResult = { readonly added: readonly string[]; readonly status: "no-model" };
+
+const noModelPreferences = (): SessionPreferenceInferenceResult => ({ added: [], status: "no-model" });
 
 export async function runEndOfSessionPipeline(args: {
   readonly modelProvider: unknown;
@@ -137,7 +141,7 @@ export async function runEndOfSessionPipeline(args: {
           validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed: gateEmbed }).then((v) => v.accept)
         }
       )
-      .catch(() => [] as readonly { umbrella: string; merged: readonly string[] }[]);
+      .catch((): readonly UmbrellaConsolidation[] => []);
     for (const m of merged) {
       process.stderr.write(`🧹 Consolidated ${m.merged.length.toString()} skills → ${m.umbrella}\n`);
     }
@@ -161,7 +165,7 @@ export async function runEndOfSessionPipeline(args: {
   // Opt-in + fail-soft. LLM path (local model); never fabricates (NONE-aware).
   if (parseBoolean(process.env.MUSE_PREFERENCE_AUTOINFER_ENABLED, false)) {
     const { inferSessionPreferences } = await import("./commands-user.js");
-    const result = await inferSessionPreferences().catch(() => ({ added: [] as readonly string[], status: "no-model" as const }));
+    const result = await inferSessionPreferences().catch(noModelPreferences);
     for (const p of result.added) {
       process.stderr.write(`🧠 Learned preference: ${p}\n`);
     }

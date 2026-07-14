@@ -21,6 +21,7 @@ import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFil
 import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
+import { asRecord } from "@muse/shared";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 
@@ -37,6 +38,7 @@ import { waitForShutdownSignal } from "./async-promises.js";
  * typos with the closest-match hint.
  */
 const REMIND_STATUS_VALUES = ["pending", "fired", "all", "due"] as const;
+const DRY_RUN_ERRORS: string[] = [];
 
 function assertReminderStatusInput(raw: string): void {
   const trimmed = raw.trim().toLowerCase();
@@ -186,7 +188,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         if (via) {
           body.via = via;
         }
-        return (await helpers.apiRequest(io, command, "/api/reminders", body, "POST")) as Record<string, unknown>;
+        return asRecord(await helpers.apiRequest(io, command, "/api/reminders", body, "POST")) ?? { error: "invalid reminder response" };
       };
       const payload = await remindLocalFallback(io, Boolean(options.local), addLocal, addApi);
       if (options.json) {
@@ -303,13 +305,13 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         if (options.in && options.in.trim().length > 0) {
           body.dueAt = options.in.trim();
         }
-        return (await helpers.apiRequest(
+        return asRecord(await helpers.apiRequest(
           io,
           command,
           `/api/reminders/${encodeURIComponent(id)}/snooze`,
           body,
           "POST"
-        )) as Record<string, unknown>;
+        )) ?? { error: "invalid reminder response" };
       };
       const payload = await remindLocalFallback(io, Boolean(options.local), snoozeLocal, snoozeApi);
       if (options.json) {
@@ -362,13 +364,13 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         if (options.at && options.at.trim().length > 0) {
           body.firedAt = options.at.trim();
         }
-        return (await helpers.apiRequest(
+        return asRecord(await helpers.apiRequest(
           io,
           command,
           `/api/reminders/${encodeURIComponent(id)}/fire`,
           body,
           "POST"
-        )) as Record<string, unknown>;
+        )) ?? { error: "invalid reminder response" };
       };
       const payload = await remindLocalFallback(io, Boolean(options.local), fireLocal, fireApi);
       if (options.json) {
@@ -461,7 +463,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         const summary = {
           delivered: 0,
           due: due.length,
-          errors: [] as string[],
+          errors: DRY_RUN_ERRORS,
           previews: due.map((reminder) => ({ id: reminder.id, text: reminder.text }))
         };
         if (options.json) {

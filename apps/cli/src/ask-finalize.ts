@@ -128,7 +128,7 @@ export async function finalizeAndRenderAsk(params: {
       // the answer or changes the citation gate. Fail-open (empty vecs → no-op).
       const sufficiencyLine = sufficiencyAdvisory({
         answer: collectedAnswer,
-        evidenceVecs: scored.map((r) => r.chunk.embedding as readonly number[]),
+        evidenceVecs: scored.map((r) => r.chunk.embedding),
         json: Boolean(options.json),
         subQueries: splitClauses,
         subQueryVecs: subqueryEmbeddings

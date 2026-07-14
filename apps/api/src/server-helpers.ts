@@ -215,10 +215,10 @@ export async function runChat(
     // gates (never model text) so it can't be dropped as fabricated, and persisted
     // only now — a run the model abandoned before any write never reaches here with
     // captured drafts. The userId falls back to the request's authenticated id.
-    const delivered = writeWiring && writeWiring.drafts.length > 0
-      ? await withApprovalNotice(finalResult, writeWiring, chatUserId(runInput, authUserId))
-      : { pendingApprovals: [] as readonly PersistedApproval[], result: finalResult };
-    const conversationField = conversationPlan ? { conversationId: conversationPlan.conversationId } : {};
+  const delivered = writeWiring && writeWiring.drafts.length > 0
+    ? await withApprovalNotice(finalResult, writeWiring, chatUserId(runInput, authUserId))
+    : { pendingApprovals: EMPTY_PENDING_APPROVALS, result: finalResult };
+  const conversationField = conversationPlan ? { conversationId: conversationPlan.conversationId } : {};
     return responseMode === "compat"
       ? { ...toCompatChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField }
       : { ...toExtendedChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField };
@@ -241,6 +241,8 @@ function chatUserId(runInput: AgentRunInput, authUserId?: string): string | unde
   const fromMetadata = runInput.metadata?.["userId"];
   return typeof fromMetadata === "string" ? fromMetadata : authUserId;
 }
+
+const EMPTY_PENDING_APPROVALS: readonly PersistedApproval[] = [];
 
 /** A CLEAN-history retry payload — system message(s) + only the latest user
  *  turn — so a poisoned prior "done" claim in history can't make the model
