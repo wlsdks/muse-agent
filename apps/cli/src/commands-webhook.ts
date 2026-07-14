@@ -34,7 +34,7 @@ import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type Per
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { neverResolve } from "./async-promises.js";
+import { waitForShutdownSignal } from "./async-promises.js";
 import { readRequestBody } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
@@ -226,17 +226,8 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
 
       server.listen(port, host);
 
-      let stopped = false;
-      const stop = (): void => {
-        if (stopped) return;
-        stopped = true;
-        server.close();
-        io.stdout("\n(ctrl-c — stopping)\n");
-        process.exit(0);
-      };
-      process.on("SIGINT", stop);
-      process.on("SIGTERM", stop);
-
-      await neverResolve();
+      await waitForShutdownSignal();
+      server.close();
+      io.stdout("\n(ctrl-c — stopping)\n");
     });
 }

@@ -40,7 +40,7 @@ import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type Per
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { neverResolve } from "./async-promises.js";
+import { waitForShutdownSignal } from "./async-promises.js";
 import { ensureNoteMarkdownExtension, extractDocumentText, isLikelyBinary, saveDocumentToNotes } from "./commands-read.js";
 import type { ProgramIO } from "./program.js";
 
@@ -375,18 +375,8 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
         }
       });
 
-      let stopped = false;
-      const stop = (): void => {
-        if (stopped) return;
-        stopped = true;
-        watcher.close();
-        io.stdout("\n(ctrl-c — stopping)\n");
-        process.exit(0);
-      };
-      process.on("SIGINT", stop);
-      process.on("SIGTERM", stop);
-
-      // Block the event loop so the watcher keeps running.
-      await neverResolve();
+      await waitForShutdownSignal();
+      watcher.close();
+      io.stdout("\n(ctrl-c — stopping)\n");
     });
 }
