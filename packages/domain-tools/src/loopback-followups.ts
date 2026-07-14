@@ -1,4 +1,4 @@
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -65,7 +65,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
             .sort(compareFollowupsByScheduledFor)
             .slice(0, maxListEntries);
           return {
-            followups: sorted.map(serializeFollowup) as JsonValue,
+            followups: sorted.map(serializeFollowup),
             status,
             total: sorted.length
           };
@@ -97,7 +97,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           // (no prior list). Ambiguous returns candidates; never cancel on a guess.
           const resolution = resolveFollowupRef(await readFollowups(file), ref);
           if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) as JsonValue };
+            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) };
           }
           if (resolution.status === "not-found") {
             return { error: `no followup matches "${ref}"` };
@@ -106,7 +106,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           const reason = readString(args, "reason")?.trim() || "agent-cancelled";
           const guard = assertNoSecretInPersistedFields({ reason });
           if (!guard.safe) {
-            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+            return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
           }
           try {
             const patched = await cancelFollowup(file, id, reason);
@@ -121,7 +121,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
               }
               return { error: `followup ${id} is already ${existing.status}; only scheduled followups can be cancelled` };
             }
-            return { followup: serializeFollowup(patched) as JsonValue };
+            return { followup: serializeFollowup(patched) };
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -155,7 +155,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           }
           const resolution = resolveFollowupRef(await readFollowups(file), ref);
           if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) as JsonValue };
+            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) };
           }
           if (resolution.status === "not-found") {
             return { error: `no followup matches "${ref}"` };
@@ -179,7 +179,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
               }
               return { error: `followup ${id} is already ${existing.status}; only scheduled followups can be snoozed` };
             }
-            return { followup: serializeFollowup(patched) as JsonValue };
+            return { followup: serializeFollowup(patched) };
           } catch (error) {
             return { error: errorMessage(error) };
           }

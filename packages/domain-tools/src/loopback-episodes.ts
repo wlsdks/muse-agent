@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -76,7 +76,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
           const sorted = [...scoped].sort((left, right) => right.endedAt.localeCompare(left.endedAt));
           const shownList = sorted.slice(0, limit);
           return {
-            episodes: shownList.map(serializeEpisode) as JsonValue,
+            episodes: shownList.map(serializeEpisode),
             shown: shownList.length, // returned count
             total: scoped.length, // the REAL store size, NOT the post-limit slice (parity with reminders.list)
             ...(userId ? { userId } : {})
@@ -122,7 +122,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
             try {
               const matches = await runLlmJudge(scoped, query, limit, options);
               return {
-                episodes: matches.map(serializeEpisode) as JsonValue,
+                episodes: matches.map(serializeEpisode),
                 mode: "llm-judge",
                 query,
                 total: matches.length,
@@ -147,7 +147,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
             .sort((left, right) => right.endedAt.localeCompare(left.endedAt));
           const shownList = matches.slice(0, limit);
           return {
-            episodes: shownList.map(serializeEpisode) as JsonValue,
+            episodes: shownList.map(serializeEpisode),
             mode: "substring",
             query,
             shown: shownList.length, // returned count
@@ -190,7 +190,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
           if (!found) {
             return { error: `episode not found: ${id}` };
           }
-          return { episode: serializeEpisode(found) as JsonValue };
+          return { episode: serializeEpisode(found) };
         },
         inputSchema: {
           additionalProperties: false,

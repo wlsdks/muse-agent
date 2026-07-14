@@ -7,7 +7,7 @@
  * outbound-safety). No approval gate (read).
  */
 
-import { assertNoSecretInPersistedFields, createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, createRunId, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
@@ -131,7 +131,7 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
       }
       const guard = assertNoSecretInPersistedFields({ name, relationship });
       if (!guard.safe) {
-        return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+        return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
       }
       // Re-add of an existing name UPDATES in place: reuse the id (so an id-idempotent
       // save replaces, not appends) and merge — a newly-given field wins, an unmentioned

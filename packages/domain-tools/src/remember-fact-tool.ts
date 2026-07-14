@@ -10,7 +10,7 @@
  */
 
 import { normalizeMemoryKey } from "@muse/memory";
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
 import type { MuseTool, MuseToolContext } from "@muse/tools";
 
 /** Minimal structural store — matches @muse/memory's UserMemoryStore writers. */
@@ -64,7 +64,7 @@ export function createRememberFactTool(options: { readonly store: RememberFactSt
       // itself lands in `value` — checking `value` alone would miss it.
       const guard = assertNoSecretInPersistedFields({ key, value });
       if (!guard.safe) {
-        return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+        return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
       }
       const kind = readString(args, "kind") === "preference" ? "preference" : "fact";
       const userId = resolveUserId(context);
