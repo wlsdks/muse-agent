@@ -48,15 +48,40 @@ try { parsed = JSON.parse(raw); } catch (e) {
   console.log(`FAIL — constrained output was not valid JSON: ${e.message}`);
   process.exit(1);
 }
-const ok = parsed && typeof parsed === "object"
-  && typeof parsed.city === "string"
-  && typeof parsed.population_millions === "number"
-  && Object.keys(parsed).every((k) => k === "city" || k === "population_millions");
+const schemaExact = (value) =>
+  value && typeof value === "object"
+  && typeof value.city === "string"
+  && typeof value.population_millions === "number"
+  && Object.keys(value).every((k) => k === "city" || k === "population_millions");
 
+const ok = schemaExact(parsed);
 console.log(`parsed: ${JSON.stringify(parsed)}`);
-if (ok) {
-  console.log(`PASS — ${model} emitted schema-valid JSON under native \`format\` (city:string + population_millions:number, no extra keys)`);
+
+// Control arm: the SAME question with NO responseFormat. If the UNCONSTRAINED
+// model already emits the exact 2-key schema object on its own, then the
+// constrained arm's clean JSON proves NOTHING about `responseFormat` (a no-op
+// `format` would look identical). A model left to its own devices answers in
+// prose, so the control must NOT be schema-exact — that gap is what attributes
+// the constrained arm's guaranteed JSON to `responseFormat`, not model luck.
+const control = await provider.generate({
+  model,
+  messages: [{ role: "user", content: "Give the city of Busan and its approximate population in millions." }],
+  temperature: 0,
+  maxOutputTokens: 200
+});
+const controlRaw = (control.output ?? "").trim();
+let controlParsed;
+try { controlParsed = JSON.parse(controlRaw); } catch { /* prose, as expected */ }
+const controlIsSchemaExact = schemaExact(controlParsed);
+console.log(`control (unconstrained) output: ${JSON.stringify(controlRaw.slice(0, 200))}`);
+
+if (ok && !controlIsSchemaExact) {
+  console.log(`PASS — ${model} emitted schema-valid JSON ONLY under native \`format\`; the unconstrained control did not (responseFormat is doing the constraining)`);
   process.exit(0);
 }
-console.log(`FAIL — JSON did not match the schema`);
+if (!ok) {
+  console.log(`FAIL — constrained JSON did not match the schema`);
+} else {
+  console.log(`FAIL — the unconstrained control ALSO produced schema-exact JSON, so this run cannot attribute the output to responseFormat`);
+}
 process.exit(1);

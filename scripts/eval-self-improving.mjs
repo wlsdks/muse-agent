@@ -21,6 +21,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { classifyOutcome, classifySkip, skipLine } from "./eval-skip.mjs";
+
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 
@@ -64,7 +66,11 @@ const BATTERIES = [
   { axis: "★ WEDGE: muse mcp serve grounding gate (muse_recall over the real MCP wire)", file: "apps/cli/scripts/verify-mcp-serve-grounding.mjs", name: "mcp-serve-grounding" },
   { axis: "★ WEDGE: compaction-preservation (fail-close post-compaction quality gate)", file: "apps/cli/scripts/verify-compaction-preservation.mjs", name: "compaction-preservation" },
   { axis: "★ WEDGE: evidence-gated objective completion (done = proven, never model say-so)", file: "apps/cli/scripts/verify-objective-completion.mjs", name: "objective-completion" },
-  { axis: "★ IDENTITY: Muse persona holds on the local engine (no vendor leak, no sycophancy) — real /api/chat HTTP surface", file: "apps/api/scripts/verify-identity.mjs", name: "identity" }
+  { axis: "★ IDENTITY: Muse persona holds on the local engine (no vendor leak, no sycophancy) — real /api/chat HTTP surface", file: "apps/api/scripts/verify-identity.mjs", name: "identity" },
+  { axis: "② personalization: per-turn skill exposure (relevant body injected / irrelevant withheld — BANANA sentinel A/B)", file: "apps/cli/scripts/verify-skill-exposure.mjs", name: "skill-exposure" },
+  { axis: "② personalization: chat auto-memory learns facts/prefs but NOT questions/tasks/noise (EN+KO, provenance)", file: "apps/cli/scripts/verify-auto-memory.mjs", name: "auto-memory" },
+  { axis: "② personalization: active-history window is a real token bound (out-of-window fact forgotten / in-window recalled)", file: "apps/cli/scripts/verify-history-window.mjs", name: "history-window" },
+  { axis: "② personalization: memory-depth composes end-to-end (supersession → threads → persona → one-turn recall → reflect → view)", file: "apps/cli/scripts/verify-memory-depth-audit.mjs", name: "memory-depth-audit" }
 ];
 
 async function ollamaReachable() {
@@ -80,6 +86,7 @@ async function ollamaReachable() {
 }
 
 if (!(await ollamaReachable())) {
+  console.log(skipLine("ollama-unreachable", `local Ollama not reachable at ${baseUrl}`));
   console.log(
     `eval:self-improving skipped — local Ollama not reachable at ${baseUrl}. ` +
       "Start Ollama with a Qwen model (OLLAMA_BASE_URL to override; cloud APIs are never used by policy). A skip is not a pass."
@@ -93,20 +100,34 @@ const results = [];
 for (const battery of BATTERIES) {
   process.stdout.write(`▶ ${battery.name} (${battery.axis}) … `);
   const run = spawnSync("node", [battery.file], { cwd: rootDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  const ok = run.status === 0;
-  results.push({ ...battery, ok, status: run.status });
-  console.log(ok ? "PASS" : `FAIL (exit ${String(run.status)})`);
-  if (!ok) {
+  const combined = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  const skipCode = classifySkip(combined);
+  // Ollama is confirmed up above, so an embed-model skip HERE means nomic isn't
+  // pulled — classifyOutcome escalates that to `fail`, never a green skip.
+  const outcome = classifyOutcome({ exitCode: run.status ?? 1, skipCode });
+  results.push({ ...battery, outcome, status: run.status, skipCode });
+  console.log(
+    outcome === "ok"
+      ? "PASS"
+      : outcome === "skip"
+        ? `SKIP (${skipCode ?? "unknown"})`
+        : `FAIL (${skipCode === "embed-model-missing" ? "embed model not pulled while Ollama is up" : `exit ${String(run.status)}`})`
+  );
+  if (outcome === "fail") {
     // Surface the failing battery's tail so the regression is actionable.
-    const tail = `${run.stdout ?? ""}${run.stderr ?? ""}`.trim().split("\n").slice(-12).join("\n");
+    const tail = combined.trim().split("\n").slice(-12).join("\n");
     console.log(tail ? `${tail}\n` : "(no output)\n");
   }
 }
 
-const failed = results.filter((r) => !r.ok);
+const failed = results.filter((r) => r.outcome === "fail");
+const skipped = results.filter((r) => r.outcome === "skip");
+const passed = results.filter((r) => r.outcome === "ok");
 console.log(
   failed.length === 0
-    ? `\nALL PASS — ${results.length}/${results.length} self-improving batteries green`
-    : `\n${failed.length}/${results.length} FAILED: ${failed.map((r) => r.name).join(", ")} — fix the regression before new work`
+    ? `\nALL GREEN — ${passed.length} pass, ${skipped.length} skip, 0 fail across ${results.length} self-improving batteries`
+    : `\n${failed.length}/${results.length} FAILED: ${failed
+        .map((r) => (r.skipCode === "embed-model-missing" ? `${r.name} (embed model not pulled — run: ollama pull nomic-embed-text-v2-moe)` : r.name))
+        .join(", ")} — fix the regression before new work`
 );
 process.exit(failed.length === 0 ? 0 : 1);

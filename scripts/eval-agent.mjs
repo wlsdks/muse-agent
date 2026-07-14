@@ -18,6 +18,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { classifyOutcome, classifySkip } from "./eval-skip.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const BATTERIES = [
   "eval-tool-selection.mjs", // tool selection + ArgumentCorrectness
@@ -36,15 +38,30 @@ const BATTERIES = [
 const results = [];
 for (const battery of BATTERIES) {
   console.log(`\n=== eval:agent → ${battery} ===`);
-  const r = spawnSync(process.execPath, [join(here, battery)], { encoding: "utf8", env: process.env, stdio: "inherit" });
-  results.push({ battery, code: r.status ?? 1 });
+  // Capture (not inherit) so the aggregate can tell a real PASS from an
+  // exit-0 SKIP; the battery's own output is echoed back so nothing is hidden.
+  const r = spawnSync(process.execPath, [join(here, battery)], { encoding: "utf8", env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+  const combined = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  process.stdout.write(combined);
+  const skipCode = classifySkip(combined);
+  const outcome = classifyOutcome({ exitCode: r.status ?? 1, skipCode });
+  results.push({ battery, outcome, skipCode, code: r.status ?? 1 });
 }
 
-const failed = results.filter((r) => r.code !== 0);
+const failed = results.filter((r) => r.outcome === "fail");
+const skipped = results.filter((r) => r.outcome === "skip");
+const passed = results.filter((r) => r.outcome === "ok");
 console.log("\n=== eval:agent summary ===");
-for (const r of results) console.log(`  ${r.code === 0 ? "ok  " : "FAIL"}  ${r.battery}`);
+for (const r of results) {
+  const tag = r.outcome === "ok" ? "ok  " : r.outcome === "skip" ? "skip" : "FAIL";
+  console.log(`  ${tag}  ${r.battery}${r.outcome !== "ok" && r.skipCode ? ` (${r.skipCode})` : ""}`);
+}
 if (failed.length > 0) {
-  console.error(`eval:agent FAILED — ${failed.length}/${results.length} batteries regressed: ${failed.map((f) => f.battery).join(", ")}`);
+  console.error(
+    `eval:agent FAILED — ${failed.length}/${results.length} batteries regressed: ${failed
+      .map((f) => (f.skipCode === "embed-model-missing" ? `${f.battery} (embed model not pulled — ollama pull nomic-embed-text-v2-moe)` : f.battery))
+      .join(", ")}`
+  );
   process.exit(1);
 }
-console.log(`eval:agent PASSED — ${results.length} batteries green (or skipped; local Ollama gates each)`);
+console.log(`eval:agent PASSED — ${passed.length} pass, ${skipped.length} skip, 0 fail across ${results.length} batteries`);

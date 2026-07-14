@@ -51,8 +51,15 @@ const check = (name, ok, got) => { console.log(`${ok ? "PASS" : "FAIL"} — ${na
     "<<a.md>>\nMy dentist appointment is on June 12th.\n[from a.md]\n\n<<b.md>>\nDentist: June 15th.\n[from b.md]",
     "When is my dentist appointment?"
   );
-  const ok = got.includes("june 12") && got.includes("june 15") && /conflict|which|differ|disagree/u.test(got);
-  check("GENUINE conflict → surfaces both values + flags the conflict", ok, got);
+  // Both values must appear AND the model must ASK which is current — an
+  // explicit clarifying question, not merely the word "conflict" in a statement.
+  // The old matcher (`conflict|which|differ|disagree`) passed a flat "There is a
+  // conflict: June 12 and June 15." with no question; the honesty edge is the
+  // question ("which is current?"), so require a question mark + a
+  // which/current/latest interrogative.
+  const bothDates = got.includes("june 12") && got.includes("june 15");
+  const asksWhichCurrent = /\?/u.test(got) && /which|current|correct|latest|up[\s-]?to[\s-]?date|still (right|correct|current|accurate|valid)/iu.test(got);
+  check("GENUINE conflict → surfaces both values + ASKS which is current", bothDates && asksWhichCurrent, got);
 }
 
 // CASE 2 — an explicit UPDATE: must pick the updated value, NOT call it a conflict.

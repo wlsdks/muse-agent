@@ -65,17 +65,23 @@ function askAndReadLabel(query) {
 }
 
 let failures = 0;
-function check(name, label) {
-  // The invariant: a genuinely-grounded answer is labelled `grounded`, never
-  // `misgrounded`. An `abstain`/other label means the case didn't ground (a setup
-  // or model-drift issue) — surfaced as a fail so the battery stays meaningful.
-  const ok = label === "grounded";
-  console.log(`${ok ? "PASS" : "FAIL"} — ${name} (trace grounded=${label})`);
+function check(name, res, evidenceRe) {
+  // The invariant is TWO-sided: (1) a genuinely-grounded answer is labelled
+  // `grounded`, never `misgrounded`; AND (2) the answer actually carries the
+  // evidence VALUE. Asserting the label alone lets an always-"grounded" labeler
+  // pass even when the answer is wrong/empty — so require the evidence token
+  // (Sarah / March 3rd, in either language) to be present in the answer too.
+  const groundedLabel = res.label === "grounded";
+  const hasEvidence = evidenceRe.test(res.answer);
+  const ok = groundedLabel && hasEvidence;
+  console.log(`${ok ? "PASS" : "FAIL"} — ${name} (trace grounded=${res.label}, evidence-in-answer=${hasEvidence})`);
   if (!ok) failures += 1;
 }
 
-check("KO query over EN note grounds (cross-lingual) → grounded, not misgrounded", askAndReadLabel("프로젝트 마감일이 언제야?").label);
-check("EN query (citation marker + follow-up question) → grounded, not misgrounded", askAndReadLabel("Who is the team lead?").label);
+// KO deadline query → the date March 3rd (EN "march 3" or KO "3월 3일"); EN team-lead
+// query → the name Sarah (language-invariant).
+check("KO query over EN note grounds (cross-lingual) → grounded + names the deadline", askAndReadLabel("프로젝트 마감일이 언제야?"), /march\s*3|3\s*월\s*3|3\/3/iu);
+check("EN query (citation marker + follow-up question) → grounded + names the team lead", askAndReadLabel("Who is the team lead?"), /sarah/iu);
 
 console.log(failures === 0 ? `\nALL PASS (2) — no false misgrounding on ${model}` : `\n${failures}/2 FAILED on ${model} — a grounded answer was mislabelled (fuel-poisoning regression)`);
 process.exit(failures === 0 ? 0 : 1);

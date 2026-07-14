@@ -70,6 +70,22 @@ for await (const ev of asm.agentRuntime.stream({
 })) { if (ev.type === "text-delta" && ev.text) text += ev.text; }
 check("model composes prior + thread in one turn", /busan/i.test(text) && /q3|budget/i.test(text), JSON.stringify(text.trim().slice(0, 200)));
 
+// 4b) Negative control (ported from the retired verify-threads-persona): with NO
+// recurringThreads in the persona, the model must NOT fabricate a returning
+// topic. This is a real abstention test, not a prompt-echo — nothing in the
+// prompt names a thread to parrot. Non-leading question so honesty is available.
+const noThreadPersona = buildMusePersona({ facts: mem.facts, preferences: { language: "English" } }, "u");
+let negText = "";
+for await (const ev of asm.agentRuntime.stream({
+  messages: [
+    { role: "system", content: noThreadPersona },
+    { role: "user", content: "Is there a topic I keep coming back to across our sessions? If you don't have that information, say so plainly. One short sentence." }
+  ],
+  metadata: { localMode: true, userId: "u" },
+  model
+})) { if (ev.type === "text-delta" && ev.text) negText += ev.text; }
+check("no threads → the model does not fabricate one", !/q3|budget/i.test(negText), JSON.stringify(negText.trim().slice(0, 160)));
+
 // 5) /reflect synthesizes a grounded insight
 const insight = await synthesizeReflection({ provider: asm.modelProvider, model, episodes });
 check("/reflect yields a grounded insight", insight.length > 0 && /q3|budget/i.test(insight), JSON.stringify(insight));

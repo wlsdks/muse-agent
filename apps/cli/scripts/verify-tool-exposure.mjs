@@ -45,10 +45,27 @@ const cases = [
   ["what does https://example.com/page say", "muse.web.read"]
 ];
 
+// Over-exposure negatives: exposure that pulls in an UNRELATED domain's tools is
+// as broken as under-exposure (it widens the model's wrong-selection surface,
+// tool-calling.md rule 1). Each prompt asserts a genuinely-unrelated domain's
+// tools stay OUT — a plan that dumps the whole registry would fail here.
+const negativeCases = [
+  ["show my notes", ["muse.calendar", "home_", "muse.web"]],
+  ["what's on my calendar today", ["muse.notes.save", "home_"]],
+  ["turn on the living room light", ["muse.notes", "muse.calendar"]],
+  ["save a note: buy milk", ["home_", "muse.calendar", "muse.web"]]
+];
+
 let fail = 0;
 for (const [p, want] of cases) {
   const ok = exposed(p).some((n) => n.startsWith(want));
   if (!ok) { fail += 1; console.log(`FAIL — "${p}" → ${want} NOT exposed`); }
 }
-console.log(fail === 0 ? `\nALL PASS (${cases.length}) — every domain×intent×lang prompt reaches its tool` : `\n${fail}/${cases.length} FAILED`);
+for (const [p, forbidden] of negativeCases) {
+  const names = exposed(p);
+  const leaked = forbidden.filter((prefix) => names.some((n) => n.startsWith(prefix)));
+  if (leaked.length > 0) { fail += 1; console.log(`FAIL — "${p}" over-exposed unrelated tools: ${leaked.join(", ")} (got ${names.join(", ")})`); }
+}
+const total = cases.length + negativeCases.length;
+console.log(fail === 0 ? `\nALL PASS (${total}) — every prompt reaches its tool AND unrelated domains stay out` : `\n${fail}/${total} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
