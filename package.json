@@ -78,7 +78,7 @@
     "test:e2e:live": "pnpm build && pnpm --filter @muse/web test:e2e -- live-api.spec.ts",
     "test": "pnpm -r --sort --if-present test",
     "test:changed": "node scripts/test-changed.mjs",
-    "typecheck": "pnpm -r --sort --if-present typecheck",
+    "typecheck": "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck",
     "typecheck:fast": "tsc -b --incremental --pretty false --noEmit",
     "typecheck:ts7-fast": "tsc -b --checkers 4 --builders 4 --incremental --pretty false --noEmit",
     "self-eval": "node scripts/self-eval.mjs",
