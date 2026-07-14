@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, LINEAR_MCP_SERVER_NAME, McpManager, McpSecurityPolicyProvider, NOTION_MCP_SERVER_NAME, OFFICIAL_MCP_PRESETS, SENTRY_MCP_SERVER_NAME, createGitHubMcpServer, createLinearMcpServer, createNotionMcpServer, createSentryMcpServer, githubMcpToolRisk, linearMcpToolRisk, normalizeMcpSecurityPolicy, notionMcpToolRisk, resolveOfficialMcpPreset, sentryMcpToolRisk, validateMcpServer, withOfficialMcpRisk, type McpConnection } from "../src/index.js";
+import { ATLASSIAN_MCP_SERVER_NAME, GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, LINEAR_MCP_SERVER_NAME, McpManager, McpSecurityPolicyProvider, NOTION_MCP_SERVER_NAME, OFFICIAL_MCP_PRESETS, SENTRY_MCP_SERVER_NAME, atlassianMcpToolRisk, createAtlassianMcpServer, createGitHubMcpServer, createLinearMcpServer, createNotionMcpServer, createSentryMcpServer, githubMcpToolRisk, linearMcpToolRisk, normalizeMcpSecurityPolicy, notionMcpToolRisk, resolveOfficialMcpPreset, sentryMcpToolRisk, validateMcpServer, withOfficialMcpRisk, type McpConnection } from "../src/index.js";
 import type { MuseTool } from "@muse/tools";
 
 describe("official MCP presets — factory shape + officially-public provenance", () => {
@@ -38,6 +38,23 @@ describe("official MCP presets — factory shape + officially-public provenance"
     expect("headers" in (server.config ?? {})).toBe(false);
   });
 
+  it("builds the Atlassian streamable connector at the official Rovo remote endpoint (ships no secret)", () => {
+    const server = createAtlassianMcpServer();
+    expect(server.name).toBe(ATLASSIAN_MCP_SERVER_NAME);
+    expect(server.transportType).toBe("streamable");
+    expect(server.autoConnect).toBe(false);
+    expect((server.config as { url: string }).url).toBe("https://mcp.atlassian.com/v1/mcp");
+    expect("headers" in (server.config ?? {})).toBe(false);
+  });
+
+  it("forwards a user-supplied Atlassian auth header only when provided (ships no secret)", () => {
+    const withAuth = createAtlassianMcpServer({ headers: { Authorization: "Bearer atl_x" } });
+    expect((withAuth.config as { headers?: Record<string, string> }).headers).toEqual({
+      Authorization: "Bearer atl_x"
+    });
+    expect("headers" in (createAtlassianMcpServer().config ?? {})).toBe(false);
+  });
+
   it("forwards user-supplied auth headers only when provided (ships no secret)", () => {
     const withAuth = createGitHubMcpServer({ headers: { Authorization: "Bearer ghp_x" } });
     expect((withAuth.config as { headers?: Record<string, string> }).headers).toEqual({
@@ -61,6 +78,10 @@ describe("official MCP presets — factory shape + officially-public provenance"
       /sentry/u
     );
     expect(OFFICIAL_MCP_PRESETS[SENTRY_MCP_SERVER_NAME]?.url).toBe("https://mcp.sentry.dev/mcp");
+    expect(OFFICIAL_MCP_PRESETS[ATLASSIAN_MCP_SERVER_NAME]?.provenanceUrl).toMatch(
+      /atlassian\.com/u
+    );
+    expect(OFFICIAL_MCP_PRESETS[ATLASSIAN_MCP_SERVER_NAME]?.url).toBe("https://mcp.atlassian.com/v1/mcp");
   });
 
   it("resolves a curated preset by name and refuses an arbitrary/unauthorized name", () => {
@@ -130,6 +151,35 @@ describe("official MCP presets — fail-close write classification (outbound-saf
     }
     for (const name of ["update_issue", "update_project", "create_project", "create_dsn", "create_team", "add_issue_note", "some_future_tool"]) {
       expect(sentryMcpToolRisk(name), name).toBe("write");
+    }
+  });
+
+  it("classifies Atlassian Jira/Confluence read tools as read and EVERY write/unknown tool as write (gated)", () => {
+    for (const name of [
+      "getJiraIssue",
+      "searchJiraIssuesUsingJql",
+      "getVisibleJiraProjects",
+      "getTransitionsForJiraIssue",
+      "getConfluencePage",
+      "searchConfluenceUsingCql",
+      "search",
+      "fetch",
+      "atlassianUserInfo"
+    ]) {
+      expect(atlassianMcpToolRisk(name), name).toBe("read");
+    }
+    // MUTATION-RED sentinels: flip any of these to "read" in the source
+    // classifier and this assertion reddens — proving the gate isn't vacuous.
+    for (const name of [
+      "createJiraIssue",
+      "editJiraIssue",
+      "transitionJiraIssue",
+      "addCommentToJiraIssue",
+      "createConfluencePage",
+      "updateConfluencePage",
+      "some_future_tool"
+    ]) {
+      expect(atlassianMcpToolRisk(name), name).toBe("write");
     }
   });
 });
@@ -278,6 +328,46 @@ describe("official MCP presets — end-to-end via the manager (contract-faithful
     // The external server annotated update_issue "read"; withOfficialMcpRisk
     // re-stamps it write (fail-close) so the AgentRuntime approval gate fires.
     const writeTool = tools.find((t) => t.definition.name === "sentry.update_issue");
+    expect(writeTool?.definition.risk).toBe("write");
+    expect(writeTool?.definition.domain).toBe("external");
+  });
+
+  it("registers the ALLOWLISTED Atlassian preset, connects, and read/write tools project with fail-close risk", async () => {
+    const atlassianConnection: McpConnection = {
+      callTool: async (toolName) => {
+        if (toolName === "getJiraIssue") return JSON.stringify({ key: "MUSE-1" });
+        if (toolName === "createJiraIssue") return "issue created";
+        return `Error: unknown tool ${toolName}`;
+      },
+      listTools: () => [
+        { description: "Get a Jira issue", inputSchema: { type: "object" }, name: "getJiraIssue", risk: "read" },
+        { description: "Create a Jira issue", inputSchema: { type: "object" }, name: "createJiraIssue", risk: "read" }
+      ]
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector: { connect: async () => atlassianConnection },
+      securityPolicyProvider: new McpSecurityPolicyProvider(undefined, {
+        allowedServerNames: [ATLASSIAN_MCP_SERVER_NAME]
+      })
+    });
+
+    const registered = await manager.register(createAtlassianMcpServer());
+    expect(registered).toBeDefined();
+    await expect(manager.connect(ATLASSIAN_MCP_SERVER_NAME)).resolves.toBe(true);
+    expect(manager.getStatus(ATLASSIAN_MCP_SERVER_NAME)).toBe("connected");
+
+    const tools = withOfficialMcpRisk(manager.toMuseTools());
+    const readTool = tools.find((t) => t.definition.name === "atlassian.getJiraIssue");
+    expect(readTool, "getJiraIssue must be projected").toBeDefined();
+    expect(readTool?.definition.risk).toBe("read");
+    expect(readTool?.definition.domain).toBe("external");
+    await expect(readTool?.execute({}, { runId: "run-1" })).resolves.toBe(
+      JSON.stringify({ key: "MUSE-1" })
+    );
+
+    // The external server annotated createJiraIssue "read"; withOfficialMcpRisk
+    // re-stamps it write (fail-close) so the AgentRuntime approval gate fires.
+    const writeTool = tools.find((t) => t.definition.name === "atlassian.createJiraIssue");
     expect(writeTool?.definition.risk).toBe("write");
     expect(writeTool?.definition.domain).toBe("external");
   });

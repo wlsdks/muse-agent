@@ -32,6 +32,13 @@ import type { McpServerInput } from "./index.js";
  *     `Authorization: Bearer <token>` header is the same credential seam
  *     these presets use, so a user supplying a token connects their own
  *     Sentry organization. Any Sentry account holder may connect.
+ *   - Atlassian (Jira / Confluence) Rovo remote MCP —
+ *     `https://mcp.atlassian.com/v1/mcp`. Streamable HTTP with the
+ *     browser-based OAuth 2.1 flow; the server acts only within the
+ *     signed-in user's permissions and stores no data. The legacy
+ *     HTTP+SSE endpoint (`/v1/sse`) is deprecated (removed 2026-06-30),
+ *     so the `/v1/mcp` streamable endpoint is the current one. Any
+ *     Atlassian Cloud account holder may connect their own site.
  *
  * SAFETY: reading is free, but every preset's WRITE-capable tool
  * (create issue / PR / page, comment) is classified `write` here so it
@@ -74,6 +81,7 @@ export const GITHUB_MCP_SERVER_NAME = "github";
 export const NOTION_MCP_SERVER_NAME = "notion";
 export const LINEAR_MCP_SERVER_NAME = "linear";
 export const SENTRY_MCP_SERVER_NAME = "sentry";
+export const ATLASSIAN_MCP_SERVER_NAME = "atlassian";
 
 const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
 const GITHUB_MCP_PROVENANCE =
@@ -84,6 +92,13 @@ const LINEAR_MCP_URL = "https://mcp.linear.app/mcp";
 const LINEAR_MCP_PROVENANCE = "https://linear.app/docs/mcp";
 const SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp";
 const SENTRY_MCP_PROVENANCE = "https://github.com/getsentry/sentry-mcp";
+// Provenance: Atlassian's official Rovo remote MCP server. The streamable
+// `/v1/mcp` endpoint and the `/v1/sse` deprecation are documented in
+// Atlassian's own community/support docs (HTTP+SSE deprecation notice,
+// migrate to Streamable HTTP). Any Atlassian Cloud user connects via OAuth 2.1.
+const ATLASSIAN_MCP_URL = "https://mcp.atlassian.com/v1/mcp";
+const ATLASSIAN_MCP_PROVENANCE =
+  "https://support.atlassian.com/rovo/docs/getting-started-with-the-atlassian-remote-mcp-server/";
 
 function buildStreamableInput(
   name: string,
@@ -243,6 +258,54 @@ export function createSentryMcpServer(options: OfficialMcpPresetOptions = {}): M
   );
 }
 
+// Atlassian Rovo MCP read surface — the Jira / Confluence / Compass query
+// tools from the official server's catalog (get*/search*/lookup*/atlassianUserInfo,
+// plus fetch). getTransitionsForJiraIssue LISTS available transitions (read);
+// the mutating transitionJiraIssue is NOT here so it stays fail-close. Any tool
+// not listed — createJiraIssue / editJiraIssue / addCommentToJiraIssue /
+// createConfluencePage / updateConfluencePage and any future tool — is `write`.
+const ATLASSIAN_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "atlassianUserInfo",
+  "getAccessibleAtlassianResources",
+  "getJiraIssue",
+  "getJiraIssueRemoteIssueLinks",
+  "getJiraIssueTypeMetaWithFields",
+  "getJiraProjectIssueTypesMetadata",
+  "getTransitionsForJiraIssue",
+  "getVisibleJiraProjects",
+  "getIssueLinkTypes",
+  "lookupJiraAccountId",
+  "searchJiraIssuesUsingJql",
+  "getConfluencePage",
+  "getConfluencePageDescendants",
+  "getConfluencePageFooterComments",
+  "getConfluencePageInlineComments",
+  "getConfluenceCommentChildren",
+  "getConfluenceSpaces",
+  "getPagesInConfluenceSpace",
+  "searchConfluenceUsingCql",
+  "getCompassComponent",
+  "getCompassComponents",
+  "getCompassCustomFieldDefinitions",
+  "getTeamworkGraphContext",
+  "getTeamworkGraphObject",
+  "search",
+  "fetch"
+]);
+
+export function atlassianMcpToolRisk(toolName: string): ToolRisk {
+  return ATLASSIAN_READ_ONLY_TOOLS.has(toolName) ? "read" : "write";
+}
+
+export function createAtlassianMcpServer(options: OfficialMcpPresetOptions = {}): McpServerInput {
+  return buildStreamableInput(
+    ATLASSIAN_MCP_SERVER_NAME,
+    ATLASSIAN_MCP_URL,
+    "Read Jira issues / Confluence pages via Atlassian's official Rovo remote MCP server (writes stay draft-first)",
+    options
+  );
+}
+
 /**
  * The curated set, keyed by server name. A new official-public server
  * is added here with its provenance URL; nothing else in the registry
@@ -276,6 +339,13 @@ export const OFFICIAL_MCP_PRESETS: Readonly<Record<string, OfficialMcpPreset>> =
     provenanceUrl: SENTRY_MCP_PROVENANCE,
     toolRisk: sentryMcpToolRisk,
     url: SENTRY_MCP_URL
+  },
+  [ATLASSIAN_MCP_SERVER_NAME]: {
+    create: createAtlassianMcpServer,
+    name: ATLASSIAN_MCP_SERVER_NAME,
+    provenanceUrl: ATLASSIAN_MCP_PROVENANCE,
+    toolRisk: atlassianMcpToolRisk,
+    url: ATLASSIAN_MCP_URL
   }
 };
 

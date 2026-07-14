@@ -353,11 +353,14 @@ export {
 } from "./chrome-devtools-mcp.js";
 
 export {
+  ATLASSIAN_MCP_SERVER_NAME,
   GITHUB_MCP_SERVER_NAME,
   LINEAR_MCP_SERVER_NAME,
   NOTION_MCP_SERVER_NAME,
   OFFICIAL_MCP_PRESETS,
   SENTRY_MCP_SERVER_NAME,
+  atlassianMcpToolRisk,
+  createAtlassianMcpServer,
   createGitHubMcpServer,
   createLinearMcpServer,
   createNotionMcpServer,

@@ -554,5 +554,16 @@ export const MCP_PRESETS: Record<string, McpPresetRecipe> = {
       command: "npx",
       description: "Anthropic reference memory server (knowledge graph)"
     })
+  },
+  atlassian: {
+    // Atlassian's official Rovo remote MCP server (Jira / Confluence),
+    // streamable HTTP + OAuth 2.1. URL mirrors @muse/mcp's curated preset
+    // (ATLASSIAN_MCP_URL); the `/v1/sse` endpoint is deprecated.
+    defaultName: "atlassian",
+    build: (): McpJsonEntry => ({
+      url: "https://mcp.atlassian.com/v1/mcp",
+      transport: "streamable",
+      description: "Jira / Confluence via Atlassian's official Rovo remote MCP server (OAuth; writes stay draft-first)"
+    })
   }
 };

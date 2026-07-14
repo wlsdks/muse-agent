@@ -11,6 +11,16 @@ This file is the contract for HOW we test Muse as an agent — the durable
 *method* that converged across the 2024–2026 public literature and how it maps
 onto Muse. When you ship an agent-facing capability, you ship its eval.
 
+**The three principles, if you read nothing else:**
+
+1. **Error-analysis FIRST, imagination never.** Read real traces, let the
+   failures you actually see define the cases. Evals GROW from misses.
+2. **Deterministic code is the GATE; the LLM-judge is a DEBUGGER.** Code-based
+   scorers decide pass/fail on the safety-load path; the judge only grades
+   qualities code can't, and never gates a safety claim alone.
+3. **Grade OUTCOMES, `pass^k`, all-pass.** Score terminal state, not the path;
+   prove reliability by repeating (all k pass), not one green run.
+
 ## The non-negotiables (every agent capability)
 
 1. **An agent capability ships with an agent-level check, not just a
@@ -46,6 +56,25 @@ onto Muse. When you ship an agent-facing capability, you ship its eval.
    an observed, recorded finding) the deterministic guard is the
    protection, and IT is what gets the regression test.
 
+## The layered stack (each layer proves a different thing, cheapest grader that fits)
+
+Evals stack by CONCERN; each layer has the grader that fits it, and a
+lower layer green does not imply a higher one.
+
+| Layer | Proves | Grader |
+|---|---|---|
+| Unit | a function is correct | `vitest` (deterministic) |
+| Tool-calling | the model SELECTS + fills the right tool in one shot | `eval:tools` scorers (deterministic) + `smoke:live` |
+| Task-completion | the terminal world state is reached, no collateral damage | terminal-state/trajectory tests (deterministic) |
+| Multi-agent seams | hand-offs validate, loop terminates, failure surfaces | schema parse + bounded-step asserts (deterministic) |
+| Production / dogfooding | it holds on REAL traces, not fixtures | human trace-reading → new golden cases |
+
+**Deterministic code is the GATE; the LLM-judge is a DEBUGGER.** Every
+safety-load verdict is decided by code (tool selected? arg present?
+terminal state? injection pattern? approval recorded?). The judge is
+reached for ONLY where code cannot grade (refusal, on-topic, citation
+quality) and never stands alone on a safety claim.
+
 ## The layered method (cheapest grader first)
 
 Converged 2026 practice (Inspect AI, Braintrust, promptfoo, DeepEval,
@@ -69,12 +98,25 @@ ONLY for qualities code cannot grade.**
 
 **maker ≠ judge — and Muse's honest constraint.** The field says use a
 *stronger, different* model as judge so maker/judge errors don't
-correlate. Muse runs ONE local model, so the judge IS the maker. The
-compensating control is `eval:judge`: a **meta-eval that proves the
-judge itself is reliable** on clear-cut cases (incl. the grounding pair
-— it must tell an honest "I'm not sure" from a confident invention)
-before any battery trusts its verdicts. Never let an unchecked
-same-model judge be the only gate on a safety-critical claim.
+correlate. Muse runs ONE local model, so the judge IS the maker — a
+same-family judge over-trusts its own output. Because we cannot escape
+that with a stronger model, FOUR compensating controls carry the load,
+and a safety claim is never gated by the judge alone:
+
+1. **Deterministic graders carry the safety load.** The judge never
+   decides a safety/security verdict; code does (see the gate-vs-debugger
+   split above).
+2. **Meta-eval the judge before trusting it** — `eval:judge` proves the
+   judge is reliable on clear-cut cases (incl. the grounding pair: an
+   honest "I'm not sure" vs a confident invention) before any battery
+   consumes its verdicts.
+3. **Binary verdict that NAMES a concrete violation.** PASS/FAIL at T=0;
+   a FAIL must cite which criterion / invariant / state failed and how —
+   a vague "seems off" is not grounds to reject (false-FAIL control).
+4. **Fault-injection drills.** Periodically feed the judge work that MUST
+   fail and assert it still rejects — the guard against same-family
+   rubber-stamping, since a static checklist is bypassed by an adaptive
+   change.
 
 ## Tool-calling (the binding constraint on an 8B model)
 
@@ -137,9 +179,14 @@ termination*). So assert at the seam:
   catches regressions late. `eval:agent` / `eval:self-improving` bundle
   the live batteries and fail if ANY regresses; `self-eval` is the
   regression scoreboard (a tracked count dropping is a fail-close).
-- **Start small, grow from real failures.** 20–30 golden cases from
-  ACTUAL usage beat a large synthetic set; feed every real miss back in
-  as a case. New cases come from probing the real path, not imagination.
+- **Error-analysis FIRST — the ordering principle, not an afterthought.**
+  Before writing a scorer, read 20–50 REAL traces and open-/axial-code the
+  failures into categories; the categories that actually recur become the
+  eval cases. 20–30 golden cases from ACTUAL usage beat a large synthetic
+  set; feed every real miss back in as a case. New cases come from probing
+  the real path, not imagination. Muse's "production" is **n=1
+  dogfooding** — the owner's own transcript review IS the trace-reading
+  layer, so treat every dogfood miss as a production incident to codify.
 
 ## Where each gate lives (Muse mapping)
 
@@ -155,6 +202,28 @@ termination*). So assert at the seam:
 | All harness batteries as one CI gate | `pnpm eval:agent` |
 | Real-LLM request/response round-trip | `pnpm smoke:live` |
 | Regression scoreboard | `pnpm self-eval` |
+
+## Anti-patterns (named — reject on sight)
+
+- **Skip-as-pass.** A battery that SKIPS (Ollama unreachable, fixture
+  missing) is not a pass — exit 0 on skip is fine, but the skip must not
+  count toward "verified". Fixing the environment so it runs is the work.
+- **Vacuous stub.** A test that passes against a fake that ignores its
+  inputs proves nothing; every fake depends on its inputs, and a new test
+  is confirmed by a MUTATION-RED (break the code, watch it redden).
+- **Floor threshold instead of a ratchet.** A fixed pass-rate floor lets
+  quality decay down to it. Track the count/score and fail-close when it
+  DROPS vs the last run (`self-eval`), don't just check it clears a floor.
+- **Counting code artifacts as agent signal.** Test-file count, LOC, tool
+  count measure activity, not agent quality. They are infra hygiene, never
+  proof the agent got better.
+- **`pass@k` reported as reliability.** "Succeeded at least once" is the
+  optimistic upper bound; the user feels `pass^k` (all k pass).
+- **Trajectory pinning.** Asserting one exact tool sequence is brittle —
+  grade terminal state; pin order only where a step depends on a prior one.
+- **Same-family judge over-trust.** Letting the maker-as-judge's verdict
+  stand un-meta-eval'd, or gating a safety claim on it — see the four
+  compensating controls above.
 
 ## Sources (verified primary)
 
