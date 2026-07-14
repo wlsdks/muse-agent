@@ -24,7 +24,9 @@ import {
   type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
-  type PersonalThread
+  type PersonalThread,
+  type PersonalThreadKind,
+  type ContinuityDelivery
 } from "@muse/attunement";
 import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import { readTaskById, readTasks } from "@muse/stores";
@@ -266,7 +268,7 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
 
 const KILL_CRITERION_FIRST_PACKS = 20;
 
-export interface ContinuityStats {
+export interface ContinuityKindStats {
   readonly totalDeliveries: number;
   readonly withOutcome: number;
   readonly outcomes: Record<ContinuityOutcome, number>;
@@ -285,22 +287,27 @@ export interface ContinuityStats {
   };
 }
 
+export interface ContinuityStats extends ContinuityKindStats {
+  /** Never aggregate life/work results into a single apparent success. */
+  readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindStats>>;
+}
+
 /**
  * Deterministic per-outcome accounting over all deliveries + a "first 20 packs"
  * window — the kill-criterion instrument (used<20% or rejected>30% ⇒ fix pack
  * usefulness before more automation). Reads only persisted deliveries; empty
  * state yields zeros, not a crash.
  */
-export function computeContinuityStats(state: AttunementState): ContinuityStats {
+function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): ContinuityKindStats {
   const outcomes: Record<ContinuityOutcome, number> = { adjusted: 0, ignored: 0, rejected: 0, used: 0 };
   let withOutcome = 0;
-  for (const delivery of state.deliveries) {
+  for (const delivery of deliveries) {
     if (delivery.outcome) {
       outcomes[delivery.outcome.outcome] += 1;
       withOutcome += 1;
     }
   }
-  const firstDeliveries = [...state.deliveries]
+  const firstDeliveries = [...deliveries]
     .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
     .slice(0, KILL_CRITERION_FIRST_PACKS);
   const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
@@ -326,13 +333,37 @@ export function computeContinuityStats(state: AttunementState): ContinuityStats 
   };
 }
 
+export function computeContinuityStats(state: AttunementState): ContinuityStats {
+  const kindByThreadId = new Map(state.threads.map((thread) => [thread.id, thread.kind]));
+  const deliveriesFor = (kind: PersonalThreadKind): ContinuityDelivery[] =>
+    state.deliveries.filter((delivery) => kindByThreadId.get(delivery.threadId) === kind);
+  return {
+    ...computeContinuityKindStats(state.deliveries),
+    byKind: {
+      life: computeContinuityKindStats(deliveriesFor("life")),
+      work: computeContinuityKindStats(deliveriesFor("work"))
+    }
+  };
+}
+
+function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
+  const { outcomes, firstPacks } = stats;
+  return [
+    `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
+    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`
+  ];
+}
+
 export function formatContinuityStats(stats: ContinuityStats): string {
   const { outcomes, firstPacks } = stats;
   const lines = [
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
     `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
-    `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`
+    `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    "By thread kind:",
+    ...formatKindStats("life", stats.byKind.life),
+    ...formatKindStats("work", stats.byKind.work)
   ];
   return `${lines.join("\n")}\n`;
 }
