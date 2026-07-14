@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 /**
  * Stop flag for the daemon foreground loop with an INTERRUPTIBLE
  * sleep: `stop()` both flips `stopped` and wakes any in-flight
@@ -15,25 +17,22 @@ export class DaemonStopSignal {
   stop(): void {
     if (this.isStopped) return;
     this.isStopped = true;
-    for (const wake of this.wakers) {
-      wake();
-    }
+    for (const wake of this.wakers) wake();
     this.wakers.clear();
   }
 
   async sleep(ms: number): Promise<void> {
     if (this.isStopped) return;
-    return new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        this.wakers.delete(wake);
-        resolve();
-      }, ms);
-      const wake = (): void => {
-        clearTimeout(timer);
-        resolve();
-      };
-      this.wakers.add(wake);
-    });
+    const signal = new AbortController();
+    const wake = (): void => {
+      signal.abort();
+    };
+    this.wakers.add(wake);
+    try {
+      await sleep(ms, "done", { signal: signal.signal }).catch(() => undefined);
+    } finally {
+      this.wakers.delete(wake);
+    }
   }
 }
 

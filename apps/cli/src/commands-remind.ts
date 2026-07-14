@@ -28,6 +28,7 @@ import { closestCommandName } from "./closest-command.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { waitForShutdownSignal } from "./async-promises.js";
 
 /**
  * CLI-side strict validation for `muse remind list --status
@@ -443,16 +444,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         };
         io.stdout(`muse remind run --watch: tick every ${intervalMs.toString()}ms via ${provider}. Ctrl-C to stop.\n`);
         const handle = setInterval(() => { void tick(); }, intervalMs);
-        await new Promise<void>((resolve) => {
-          const stop = (): void => {
-            clearInterval(handle);
-            process.off("SIGINT", stop);
-            process.off("SIGTERM", stop);
-            io.stdout("muse remind run --watch: stopping.\n");
-            resolve();
-          };
-          process.once("SIGINT", stop);
-          process.once("SIGTERM", stop);
+        await waitForShutdownSignal(["SIGINT", "SIGTERM"]).finally(() => {
+          clearInterval(handle);
+          io.stdout("muse remind run --watch: stopping.\n");
         });
         return;
       }

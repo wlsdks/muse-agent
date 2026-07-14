@@ -84,9 +84,11 @@ describe("tryParseJson", () => {
 describe("fetchWithTimeout", () => {
   it("aborts a stalled request and throws a timed-out error carrying the cause", async () => {
     const hang: typeof fetch = ((_url: string, init: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-      })) as unknown as typeof fetch;
+      (() => {
+        const pending = Promise.withResolvers<Response>();
+        init.signal?.addEventListener("abort", () => pending.reject(new Error("aborted")), { once: true });
+        return pending.promise;
+      })()) as unknown as typeof fetch;
     await expect(fetchWithTimeout(hang, "http://x", {}, 20)).rejects.toThrow(/timed out after 20ms/u);
   });
 

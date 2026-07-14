@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createGracefulShutdown } from "./graceful-shutdown.js";
 
@@ -29,7 +30,7 @@ describe("graceful shutdown", () => {
     let exited: number | undefined;
     const shutdown = createGracefulShutdown({
       closeServer: async () => undefined,
-      drainScheduler: () => new Promise(() => undefined),
+      drainScheduler: () => Promise.withResolvers<never>().promise,
       exit: (code) => {
         exited = code;
       },
@@ -37,7 +38,7 @@ describe("graceful shutdown", () => {
       log: (m) => logs.push(m)
     });
     void shutdown();
-    await new Promise((r) => setTimeout(r, 80));
+    await sleep(80);
     expect(exited).toBe(0);
     expect(logs.some((l) => l.includes("forcing exit"))).toBe(true);
   });
@@ -53,7 +54,7 @@ describe("graceful shutdown", () => {
       forceExitAfterMs: 30
     });
     await shutdown();
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(60);
     expect(exited).toBeUndefined();
   });
 });

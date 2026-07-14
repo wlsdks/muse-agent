@@ -22,7 +22,7 @@ function throwingWorker(id: string): RuleBasedAgentWorker {
 }
 
 function hangingWorker(id: string): RuleBasedAgentWorker {
-  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => new Promise<AgentRunResult>(() => undefined));
+  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => Promise.withResolvers<AgentRunResult>().promise);
 }
 
 const taskInput: AgentRunInput = { messages: [{ content: "task", role: "user" }], model: "diagnostic" };

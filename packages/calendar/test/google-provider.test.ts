@@ -94,9 +94,12 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
   const hangingApiFetch = (counter: { aborts: number }): typeof fetch =>
     (async (url: string, init?: RequestInit) => {
       if (String(url) === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: "tok-1", expires_in: 3600 }), { status: 200 });
-      return new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => { counter.aborts += 1; reject((init.signal as AbortSignal).reason ?? new Error("aborted")); });
-      });
+      const pending = Promise.withResolvers<Response>();
+      init?.signal?.addEventListener("abort", () => {
+        counter.aborts += 1;
+        pending.reject((init.signal as AbortSignal).reason ?? new Error("aborted"));
+      }, { once: true });
+      return pending.promise;
     }) as unknown as typeof fetch;
 
   it("aborts a HUNG GET on the per-attempt timeout (retries, then throws) instead of blocking forever", async () => {

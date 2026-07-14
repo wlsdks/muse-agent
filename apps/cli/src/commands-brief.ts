@@ -53,6 +53,7 @@ import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 
 import { resolveTodayWeatherLine } from "./commands-today.js";
 import type { Command } from "commander";
+import { sleep, waitForChildProcessResult } from "./async-promises.js";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import { checkinsFile } from "./commands-checkins.js";
@@ -114,31 +115,17 @@ export async function playAudioFile(
   audioFile: string,
   spawnFn: typeof spawn = spawn
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawnFn(player, [audioFile], { stdio: "ignore" });
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without this watchdog a wedged player — a busy CoreAudio /
-    // ALSA device, a stuck process — hangs `muse brief --speak`
-    // forever with no recovery.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => reject(new Error(
-        `${player} timed out after ${BRIEF_AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`
-      )));
-    }, BRIEF_AUDIO_PLAYER_TIMEOUT_MS);
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => {
-      finish(() => code === 0
-        ? resolve()
-        : reject(new Error(`${player} exit ${code?.toString() ?? "null"}`)));
-    });
+  const child = spawnFn(player, [audioFile], { stdio: "ignore" });
+  let settled = false;
+  const processResult = waitForChildProcessResult(child, player).finally(() => {
+    settled = true;
   });
+  const watchdog = sleep(BRIEF_AUDIO_PLAYER_TIMEOUT_MS).then(() => {
+    if (settled) return;
+    child.kill("SIGKILL");
+    throw new Error(`${player} timed out after ${BRIEF_AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`);
+  });
+  await Promise.race([processResult, watchdog]);
 }
 
 export async function playSynthesizedAudio(

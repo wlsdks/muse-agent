@@ -4,6 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import type { MuseTool } from "@muse/tools";
 
@@ -154,18 +156,18 @@ describe("createMuseToolsMcpServer", () => {
     // Malformed JSON must not crash the transport/server — the process
     // simply cannot reply (no parseable id), so no response is queued for it.
     clientToServer.write("{not json at all\n");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
     expect(responses).toHaveLength(0);
 
     // An unregistered top-level method gets a real JSON-RPC MethodNotFound error.
     clientToServer.write(`${JSON.stringify({ id: 1, jsonrpc: "2.0", method: "totally/unknown", params: {} })}\n`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
     expect(responses).toHaveLength(1);
     expect(responses[0]).toMatchObject({ error: { code: -32601 }, id: 1 });
 
     // The server is still alive for a well-formed request after both failures.
     clientToServer.write(`${JSON.stringify({ id: 2, jsonrpc: "2.0", method: "tools/list", params: {} })}\n`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
     expect(responses).toHaveLength(2);
     expect(responses[1]).toMatchObject({ id: 2, result: { tools: [{ name: "test_echo" }] } });
 

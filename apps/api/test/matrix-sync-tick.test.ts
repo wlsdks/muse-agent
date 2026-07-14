@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { readInbox } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
@@ -40,7 +41,7 @@ describe("startMatrixSyncTick", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await sleep(120);
     handle.stop();
 
     expect(calls).toBeGreaterThan(1);
@@ -69,7 +70,7 @@ describe("startMatrixSyncTick", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await sleep(120);
     handle.stop();
 
     expect(ingests).toEqual([2]);
@@ -93,10 +94,10 @@ describe("startMatrixSyncTick", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     handle.stop();
     const after = calls;
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
 
     expect(calls).toBe(after);
   });
@@ -122,7 +123,7 @@ describe("startMatrixSyncTick", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await sleep(120);
     handle.stop();
 
     expect(calls).toBe(1);

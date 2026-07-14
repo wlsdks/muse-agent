@@ -1,5 +1,6 @@
 import type { ModelProvider, ModelRequest } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { warmUpModelIfConfigured } from "./model-warmup.js";
 
@@ -18,7 +19,7 @@ function captureProvider(sink: { request?: ModelRequest; calls: number }): Model
   };
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flush = () => sleep(0);
 
 describe("warmUpModelIfConfigured", () => {
   it("fires a tiny generate on the default model when MUSE_WARMUP_MODEL is set", async () => {

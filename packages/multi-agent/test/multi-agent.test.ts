@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 import {
   MultiAgentOrchestrator,
   NoAgentWorkerError,
@@ -18,11 +20,10 @@ const rejectingBus = (): AgentMessageBus => ({
 
 async function withHangGuard<T>(p: Promise<T>, label: string): Promise<T> {
   let timer: NodeJS.Timeout;
-  const guard = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`hung: ${label}`)), 2_000);
-  });
+  const guard = Promise.withResolvers<never>();
+  timer = setTimeout(() => guard.reject(new Error(`hung: ${label}`)), 2_000);
   try {
-    return await Promise.race([p, guard]);
+    return await Promise.race([p, guard.promise]);
   } finally {
     clearTimeout(timer!);
   }
@@ -292,7 +293,7 @@ describe("MultiAgentOrchestrator", () => {
     const orchestrator = new MultiAgentOrchestrator({
       workers: [
         new RuleBasedAgentWorker("slow", "slow worker", ["task"], async (input) => {
-          await new Promise((resolve) => setTimeout(resolve, 30));
+          await sleep(30);
           order.push("slow");
           return createWorkerResult("slow", "slow answer", input);
         }),
@@ -520,4 +521,3 @@ describe("MultiAgentOrchestrator", () => {
       .toBe("ran on ollama/qwen3:1.7b");
   });
 });
-

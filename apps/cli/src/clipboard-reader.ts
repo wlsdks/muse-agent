@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "node:child_process/promises";
 
 /**
  * Read the OS clipboard so `muse ask --clipboard` can ground on text the user
@@ -35,13 +35,8 @@ export async function readClipboardText(platform: NodeJS.Platform = process.plat
   if (!spec) {
     throw new Error(`clipboard read is not supported on ${platform}`);
   }
-  return new Promise<string>((resolve, reject) => {
-    execFile(spec.cmd, [...spec.args], { maxBuffer: 4_000_000 }, (error, stdout) => {
-      if (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-      resolve(stdout);
-    });
+  const { stdout } = await execFile(spec.cmd, [...spec.args], { maxBuffer: 4_000_000 });
+  return stdout;
+}
   });
 }

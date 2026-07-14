@@ -12,6 +12,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -99,24 +100,33 @@ export async function listMuseImportEntries(
   bundlePath: string,
   spawnImpl: typeof spawn = spawn
 ): Promise<readonly string[]> {
-  const stdout = await new Promise<string>((resolveSpawn, reject) => {
-    const child = spawnImpl("tar", ["-tzf", bundlePath], { stdio: ["ignore", "pipe", "pipe"] });
-    const outChunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
-    // Decode ONCE from the fully concatenated bytes on close — never
-    // per-chunk — so a multi-byte UTF-8 filename (CJK/emoji entries in
-    // the notes tree) split across two `data` events decodes correctly.
-    child.stdout.on("data", (chunk: Buffer) => { outChunks.push(chunk); });
-    child.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolveSpawn(Buffer.concat(outChunks).toString("utf8"));
-      } else {
-        reject(new Error(`tar -tzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`));
+  const child = spawnImpl("tar", ["-tzf", bundlePath], { stdio: ["ignore", "pipe", "pipe"] });
+  const outChunks: Buffer[] = [];
+  const errChunks: Buffer[] = [];
+  // Decode ONCE from the fully concatenated bytes on close — never
+  // per-chunk — so a multi-byte UTF-8 filename (CJK/emoji entries in
+  // the notes tree) split across two `data` events decodes correctly.
+  child.stdout.on("data", (chunk: Buffer) => { outChunks.push(chunk); });
+  child.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
+
+  const onError = once(child, "error");
+  const onClose = once(child, "close");
+
+  const exitCode = await Promise.race([
+    onError.then(([cause]) => {
+      throw cause as Error;
+    }),
+    onClose.then(([code]) => {
+      if (code === 0 || code === null) {
+        return 0;
       }
-    });
-  });
+      throw new Error(`tar -tzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
+    })
+  ]);
+
+  const stdout = exitCode === 0
+    ? Buffer.concat(outChunks).toString("utf8")
+    : "";
   return stdout
     .split("\n")
     .map((line) => line.trim())
@@ -165,19 +175,24 @@ export async function extractMuseBundle(
   entries: readonly string[],
   spawnImpl: typeof spawn = spawn
 ): Promise<void> {
-  await new Promise<void>((resolveSpawn, reject) => {
-    const child = spawnImpl("tar", ["-xzf", bundlePath, "-C", home, "--", ...entries], { stdio: ["ignore", "ignore", "pipe"] });
-    const errChunks: Buffer[] = [];
-    child.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolveSpawn();
-      } else {
-        reject(new Error(`tar -xzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`));
+  const child = spawnImpl("tar", ["-xzf", bundlePath, "-C", home, "--", ...entries], { stdio: ["ignore", "ignore", "pipe"] });
+  const errChunks: Buffer[] = [];
+  child.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
+
+  const onError = once(child, "error");
+  const onClose = once(child, "close");
+
+  await Promise.race([
+    onError.then(([cause]) => {
+      throw cause as Error;
+    }),
+    onClose.then(([code]) => {
+      if (code === 0 || code === null) {
+        return;
       }
-    });
-  });
+      throw new Error(`tar -xzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
+    })
+  ]);
 }
 
 export function registerImportCommand(program: Command, io: ProgramIO): void {

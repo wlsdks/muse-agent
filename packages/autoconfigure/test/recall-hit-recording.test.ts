@@ -5,6 +5,8 @@ import { join } from "node:path";
 import type { EpisodicRecallProvider, EpisodicRecallSnapshot } from "@muse/agent-core";
 import { readRecallHits } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { withRecallHitRecording } from "../src/context-engineering-builders.js";
 
@@ -23,7 +25,7 @@ function fakeProvider(snapshot: EpisodicRecallSnapshot | undefined): EpisodicRec
 }
 
 async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await sleep(30);
 }
 
 // The hit recording is fire-and-forget inside resolve() (it must not block the
@@ -35,7 +37,7 @@ async function waitForHits(expected: number): Promise<Awaited<ReturnType<typeof 
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const hits = await readRecallHits(file);
     if (hits.length >= expected) return hits;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await sleep(10);
   }
   return readRecallHits(file);
 }
@@ -74,7 +76,7 @@ describe("withRecallHitRecording", () => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       hit = (await readRecallHits(file)).find((h) => h.key === "sess-a");
       if ((hit?.hits ?? 0) >= 2) break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await sleep(10);
     }
     expect(hit?.hits).toBe(2);
     expect(hit?.queryHashes).toHaveLength(2);

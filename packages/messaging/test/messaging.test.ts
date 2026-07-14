@@ -297,10 +297,12 @@ describe("DiscordProvider", () => {
 
   it("times out a stalled send so a wedged Discord API connection can't hang the proactive tick (timeoutMs threaded into fetchWithTimeout)", async () => {
     const neverResolves: typeof globalThis.fetch = (_input, init) =>
-      new Promise<Response>((_resolve, reject) => {
+      (() => {
+        const pending = Promise.withResolvers<Response>();
         const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
-        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
+        signal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+        return pending.promise;
+      })();
     const provider = new DiscordProvider({
       baseUrl: "https://disc.test/api",
       fetch: neverResolves,
@@ -631,10 +633,12 @@ describe("SlackProvider", () => {
 
   it("times out a stalled chat.postMessage so a wedged Slack API connection can't hang the send path (timeoutMs threaded into fetchWithTimeout)", async () => {
     const neverResolves: typeof globalThis.fetch = (_input, init) =>
-      new Promise<Response>((_resolve, reject) => {
+      (() => {
+        const pending = Promise.withResolvers<Response>();
         const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
-        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
+        signal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+        return pending.promise;
+      })();
     const provider = new SlackProvider({ fetch: neverResolves, timeoutMs: 10, token: "xoxb-test" });
     await expect(provider.send({ destination: "C123", text: "hi" })).rejects.toThrow(/timed out after 10ms/u);
   });
@@ -890,10 +894,12 @@ describe("LineProvider", () => {
 
   it("times out a stalled push so a wedged LINE API connection can't hang the send path (timeoutMs threaded into fetchWithTimeout) — completes the messaging-provider timeout sweep", async () => {
     const neverResolves: typeof globalThis.fetch = (_input, init) =>
-      new Promise<Response>((_resolve, reject) => {
+      (() => {
+        const pending = Promise.withResolvers<Response>();
         const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
-        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
+        signal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+        return pending.promise;
+      })();
     const provider = new LineProvider({ fetch: neverResolves, timeoutMs: 10, token: "ch-token" });
     await expect(provider.send({ destination: "U-1", text: "hi" })).rejects.toThrow(/timed out after 10ms/u);
   });

@@ -9,6 +9,8 @@ import {
   PostgresQueryCompiler
 } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { createLoopbackMcpConnection, createLoopbackMcpMuseTools, createMcpSecurityPolicyInsert, createMcpServerInsert, createMcpServerUpdate, DefaultMcpTransportConnector, InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, isPrivateOrReservedHost, isPublicHttpUrl, KyselyMcpSecurityPolicyStore, KyselyMcpServerStore, mapMcpSecurityPolicyRow, mapMcpServerRow, McpConnectionError, isRetryableMcpConnectStatus, McpManager, McpSecurityPolicyProvider, normalizeMcpSecurityPolicy, validateMcpServer, validateStdioArgs, validateStdioCommand, type McpConnection } from "../src/index.js";
 import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksByDueDate } from "@muse/stores";
@@ -5342,7 +5344,7 @@ describe("runDueReminders", () => {
     const file = join(dir, "reminders.json");
     writeFileSync(file, JSON.stringify({ reminders: [] }), "utf8");
     const before = statSync(file).mtimeMs;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await sleep(5);
 
     const summary = await runDueReminders({
       destination: "@me",
@@ -7468,7 +7470,7 @@ describe("runDueFollowups", () => {
       }]
     }), "utf8");
     const before = statSync(file).mtimeMs;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await sleep(5);
 
     const summary = await runDueFollowups({
       destination: "@me",
@@ -7834,7 +7836,7 @@ describe("snoozeFollowup", () => {
       ]
     }), "utf8");
     const before = statSync(file).mtimeMs;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await sleep(5);
 
     expect(await snoozeFollowup(file, "fu_done", "2026-05-12T00:00:00Z")).toBeUndefined();
     expect(await snoozeFollowup(file, "fu_dropped", "2026-05-12T00:00:00Z")).toBeUndefined();

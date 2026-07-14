@@ -20,6 +20,7 @@ import type { Command } from "commander";
 
 import { looksLikeImage } from "./image-bytes.js";
 import type { ProgramIO } from "./program.js";
+import { waitForChildProcessResult } from "./async-promises.js";
 
 interface ShowOptions {
   readonly name?: string;
@@ -94,11 +95,9 @@ async function externalOpen(path: string): Promise<number> {
   const command = process.platform === "darwin"
     ? "open"
     : process.platform === "win32" ? "start" : "xdg-open";
-  return new Promise<number>((resolve, reject) => {
-    const child = spawn(command, [path], { stdio: "ignore" });
-    child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 0));
-  });
+  const child = spawn(command, [path], { stdio: "ignore" });
+  await waitForChildProcessResult(child, command);
+  return 0;
 }
 
 export function registerShowCommand(program: Command, io: ProgramIO): void {

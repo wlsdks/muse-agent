@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { describe, expect, it, vi } from "vitest";
@@ -120,7 +121,7 @@ describe("startReminderTick", () => {
         inflight += 1;
         peakInflight = Math.max(peakInflight, inflight);
         // Yield twice so a sibling tick has a chance to enter.
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await sleep(5);
         sent += 1;
         inflight -= 1;
         return { destination: "@me", messageId: "stub", providerId: "telegram" };

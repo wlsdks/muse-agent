@@ -1,5 +1,7 @@
 import { ModelProviderError, type ModelEvent, type ModelProvider, type ModelRequest, type ModelResponse, type ModelToolCall } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { executeStreamingModelLoop, type ModelLoopRunner, type ModelLoopStreamEvent } from "../src/model-loop.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
@@ -234,7 +236,7 @@ describe("executeStreamingModelLoop — runner.streamIdleTimeoutMs bounds a conn
     ({
       id: "fake",
       stream: async function* () {
-        await new Promise((r) => setTimeout(r, 10_000)); // never resolves before the idle bound
+        await sleep(10_000); // never resolves before the idle bound
         yield done("unreachable");
       },
     }) as unknown as ModelProvider;
@@ -271,7 +273,7 @@ describe("executeStreamingModelLoop — runner.streamIdleTimeoutMs bounds a conn
       ({
         id: "fake",
         stream: async function* () {
-          for (const text of ["a", "b", "c"]) { await new Promise((r) => setTimeout(r, 30)); yield { type: "text-delta", text } as ModelEvent; }
+          for (const text of ["a", "b", "c"]) { await sleep(30); yield { type: "text-delta", text } as ModelEvent; }
           yield done("");
         },
       }) as unknown as ModelProvider;

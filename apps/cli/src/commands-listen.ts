@@ -17,6 +17,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { platform } from "node:process";
+import { once } from "node:events";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
 import {
@@ -28,7 +29,8 @@ import type { Command } from "commander";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { ProgramIO } from "./program.js";
-import { parseAudioFormat, resolveAudioPlayerInvocation, synthesizeAndPlay } from "./voice-playback.js";
+import { parseAudioFormat, playInvocationWithWatchdog, resolveAudioPlayerInvocation, synthesizeAndPlay } from "./voice-playback.js";
+import { waitForChildProcessResult } from "./async-promises.js";
 
 export interface ListenShells {
   /** Returns the absolute path to a binary on PATH, or undefined when missing. */
@@ -206,10 +208,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
       }
       const chunks: Buffer[] = [];
       recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-      const stopPromise = new Promise<void>((resolve, reject) => {
-        recording.once("error", reject);
-        recording.once("close", () => resolve());
-      });
+      const stopPromise = waitForChildProcessResult(recording, "sox");
       await shells.waitForEnter();
       recording.kill("SIGTERM");
       try {
@@ -250,10 +249,7 @@ export async function captureWavForSeconds(shells: ListenShells, seconds: number
   const recording = shells.spawnRec(["-q", "-r", "16000", "-c", "1", "-t", "wav", "-"]);
   const chunks: Buffer[] = [];
   recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-  const stopPromise = new Promise<void>((resolve, reject) => {
-    recording.once("error", reject);
-    recording.once("close", () => resolve());
-  });
+  const stopPromise = waitForChildProcessResult(recording, "rec");
   const timer = setTimeout(() => {
     recording.kill("SIGTERM");
   }, seconds * 1000);
@@ -275,28 +271,16 @@ interface ListenOptions {
 
 export function defaultShells(): ListenShells {
   return {
-    playAudio: (filePath) => new Promise<void>((resolve, reject) => {
-      const { cmd, args } = resolveAudioPlayerInvocation(platform, filePath);
-      const child = spawn(cmd, [...args], { stdio: ["ignore", "ignore", "pipe"] });
-      child.once("error", reject);
-      child.once("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`${cmd} exited with code ${code ?? "unknown"}`));
-        }
-      });
-    }),
+    playAudio: (filePath) => playInvocationWithWatchdog(resolveAudioPlayerInvocation(platform, filePath)),
     spawnRec: (args) => spawn("rec", args, { stdio: ["ignore", "pipe", "pipe"] }),
-    waitForEnter: () => new Promise<void>((resolve) => {
-      const onData = (): void => {
-        process.stdin.off("data", onData);
-        process.stdin.pause();
-        resolve();
-      };
+    waitForEnter: async () => {
       process.stdin.resume();
-      process.stdin.once("data", onData);
-    }),
+      try {
+        await once(process.stdin, "data");
+      } finally {
+        process.stdin.pause();
+      }
+    },
     which: (binary) => {
       const result = spawnSync(platform === "win32" ? "where" : "which", [binary], { encoding: "utf8" });
       if (result.status !== 0) {

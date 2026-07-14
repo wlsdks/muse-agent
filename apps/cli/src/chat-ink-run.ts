@@ -13,7 +13,7 @@ import { readCheckins } from "@muse/proactivity";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { render } from "ink";
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process/promises";
 import { mkdir, readFile as fsReadFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -250,19 +250,15 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     }
   };
   // /copy → pipe the reply to the platform clipboard tool.
-  const copyToClipboard = (text: string): Promise<boolean> => {
+  const copyToClipboard = async (text: string): Promise<boolean> => {
     const cmd = process.platform === "darwin" ? "pbcopy" : process.platform === "win32" ? "clip" : "xclip";
     const args = process.platform === "linux" ? ["-selection", "clipboard"] : [];
-    return new Promise<boolean>((resolve) => {
-      try {
-        const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-        proc.on("error", () => resolve(false));
-        proc.on("close", (code) => resolve(code === 0));
-        proc.stdin.end(text);
-      } catch {
-        resolve(false);
-      }
-    });
+    try {
+      await execFile(cmd, args, { input: text });
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const onCommit = (user: string, assistant: string, untrusted?: boolean): void => {

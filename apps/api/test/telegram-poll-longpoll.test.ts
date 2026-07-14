@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -38,7 +39,7 @@ describe("startTelegramPollTick long-poll mode", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await sleep(120);
     handle.stop();
 
     // With a 60s interval, >1 call proves the continuous loop re-polled on
@@ -68,7 +69,7 @@ describe("startTelegramPollTick long-poll mode", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await sleep(120);
     handle.stop();
 
     expect(ingests).toEqual([2]);
@@ -90,10 +91,10 @@ describe("startTelegramPollTick long-poll mode", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     handle.stop();
     const after = calls;
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      await sleep(60);
 
     expect(calls).toBe(after);
   });
@@ -131,7 +132,7 @@ describe("startTelegramPollTick ack reaction", () => {
     // Poll instead of a fixed sleep — a slow runner can take >100ms to fire
     // the second (throwing) reaction.
     for (let waited = 0; waited < 10_000 && reactions.length < 2; waited += 50) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await sleep(50);
     }
     handle.stop();
 

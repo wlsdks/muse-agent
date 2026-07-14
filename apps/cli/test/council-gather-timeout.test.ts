@@ -23,11 +23,11 @@ function makePeer(id: string) {
  * assembled-path test a real non-vacuity proof of the wiring.
  */
 function hungFetch(_url: string, init: RequestInit): Promise<Response> {
-  return new Promise<Response>((_, reject) => {
-    if (init.signal) {
-      init.signal.addEventListener("abort", () => reject(new Error("aborted")));
-    }
-  });
+  const pending = Promise.withResolvers<Response>();
+  if (init.signal) {
+    init.signal.addEventListener("abort", () => pending.reject(new Error("aborted")), { once: true });
+  }
+  return pending.promise;
 }
 
 /** A fetch that resolves immediately with a valid council response. */

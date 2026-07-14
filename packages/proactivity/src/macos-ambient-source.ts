@@ -11,8 +11,7 @@
  * never throws — so a perception blip can't crash the tick.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile } from "node:child_process/promises";
 
 import type { AmbientSignal, AmbientSignalSource } from "./ambient-notice-loop.js";
 
@@ -47,8 +46,6 @@ export function parseActiveWindowSignal(stdout: string | undefined): AmbientSign
   const window = (lines[1] ?? "").trim();
   return window.length > 0 ? { app, window } : { app };
 }
-
-const execFileAsync = promisify(execFile);
 
 export interface MacOsActiveWindowSourceOptions {
   /** Injectable osascript runner (returns stdout, or undefined on failure). Default spawns `osascript`. */
@@ -116,13 +113,13 @@ export class MacOsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultOsascriptRun(osascriptPath: string, script: string, timeoutMs: number): Promise<string | undefined> {
-  return execFileAsync(osascriptPath, ["-e", script], { timeout: timeoutMs })
-    .then(([stdout]) => stdout)
+  return execFile(osascriptPath, ["-e", script], { timeout: timeoutMs, encoding: "utf8" })
+    .then(({ stdout }) => stdout)
     .catch(() => undefined);
 }
 
 function defaultPbpasteRun(pbpastePath: string, timeoutMs: number): Promise<string | undefined> {
-  return execFileAsync(pbpastePath, [], { timeout: timeoutMs })
-    .then(([stdout]) => stdout)
+  return execFile(pbpastePath, [], { timeout: timeoutMs, encoding: "utf8" })
+    .then(({ stdout }) => stdout)
     .catch(() => undefined);
 }

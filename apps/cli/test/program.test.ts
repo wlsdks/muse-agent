@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
+import { execFile } from "node:child_process/promises";
 import { Command } from "commander";
 import { createProgram, defaultConfigPath, uniqueCommandPrefix } from "../src/program.js";
 import { registerListenCommand, type ListenShells } from "../src/commands-listen.js";
@@ -5000,9 +5001,8 @@ describe("cli program", () => {
 
   it("extractMuseBundle restores only the vetted members — a malicious bundle can't escape ~/.muse", async () => {
     const { extractMuseBundle, listMuseImportEntries } = await import("../src/commands-import.js");
-    const { promisify } = await import("node:util");
-    const { execFile } = await import("node:child_process");
-    const run = promisify(execFile);
+    const run = (path: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> =>
+      execFile(path, [...args], { encoding: "utf8" });
     const fsp = await import("node:fs/promises");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-import-evil-"));
     const stage = path.join(root, "stage");
@@ -6660,10 +6660,10 @@ describe("cli program", () => {
     let noticeFired = false;
     await withSigintAbort(async (signal) => {
       // Schedule the SIGINT for next tick so the listener is wired.
+      const aborted = Promise.withResolvers<void>();
       setImmediate(() => process.emit("SIGINT" as never));
-      await new Promise<void>((resolve) => {
-        signal.addEventListener("abort", () => { sawAbort = true; resolve(); }, { once: true });
-      });
+      signal.addEventListener("abort", () => { sawAbort = true; aborted.resolve(); }, { once: true });
+      await aborted.promise;
     }, { onSigint: () => { noticeFired = true; } });
     expect(sawAbort).toBe(true);
     expect(noticeFired).toBe(true);

@@ -19,7 +19,7 @@
     "sourceMap": true,
     "skipDefaultLibCheck": true,
     "strict": true,
-    "target": "ES2022",
+    "target": "ES2024",
     "types": ["node"],
     "verbatimModuleSyntax": true
   }

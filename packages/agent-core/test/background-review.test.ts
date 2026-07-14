@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   BACKGROUND_REVIEW_HOOK_ID,
@@ -26,7 +28,7 @@ const response: ModelResponse = { id: "r1", model: "test/model", output: "ok" };
 const toolCall = { id: "t1", input: {}, name: "noop" } as unknown as ModelToolCall;
 const okToolResult = { id: "t1", name: "noop", output: "ok", status: "completed" } as unknown as ToolExecutionResult;
 const failedToolResult = { error: "boom", id: "t1", name: "noop", output: "", status: "failed" } as unknown as ToolExecutionResult;
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const flush = (): Promise<void> => sleep(0);
 
 describe("evaluateReviewTriggers", () => {
   it("fires a channel only once its accrued count reaches its interval; <=0 disables (cadence-only, no salience)", () => {
@@ -171,11 +173,10 @@ describe("createBackgroundReviewHook", () => {
 
   it("runs only ONE review per user at a time, then coalesces the skipped trigger into a re-fire", async () => {
     const reviews: BackgroundReviewInput[] = [];
-    let release: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = Promise.withResolvers<void>();
     const hook = createBackgroundReviewHook({
       memoryEveryTurns: 1,
-      runReview: async (i) => { reviews.push(i); await gate; },
+      runReview: async (i) => { reviews.push(i); await gate.promise; },
       skillEveryIters: 999
     });
     await hook.afterComplete!(context(), response); // turn 1 → trips, review starts and BLOCKS on gate
@@ -184,7 +185,7 @@ describe("createBackgroundReviewHook", () => {
     await hook.afterComplete!(context(), response); // turn 2 → trips again, but a review is in flight → skipped
     await flush();
     expect(reviews).toHaveLength(1); // no concurrent second pass
-    release!(); // first review finishes → in-flight clears
+    gate.resolve(); // first review finishes → in-flight clears
     await flush();
     await hook.afterComplete!(context(), response); // turn 3 → counter was never reset while skipped → fires now
     await flush();
@@ -193,7 +194,7 @@ describe("createBackgroundReviewHook", () => {
 
   it("isolates the in-flight guard per user (one user's running review never blocks another's)", async () => {
     const reviews: BackgroundReviewInput[] = [];
-    const gate = new Promise<void>(() => { /* never resolves */ });
+    const gate = Promise.withResolvers<void>().promise;
     const hook = createBackgroundReviewHook({
       memoryEveryTurns: 1,
       runReview: async (i) => { reviews.push(i); await gate; },

@@ -56,12 +56,12 @@ describe("embed", () => {
 
   it("times out a never-resolving Ollama embeddings call instead of hanging every RAG caller (muse ask / notes reindex / recall) forever — pre-fix the fetch had no AbortSignal and a cold-model load could wedge the CLI indefinitely", async () => {
     const neverResolves: typeof globalThis.fetch = (_input, init) => {
-      return new Promise<Response>((_resolve, reject) => {
-        const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
-        });
-      });
+      const pending = Promise.withResolvers<Response>();
+      const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
+      signal?.addEventListener("abort", () => {
+        pending.reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+      return pending.promise;
     };
     await expect(
       embed("hi", "m", { ...opts(neverResolves), timeoutMs: 10 })
@@ -72,11 +72,9 @@ describe("embed", () => {
     let receivedSignal: AbortSignal | undefined;
     const captureSignal: typeof globalThis.fetch = (_input, init) => {
       receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
-      return new Promise<Response>((_resolve, reject) => {
-        receivedSignal?.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
-        });
-      });
+      const pending = Promise.withResolvers<Response>();
+      receivedSignal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+      return pending.promise;
     };
     await expect(
       embed("hi", "m", { ...opts(captureSignal), timeoutMs: 5 })

@@ -10,6 +10,8 @@
 import { EventEmitter } from "node:events";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   createSkillListTool,
@@ -150,7 +152,7 @@ describe("muse.skills.run allowlist enforcement", () => {
       readonly timedOut: boolean;
     }>;
     // Advance the timeout — fakeChild will see SIGKILL via .kill, fire close.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
     fakeChild.fireClose(null, "SIGKILL");
     const out = await promise;
     expect(out.timedOut).toBe(true);

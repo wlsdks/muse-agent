@@ -6,6 +6,8 @@ import type { AgentRunContext, HookStage } from "@muse/agent-core";
 import { readCheckins } from "@muse/proactivity";
 import type { ModelResponse } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import type { UserModelSlot } from "@muse/memory";
 
@@ -14,7 +16,7 @@ import { inferPreferencesFromTurns, scanCommitmentsFromTurns } from "../src/cont
 
 const ctx = { input: { messages: [], metadata: { userId: "stark" }, model: "m" }, runId: "r", startedAt: new Date("2026-05-01T00:00:00Z") } as unknown as AgentRunContext;
 const res = { id: "x", model: "m", output: "ok" } as ModelResponse;
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const flush = (): Promise<void> => sleep(0);
 
 function spyAutoExtract() {
   const calls: string[] = [];

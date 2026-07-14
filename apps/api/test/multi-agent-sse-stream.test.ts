@@ -30,7 +30,7 @@ describe("toMultiAgentSseStream unsubscribe lifecycle", () => {
     const { bus, clearSpy } = busWithClearSpy();
     const hanging = new RuleBasedAgentWorker(
       "w", "w", ["task"],
-      () => new Promise<AgentRunResult>(() => undefined) // never resolves
+      () => Promise.withResolvers<AgentRunResult>().promise // never resolves
     );
     const orchestrator = new MultiAgentOrchestrator({ messageBus: bus, workers: [hanging] });
     const gen = toMultiAgentSseStream({

@@ -1,6 +1,8 @@
 import type { ModelProvider, ModelRequest, ModelResponse, ModelTool, ModelToolCall } from "@muse/model";
 import { InMemoryMuseTracer } from "@muse/observability";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { executeModelLoop, type ModelLoopRunner } from "../src/model-loop.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
@@ -46,7 +48,7 @@ const runner = (opts: {
       const spec = opts.tools[toolCall.name]!;
       opts.started?.push(toolCall.name);
       if (spec.delayMs) {
-        await new Promise((resolve) => setTimeout(resolve, spec.delayMs));
+        await sleep(spec.delayMs);
       }
       opts.finished?.push(toolCall.name);
       return { result: { id: toolCall.id, name: toolCall.name, output: `ran ${toolCall.name}`, status: spec.status ?? "completed" }, toolCall };

@@ -55,15 +55,14 @@ describe("startObjectivesTick — P9-b1 the objectives daemon rider drives runDu
     const file = objectivesFile();
     await addObjective(file, objective());
     let evaluations = 0;
+    const gate = Promise.withResolvers<void>();
     let release: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    release = gate.resolve;
     const handle = startObjectivesTick({
       act: async () => {},
       evaluate: async (): Promise<ObjectiveEvaluation> => {
         evaluations += 1;
-        await gate;
+        await gate.promise;
         return { outcome: "unmet" };
       },
       objectivesFile: file,

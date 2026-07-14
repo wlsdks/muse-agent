@@ -10,8 +10,10 @@
  * Per 2026 best-practice: evaluate the agent, don't just unit-test it.
  */
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fast = process.env.MUSE_EVAL_FAST === "1";
@@ -29,12 +31,16 @@ const CHECKS = [
 ];
 
 function run(check) {
-  return new Promise((resolve) => {
-    const child = spawn("node", [path.join(here, check.script), ...check.args], { stdio: ["ignore", "ignore", "ignore"] });
-    const timer = setTimeout(() => { child.kill("SIGKILL"); resolve({ ...check, code: 124 }); }, 300_000);
-    child.on("exit", (code) => { clearTimeout(timer); resolve({ ...check, code: code ?? 1 }); });
-    child.on("error", () => { clearTimeout(timer); resolve({ ...check, code: 2 }); });
-  });
+  const child = spawn("node", [path.join(here, check.script), ...check.args], { stdio: ["ignore", "ignore", "ignore"] });
+  const result = Promise.race([
+    once(child, "exit").then(([code]) => ({ ...check, code: code ?? 1 })),
+    once(child, "error").then(() => ({ ...check, code: 2 })),
+    sleep(300_000).then(() => {
+      child.kill("SIGKILL");
+      return { ...check, code: 124 };
+    })
+  ]);
+  return result;
 }
 
 const selected = CHECKS.filter((c) => !fast || c.tier === "fast");

@@ -163,7 +163,11 @@ describe("performConsentedAction — fail-closed scoped-consent gate (outbound-s
   it("times out a consented-but-hung endpoint instead of stalling the standing-objective loop", async () => {
     await grant();
     const hang = ((url: string, init: RequestInit) =>
-      new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))))) as unknown as typeof fetch;
+      (() => {
+        const pending = Promise.withResolvers<Response>();
+        init.signal?.addEventListener("abort", () => pending.reject(new Error("aborted")), { once: true });
+        return pending.promise;
+      })()) as unknown as typeof fetch;
     const out = await performConsentedAction(base(hang, { timeoutMs: 5 }));
     expect(out).toMatchObject({ performed: false });
     expect((out as { reason: string }).reason).toContain("timed out");

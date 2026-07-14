@@ -3,6 +3,7 @@ import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_
 import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
+import { execFile } from "node:child_process/promises";
 import { promises as fs } from "node:fs";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 
@@ -461,9 +462,7 @@ export async function readOllamaPerfEnv(env: Record<string, string | undefined>)
   const fromLaunchctl = async (name: string): Promise<string | undefined> => {
     if (process.platform !== "darwin") return undefined;
     try {
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const { stdout } = await promisify(execFile)("launchctl", ["getenv", name]);
+      const { stdout } = await execFile("launchctl", ["getenv", name], { encoding: "utf8" });
       const value = stdout.trim();
       return value.length > 0 ? value : undefined;
     } catch {

@@ -1,5 +1,7 @@
 import type { ModelProvider, ModelRequest, ModelResponse, ModelToolCall } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { executeModelLoop, type ModelLoopRunner } from "../src/model-loop.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
@@ -174,7 +176,7 @@ describe("executeModelLoop", () => {
     let turn = 0;
     const loop = {
       executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
-        await new Promise((resolve) => setTimeout(resolve, 5)); // push past the 1ms deadline
+        await sleep(5); // push past the 1ms deadline
         return { result: { id: toolCall.id, name: toolCall.name, output: "ran", status: "ok" }, toolCall };
       },
       generateWithTracing: async (_ctx: AgentRunContext, _provider: unknown, req: ModelRequest) => {

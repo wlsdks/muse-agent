@@ -1,5 +1,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { buildReferenceBlock, moaFanout, type MoaSlot } from "../src/moa-fanout.js";
 
@@ -233,7 +235,7 @@ describe("moaFanout — advisory fan-out (DS-15)", () => {
   it("fires reference calls CONCURRENTLY, not sequentially (wall-clock ≈ max delay, not sum)", async () => {
     const slow = (ms: number): Pick<ModelProvider, "generate"> => ({
       generate: async () => {
-        await new Promise((r) => setTimeout(r, ms));
+        await sleep(ms);
         return resp(`slept ${ms}`);
       },
     });

@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { readRecallHits } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { recordFactRecallHits } from "../src/context-engineering-builders.js";
 import {
@@ -145,7 +147,7 @@ describe("fact-recall recording — surfaced-into-results, SEPARATE ledger, fail
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const hits = await readRecallHits(factFile);
       if (hits.length >= expected) return hits;
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await sleep(10);
     }
     return readRecallHits(factFile);
   }
@@ -179,7 +181,7 @@ describe("fact-recall recording — surfaced-into-results, SEPARATE ledger, fail
     });
     const result = String(await tool.execute({ query: "acme renewal" }, { runId: "r1" }));
     expect(result).toContain("[note/ticket]");
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await sleep(40);
     await expect(stat(factFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

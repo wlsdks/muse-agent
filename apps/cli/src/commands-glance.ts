@@ -15,6 +15,7 @@ import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
+import { sleep, waitForChildProcessResult } from "./async-promises.js";
 
 interface GlanceOptions {
   readonly json?: boolean;
@@ -95,44 +96,25 @@ return frontApp & linefeed & frontWindow & linefeed & selectedText
 const GLANCE_OSASCRIPT_TIMEOUT_MS = 30_000;
 
 export async function runOsascript(spawnFn: typeof spawn = spawn): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const child = spawnFn("osascript", ["-e", OSASCRIPT_SOURCE], { stdio: ["ignore", "pipe", "pipe"] });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without this watchdog a wedged osascript — an unanswered
-    // Accessibility permission prompt, an unresponsive UI-scripting
-    // target — hangs `muse glance` forever.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => reject(new Error(
-        `osascript timed out after ${GLANCE_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed `
-        + "(unanswered Accessibility prompt or a wedged UI-scripting target?)"
-      )));
-    }, GLANCE_OSASCRIPT_TIMEOUT_MS);
-    // Raw chunks are decoded ONCE from the concatenated bytes on close —
-    // never per-chunk — so a multi-byte UTF-8 character in a window title
-    // or selected text (CJK/emoji are common here) split across two
-    // `data` events decodes correctly instead of U+FFFD on both halves.
-    child.stdout.on("data", (chunk: Buffer) => { stdoutChunks.push(chunk); });
-    child.stderr.on("data", (chunk: Buffer) => { stderrChunks.push(chunk); });
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => {
-      finish(() => {
-        if (code === 0) {
-          resolve(Buffer.concat(stdoutChunks).toString("utf8"));
-        } else {
-          reject(new Error(`osascript exited ${(code ?? -1).toString()}: ${Buffer.concat(stderrChunks).toString("utf8").trim()}`));
-        }
-      });
-    });
+  const child = spawnFn("osascript", ["-e", OSASCRIPT_SOURCE], { stdio: ["ignore", "pipe", "pipe"] });
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  let settled = false;
+  child.stdout.on("data", (chunk: Buffer) => { stdoutChunks.push(chunk); });
+  child.stderr.on("data", (chunk: Buffer) => { stderrChunks.push(chunk); });
+  const processResult = waitForChildProcessResult(child, "osascript", stderrChunks).finally(() => {
+    settled = true;
   });
+  const watchdog = sleep(GLANCE_OSASCRIPT_TIMEOUT_MS).then(() => {
+    if (settled) return;
+    child.kill("SIGKILL");
+    throw new Error(
+      `osascript timed out after ${GLANCE_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed `
+      + "(unanswered Accessibility prompt or a wedged UI-scripting target?)"
+    );
+  });
+  await Promise.race([processResult, watchdog]);
+  return Buffer.concat(stdoutChunks).toString("utf8");
 }
 
 export function registerGlanceCommand(program: Command, io: ProgramIO): void {

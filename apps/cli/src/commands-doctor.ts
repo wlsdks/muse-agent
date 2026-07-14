@@ -52,6 +52,7 @@ import { loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import { atRestDoctorCheck, collectPrivacyPosture } from "./commands-privacy.js";
+import { sleep, waitForShutdownSignal } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
 export interface DoctorCommandHelpers {
@@ -291,25 +292,22 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       }
       const intervalMs = resolveDoctorWatchIntervalMs(options.interval);
       let stopped = false;
-      const sigintHandler = (): void => { stopped = true; };
-      process.once("SIGINT", sigintHandler);
-      try {
-        while (!stopped) {
-          io.stdout("\x1b[2J\x1b[H");
-          await runOnce();
-          io.stdout(`\n  (watching every ${(intervalMs / 1000).toString()}s — Ctrl-C to exit)\n`);
-          if (stopped) break;
-          await new Promise<void>((resolve) => {
-            const handle = setTimeout(resolve, intervalMs);
-            const earlyWake = (): void => {
-              clearTimeout(handle);
-              resolve();
-            };
-            process.once("SIGINT", earlyWake);
-          });
-        }
-      } finally {
-        process.off("SIGINT", sigintHandler);
+      const stopSignal = waitForShutdownSignal(["SIGINT"]);
+      void stopSignal.then(() => {
+        stopped = true;
+      });
+      while (!stopped) {
+        io.stdout("\x1b[2J\x1b[H");
+        await runOnce();
+        io.stdout(`\n  (watching every ${(intervalMs / 1000).toString()}s — Ctrl-C to exit)\n`);
+        if (stopped) break;
+        await Promise.race([
+          sleep(intervalMs),
+          stopSignal.then(() => {
+            stopped = true;
+            return;
+          })
+        ]);
       }
     });
 }

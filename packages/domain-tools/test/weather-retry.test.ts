@@ -96,9 +96,11 @@ describe("fetchWithRetry", () => {
       calls += 1;
       if (calls === 1) {
         // Hang: settle ONLY when the per-attempt timeout aborts us.
-        return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason ?? new Error("aborted")), { once: true });
-        });
+        const pending = Promise.withResolvers<Response>();
+        init?.signal?.addEventListener("abort", () => {
+          pending.reject(init.signal!.reason ?? new Error("aborted"));
+        }, { once: true });
+        return pending.promise;
       }
       return Promise.resolve(geocodeOk());
     }) as unknown as typeof globalThis.fetch;
@@ -141,9 +143,11 @@ describe("fetchWithRetry", () => {
   });
 
   it("rethrows the timeout error when every attempt hangs (bounded, never infinite)", async () => {
-    const fetchImpl = ((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(init.signal!.reason ?? new Error("aborted")), { once: true });
-    })) as unknown as typeof globalThis.fetch;
+    const fetchImpl = ((_url: string, init?: RequestInit) => {
+      const pending = Promise.withResolvers<Response>();
+      init?.signal?.addEventListener("abort", () => pending.reject(init.signal!.reason ?? new Error("aborted")), { once: true });
+      return pending.promise;
+    }) as unknown as typeof globalThis.fetch;
     await expect(
       fetchWithRetry(fetchImpl, "https://x.test", { retries: 1, baseDelayMs: 0, sleep: async () => {}, timeoutMs: 5 })
     ).rejects.toThrow(/timed out after 5ms/u);

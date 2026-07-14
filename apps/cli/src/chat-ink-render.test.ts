@@ -1,6 +1,7 @@
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createContextualGroundingLookup } from "./chat-ink-core.js";
 import { MuseChatApp } from "./chat-ink.js";
@@ -47,7 +48,7 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
   } as Parameters<typeof MuseChatApp>[0];
 }
 
-const tick = (ms = 60): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const tick = (ms = 60): Promise<void> => sleep(ms).then(() => undefined);
 
 // Ink renders asynchronously, so a fixed post-Enter wait flakes under load
 // (the command output may not be in the frame yet → false miss). Poll the
@@ -61,7 +62,7 @@ async function waitForFrame(
   const deadline = Date.now() + timeoutMs;
   let frame = lastFrame() ?? "";
   while (Date.now() < deadline && !needles.every((needle) => frame.includes(needle))) {
-    await new Promise((r) => setTimeout(r, 20));
+    await sleep(20);
     frame = lastFrame() ?? "";
   }
   return frame;
@@ -223,13 +224,11 @@ describe("MuseChatApp render — slash command echo + output", () => {
   it("defers a job-completion whose fetch resolves after the user starts a new turn — not inserted mid-generation, and not lost", async () => {
     vi.useFakeTimers();
     try {
-      let resolveJobs: (items: readonly { id: string; text: string }[]) => void = () => undefined;
-      const jobsPromise = new Promise<readonly { id: string; text: string }[]>((res) => { resolveJobs = res; });
-      const jobCompletions = (): Promise<readonly { id: string; text: string }[]> => jobsPromise;
-      let resolveStream: () => void = () => undefined;
-      const streamGate = new Promise<void>((res) => { resolveStream = res; });
+      const jobsDeferred = Promise.withResolvers<readonly { id: string; text: string }[]>();
+      const jobCompletions = (): Promise<readonly { id: string; text: string }[]> => jobsDeferred.promise;
+      const streamGate = Promise.withResolvers<void>();
       async function* slowStream(): AsyncGenerator<{ type: string }> {
-        await streamGate;
+        await streamGate.promise;
         yield { type: "done" };
       }
 
@@ -248,14 +247,14 @@ describe("MuseChatApp render — slash command echo + output", () => {
       await vi.advanceTimersByTimeAsync(10);
 
       // The fetch resolves NOW — after the turn started, so the chat is busy.
-      resolveJobs([{ id: "job:1", text: "✓ Background job done: build" }]);
+      jobsDeferred.resolve([{ id: "job:1", text: "✓ Background job done: build" }]);
       await vi.advanceTimersByTimeAsync(50);
 
       // A completion must NOT be inserted while a turn is in flight.
       expect(lastFrame()).not.toContain("Background job done");
 
       // The turn finishes (busy → false) …
-      resolveStream();
+      streamGate.resolve();
       await vi.advanceTimersByTimeAsync(50);
       expect(lastFrame()).not.toContain("Background job done");
 

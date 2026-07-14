@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { readInbox } from "@muse/messaging";
 import type { InboundFetchOptions, InboundMessage } from "@muse/messaging";
@@ -126,7 +127,7 @@ describe("startChannelPollTick", () => {
         pollUpdates: async () => {
           active += 1;
           maxActive = Math.max(maxActive, active);
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          await sleep(20);
           active -= 1;
           return [];
         }

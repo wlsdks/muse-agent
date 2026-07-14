@@ -410,12 +410,10 @@ describe("muse feeds — blocked public-to-private redirects are nonpersistent a
 describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't hang `muse feeds refresh` forever", () => {
   it("rejects with a 'timed out after Nms' error when the upstream fetch never resolves before the configured timeout", async () => {
     const neverResolves: typeof globalThis.fetch = (_input, init) => {
-      return new Promise<Response>((_resolve, reject) => {
-        const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
-        });
-      });
+      const pending = Promise.withResolvers<Response>();
+      const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
+      signal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+      return pending.promise;
     };
     await expect(
       loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: neverResolves, timeoutMs: 10 })
@@ -426,11 +424,9 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
     let receivedSignal: AbortSignal | undefined;
     const captureSignal: typeof globalThis.fetch = (_input, init) => {
       receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
-      return new Promise<Response>((_resolve, reject) => {
-        receivedSignal?.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
-        });
-      });
+      const pending = Promise.withResolvers<Response>();
+      receivedSignal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+      return pending.promise;
     };
     await expect(
       loadFeedBody("https://93.184.216.34/feed.xml", { fetchImpl: captureSignal, timeoutMs: 5 })

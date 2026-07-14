@@ -1,6 +1,7 @@
 import { SubAgentRunRegistry } from "@muse/multi-agent";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { registerMultiAgentRoutes, resolveStallSweepMs } from "../src/multi-agent-routes.js";
 
@@ -10,7 +11,7 @@ import { registerMultiAgentRoutes, resolveStallSweepMs } from "../src/multi-agen
 // unattended daemon. These tests pin that outcome and the interval's
 // lifecycle (cleared on close, disable-at-0).
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleepMs = (ms: number) => sleep(ms);
 
 describe("resolveStallSweepMs", () => {
   it("defaults to 30s on unset, empty, and non-numeric values", () => {
@@ -46,7 +47,7 @@ describe("background stall sweep (registered via registerMultiAgentRoutes)", () 
     registerMultiAgentRoutes(app, { runRegistry: registry });
     await app.ready();
     try {
-      await sleep(120);
+      await sleepMs(120);
       expect(registry.get("hung-run")?.status).toBe("timed-out");
     } finally {
       await app.close();
@@ -61,7 +62,7 @@ describe("background stall sweep (registered via registerMultiAgentRoutes)", () 
     await app.ready();
     await app.close();
     registry.register({ runId: "post-close-run" });
-    await sleep(120);
+    await sleepMs(120);
     expect(registry.get("post-close-run")?.status).toBe("running");
   });
 
@@ -73,7 +74,7 @@ describe("background stall sweep (registered via registerMultiAgentRoutes)", () 
     registerMultiAgentRoutes(app, { runRegistry: registry });
     await app.ready();
     try {
-      await sleep(120);
+      await sleepMs(120);
       expect(registry.get("unswept-run")?.status).toBe("running");
     } finally {
       await app.close();

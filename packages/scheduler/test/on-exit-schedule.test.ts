@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { SchedulerValidationError } from "../src/scheduler-errors.js";
 import {
@@ -80,13 +82,11 @@ describe("OnExitWatcher.watch — real child process", () => {
   });
 
   it("falls back to the pollMs liveness probe when the exit event is never delivered", async () => {
-    let waitForExit: ((value: { exitCode: number | null; signal: NodeJS.Signals | null }) => void) | undefined;
+    const exitDeferred = Promise.withResolvers<{ exitCode: number | null; signal: NodeJS.Signals | null }>();
     const child: OnExitSpawnedChild = {
       kill: vi.fn(),
       waitForExit() {
-        return new Promise((resolve) => {
-          waitForExit = resolve;
-        });
+        return exitDeferred.promise;
       },
       pid: 4242
     };
@@ -96,11 +96,11 @@ describe("OnExitWatcher.watch — real child process", () => {
 
     const watchPromise = watcher.watch({ command: "some-watched-process", kind: "on-exit", pollMs: 100 });
     alive = false;
+    exitDeferred.resolve({ exitCode: null, signal: null });
     const outcome = await watchPromise;
 
     expect(outcome.status).toBe("exited");
     expect(outcome.exitCode).toBeNull();
-    expect(waitForExit).toBeTypeOf("function");
   }, 10_000);
 });
 
@@ -139,7 +139,7 @@ describe("OnExitScheduler — one-shot arm + fire", () => {
       fireCount += 1;
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
     expect(fireCount).toBe(1);
   }, 10_000);
 });

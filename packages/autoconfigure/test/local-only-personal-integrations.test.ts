@@ -307,15 +307,17 @@ describe.sequential("T2-B1 local-only standard runtime containment", () => {
       expect(actualFs.readFileSync(rootCopyFilePromiseDestination, "utf8")).toBe("root-only-copy");
       expect(() => guardedFs.copyFile(THIS_TEST_SOURCE, rootCopyFileCallbackDestination, () => {})).toThrow(/outside isolated root/u);
       expect(() => guardedFs.copyFile(rootCopySource, workspaceCopyDestination, () => {})).toThrow(/outside isolated root/u);
-      await new Promise<void>((resolveCopy, rejectCopy) => {
+      {
+        const copyDone = Promise.withResolvers<void>();
         guardedFs.copyFile(rootCopySource, rootCopyFileCallbackDestination, (error) => {
           if (error) {
-            rejectCopy(error);
+            copyDone.reject(error);
           } else {
-            resolveCopy();
+            copyDone.resolve();
           }
         });
-      });
+        await copyDone.promise;
+      }
       expect(actualFs.readFileSync(rootCopyFileCallbackDestination, "utf8")).toBe("root-only-copy");
 
       const resolvedPaths = [

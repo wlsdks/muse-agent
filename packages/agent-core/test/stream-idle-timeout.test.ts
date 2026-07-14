@@ -1,10 +1,12 @@
 import { ModelProviderError } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { withStreamIdleTimeout } from "../src/model-loop.js";
 
 async function* prompt(): AsyncIterable<number> { yield 1; yield 2; yield 3; }
-async function* stalls(): AsyncIterable<number> { yield 1; await new Promise((r) => setTimeout(r, 10_000)); yield 2; }
+async function* stalls(): AsyncIterable<number> { yield 1; await sleep(10_000); yield 2; }
 
 describe("withStreamIdleTimeout — a hung stream fails instead of blocking forever", () => {
   it("passes a promptly-emitting stream through unchanged", async () => {
@@ -39,7 +41,7 @@ describe("withStreamIdleTimeout — a hung stream fails instead of blocking fore
 
   it("the timer RESETS per event — a slow-but-progressing stream is never cut", async () => {
     async function* slowProgress(): AsyncIterable<number> {
-      for (const v of [1, 2, 3]) { await new Promise((r) => setTimeout(r, 30)); yield v; } // 30ms gaps < 50ms idle
+      for (const v of [1, 2, 3]) { await sleep(30); yield v; } // 30ms gaps < 50ms idle
     }
     const out: number[] = [];
     for await (const v of withStreamIdleTimeout(slowProgress(), 50, "ollama")) out.push(v);

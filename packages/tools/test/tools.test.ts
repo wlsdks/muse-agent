@@ -785,7 +785,11 @@ describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
     stdin.on("data", (chunk: Buffer) => buffered.push(chunk));
     // The PassThrough was already ended by writeRunnerStdin, so any
     // residual data is already buffered. Flush the read side.
-    await new Promise<void>((resolve) => { stdin.once("end", () => resolve()); });
+    {
+      const end = Promise.withResolvers<void>();
+      stdin.once("end", () => end.resolve());
+      await end.promise;
+    }
     const text = Buffer.concat(buffered).toString("utf8");
     expect(text).toContain(`"command":"noop"`);
   });
@@ -804,7 +808,11 @@ describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
 
     const buffered: Buffer[] = [];
     stdin.on("data", (chunk: Buffer) => buffered.push(chunk));
-    await new Promise<void>((resolve) => { stdin.once("end", () => resolve()); });
+    {
+      const end = Promise.withResolvers<void>();
+      stdin.once("end", () => end.resolve());
+      await end.promise;
+    }
     const text = Buffer.concat(buffered).toString("utf8");
     expect(text).toContain(`"allowNetwork":true`);
   });
@@ -818,7 +826,11 @@ describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
 
     const buffered: Buffer[] = [];
     stdin.on("data", (chunk: Buffer) => buffered.push(chunk));
-    await new Promise<void>((resolve) => { stdin.once("end", () => resolve()); });
+    {
+      const end = Promise.withResolvers<void>();
+      stdin.once("end", () => end.resolve());
+      await end.promise;
+    }
     const text = Buffer.concat(buffered).toString("utf8");
     expect(text).not.toContain("allowNetwork");
   });

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { ActiveRunTracker } from "../src/index.js";
 
 function deferred<T>() {
-  let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => { resolve = r; });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
+}
+
+function neverSettle<T>(): Promise<T> {
+  return Promise.withResolvers<T>().promise;
 }
 
 describe("ActiveRunTracker (CRON-9)", () => {
@@ -27,7 +31,7 @@ describe("ActiveRunTracker (CRON-9)", () => {
     expect(tracker.size).toBe(1);
     d.resolve("x");
     await Promise.allSettled([...([] as Promise<unknown>[])]);
-    await new Promise((r) => setTimeout(r, 0));
+    await sleep(0);
     expect(tracker.size).toBe(0);
   });
 
@@ -39,15 +43,15 @@ describe("ActiveRunTracker (CRON-9)", () => {
     const tracker = new ActiveRunTracker();
     const d = deferred<string>();
     tracker.track(d.promise);
-    const drainP = tracker.drain(10_000, async () => { /* never times out in this test */ await new Promise(() => {}); });
+    const drainP = tracker.drain(10_000, async () => neverSettle());
     d.resolve("ok");
     expect(await drainP).toBe("drained");
   });
 
   it("drain returns 'timeout' when a run never finishes", async () => {
     const tracker = new ActiveRunTracker();
-    tracker.track(new Promise<void>(() => {})); // never settles
-    const outcome = await tracker.drain(5, async (ms) => { await new Promise((r) => setTimeout(r, ms)); });
+    tracker.track(neverSettle<void>()); // never settles
+    const outcome = await tracker.drain(5, async (ms) => { await sleep(ms); });
     expect(outcome).toBe("timeout");
   });
 });

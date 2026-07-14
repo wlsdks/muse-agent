@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { FileCheckpointStore } from "./file-checkpoint-store.js";
 
@@ -122,7 +124,7 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
       const store = new FileCheckpointStore(join(dir, "c"), { maxRuns: 2, pruneIntervalSaves: 1 });
       for (const id of ["r1", "r2", "r3"]) {
         await store.save({ runId: id, state: state("s"), step: 0 });
-        await new Promise((r) => setTimeout(r, 5)); // distinct mtimes
+        await sleep(5); // distinct mtimes
       }
       expect(await store.findByRunId("r1")).toEqual([]); // oldest pruned
       expect(await store.findByRunId("r3")).toHaveLength(1); // newest kept

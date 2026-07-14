@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "../src/digest-lock.js";
 
@@ -93,7 +95,7 @@ describe("withDigestLock", () => {
     const runOnce = () => withDigestLock(sentFile, async () => {
       concurrentRuns += 1;
       maxConcurrent = Math.max(maxConcurrent, concurrentRuns);
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await sleep(30);
       concurrentRuns -= 1;
       return "ran";
     });
@@ -165,13 +167,13 @@ describe("withProcessLock heartbeat", () => {
     let holderRan = false;
     const holderPromise = withProcessLock(lockPath, async () => {
       holderRan = true;
-      await new Promise((resolve) => setTimeout(resolve, staleMs * 4));
+      await sleep(staleMs * 4);
       return "done";
     }, staleMs);
 
     // Midway through the holder's work — already past staleMs from acquisition
     // time, so WITHOUT a heartbeat this probe would see a stale lock and steal it.
-    await new Promise((resolve) => setTimeout(resolve, staleMs * 2));
+    await sleep(staleMs * 2);
     let probeRan = false;
     const probeOutcome = await withProcessLock(lockPath, async () => { probeRan = true; }, staleMs);
     expect(probeOutcome).toEqual({ kind: "lock-held" });
@@ -195,13 +197,13 @@ describe("withProcessLock heartbeat", () => {
     const beatMs = Math.floor(staleMs / 3);
     const holderPromise = withProcessLock(lockPath, async () => {
       // Let at least one heartbeat land with OUR nonce first.
-      await new Promise((resolve) => setTimeout(resolve, beatMs + 30));
+      await sleep(beatMs + 30);
       // Simulate: our lock was stale-broken and re-acquired by another holder.
       await writeFile(lockPath, "foreign-holder-nonce", "utf8");
       const foreignMtimeBefore = (await stat(lockPath)).mtimeMs;
       // Wait past another heartbeat interval — our heartbeat must see the
       // foreign nonce and skip the touch rather than extending it.
-      await new Promise((resolve) => setTimeout(resolve, beatMs + 60));
+      await sleep(beatMs + 60);
       const foreignMtimeAfter = (await stat(lockPath)).mtimeMs;
       expect(foreignMtimeAfter).toBe(foreignMtimeBefore);
       return "done";

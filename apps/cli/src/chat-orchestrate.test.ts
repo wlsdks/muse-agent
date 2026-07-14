@@ -1,5 +1,6 @@
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 import type { BackgroundOrchestrationRecord } from "@muse/multi-agent";
+import { setTimeout as sleep } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 
 import { createChatOrchestration, orchestrationCompletionsFrom, toOrchestrationDoneInput } from "./chat-orchestrate.js";
@@ -8,12 +9,11 @@ import { createChatOrchestration, orchestrationCompletionsFrom, toOrchestrationD
  *  involved, per agent-testing.md ("fake workers with controllable timing"). */
 function fakeProvider(): { provider: ModelProvider; release: () => void; requests: ModelRequest[] } {
   const requests: ModelRequest[] = [];
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = Promise.withResolvers<void>();
   const provider: ModelProvider = {
     generate: async (request: ModelRequest): Promise<ModelResponse> => {
       requests.push(request);
-      await gate;
+      await gate.promise;
       const systemPrompt = request.messages.find((m) => m.role === "system")?.content ?? "";
       return { id: `resp-${requests.length.toString()}`, model: request.model, output: `${systemPrompt.slice(0, 6)}-answer` };
     },
@@ -21,7 +21,7 @@ function fakeProvider(): { provider: ModelProvider; release: () => void; request
     listModels: async () => [],
     stream: (): never => { throw new Error("not used"); }
   } as unknown as ModelProvider;
-  return { provider, release, requests };
+  return { provider, release: gate.resolve, requests };
 }
 
 async function waitForRecord(
@@ -34,7 +34,7 @@ async function waitForRecord(
     const found = chat.listRecords().find((r) => r.orchestrationId === orchestrationId);
     if (found) return found;
     if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${orchestrationId}`);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await sleep(5);
   }
 }
 

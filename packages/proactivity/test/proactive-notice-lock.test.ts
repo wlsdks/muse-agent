@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { readProactiveFired, writeTasks } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { runDueProactiveNotices } from "../src/proactive-notice-loop.js";
 
@@ -77,7 +79,7 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
           concurrentSends += 1;
           maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
           // Slow provider — widens the race window a real double-send bug needs.
-          await new Promise((resolve) => setTimeout(resolve, 40));
+          await sleep(40);
           concurrentSends -= 1;
           sent.push(message);
           return { destination: message.destination, messageId: "m1", providerId: "telegram" };

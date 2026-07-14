@@ -17,7 +17,7 @@ describe("MultiAgentOrchestrator — fan-in synthesis/verify deadline (explicit 
     const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "syn-hang", workerTimeoutMs: 40, workers: twoWorkers() });
     const result = await orchestrator.run(
       { messages: [{ content: "x", role: "user" }], model: "m" },
-      { synthesizeFinalAnswer: () => new Promise<string>(() => undefined) }
+      { synthesizeFinalAnswer: () => Promise.withResolvers<string>().promise }
     );
     // synthesis timed out → fail-soft to the ## Name concatenation; the run did NOT hang.
     expect(result.response.output).toContain("## Generalist");
@@ -30,7 +30,7 @@ describe("MultiAgentOrchestrator — fan-in synthesis/verify deadline (explicit 
       { messages: [{ content: "should we cache?", role: "user" }], model: "m" },
       {
         synthesizeFinalAnswer: async () => "FINAL answer",
-        verifyFinalAnswer: () => new Promise(() => undefined)
+        verifyFinalAnswer: () => Promise.withResolvers<void>().promise
       }
     );
     expect(result.response.output).toBe("FINAL answer");

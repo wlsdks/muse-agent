@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { readConsents, recordConsent, type ScopedConsent } from "../src/personal-consent-store.js";
 
@@ -37,7 +39,7 @@ describe("recordConsent — cross-process file lock", () => {
     // the held lock and has not written yet. Without the lock wrapper this
     // assertion goes RED — the write proceeds immediately regardless of the
     // externally-held lock file.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     expect(resolved).toBe(false);
     expect(await readConsents(file)).toHaveLength(0);
 

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   InMemoryAgentMessageBus,
@@ -16,7 +18,7 @@ function syntheticWorker(id: string, behavior: "ok" | "throw" | "delayed-ok"): R
       throw new Error(`${id} failed deliberately`);
     }
     if (behavior === "delayed-ok") {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await sleep(5);
     }
     return createWorkerResult(id, `${id}-output`, input);
   });
@@ -24,7 +26,7 @@ function syntheticWorker(id: string, behavior: "ok" | "throw" | "delayed-ok"): R
 
 function hangingWorker(id: string): RuleBasedAgentWorker {
   // Never resolves and never throws — models a wedged model call.
-  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => new Promise<AgentRunResult>(() => undefined));
+  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => Promise.withResolvers<AgentRunResult>().promise);
 }
 
 describe("MultiAgentOrchestrator per-worker deadline — explicit termination of a hung worker", () => {

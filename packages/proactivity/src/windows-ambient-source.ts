@@ -10,8 +10,7 @@
  * perception blip can't crash the tick.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile } from "node:child_process/promises";
 
 import type { AmbientSignal, AmbientSignalSource } from "./ambient-notice-loop.js";
 
@@ -48,8 +47,6 @@ export function parseWindowsActiveWindow(stdout: string | undefined): AmbientSig
   const window = (lines[1] ?? "").trim();
   return window.length > 0 ? { app, window } : { app };
 }
-
-const execFileAsync = promisify(execFile);
 
 export interface WindowsActiveWindowSourceOptions {
   /** Injectable PowerShell runner (returns stdout, or undefined on failure). Default spawns `powershell.exe`. */
@@ -112,7 +109,7 @@ export class WindowsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultPowerShellRun(script: string, timeoutMs: number): Promise<string | undefined> {
-  return execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs })
-    .then(([stdout]) => stdout)
+  return execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs, encoding: "utf8" })
+    .then(({ stdout }) => stdout)
     .catch(() => undefined);
 }

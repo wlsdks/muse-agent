@@ -88,9 +88,9 @@ describe("fetchWithTimeout — a stalled Bot API connection can't hang the polli
     let receivedSignal: AbortSignal | undefined;
     const neverResolves: typeof globalThis.fetch = (_input, init) => {
       receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
-      return new Promise<Response>((_resolve, reject) => {
-        receivedSignal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      });
+      const pending = Promise.withResolvers<Response>();
+      receivedSignal?.addEventListener("abort", () => pending.reject(new DOMException("aborted", "AbortError")), { once: true });
+      return pending.promise;
     };
     await expect(
       fetchWithTimeout(neverResolves, "https://api.telegram.org/botX/getUpdates", { method: "GET" }, 10)

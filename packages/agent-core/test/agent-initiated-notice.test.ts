@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   InMemoryAgentInitiatedNoticeBroker,
@@ -96,8 +98,8 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     // notices, the oldest pending notice is evicted.
     const broker = new InMemoryAgentInitiatedNoticeBroker({ maxQueuedPerSubscriber: 2 });
     const delivered: string[] = [];
-    let release: () => void = () => undefined;
-    const blockedPromise = new Promise<void>((resolve) => { release = resolve; });
+    const blocked = Promise.withResolvers<void>();
+    const blockedPromise = blocked.promise;
     broker.subscribe("stark", async (n) => {
       delivered.push(n.text);
       // First delivery enters this await and pins the drain loop;
@@ -111,7 +113,7 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     broker.publish("stark", notice("third"));
     broker.publish("stark", notice("fourth")); // exceeds cap of 2, evicts "second"
     expect(broker.droppedCount()).toBe(1);
-    release();
+    blocked.resolve();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -125,11 +127,10 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     // drain from delivering the rest to a consumer that's gone.
     const broker = new InMemoryAgentInitiatedNoticeBroker();
     const delivered: string[] = [];
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = Promise.withResolvers<void>();
     const unsubscribe = broker.subscribe("stark", async (n) => {
       delivered.push(n.text);
-      if (n.text === "first") await gate;
+      if (n.text === "first") await gate.promise;
     });
     broker.publish("stark", notice("first"));
     await Promise.resolve();
@@ -137,7 +138,7 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     broker.publish("stark", notice("second"));
     broker.publish("stark", notice("third"));
     unsubscribe(); // consumer goes away mid-drain
-    release();
+    gate.resolve();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -149,7 +150,7 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     const order: string[] = [];
     broker.subscribe("stark", async (n) => {
       order.push(`start-${n.text}`);
-      await new Promise((r) => setTimeout(r, 5));
+      await sleep(5);
       order.push(`end-${n.text}`);
     });
     broker.publish("stark", notice("a"));

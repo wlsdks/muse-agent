@@ -12,6 +12,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, mkdir, readdir, readFile, stat, writeFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -242,23 +243,28 @@ export async function buildMuseExport(args: {
     if (passphrase) {
       await reserveCleartextTemp(tarPath);
     }
-    await new Promise<void>((resolveSpawn, reject) => {
-      const child = spawnImpl("tar", tarArgs, { stdio: ["ignore", "ignore", "pipe"] });
-      const errChunks: Buffer[] = [];
-      // Decode ONCE from the fully concatenated bytes on close — never
-      // per-chunk — so a multi-byte UTF-8 character in a tar error message
-      // (e.g. a non-ASCII path) split across two `data` events decodes
-      // correctly instead of U+FFFD on both halves.
-      child.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
-      child.on("error", reject);
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolveSpawn();
-        } else {
-          reject(new Error(`tar exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`));
+    const tar = spawnImpl("tar", tarArgs, { stdio: ["ignore", "ignore", "pipe"] });
+    const errChunks: Buffer[] = [];
+    // Decode ONCE from the fully concatenated bytes on close — never
+    // per-chunk — so a multi-byte UTF-8 character in a tar error message
+    // (e.g. a non-ASCII path) split across two `data` events decodes
+    // correctly instead of U+FFFD on both halves.
+    tar.stderr.on("data", (chunk: Buffer) => { errChunks.push(chunk); });
+
+    const onError = once(tar, "error");
+    const onClose = once(tar, "close");
+
+    await Promise.race([
+      onError.then(([cause]) => {
+        throw cause as Error;
+      }),
+      onClose.then(([code]) => {
+        if (code === 0 || code === null) {
+          return;
         }
-      });
-    });
+        throw new Error(`tar exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
+      })
+    ]);
 
     if (passphrase) {
       // Read cleartext tarball, encrypt to the final path, then

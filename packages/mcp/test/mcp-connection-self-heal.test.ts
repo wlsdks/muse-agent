@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   DefaultMcpTransportConnector,
@@ -80,7 +82,7 @@ describe("DS-16 — MCP connection self-heal", () => {
 
         const deadline = Date.now() + 4_000;
         while (connection.connected !== false && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
+          await sleep(50);
         }
 
         expect(connection.connected).toBe(false);

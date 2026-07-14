@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 import { DefaultCircuitBreaker, type FallbackStrategy, type RetryOptions } from "@muse/resilience";
 import { ModelProviderError, USAGE_RECORDED_BY_RUNTIME_FLAG, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer, InMemoryTokenUsageSink } from "@muse/observability";
@@ -141,7 +142,10 @@ describe("invokeModel", () => {
   it("times out long provider calls when requestTimeoutMs is set", async () => {
     await expect(invokeModel({
       metrics: new InMemoryAgentMetrics(),
-      provider: provider(() => new Promise((resolve) => setTimeout(() => resolve({ id: "slow", model: "m", output: "" }), 100))),
+      provider: provider(async () => {
+        await sleep(100);
+        return { id: "slow", model: "m", output: "" };
+      }),
       request: baseRequest(),
       requestTimeoutMs: 10,
       runId: "run-mi-5",

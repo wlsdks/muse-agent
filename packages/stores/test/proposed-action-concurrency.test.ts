@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   patchProposedActionStatus,
@@ -52,7 +54,7 @@ describe("proposed-action store under concurrency — draft-first proposals must
 
     // Without the lock wrapper this assertion goes RED — the write proceeds
     // immediately regardless of the externally-held lock file.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     expect(resolved).toBe(false);
     expect(await readProposedActions(file)).toHaveLength(0);
 

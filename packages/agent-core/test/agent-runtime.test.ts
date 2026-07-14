@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
@@ -1579,7 +1581,7 @@ describe("AgentRuntime", () => {
       generate: async (req: ModelRequest) => {
         const isFirst = req.tools !== undefined && req.tools.length > 0;
         if (isFirst) {
-          await new Promise((r) => setTimeout(r, 20));
+          await sleep(20);
           return {
             id: "tool",
             model: "test-model",
@@ -1612,7 +1614,7 @@ describe("AgentRuntime", () => {
 
   it("maxRunWallclockMs blocks the rest of a multi-call batch once the deadline passes mid-turn", async () => {
     const executeTool = vi.fn(async () => {
-      await new Promise((r) => setTimeout(r, 60));
+      await sleep(60);
       return "slow-result";
     });
     const toolRegistry = new ToolRegistry([

@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,12 +85,23 @@ async function startMockAuthServer(): Promise<MockAuthServer> {
     res.writeHead(404).end();
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
   const port = (server.address() as AddressInfo).port;
   origin = `http://127.0.0.1:${port.toString()}`;
 
   return {
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () => {
+      const closed = Promise.withResolvers<void>();
+      server.close((error) => {
+        if (error) {
+          closed.reject(error);
+        } else {
+          closed.resolve();
+        }
+      });
+      return closed.promise;
+    },
     origin,
     registrations,
     tokenRequests

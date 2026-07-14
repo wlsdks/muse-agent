@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -273,7 +274,7 @@ describe("pruneRunLogDir — bound the unbounded run-log (retention)", () => {
     try {
       for (const id of ["a", "b", "c", "d"]) {
         writeFileSync(join(dir, `${id}.jsonl`), "{}\n");
-        await new Promise((r) => setTimeout(r, 5)); // distinct mtimes (a oldest … d newest)
+        await sleep(5); // distinct mtimes (a oldest … d newest)
       }
       writeFileSync(join(dir, "notes.txt"), "x"); // non-jsonl is ignored
       const pruned = await pruneRunLogDir(dir, 2);

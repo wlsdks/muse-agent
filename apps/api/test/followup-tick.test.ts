@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { ProactiveModelProviderLike } from "@muse/proactivity";
@@ -121,7 +122,7 @@ describe("startFollowupTick", () => {
       modelProvider: {
         generate: async () => {
           modelCalls += 1;
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await sleep(10);
           return { output: "Following up." };
         }
       },

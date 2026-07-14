@@ -67,7 +67,7 @@ describe("hook orchestration", () => {
   });
 
   it("does NOT hang the loop on a hook that never resolves — times out, records 'failed', continues", async () => {
-    const hanging = (): Promise<void> => new Promise<void>(() => { /* never settles */ });
+    const hanging = (): Promise<void> => Promise.withResolvers<void>().promise;
     const surviving = vi.fn();
     const hookTraceStore = new InMemoryHookTraceStore();
 

@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { readCheckins, writeCheckins, runDueCheckins, type CheckinSendRegistry, type PersistedCheckin } from "../src/commitment-checkin.js";
 
@@ -65,7 +67,7 @@ describe("runDueCheckins — cross-process firing lock (two daemons, same checki
         concurrentSends += 1;
         maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
         // Slow provider — widens the race window a real double-send bug needs.
-        await new Promise((resolve) => setTimeout(resolve, 40));
+        await sleep(40);
         concurrentSends -= 1;
         sent.push({ destination: message.destination, text: message.text });
         return { ok: true };

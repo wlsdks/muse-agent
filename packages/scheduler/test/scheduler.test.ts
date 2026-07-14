@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { InMemoryMcpServerStore, McpManager, type McpConnection } from "@muse/mcp";
 import {
   DynamicScheduler,
@@ -328,9 +330,13 @@ describe("ScheduledJobDispatcher", () => {
   });
 
   it("reports timeout failures with job context", async () => {
+    const waitForRelease = Promise.withResolvers<string>();
     const dispatcher = new ScheduledJobDispatcher({
       agentExecutor: {
-        execute: () => new Promise((resolve) => setTimeout(() => resolve("late"), 20))
+        execute: async () => {
+          await sleep(20);
+          return "late";
+        }
       },
       defaultExecutionTimeoutMs: 1,
       mcpInvoker: createUnusedMcpInvoker()
@@ -751,7 +757,7 @@ describe("DynamicScheduler pause kill-switch (CRON)", () => {
     const h = fireableScheduler(async () => true);
     const saved = await h.service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
     h.fire();
-    await new Promise((r) => setTimeout(r, 0));
+    await sleep(0);
     expect(h.executed).toEqual([]);
     expect(h.store.findById(saved.id)?.lastStatus).toBe("skipped");
   });
@@ -760,7 +766,7 @@ describe("DynamicScheduler pause kill-switch (CRON)", () => {
     const h = fireableScheduler(async () => false);
     await h.service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
     h.fire();
-    await new Promise((r) => setTimeout(r, 0));
+    await sleep(0);
     expect(h.executed).toEqual(["ran"]);
   });
 
@@ -773,7 +779,7 @@ describe("DynamicScheduler pause kill-switch (CRON)", () => {
 });
 
 describe("DynamicScheduler re-entrancy guard (CRON-3)", () => {
-  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const tick = () => sleep(0);
 
   function gatedScheduler() {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
@@ -787,7 +793,13 @@ describe("DynamicScheduler re-entrancy guard (CRON-3)", () => {
     const service = new DynamicScheduler({
       cronScheduler,
       dispatcher: new ScheduledJobDispatcher({
-        agentExecutor: { execute: async () => { runs += 1; await new Promise<void>((r) => { release = r; }); return "done"; } },
+        agentExecutor: { execute: async () => {
+          runs += 1;
+          const { promise, resolve } = Promise.withResolvers<void>();
+          release = resolve;
+          await promise;
+          return "done";
+        } },
         mcpInvoker: createUnusedMcpInvoker()
       }),
       executionStore: executions,

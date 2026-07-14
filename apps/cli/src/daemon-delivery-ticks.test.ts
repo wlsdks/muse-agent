@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { setSchedulerPaused } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
@@ -231,22 +232,20 @@ describe("makeSchedulerTick", () => {
     // Deterministic gate: resolves the instant the tick marks job-1
     // "running" — the exact point the overlap guard has taken effect —
     // instead of racing a wall-clock setTimeout against real fs I/O.
-    let markRunningSeen: () => void = () => undefined;
-    const markedRunning = new Promise<void>((resolve) => { markRunningSeen = resolve; });
+    const markedRunning = Promise.withResolvers<void>();
     class GatedStore extends FakeStore {
       override updateExecutionResult(id: string, status: JobExecutionStatus, result?: string | null): void {
         super.updateExecutionResult(id, status, result);
-        if (status === "running") markRunningSeen();
+        if (status === "running") markedRunning.resolve();
       }
     }
     const store = new GatedStore([job({ createdAt: created })]);
     const messaging = fakeMessaging();
     let runJobCalls = 0;
-    let resolveRunJob: (outcome: SchedulerJobOutcome) => void = () => undefined;
-    const pending = new Promise<SchedulerJobOutcome>((resolve) => { resolveRunJob = resolve; });
+    const pending = Promise.withResolvers<SchedulerJobOutcome>();
     const runJob = async (): Promise<SchedulerJobOutcome> => {
       runJobCalls += 1;
-      return pending;
+      return pending.promise;
     };
     const tick = makeSchedulerTick({
       destination: "@me", env: {}, messagingRegistry: messaging as never,
@@ -268,8 +267,8 @@ describe("makeSchedulerTick", () => {
     // real I/O) can run its `finally` cleanup and clear the guard via
     // microtasks alone before the second tick's own async pause-file read
     // (real fs I/O, a macrotask) ever gets a chance to check it.
-    await Promise.race([secondTick, new Promise((resolve) => setTimeout(resolve, 100))]);
-    resolveRunJob({ status: "success", text: "done" });
+    await Promise.race([secondTick, sleep(100)]);
+    pending.resolve({ status: "success", text: "done" });
     await Promise.all([firstTick, secondTick]);
 
     expect(runJobCalls).toBe(1);

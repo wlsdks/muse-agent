@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -27,7 +28,7 @@ const skillsRootWith = (skill?: { name: string; description: string }): { env: M
   return { env: { MUSE_AUTHORED_SKILLS_DIR: authoredDir, MUSE_SKILLS_DIR: userDir } as unknown as MuseEnvironment, userDir };
 };
 
-const flushMicrotasks = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
+const flushMicrotasks = (): Promise<void> => sleep(0);
 
 describe("createSkillRuntime", () => {
   it("exposes the three muse.skills.* tools when enabled (default)", () => {

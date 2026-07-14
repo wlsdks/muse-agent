@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 import type { Mock } from "vitest";
 
 import { atomicWriteFile, withFileMutationQueue } from "../src/atomic-file-store.js";
@@ -129,7 +131,7 @@ describe("withFileMutationQueue", () => {
     // each op reads, yields (exposing the race a naive impl would lose), then writes back +1
     const increment = () => withFileMutationQueue(file, async () => {
       const cur = await readNum();
-      await new Promise((resolve) => setTimeout(resolve, 0)); // force interleaving
+      await sleep(0); // force interleaving
       await atomicWriteFile(file, String(cur + 1));
     });
     await Promise.all(Array.from({ length: 25 }, increment));
@@ -138,7 +140,7 @@ describe("withFileMutationQueue", () => {
 
   it("runs different files in parallel (the queue is keyed by path)", async () => {
     const order: string[] = [];
-    const slow = withFileMutationQueue(join(dir, "f1"), async () => { await new Promise((r) => setTimeout(r, 20)); order.push("slow"); });
+    const slow = withFileMutationQueue(join(dir, "f1"), async () => { await sleep(20); order.push("slow"); });
     const fast = withFileMutationQueue(join(dir, "f2"), async () => { order.push("fast"); });
     await Promise.all([slow, fast]);
     expect(order).toEqual(["fast", "slow"]); // f2 didn't wait behind f1

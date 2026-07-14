@@ -21,6 +21,35 @@ export async function waitForChildProcessClose(child: ChildProcess): Promise<voi
   await once(child, "close");
 }
 
+export async function waitForChildProcessResult(
+  child: ChildProcess,
+  context: string,
+  stderrChunks?: readonly Buffer[]
+): Promise<void> {
+  const result = await Promise.race([
+    once(child, "error").then(([cause]) => ({ kind: "error" as const, error: cause as Error })),
+    once(child, "close").then(([code, signal]) => ({ kind: "close" as const, code: code ?? 0, signal: signal ?? null }))
+  ]);
+
+  if (result.kind === "error") {
+    throw result.error;
+  }
+
+  if (result.code === 0) {
+    return;
+  }
+
+  const stderrMessage = stderrChunks?.length
+    ? `: ${Buffer.concat([...stderrChunks]).toString("utf8").trim()}`
+    : "";
+
+  if (result.signal === null) {
+    throw new Error(`${context} exited with code ${result.code.toString()}${stderrMessage}`);
+  }
+
+  throw new Error(`${context} terminated by ${result.signal} after code ${result.code.toString()}${stderrMessage}`);
+}
+
 export async function readRequestBody(
   req: IncomingMessage,
   maxBytes = 64 * 1024

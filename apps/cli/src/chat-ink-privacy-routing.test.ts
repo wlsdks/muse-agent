@@ -1,6 +1,7 @@
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 
@@ -201,7 +202,7 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
   } as Parameters<typeof MuseChatApp>[0];
 }
 
-const tick = (ms = 60): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const tick = (ms = 60): Promise<void> => sleep(ms);
 
 async function waitForFrame(
   lastFrame: () => string | undefined,
@@ -211,7 +212,7 @@ async function waitForFrame(
   const deadline = Date.now() + timeoutMs;
   let frame = lastFrame() ?? "";
   while (Date.now() < deadline && !needles.every((needle) => frame.includes(needle))) {
-    await new Promise((r) => setTimeout(r, 20));
+    await sleep(20);
     frame = lastFrame() ?? "";
   }
   return frame;

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { readPatternsFired } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { runDuePatternNotices } from "../src/pattern-firing-loop.js";
 
@@ -79,7 +81,7 @@ describe("runDuePatternNotices — cross-process firing lock (two daemons, same 
           concurrentSends += 1;
           maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
           // Slow provider — widens the race window a real double-send bug needs.
-          await new Promise((resolve) => setTimeout(resolve, 40));
+          await sleep(40);
           concurrentSends -= 1;
           sent.push(message);
           return { destination: message.destination, messageId: "m1", providerId: "telegram" };

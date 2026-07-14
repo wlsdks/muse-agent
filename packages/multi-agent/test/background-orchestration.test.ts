@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import {
   InMemoryBackgroundOrchestrationStore,
@@ -18,11 +20,11 @@ const taskInput: AgentRunInput = { messages: [{ content: "research the topic", r
  *  race case). */
 function controllableWorker(id: string): { worker: RuleBasedAgentWorker; release: () => void; calls: AgentRunInput[] } {
   const calls: AgentRunInput[] = [];
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = Promise.withResolvers<void>();
+  const release = gate.resolve;
   const worker = new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], async (input: AgentRunInput): Promise<AgentRunResult> => {
     calls.push(input);
-    await gate;
+    await gate.promise;
     return createWorkerResult(id, `${id}-output`, input);
   });
   return { calls, release, worker };
@@ -41,7 +43,7 @@ function throwingWorker(id: string): RuleBasedAgentWorker {
 }
 
 function hangingWorker(id: string): RuleBasedAgentWorker {
-  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => new Promise<AgentRunResult>(() => undefined));
+  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => Promise.withResolvers<AgentRunResult>().promise);
 }
 
 async function waitForRecord(
@@ -54,7 +56,7 @@ async function waitForRecord(
     const record = store.get(orchestrationId);
     if (record) return record;
     if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${orchestrationId}`);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await sleep(5);
   }
 }
 
@@ -86,7 +88,7 @@ describe("MultiAgentOrchestrator.runBackground", () => {
     orchestrator.runBackground(taskInput, { mode: "parallel" }, store);
 
     a.release();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
     expect(store.get("bg-2")).toBeUndefined(); // beta hasn't settled yet
 
     b.release();
@@ -117,7 +119,7 @@ describe("MultiAgentOrchestrator.runBackground", () => {
 
     await waitForRecord(store, "bg-race");
     // give any stray double-fire a chance to land before asserting
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
 
     expect(store.list().filter((r) => r.orchestrationId === "bg-race")).toHaveLength(1);
     expect(completeSpy).toHaveBeenCalledTimes(1);

@@ -143,12 +143,10 @@ describe("performConsentedAction — P5-b3 act-as-the-user under recorded consen
       // Pre-fix the test hangs until vitest's test-level cap; post-fix
       // the 50ms wall-clock aborts the fetch and the outcome surfaces.
       fetchImpl: (async (_url: string, init?: RequestInit) => {
-        return new Promise<Response>((_, reject) => {
-          const signal = init?.signal as AbortSignal | undefined;
-          if (signal) {
-            signal.addEventListener("abort", () => reject(new Error("aborted by signal")));
-          }
-        });
+        const pending = Promise.withResolvers<Response>();
+        const signal = init?.signal as AbortSignal | undefined;
+        signal?.addEventListener("abort", () => pending.reject(new Error("aborted by signal")), { once: true });
+        return pending.promise;
       }) as unknown as typeof fetch,
       objectiveId: "obj_ship",
       request: { url: "https://api.github.test/repos/x/y/issues" },

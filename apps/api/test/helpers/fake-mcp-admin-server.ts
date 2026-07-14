@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { promisify } from "node:util";
+import { once } from "node:events";
 
 export interface FakeMcpAdminServer {
   readonly close: () => Promise<void>;
@@ -129,8 +129,18 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
     response.end();
   });
 
-  const listen = promisify(server.listen.bind(server)) as (port: number, hostname: string) => Promise<void>;
-  await listen(0, "127.0.0.1");
+  const listenWithFallback = async (): Promise<void> => {
+    server.listen(0, "127.0.0.1");
+    await Promise.race([
+      once(server, "listening").then(() => undefined),
+      once(server, "error").then((values) => {
+        const cause = values[0];
+        throw cause instanceof Error ? cause : new Error(String(cause));
+      })
+    ]);
+    return undefined;
+  };
+  await listenWithFallback();
   const address = server.address();
 
   if (!address || typeof address === "string") {
@@ -139,8 +149,17 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
 
   return {
     close: () => {
-      const close = promisify(server.close.bind(server)) as () => Promise<void>;
-      return close();
+      const closeWithFallback = async (): Promise<void> => {
+        await Promise.race([
+          once(server, "close").then(() => undefined),
+          once(server, "error").then((values) => {
+            const cause = values[0];
+            throw cause instanceof Error ? cause : new Error(String(cause));
+          })
+        ]);
+      };
+      server.close();
+      return closeWithFallback();
     },
     url: `http://127.0.0.1:${address.port}`
   };

@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setImmediate } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -236,10 +237,10 @@ describe("createGmailTokenSource", () => {
     const io = makeIo();
     await writeGmailCredential(io, baseCredential);
     let fetchCalls = 0;
-    let resolveFetch: (value: Response) => void = () => undefined;
+    const fetchDeferred = Promise.withResolvers<Response>();
     const fetchImpl = (async () => {
       fetchCalls += 1;
-      return new Promise<Response>((resolve) => { resolveFetch = resolve; });
+      return fetchDeferred.promise;
     }) as unknown as typeof globalThis.fetch;
     const getAccessToken = createGmailTokenSource({ env: {}, fetchImpl, io });
 
@@ -248,10 +249,10 @@ describe("createGmailTokenSource", () => {
     // Both callers still have an async credential-store read ahead of the
     // fetch call — wait for the in-flight refresh to actually reach it.
     while (fetchCalls === 0) {
-      await new Promise((resolve) => setImmediate(resolve));
+      await setImmediate();
     }
     expect(fetchCalls).toBe(1); // the second call joined the in-flight promise, not a fresh fetch
-    resolveFetch(new Response(JSON.stringify({ access_token: "shared-at", expires_in: 3600 }), { status: 200 }));
+    fetchDeferred.resolve(new Response(JSON.stringify({ access_token: "shared-at", expires_in: 3600 }), { status: 200 }));
     await expect(first).resolves.toBe("shared-at");
     await expect(second).resolves.toBe("shared-at");
     expect(fetchCalls).toBe(1);

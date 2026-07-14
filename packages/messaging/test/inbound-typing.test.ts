@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { respondToInbound } from "../src/inbound-responder.js";
 import { MessagingProviderRegistry } from "../src/registry.js";
@@ -93,7 +95,7 @@ describe("respondToInbound typing keepalive", () => {
       registry: new MessagingProviderRegistry([provider]),
       runner: {
         run: async () => {
-          await new Promise((resolve) => setTimeout(resolve, 80));
+          await sleep(80);
           return "slow answer";
         }
       },
@@ -121,7 +123,7 @@ describe("respondToInbound typing keepalive", () => {
       typingIntervalMs: 10
     });
     const after = typingCount;
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     expect(typingCount).toBe(after);
   });
 });

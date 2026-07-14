@@ -10,10 +10,12 @@
  */
 
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 import { platform } from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
 import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
@@ -144,58 +146,43 @@ async function runPlayerWithWatchdog(
   args: readonly string[],
   spawnFn: typeof spawn = spawn
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawnFn(player, [...args], { stdio: ["ignore", "ignore", "pipe"] });
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Drain stderr: the pipe must be consumed or a chatty player
-    // can wedge once its OS buffer fills, AND the captured text is
-    // the only clue WHY playback failed ("No such device") — without
-    // it the user sees a bare exit code. Bounded so a pathological
-    // player can't grow this without limit. Chunks are decoded ONCE
-    // from the concatenated bytes below — never per-chunk — so a
-    // multi-byte UTF-8 character split across two `data` events
-    // decodes correctly instead of U+FFFD on both halves.
-    const stderrChunks: Buffer[] = [];
-    let stderrBytes = 0;
-    if (child.stderr) {
-      child.stderr.on("data", (chunk: Buffer) => {
-        if (stderrBytes < STDERR_CAP_BYTES) {
-          stderrChunks.push(chunk);
-          stderrBytes += chunk.length;
-        }
-      });
-    }
-    // Without this watchdog a wedged player — a busy CoreAudio /
-    // ALSA device, a stuck process — hangs the calling command
-    // (`muse today --speak`, etc.) forever with no recovery.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => reject(new Error(
-        `${player} timed out after ${AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`
-      )));
-    }, AUDIO_PLAYER_TIMEOUT_MS);
-    child.once("error", (error) => { finish(() => reject(error)); });
-    child.once("close", (code) => {
-      finish(() => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        const decoded = Buffer.concat(stderrChunks).toString("utf8");
-        const capped = decoded.length > STDERR_CAP_CHARS ? decoded.slice(0, STDERR_CAP_CHARS) : decoded;
-        const detail = truncateErrorBody(stripUntrustedTerminalChars(capped).trim(), 240);
-        reject(new Error(
-          `${player} exited with code ${code ?? "unknown"}${detail ? `: ${detail}` : ""}`
-        ));
-      });
+  const child = spawnFn(player, [...args], { stdio: ["ignore", "ignore", "pipe"] });
+  // Drain stderr: the pipe must be consumed or a chatty player can wedge once its
+  // OS buffer fills, AND the captured text is the only clue when playback fails.
+  // Decoding happens once from the full chunks to avoid UTF-8 split corruption.
+  const stderrChunks: Buffer[] = [];
+  let stderrBytes = 0;
+  if (child.stderr) {
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes < STDERR_CAP_BYTES) {
+        stderrChunks.push(chunk);
+        stderrBytes += chunk.length;
+      }
     });
+  }
+  let settled = false;
+  const completion = Promise.race([
+    once(child, "error").then(([error]) => {
+      throw error instanceof Error ? error : new Error(String(error));
+    }),
+    once(child, "close").then(([code]) => {
+      if (code === 0) return;
+      const decoded = Buffer.concat(stderrChunks).toString("utf8");
+      const capped = decoded.length > STDERR_CAP_CHARS ? decoded.slice(0, STDERR_CAP_CHARS) : decoded;
+      const detail = truncateErrorBody(stripUntrustedTerminalChars(capped).trim(), 240);
+      throw new Error(
+        `${player} exited with code ${code ?? "unknown"}${detail ? `: ${detail}` : ""}`
+      );
+    })
+  ]).finally(() => {
+    settled = true;
   });
+  const watchdog = sleep(AUDIO_PLAYER_TIMEOUT_MS).then(() => {
+    if (settled) return;
+    child.kill("SIGKILL");
+    throw new Error(`${player} timed out after ${AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`);
+  });
+  await Promise.race([completion, watchdog]);
 }
 
 function defaultSpeakerShells(): SpeakerShells {

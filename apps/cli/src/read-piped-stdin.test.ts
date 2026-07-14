@@ -1,4 +1,5 @@
 import { PassThrough } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +27,7 @@ describe("readPipedStdin — never blocks on a non-EOF stdin", () => {
     const s = new PassThrough() as FakeStdin;
     const p = readPipedStdin({ firstByteTimeoutMs: 30, stream: s });
     s.write("chunk-1 "); // first byte well within the window
-    await new Promise((r) => setTimeout(r, 60)); // ... then more arrives LATER
+    await sleep(60); // ... then more arrives LATER
     s.write("chunk-2");
     s.end();
     expect(await p).toBe("chunk-1 chunk-2");

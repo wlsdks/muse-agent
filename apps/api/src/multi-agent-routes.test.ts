@@ -3,6 +3,7 @@ import { DEFAULT_AGENT_SPECS, InMemoryAgentSpecRegistry } from "@muse/agent-spec
 import { SubAgentRunRegistry } from "@muse/multi-agent";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { registerMultiAgentRoutes, resolveWorkerTimeoutMs } from "./multi-agent-routes.js";
 
@@ -98,7 +99,7 @@ describe("multi-agent /runs — live registry through the HTTP route (A7)", () =
     server = await buildServer({
       registry,
       workerTimeoutMs: 40,
-      runtime: fakeRuntime(() => new Promise<AgentRunResult>(() => undefined))
+      runtime: fakeRuntime(() => Promise.withResolvers<AgentRunResult>().promise)
     });
 
     await server.inject({
@@ -117,12 +118,11 @@ describe("multi-agent /runs — live registry through the HTTP route (A7)", () =
 describe("multi-agent /orchestrate background=true — non-blocking dispatch", () => {
   it("returns 202 with orchestrationId + subtaskCount immediately, without waiting for workers", async () => {
     const registry = new SubAgentRunRegistry();
-    let releaseWorkers!: () => void;
-    const gate = new Promise<void>((resolve) => { releaseWorkers = resolve; });
+    const gate = Promise.withResolvers<void>();
     server = await buildServer({
       registry,
       runtime: fakeRuntime(async (_name, input) => {
-        await gate;
+        await gate.promise;
         return okRun(input);
       })
     });
@@ -145,7 +145,7 @@ describe("multi-agent /orchestrate background=true — non-blocking dispatch", (
     };
     expect(runsBeforeRelease.activeCount).toBeGreaterThan(0);
 
-    releaseWorkers();
+    gate.resolve();
     // Poll history until the consolidated entry lands (same store the blocking path uses).
     let entry: { runId: string; status: string } | undefined;
     for (let i = 0; i < 40 && !entry; i++) {
@@ -153,7 +153,7 @@ describe("multi-agent /orchestrate background=true — non-blocking dispatch", (
         entries: { runId: string; status: string }[];
       };
       entry = list.entries.find((e) => e.runId === body.orchestrationId);
-      if (!entry) await new Promise((resolve) => setTimeout(resolve, 10));
+      if (!entry) await sleep(10);
     }
     expect(entry?.status).toBe("completed");
   });

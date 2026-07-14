@@ -110,11 +110,13 @@ describe("requestCouncilReasoning — per-peer timeout (MAST termination guard)"
     // instead of `init.signal!` is what makes the un-wired case hang rather
     // than throw a synchronous TypeError that would falsely turn it green.)
     const hangingFetch = ((_url: string, init: RequestInit) =>
-      new Promise<Response>((_, reject) => {
+      (() => {
+        const pending = Promise.withResolvers<Response>();
         if (init.signal) {
-          init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+          init.signal.addEventListener("abort", () => pending.reject(new Error("aborted")), { once: true });
         }
-      })) as unknown as typeof fetch;
+        return pending.promise;
+      })()) as unknown as typeof fetch;
 
     const out = await requestCouncilReasoning({
       env: ENV,

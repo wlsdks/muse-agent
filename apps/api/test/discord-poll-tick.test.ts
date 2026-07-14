@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { DiscordProvider, InboundFetchOptions, InboundMessage } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
@@ -129,7 +130,7 @@ describe("startDiscordPollTick", () => {
       pollUpdates: async () => {
         inflight += 1;
         peak = Math.max(peak, inflight);
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await sleep(5);
         calls += 1;
         inflight -= 1;
         return [];

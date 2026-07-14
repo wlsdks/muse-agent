@@ -48,10 +48,11 @@ describe("modelCallSignal", () => {
 });
 
 function hangingFetch(): typeof fetch {
-  return ((_url: unknown, init?: RequestInit) =>
-    new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new Error("aborted")));
-    })) as unknown as typeof fetch;
+  return ((_url: unknown, init?: RequestInit) => {
+    const { promise, reject } = Promise.withResolvers<Response>();
+    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new Error("aborted")));
+    return promise;
+  }) as unknown as typeof fetch;
 }
 
 describe("adapter threading (OpenAICompatibleProvider — the Ollama-compat path)", () => {
@@ -122,9 +123,11 @@ describe("OllamaProvider native path", () => {
     const { OllamaProvider } = await import("../src/index.js");
     const controller = new AbortController();
     const fetchImpl = ((_url: unknown, init?: RequestInit) =>
-      new Promise((_resolve, reject) => {
+      {
+        const { promise, reject } = Promise.withResolvers<Response>();
         init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new Error("aborted")));
-      })) as unknown as typeof fetch;
+        return promise;
+      }) as unknown as typeof fetch;
     const provider = new OllamaProvider({ defaultModel: "gemma4:12b", fetch: fetchImpl });
     const pending = provider.generate({ messages: [{ content: "hi", role: "user" }], model: "gemma4:12b", signal: controller.signal });
     const assertion = expect(pending).rejects.toSatisfy((error: unknown) => {

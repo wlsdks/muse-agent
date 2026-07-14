@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { CHAT_REPLY_PASS_SENTINEL, createComposeChatReply, sanitizeChatReplyText } from "../src/inbound-chat-reply.js";
 
@@ -96,9 +97,10 @@ describe("createComposeChatReply", () => {
       model: "gemma4:12b",
       modelProvider: {
         generate: () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve({ id: "1", model: "gemma4:12b", output: "too slow" }), 50);
-          })
+          (async () => {
+            await sleep(50);
+            return { id: "1", model: "gemma4:12b", output: "too slow" };
+          })()
       },
       timeoutMs: 5
     });

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { readReminders } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { runDueReminders } from "../src/reminder-firing-loop.js";
 
@@ -66,7 +68,7 @@ describe("runDueReminders — cross-process firing lock (two daemons, same remin
           concurrentSends += 1;
           maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
           // Slow provider — widens the race window a real double-send bug needs.
-          await new Promise((resolve) => setTimeout(resolve, 40));
+          await sleep(40);
           concurrentSends -= 1;
           sent.push(message);
           return { destination: message.destination, messageId: "m1", providerId: "telegram" };

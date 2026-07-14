@@ -10,6 +10,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { once } from "node:events";
 
 import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
@@ -22,7 +23,7 @@ import type { Command } from "commander";
 import { councilCorpusMatches, defaultEmbedModel, isCouncilGroundedMode } from "./council-corpus.js";
 import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
-import { readRequestBody } from "./async-promises.js";
+import { readRequestBody, waitForShutdownSignal } from "./async-promises.js";
 
 /**
  * Read an inbound A2A request body with a hard size cap so an unbounded
@@ -386,16 +387,20 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
             res.end("payload too large");
           });
       });
-      await new Promise<void>((resolve) => {
-        server.listen(port, options.host, () => {
-          io.stdout(
-            `muse swarm: inbound A2A on http://${options.host}:${port.toString()}  (Agent Card: ${AGENT_CARD_PATH})\n` +
-            `  allowlisted peers: ${config.peers.map((p) => p.id).join(", ") || "(none — add them to ~/.muse/a2a-peers.json)"}\n` +
-            `  inbound is inert: know-how is quarantined for review, never executed. Ctrl-C to stop.\n`
-          );
-        });
-        process.once("SIGINT", () => { server.close(); resolve(); });
+      server.listen(port, options.host, () => {
+        io.stdout(
+          `muse swarm: inbound A2A on http://${options.host}:${port.toString()}  (Agent Card: ${AGENT_CARD_PATH})\n` +
+          `  allowlisted peers: ${config.peers.map((p) => p.id).join(", ") || "(none — add them to ~/.muse/a2a-peers.json)"}\n` +
+          `  inbound is inert: know-how is quarantined for review, never executed. Ctrl-C to stop.\n`
+        );
       });
+      await Promise.race([
+        once(server, "close").then(() => undefined),
+        waitForShutdownSignal(["SIGINT", "SIGTERM"]).then(() => {
+          server.close();
+          return undefined;
+        })
+      ]);
     });
 
   swarm

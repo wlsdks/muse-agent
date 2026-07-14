@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { queryActionLog } from "@muse/stores";
 import { isProposalActionable, proposeMessageAction, readProposedActions } from "@muse/stores";
@@ -131,7 +133,7 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
       describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
       id: "telegram",
       async send(message: OutboundMessage): Promise<OutboundReceipt> {
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await sleep(5);
         sent.push(message);
         return { destination: message.destination, messageId: "m1", providerId: "telegram" };
       }

@@ -11,6 +11,7 @@
 
 import { Box, Static, Text, useApp, useCursor, useInput, useStdout } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { EventEmitter, once } from "node:events";
 
 import { FRAMES, toAnsi } from "@muse/mascot";
 import { trimConversationMessages, type ConversationTrimOptions, type DroppedContextSummarizer } from "@muse/memory";
@@ -90,6 +91,7 @@ function formatTokens(n: number): string {
 // only the tint drops. This is the deterministic structure the wall-of-text
 // answer was missing.
 const LEFT_BAR = { borderBottom: false, borderColor: "gray", borderLeft: true, borderRight: false, borderStyle: "round", borderTop: false, flexDirection: "column", paddingLeft: 1 } as const;
+type PendingApproval = { readonly id: number; readonly name: string; readonly detail: string; readonly kind: "outbound" | "tool" };
 
 /** Render one line's inline spans (bold / italic / inline-code / link) as
  *  nested `<Text>`; a link renders as `text` + a dim ` (url)`. */
@@ -319,15 +321,24 @@ export function MuseChatApp(props: {
   // as `ctx NN%` in the HUD (distinct from the cumulative session token count).
   const [lastContextTokens, setLastContextTokens] = useState(0);
   const [spinTick, setSpinTick] = useState(0);
-  const [pendingApproval, setPendingApproval] = useState<{ readonly name: string; readonly detail: string; readonly kind: "outbound" | "tool"; readonly resolve: (ok: boolean) => void } | undefined>(undefined);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | undefined>(undefined);
   const inputHistoryRef = useRef<string[]>([...(props.inputHistorySeed ?? [])]);
+  const approvalBusRef = useRef(new EventEmitter());
+  const approvalRequestIdRef = useRef(0);
 
   // Tool-action approval: the gate (in streamWithTools) calls this for any
   // write/execute tool, which surfaces a y/n prompt and resolves when the user
   // answers. The detail line shows the exact arguments so the user confirms the
   // content, not just the tool name (outbound-safety.md rule 1).
-  const requestApproval = useCallback((name: string, detail: string, kind: "outbound" | "tool"): Promise<boolean> =>
-    new Promise<boolean>((resolve) => setPendingApproval({ detail, kind, name, resolve })), []);
+  const requestApproval = useCallback(async (name: string, detail: string, kind: "outbound" | "tool"): Promise<boolean> => {
+    const id = approvalRequestIdRef.current + 1;
+    approvalRequestIdRef.current = id;
+    setPendingApproval({ id, detail, kind, name });
+    while (true) {
+      const [decisionId, approved] = await once(approvalBusRef.current, "approvalDecision") as [number, boolean];
+      if (decisionId === id) return approved === true;
+    }
+  }, []);
 
   // Animate a spinner while a reply is in flight (until the first token).
   useEffect(() => {
@@ -803,7 +814,7 @@ export function MuseChatApp(props: {
     // (n / Esc / Enter) denies. Fail-closed — only an explicit y sends.
     if (pendingApproval) {
       const approved = rawInput === "y" || rawInput === "Y";
-      pendingApproval.resolve(approved);
+      approvalBusRef.current.emit("approvalDecision", pendingApproval.id, approved);
       setPendingApproval(undefined);
       return;
     }

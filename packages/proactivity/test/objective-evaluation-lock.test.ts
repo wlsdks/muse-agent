@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
+
 
 import { runDueObjectives, type ObjectiveEvaluation } from "../src/objective-evaluation-loop.js";
 
@@ -51,7 +53,7 @@ describe("runDueObjectives — cross-process firing lock (two daemons, same obje
       concurrentActs += 1;
       maxConcurrentActs = Math.max(maxConcurrentActs, concurrentActs);
       // Slow actuator — widens the race window a real double-fire bug needs.
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await sleep(40);
       concurrentActs -= 1;
       totalActed += 1;
     };
