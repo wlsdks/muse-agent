@@ -40,6 +40,7 @@ import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type Per
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
+import { neverResolve } from "./async-promises.js";
 import { ensureNoteMarkdownExtension, extractDocumentText, isLikelyBinary, saveDocumentToNotes } from "./commands-read.js";
 import type { ProgramIO } from "./program.js";
 
@@ -386,6 +387,6 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       process.on("SIGTERM", stop);
 
       // Block the event loop so the watcher keeps running.
-      await new Promise(() => { /* never resolves */ });
+      await neverResolve();
     });
 }

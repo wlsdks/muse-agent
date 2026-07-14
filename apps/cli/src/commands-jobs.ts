@@ -34,6 +34,7 @@ import { closestCommandName } from "./closest-command.js";
 import { resolveJobIdByPrefix } from "./job-id-prefix.js";
 import { jobConcurrencyRefusal, resolveJobsMaxConcurrent } from "./job-concurrency.js";
 import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
+import { neverResolve } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -476,7 +477,7 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
       };
       const interval = setInterval(() => { void tick(); }, 500);
       process.on("SIGINT", () => { clearInterval(interval); process.exit(0); });
-      await new Promise(() => { /* hold */ });
+      await neverResolve();
     });
 
   job
@@ -510,4 +511,3 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
     });
 
   }
-

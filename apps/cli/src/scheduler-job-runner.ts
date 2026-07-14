@@ -10,6 +10,7 @@
 
 import { countRunningJobs, jobsDir, readJobSummary, startBackgroundJob, type JobRunOptions } from "./commands-jobs.js";
 import { jobConcurrencyRefusal, resolveJobsMaxConcurrent } from "./job-concurrency.js";
+import { sleep } from "./async-promises.js";
 
 export type SchedulerJobOutcome =
   | { readonly status: "success"; readonly text: string }
@@ -31,7 +32,7 @@ export interface SchedulerJobRunnerDeps {
   readonly now?: () => number;
 }
 
-const defaultSleep = (ms: number): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const defaultSleep = sleep;
 
 /**
  * Spawns the detached worker for `prompt`, then polls its JSONL log until it

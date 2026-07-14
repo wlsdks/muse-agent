@@ -34,6 +34,7 @@ import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type Per
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
+import { neverResolve } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
 interface ServeOptions {
@@ -248,6 +249,6 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
 
-      await new Promise(() => { /* hold the loop */ });
+      await neverResolve();
     });
 }
