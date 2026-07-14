@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { McpServerInput, McpServerStore, McpTransportType } from "@muse/mcp";
 
 import { ConfigurationError, type MuseEnvironment } from "./index.js";
@@ -75,18 +75,18 @@ export function parseExternalMcpConfig(raw: string, source = "<inline>"): readon
       `Invalid JSON in MCP config (${source}): ${cause instanceof Error ? cause.message : String(cause)}`
     );
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new ConfigurationError(`MCP config (${source}) must be a JSON object`);
   }
-  const root = parsed as Record<string, unknown>;
+  const root = parsed;
   const servers = root.mcpServers;
   if (servers === undefined || servers === null) {
     return [];
   }
-  if (typeof servers !== "object" || Array.isArray(servers)) {
+  if (!isRecord(servers)) {
     throw new ConfigurationError(`MCP config (${source}).mcpServers must be a JSON object`);
   }
-  const entries = Object.entries(servers as Record<string, unknown>);
+  const entries = Object.entries(servers);
   const out: McpServerInput[] = [];
   for (const [name, value] of entries) {
     const trimmedName = name.trim();
@@ -102,10 +102,10 @@ export function parseExternalMcpConfig(raw: string, source = "<inline>"): readon
 }
 
 function parseEntry(name: string, value: unknown, source: string): McpServerInput | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new ConfigurationError(`MCP config (${source}).mcpServers.${name} must be an object`);
   }
-  const entry = value as Record<string, unknown>;
+  const entry = value;
   if (entry.disabled === true) {
     return undefined;
   }
@@ -180,21 +180,21 @@ function parseStringArray(value: unknown, label: string, source: string): string
   if (value === undefined) {
     return undefined;
   }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+  if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
     throw new ConfigurationError(`MCP config (${source}).${label} must be a string array`);
   }
-  return [...(value as readonly string[])];
+  return [...value];
 }
 
 function parseStringMap(value: unknown, label: string, source: string): Record<string, string> | undefined {
   if (value === undefined) {
     return undefined;
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new ConfigurationError(`MCP config (${source}).${label} must be a string-to-string object`);
   }
   const out: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(value)) {
     if (typeof raw !== "string") {
       throw new ConfigurationError(`MCP config (${source}).${label}.${key} must be a string`);
     }
@@ -245,25 +245,25 @@ export function diagnoseExternalMcpConfig(
       `Invalid JSON in MCP config (${source}): ${cause instanceof Error ? cause.message : String(cause)}`
     );
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new ConfigurationError(`MCP config (${source}) must be a JSON object`);
   }
-  const root = parsed as Record<string, unknown>;
+  const root = parsed;
   const servers = root.mcpServers;
   if (servers === undefined || servers === null) {
     return [];
   }
-  if (typeof servers !== "object" || Array.isArray(servers)) {
+  if (!isRecord(servers)) {
     throw new ConfigurationError(`MCP config (${source}).mcpServers must be a JSON object`);
   }
   const out: ExternalMcpEntryDiagnosis[] = [];
-  for (const [rawName, value] of Object.entries(servers as Record<string, unknown>)) {
+  for (const [rawName, value] of Object.entries(servers)) {
     const trimmedName = rawName.trim();
     if (trimmedName.length === 0) {
       out.push({ findings: ["server name must be a non-empty string"], name: rawName, status: "error" });
       continue;
     }
-    if (value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).disabled === true) {
+    if (isRecord(value) && value.disabled === true) {
       out.push({ findings: ["disabled: true — entry will not be loaded at boot"], name: trimmedName, status: "skipped" });
       continue;
     }
@@ -309,7 +309,7 @@ export function diagnoseExternalMcpConfigFile(
 function validateEntry(entry: McpServerInput): readonly string[] {
   const findings: string[] = [];
   if (entry.transportType === "streamable" || entry.transportType === "sse") {
-    const url = (entry.config as { url?: unknown } | undefined)?.url;
+    const url = entry.config?.url;
     if (typeof url === "string") {
       try {
         const parsedUrl = new URL(url);
@@ -354,11 +354,19 @@ function tryReadFile(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+    if (errnoCodeFrom(cause) === "ENOENT") {
       return undefined;
     }
     throw new ConfigurationError(
       `Failed to read MCP config at ${path}: ${cause instanceof Error ? cause.message : String(cause)}`
     );
   }
+}
+
+function errnoCodeFrom(value: unknown): string | undefined {
+  if (!(value instanceof Error)) {
+    return undefined;
+  }
+  const code = Reflect.get(value, "code");
+  return typeof code === "string" ? code : undefined;
 }

@@ -8,7 +8,7 @@
  * no service call. Opt-in via the host base URL + long-lived token.
  */
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState } from "./smart-home.js";
@@ -58,9 +58,7 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
         return { performed: false, reason: `service must be '<domain>.<service>' (e.g. light.turn_off), got '${service}'` };
       }
       const entityId = typeof args["entity"] === "string" ? args["entity"].trim() : undefined;
-      const data = args["data"] && typeof args["data"] === "object" && !Array.isArray(args["data"])
-        ? args["data"] as Record<string, unknown>
-        : undefined;
+      const data = toRecord(args["data"]);
       // A service call with NO resolved target is Home Assistant's "apply to
       // EVERY entity in the domain" path: a model emitting `light.turn_off` with
       // no entity would turn off the whole house, `lock.unlock` would unlock
@@ -73,9 +71,7 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
       // bypass this fail-close and blast every device.
       const isConcreteTarget = (value: unknown): boolean =>
         (typeof value === "string" && value.trim().length > 0) || (Array.isArray(value) && value.length > 0);
-      const nested = data && typeof data["target"] === "object" && data["target"] !== null && !Array.isArray(data["target"])
-        ? data["target"] as Record<string, unknown>
-        : undefined;
+      const nested = toRecord(data?.target);
       const dataHasTarget = data !== undefined
         && (isConcreteTarget(data["entity_id"]) || isConcreteTarget(data["area_id"]) || isConcreteTarget(data["device_id"])
           || (nested !== undefined && (isConcreteTarget(nested["entity_id"]) || isConcreteTarget(nested["area_id"]) || isConcreteTarget(nested["device_id"]))));
@@ -148,7 +144,7 @@ export function createHomeStateTool(deps: HomeStateToolDeps): MuseTool {
       if (state === undefined) {
         return { entity: entityId, found: false, reason: "no state returned (unknown entity or Home Assistant unreachable)" };
       }
-      return { attributes: state.attributes as JsonObject, entity: state.entityId, found: true, state: state.state };
+      return { attributes: toJsonObject(state.attributes), entity: state.entityId, found: true, state: state.state };
     }
   };
 }
@@ -187,8 +183,39 @@ export function createHomeEntitiesTool(deps: HomeStateToolDeps): MuseTool {
         : all;
       return {
         count: entities.length,
-        entities: entities.map((e) => ({ entity: e.entityId, state: e.state })) as JsonObject[]
+        entities: entities.map((entity) => toJsonObject({ entity: entity.entityId, state: entity.state }))
       };
     }
   };
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  const source = toRecord(value);
+  if (source === undefined) {
+    return {};
+  }
+  const out: JsonObject = {};
+  for (const [key, raw] of Object.entries(source)) {
+    const sanitized = toJsonValue(raw);
+    if (sanitized !== undefined) {
+      out[key] = sanitized;
+    }
+  }
+  return out;
+}
+
+function toJsonValue(value: unknown): JsonValue | undefined {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toJsonValue(item))
+      .filter((item): item is JsonValue => item !== undefined);
+  }
+  return toRecord(value) !== undefined ? toJsonObject(value) : undefined;
 }
