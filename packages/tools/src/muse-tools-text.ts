@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import { readOptionalNumber } from "./muse-tools-helpers.js";
@@ -29,7 +29,7 @@ export function createTextStatsTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      const text = typeof args["text"] === "string" ? args["text"] : "";
       if (text.trim().length === 0) {
         return { characters: 0, lines: 0, words: 0 } satisfies JsonObject;
       }
@@ -67,7 +67,7 @@ export function createSlugifyTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      const text = typeof args["text"] === "string" ? args["text"] : "";
       const cap = readOptionalNumber(args, "maxLength");
       const maxLength = Number.isInteger(cap) && cap > 0 ? cap : undefined;
       return { slug: slugify(text, maxLength) } satisfies JsonObject;
@@ -101,7 +101,7 @@ export function createKvSummarizeTool(): MuseTool {
       }
       const lines: string[] = [];
       let truncated = 0;
-      flattenIntoKv(data as JsonValue, "", (line) => {
+      flattenIntoKv(toSummaryValue(data), "", (line) => {
         if (lines.length >= KV_SUMMARIZE_MAX_LINES) {
           truncated += 1;
           return;
@@ -147,14 +147,14 @@ export function createMarkdownTableTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const rawRows = Array.isArray(args["rows"]) ? (args["rows"] as readonly unknown[]) : [];
+      const rawRows = Array.isArray(args["rows"]) ? args["rows"] : [];
       const explicitColumns = Array.isArray(args["columns"])
-        ? (args["columns"] as readonly unknown[]).filter((entry): entry is string => typeof entry === "string")
+        ? args["columns"].filter((entry): entry is string => typeof entry === "string")
         : undefined;
       const rows: Array<Record<string, unknown>> = [];
       for (const entry of rawRows) {
-        if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
-          rows.push(entry as Record<string, unknown>);
+        if (isRecord(entry)) {
+          rows.push(entry);
         }
       }
       const columns = explicitColumns && explicitColumns.length > 0
@@ -233,21 +233,38 @@ function flattenIntoKv(value: JsonValue, prefix: string, emit: (line: string) =>
       return;
     }
     for (let index = 0; index < value.length; index += 1) {
-      const child = value[index] ?? null;
+      const child = value[index];
       const nextPrefix = prefix.length > 0 ? `${prefix}.${index}` : String(index);
-      flattenIntoKv(child as JsonValue, nextPrefix, emit, depth + 1);
+      flattenIntoKv(toSummaryValue(child), nextPrefix, emit, depth + 1);
     }
     return;
   }
-  const entries = Object.entries(value as Record<string, JsonValue | null>);
+  if (!isRecord(value)) {
+    emit(`${prefix || "value"}: ${JSON.stringify(value) ?? ""}`);
+    return;
+  }
+  const entries = Object.entries(value);
   if (entries.length === 0) {
     emit(`${prefix || "value"}: {}`);
     return;
   }
   for (const [key, child] of entries) {
     const nextPrefix = prefix.length > 0 ? `${prefix}.${key}` : key;
-    flattenIntoKv((child ?? null) as JsonValue, nextPrefix, emit, depth + 1);
+    flattenIntoKv(toSummaryValue(child), nextPrefix, emit, depth + 1);
   }
+}
+
+function toSummaryValue(value: unknown): JsonValue {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value) || isRecord(value)) {
+    return value;
+  }
+  return null;
 }
 
 function deriveMarkdownTableColumns(rows: readonly Record<string, unknown>[]): string[] {
