@@ -490,7 +490,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         try {
           const { resolveNoteProvenanceFile } = await import("@muse/autoconfigure");
           const { recordIngestedNote } = await import("./note-provenance.js");
-          await recordIngestedNote(resolveNoteProvenanceFile(process.env as Parameters<typeof resolveNoteProvenanceFile>[0]), {
+          await recordIngestedNote(resolveNoteProvenanceFile(process.env), {
             ingestedAt: new Date().toISOString(),
             path: notePath,
             sourceUrl: url

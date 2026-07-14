@@ -17,7 +17,7 @@ import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
  * conflict cue runs live — the same recall embed model the chat retrieval uses.
  */
 export function defaultChatConflictEmbedder(
-  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>
+  env: Record<string, string | undefined> = process.env
 ): (text: string) => Promise<readonly number[]> {
   const embedModel = env.MUSE_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
   return (text: string) => embed(text, embedModel);

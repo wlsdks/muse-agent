@@ -74,7 +74,7 @@ export async function approvePendingApproval(opts: {
 }
 
 function pendingFile(): string {
-  return resolvePendingApprovalsFile(process.env as Record<string, string | undefined>);
+  return resolvePendingApprovalsFile(process.env);
 }
 
 function formatPending(entry: PendingApproval): string {
@@ -112,7 +112,7 @@ export function registerApprovalsCommands(program: Command, io: ProgramIO): void
     .argument("<id>", "Pending approval id (from `muse approvals list`)")
     .action(async (id: string, _options, command: Command) => {
       const result = await approvePendingApproval({
-        env: process.env as Record<string, string | undefined>,
+        env: process.env,
         id,
         io,
         pendingFile: pendingFile()

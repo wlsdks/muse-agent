@@ -276,7 +276,7 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
         // at `scheduledFor` exactly like a reminder, so a "what's next"
         // that omits them hides self-queued promises ("I'll check in
         // 30 min"). Read locally; fail-soft to none.
-        readFollowups(resolveFollowupsFile(process.env as Record<string, string | undefined>))
+        readFollowups(resolveFollowupsFile(process.env))
           .catch(() => [])
       ]);
       const merged: PreviewEntry[] = [];

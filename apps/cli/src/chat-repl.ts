@@ -635,7 +635,7 @@ export async function runLocalChat(
  */
 async function autoCompleteReportedTask(message: string): Promise<string | null> {
   const { readTasks, writeTasks } = await import("@muse/stores");
-  const file = resolveTasksFile(process.env as Record<string, string | undefined>);
+  const file = resolveTasksFile(process.env);
   const tasks = await readTasks(file);
   const openTasks = tasks.filter((task) => task.status === "open");
   const index = matchCompletedTask(message, openTasks.map((task) => task.title));

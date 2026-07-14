@@ -316,7 +316,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
   // self-learning daemon defers instead of contending for it. Best-effort
   // (fail-soft): if the lease write fails we still answer, and process
   // exit frees it (the daemon ignores a dead-pid lease).
-  const leaseFile = resolveOllamaLeaseFile(process.env as Record<string, string | undefined>);
+  const leaseFile = resolveOllamaLeaseFile(process.env);
   const acquireLease = async (): Promise<void> => {
     try {
       await acquireOllamaLease(leaseFile, process.pid, Date.now());

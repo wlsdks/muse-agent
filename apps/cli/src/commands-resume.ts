@@ -38,7 +38,7 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
     .description("Resume a crashed/interrupted run from its last checkpoint (fault-tolerant execution)")
     .argument("[run-id]", "The run to resume; omit to LIST resumable (interrupted) runs")
     .action(async (runId: string | undefined) => {
-      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
+      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env));
       if (!runId) {
         io.stdout(`${formatResumableRuns(await store.listResumable())}\n`);
         return;

@@ -106,7 +106,7 @@ export async function computeRuleAdmission(
 ): Promise<ComputedRuleAdmission> {
   const { queryPlaybook } = await import("@muse/stores");
   const { resolvePlaybookFile } = await import("@muse/autoconfigure");
-  const entries = await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userKey);
+  const entries = await queryPlaybook(resolvePlaybookFile(process.env), userKey);
   const topK = playbookPrefetchTopK(process.env);
   const rankedStrategies = opts.embed
     ? await rankPlaybookStrategiesByRelevance(entries, query, opts.embed, topK === undefined ? undefined : { topK }, opts.now ?? Date.now())

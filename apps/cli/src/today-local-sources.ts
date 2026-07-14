@@ -25,7 +25,7 @@ const MAX_RECENT_NOTES = 5;
 const MAX_NOTES_WALK_DEPTH = 8;
 
 export async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefing> {
-  const env = process.env as Record<string, string | undefined>;
+  const env = process.env;
   const tasksFile = resolveTasksFile(env);
   const notesDir = resolveNotesDir(env);
   const calendarFile = resolveLocalCalendarFile(env);

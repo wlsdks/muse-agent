@@ -270,7 +270,7 @@ export async function retrieveChatGrounding(
 ): Promise<ChatGrounding> {
   const trimmed = message.trim();
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
-  const env = opts.env ?? (process.env as Record<string, string | undefined>);
+  const env = opts.env ?? (process.env);
   if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
   const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`

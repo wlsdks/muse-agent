@@ -458,7 +458,7 @@ export function registerRecapCommand(program: Command, io: ProgramIO): void {
     .description("Evening recap — what you got done today + what's coming up (the retrospective sibling of `muse brief`)")
     .option("--json", "Emit the structured recap as JSON instead of the digest")
     .action(async (options: { readonly json?: boolean }) => {
-      const input = await gatherEveningRecap(process.env as Record<string, string | undefined>, new Date());
+      const input = await gatherEveningRecap(process.env, new Date());
       if (options.json === true) {
         io.stdout(`${JSON.stringify({ comingUp: input.comingUp, goneQuiet: input.goneQuiet, openFollowups: input.openFollowups, performedToday: input.performedToday, sessionsToday: input.sessionsToday, slipping: input.slipping })}\n`);
         return;

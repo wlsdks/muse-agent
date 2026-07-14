@@ -327,7 +327,7 @@ export function registerLearnedCommand(program: Command, io: ProgramIO): void {
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
     .action(async (options: { readonly user?: string }) => {
       const userId = resolveDefaultUserKey({ override: options.user });
-      const env = process.env as Record<string, string | undefined>;
+      const env = process.env;
       const [strategies, authored, skillRewards, reflections, paused, memoryRecord, vetoes, patterns] = await Promise.all([
         queryPlaybook(resolvePlaybookFile(env), userId).catch(() => []),
         new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []),

@@ -189,7 +189,7 @@ export function registerTraceCommand(program: Command, io: ProgramIO): void {
         io.stderr(`Trace for '${runId}' is empty or unreadable.\n`);
         return;
       }
-      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
+      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env));
       const checkpoints = await store.findByRunId(runId);
       io.stdout(`${formatRunDetail(detail, checkpoints.map((c) => ({ phase: typeof (c.state as { phase?: unknown }).phase === "string" ? (c.state as { phase: string }).phase : "?", step: c.step })))}\n`);
     });

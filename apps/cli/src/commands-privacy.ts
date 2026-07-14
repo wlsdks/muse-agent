@@ -152,7 +152,7 @@ export function registerPrivacyCommand(program: Command, io: ProgramIO): void {
     .description("Inventory your confided data at rest — which personal stores are encrypted vs plaintext, and whether the key is strong (read-only)")
     .option("--json", "Emit the posture as JSON")
     .action(async (options: { readonly json?: boolean }) => {
-      const posture = await collectPrivacyPosture(process.env as Env);
+      const posture = await collectPrivacyPosture(process.env);
       if (options.json) {
         io.stdout(`${JSON.stringify(posture, null, 2)}\n`);
         return;

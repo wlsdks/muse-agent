@@ -281,7 +281,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Vision surface may run a dedicated model (MUSE_VISION_MODEL, else the
       // measured local vision default when the chat model IS the local default).
       // Fail-soft to `model` when the optional vision model isn't pulled.
-      const visionModel = await resolveSessionVisionModel(model, process.env as MuseEnvironment);
+      const visionModel = await resolveSessionVisionModel(model, process.env);
       if (visionModel !== model) {
         io.stderr(`(vision: ${visionModel})\n`);
       }
@@ -320,7 +320,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // note against the user's own is rendered trust-aware (prefer your own),
       // not a neutral "either could be current" (GROUNDED≠TRUE ask-path parity).
       const untrustedNoteSources = untrustedNotePaths(
-        await readNoteProvenance(resolveNoteProvenanceFile(process.env as MuseEnvironment))
+        await readNoteProvenance(resolveNoteProvenanceFile(process.env))
       );
       // `muse ask --with-tools` builds its own context block + system prompt
       // inline; the plain chat-only path composes the SAME work through
@@ -550,7 +550,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 answerModel: model,
                 embedModel,
                 scope: options.scope?.trim(),
-                temperature: resolveAnswerTemperature(process.env as MuseEnvironment),
+                temperature: resolveAnswerTemperature(process.env),
                 topK
               },
               query,

@@ -15,7 +15,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, relative, sep } from "node:path";
 
-import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
 import { LocalDirNotesProvider } from "@muse/domain-tools";
 import { composeSurfacePrompt } from "@muse/prompts";
 import { redactSecretsInText } from "@muse/shared";
@@ -25,6 +25,10 @@ import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import { extractDocumentText, walkDocuments, type PdfParsed } from "./document-reader.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
+
+function environment(): MuseEnvironment {
+  return process.env;
+}
 
 interface ReadOptions {
   readonly ask?: string;
@@ -181,7 +185,7 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
-        const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+        const notesDir = resolveNotesDir(environment());
         io.stdout(`muse read — ingesting documents from ${filePath} into ${notesDir} (prefix '${prefix}')\n`);
         const summary = await ingestDirectoryToNotes(filePath, notesDir, prefix, (line) => io.stderr(`  ${line}\n`));
         io.stdout(`(ingested ${summary.ingested.toString()} document(s), skipped ${summary.skipped.toString()} of ${summary.total.toString()} — now searchable via \`muse ask\`)\n`);
@@ -213,7 +217,7 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
         if (text.length === 0) {
           io.stderr("muse read: no text extracted — nothing to save to notes.\n");
         } else {
-          const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+          const notesDir = resolveNotesDir(environment());
           const saveId = ensureNoteMarkdownExtension(options.saveToNotes.trim());
           try {
             await saveDocumentToNotes(notesDir, saveId, filePath, text, parsed.pageCount);

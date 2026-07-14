@@ -124,7 +124,7 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
       const destination = options.destination ?? "@me";
       const asTask = options.asTask === true;
 
-      const registry = buildMessagingRegistry(process.env as Record<string, string | undefined>);
+      const registry = buildMessagingRegistry(process.env);
       if (!registry.has(provider)) {
         const known = registry.list().map((p) => p.id);
         const suggestion = closestCommandName(provider, known);
@@ -133,8 +133,8 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const historyFile = resolveProactiveHistoryFile(process.env as Record<string, string | undefined>);
-      const tasksFile = asTask ? resolveTasksFile(process.env as Record<string, string | undefined>) : undefined;
+      const historyFile = resolveProactiveHistoryFile(process.env);
+      const tasksFile = asTask ? resolveTasksFile(process.env) : undefined;
 
       io.stdout(`muse webhook serve — http://${host}:${port.toString()}\n`);
       io.stdout(`  provider=${provider}, destination=${destination}${asTask ? ", as-task ON" : ""}\n`);

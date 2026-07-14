@@ -255,7 +255,7 @@ describe("searchRecall — a URL-ingested note is tagged trusted:false end-to-en
     setEnv("MUSE_NOTES_DIR", notesDir);
     setEnv("MUSE_RECALL_TEST_QUERY_EMBEDDING", "1,0");
 
-    const hits = await searchRecall({ query: "acme", source: "notes", limit: 5, embedModel: "test-model", env: process.env as Record<string, string | undefined> });
+    const hits = await searchRecall({ query: "acme", source: "notes", limit: 5, embedModel: "test-model", env: process.env });
     expect(hits.find((h) => h.ref === evilAbs)?.trusted).toBe(false);
     expect(hits.find((h) => h.ref === mineAbs)?.trusted).toBeUndefined();
   });

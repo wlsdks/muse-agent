@@ -106,9 +106,9 @@ export function createIndexedProactiveInvestigator(
     // Fail-open: a provenance read error → no tagging (all trusted), never blocks the nudge.
     let isUntrusted: ((file: string) => boolean) | undefined;
     try {
-      const untrusted = untrustedNotePaths(await readNoteProvenance(resolveNoteProvenanceFile(process.env as Parameters<typeof resolveNoteProvenanceFile>[0])));
+      const untrusted = untrustedNotePaths(await readNoteProvenance(resolveNoteProvenanceFile(process.env)));
       if (untrusted.size > 0) {
-        const notesDir = resolveNotesDir(process.env as Parameters<typeof resolveNotesDir>[0]);
+        const notesDir = resolveNotesDir(process.env);
         isUntrusted = (file: string): boolean => untrusted.has(relativizeNoteSource(file, notesDir));
       }
     } catch { /* provenance is best-effort — never block the proactive nudge */ }

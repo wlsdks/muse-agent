@@ -299,7 +299,7 @@ Examples:
     .description("Sleep consolidation: promotes salient recalled memories, down-ranks fading ones in recall (never deletes)")
     .option("--json", "Print the raw plan")
     .action(async (options: { readonly json?: boolean }) => {
-      const env = process.env as Record<string, string | undefined>;
+      const env = process.env;
       const file = resolveRecallHitsFile(env);
       const records = await readRecallHits(file);
       const nowMs = Date.now();

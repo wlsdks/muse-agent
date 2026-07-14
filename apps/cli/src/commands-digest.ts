@@ -22,11 +22,11 @@ interface SharedOptions {
 }
 
 function localDigestQueueFile(): string {
-  return resolveDigestQueueFile(process.env as Record<string, string | undefined>);
+  return resolveDigestQueueFile(process.env);
 }
 
 function localDigestSentFile(): string {
-  return resolveDigestSentFile(process.env as Record<string, string | undefined>);
+  return resolveDigestSentFile(process.env);
 }
 
 function resolveDigestHour(env: NodeJS.ProcessEnv): number {

@@ -29,7 +29,7 @@ export interface NotesIndex {
 }
 
 export function notesIndexPath(): string {
-  return resolveNotesIndexFile(process.env as Record<string, string | undefined>);
+  return resolveNotesIndexFile(process.env);
 }
 
 function defaultUserKey(user: string | undefined, persona: string | undefined): string {
@@ -78,7 +78,7 @@ export async function prepareAskContext(
   // Auto-stale check + incremental reindex (default on). JARVIS
   // shouldn't make the user remember to run reindex; if a note
   // file is newer than the index, just refresh before search.
-  const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+  const notesDir = resolveNotesDir(process.env);
   // Preserve the model the index was built with: a stale
   // refresh must NOT silently re-embed a custom-model index
   // with the default just because --embed-model was omitted.
@@ -177,7 +177,7 @@ export async function prepareAskContext(
   // source was given (the only case the hint could fire) — so a notes-having
   // or source-supplying user pays no extra reads.
   const hasOtherPersonalData = !hasAdHocGrounding && noteFileCount === 0
-    ? await userHasOtherPersonalData(userKey, process.env as Record<string, string | undefined>)
+    ? await userHasOtherPersonalData(userKey, process.env)
     : false;
   const onboardingHint = corpusOnboardingHint(noteFileCount, hasOtherPersonalData || hasAdHocGrounding);
   if (onboardingHint) {

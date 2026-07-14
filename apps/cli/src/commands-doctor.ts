@@ -926,7 +926,7 @@ export function formatDevFixableWeaknesses(list: readonly DevFixableWeakness[]):
 }
 
 async function runWeaknessesDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
-  const file = resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+  const file = resolveWeaknessesFile(process.env);
   const entries = await readWeaknesses(file);
   const devFixable = selectDevFixableWeaknesses(entries, { nowMs: Date.now() });
   if (asJson) {

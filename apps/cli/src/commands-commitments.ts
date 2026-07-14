@@ -8,12 +8,16 @@
 import { randomUUID } from "node:crypto";
 
 import { detectUserCommitments, type UserCommitment } from "@muse/agent-core";
-import { resolveTasksFile } from "@muse/autoconfigure";
+import { resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { readLastChatHistory } from "./chat-history.js";
 import type { ProgramIO } from "./program.js";
+
+function environment(): MuseEnvironment {
+  return process.env;
+}
 
 export function clampScanLimit(raw: string | undefined, fallback: number, cap: number): number {
   if (raw === undefined || raw.trim().length === 0) return fallback;
@@ -98,7 +102,7 @@ export function registerCommitmentsCommands(program: Command, io: ProgramIO): vo
       const history = await readLastChatHistory().catch(() => []);
       const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
       const found = detectUserCommitments(userTurns, { maxCommitments: 50 });
-      const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
+      const tasksFile = resolveTasksFile(environment());
       const existing = await readTasks(tasksFile).catch(() => []);
       const openTitles = existing.filter((task) => task.status === "open").map((task) => task.title);
       const result = buildTaskFromCommitment(found, index, openTitles, () => `task_${randomUUID()}`, new Date());

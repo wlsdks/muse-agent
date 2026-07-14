@@ -250,7 +250,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
+      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env) });
       const result = await store.writeOrPatch(buildSwarmSkillDraft(entry));
       await setQuarantineStatus(file, entry.id, "promoted", Date.now());
       io.stdout(`✅ Promoted ${entry.id.slice(0, 8)} from ${entry.fromPeerId} → authored skill (${result.action}, execute-gated).\n`);

@@ -17,7 +17,7 @@ type CoreParams = Parameters<typeof buildPersonalStoreGroundingCore>[0];
 
 /** Merge events across every registered provider; one failing provider keeps the rest. */
 async function listRegisteredCalendarEvents(range: { readonly from: Date; readonly to: Date }): Promise<readonly CalendarEvent[]> {
-  const registry = buildCalendarRegistry(process.env as Record<string, string | undefined>);
+  const registry = buildCalendarRegistry(process.env);
   const collected: CalendarEvent[] = [];
   for (const provider of registry.list()) {
     try {
@@ -32,7 +32,7 @@ async function listRegisteredCalendarEvents(range: { readonly from: Date; readon
 export async function buildPersonalStoreGrounding(
   params: Omit<CoreParams, "tasksFile" | "remindersFile" | "contactsFile" | "listCalendarEvents">
 ): Promise<PersonalStoreGrounding> {
-  const env = process.env as Record<string, string | undefined>;
+  const env = process.env;
   return buildPersonalStoreGroundingCore({
     ...params,
     contactsFile: resolveContactsFile(env),

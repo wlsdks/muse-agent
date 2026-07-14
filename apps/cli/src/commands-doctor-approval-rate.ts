@@ -33,7 +33,7 @@ export function formatApprovalRateDoctor(summary: ApprovalRateSummary): string {
 }
 
 export async function runApprovalRateDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
-  const env = process.env as Record<string, string | undefined>;
+  const env = process.env;
   const entries = await readActionLog(resolveActionLogFile(env));
   const summary = analyzeApprovalRates(entries);
   if (asJson) {

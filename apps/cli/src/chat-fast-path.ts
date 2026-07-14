@@ -55,7 +55,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     // `--compile` bundler emits as a top-level `await init_commands_ask()` in a
     // sync context → the bundled desktop binary crashes at startup. Defer it.
     const { listNoteFiles, notesCorpusFileCount } = await import("./commands-ask.js");
-    const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+    const notesDir = resolveNotesDir(process.env);
     const total = await notesCorpusFileCount(notesDir).catch(() => 0);
     if (total > 0) {
       return {
@@ -75,7 +75,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     const { formatDueLocal } = await import("@muse/mcp-shared");
     const { readTasks, compareTasksByDueDate } = await import("@muse/stores");
     const { resolveTasksFile } = await import("@muse/autoconfigure");
-    const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
+    const tasksFile = resolveTasksFile(process.env);
     const open = (await readTasks(tasksFile).catch(() => []))
       .filter((task) => task.status === "open")
       .sort(compareTasksByDueDate);
@@ -101,7 +101,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     const { formatDueLocal } = await import("@muse/mcp-shared");
     const { readReminders } = await import("@muse/stores");
     const { resolveRemindersFile } = await import("@muse/autoconfigure");
-    const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+    const remindersFile = resolveRemindersFile(process.env);
     const pending = (await readReminders(remindersFile).catch(() => []))
       .filter((reminder) => reminder.status === "pending")
       .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
@@ -124,7 +124,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
   if (contactName) {
     const { queryContacts, resolveContact } = await import("@muse/stores");
     const { resolveContactsFile } = await import("@muse/autoconfigure");
-    const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>)).catch(() => []);
+    const contacts = await queryContacts(resolveContactsFile(process.env)).catch(() => []);
     const resolution = resolveContact(contacts, contactName);
     const korean = /[가-힣]/u.test(message);
     if (resolution.status === "resolved") {

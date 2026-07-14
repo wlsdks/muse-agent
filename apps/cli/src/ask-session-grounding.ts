@@ -21,7 +21,7 @@ type CoreParams = Parameters<typeof buildSessionFeedReflectionGroundingCore>[0];
 export async function buildSessionFeedReflectionGrounding(
   params: Omit<CoreParams, "episodesFile" | "reflectionsFile" | "browsingFile" | "embedFn">
 ): Promise<SessionFeedReflectionGrounding> {
-  const env = process.env as Record<string, string | undefined>;
+  const env = process.env;
   return buildSessionFeedReflectionGroundingCore({
     ...params,
     embedFn: embed,

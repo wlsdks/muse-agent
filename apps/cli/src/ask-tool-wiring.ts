@@ -49,7 +49,7 @@ export async function buildAskToolWiring(params: {
   const screenVision: ScreenVisionHolder = {};
   if (useActuators) {
     const actuatorMod = await import("./actuator-tools.js");
-    const actuatorEnv = process.env as MuseEnvironment;
+    const actuatorEnv = process.env;
     io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv, io)));
     extraTools = actuatorMod.buildActuatorTools({
       describeScreenImage: async (input) =>
@@ -142,7 +142,7 @@ export async function buildAskToolWiring(params: {
       approvalGate: actuatorMod.buildFsWriteApprovalGate({
         confirmAction: (message: string) => fsConfirm({ message }).then((answer) => !fsIsCancel(answer) && answer === true),
         io,
-        stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env as MuseEnvironment) })
+        stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env) })
       })
     });
     // web_download reaches the public web, so the master web-egress switch

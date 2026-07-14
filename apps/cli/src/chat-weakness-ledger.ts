@@ -37,7 +37,7 @@ async function recordChatWeakness(
   try {
     const recordWeakness = deps.recordWeakness ?? (await import("@muse/stores")).recordWeakness;
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
-    const file = deps.weaknessesFile ?? resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+    const file = deps.weaknessesFile ?? resolveWeaknessesFile(process.env);
     const entry = await recordWeakness(file, { axis, message });
     return entry?.count;
   } catch {
@@ -71,7 +71,7 @@ export interface ResolveChatWeaknessDeps {
 export async function chatResolveWeakness(message: string, deps: ResolveChatWeaknessDeps = {}): Promise<void> {
   try {
     const recordWeaknessResolved = deps.recordWeaknessResolved ?? (await import("@muse/stores")).recordWeaknessResolved;
-    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env);
     await recordWeaknessResolved(file, message);
   } catch {
     // a ledger write must never surface as a chat error
@@ -132,7 +132,7 @@ export async function chatRepeatWeaknessNudge(message: string, deps: ChatRepeatN
     const selectNudge = deps.selectNudge ?? mcp!.askTimeWeaknessNudge;
     const render = deps.render ?? mcp!.renderAskTimeNudge;
     const topicKey = deps.topicKey ?? mcp!.topicKeyFromMessage;
-    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env);
     const nudge = selectNudge(await readWeaknesses(file), topicKey(message), { nowMs: Date.now() });
     if (!nudge) return undefined;
     return `\n\n(${render(nudge, /[가-힣]/u.test(message))})`;

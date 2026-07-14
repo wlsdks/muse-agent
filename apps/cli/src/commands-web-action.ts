@@ -53,7 +53,7 @@ export function registerWebActionCommands(program: Command, io: ProgramIO, deps:
       });
 
       const outcome = await performWebActionWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env),
         approvalGate: gate,
         fetchImpl: deps.fetchImpl ?? globalThis.fetch,
         request,

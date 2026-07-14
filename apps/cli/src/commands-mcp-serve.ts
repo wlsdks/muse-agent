@@ -29,7 +29,7 @@ export interface McpServeCommandRuntime {
 }
 
 export async function runMcpServeCommand(io: ProgramIO, runtime: McpServeCommandRuntime = {}): Promise<void> {
-  const env = runtime.env ?? process.env as MuseEnvironment;
+  const env = runtime.env ?? process.env;
   const resolveDependencies = runtime.resolveDependencies ?? resolveMcpServeDependencies;
   const runServer = runtime.runStdioMcpServer ?? runStdioMcpServer;
   const deps = resolveDependencies(env);

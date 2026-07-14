@@ -94,7 +94,7 @@ export async function runVisionCommandAction(params: {
       act = dropUnverifiedOptional(act, droppable);
       io.stdout(`\nℹ dropped unverified optional field(s) — applying the grounded core only: ${droppable.join(", ")}\n`);
     }
-    const env = process.env as MuseEnvironment;
+    const env = process.env;
     let result: unknown;
     if (act.route === "calendar") {
       const { createCalendarMcpServer } = await import("@muse/domain-tools");
@@ -139,7 +139,7 @@ export async function runVisionCommandAction(params: {
       return;
     }
     const { createCalendarMcpServer } = await import("@muse/domain-tools");
-    const registry = buildCalendarRegistry(process.env as MuseEnvironment);
+    const registry = buildCalendarRegistry(process.env);
     const addTool = createCalendarMcpServer({ registry }).tools.find((t) => t.name === "add");
     if (!addTool) { io.stderr("no calendar provider configured\n"); process.exitCode = 1; return; }
     const res = await addTool.execute({

@@ -56,7 +56,7 @@ export function formatShift(shift: ChangePoint | null, days: readonly DayCount[]
 }
 
 function localPatternsFiredFile(): string {
-  return resolvePatternsFiredFile(process.env as Record<string, string | undefined>);
+  return resolvePatternsFiredFile(process.env);
 }
 
 export function registerPatternCommands(program: Command, io: ProgramIO): void {
@@ -98,7 +98,7 @@ export function registerPatternCommands(program: Command, io: ProgramIO): void {
     .description("Detect WHEN your routine changed regime — the onset of a new normal in your activity (local, draft-first)")
     .option("--json", "Print the raw change-point")
     .action(async (options: SharedOptions) => {
-      const days = dailyCounts(await gatherActivityTimestamps(process.env as Record<string, string | undefined>));
+      const days = dailyCounts(await gatherActivityTimestamps(process.env));
       const shift = days.length >= 8 ? detectChangePoint(days.map((day) => day.count)) : null;
       if (options.json) {
         io.stdout(`${JSON.stringify({ days: days.length, shift, shiftDate: shift ? days[shift.index]?.date : undefined }, null, 2)}\n`);

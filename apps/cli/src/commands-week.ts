@@ -84,7 +84,7 @@ export function registerWeekCommand(program: Command, io: ProgramIO): void {
     .description("Your next 7 days at a glance — events, due tasks, birthdays, and the daily weather forecast grouped by day (read-only, local)")
     .option("--json", "Emit the agenda as JSON")
     .action(async (options: { readonly json?: boolean }) => {
-      const env = process.env as Env;
+      const env = process.env;
       const now = new Date();
       const weekEnd = new Date(now.getTime() + 7 * DAY_MS);
       const events = await readLocalEvents(resolveLocalCalendarFile(env), now, weekEnd).catch(() => []);

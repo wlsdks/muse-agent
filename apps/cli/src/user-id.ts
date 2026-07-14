@@ -21,7 +21,7 @@ export function resolveDefaultUserKey(opts: {
   readonly override?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
 } = {}): string {
-  const env = opts.env ?? (process.env as Readonly<Record<string, string | undefined>>);
+  const env = opts.env ?? process.env;
   const override = opts.override?.trim();
   if (override && override.length > 0) {
     return override;
