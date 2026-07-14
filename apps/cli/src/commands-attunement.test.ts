@@ -105,6 +105,22 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(next.stdout).toContain("Previous pack: ignored");
   });
 
+  it("an OPEN task linked as context (not next-step) names the gap + the exact fix, not a misleading 'no task linked' (dogfood)", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    const started = await run(f, ["thread", "start", "Ship", "the", "migration", "--kind", "work"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", TASK.id.slice(0, 13), "--role", "context"]);
+
+    const continued = await run(f, ["continue", id]);
+    // The old copy claimed "no open local task is linked" even though one is —
+    // the accurate message names the LINKED task and the role change that sets it.
+    // Assert the full next-step line (the task id also appears in the evidence
+    // list, so a substring-only check wouldn't guard the contextTask branch).
+    expect(continued.stdout).not.toContain("no open local task is linked");
+    expect(continued.stdout).toContain(`Next step: none set — task ${TASK.id} is linked as context; re-link it with \`--role next-step\``);
+  });
+
   it("fails closed rather than choosing a thread or escaping the notes vault", async () => {
     const f = fixture();
     const started = await run(f, ["thread", "start", "Keep", "a", "secret", "--kind", "life"]);

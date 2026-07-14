@@ -179,7 +179,7 @@ function formatEvidence(pack: ContinuityPack): string[] {
   });
 }
 
-function formatPack(pack: ContinuityPack, deliveryId: string): string {
+export function formatPack(pack: ContinuityPack, deliveryId: string): string {
   const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack)];
   if (pack.previousOutcome) lines.push(`Previous pack: ${pack.previousOutcome}`);
   if (pack.policy.nextStep === "hidden") {
@@ -188,7 +188,18 @@ function formatPack(pack: ContinuityPack, deliveryId: string): string {
     const label = pack.policy.nextStep === "contextual" ? "Linked next step" : "Next step";
     lines.push(`${label}: ${pack.nextStep.title} [${pack.nextStep.artifactId}]`);
   } else {
-    lines.push("Next step: no open local task is linked.");
+    // A next-step is ONLY populated from a task linked with `--role next-step`
+    // (continuity-pack.ts). Saying "no open local task is linked" when a task IS
+    // linked as context is misleading — the fix seen while dogfooding is to name
+    // the actual gap and the exact action that closes it.
+    const contextTask = pack.evidence.find(
+      (entry) => entry.status === "available" && entry.reference.artifactType === "task" && entry.reference.role === "context"
+    );
+    lines.push(
+      contextTask
+        ? `Next step: none set — task ${contextTask.reference.artifactId} is linked as context; re-link it with \`--role next-step\` to make it the next action.`
+        : "Next step: none set — link an open task with `--role next-step`."
+    );
   }
   lines.push(`Delivery: ${deliveryId}`);
   lines.push(`Record feedback: muse thread outcome ${deliveryId} <used|adjusted|ignored|rejected>`);
