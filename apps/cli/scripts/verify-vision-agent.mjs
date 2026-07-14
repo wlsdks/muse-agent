@@ -12,11 +12,12 @@
  * when Ollama is unreachable. Each case runs the real `muse chat --local --image`
  * in an isolated HOME and asserts the resulting store.
  */
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runNodeCommand } from "./run-node-command.mjs";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -65,12 +66,19 @@ const cases = [
 for (const c of cases) {
   const home = mkdtempSync(path.join(os.tmpdir(), "muse-vagent-"));
   const env = { ...process.env, HOME: home, TZ: "Asia/Seoul", MUSE_DEFAULT_MODEL: model };
-  const r = spawnSync(process.execPath, [cli, "chat", "--local", "--image", fixture(c.image), c.request], { encoding: "utf8", env, timeout: 240000 });
+  const r = await runNodeCommand({
+    command: process.execPath,
+    args: [cli, "chat", "--local", "--image", fixture(c.image), c.request],
+    env,
+    timeoutMs: 240_000
+  });
   let json;
   try {
     json = JSON.parse(readFileSync(path.join(home, c.store), "utf8"));
   } catch {
-    check(c.name, false, `no ${c.store} written. stdout: ${(r.stdout ?? "").slice(-200)}`);
+    const stdoutTail = r.stdout ? `\n   stdout: ${r.stdout.slice(-200)}` : "";
+    const stderrTail = r.stderr ? `\n stderr: ${r.stderr.slice(-200)}` : "";
+    check(c.name, false, `no ${c.store} written. exit=${r.status}${stdoutTail}${stderrTail}`);
     continue;
   }
   check(c.name, c.assert(json), `store: ${JSON.stringify(json).slice(0, 200)}`);

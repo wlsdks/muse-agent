@@ -11,11 +11,12 @@
  * Exit 0 if every case passes, 1 otherwise. LOCAL OLLAMA ONLY; skips (exit 0)
  * when Ollama is unreachable.
  */
-import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runNodeCommand } from "./run-node-command.mjs";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -59,10 +60,20 @@ const abstained = (text) => {
 };
 
 let failures = 0;
-function ask(image, question) {
+async function ask(image, question) {
   const home = mkdtempSync(path.join(os.tmpdir(), "muse-vg-"));
-  const r = spawnSync(process.execPath, [cli, "ask", "--image", fixture(image), question], { encoding: "utf8", env: { ...process.env, HOME: home, MUSE_DEFAULT_MODEL: model }, timeout: 150000 });
-  return (r.stdout ?? "").trim();
+  const r = await runNodeCommand({
+    command: process.execPath,
+    args: [cli, "ask", "--image", fixture(image), question],
+    env: { ...process.env, HOME: home, MUSE_DEFAULT_MODEL: model },
+    timeoutMs: 150_000
+  });
+
+  if (r.status !== 0) {
+    console.log(`Command failed while asking vision grounding question: exit=${r.status} stderr=${r.stderr.slice(0, 200)}`);
+  }
+
+  return r.stdout;
 }
 function check(name, ok, detail) {
   console.log(`${ok ? "PASS" : "FAIL"} — ${name}${ok ? "" : `\n   got: ${detail.slice(0, 200)}`}`);
@@ -71,28 +82,28 @@ function check(name, ok, detail) {
 
 // PRESENT fact → must answer with it.
 {
-  const out = ask("receipt.png", "What is the total amount on this receipt?");
+  const out = await ask("receipt.png", "What is the total amount on this receipt?");
   check("PRESENT fact (total) → answered", /11[,.]?300/.test(out), out);
 }
 // ABSENT fact → must abstain, NOT fabricate a name.
 {
-  const out = ask("receipt.png", "What is the cashier's name printed on this receipt?");
+  const out = await ask("receipt.png", "What is the cashier's name printed on this receipt?");
   check("ABSENT fact (cashier name) → abstains, no fabrication", abstained(out), out);
 }
 // ABSENT fact on a flyer → must abstain on a price that isn't there.
 {
-  const out = ask("flyer.png", "What is the ticket price for this event?");
+  const out = await ask("flyer.png", "What is the ticket price for this event?");
   check("ABSENT fact (ticket price) → abstains, no fabrication", abstained(out), out);
 }
 // KO PRESENT fact → must answer with the price printed on the Korean receipt.
 {
-  const out = ask("receipt-ko.png", "참치김밥 가격은 얼마인가요?");
+  const out = await ask("receipt-ko.png", "참치김밥 가격은 얼마인가요?");
   check("KO PRESENT fact (참치김밥 4,500) → answered", /4[,.]?500/.test(out), out);
 }
 // KO ABSENT fact → the receipt prints no cashier/staff name; must abstain,
 // NOT fabricate one. (No personal name appears anywhere on the fixture.)
 {
-  const out = ask("receipt-ko.png", "이 영수증을 계산한 직원(캐셔)의 이름은 무엇인가요?");
+  const out = await ask("receipt-ko.png", "이 영수증을 계산한 직원(캐셔)의 이름은 무엇인가요?");
   check("KO ABSENT fact (cashier name) → abstains, no fabrication", abstained(out), out);
 }
 

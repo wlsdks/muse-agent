@@ -15,11 +15,12 @@
  * regression. LOCAL OLLAMA ONLY; skips (exit 0) when Ollama / the embed model
  * is unreachable.
  */
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runNodeCommand } from "./run-node-command.mjs";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -50,18 +51,28 @@ const env = {
   MUSE_NOTES_INDEX_FILE: path.join(ws, "notes-index.json")
 };
 
-function askAndReadLabel(query) {
-  const r = spawnSync(process.execPath, [cli, "ask", query], { cwd: ws, encoding: "utf8", env, timeout: 180000 });
+async function askAndReadLabel(query) {
+  const r = await runNodeCommand({
+    command: process.execPath,
+    args: [cli, "ask", query],
+    cwd: ws,
+    env,
+    timeoutMs: 180_000
+  });
   const runsDir = path.join(ws, ".muse", "runs");
   let files = [];
   try { files = readdirSync(runsDir).filter((f) => f.endsWith(".jsonl")); } catch { /* none yet */ }
-  if (files.length === 0) return { label: "<no-trace>", answer: (r.stdout ?? "").trim() };
+  if (r.status !== 0) {
+    return { label: "<command-failed>", answer: `vision-grounding command failed (exit=${r.status}): ${r.stderr || r.stdout}` };
+  }
+
+  if (files.length === 0) return { label: "<no-trace>", answer: r.stdout };
   files.sort(); // cli-<timestamp>.jsonl — lexicographic = chronological
   const newest = path.join(runsDir, files[files.length - 1]);
   const line = readFileSync(newest, "utf8").trim().split("\n").filter(Boolean).pop() ?? "{}";
   let label = "<parse-fail>";
   try { label = JSON.parse(line).grounded ?? "<null>"; } catch { /* keep parse-fail */ }
-  return { label, answer: (r.stdout ?? "").trim() };
+  return { label, answer: r.stdout };
 }
 
 let failures = 0;
@@ -80,8 +91,16 @@ function check(name, res, evidenceRe) {
 
 // KO deadline query → the date March 3rd (EN "march 3" or KO "3월 3일"); EN team-lead
 // query → the name Sarah (language-invariant).
-check("KO query over EN note grounds (cross-lingual) → grounded + names the deadline", askAndReadLabel("프로젝트 마감일이 언제야?"), /march\s*3|3\s*월\s*3|3\/3/iu);
-check("EN query (citation marker + follow-up question) → grounded + names the team lead", askAndReadLabel("Who is the team lead?"), /sarah/iu);
+check(
+  "KO query over EN note grounds (cross-lingual) → grounded + names the deadline",
+  await askAndReadLabel("프로젝트 마감일이 언제야?"),
+  /march\s*3|3\s*월\s*3|3\/3/iu
+);
+check(
+  "EN query (citation marker + follow-up question) → grounded + names the team lead",
+  await askAndReadLabel("Who is the team lead?"),
+  /sarah/iu
+);
 
 console.log(failures === 0 ? `\nALL PASS (2) — no false misgrounding on ${model}` : `\n${failures}/2 FAILED on ${model} — a grounded answer was mislabelled (fuel-poisoning regression)`);
 process.exit(failures === 0 ? 0 : 1);
