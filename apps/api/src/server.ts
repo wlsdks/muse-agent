@@ -32,6 +32,7 @@ import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
 import { registerMessagingSetupRoutes } from "./messaging-setup-routes.js";
+import { registerEmailStatusRoutes } from "./email-status-routes.js";
 import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerAskRoutes } from "./ask-routes.js";
 import { registerBoardRoutes } from "./board-routes.js";
@@ -395,6 +396,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       registry: options.messaging
     });
   }
+  registerEmailStatusRoutes(server, {
+    authService,
+    ...(options.emailCredentialsDir ? { credentialsDir: options.emailCredentialsDir } : {}),
+    ...(options.env ? { env: options.env } : {})
+  });
   if (options.remindersFile) {
     registerRemindersRoutes(server, {
       authService,

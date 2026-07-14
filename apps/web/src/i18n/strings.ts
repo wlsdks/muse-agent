@@ -448,6 +448,11 @@ const en = {
   "int.step.matrix.1": "Create an account on any Matrix homeserver (e.g. matrix.org) — a dedicated bot account keeps your own messages separate.",
   "int.step.matrix.2": "In Element, open Settings → Help & About → Advanced → Access Token and copy it.",
   "int.step.matrix.3": "Paste the homeserver URL (e.g. https://matrix.org) and the access token here.",
+  "int.email.title": "Email (Gmail)",
+  "int.email.connectedOauth": "Gmail connected — token auto-refreshes",
+  "int.email.connectedEnv": "Gmail via MUSE_GMAIL_TOKEN (expires hourly) — run `muse setup email` for permanent auth",
+  "int.email.notConfigured": "Not connected — run `muse setup email` in the terminal. It opens your Mac's browser for the one-time Google consent screen.",
+  "int.delivery.hint": "Scheduler delivery value: {value} — this is the `muse scheduler add --deliver` value for this chat.",
 
   "nav.promptLab": "Prompt Lab",
   "pl.subtitle": "Muse shows its work — edit the tone Muse uses with you, preview the exact system prompt every surface composes, and A/B a draft against the live version before you save it.",
@@ -931,6 +936,11 @@ const ko: Strings = {
   "int.step.matrix.1": "아무 Matrix 홈서버(예: matrix.org)에 계정을 만드세요 — 전용 봇 계정을 쓰면 내 메시지와 분리됩니다.",
   "int.step.matrix.2": "Element에서 설정 → Help & About → Advanced → Access Token 을 열어 복사하세요.",
   "int.step.matrix.3": "홈서버 URL(예: https://matrix.org)과 액세스 토큰을 여기에 붙여넣으세요.",
+  "int.email.title": "이메일 (Gmail)",
+  "int.email.connectedOauth": "Gmail 연결됨 — 토큰 자동 갱신",
+  "int.email.connectedEnv": "MUSE_GMAIL_TOKEN으로 연결됨(1시간마다 만료) — 영구 인증은 터미널에서 `muse setup email` 실행",
+  "int.email.notConfigured": "미연결 — 터미널에서 `muse setup email`을 실행하세요. Mac 브라우저가 열리며 Google 동의 화면이 1회 표시됩니다.",
+  "int.delivery.hint": "스케줄러 발송 값: {value} — 이 채팅용 `muse scheduler add --deliver` 값입니다.",
 
   "nav.promptLab": "프롬프트 랩",
   "pl.subtitle": "뮤즈는 근거를 보여줍니다 — 뮤즈가 당신과 대화하는 말투를 편집하고, 각 화면이 조합하는 정확한 시스템 프롬프트를 미리보고, 저장 전에 초안을 실제 버전과 A/B 비교하세요.",

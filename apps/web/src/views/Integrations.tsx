@@ -4,11 +4,12 @@ import { useState } from "react";
 import { AsyncBlock, Badge, Button, Card, Icon, Tooltip } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { severityTone, sortChecks, worstSeverity } from "./doctor-logic.js";
-import { canDisconnect, daemonBadge, providerStatus, requiresHomeserver } from "./integrations-logic.js";
+import { canDisconnect, daemonBadge, emailStatusView, providerStatus, requiresHomeserver, schedulerDeliveryValue } from "./integrations-logic.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { Translate } from "../i18n/index.js";
 import type { StringKey } from "../i18n/strings.js";
-import type { DaemonFlagsResponse, DoctorResponse, MessagingConnectResponse, MessagingSetupProvider, MessagingSetupResponse } from "../api/types.js";
+import type { DaemonFlagsResponse, DoctorResponse, EmailStatusResponse, MessagingConnectResponse, MessagingSetupProvider, MessagingSetupResponse } from "../api/types.js";
 
 const GUIDE_STEPS: Readonly<Record<string, number>> = { discord: 4, line: 3, matrix: 3, slack: 4, telegram: 3 };
 const DAEMON_KEYS = ["MUSE_TELEGRAM_POLL_ENABLED", "MUSE_MATRIX_POLL_ENABLED", "MUSE_INBOUND_REPLY_ENABLED"] as const;
@@ -41,6 +42,10 @@ export function IntegrationsView({ client }: { client: ApiClient }) {
   const daemons = useQuery({
     queryFn: () => client.get<DaemonFlagsResponse>("/api/settings/daemon-flags"),
     queryKey: ["daemon-flags", client.baseUrl]
+  });
+  const email = useQuery({
+    queryFn: () => client.get<EmailStatusResponse>("/api/email/status"),
+    queryKey: ["email-status", client.baseUrl]
   });
 
   const daemonFlags = (daemons.data?.flags ?? []).filter((flag) =>
@@ -87,6 +92,9 @@ export function IntegrationsView({ client }: { client: ApiClient }) {
               onChanged={() => void queryClient.invalidateQueries({ queryKey: ["messaging-setup", client.baseUrl] })}
             />
           ))}
+        </AsyncBlock>
+        <AsyncBlock loading={email.isLoading} error={email.error} empty={false}>
+          <EmailStatusCard status={email.data} t={t} />
         </AsyncBlock>
       </div>
 
@@ -219,6 +227,26 @@ function DoctorCard({ client }: { client: ApiClient }) {
           server {doctor.data.version} · pid {doctor.data.pid.toString()}
         </p>
       )}
+    </Card>
+  );
+}
+
+/**
+ * Gmail connection status — read-only. The OAuth flow itself only runs from
+ * the CLI (`muse setup email` needs the Mac's own browser for the Google
+ * consent screen); this card exists so "is my email connected?" has an
+ * answer without a terminal round-trip.
+ */
+export function EmailStatusCard({ status, t }: { status: EmailStatusResponse | undefined; t: Translate }) {
+  const view = emailStatusView(status);
+  return (
+    <Card
+      title={t("int.email.title")}
+      action={<Badge tone={view.tone}>{t(view.tone === "neutral" ? "int.status.notConnected" : "int.status.connected")}</Badge>}
+    >
+      <p className="subtle" style={{ fontSize: 13, margin: 0 }}>
+        {t(view.messageKey)}
+      </p>
     </Card>
   );
 }
@@ -377,6 +405,11 @@ function ProviderCard({
               </Tooltip>
             )}
           </div>
+        )}
+        {provider.pairedOwner && (
+          <p className="subtle mono" style={{ fontSize: 12, margin: 0, userSelect: "all" }}>
+            {t("int.delivery.hint", { value: schedulerDeliveryValue(provider.id, provider.pairedOwner) })}
+          </p>
         )}
         {provider.configured && !provider.pairedOwner && provider.pairingCode && (
           <div className="banner" style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
