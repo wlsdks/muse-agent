@@ -21,6 +21,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { execFile } from "node:child_process/promises";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -48,20 +49,15 @@ export interface CodexDetectDeps {
   readonly which?: (command: string) => Promise<string | undefined>;
 }
 
-function defaultWhich(command: string): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    const finder = process.platform === "win32" ? "where" : "which";
-    let out = "";
-    const child = spawn(finder, [command], { stdio: ["ignore", "pipe", "ignore"] });
-    child.stdout.on("data", (chunk) => {
-      out += String(chunk);
-    });
-    child.on("error", () => resolve(undefined));
-    child.on("close", (code) => {
-      const first = out.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.length > 0);
-      resolve(code === 0 && first ? first : undefined);
-    });
-  });
+async function defaultWhich(command: string): Promise<string | undefined> {
+  const finder = process.platform === "win32" ? "where" : "which";
+  try {
+    const result = await execFile(finder, [command], { encoding: "utf8" });
+    const first = String(result.stdout).split(/\r?\n/u).map((line) => line.trim()).find((line) => line.length > 0);
+    return first;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

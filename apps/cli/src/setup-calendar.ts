@@ -16,11 +16,12 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 import { URL, URLSearchParams } from "node:url";
+import { on, once } from "node:events";
 
 import { confirm, isCancel, multiselect, password, text } from "@clack/prompts";
 import { FileCalendarCredentialStore } from "@muse/calendar";
@@ -270,77 +271,90 @@ export function generatePkcePair(): PkcePair {
 async function runOAuthCallbackServer(
   options: OAuthCallbackOptions
 ): Promise<{ readonly code: string; readonly redirectUri: string }> {
-  return new Promise((resolve, reject) => {
-    const state = generateOAuthState();
-    const server = createServer((req, res) => {
-      try {
-        const url = new URL(req.url ?? "/", "http://localhost");
-        if (url.pathname !== "/callback") {
-          res.statusCode = 404;
-          res.end("Not found");
-          return;
-        }
+  const state = generateOAuthState();
+  const server = createServer();
+  const requests = on(server, "request");
+  const iterator = requests[Symbol.asyncIterator]();
+  server.listen(0, "127.0.0.1");
 
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-        const error = url.searchParams.get("error");
+  try {
+    await once(server, "listening");
 
-        if (error) {
-          res.statusCode = 400;
-          res.end(`OAuth error: ${error}`);
-          server.close();
-          reject(new Error(`OAuth error: ${error}`));
-          return;
-        }
+    const address = server.address() as AddressInfo;
+    const redirectUri = `http://127.0.0.1:${address.port}/callback`;
+    const params = new URLSearchParams({
+      access_type: "offline",
+      client_id: options.clientId,
+      prompt: "consent",
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: options.scope,
+      state,
+      ...(options.pkce ? {
+        code_challenge: options.pkce.challenge,
+        code_challenge_method: options.pkce.method
+      } : {})
+    });
+    const launchUrl = `${options.authUrl}?${params.toString()}`;
+    options.io.stdout(`\nOpen this URL to authorize:\n  ${launchUrl}\n\nWaiting for callback on ${redirectUri} ...\n`);
 
-        if (!code || returnedState !== state) {
-          res.statusCode = 400;
-          res.end("Missing or mismatched state — please retry.");
-          server.close();
-          reject(new Error("OAuth state mismatch"));
-          return;
-        }
+    const open = options.io.openBrowser;
+    if (open) {
+      Promise.resolve(open(launchUrl)).catch(() => undefined);
+    }
 
-        res.statusCode = 200;
-        res.setHeader("content-type", "text/html; charset=utf-8");
-        res.end("<h1>Authorization received</h1><p>You can close this window and return to the terminal.</p>");
-        server.close();
-        resolve({ code, redirectUri });
-      } catch (caughtError) {
-        server.close();
-        reject(caughtError);
+    while (true) {
+      const requestResult = await Promise.race([
+        iterator.next().then((event) => ({ kind: "request" as const, event })),
+        once(server, "error").then(([error]) => ({ kind: "error" as const, error }))
+      ]);
+
+      if (requestResult.kind === "error") {
+        throw requestResult.error;
       }
-    });
 
-    server.listen(0, "127.0.0.1");
-    let redirectUri = "";
-
-    server.on("listening", () => {
-      const address = server.address() as AddressInfo;
-      redirectUri = `http://127.0.0.1:${address.port}/callback`;
-      const params = new URLSearchParams({
-        access_type: "offline",
-        client_id: options.clientId,
-        prompt: "consent",
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: options.scope,
-        state,
-        ...(options.pkce ? {
-          code_challenge: options.pkce.challenge,
-          code_challenge_method: options.pkce.method
-        } : {})
-      });
-      const launchUrl = `${options.authUrl}?${params.toString()}`;
-      options.io.stdout(`\nOpen this URL to authorize:\n  ${launchUrl}\n\nWaiting for callback on ${redirectUri} ...\n`);
-      const open = options.io.openBrowser;
-      if (open) {
-        Promise.resolve(open(launchUrl)).catch(() => undefined);
+      if (requestResult.event.done) {
+        throw new Error("OAuth callback server closed unexpectedly");
       }
-    });
 
-    server.on("error", (err) => {
-      reject(err);
-    });
-  });
+      const [request, response] = requestResult.event.value as readonly [IncomingMessage, ServerResponse];
+
+      if (!request.url) {
+        response.statusCode = 400;
+        response.end("OAuth callback URL missing");
+        continue;
+      }
+
+      const url = new URL(request.url, "http://localhost");
+      if (url.pathname !== "/callback") {
+        response.statusCode = 404;
+        response.end("Not found");
+        continue;
+      }
+
+      const code = url.searchParams.get("code");
+      const returnedState = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        response.statusCode = 400;
+        response.end(`OAuth error: ${error}`);
+        throw new Error(`OAuth error: ${error}`);
+      }
+
+      if (!code || returnedState !== state) {
+        response.statusCode = 400;
+        response.end("Missing or mismatched state — please retry.");
+        throw new Error("OAuth state mismatch");
+      }
+
+      response.statusCode = 200;
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end("<h1>Authorization received</h1><p>You can close this window and return to the terminal.</p>");
+      return { code, redirectUri };
+    }
+  } finally {
+    server.close();
+    await iterator.return();
+  }
 }
