@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+import { isRecord, parseJson, readOptionalString, readFiniteNumber, readOptionalBoolean } from "./safe-json.js";
 
 import type { AskResult, AskRetrieval } from "./types.js";
 
@@ -25,22 +26,15 @@ export const INITIAL_ASK_STATE: AskState = { answer: "", error: null, result: nu
  */
 export function reduceAskEvent(state: AskState, eventName: string, data: string): AskState {
   if (eventName === "retrieval") {
-    try {
-      return { ...state, retrieval: JSON.parse(data) as AskRetrieval };
-    } catch {
-      return state;
-    }
+    const retrieval = parseAskRetrieval(parseJson(data));
+    return retrieval ? { ...state, retrieval } : state;
   }
   if (eventName === "delta") {
     return data.length > 0 ? { ...state, answer: state.answer + data } : state;
   }
   if (eventName === "result") {
-    try {
-      const result = JSON.parse(data) as AskResult;
-      return { ...state, answer: result.answer, result };
-    } catch {
-      return state;
-    }
+    const result = parseAskResult(parseJson(data));
+    return result ? { ...state, answer: result.answer, result } : state;
   }
   if (eventName === "error") {
     return { ...state, error: data.length > 0 ? data : "request failed" };
@@ -88,8 +82,10 @@ export function useAskStream(baseUrl: string, token: string) {
 
         const contentType = res.headers.get("content-type") ?? "";
         if (!contentType.includes("text/event-stream")) {
-          const body = (await res.json()) as AskResult;
-          setState((prev) => ({ ...prev, answer: body.answer, result: body }));
+          const body = parseAskResult(parseJson(await res.text()));
+          if (body) {
+            setState((prev) => ({ ...prev, answer: body.answer, result: body }));
+          }
           return;
         }
 
@@ -124,4 +120,56 @@ export function useAskStream(baseUrl: string, token: string) {
   );
 
   return { ...state, ask, pending, reset };
+}
+
+function isAskVerdict(value: unknown): value is AskResult["verdict"] {
+  return value === "confident" || value === "ambiguous" || value === "none";
+}
+
+function parseAskRetrieval(value: unknown): AskRetrieval | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const groundedChunkCount = readFiniteNumber(value.groundedChunkCount);
+  const notesUnavailable = readOptionalBoolean(value.notesUnavailable);
+  const verdict = isAskVerdict(value.verdict) ? value.verdict : undefined;
+  if (groundedChunkCount === undefined || notesUnavailable === undefined || verdict === undefined) {
+    return undefined;
+  }
+  return { groundedChunkCount, notesUnavailable, verdict };
+}
+
+function parseAskResult(value: unknown): AskResult | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const answer = readOptionalString(value.answer);
+  const verdict = isAskVerdict(value.verdict) ? value.verdict : undefined;
+  const strippedCitations = value.strippedCitations;
+  const stripped = Array.isArray(strippedCitations) ? strippedCitations.filter((entry): entry is string => typeof entry === "string") : [];
+  const citations = value.citations;
+  const cited = Array.isArray(citations) ? citations.filter((entry): entry is string => typeof entry === "string") : [];
+  const notesUnavailable = readOptionalBoolean(value.notesUnavailable);
+  const refusal = readOptionalBoolean(value.refusal);
+  const receipts = readOptionalString(value.receipts);
+  const groundedChunkCount = readFiniteNumber(value.groundedChunkCount);
+  if (
+    answer === undefined ||
+    verdict === undefined ||
+    notesUnavailable === undefined ||
+    refusal === undefined ||
+    groundedChunkCount === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    answer,
+    verdict,
+    citations: cited,
+    strippedCitations: stripped,
+    refusal,
+    notesUnavailable,
+    groundedChunkCount,
+    ...(receipts !== undefined ? { receipts } : {})
+  };
 }

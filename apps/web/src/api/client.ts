@@ -3,6 +3,8 @@
  * server only through this — the web ships no model logic of its own.
  */
 
+import { isRecord, readOptionalString } from "./safe-json.js";
+
 export interface ApiClient {
   readonly baseUrl: string;
   readonly get: <T>(path: string) => Promise<T>;
@@ -43,9 +45,9 @@ async function request<T>(
     throw new Error(await errorDetail(response));
   }
   if (response.status === 204) {
-    return undefined as T;
+    return undefined as never as T;
   }
-  return (await response.json()) as T;
+  return (await response.json()) as unknown as T;
 }
 
 // Prefer the server's actionable error body (`errorMessage` / `message`)
@@ -53,10 +55,12 @@ async function request<T>(
 async function errorDetail(response: Response): Promise<string> {
   const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
   try {
-    const body = (await response.json()) as { errorMessage?: unknown; message?: unknown };
-    const candidate = [body.errorMessage, body.message].find(
-      (value): value is string => typeof value === "string" && value.trim().length > 0
-    );
+    const body = await response.json();
+    if (!isRecord(body)) {
+      return status;
+    }
+    const candidate = [readOptionalString(body.errorMessage), readOptionalString(body.message)]
+      .find((value): value is string => Boolean(value?.trim().length));
     return candidate ? `${status}: ${candidate}` : status;
   } catch {
     return status;
