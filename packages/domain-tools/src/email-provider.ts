@@ -13,6 +13,7 @@
  */
 
 import { fetchWithRetry, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
+import { sleep } from "@muse/shared";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -133,7 +134,7 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     const retries = Number.isFinite(this.retryOptions.retries) ? Math.max(0, Math.trunc(this.retryOptions.retries as number)) : 2;
     const baseDelayMs = Number.isFinite(this.retryOptions.baseDelayMs) ? Math.max(0, this.retryOptions.baseDelayMs as number) : 250;
     const maxRetryAfterMs = Number.isFinite(this.retryOptions.maxRetryAfterMs) ? Math.max(0, this.retryOptions.maxRetryAfterMs as number) : 30_000;
-    const sleep = this.retryOptions.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const delay = this.retryOptions.sleep ?? sleep;
     for (let attempt = 0; ; attempt += 1) {
       const response = await this.fetchImpl(`${GMAIL_BASE}/messages/send`, {
         body: JSON.stringify({ raw }),
@@ -156,7 +157,7 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
       }
       if (response.status === 429 && attempt < retries) {
         const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-        await sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : baseDelayMs * 2 ** attempt);
+        await delay(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : baseDelayMs * 2 ** attempt);
         continue;
       }
       throw new Error(`Gmail send failed (${response.status.toString()})`);

@@ -19,6 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "@muse/memory";
+import { sleep } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
@@ -168,7 +169,7 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
       if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
         throw new Error(`${file} is locked by another write in progress — retry shortly`, { cause });
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, computeLockRetryDelay(attempt)));
+      await sleep(computeLockRetryDelay(attempt));
     } finally {
       await handle?.close().catch(() => undefined);
     }

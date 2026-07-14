@@ -9,6 +9,7 @@
  */
 
 import { isRetryableMessagingStatus } from "./errors.js";
+import { sleep } from "@muse/shared";
 
 const MAX_INBOUND_LIMIT = 100;
 const DEFAULT_INBOUND_LIMIT = 20;
@@ -177,7 +178,7 @@ export async function fetchReadWithRetry(
 ): Promise<Response> {
   const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
   const baseDelayMs = options.baseDelayMs ?? 200;
-  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const delay = options.sleep ?? sleep;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -185,13 +186,13 @@ export async function fetchReadWithRetry(
       if (response.ok || !isRetryableMessagingStatus(response.status) || attempt === maxAttempts) {
         return response;
       }
-      await sleep(parseRetryAfterMs(response.headers.get("retry-after")) ?? baseDelayMs * attempt);
+      await delay(parseRetryAfterMs(response.headers.get("retry-after")) ?? baseDelayMs * attempt);
     } catch (cause) {
       lastError = cause;
       if (attempt === maxAttempts) {
         throw cause;
       }
-      await sleep(baseDelayMs * attempt);
+      await delay(baseDelayMs * attempt);
     }
   }
   throw lastError ?? new Error("fetchReadWithRetry: exhausted without a response");

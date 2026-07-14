@@ -4,6 +4,7 @@
  * span filter) so trace inspection is reachable from the terminal.
  */
 
+import { sleep } from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -74,7 +75,7 @@ export function registerTracesCommands(program: Command, io: ProgramIO, helpers:
             io.stdout(`${JSON.stringify(event)}\n`);
           }
           if (stopped) break;
-          await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+          await sleep(intervalMs);
         }
       } finally {
         teardown();

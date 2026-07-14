@@ -20,6 +20,8 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { sleep } from "@muse/shared";
+
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
   EMPTY_USER_MODEL,
@@ -478,7 +480,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
         if (attempt >= LOCK_MAX_ATTEMPTS) {
           throw new Error("user-memory is locked by another write in progress — retry shortly", { cause });
         }
-        await new Promise<void>((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+        await sleep(LOCK_RETRY_MS);
       }
     }
     try {

@@ -48,6 +48,7 @@ import {
   isTransientNotionStatus,
   mapNotionStatus
 } from "./notion-shared.js";
+import { sleep } from "@muse/shared";
 
 type NotionFetch = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -101,7 +102,7 @@ export class NotionNotesProvider implements NotesProvider {
     }
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
-    this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    this.sleep = options.retry?.sleep ?? sleep;
   }
 
   describe(): NotesProviderInfo {

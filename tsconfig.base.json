@@ -2,6 +2,7 @@
   "compilerOptions": {
     "declaration": true,
     "declarationMap": true,
+    "incremental": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
@@ -14,7 +15,9 @@
     "noUncheckedSideEffectImports": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "assumeChangesOnlyAffectDirectDependencies": true,
     "sourceMap": true,
+    "skipDefaultLibCheck": true,
     "strict": true,
     "target": "ES2022",
     "types": ["node"],

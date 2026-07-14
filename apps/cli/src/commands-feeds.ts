@@ -18,7 +18,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { fetchPublicHttpWithRedirects, type HostLookup, type PublicHttpRedirectResult } from "@muse/domain-tools";
-import { formatErrorForTerminal, stripUntrustedTerminalChars } from "@muse/shared";
+import { formatErrorForTerminal, sleep, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -144,7 +144,7 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
   // the single wall-clock timeout below. Network rejections stay fail-fast.
   const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
   const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const optionsSleep = options.sleep ?? sleep;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`)), timeoutMs);
   try {
@@ -154,7 +154,7 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
       fetchImpl,
       ...(options.lookup ? { lookup: options.lookup } : {}),
       retries,
-      sleep,
+      sleep: optionsSleep,
       timeoutMs
     });
     if (!fetched.ok) {

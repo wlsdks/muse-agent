@@ -41,6 +41,7 @@ import { retry, RetryExhaustedError } from "@muse/resilience";
 
 import type { DroppedContextSummarizer } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
+import { sleep as sharedSleep } from "@muse/shared";
 
 const SUMMARIZER_SYSTEM_PROMPT =
   "You compress dropped conversation turns into a short factual recap that preserves names, decisions, and open questions. Output ONLY the recap — no preamble, no headings — in 2 to 4 sentences." +
@@ -104,12 +105,6 @@ export interface DroppedContextSummarizerOptions {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 export function createModelDroppedContextSummarizer(
   provider: ModelProvider,
   model: string,
@@ -122,7 +117,7 @@ export function createModelDroppedContextSummarizer(
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const retryInitialDelayMs = options.retryInitialDelayMs ?? DEFAULT_RETRY_INITIAL_DELAY_MS;
   const retryMaxDelayMs = options.retryMaxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
-  const sleep = options.sleep ?? defaultSleep;
+  const sleep = options.sleep ?? sharedSleep;
 
   let cooldownUntilMs = 0;
   let ineffectiveStreak = 0;

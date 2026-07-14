@@ -15,7 +15,7 @@
  * movement. This primitive must not be used for those.
  */
 
-import { redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText, sleep } from "@muse/shared";
 
 import { appendActionLog } from "@muse/stores";
 import { parseRetryAfterMs } from "@muse/mcp-shared";
@@ -124,7 +124,7 @@ export async function performWebActionWithApproval(
   const retries = options.retryOn429 === true ? Math.max(0, Math.trunc(options.retries ?? 2)) : 0;
   const baseDelayMs = Math.max(0, options.baseDelayMs ?? 250);
   const maxRetryAfterMs = Math.max(0, options.maxRetryAfterMs ?? 30_000);
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const delay = options.sleep ?? sleep;
   for (let attempt = 0; ; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -173,7 +173,7 @@ export async function performWebActionWithApproval(
     // request BEFORE applying it, so honouring Retry-After can't double-act.
     if (response.status === 429 && attempt < retries) {
       const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-      await sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : baseDelayMs * 2 ** attempt);
+      await delay(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : baseDelayMs * 2 ** attempt);
       continue;
     }
     // A non-2xx means the third party REJECTED the action — the booking didn't
