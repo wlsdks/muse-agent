@@ -19,8 +19,8 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
-    "build": "tsc -b --incremental --pretty false && pnpm --filter @muse/web build",
-    "build:ts7-fast": "tsc -b --checkers 4 --builders 4 --pretty false && pnpm --filter @muse/web build",
+    "build": "pnpm run build:ts7-fast",
+    "build:ts7-fast": "tsc -b --incremental --checkers 4 --builders 4 --pretty false && pnpm --filter @muse/web build",
     "build:ts7-single-thread": "tsc -b --singleThreaded",
     "check": "pnpm build && pnpm test",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
@@ -79,8 +79,8 @@
     "test": "pnpm -r --sort --if-present test",
     "test:changed": "node scripts/test-changed.mjs",
     "typecheck": "pnpm -r --sort --if-present typecheck",
-    "typecheck:fast": "tsc -b --incremental --pretty false",
-    "typecheck:ts7-fast": "tsc -b --checkers 4 --builders 4 --pretty false",
+    "typecheck:fast": "tsc -b --incremental --pretty false --noEmit",
+    "typecheck:ts7-fast": "tsc -b --checkers 4 --builders 4 --incremental --pretty false --noEmit",
     "self-eval": "node scripts/self-eval.mjs",
     "self-eval:test": "node --test scripts/*.test.mjs",
     "status": "node scripts/build-status-dashboard.mjs",
