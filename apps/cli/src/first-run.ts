@@ -53,6 +53,7 @@ import { renderMuseBanner } from "./muse-banner.js";
 import { MUSE_BIRD_ANSI } from "./muse-mascot.js";
 import { persistModelProviderKey } from "./setup-model.js";
 import { colorAllowed, colorize } from "./tty-color.js";
+import { probeOllamaModels } from "./ollama-probe.js";
 
 /** Any of these in the env means a provider is already wired — skip first-run. */
 export const PROVIDER_KEY_ENV_VARS: readonly string[] = [
@@ -554,15 +555,12 @@ export async function runFirstRunSetupInteractive(deps: RunFirstRunInteractiveDe
 
 async function probeLocalOllama(env: NodeJS.ProcessEnv, fetchImpl?: typeof globalThis.fetch): Promise<{ reachable: boolean; detail: string }> {
   const baseUrl = (env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/u, "");
-  try {
-    const response = await (fetchImpl ?? globalThis.fetch)(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2_000) });
-    if (response.ok) {
-      const body = (await response.json()) as { models?: { name?: string }[] };
-      const count = (body.models ?? []).length;
-      return { detail: `${count.toString()}개 모델 설치됨 · model(s) installed. Run \`muse onboard\` to finish.`, reachable: true };
-    }
-  } catch {
-    // unreachable
+  const { models, reachable } = await probeOllamaModels(baseUrl, {
+    fetchImpl,
+    timeoutMs: 2_000
+  });
+  if (reachable) {
+    return { detail: `${models.length.toString()}개 모델 설치됨 · model(s) installed. Run \`muse onboard\` to finish.`, reachable: true };
   }
   return { detail: "그다음 `muse onboard` 로 마무리하세요 · then run `muse onboard`.", reachable: false };
 }

@@ -17,6 +17,7 @@ import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { probeOllamaModels } from "./ollama-probe.js";
 
 export interface OnboardingState {
   readonly ollamaReachable: boolean;
@@ -134,16 +135,11 @@ async function gatherState(io: ProgramIO): Promise<OnboardingState> {
   const baseUrl = (env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/u, "");
   let ollamaReachable = false;
   let installedModels: string[] = [];
-  try {
-    const fetchImpl = io.fetch ?? globalThis.fetch;
-    const response = await fetchImpl(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3_000) });
-    if (response.ok) {
-      ollamaReachable = true;
-      const body = await response.json() as { models?: { name?: string }[] };
-      installedModels = (body.models ?? []).map((m) => m.name ?? "").filter((n) => n.length > 0);
-    }
-  } catch {
-    ollamaReachable = false;
+  const fetchImpl = io.fetch ?? globalThis.fetch;
+  const probeResult = await probeOllamaModels(baseUrl, { fetchImpl, timeoutMs: 3_000 });
+  if (probeResult.reachable) {
+    ollamaReachable = true;
+    installedModels = probeResult.models.map((model) => model.name);
   }
   const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL).replace(/^ollama\//u, "");
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;

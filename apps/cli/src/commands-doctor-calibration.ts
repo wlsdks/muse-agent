@@ -3,6 +3,7 @@ import { calibrateAbstention } from "@muse/agent-core";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import type { ProgramIO } from "./program.js";
+import { probeOllamaModels } from "./ollama-probe.js";
 
 /** Parse `--alpha` into a miss-rate in (0,1); default 0.1. Non-numeric / out-of-range → 0.1. */
 export function parseAlpha(raw: string | undefined): number {
@@ -72,14 +73,7 @@ function cosine(a: readonly number[], b: readonly number[]): number {
 
 export async function runCalibrationDoctor(io: ProgramIO, alpha: number, asJson: boolean): Promise<void> {
   const baseUrl = resolveOllamaUrl().replace(/\/$/, "");
-  const reachable = await (async (): Promise<boolean> => {
-    try {
-      const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3_000) });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  })();
+  const reachable = (await probeOllamaModels(baseUrl, { timeoutMs: 3_000 })).reachable;
   if (!reachable) {
     io.stdout(`calibration — skipped: local Ollama not reachable at ${baseUrl} (a skip is not a pass; start Ollama to measure).\n`);
     return;

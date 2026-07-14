@@ -18,7 +18,8 @@ export { buildCalibrationReport, formatCalibration, parseAlpha } from "./command
 import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
-import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
+import { findOllamaModelTag, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
+import { probeOllamaModels } from "./ollama-probe.js";
 import { bluetoothShortcutsCheck, brightnessShortcutCheck, focusShortcutsCheck, readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 import { listShortcutNames } from "@muse/macos";
 import { embedModelCheck, formatBytes, recallCalibrationCheck } from "./commands-doctor-checks.js";
@@ -334,14 +335,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
  */
 async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
   const baseUrl = resolveOllamaUrl().replace(/\/$/, "");
-  const reachable = await (async (): Promise<boolean> => {
-    try {
-      const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3_000) });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  })();
+  const reachable = (await probeOllamaModels(baseUrl, { timeoutMs: 3_000 })).reachable;
   if (!reachable) {
     io.stdout(`grounding edge — skipped: local Ollama not reachable at ${baseUrl} (a skip is not a pass; start Ollama to measure).\n`);
     return "ok";
@@ -555,14 +549,19 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // reachable" while `muse ask` works.
   const ollama_base = resolveOllamaUrl(env);
   let ollamaModels: readonly OllamaTagsEntry[] | undefined;
+  let health_ok = false;
   try {
-    const r = await runtime.fetchImpl(`${ollama_base}/api/tags`, { signal: AbortSignal.timeout(1_500) });
-    if (r.ok) {
-      const j = await r.json() as { models?: unknown[] };
-      ollamaModels = Array.isArray(j.models) ? j.models.filter(isOllamaTagsEntry) : [];
+    const probe = await probeOllamaModels(ollama_base, { fetchImpl: runtime.fetchImpl, timeoutMs: 1_500 });
+    if (probe.reachable) {
+      const models = probe.models.map((model): OllamaTagsEntry => ({ name: model.name, size: model.size ?? 0 }));
+      ollamaModels = models;
+      health_ok = true;
       checks.push({ detail: `${ollama_base} — ${ollamaModels.length.toString()} model(s) loaded`, name: "ollama", status: "ok" });
     } else {
-      checks.push({ detail: `${ollama_base} responded ${r.status.toString()}`, name: "ollama", status: "warn" });
+      const probeDetail = probe.status === undefined
+        ? `${ollama_base} not reachable (skip if you don't use Ollama)`
+        : `${ollama_base} responded ${probe.status.toString()}`;
+      checks.push({ detail: probeDetail, name: "ollama", status: "warn" });
     }
   } catch {
     checks.push({ detail: `${ollama_base} not reachable (skip if you don't use Ollama)`, name: "ollama", status: "warn" });
