@@ -263,6 +263,14 @@ export interface ServerOptions {
    * `{messages:[...]}` body bypasses it entirely.
    */
   readonly conversationsFile?: string;
+  /**
+   * Directory holding the encrypted `credentials.json` `muse setup email`
+   * writes (default `~/.config/muse/`, the CLI's `ProgramIO.configDir`
+   * default). Read-only from the API — `GET /api/email/status` derives its
+   * answer from this file; nothing here ever writes to it. Test-injectable
+   * so a fixture credentials file can be pointed at.
+   */
+  readonly emailCredentialsDir?: string;
 }
 
 interface ToolCatalogEntry {

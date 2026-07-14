@@ -402,6 +402,11 @@ export interface MessagingConnectResponse {
   readonly account?: string;
   readonly reason?: string;
 }
+export interface EmailStatusResponse {
+  readonly configured: boolean;
+  readonly method: "oauth" | "env" | null;
+  readonly hasRefreshToken?: boolean;
+}
 interface InboundMessage {
   readonly id?: string;
   readonly from?: string;

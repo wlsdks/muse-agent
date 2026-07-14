@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { canDisconnect, daemonBadge, providerStatus, requiresHomeserver } from "./integrations-logic.js";
+import { canDisconnect, daemonBadge, emailStatusView, providerStatus, requiresHomeserver, schedulerDeliveryValue } from "./integrations-logic.js";
 
-import type { MessagingSetupProvider } from "../api/types.js";
+import type { EmailStatusResponse, MessagingSetupProvider } from "../api/types.js";
 
 const base: MessagingSetupProvider = {
   configured: false,
@@ -49,6 +49,44 @@ describe("canDisconnect", () => {
     expect(canDisconnect({ ...base, configured: true, source: "file" })).toBe(true);
     expect(canDisconnect({ ...base, configured: true, source: "env" })).toBe(false);
     expect(canDisconnect(base)).toBe(false);
+  });
+});
+
+describe("emailStatusView", () => {
+  it("configured via OAuth → ok, auto-refreshes copy", () => {
+    const status: EmailStatusResponse = { configured: true, hasRefreshToken: true, method: "oauth" };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.connectedOauth", tone: "ok" });
+  });
+
+  it("configured via MUSE_GMAIL_TOKEN env → warn (raw token, expires hourly)", () => {
+    const status: EmailStatusResponse = { configured: true, method: "env" };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.connectedEnv", tone: "warn" });
+  });
+
+  it("not configured → neutral", () => {
+    const status: EmailStatusResponse = { configured: false, method: null };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.notConfigured", tone: "neutral" });
+  });
+
+  it("undefined (query still loading/errored) degrades to not-configured, never throws", () => {
+    expect(emailStatusView(undefined)).toEqual({ messageKey: "int.email.notConfigured", tone: "neutral" });
+  });
+});
+
+describe("schedulerDeliveryValue", () => {
+  it("prefixes the provider id onto a bare owner id", () => {
+    expect(schedulerDeliveryValue("telegram", "8303165569")).toBe("telegram:8303165569");
+  });
+
+  it("does NOT double the prefix when the owner id already carries it", () => {
+    expect(schedulerDeliveryValue("matrix", "matrix:@user:hs.test")).toBe("matrix:@user:hs.test");
+  });
+
+  it("a DIFFERENT provider's prefix on the owner id is not treated as already-prefixed", () => {
+    // Only a match of THIS provider's own prefix should be treated as
+    // already-prefixed — a coincidental colon from another provider must
+    // still get telegram: prepended.
+    expect(schedulerDeliveryValue("telegram", "discord:12345")).toBe("telegram:discord:12345");
   });
 });
 

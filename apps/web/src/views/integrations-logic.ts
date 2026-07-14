@@ -1,4 +1,4 @@
-import type { MessagingSetupProvider } from "../api/types.js";
+import type { EmailStatusResponse, MessagingSetupProvider } from "../api/types.js";
 
 export interface ProviderStatusView {
   readonly tone: "ok" | "warn" | "neutral";
@@ -33,6 +33,35 @@ export function canDisconnect(provider: MessagingSetupProvider): boolean {
  */
 export function requiresHomeserver(providerId: string): boolean {
   return providerId === "matrix";
+}
+
+export interface EmailStatusView {
+  readonly tone: "ok" | "warn" | "neutral";
+  readonly messageKey: "int.email.connectedOauth" | "int.email.connectedEnv" | "int.email.notConfigured";
+}
+
+/** Card copy for the Gmail status card — pure so the three states stay unit-testable. */
+export function emailStatusView(status: EmailStatusResponse | undefined): EmailStatusView {
+  if (status?.configured && status.method === "oauth") {
+    return { messageKey: "int.email.connectedOauth", tone: "ok" };
+  }
+  if (status?.configured && status.method === "env") {
+    // Live and usable, but the raw MUSE_GMAIL_TOKEN has no refresh — it
+    // expires hourly, so this is "connected" but flagged, never a plain ok.
+    return { messageKey: "int.email.connectedEnv", tone: "warn" };
+  }
+  return { messageKey: "int.email.notConfigured", tone: "neutral" };
+}
+
+/**
+ * The exact `muse scheduler add --deliver` value for a paired owner chat.
+ * `pairedOwner` is sometimes already stored with the provider prefix
+ * (e.g. a Matrix owner id can look like `matrix:@user:hs.test`) — this
+ * must never double it into `matrix:matrix:@user:hs.test`.
+ */
+export function schedulerDeliveryValue(providerId: string, pairedOwner: string): string {
+  const prefix = `${providerId}:`;
+  return pairedOwner.startsWith(prefix) ? pairedOwner : `${prefix}${pairedOwner}`;
 }
 
 export interface DaemonBadgeView {

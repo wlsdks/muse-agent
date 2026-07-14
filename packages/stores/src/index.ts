@@ -24,6 +24,18 @@ export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "./digest-
 export type { DigestLockOutcome, ProcessLockOutcome } from "./digest-lock.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { withFileLock } from "./encrypted-file.js";
+export {
+  credentialPath,
+  defaultCredentialPath,
+  deleteGmailCredential,
+  deleteStoredToken,
+  hasStoredGmailCredentialSync,
+  readGmailCredential,
+  readStoredToken,
+  writeGmailCredential,
+  writeStoredToken
+} from "./encrypted-credentials.js";
+export type { CredentialStoreIO, GmailOAuthCredential } from "./encrypted-credentials.js";
 export { quarantineCorruptStore } from "./store-quarantine.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";
