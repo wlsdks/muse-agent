@@ -20,7 +20,9 @@ import {
   type AgentTask,
   type TaskStatus
 } from "@muse/multi-agent";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+
+import { toBody } from "./compat-parsers.js";
 
 const TASK_STATUSES: readonly TaskStatus[] = ["todo", "in_progress", "review", "blocked", "done", "failed"];
 const READ_ONLY_BOARD_ERROR = "board is read-only in this wiring";
@@ -31,6 +33,10 @@ function boardReadOnlyError(): Error {
 
 async function throwBoardReadOnly(): Promise<never> {
   throw boardReadOnlyError();
+}
+
+function isTaskStatus(value: unknown): value is TaskStatus {
+  return typeof value === "string" && TASK_STATUSES.includes(value);
 }
 
 interface BoardStore {
@@ -57,7 +63,7 @@ export function registerBoardRoutes(server: FastifyInstance, options: BoardRoute
   });
 
   server.post("/api/board/tasks", async (request, reply) => {
-    const body = (request.body ?? {}) as { title?: string; description?: string };
+    const body = toBody(request.body);
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (title.length === 0) {
       return reply.status(400).send({ reason: "title is required" });
@@ -78,11 +84,11 @@ export function registerBoardRoutes(server: FastifyInstance, options: BoardRoute
     return task;
   };
 
-  server.patch("/api/board/tasks/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { status?: string };
-    const status = body.status as TaskStatus | undefined;
-    if (!status || !TASK_STATUSES.includes(status)) {
+  server.patch("/api/board/tasks/:id", async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const id = request.params.id;
+    const body = toBody(request.body);
+    const status = body.status;
+    if (!isTaskStatus(status)) {
       return reply.status(400).send({ reason: `status must be one of ${TASK_STATUSES.join(", ")}` });
     }
     if (!(await findOr404(id, reply))) {
@@ -92,8 +98,8 @@ export function registerBoardRoutes(server: FastifyInstance, options: BoardRoute
     return { task: tasks.find((t) => t.id === id) };
   });
 
-  server.post("/api/board/tasks/:id/retry", async (request, reply) => {
-    const { id } = request.params as { id: string };
+  server.post("/api/board/tasks/:id/retry", async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const id = request.params.id;
     const existing = await findOr404(id, reply);
     if (!existing) {
       return reply;
@@ -105,9 +111,9 @@ export function registerBoardRoutes(server: FastifyInstance, options: BoardRoute
     return { task: tasks.find((t) => t.id === id) };
   });
 
-  server.post("/api/board/tasks/:id/review", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { approved?: boolean };
+  server.post("/api/board/tasks/:id/review", async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const id = request.params.id;
+    const body = toBody(request.body);
     if (typeof body.approved !== "boolean") {
       return reply.status(400).send({ reason: "approved must be a boolean" });
     }
@@ -123,8 +129,8 @@ export function registerBoardRoutes(server: FastifyInstance, options: BoardRoute
     return { task: tasks.find((t) => t.id === id) };
   });
 
-  server.delete("/api/board/tasks/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
+  server.delete("/api/board/tasks/:id", async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const id = request.params.id;
     if (!(await findOr404(id, reply))) {
       return reply;
     }

@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TraceEventInput } from "@muse/observability";
 import type { TelemetryAggregator } from "@muse/agent-core";
 
+import { readQueryInteger, readRouteParam } from "./compat-parsers.js";
+
 export interface AdminRouteOptions {
   readonly requireAuthenticated: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly admin?: AdminRouteState;
@@ -80,10 +82,8 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
     if (!aggregator) {
       return { enabled: false };
     }
-    const sinceMsRaw = (request.query as { sinceMs?: string } | undefined)?.sinceMs;
-    const sinceMs = typeof sinceMsRaw === "string" && /^\d+$/u.test(sinceMsRaw)
-      ? Number.parseInt(sinceMsRaw, 10)
-      : undefined;
+    const maybeSinceMs = readQueryInteger(request, "sinceMs", Number.NaN);
+    const sinceMs = Number.isInteger(maybeSinceMs) ? maybeSinceMs : undefined;
     return {
       enabled: true,
       summary: aggregator.summary(sinceMs !== undefined ? { sinceMs } : undefined)
@@ -99,13 +99,9 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
     if (!aggregator) {
       return { enabled: false, events: [] };
     }
-    const query = (request.query ?? {}) as { limit?: string; sinceMs?: string };
-    const limit = typeof query.limit === "string" && /^\d+$/u.test(query.limit)
-      ? Number.parseInt(query.limit, 10)
-      : 50;
-    const sinceMs = typeof query.sinceMs === "string" && /^\d+$/u.test(query.sinceMs)
-      ? Number.parseInt(query.sinceMs, 10)
-      : undefined;
+    const limit = readQueryInteger(request, "limit", 50);
+    const maybeSinceMs = readQueryInteger(request, "sinceMs", Number.NaN);
+    const sinceMs = Number.isInteger(maybeSinceMs) ? maybeSinceMs : undefined;
     return {
       enabled: true,
       events: aggregator.recent(sinceMs !== undefined ? { limit, sinceMs } : { limit })
@@ -144,7 +140,14 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
       return reply;
     }
 
-    const { name } = request.params as { readonly name: string };
+    const name = readRouteParam(request, "name");
+    if (name === undefined) {
+      return reply.status(400).send({
+        code: "INVALID_ROUTE_PARAM",
+        message: "name must be a non-empty string"
+      });
+    }
+
     const breaker = options.admin?.resilience?.circuitBreakerRegistry?.getIfExists(name);
 
     if (!breaker) {
@@ -198,4 +201,3 @@ export function recordedTraceEvents(traceSink: unknown, runId?: string): readonl
     ? traceSink.list() as readonly unknown[]
     : [];
 }
-
