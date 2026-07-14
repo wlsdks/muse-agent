@@ -126,8 +126,7 @@ export async function performWebActionWithApproval(
   const maxRetryAfterMs = Math.max(0, options.maxRetryAfterMs ?? 30_000);
   const delay = options.sleep ?? sleep;
   for (let attempt = 0; ; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
     let response: Response;
     try {
       response = await options.fetchImpl(options.request.url, {
@@ -139,7 +138,7 @@ export async function performWebActionWithApproval(
         // read path (fetchReadableUrl) already re-checks the final host; this
         // write path fails closed instead of following.
         redirect: "manual",
-        signal: controller.signal,
+        signal: timeoutSignal,
         ...(options.request.body !== undefined ? { body: options.request.body } : {}),
         headers: {
           ...(options.request.body !== undefined ? { "content-type": "application/json" } : {}),
@@ -149,12 +148,10 @@ export async function performWebActionWithApproval(
     } catch (cause) {
       // A timeout / network reject is AMBIGUOUS (the action may have applied) —
       // never retried, even for an idempotent actuator.
-      const aborted = controller.signal.aborted;
+      const aborted = timeoutSignal?.aborted === true;
       const detail = aborted ? `timed out after ${timeoutMs.toString()}ms` : (cause instanceof Error ? cause.message : String(cause));
       await log("failed", detail);
       return { detail, performed: false, reason: aborted ? "timed-out" : "failed" };
-    } finally {
-      clearTimeout(timer);
     }
     if (response.ok) {
       await log("performed", `HTTP ${response.status.toString()}`);

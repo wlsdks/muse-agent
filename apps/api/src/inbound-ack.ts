@@ -1,5 +1,6 @@
 import { citedSourcesIn } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 import { formalityInstructionLine } from "./register-mirror.js";
 
@@ -86,14 +87,10 @@ export function createComposeAck(
     const controller = new AbortController();
     // Race a real timer, not just an AbortSignal — a fake/test model
     // provider that ignores `signal` must still fail open on timeout.
-    const timeout = new Promise<null>((resolve) => {
-      const timer = setTimeout(() => {
-        controller.abort();
-        resolve(null);
-      }, timeoutMs);
-      if (typeof timer.unref === "function") {
-        timer.unref();
-      }
+    const timeoutController = new AbortController();
+    const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: timeoutController.signal }).then(() => {
+      controller.abort();
+      return null;
     });
     try {
       const response = await Promise.race([
@@ -114,6 +111,8 @@ export function createComposeAck(
       return sanitizeAckText(response.output);
     } catch {
       return null;
+    } finally {
+      timeoutController.abort();
     }
   };
 }

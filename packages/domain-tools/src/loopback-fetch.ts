@@ -143,25 +143,24 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
     readonly body: string | undefined;
     readonly truncated: boolean;
   }> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+    const requestInit = timeoutSignal === undefined
+      ? { ...init, redirect: "error" }
+      : { ...init, redirect: "error", signal: timeoutSignal };
     try {
       // fetchWithRetry layers transient-failure retry (429/5xx/network) on
-      // top; timeoutMs:0 leaves OUR controller authoritative across the
-      // request AND the body read (the spanning-timeout contract above),
-      // while our signal still aborts an in-flight attempt.
+      // top; timeoutMs:0 means retry layer retries only physical transport
+      // failures, while timeoutSignal governs both headers and any body read.
       const response = await fetchWithRetry(fetchImpl, url.toString(), {
         ...retryOptions,
         timeoutMs: 0,
-        init: { ...init, redirect: "error", signal: controller.signal }
+        init: requestInit
       });
       if (!readBody) {
         return { body: undefined, headers: response.headers, status: response.status, truncated: false };
       }
       const { body, truncated } = await readBodyWithCap(response);
       return { body, headers: response.headers, status: response.status, truncated };
-    } finally {
-      clearTimeout(timer);
     }
   }
 
