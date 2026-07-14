@@ -12,45 +12,37 @@ const memory = (over: Partial<UserMemorySnapshot> = {}): UserMemorySnapshot => (
   ...over
 });
 
-describe("buildUserModelComposer — MUSE_RICH_USER_MODEL gate (default ON, the unified source)", () => {
-  it("default ON / explicit true ⇒ a composer; explicit false ⇒ none (the deliberate escape hatch)", () => {
-    expect(buildUserModelComposer({})).toBeDefined();
-    expect(buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })).toBeDefined();
+describe("buildUserModelComposer — opt-in MUSE_RICH_USER_MODEL gate (default OFF)", () => {
+  it("default OFF ⇒ no composer (byte-identical default section path); explicit true ⇒ a composer", () => {
+    expect(buildUserModelComposer({})).toBeUndefined();
     expect(buildUserModelComposer({ MUSE_RICH_USER_MODEL: "false" })).toBeUndefined();
+    expect(buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })).toBeDefined();
   });
 
-  it("owner scope ⇒ the FULL recall learned block (facts + vetoes)", () => {
-    const composer = buildUserModelComposer({})!;
-    const section = composer(memory(), "u", 40, "owner");
+  it("MUSE_RICH_USER_MODEL=true ⇒ the recall learned block (facts + vetoes)", () => {
+    const composer = buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })!;
+    const section = composer(memory(), "u", 40);
     expect(section).toContain("Vetoes"); // the recall learned block's veto header
     expect(section).toContain("no_coffee: never suggest coffee");
     expect(section).toContain("Facts the user has shared:");
     expect(section).toContain("name: Jinan");
   });
 
-  it("channel scope ⇒ REDUCED: facts only, the owner's private vetoes/preferences WITHHELD", () => {
-    const composer = buildUserModelComposer({})!;
-    const section = composer(memory(), "u", 40, "channel") ?? "";
-    expect(section).toContain("name: Jinan"); // a fact may surface
-    expect(section).not.toContain("Vetoes"); // the owner's private model must NOT leak to a channel
-    expect(section).not.toContain("no_coffee");
-  });
-
   it("the composed section carries NO identity preamble and NO context line (no double-inject)", () => {
-    const composer = buildUserModelComposer({})!;
-    const section = composer(memory(), "u", 40, "owner") ?? "";
+    const composer = buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })!;
+    const section = composer(memory(), "u", 40) ?? "";
     expect(section).not.toContain(IDENTITY_MARKER);
     expect(section).not.toContain("You are Muse");
     expect(section).not.toContain("Current local context:");
   });
 
   it("empty memory ⇒ composer returns undefined (agent-core falls back to the default section)", () => {
-    const composer = buildUserModelComposer({})!;
-    expect(composer({ userId: "u", facts: {}, preferences: {} }, "u", 40, "owner")).toBeUndefined();
+    const composer = buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })!;
+    expect(composer({ userId: "u", facts: {}, preferences: {} }, "u", 40)).toBeUndefined();
   });
 
   it("fail-soft: a throwing snapshot returns undefined, never breaking the run", () => {
-    const composer = buildUserModelComposer({})!;
+    const composer = buildUserModelComposer({ MUSE_RICH_USER_MODEL: "true" })!;
     const hostile = {
       userId: "u",
       facts: { name: "Jinan" },
@@ -58,7 +50,7 @@ describe("buildUserModelComposer — MUSE_RICH_USER_MODEL gate (default ON, the 
         throw new Error("boom");
       }
     } as unknown as UserMemorySnapshot;
-    expect(() => composer(hostile, "u", 40, "owner")).not.toThrow();
-    expect(composer(hostile, "u", 40, "owner")).toBeUndefined();
+    expect(() => composer(hostile, "u", 40)).not.toThrow();
+    expect(composer(hostile, "u", 40)).toBeUndefined();
   });
 });

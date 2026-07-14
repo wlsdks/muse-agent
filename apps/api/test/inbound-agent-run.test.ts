@@ -148,10 +148,7 @@ describe("createInboundAgentRun trusted channel authority", () => {
       allowedToolNames: [...CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST],
       localMode: false
     });
-    // Scope discipline: a channel run carries personaScope "channel" so the
-    // unified user-model layer withholds the owner's private block from a reply
-    // that leaves for a third-party channel.
-    expect(received?.metadata).toEqual({ personaScope: "channel", userId: "log:owner-1" });
+    expect(received?.metadata).toEqual({ userId: "log:owner-1" });
     expect(received?.toolApprovalGate).toEqual(expect.any(Function));
   });
 

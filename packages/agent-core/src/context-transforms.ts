@@ -337,10 +337,8 @@ export async function applyUserMemory(
   // A supplied composer (the shared @muse/recall user-model layer, wired at the
   // assembly) REPLACES the default section; declining (undefined) falls back to
   // the built-in rendering, so no composer / an empty result is byte-identical.
-  // Scope discipline: a channel identity's run tags `metadata.personaScope`
-  // "channel" so the composer withholds the owner's private model; default owner.
-  const scope = metadataString(context.input.metadata, "personaScope") === "channel" ? "channel" : "owner";
-  const rendered = composer?.(memory, userId, maxEntries, scope) ?? renderUserMemorySection(memory, maxEntries);
+  // Scope safety is per-userId: this reads only THIS run's userId's own memory.
+  const rendered = composer?.(memory, userId, maxEntries) ?? renderUserMemorySection(memory, maxEntries);
   if (!rendered) {
     return context.input;
   }

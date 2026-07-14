@@ -124,21 +124,7 @@ export interface PersonaBuildOptions {
    * uncapped rendering.
    */
   readonly admittedRuleKeys?: ReadonlySet<string>;
-  /**
-   * Whose surface this block is for (scope discipline for the unified layer).
-   * `"owner"` (default) — the full learned block. `"channel"` — a REDUCED block
-   * for a third-party channel identity: a handful of facts ONLY, with the
-   * owner's private behavioural rules (preferences / vetoes / goals) withheld,
-   * so Muse never spills the owner's private model to whoever is in a channel.
-   * Reduction is done by shrinking the INPUT, so the SAME rendering engine runs
-   * for both — the two can never diverge in logic, only in scope.
-   */
-  readonly scope?: "owner" | "channel";
 }
-
-/** How many facts a `"channel"`-scoped block may surface — a handful, matching
- *  the reduced snapshot it replaces, never the owner's whole fact store. */
-const CHANNEL_FACT_CAP = 5;
 
 /**
  * The learned-block lines (Facts / Preferences / Vetoes / Goals / Recent
@@ -303,13 +289,13 @@ export function composeLearnedUserModelSection(
   memory: MusePersonaMemory,
   options: PersonaBuildOptions = {}
 ): string | undefined {
-  // Channel scope reduces the INPUT (facts-only, capped; the owner's private
-  // preferences/vetoes/goals/threads/episodes withheld) and runs the SAME
-  // engine — so an owner block and a channel block never diverge in logic.
-  const scoped: MusePersonaMemory = options.scope === "channel"
-    ? { facts: Object.fromEntries(Object.entries(memory.facts).slice(-CHANNEL_FACT_CAP)), preferences: {} }
-    : memory;
-  const lines = buildLearnedBlockLines(scoped, options);
+  // No channel/owner scope REDUCTION: scope safety is already provided by
+  // per-userId composition — a run only ever sees `findByUserId(runUserId)`'s OWN
+  // memory, so a channel identity can't reach the owner's store. A prior
+  // "channel = drop prefs/vetoes" reduction was a NET-NEGATIVE (fable review):
+  // it hid a channel user's OWN safety vetoes from themselves, and a blind cap on
+  // a safety list is strictly worse than an over-long one.
+  const lines = buildLearnedBlockLines(memory, options);
   while (lines.length > 0 && lines[0] === "") lines.shift();
   return lines.length > 0 ? lines.join("\n") : undefined;
 }

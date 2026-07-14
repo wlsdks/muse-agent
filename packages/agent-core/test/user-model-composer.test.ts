@@ -24,25 +24,7 @@ async function sectionFor(composer?: UserModelComposer): Promise<string> {
   return applied.messages.find((m) => m.role === "system")?.content ?? "";
 }
 
-async function scopeSeenFor(personaScope?: string): Promise<string> {
-  const store = new InMemoryUserMemoryStore();
-  await store.upsertFact("stark", "favorite_db", "Kysely");
-  let seenScope = "";
-  const composer: UserModelComposer = (_m, _u, _max, scope) => { seenScope = scope; return "block"; };
-  const metadata: Record<string, unknown> = { userId: "stark", ...(personaScope ? { personaScope } : {}) };
-  await applyUserMemory({ input: { messages: [{ content: "hi", role: "user" as const }], metadata }, runId: "r", startedAt: new Date() }, store, 5, composer);
-  return seenScope;
-}
-
 describe("applyUserMemory userModelComposer seam (S1b)", () => {
-  it("scope discipline: metadata.personaScope 'channel' reaches the composer; default is 'owner'", async () => {
-    // A third-party channel identity must get the REDUCED block — the owner's
-    // private model never leaks. Default (no tag) is the owner surface.
-    expect(await scopeSeenFor("channel")).toBe("channel");
-    expect(await scopeSeenFor(undefined)).toBe("owner");
-    expect(await scopeSeenFor("anything-else")).toBe("owner");
-  });
-
   it("no composer ⇒ the built-in section is used (byte-identical default)", async () => {
     const section = await sectionFor(undefined);
     expect(section).toContain("[User Memory]");

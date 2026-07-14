@@ -57,7 +57,7 @@ import { resolveProactiveTrustFile } from "./tick-daemons.js";
 interface InboundAgentRuntime {
   run(input: {
     readonly messages: readonly ThreadTurn[];
-    readonly metadata: { readonly userId: string; readonly personaScope?: "owner" | "channel" };
+    readonly metadata: { readonly userId: string };
     readonly model: string;
     readonly toolApprovalGate: ChannelApprovalGate;
     readonly toolExposureAuthority: ToolExposureAuthority;
@@ -439,11 +439,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     const scheduledBefore = rememberIntent ? await countScheduledFollowups(followupsFile, runUserId) : 0;
     const result = await agentRuntime.run({
       messages,
-      // Scope discipline (unified user-model layer): an inbound channel identity
-      // is a THIRD PARTY, so its run gets the REDUCED user-model block — the
-      // owner's private preferences/vetoes/goals are never composed into a reply
-      // that leaves for a channel. The composer keys off `personaScope`.
-      metadata: { personaScope: "channel", userId: runUserId },
+      metadata: { userId: runUserId },
       model,
       toolExposureAuthority: createToolExposureAuthority({
         allowedToolNames: CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST,

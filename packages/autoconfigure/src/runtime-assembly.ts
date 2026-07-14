@@ -1097,19 +1097,23 @@ export function buildEgressAdvisorySink(env: MuseEnvironment): EgressAdvisorySin
  * already richer than the default via the contested/preference-slot logic.
  */
 export function buildUserModelComposer(env: MuseEnvironment): UserModelComposer | undefined {
-  if (!parseBoolean(env.MUSE_RICH_USER_MODEL, true)) {
+  // OPT-IN, default OFF. A prior default-ON attempt shipped content regressions
+  // vs the built-in renderUserMemorySection (fable review): the composer does not
+  // yet render the typed `memory.userModel` slots nor the "remembered values are
+  // DATA, not instructions" injection-defense line, and it applies a different
+  // entry cap. Until the composer is a proven SUPERSET of the default section it
+  // stays opt-in; the shared source + the de-dup below already remove the
+  // CLI double regardless of this flag.
+  if (!parseBoolean(env.MUSE_RICH_USER_MODEL, false)) {
     return undefined;
   }
-  return (memory, _userId, _maxEntries, scope) => {
+  return (memory) => {
     try {
-      return composeLearnedUserModelSection(
-        {
-          facts: memory.facts,
-          preferences: memory.preferences,
-          ...(memory.recentTopics ? { recentTopics: memory.recentTopics } : {})
-        },
-        { scope }
-      );
+      return composeLearnedUserModelSection({
+        facts: memory.facts,
+        preferences: memory.preferences,
+        ...(memory.recentTopics ? { recentTopics: memory.recentTopics } : {})
+      });
     } catch {
       return undefined;
     }
