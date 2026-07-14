@@ -333,6 +333,13 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       },
       command
     ) => {
+      // A non-blocking, ONCE-EVER nudge toward `muse daemon --install` — see
+      // daemon-offer.ts's doc comment for the full gating contract. Skipped
+      // under --json so scripted callers never see stray non-JSON output.
+      if (!options.json) {
+        const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
+        await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
+      }
       if (options.reset) {
         await clearLastChatHistory();
       }

@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import { adjustPlaybookReward, decryptPlaybookAtRest, encryptPlaybookAtRest, isPlaybookEncrypted, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -28,6 +29,16 @@ function suppressedLessonsFile(): string {
 
 function learningPauseFile(): string {
   return resolveLearningPauseFile(process.env as Record<string, string | undefined>);
+}
+
+/**
+ * `text`/`tag` are distilled from chat content (which can include web/tool
+ * output) and aren't sanitized at write time — strip control/escape bytes
+ * and collapse any embedded newline before they reach the terminal, so a
+ * strategy can't clear the screen, recolor it, or forge a fake list entry.
+ */
+function sanitizeForDisplay(value: string): string {
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
 }
 
 export function registerPlaybookCommands(program: Command, io: ProgramIO): void {
@@ -49,6 +60,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         id: `pb_${randomUUID()}`,
         userId,
         text,
+        origin: "manual",
         ...(options.tag && options.tag.trim().length > 0 ? { tag: options.tag.trim() } : {}),
         createdAt: new Date().toISOString()
       });
@@ -75,7 +87,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         const reward = typeof e.reward === "number" && Number.isFinite(e.reward) ? e.reward : 0;
         const avoided = reward <= PLAYBOOK_AVOID_BELOW ? " · avoided (not injected)" : "";
         const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}${avoided}⟩`;
-        io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${e.tag})` : ""}${rewardTag} ${e.text}\n`);
+        io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${sanitizeForDisplay(e.tag)})` : ""}${rewardTag} ${sanitizeForDisplay(e.text)}\n`);
       }
     });
 
@@ -244,19 +256,19 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
       if (result.reinforced.length > 0) {
         io.stdout(`Reinforced ${result.reinforced.length.toString()} strateg${result.reinforced.length === 1 ? "y" : "ies"} you approved (they rise in ranking):\n`);
         for (const r of result.reinforced) {
-          io.stdout(`  ↑ (reward ${r.reward > 0 ? "+" : ""}${r.reward.toString()}) ${r.text}\n`);
+          io.stdout(`  ↑ (reward ${r.reward > 0 ? "+" : ""}${r.reward.toString()}) ${sanitizeForDisplay(r.text)}\n`);
         }
       }
       if (result.decayed.length > 0) {
         io.stdout(`Decayed ${result.decayed.length.toString()} strateg${result.decayed.length === 1 ? "y" : "ies"} a correction implicated (they sink in ranking):\n`);
         for (const d of result.decayed) {
-          io.stdout(`  ↓ (reward ${d.reward > 0 ? "+" : ""}${d.reward.toString()}) ${d.text}\n`);
+          io.stdout(`  ↓ (reward ${d.reward > 0 ? "+" : ""}${d.reward.toString()}) ${sanitizeForDisplay(d.text)}\n`);
         }
       }
       if (result.status === "recorded") {
         io.stdout(`Learned ${result.strategies.length.toString()} strateg${result.strategies.length === 1 ? "y" : "ies"} from your last session:\n`);
         for (const strategy of result.strategies) {
-          io.stdout(`  - ${strategy.text}${strategy.tag ? ` (${strategy.tag})` : ""}\n`);
+          io.stdout(`  - ${sanitizeForDisplay(strategy.text)}${strategy.tag ? ` (${sanitizeForDisplay(strategy.tag)})` : ""}\n`);
         }
         return;
       }

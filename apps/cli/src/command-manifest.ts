@@ -448,7 +448,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
   },
   {
     "name": "learned",
-    "description": "Show what Muse has learned about working with you — trusted/avoided strategies & skills + recent reflections",
+    "description": "The single index of everything Muse has learned about you — facts/preferences, trusted/avoided strategies & skills, probation, vetoed actions, detected patterns, and recent reflections",
     "argsTerm": "",
     "hasOptions": true,
     "subcommands": []
@@ -1036,6 +1036,16 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "hasOptions": false,
     "subcommands": [
       "model"
+    ]
+  },
+  {
+    "name": "vetoes",
+    "description": "Action classes Muse has learned NEVER to auto-act on again (`don't do that again`)",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "list",
+      "remove"
     ]
   },
   {

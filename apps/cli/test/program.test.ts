@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
@@ -40,6 +41,12 @@ describe("cli program", () => {
     process.env.MUSE_PERSONA_FILE = path.join(tmpdir(), `muse-test-no-persona-${process.pid.toString()}.json`);
     homeEnvBackup = process.env.HOME;
     process.env.HOME = await mkdtemp(path.join(tmpdir(), "muse-test-home-"));
+    // Pre-mark the one-time `muse daemon --install` nudge as already shown —
+    // these tests assert exact chat/ask output bodies and are unrelated to
+    // that onboarding nudge (see daemon-offer.ts).
+    const museDir = path.join(process.env.HOME, ".muse");
+    mkdirSync(museDir, { recursive: true });
+    writeFileSync(path.join(museDir, "daemon-offer-shown.json"), JSON.stringify({ offered: true }), "utf8");
   });
   afterEach(() => {
     if (personaEnvBackup === undefined) delete process.env.MUSE_PERSONA_FILE;

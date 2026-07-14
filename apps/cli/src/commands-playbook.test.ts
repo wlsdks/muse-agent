@@ -93,6 +93,34 @@ describe("muse playbook undo — remove AND teach not to re-learn (B1 §5)", () 
   });
 });
 
+describe("muse playbook list — untrusted text is sanitized before it reaches the terminal", () => {
+  it("strips ANSI/control bytes and collapses an embedded newline from a distilled strategy's text/tag", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { recordPlaybookStrategy } = await import("@muse/stores");
+    const dir = await mkdtemp(join(tmpdir(), "muse-pblist-sanitize-"));
+    const file = join(dir, "playbook.json");
+    const prev = process.env.MUSE_PLAYBOOK_FILE;
+    process.env.MUSE_PLAYBOOK_FILE = file;
+    try {
+      const hostile = "evil\x1b[2J\x1b[31mPWNED\x1b[0m\nFAKE SECTION:\n  • injected";
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_hostile", tag: hostile, text: hostile, userId: "u" });
+      const out: string[] = [];
+      const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
+      const program = new Command();
+      registerPlaybookCommands(program, io);
+      await program.parseAsync(["node", "x", "playbook", "list", "--user", "u"], { from: "node" });
+      const text = out.join("");
+      expect(text).toContain("PWNED[0m"); // the strategy itself is present (sanity — not vacuously empty); ESC stripped, bracket text stays literal
+      expect(text.includes("\x1b")).toBe(false);
+      expect(text).not.toContain("FAKE SECTION:\n"); // no forged section header on its own line
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_PLAYBOOK_FILE; else process.env.MUSE_PLAYBOOK_FILE = prev;
+    }
+  });
+});
+
 describe("muse playbook reward — manual reinforce/penalise", () => {
   it("reinforces by the amount, and `--down` penalises (clamped, prefix-matched id)", async () => {
     const { mkdtemp } = await import("node:fs/promises");

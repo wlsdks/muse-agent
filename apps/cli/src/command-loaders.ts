@@ -286,6 +286,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "vetoes",
+    names: ["vetoes"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-vetoes.js");
+      m.registerVetoesCommands(program, io);
+    },
+  },
+  {
     id: "pattern",
     names: ["pattern"],
     load: async (program, io, _deps) => {
