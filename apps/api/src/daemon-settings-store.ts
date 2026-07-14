@@ -47,7 +47,7 @@ export async function writeDaemonSetting(file: string, key: string, enabled: boo
   const next = { flags: { ...readDaemonSettingsSync(file), [key]: enabled }, version: 1 };
   await fs.mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid.toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await fs.writeFile(tmp, `${JSON.stringify(next)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
 }
 

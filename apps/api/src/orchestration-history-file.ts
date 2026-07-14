@@ -71,12 +71,17 @@ export class FileOrchestrationHistoryStore implements OrchestrationHistoryStore 
       if (!Array.isArray(parsed.entries)) {
         return [];
       }
-      return parsed.entries
-        .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === "object")
-        .map((e) => reviveDates(e))
-        .filter((e): e is OrchestrationHistoryEntry =>
-          typeof e.runId === "string" && e.startedAt instanceof Date && !Number.isNaN(e.startedAt.getTime())
-        );
+      const entries: OrchestrationHistoryEntry[] = [];
+      for (const rawEntry of parsed.entries) {
+        if (!rawEntry || typeof rawEntry !== "object") {
+          continue;
+        }
+        const entry = reviveDates(rawEntry as Record<string, unknown>);
+        if (typeof entry.runId === "string" && entry.startedAt instanceof Date && !Number.isNaN(entry.startedAt.getTime())) {
+          entries.push(entry);
+        }
+      }
+      return entries;
     } catch {
       // A corrupt history file must not take the server down — start fresh.
       return [];
@@ -85,7 +90,7 @@ export class FileOrchestrationHistoryStore implements OrchestrationHistoryStore 
 
   private persist(): void {
     const entries = this.memory.list(MAX_PERSISTED_ENTRIES);
-    const payload = `${JSON.stringify({ entries, version: 1 }, null, 2)}\n`;
+    const payload = `${JSON.stringify({ entries, version: 1 })}\n`;
     mkdirSync(dirname(this.file), { recursive: true });
     const tmp = `${this.file}.tmp-${process.pid.toString()}`;
     writeFileSync(tmp, payload, { encoding: "utf8", mode: 0o600 });
