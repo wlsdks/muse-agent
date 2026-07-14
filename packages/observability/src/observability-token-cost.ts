@@ -133,6 +133,14 @@ export interface TokenCostQuery {
   topExpensive(window: TokenCostQueryWindow & { readonly limit: number }): Promise<readonly TokenCostTopExpensiveEntry[]>;
 }
 
+function normalizeDatabaseTime(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function isQueryableTokenUsageSink(sink: TokenUsageSink): sink is QueryableTokenUsageSink {
+  return "list" in sink && typeof sink.list === "function";
+}
+
 export class InMemoryTokenCostQuery implements TokenCostQuery {
   constructor(private readonly sink: QueryableTokenUsageSink) {}
 
@@ -263,7 +271,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       provider: row.provider,
       runId: row.run_id,
       stepType: row.step_type,
-      time: row.time instanceof Date ? row.time : new Date(row.time as unknown as string),
+      time: normalizeDatabaseTime(row.time),
       totalTokens: Number(row.total_tokens)
     }));
   }
@@ -325,7 +333,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
     return rows.rows.map((row) => ({
       model: row.model,
       runId: row.run_id,
-      time: row.time instanceof Date ? row.time : new Date(row.time as unknown as string),
+      time: normalizeDatabaseTime(row.time),
       totalCostUsd: Number(row.total_cost_usd ?? 0),
       totalTokens: Number(row.total_tokens ?? 0)
     }));
@@ -350,17 +358,17 @@ function wrapTokenUsageSink(
   inner: TokenUsageSink,
   onRecord: (event: TokenUsageRecord) => Promise<void> | void
 ): TokenUsageSink {
-  const queryable = (inner as Partial<QueryableTokenUsageSink>).list;
   const base: TokenUsageSink = {
     async record(event) {
       await onRecord(event);
       await inner.record(event);
     }
   };
-  if (typeof queryable === "function") {
-    return Object.assign(base, {
-      list: () => (inner as QueryableTokenUsageSink).list()
-    }) as QueryableTokenUsageSink;
+  if (isQueryableTokenUsageSink(inner)) {
+    return {
+      ...base,
+      list: () => inner.list()
+    };
   }
   return base;
 }
