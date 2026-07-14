@@ -29,15 +29,8 @@ function boardReadOnlyError(): Error {
   return new Error(READ_ONLY_BOARD_ERROR);
 }
 
-function readOnlyBoard(): BoardStore {
-  return {
-    list: async () => {
-      throw boardReadOnlyError();
-    },
-    mutate: async () => {
-      throw boardReadOnlyError();
-    }
-  };
+async function throwBoardReadOnly(): Promise<never> {
+  throw boardReadOnlyError();
 }
 
 interface BoardStore {
@@ -53,11 +46,9 @@ export interface BoardRoutesOptions {
 }
 
 export function registerBoardRoutes(server: FastifyInstance, options: BoardRoutesOptions = {}): void {
-  const readOnlyBoardStore = readOnlyBoard();
-
   const board: BoardStore = options.board
     ?? (options.listTasks
-      ? { list: options.listTasks, mutate: readOnlyBoardStore.mutate }
+      ? { list: options.listTasks, mutate: throwBoardReadOnly }
       : new FileAgentTaskBoard());
 
   server.get("/api/board", async (_request, reply) => {
