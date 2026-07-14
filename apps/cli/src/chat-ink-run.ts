@@ -8,7 +8,7 @@
 
 import { buildContextWindowOptions, createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/stores";
+import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
@@ -21,7 +21,7 @@ import React from "react";
 
 import { createModelDroppedContextSummarizer, detectUserCommitments } from "@muse/agent-core";
 
-import { appendActivity, appendLastChatTurn, appendSessionBoundary, clearLastChatHistory, maybeCompactLastChatHistory, readLastChatHistory } from "./chat-history.js";
+import { activeConversationId, appendActivity, appendLastChatTurn, appendSessionBoundary, listConversations, maybeCompactLastChatHistory, readLastChatHistory, resumeConversation, startNewConversation, type LastChatLine } from "./chat-history.js";
 import {
   buildRecap,
   chatToolApprovalGate,
@@ -35,7 +35,8 @@ import {
   resolveChatHistoryWindow,
   type ChatTurnMessage,
   type JobListItem,
-  type MemorySnapshot
+  type MemorySnapshot,
+  type ResumeConversationResult
 } from "./chat-ink-core.js";
 import { buildSkillsPrompt } from "./chat-skills.js";
 import { resolveSkillRewardsFile } from "./commands-skills.js";
@@ -131,10 +132,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const personaPrompt = (): string | undefined =>
     memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes, recurringThreads }, userId, { contestedKeys: contestedHolder.current }) : undefined;
 
-  // Long-session compaction: if last-chat.jsonl has grown past the threshold,
-  // summarise the old turns into one line before seeding — so a multi-day
-  // continuous relationship doesn't blow the context window ("doesn't forget;
-  // it abstracts"). Best-effort; falls through on any failure.
+  // Long-session compaction: if the active conversation has grown past the
+  // threshold, summarise the old turns into one line before seeding — so a
+  // multi-day continuous relationship doesn't blow the context window
+  // ("doesn't forget; it abstracts"). Best-effort; falls through on any failure.
   if (continueHistory && assembly.modelProvider) {
     try {
       await maybeCompactLastChatHistory(
@@ -144,11 +145,22 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     } catch { /* compaction is best-effort */ }
   }
 
-  const seedLines = continueHistory ? await readLastChatHistory().catch(() => []) : [];
-  const history: ChatTurnMessage[] = seedLines
-    .filter((l) => l.role === "user" || l.role === "assistant")
-    .map((l) => ({ content: l.content, role: l.role as "user" | "assistant" }))
-    .slice(-20);
+  // Shared by the boot-time seed AND `/resume` (which reloads context mid-REPL
+  // after switching the active conversation) — both want the SAME window.
+  // Returns the raw (unsliced, ≤24-turn) lines too — the launch recap's
+  // open-commitment detection below wants the full window, not just the
+  // last 20 the model context keeps.
+  const seedChatHistory = async (): Promise<{ readonly lines: readonly LastChatLine[]; readonly messages: ChatTurnMessage[] }> => {
+    const lines = await readLastChatHistory().catch(() => []);
+    const messages = lines
+      .filter((l) => l.role === "user" || l.role === "assistant")
+      .map((l) => ({ content: l.content, role: l.role as "user" | "assistant" }))
+      .slice(-20);
+    return { lines, messages };
+  };
+  const bootSeed = continueHistory ? await seedChatHistory() : { lines: [], messages: [] };
+  const seedLines = bootSeed.lines;
+  const history: ChatTurnMessage[] = bootSeed.messages;
 
   // Shell-style ↑/↓ input history across sessions.
   const inputHistorySeed = await loadInputHistory().catch(() => [] as string[]);
@@ -297,11 +309,35 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // and read at the post-unmount episode capture below: true once any answer rested on
   // untrusted-only sources → the stored episode is marked trusted:false (MemoryGraft).
   let sessionUntrusted = false;
+  // `/new`: point the active-conversation pointer at a fresh (not-yet-persisted)
+  // id — the OLD conversation stays in the store, listed by `muse chats` /
+  // `/sessions`, instead of being cleared in place.
   const onReset = (): void => {
     // A new conversation starts fresh — don't carry a prior conversation's verdict
-    // onto the post-reset episode (the capture summarises turns since the boundary).
+    // onto the new one (the capture summarises turns since the boundary).
     sessionUntrusted = false;
-    void clearLastChatHistory().catch(() => undefined);
+    void startNewConversation().catch(() => undefined);
+  };
+
+  // `/sessions`: the numbered picker list, newest first.
+  const listConversationsForRepl = async (): Promise<{ readonly activeId: string; readonly summaries: readonly ConversationSummary[] }> => {
+    const [summaries, activeId] = await Promise.all([listConversations(), activeConversationId()]);
+    return { activeId, summaries };
+  };
+
+  // `/resume <n|id-prefix>`: switch the active conversation, then reload the
+  // model's context window from it (same seeding rule as boot).
+  const resumeConversationByRef = async (ref: string): Promise<ResumeConversationResult> => {
+    const resolution = await resumeConversation(ref);
+    if (resolution.status === "not-found") {
+      return { message: `No conversation found with id "${ref}". Run /sessions to see the list.`, ok: false };
+    }
+    if (resolution.status === "ambiguous") {
+      const previews = resolution.candidates.map((c) => `${c.id} (${c.title})`).join(", ");
+      return { message: `Ambiguous conversation id "${ref}" — matches ${resolution.candidates.length.toString()}: ${previews}`, ok: false };
+    }
+    const { messages: seedHistory } = await seedChatHistory();
+    return { id: resolution.summary.id, ok: true, seedHistory, title: resolution.summary.title };
   };
 
   // Memory transparency/control surfaced inside the chat: /memory reads what
@@ -651,6 +687,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     onCommit,
     autoLearn,
     onReset,
+    listConversations: listConversationsForRepl,
+    resumeConversationByRef,
     onUntrustedAnswer: () => { sessionUntrusted = true; },
     personaPrompt,
     proactiveCheck,

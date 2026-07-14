@@ -4,6 +4,16 @@
 // unexported. See packages/agent-core/src/index.ts for the house style.
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+export {
+  defaultConversationsFile,
+  FileConversationStore,
+  InMemoryConversationStore,
+  MAX_TURNS_PER_CONVERSATION,
+  newConversationId,
+  resolveConversationRef
+} from "./conversation-store.js";
+export type { Conversation, ConversationRefResolution, ConversationSummary, ConversationTurn } from "./conversation-store.js";
+export { defaultActiveConversationFile, readActiveConversationId, writeActiveConversationId } from "./conversation-active-pointer.js";
 export { appendDigestItem, drainDigestQueue, readDigestQueue } from "./digest-queue.js";
 export type { DigestQueueItem } from "./digest-queue.js";
 export { digestAlreadySentToday, localDateKey, markDigestSent, readDigestSentDate } from "./digest-sent-store.js";

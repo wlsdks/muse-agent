@@ -8,8 +8,8 @@ const REAL_CLI_NAMES = new Set(COMMAND_STUBS.map((stub) => stub.name));
 const EXPECTED_CHAT_COMMANDS = [
   "help", "new", "clear", "model", "agents", "agent", "skills", "today", "tools",
   "job", "jobs", "orchestrate", "memory", "remember", "pref", "recall", "reflect",
-  "forget", "trust", "persona", "history", "compact", "undo", "save", "copy",
-  "cost", "exit"
+  "forget", "trust", "persona", "history", "sessions", "resume", "compact", "undo",
+  "save", "copy", "cost", "exit"
 ];
 
 describe("slash-command-registry CLI-surface drift", () => {
@@ -34,12 +34,14 @@ describe("slash-command-registry CLI-surface drift", () => {
     expect(cli.some((c) => c.cmd === "reflect")).toBe(false);
   });
 
-  it("chat surface is unchanged: still 27 commands including jobs, pref, reflect", () => {
+  it("chat surface is 29 commands, including /sessions + /resume, jobs, pref, reflect", () => {
     const chat = slashCommandsForPlatform("chat");
-    expect(chat.length).toBe(27);
+    expect(chat.length).toBe(29);
     expect(new Set(chat.map((c) => c.cmd))).toEqual(new Set(EXPECTED_CHAT_COMMANDS));
     expect(chat.some((c) => c.cmd === "jobs")).toBe(true);
     expect(chat.some((c) => c.cmd === "pref")).toBe(true);
     expect(chat.some((c) => c.cmd === "reflect")).toBe(true);
+    expect(chat.some((c) => c.cmd === "sessions")).toBe(true);
+    expect(chat.some((c) => c.cmd === "resume")).toBe(true);
   });
 });

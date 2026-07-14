@@ -584,6 +584,85 @@ describe("MuseChatApp render — plain chat + editing", () => {
     unmount();
     expect(frame).toContain("Started a new conversation");
   });
+
+  it("/sessions lists past conversations, numbered, with the active one marked", async () => {
+    const listConversations = async () => ({
+      activeId: "conv_bbbbbbbb",
+      summaries: [
+        { id: "conv_bbbbbbbb", title: "second chat", createdAt: "2026-07-14T09:00:00Z", updatedAt: "2026-07-14T09:10:00Z", origin: "cli", turnCount: 4 },
+        { id: "conv_aaaaaaaa", title: "first chat", createdAt: "2026-07-14T08:00:00Z", updatedAt: "2026-07-14T08:05:00Z", origin: "cli", turnCount: 2 }
+      ]
+    });
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ listConversations })));
+    await tick();
+    stdin.write("/sessions"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["second chat", "first chat", "(active)"]);
+    unmount();
+    expect(frame).toContain("1. [conv_bbbbbbbb] (active) second chat");
+    expect(frame).toContain("2. [conv_aaaaaaaa] first chat");
+  });
+
+  it("/sessions reports unavailability gracefully when the prop isn't wired", async () => {
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps()));
+    await tick();
+    stdin.write("/sessions"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["isn't available"]);
+    unmount();
+    expect(frame).toContain("isn't available");
+  });
+
+  it("/resume by NUMBER (from the last /sessions listing) reloads the model context and reports success", async () => {
+    const listConversations = async () => ({
+      activeId: "conv_bbbbbbbb",
+      summaries: [
+        { id: "conv_bbbbbbbb", title: "second chat", createdAt: "2026-07-14T09:00:00Z", updatedAt: "2026-07-14T09:10:00Z", origin: "cli", turnCount: 4 },
+        { id: "conv_aaaaaaaa", title: "first chat", createdAt: "2026-07-14T08:00:00Z", updatedAt: "2026-07-14T08:05:00Z", origin: "cli", turnCount: 2 }
+      ]
+    });
+    let resumedRef: string | undefined;
+    const resumeConversationByRef = async (ref: string) => {
+      resumedRef = ref;
+      return { ok: true as const, id: "conv_aaaaaaaa", title: "first chat", seedHistory: [{ role: "user" as const, content: "hi from the first chat" }] };
+    };
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ listConversations, resumeConversationByRef })));
+    await tick();
+    stdin.write("/sessions"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["first chat"]);
+    stdin.write("/resume 2"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["Resumed \"first chat\""]);
+    unmount();
+    expect(resumedRef).toBe("conv_aaaaaaaa"); // the index resolved to the SECOND listed id, not passed through verbatim
+    expect(frame).toContain("Resumed \"first chat\" [conv_aaaaaaaa]");
+  });
+
+  it("/resume by id-prefix passes the prefix straight through, and reports a fail-close (ambiguous) message without throwing", async () => {
+    const resumeConversationByRef = async (ref: string) =>
+      ref === "conv_aaaaaaaa"
+        ? { ok: true as const, id: "conv_aaaaaaaa", title: "first chat", seedHistory: [] }
+        : { ok: false as const, message: `Ambiguous conversation id "${ref}" — matches 2` };
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ resumeConversationByRef })));
+    await tick();
+    stdin.write("/resume conv_aaaaaaaa"); await tick(); stdin.write("\r");
+    const frameOk = await waitForFrame(lastFrame, ["Resumed \"first chat\""]);
+    expect(frameOk).toContain("Resumed \"first chat\" [conv_aaaaaaaa]");
+
+    stdin.write("/resume conv_"); await tick(); stdin.write("\r");
+    const frameAmbiguous = await waitForFrame(lastFrame, ["Ambiguous conversation id"]);
+    unmount();
+    expect(frameAmbiguous).toContain("Ambiguous conversation id");
+  });
+
+  it("/resume with an out-of-range number refuses without calling resumeConversationByRef", async () => {
+    let called = false;
+    const resumeConversationByRef = async (ref: string) => { called = true; return { ok: true as const, id: ref, title: "x", seedHistory: [] }; };
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ resumeConversationByRef })));
+    await tick();
+    stdin.write("/resume 9"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["No conversation #9"]);
+    unmount();
+    expect(frame).toContain("No conversation #9");
+    expect(called).toBe(false);
+  });
 });
 
 describe("MuseChatApp HUD — local-only privacy posture", () => {

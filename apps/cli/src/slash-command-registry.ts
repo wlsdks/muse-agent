@@ -22,7 +22,7 @@ const CHAT_AND_CLI: readonly CommandPlatform[] = ["chat", "cli"];
 
 export const SLASH_COMMAND_REGISTRY: readonly CommandEntry[] = [
   { name: "help", desc: "show command help", category: "info", platforms: CHAT_ONLY },
-  { name: "new", desc: "new conversation (clear context)", category: "session", platforms: CHAT_ONLY },
+  { name: "new", desc: "start a new conversation (the old one stays saved — see /sessions)", category: "session", platforms: CHAT_ONLY },
   { name: "clear", desc: "clear the screen (keep context)", category: "session", platforms: CHAT_ONLY },
   { name: "model", desc: "show the current model", category: "session", platforms: CHAT_ONLY },
   { name: "agents", desc: "list defined agents", category: "tools", platforms: CHAT_AND_CLI },
@@ -42,6 +42,8 @@ export const SLASH_COMMAND_REGISTRY: readonly CommandEntry[] = [
   { name: "trust", desc: "show this user's trusted + blocked tools", category: "tools", platforms: CHAT_AND_CLI },
   { name: "persona", desc: "show the active persona slot", category: "tools", platforms: CHAT_AND_CLI },
   { name: "history", desc: "how many turns are in context", category: "session", platforms: CHAT_ONLY },
+  { name: "sessions", desc: "list past conversations — /resume <n|id-prefix> to switch", category: "session", platforms: CHAT_ONLY },
+  { name: "resume", desc: "switch the active conversation — /resume <n|id-prefix> (see /sessions)", category: "session", platforms: CHAT_ONLY },
   { name: "compact", desc: "preview compaction (no arg), or /compact <topic> to compact now, focused on that topic", category: "session", platforms: CHAT_ONLY },
   { name: "undo", desc: "roll back the last exchange — /undo <N> to roll back N (1-20)", category: "session", platforms: CHAT_ONLY },
   { name: "save", desc: "save the last reply to a note file", category: "session", platforms: CHAT_ONLY },

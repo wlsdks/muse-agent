@@ -14,7 +14,7 @@ export const COMMAND_GROUPS: ReadonlyArray<{
   readonly heading: string;
   readonly commands: readonly string[];
 }> = [
-  { heading: "Chat & ask", commands: ["chat", "ask", "recall", "find", "search", "summarize"] },
+  { heading: "Chat & ask", commands: ["chat", "chats", "ask", "recall", "find", "search", "summarize"] },
   {
     heading: "Memory & knowledge",
     commands: [

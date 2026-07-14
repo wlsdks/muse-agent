@@ -580,6 +580,12 @@ export interface JobListItem {
   readonly finalText?: string;
 }
 
+/** Outcome of `/resume <n|id-prefix>` — either the switched-to conversation's
+ *  id/title + the reloaded model-context window, or a fail-close reason. */
+export type ResumeConversationResult =
+  | { readonly ok: true; readonly id: string; readonly title: string; readonly seedHistory: readonly ChatTurnMessage[] }
+  | { readonly ok: false; readonly message: string };
+
 /**
  * Render `/jobs` — recent background jobs with a status glyph, the prompt
  * that started each, and (when done) a one-line result preview. Empty-state

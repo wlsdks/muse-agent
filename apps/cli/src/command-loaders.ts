@@ -262,6 +262,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "chats",
+    names: ["chats"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-chats.js");
+    m.registerChatsCommands(program, io);
+    },
+  },
+  {
     id: "commitments",
     names: ["commitments"],
     load: async (program, io, _deps) => {

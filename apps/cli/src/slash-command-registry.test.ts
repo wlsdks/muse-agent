@@ -6,8 +6,8 @@ import { SLASH_COMMAND_REGISTRY, slashCommandsForPlatform } from "./slash-comman
 const EXPECTED_CHAT_COMMANDS = [
   "help", "new", "clear", "model", "agents", "agent", "skills", "today", "tools",
   "job", "jobs", "orchestrate", "memory", "remember", "pref", "recall", "reflect",
-  "forget", "trust", "persona", "history", "compact", "undo", "save", "copy",
-  "cost", "exit"
+  "forget", "trust", "persona", "history", "sessions", "resume", "compact", "undo",
+  "save", "copy", "cost", "exit"
 ];
 
 describe("SLASH_COMMAND_REGISTRY", () => {
@@ -49,7 +49,7 @@ describe("SLASH_COMMAND_REGISTRY", () => {
     expect(cli.some((c) => c.cmd === "memory")).toBe(true);
   });
 
-  it("preserves the exact chat command list (no behavior change)", () => {
+  it("pins the exact chat command list, including /sessions + /resume", () => {
     const chat = slashCommandsForPlatform("chat");
     expect(new Set(chat.map((c) => c.cmd))).toEqual(new Set(EXPECTED_CHAT_COMMANDS));
     expect(chat.length).toBe(EXPECTED_CHAT_COMMANDS.length);

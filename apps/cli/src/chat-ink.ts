@@ -57,16 +57,19 @@ import {
   type InputState,
   type JobListItem,
   type MemorySnapshot,
-  type RecurringThread
+  type RecurringThread,
+  type ResumeConversationResult
 } from "./chat-ink-core.js";
 import { isQuiet } from "./cli-context.js";
 import { slashCommandsForPlatform } from "./slash-command-registry.js";
 import { parseAnswerMarkdown, type MdBlock, type MdListItem, type MdSpan } from "./chat-markdown.js";
 import { type AgentDef } from "./commands-agents.js";
 import { type ChatGrounding } from "./chat-grounding.js";
+import { formatConversationList } from "./commands-chats.js";
 import { groupProactiveNotice, imminentItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
 import { formatCurrentContextLine } from "@muse/recall";
 import { selectDrainedProactiveTurns } from "./proactive-consume.js";
+import type { ConversationSummary } from "@muse/stores";
 
 export { runChatInk } from "./chat-ink-run.js";
 
@@ -243,6 +246,11 @@ export function MuseChatApp(props: {
   readonly onCommit: (user: string, assistant: string, untrusted?: boolean) => void;
   readonly autoLearn?: (user: string, assistant: string) => Promise<string | undefined>;
   readonly onReset: () => void;
+  /** `/sessions` — every conversation newest-first + which one is active. */
+  readonly listConversations?: () => Promise<{ readonly activeId: string; readonly summaries: readonly ConversationSummary[] }>;
+  /** `/resume <n|id-prefix>` — switch the active conversation and return its
+   *  reloaded context window, or a fail-close reason (ambiguous/unknown ref). */
+  readonly resumeConversationByRef?: (ref: string) => Promise<ResumeConversationResult>;
   /** Called when an answer rested on untrusted-only sources — runChatInk uses it to
    *  mark the end-of-session episode trusted:false (episode-laundering defense). */
   readonly onUntrustedAnswer?: () => void;
@@ -347,6 +355,9 @@ export function MuseChatApp(props: {
     return () => clearInterval(timer);
   }, [busy]);
   const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
+  // The most recent `/sessions` listing, so `/resume <n>` can resolve a bare
+  // index (1-based, matching what was printed) without a second round-trip.
+  const lastSessionsListRef = useRef<readonly ConversationSummary[]>([]);
 
   // Clean teardown: re-render once with the cursor released and the input
   // box removed (so Ink's final frame leaves the cursor at the bottom and
@@ -551,6 +562,55 @@ export function MuseChatApp(props: {
       }
       if (slash.cmd === "history") {
         note(`${historyRef.current.length} turns in this conversation. /new starts fresh; /clear just clears the screen.`);
+        return;
+      }
+      if (slash.cmd === "sessions") {
+        if (!props.listConversations) {
+          note("Listing past conversations isn't available in this session.");
+          return;
+        }
+        try {
+          const { summaries, activeId } = await props.listConversations();
+          lastSessionsListRef.current = summaries;
+          note(formatConversationList(summaries, activeId));
+        } catch {
+          note("Couldn't load the conversation list.");
+        }
+        return;
+      }
+      if (slash.cmd === "resume") {
+        const arg = slash.arg.trim();
+        if (arg.length === 0) {
+          note("Usage: /resume <n|id-prefix> — run /sessions first to see the list.");
+          return;
+        }
+        if (!props.resumeConversationByRef) {
+          note("Resuming a conversation isn't available in this session.");
+          return;
+        }
+        // A bare number resolves against the LAST /sessions listing (1-based,
+        // matching what was printed) — otherwise treat the arg as an id/prefix.
+        let ref = arg;
+        if (/^\d+$/u.test(arg)) {
+          const picked = lastSessionsListRef.current[Number(arg) - 1];
+          if (!picked) {
+            note(`No conversation #${arg} — run /sessions first to see the numbered list.`);
+            return;
+          }
+          ref = picked.id;
+        }
+        const result = await props.resumeConversationByRef(ref);
+        if (!result.ok) {
+          note(result.message);
+          return;
+        }
+        // Reload the MODEL's context to the resumed conversation — the
+        // transcript already on screen is left as-is (it's a visual log of
+        // this terminal session, not the context itself).
+        historyRef.current = [...result.seedHistory];
+        seenRef.current = new Set();
+        lastAnswerRef.current = "";
+        note(`Resumed "${result.title}" [${result.id}] — this session's context now continues from there (${result.seedHistory.length} prior turn message(s) loaded; the transcript above is unrelated).`);
         return;
       }
       if (slash.cmd === "compact") {

@@ -194,7 +194,8 @@ export function museChatExamples(): string {
     "  muse chat \"what's on my plate today?\"      one-shot question via the API",
     "  muse chat --local \"summarise my notes\"     run on your local model, no server",
     "  muse chat -i --local                        open an interactive REPL",
-    "  muse chat --local --image receipt.jpg \"정리해줘\"   attach an image (local vision)"
+    "  muse chat --local --image receipt.jpg \"정리해줘\"   attach an image (local vision)",
+    "  muse chat --local -c --resume conv_ab12cd34 \"continue where we left off\"   resume a specific past conversation (see `muse chats list`)"
   ].join("\n");
 }
 
@@ -301,15 +302,19 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     )
     .option(
       "-c, --continue",
-      "include prior turns from ~/.muse/last-chat.jsonl so the model remembers the conversation across CLI invocations (--local only)"
+      "include prior turns from the active conversation so the model remembers it across CLI invocations (--local only)"
     )
     .option(
       "--reset",
-      "clear ~/.muse/last-chat.jsonl before this turn (use after --continue to start a fresh conversation)"
+      "clear the active conversation's turns before this turn (use after --continue to start a fresh conversation)"
+    )
+    .option(
+      "--resume <id>",
+      "switch the active conversation to this id/prefix before this turn (see `muse chats list`) — like `muse chats resume` but inline"
     )
     .option(
       "-i, --interactive",
-      "open a continuous REPL — each line is a turn, /exit quits, /reset clears, /help lists commands (--local only)"
+      "open a continuous REPL — each line is a turn, /exit quits, /new starts a fresh conversation, /help lists commands (--local only)"
     )
     .option(
       "--image <path>",
@@ -327,6 +332,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         readonly mode?: string;
         readonly model?: string;
         readonly reset?: boolean;
+        readonly resume?: string;
         readonly stream?: boolean;
         readonly tools?: boolean;
         readonly webSearch?: boolean;
@@ -339,6 +345,17 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       if (!options.json) {
         const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
         await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
+      }
+      if (options.resume) {
+        const { resumeConversation } = await import("./chat-history.js");
+        const resolution = await resumeConversation(options.resume);
+        if (resolution.status === "not-found") {
+          throw new Error(`No conversation found with id "${options.resume}". Run 'muse chats' to see the list.`);
+        }
+        if (resolution.status === "ambiguous") {
+          const previews = resolution.candidates.map((c) => `${c.id} (${c.title})`).join(", ");
+          throw new Error(`Ambiguous conversation id "${options.resume}" — matches ${resolution.candidates.length.toString()}: ${previews}`);
+        }
       }
       if (options.reset) {
         await clearLastChatHistory();

@@ -3846,9 +3846,10 @@ describe("cli program", () => {
       ]);
       expect(boundaries.every((b) => b.userId === "stark")).toBe(true);
 
-      // Raw file contains the literal sentinel content (the future
-      // extractor scans this directly).
-      const raw = await fsp.readFile(path.join(root, ".muse", "last-chat.jsonl"), "utf8");
+      // Raw store file (the conversation-store substrate; last-chat.jsonl is
+      // gone post-migration) contains the literal sentinel content — the
+      // future extractor scans this directly.
+      const raw = await fsp.readFile(path.join(root, ".muse", "conversations.json"), "utf8");
       expect(raw).toContain(SESSION_BOUNDARY_CONTENT);
     } finally {
       if (prev !== undefined) process.env.HOME = prev;
@@ -4163,7 +4164,7 @@ describe("cli program", () => {
         response: "noted. The old ghp_abcdefghijklmnopqrstuvwxyzABCDEF will rotate Friday."
       });
 
-      const rawPath = path.join(root, ".muse", "last-chat.jsonl");
+      const rawPath = path.join(root, ".muse", "conversations.json");
       const raw = await fsp.readFile(rawPath, "utf8");
       // Verbatim secrets MUST NOT survive to disk.
       expect(raw).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
@@ -4183,6 +4184,221 @@ describe("cli program", () => {
       expect(seed[1]?.content).toContain("[redacted-github-pat]");
     } finally {
       if (prev !== undefined) process.env.HOME = prev;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("muse chats list reports 'no conversations yet' on a fresh store", async () => {
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    await program.parseAsync(["node", "muse", "chats", "list"], { from: "node" });
+    expect(output.join("")).toContain("No conversations yet");
+  });
+
+  it("muse chats list --json sorts newest-first and carries turnCount + the active marker", async () => {
+    const { appendLastChatTurn, startNewConversation } = await import("../src/chat-history.js");
+    await appendLastChatTurn({ message: "first conversation", response: "ok" });
+    const secondId = await startNewConversation();
+    await appendLastChatTurn({ message: "second conversation", response: "ok" });
+
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    await program.parseAsync(["node", "muse", "chats", "list", "--json"], { from: "node" });
+    const payload = JSON.parse(output.join("")) as {
+      activeId: string;
+      total: number;
+      conversations: Array<{ id: string; title: string; turnCount: number }>;
+    };
+    expect(payload.total).toBe(2);
+    expect(payload.activeId).toBe(secondId);
+    expect(payload.conversations[0]!.id).toBe(secondId);
+    expect(payload.conversations[0]!.title).toBe("second conversation");
+    expect(payload.conversations[0]!.turnCount).toBe(2);
+    expect(payload.conversations[1]!.title).toBe("first conversation");
+  });
+
+  it("muse chats resume switches the active conversation by unambiguous prefix; an ambiguous prefix fail-closes listing every candidate", async () => {
+    const { appendLastChatTurn, startNewConversation, activeConversationId } = await import("../src/chat-history.js");
+    const firstId = await activeConversationId();
+    await appendLastChatTurn({ message: "first", response: "ok" });
+    await startNewConversation();
+    await appendLastChatTurn({ message: "second", response: "ok" });
+
+    // Resolve by a short unambiguous prefix of the FIRST conversation.
+    const shortPrefix = firstId.slice(0, 9);
+    const { io: io1, output: out1 } = captureOutput();
+    const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+    await program1.parseAsync(["node", "muse", "chats", "resume", shortPrefix, "--json"], { from: "node" });
+    const resumed = JSON.parse(out1.join("")) as { id: string; resumed: boolean };
+    expect(resumed).toEqual({ id: firstId, resumed: true, title: "first" });
+    expect(await activeConversationId()).toBe(firstId);
+
+    // The bare "conv_" prefix matches BOTH conversations — refuses, doesn't guess.
+    const { io: io2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+    program2.exitOverride();
+    await expect(program2.parseAsync(["node", "muse", "chats", "resume", "conv_"], { from: "node" }))
+      .rejects.toThrow(/Ambiguous conversation id/u);
+    // The refusal must NOT have moved the pointer off the explicitly-resumed one.
+    expect(await activeConversationId()).toBe(firstId);
+
+    // An unknown id fails closed too.
+    const { io: io3 } = captureOutput();
+    const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+    program3.exitOverride();
+    await expect(program3.parseAsync(["node", "muse", "chats", "resume", "conv_notreal9"], { from: "node" }))
+      .rejects.toThrow(/No conversation found/u);
+  });
+
+  it("muse chats rename renames by exact id; an unknown id refuses", async () => {
+    const { appendLastChatTurn, activeConversationId, getConversation } = await import("../src/chat-history.js");
+    const id = await activeConversationId();
+    await appendLastChatTurn({ message: "hi", response: "hello" });
+
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    await program.parseAsync(["node", "muse", "chats", "rename", id, "my", "renamed", "title"], { from: "node" });
+    expect(output.join("")).toContain("my renamed title");
+    expect((await getConversation(id))?.title).toBe("my renamed title");
+
+    const { io: io2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+    program2.exitOverride();
+    await expect(program2.parseAsync(["node", "muse", "chats", "rename", "conv_notreal9", "x"], { from: "node" }))
+      .rejects.toThrow(/No conversation found/u);
+  });
+
+  it("muse chats rename / delete fail-close (refuse, no mutation) on an AMBIGUOUS prefix — never silently pick a candidate", async () => {
+    const { appendLastChatTurn, startNewConversation, activeConversationId, getConversation, listConversations } = await import("../src/chat-history.js");
+    await appendLastChatTurn({ message: "one", response: "ok" });
+    const firstId = await activeConversationId();
+    await startNewConversation();
+    await appendLastChatTurn({ message: "two", response: "ok" });
+    // Both ids start with "conv_" — an unqualified prefix is ambiguous.
+    const before = await listConversations();
+    expect(before).toHaveLength(2);
+
+    const { io: io1 } = captureOutput();
+    const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+    program1.exitOverride();
+    await expect(program1.parseAsync(["node", "muse", "chats", "rename", "conv_", "renamed"], { from: "node" }))
+      .rejects.toThrow(/Ambiguous conversation id/u);
+    // Neither conversation was renamed.
+    expect((await getConversation(firstId))?.title).toBe("one");
+
+    const { io: io2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+    program2.exitOverride();
+    await expect(program2.parseAsync(["node", "muse", "chats", "delete", "conv_", "--yes"], { from: "node" }))
+      .rejects.toThrow(/Ambiguous conversation id/u);
+    // No collateral — still 2 conversations, nothing deleted.
+    expect(await listConversations()).toHaveLength(2);
+  });
+
+  it("muse chat --resume fail-closes on an unknown/ambiguous id BEFORE issuing the chat request itself", async () => {
+    const { startNewConversation, appendLastChatTurn } = await import("../src/chat-history.js");
+    await appendLastChatTurn({ message: "first", response: "ok" });
+    await startNewConversation();
+    await appendLastChatTurn({ message: "second", response: "ok" });
+
+    let fetchCalled = false;
+    const failIfFetched = async (): Promise<Response> => { fetchCalled = true; throw new Error("must not reach the network"); };
+
+    const { io: io1 } = captureOutput();
+    const program1 = createProgram({ ...io1, fetch: failIfFetched });
+    program1.exitOverride();
+    await expect(program1.parseAsync(["node", "muse", "chat", "--resume", "conv_notreal9", "hi"], { from: "node" }))
+      .rejects.toThrow(/No conversation found/u);
+    expect(fetchCalled).toBe(false);
+
+    const { io: io2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: failIfFetched });
+    program2.exitOverride();
+    await expect(program2.parseAsync(["node", "muse", "chat", "--resume", "conv_", "hi"], { from: "node" }))
+      .rejects.toThrow(/Ambiguous conversation id/u);
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("muse chats delete refuses without --yes; --yes removes ONLY the targeted conversation and falls the active pointer back to the most recent survivor", async () => {
+    const { appendLastChatTurn, startNewConversation, activeConversationId, getConversation, listConversations } = await import("../src/chat-history.js");
+    await appendLastChatTurn({ message: "keep me", response: "ok" });
+    const keptId = await activeConversationId();
+    const targetId = await startNewConversation();
+    await appendLastChatTurn({ message: "delete me", response: "ok" });
+    expect(await activeConversationId()).toBe(targetId);
+
+    const { io: io1 } = captureOutput();
+    const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+    program1.exitOverride();
+    await expect(program1.parseAsync(["node", "muse", "chats", "delete", targetId], { from: "node" }))
+      .rejects.toThrow(/Refusing to delete without --yes/u);
+    // No collateral from the refused attempt — still 2 conversations, same active id.
+    expect(await listConversations()).toHaveLength(2);
+    expect(await activeConversationId()).toBe(targetId);
+
+    const { io: io2, output: out2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+    await program2.parseAsync(["node", "muse", "chats", "delete", targetId, "--yes", "--json"], { from: "node" });
+    const result = JSON.parse(out2.join("")) as { deleted: boolean; id: string; activeId: string };
+    expect(result).toEqual({ activeId: keptId, deleted: true, id: targetId });
+
+    // The deleted conversation is gone; the surviving one is untouched.
+    expect(await getConversation(targetId)).toBeUndefined();
+    expect((await getConversation(keptId))?.turns.map((t) => t.content)).toEqual(["keep me", "ok"]);
+    expect(await activeConversationId()).toBe(keptId);
+  });
+
+  it("clearLastChatHistory (what `--reset` calls) clears ONLY the active conversation's turns — a different conversation is untouched", async () => {
+    const { appendLastChatTurn, startNewConversation, readLastChatHistory, clearLastChatHistory, activeConversationId, getConversation } = await import("../src/chat-history.js");
+    await appendLastChatTurn({ message: "untouched", response: "stays" });
+    const untouchedId = await activeConversationId();
+    await startNewConversation();
+    await appendLastChatTurn({ message: "will be reset", response: "gone soon" });
+
+    await clearLastChatHistory();
+
+    expect(await readLastChatHistory()).toEqual([]);
+    expect((await getConversation(untouchedId))?.turns.map((t) => t.content)).toEqual(["untouched", "stays"]);
+  });
+
+  it("legacy last-chat.jsonl migration is lossless (turn-for-turn equal incl. the system summary line) and idempotent (a second boot doesn't duplicate)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-migration-"));
+    const fsp = await import("node:fs/promises");
+    const prevHome = process.env.HOME;
+    process.env.HOME = root;
+    try {
+      await fsp.mkdir(path.join(root, ".muse"), { recursive: true });
+      const legacyPath = path.join(root, ".muse", "last-chat.jsonl");
+      const legacyLines = [
+        { content: "[SESSION_BOUNDARY]", role: "system", tsIso: "2026-05-13T08:00:00.000Z", userId: "stark" },
+        { content: "(Previous-conversation summary) discussed the Q3 memo", role: "system" },
+        { content: "what's next", role: "user" },
+        { content: "draft the outline", role: "assistant", untrustedOnly: true }
+      ];
+      await fsp.writeFile(legacyPath, legacyLines.map((l) => JSON.stringify(l)).join("\n") + "\n", "utf8");
+
+      const { listConversations, getConversation, activeConversationId } = await import("../src/chat-history.js");
+      const id = await activeConversationId();
+      const conversation = await getConversation(id);
+      expect(conversation?.title).toBe("imported from last-chat");
+      expect(conversation?.origin).toBe("cli");
+      expect(conversation?.turns.map((t) => ({ content: t.content, role: t.role }))).toEqual(
+        legacyLines.map((l) => ({ content: l.content, role: l.role }))
+      );
+      expect(conversation?.turns[3]?.untrustedOnly).toBe(true);
+
+      // The legacy file is renamed aside, never deleted.
+      await expect(fsp.access(legacyPath)).rejects.toThrow();
+      const migratedRaw = await fsp.readFile(`${legacyPath}.migrated`, "utf8");
+      expect(migratedRaw).toContain("discussed the Q3 memo");
+
+      // A second "boot" (fresh module-level call) must NOT re-import — the
+      // store already has a conversation, which is the idempotency guard.
+      const again = await activeConversationId();
+      expect(again).toBe(id);
+      expect(await listConversations()).toHaveLength(1);
+    } finally {
+      if (prevHome !== undefined) process.env.HOME = prevHome;
       else delete process.env.HOME;
     }
   });
@@ -8784,7 +9000,7 @@ describe("cli program", () => {
       expect(result.summary).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
 
       // On-disk file carries the scrubbed summary too.
-      const onDisk = await fsp.readFile(path.join(root, ".muse", "last-chat.jsonl"), "utf8");
+      const onDisk = await fsp.readFile(path.join(root, ".muse", "conversations.json"), "utf8");
       expect(onDisk).toContain("[redacted-openai-key]");
       expect(onDisk).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
       // Surrounding prose survives.

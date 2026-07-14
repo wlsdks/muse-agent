@@ -172,6 +172,18 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "chats",
+    "description": "List, resume, rename, or delete past conversations (muse chat -i / --continue)",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "delete",
+      "list",
+      "rename",
+      "resume"
+    ]
+  },
+  {
     "name": "checkins",
     "description": "Proactive check-ins on things you said you'd do (the daemon asks how they went)",
     "argsTerm": "",
