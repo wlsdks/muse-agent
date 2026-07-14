@@ -129,13 +129,10 @@ export function createComposeChatReply(
     if (latestUserText.trim().length === 0) {
       return null;
     }
-    const controller = new AbortController();
-    // Race a real timer, not just an AbortSignal — a fake/test model
-    // provider that ignores `signal` must still fail open on timeout.
-    const timeoutController = new AbortController();
-    const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: timeoutController.signal }).then(() => {
-      controller.abort();
-      return null;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const fallbackTimeoutController = new AbortController();
+    const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: fallbackTimeoutController.signal }).then(() => {
+      return null as const;
     });
     try {
       const response = await Promise.race([
@@ -146,7 +143,7 @@ export function createComposeChatReply(
             { content: latestUserText, role: "user" as const }
           ],
           model: deps.model,
-          signal: controller.signal,
+          signal: timeoutSignal,
           temperature: 0.4
         }),
         timeout
@@ -158,7 +155,7 @@ export function createComposeChatReply(
     } catch {
       return null;
     } finally {
-      timeoutController.abort();
+      fallbackTimeoutController.abort();
     }
   };
 }

@@ -75,7 +75,7 @@ export interface LoadFeedBodyOptions {
 
 interface FetchFeedWithPublicRedirectsOptions {
   readonly baseDelayMs: number;
-  readonly controller: AbortController;
+  readonly signal?: AbortSignal;
   readonly fetchImpl: typeof globalThis.fetch;
   readonly lookup?: HostLookup;
   readonly retries: number;
@@ -96,8 +96,8 @@ export async function fetchFeedWithPublicRedirects(
   url: string,
   options: FetchFeedWithPublicRedirectsOptions
 ): Promise<PublicHttpRedirectResult> {
-  if (options.controller.signal.aborted) {
-    throw feedTimeoutError(url, options.timeoutMs, options.controller.signal.reason);
+  if (options.signal?.aborted) {
+    throw feedTimeoutError(url, options.timeoutMs, options.signal.reason);
   }
   try {
     const fetched = await fetchPublicHttpWithRedirects(url, {
@@ -105,7 +105,7 @@ export async function fetchFeedWithPublicRedirects(
       ...(options.lookup ? { lookup: options.lookup } : {}),
       retryOptions: {
         baseDelayMs: options.baseDelayMs,
-        init: { signal: options.controller.signal },
+        ...(options.signal ? { init: { signal: options.signal } } : {}),
         maxRetryAfterMs: 0,
         retries: options.retries,
         retryOnNetworkError: false,
@@ -113,13 +113,14 @@ export async function fetchFeedWithPublicRedirects(
         timeoutMs: 0
       }
     });
-    if (options.controller.signal.aborted) {
-      throw feedTimeoutError(url, options.timeoutMs, options.controller.signal.reason);
+    if (options.signal?.aborted) {
+      throw feedTimeoutError(url, options.timeoutMs, options.signal.reason);
     }
     return fetched;
   } catch (cause) {
-    if (options.controller.signal.aborted) {
-      throw feedTimeoutError(url, options.timeoutMs, cause ?? options.controller.signal.reason);
+    const aborted = options.signal?.aborted ?? false;
+    if (aborted) {
+      throw feedTimeoutError(url, options.timeoutMs, cause ?? options.signal?.reason);
     }
     throw cause;
   }
@@ -145,16 +146,15 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
   const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
   const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
   const optionsSleep = options.sleep ?? sleep;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`)), timeoutMs);
+  const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
   try {
     const fetched = await fetchFeedWithPublicRedirects(url, {
       baseDelayMs,
-      controller,
       fetchImpl,
       ...(options.lookup ? { lookup: options.lookup } : {}),
       retries,
       sleep: optionsSleep,
+      ...(timeoutSignal ? { signal: timeoutSignal } : {}),
       timeoutMs
     });
     if (!fetched.ok) {
@@ -197,8 +197,6 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
       try { reader.releaseLock(); } catch { /* released by cancel or natural completion */ }
     }
     return body;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

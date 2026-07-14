@@ -19,14 +19,14 @@ async function callWithTimeout<T>(operation: Promise<T>, timeoutMs: number, mess
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return operation;
   }
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const timeout = sleepWithTimer(timeoutMs, undefined, { signal: timeoutSignal, ref: false }).then(() => {
+  const timeoutController = new AbortController();
+  const timeout = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal, ref: false }).then(() => {
     throw new Error(message);
   });
   try {
     return await Promise.race([operation, timeout]);
   } finally {
-    void timeout.catch(() => undefined);
+    timeoutController.abort();
   }
 }
 

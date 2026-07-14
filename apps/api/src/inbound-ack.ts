@@ -84,14 +84,13 @@ export function createComposeAck(
     if (latestUserText.trim().length === 0) {
       return null;
     }
-    const controller = new AbortController();
-    // Race a real timer, not just an AbortSignal — a fake/test model
-    // provider that ignores `signal` must still fail open on timeout.
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const timeoutController = new AbortController();
-    const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: timeoutController.signal }).then(() => {
-      controller.abort();
-      return null;
-    });
+    const timeout = sleepWithTimer(timeoutMs, null, {
+      ref: false,
+      signal: timeoutController.signal
+    }).then(() => null as const);
+    const signal = timeoutSignal;
     try {
       const response = await Promise.race([
         deps.modelProvider.generate({
@@ -100,7 +99,7 @@ export function createComposeAck(
             { content: latestUserText, role: "user" }
           ],
           model: deps.model,
-          signal: controller.signal,
+          signal,
           temperature: 0.2
         }),
         timeout
