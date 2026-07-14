@@ -38,7 +38,7 @@ const COMPACTION_FAILURE_REASONS: readonly CompactionFailureReason[] = [
 ];
 
 function isCompactionFailureReason(value: string): value is CompactionFailureReason {
-  return (COMPACTION_FAILURE_REASONS as readonly string[]).includes(value);
+  return COMPACTION_FAILURE_REASONS.includes(value);
 }
 
 /**
@@ -112,9 +112,8 @@ export function classifyCompactionFailure(input: CompactionFailureInput): Compac
     return classifyByText(input) ?? "unknown";
   }
 
-  const name = typeof input.name === "string" ? input.name : "";
-  const message = typeof input.message === "string" ? input.message : "";
-  const byText = classifyByText(`${name} ${message}`.trim());
+  const text = toCompactionFailureText(input);
+  const byText = text ? classifyByText(text) : undefined;
   if (byText) {
     return byText;
   }
@@ -122,16 +121,52 @@ export function classifyCompactionFailure(input: CompactionFailureInput): Compac
   // Duck-typed: a real `ModelProviderError` carries `status`/`retryable` but
   // isn't statically one of this union's members (this module doesn't
   // import `@muse/model` — see the module doc), so read them structurally.
-  const statusLike = input as CompactionFailureStatusLike;
-  const status = typeof statusLike.status === "number" ? statusLike.status : undefined;
-  const retryable = typeof statusLike.retryable === "boolean" ? statusLike.retryable : undefined;
+  const status = pickCompactionFailureStatus(input);
+  const retryable = pickCompactionFailureRetryable(input);
   if (status !== undefined || retryable !== undefined) {
     return classifyByStatus(status, retryable);
   }
 
-  if (input instanceof Error || message.length > 0) {
+  if (input instanceof Error) {
     return "summary_failed";
   }
 
   return "unknown";
+}
+
+function pickCompactionFailureStatus(value: unknown): number | undefined {
+  return isCompactionFailureStatusLike(value) && typeof value.status === "number" ? value.status : undefined;
+}
+
+function pickCompactionFailureRetryable(value: unknown): boolean | undefined {
+  return isCompactionFailureStatusLike(value) && typeof value.retryable === "boolean" ? value.retryable : undefined;
+}
+
+function isCompactionFailureStatusLike(value: unknown): value is CompactionFailureStatusLike {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  if (!("status" in value) && !("retryable" in value) && !("name" in value) && !("message" in value)) {
+    return false;
+  }
+  if ("status" in value && typeof value.status !== "number") {
+    return false;
+  }
+  if ("retryable" in value && typeof value.retryable !== "boolean") {
+    return false;
+  }
+  if ("name" in value && typeof value.name !== "string") {
+    return false;
+  }
+  if ("message" in value && typeof value.message !== "string") {
+    return false;
+  }
+  return true;
+}
+
+function toCompactionFailureText(value: unknown): string {
+  if (!isCompactionFailureStatusLike(value)) {
+    return "";
+  }
+  return `${value.name ?? ""} ${value.message ?? ""}`.trim();
 }
