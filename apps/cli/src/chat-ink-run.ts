@@ -265,16 +265,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const copyToClipboard = (text: string): Promise<boolean> => {
     const cmd = process.platform === "darwin" ? "pbcopy" : process.platform === "win32" ? "clip" : "xclip";
     const args = process.platform === "linux" ? ["-selection", "clipboard"] : [];
-    return new Promise<boolean>((resolve) => {
-      try {
-        const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-        proc.on("error", () => resolve(false));
-        proc.on("close", (code) => resolve(code === 0));
-        proc.stdin.end(text);
-      } catch {
-        resolve(false);
-      }
-    });
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    try {
+      const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
+      proc.on("error", () => resolve(false));
+      proc.on("close", (code) => resolve(code === 0));
+      proc.stdin.end(text);
+    } catch {
+      resolve(false);
+    }
+    return promise;
   };
 
   const onCommit = (user: string, assistant: string, untrusted?: boolean): void => {

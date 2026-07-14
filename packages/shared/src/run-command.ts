@@ -83,27 +83,6 @@ function createRunCommandResult(
   return { exitCode, signal, stdout, stderr, timedOut };
 }
 
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  readonly reject: (reason?: unknown) => void;
-}
-
-function createAbortDeferred<T>(): Deferred<T> {
-  let reject: ((reason?: unknown) => void) | undefined;
-  const promise = new Promise<T>((_, deferredReject) => {
-    reject = deferredReject;
-  });
-  return {
-    promise,
-    reject(value: unknown): void {
-      if (!reject) {
-        return;
-      }
-      reject(value);
-    }
-  };
-}
-
 function exitCodePayload(child: ChildProcess, stdout: StreamAccumulator, stderr: StreamAccumulator, encoding: BufferEncoding): Promise<RunCommandResult> {
   return once(child, "close").then(([exitCode, signal]) => createRunCommandResult(
     exitCode,
@@ -178,7 +157,7 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
 
   const abortPromise = abortSignal
     ? (() => {
-      const abortDeferred = createAbortDeferred<never>();
+      const abortDeferred = Promise.withResolvers<never>();
       const onAbort = (): void => {
         child.kill(killSignal);
         abortDeferred.reject(abortError(abortSignal.reason));
@@ -204,30 +183,39 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   // intercept timers/promises, and downstream watchdog tests drive this
   // timeout with fake timers.
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<RunCommandResult>((resolve) => {
-    timeoutHandle = setTimeout(() => {
-      child.kill(killSignal);
-      resolve({
-        exitCode: null,
-        signal: typeof killSignal === "string" ? killSignal : null,
-        stderr: Buffer.concat(stderr.chunks).toString(encoding),
-        stdout: Buffer.concat(stdout.chunks).toString(encoding),
-        timedOut: true
-      });
-    }, timeoutMs);
-    timeoutHandle.unref?.();
-  });
+  const timeout = Promise.withResolvers<RunCommandResult>();
+  const { promise: timeoutResult, resolve: resolveTimeout } = timeout;
+
+  timeoutHandle = setTimeout(() => {
+    child.kill(killSignal);
+    resolveTimeout({
+      exitCode: null,
+      signal: typeof killSignal === "string" ? killSignal : null,
+      stderr: Buffer.concat(stderr.chunks).toString(encoding),
+      stdout: Buffer.concat(stdout.chunks).toString(encoding),
+      timedOut: true
+    });
+  }, timeoutMs);
+  timeoutHandle.unref?.();
+
+  // Keep cleanup in one place: both timeout and outcome paths clear pending timer.
+  const clearTimeoutHandle = (): void => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = undefined;
+    }
+  };
 
   try {
     return abortPromise
-      ? await Promise.race([outcome, timeout, abortPromise])
-      : await Promise.race([outcome, timeout]);
+      ? await Promise.race([outcome, timeoutResult, abortPromise])
+      : await Promise.race([outcome, timeoutResult]);
   } finally {
+    clearTimeoutHandle();
     child.stdout.off("data", onStdoutData);
     child.stderr.off("data", onStderrData);
     child.stdout.off("error", onIoError);
     child.stderr.off("error", onIoError);
     child.stdin.off("error", onIoError);
-    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
 }
