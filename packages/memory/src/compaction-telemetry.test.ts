@@ -9,13 +9,14 @@ import {
 // A ModelProviderError-shaped duck-typed value (mirrors
 // packages/model/src/provider-base.ts without importing @muse/model).
 function providerError(message: string, retryable: boolean, status?: number): CompactionFailureStatusLike & Error {
-  const error = new Error(message) as Error & { retryable?: boolean; status?: number };
-  error.name = "ModelProviderError";
-  error.retryable = retryable;
-  if (status !== undefined) {
-    error.status = status;
-  }
-  return error as CompactionFailureStatusLike & Error;
+  const error = new Error(message);
+  return {
+    ...error,
+    name: "ModelProviderError",
+    message: error.message,
+    retryable,
+    ...(status !== undefined ? { status } : {})
+  };
 }
 
 const ALL_REASONS: readonly CompactionFailureReason[] = [
