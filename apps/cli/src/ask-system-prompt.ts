@@ -92,8 +92,8 @@ export function buildAskSystemPrompt(params: {
         // shown in a marker below.
         ...CITATION_INSTRUCTION_LINES,
         // The reasoning-principles block is on by default; MUSE_ASK_REASONING_PRINCIPLES=0
-        // disables it — used by the A/B efficacy eval (verify-reasoning-efficacy.mjs)
-        // to MEASURE whether the principles actually improve answers, not just run.
+        // disables it — the flag is the A/B seam for measuring whether the principles
+        // actually improve answers.
         ...(process.env.MUSE_ASK_REASONING_PRINCIPLES === "0" ? [] : REASONING_PRINCIPLE_LINES),
         "",
         // Volatile lines live BELOW the stable instruction block so the long
