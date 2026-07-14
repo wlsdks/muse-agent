@@ -388,6 +388,11 @@ async function runContinue(io: ProgramIO, threadId: string | undefined, resolveE
   const chosenId = await resolveContinueThreadId(threadId);
   const state = await readAttunementState(file);
   const pack = await buildContinuityPack(state, chosenId, resolveExactArtifact);
+  if (!pack.evidence.some((entry) => entry.status === "available")) {
+    throw new AttunementStoreError(
+      `thread '${chosenId}' has no currently available linked evidence; no delivery was recorded. Inspect its links with \`muse thread inspect ${chosenId}\` and relink an available local source.`
+    );
+  }
   const delivery = await openContinuityDelivery(file, {
     evidenceRefs: pack.evidenceRefs,
     expectedPolicyVersion: pack.deliveryPolicyVersion,
