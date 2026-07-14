@@ -5,6 +5,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { runCommandWithTimeout } from "@muse/shared";
 
 export interface WinCommandResult {
   readonly stdout: string;
@@ -23,49 +24,14 @@ export function runPowerShellWith(
   timeoutMs: number,
   spawnImpl: typeof spawn = spawn
 ): Promise<WinCommandResult> {
-  return new Promise((resolve, reject) => {
+  return runCommandWithTimeout({
     // `-Command -` reads the script from stdin: no argv-length ceiling, and
     // nothing in the script ever passes through cmd/PowerShell argv parsing.
-    const child = spawnImpl("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"], { stdio: ["pipe", "pipe", "pipe"] });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without the watchdog a wedged PowerShell (a hung CIM query, a blocked
-    // Add-Type compile) parks the awaiting agent turn forever.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => resolve({
-        exitCode: null,
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        timedOut: true
-      }));
-    }, timeoutMs);
-    // Chunks are decoded ONCE from the fully concatenated bytes — a multi-byte
-    // UTF-8 character split across two `data` events would otherwise decode as
-    // U+FFFD on both sides of the split.
-    child.stdout.on("data", (chunk: Buffer) => { stdoutChunks.push(chunk); });
-    child.stderr.on("data", (chunk: Buffer) => { stderrChunks.push(chunk); });
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => {
-      finish(() => resolve({
-        exitCode: code,
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        timedOut: false
-      }));
-    });
-    // A failed spawn destroys stdin; writing then emits EPIPE — swallow it,
-    // the real failure surfaces via the 'error'/'close' handlers.
-    child.stdin.on("error", () => { /* surfaced via child 'error'/'close' */ });
-    child.stdin.write(script);
-    child.stdin.end();
+    command: "powershell.exe",
+    args: ["-NoProfile", "-NonInteractive", "-Command", "-"],
+    stdin: script,
+    spawnImpl,
+    timeoutMs
   });
 }
 

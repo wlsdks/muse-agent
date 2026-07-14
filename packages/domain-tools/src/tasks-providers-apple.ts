@@ -32,7 +32,7 @@
  *     opt-in flag once macOS Sonoma+ AppleScript surface is stable.
  */
 
-import { spawn } from "node:child_process";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import {
   TasksProviderError,
@@ -235,65 +235,34 @@ export class AppleRemindersProvider implements TasksProvider {
   }
 
   private async runScript(script: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.osascriptPath, ["-"], { stdio: ["pipe", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      const finish = (action: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        action();
-      };
-      // Without this watchdog an unanswered Reminders Automation
-      // permission prompt (or a wedged Reminders.app) leaves
-      // osascript blocked and every task read/write hangs forever.
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        finish(() => reject(new TasksProviderError(
-          this.id,
-          "OSASCRIPT_TIMEOUT",
-          `osascript timed out after ${this.timeoutMs.toString()}ms and was killed (unanswered Reminders Automation prompt or a wedged Reminders.app?)`
-        )));
-      }, this.timeoutMs);
-
-      child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-      child.on("error", (error) => {
-        finish(() => reject(new TasksProviderError(this.id, "OSASCRIPT_FAILED", error.message)));
-      });
-
-      child.on("close", (code) => {
-        finish(() => {
-          if (code === 0) {
-            resolve(stdout);
-            return;
-          }
-          if (/not allowed to access|don't have permission|not authorised/iu.test(stderr)) {
-            reject(new TasksProviderError(
-              this.id,
-              "REMINDERS_PERMISSION",
-              "Reminders access permission denied — grant access in System Settings → Privacy & Security → Automation."
-            ));
-            return;
-          }
-          reject(new TasksProviderError(
-            this.id,
-            `EXIT_${code ?? "UNKNOWN"}`,
-            `osascript failed: ${stderr.trim().slice(0, 500)}`
-          ));
-        });
-      });
-
-      // A failed spawn destroys stdin; writing then emits an unhandled
-      // EPIPE/ERR_STREAM_DESTROYED. Swallow it — the real failure is surfaced
-      // via the child 'error'/'close' handlers.
-      child.stdin.on("error", () => { /* surfaced via child 'error'/'close' */ });
-      child.stdin.write(script);
-      child.stdin.end();
+    const result = await runCommandWithTimeout({
+      command: this.osascriptPath,
+      args: ["-"],
+      stdin: script,
+      timeoutMs: this.timeoutMs
     });
+
+    if (result.timedOut) {
+      throw new TasksProviderError(
+        this.id,
+        "OSASCRIPT_TIMEOUT",
+        `osascript timed out after ${this.timeoutMs.toString()}ms and was killed (unanswered Reminders Automation prompt or a wedged Reminders.app?)`
+      );
+    }
+
+    if (result.exitCode === 0) {
+      return result.stdout;
+    }
+
+    if (/not allowed to access|don't have permission|not authorised/iu.test(result.stderr)) {
+      throw new TasksProviderError(
+        this.id,
+        "REMINDERS_PERMISSION",
+        "Reminders access permission denied — grant access in System Settings → Privacy & Security → Automation."
+      );
+    }
+
+    throw new TasksProviderError(this.id, `EXIT_${result.exitCode ?? "UNKNOWN"}`, `osascript failed: ${result.stderr.trim().slice(0, 500)}`);
   }
 }
 

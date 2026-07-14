@@ -39,6 +39,11 @@ export {
 } from "./credential-encryption.js";
 
 export { sleep } from "./sleep.js";
+export {
+  runCommandWithTimeout,
+  type RunCommandOptions,
+  type RunCommandResult
+} from "./run-command.js";
 
 export type JsonPrimitive = string | number | boolean | null;
 

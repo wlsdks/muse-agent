@@ -7,6 +7,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { runCommandWithTimeout } from "@muse/shared";
 
 export interface MacCommandResult {
   readonly stdout: string;
@@ -22,49 +23,12 @@ export function runChild(
   timeoutMs: number,
   spawnImpl: typeof spawn = spawn
 ): Promise<MacCommandResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawnImpl(bin, [...argv], { stdio: ["pipe", "pipe", "pipe"] });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without this watchdog an unanswered Automation consent prompt (or a
-    // wedged app) leaves osascript/shortcuts blocked and the tool call hangs
-    // forever — the awaiting agent turn never resolves.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => resolve({
-        exitCode: null,
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        timedOut: true
-      }));
-    }, timeoutMs);
-    // Chunks are decoded ONCE from the fully concatenated bytes (never
-    // per-chunk) — a multi-byte UTF-8 character split across two `data`
-    // events would otherwise decode as U+FFFD replacement chars on both
-    // sides of the split.
-    child.stdout.on("data", (chunk: Buffer) => { stdoutChunks.push(chunk); });
-    child.stderr.on("data", (chunk: Buffer) => { stderrChunks.push(chunk); });
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => {
-      finish(() => resolve({
-        exitCode: code,
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        timedOut: false
-      }));
-    });
-    // A failed spawn destroys stdin; writing then emits EPIPE — swallow it,
-    // the real failure surfaces via the 'error'/'close' handlers.
-    child.stdin.on("error", () => { /* surfaced via child 'error'/'close' */ });
-    if (stdin !== undefined) child.stdin.write(stdin);
-    child.stdin.end();
+  return runCommandWithTimeout({
+    command: bin,
+    args: argv,
+    stdin,
+    spawnImpl,
+    timeoutMs
   });
 }
 
