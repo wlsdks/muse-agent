@@ -1046,6 +1046,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "update",
+    "description": "Pull, install, and rebuild the latest Muse from your git checkout — safely, or not at all",
+    "argsTerm": "",
+    "hasOptions": true,
+    "subcommands": []
+  },
+  {
     "name": "user",
     "description": "The typed user model Muse keeps about you (persona-injected)",
     "argsTerm": "",

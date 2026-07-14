@@ -821,6 +821,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     m.registerVoiceCommands(program, io, _deps as never);
     },
   },
+  {
+    id: "update",
+    names: ["update"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-update.js");
+      m.registerUpdateCommand(program, io);
+    },
+  },
 ];
 
 /** name -> loader index, including every top-level name a composite loader owns. */
