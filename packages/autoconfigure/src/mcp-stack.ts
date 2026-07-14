@@ -6,6 +6,7 @@ import type { Kysely } from "kysely";
 import { parseBoolean, parseCsv, parseInteger } from "./env-parsers.js";
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
 import { resolveOfficialMcpAuthHeaders } from "./official-mcp-credentials.js";
+import { resolveOAuthStoreDir } from "./provider-paths.js";
 import { createMcpSecurityPolicyStore, createMcpServerStore } from "./store-factories.js";
 
 import type { MuseEnvironment } from "./index.js";
@@ -124,6 +125,14 @@ export function assembleMcpStack(
       allowPrivateAddresses,
       clientRoots: parseCsv(env.MUSE_MCP_CLIENT_ROOTS),
       externalTransportAllowed,
+      // OAuth attaches only for servers that opt in via `config.auth === "oauth"`.
+      // A headless refresh would redirect to this stable loopback port; the
+      // interactive `muse mcp login` binds its own ephemeral port.
+      oauthConfig: {
+        dir: resolveOAuthStoreDir(env),
+        env: { ...env },
+        redirectPort: parseInteger(env.MUSE_MCP_OAUTH_REDIRECT_PORT, 33418)
+      },
       requestTimeoutMs: parseInteger(env.MUSE_MCP_REQUEST_TIMEOUT_MS, 15_000)
     }),
     reconnect: {

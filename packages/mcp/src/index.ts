@@ -175,6 +175,19 @@ export interface DefaultMcpTransportConnectorOptions {
    * or process work. Defaults to the established normal-mode behavior.
    */
   readonly externalTransportAllowed?: boolean;
+  /**
+   * OAuth 2.1 attachment for remote servers that opt in via
+   * `config.auth === "oauth"`. `dir` is the persistent token store directory
+   * (`resolveOAuthStoreDir`); `redirectPort` is the loopback redirect port a
+   * re-auth would use (the interactive login binds its own ephemeral port —
+   * this is only the stable fallback for a headless refresh). Absent → no
+   * server ever gets an `authProvider`, so behaviour is unchanged.
+   */
+  readonly oauthConfig?: {
+    readonly dir: string;
+    readonly redirectPort: number;
+    readonly env?: NodeJS.ProcessEnv;
+  };
 }
 
 export interface McpServerValidationOptions {
@@ -287,7 +300,40 @@ export {
 export { McpManager } from "./manager.js";
 
 // Transport connector + SDK connection adapter live in `./transport.ts`.
-export { createRemoteRequestInit, DefaultMcpTransportConnector } from "./transport.js";
+export {
+  createRemoteRequestInit,
+  DefaultMcpTransportConnector,
+  resolveOAuthProviderForServer,
+  serverUsesOAuth
+} from "./transport.js";
+
+// OAuth 2.1 client support for remote MCP servers.
+export { MuseMcpOAuthProvider, type MuseMcpOAuthProviderOptions } from "./oauth-provider.js";
+export {
+  startOAuthCallbackServer,
+  type OAuthCallbackServer,
+  type OAuthCallbackServerOptions
+} from "./oauth-callback-server.js";
+export {
+  runMcpOAuthLogin,
+  type McpOAuthLoginOptions,
+  type McpOAuthLoginResult
+} from "./oauth-login.js";
+export {
+  clearOAuth,
+  loadOAuthRecord,
+  loadClientInformation,
+  loadCodeVerifier,
+  loadState,
+  loadTokens,
+  oauthRecordPath,
+  saveClientInformation,
+  saveCodeVerifier,
+  saveState,
+  saveTokens,
+  type OAuthClearScope,
+  type OAuthRecord
+} from "./oauth-store.js";
 
 // Kysely-backed persistence lives in `./server-stores.ts`.
 export { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "./server-stores.js";

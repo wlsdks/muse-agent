@@ -19,8 +19,10 @@ import {
   ConfigurationError,
   diagnoseExternalMcpConfigFile,
   loadExternalMcpConfig,
-  resolveExternalMcpConfigFile
+  resolveExternalMcpConfigFile,
+  resolveOAuthStoreDir
 } from "@muse/autoconfigure";
+import { runMcpOAuthLogin } from "@muse/mcp";
 
 import { closestCommandName } from "./closest-command.js";
 import { firstNonEmpty } from "./program-helpers.js";
@@ -163,6 +165,74 @@ Examples:
       }
       writeMcpConfigFile(path, merged);
       io.stdout(`added ${name} (${entry.command ? "stdio" : (options.transport ?? "streamable")}) → ${path}\n`);
+    });
+
+  mcp
+    .command("login")
+    .description(
+      "Authorize a remote OAuth 2.1 MCP server: opens your browser, captures the loopback callback, " +
+      "and stores the tokens locally (encrypted at rest when MUSE_CREDENTIALS_ENCRYPT is on). " +
+      "The server must be a remote (sse/streamable) entry in ~/.muse/mcp.json."
+    )
+    .argument("<server>", "Server name as configured in ~/.muse/mcp.json")
+    .option("--scope <scope...>", "OAuth scope to request (repeatable)", collectAppend, [])
+    .option("--timeout <ms>", "Callback wait timeout in milliseconds (default 180000)")
+    .action(async (name: string, options: McpLoginOptions, command) => {
+      let entries;
+      try {
+        entries = loadExternalMcpConfig(process.env);
+      } catch (cause) {
+        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        command.error("Invalid MCP config", { exitCode: 1 });
+        return;
+      }
+      const entry = entries.find((candidate) => candidate.name === name);
+      if (!entry) {
+        const suggestion = closestCommandName(name, entries.map((candidate) => candidate.name));
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`No MCP server named '${name}' in ${resolveExternalMcpConfigFile(process.env)}${hint}\n`);
+        command.error("Server not found", { exitCode: 1 });
+        return;
+      }
+      if (entry.transportType !== "sse" && entry.transportType !== "streamable") {
+        io.stderr(`'${name}' is a ${entry.transportType} server; OAuth login only applies to remote (sse/streamable) servers.\n`);
+        command.error("Not a remote server", { exitCode: 1 });
+        return;
+      }
+      const url = typeof entry.config?.url === "string" ? entry.config.url : undefined;
+      if (!url) {
+        io.stderr(`'${name}' has no 'url' configured; cannot start OAuth login.\n`);
+        command.error("Missing server URL", { exitCode: 1 });
+        return;
+      }
+      const timeoutMs = options.timeout ? Number(options.timeout) : undefined;
+      if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+        io.stderr(`--timeout must be a positive number of milliseconds (got '${options.timeout ?? ""}').\n`);
+        command.error("Invalid --timeout", { exitCode: 1 });
+        return;
+      }
+      const oauthDir = resolveOAuthStoreDir(process.env);
+      const authField = typeof entry.config?.auth === "string" ? entry.config.auth.trim().toLowerCase() : undefined;
+      if (authField !== "oauth") {
+        io.stdout(`Note: add "auth": "oauth" to '${name}' in mcp.json so the runtime attaches these tokens on connect.\n`);
+      }
+      io.stdout(`Opening your browser to authorize '${name}'. Approve access, then return here...\n`);
+      try {
+        const result = await runMcpOAuthLogin({
+          clientName: "Muse",
+          env: process.env,
+          oauthDir,
+          serverId: name,
+          serverUrl: url,
+          ...(options.scope && options.scope.length > 0 ? { scopes: options.scope } : {}),
+          ...(timeoutMs !== undefined ? { timeoutMs } : {})
+        });
+        io.stdout(`Authorized '${result.serverId}'. Tokens stored under ${oauthDir}.\n`);
+        io.stdout(`Connect with: muse mcp connect ${name}\n`);
+      } catch (cause) {
+        io.stderr(`OAuth login failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        command.error("OAuth login failed", { exitCode: 1 });
+      }
     });
 
   mcp
@@ -501,6 +571,11 @@ interface McpUseOptions {
   readonly root?: string;
   readonly name?: string;
   readonly dryRun?: boolean;
+}
+
+interface McpLoginOptions {
+  readonly scope?: readonly string[];
+  readonly timeout?: string;
 }
 
 interface McpPresetRecipe {

@@ -56,6 +56,7 @@ export {
   resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
+  resolveOAuthStoreDir,
   resolveNotesDir,
   resolveNotesIndexFile,
   resolveActionLogFile,

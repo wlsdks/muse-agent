@@ -493,6 +493,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "connect",
       "disconnect",
       "list",
+      "login",
       "serve",
       "status",
       "tools",

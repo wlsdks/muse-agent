@@ -27,6 +27,7 @@
 import { lookup } from "node:dns/promises";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import {
   getDefaultEnvironment,
@@ -53,6 +54,7 @@ import {
   type McpServer,
   type McpTransportConnector
 } from "./index.js";
+import { MuseMcpOAuthProvider } from "./oauth-provider.js";
 import {
   isPrivateOrReservedHost,
   isPublicHttpUrl,
@@ -71,6 +73,7 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
   private readonly externalTransportAllowed: boolean;
   private readonly stderr: StdioServerParameters["stderr"];
   private readonly clientRoots: readonly string[];
+  private readonly oauthConfig: DefaultMcpTransportConnectorOptions["oauthConfig"];
 
   constructor(options: DefaultMcpTransportConnectorOptions = {}) {
     this.allowPrivateAddresses = options.allowPrivateAddresses ?? false;
@@ -80,6 +83,7 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultMcpRequestTimeoutMs;
     this.stderr = options.stderr ?? "inherit";
     this.clientRoots = (options.clientRoots ?? []).filter((path) => path.trim().length > 0);
+    this.oauthConfig = options.oauthConfig;
   }
 
   async connect(server: McpServer, policy: McpSecurityPolicy): Promise<McpConnection> {
@@ -124,15 +128,19 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
       return this.createStdioTransport(server, policy);
     }
 
+    const authProvider = resolveOAuthProviderForServer(server, this.oauthConfig, this.clientName);
+
     if (server.transportType === "sse") {
       return new SSEClientTransport(this.resolveRemoteUrl(server), {
-        requestInit: createRemoteRequestInit(server)
+        requestInit: createRemoteRequestInit(server),
+        ...(authProvider ? { authProvider } : {})
       });
     }
 
     if (server.transportType === "streamable") {
       return new StreamableHTTPClientTransport(this.resolveRemoteUrl(server), {
-        requestInit: createRemoteRequestInit(server)
+        requestInit: createRemoteRequestInit(server),
+        ...(authProvider ? { authProvider } : {})
       });
     }
 
@@ -303,6 +311,56 @@ export function createRemoteRequestInit(server: McpServer): RequestInit | undefi
   const token = resolveOptionalString(server.config.authToken) ?? resolveOptionalString(server.config.bearerToken);
   const merged = token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
   return Object.keys(merged).length > 0 ? { headers: merged } : undefined;
+}
+
+/**
+ * A remote server opts into OAuth 2.1 by declaring `config.auth === "oauth"`
+ * (a plain string in the server registry — the tokens themselves live in the
+ * dedicated oauth store, never in `config`).
+ */
+export function serverUsesOAuth(server: McpServer): boolean {
+  return (
+    (server.transportType === "sse" || server.transportType === "streamable") &&
+    typeof server.config.auth === "string" &&
+    server.config.auth.trim().toLowerCase() === "oauth"
+  );
+}
+
+/**
+ * Build the OAuth `authProvider` for a server IFF it opted in AND the
+ * connector was given an oauth store dir. Returns `undefined` for every
+ * non-OAuth server (or when oauth isn't configured), so the transport stays
+ * byte-identical to the header/token path in that case.
+ */
+export function resolveOAuthProviderForServer(
+  server: McpServer,
+  oauthConfig: DefaultMcpTransportConnectorOptions["oauthConfig"],
+  clientName: string
+): OAuthClientProvider | undefined {
+  if (!oauthConfig || !serverUsesOAuth(server)) {
+    return undefined;
+  }
+  return new MuseMcpOAuthProvider({
+    clientName,
+    env: oauthConfig.env,
+    oauthDir: oauthConfig.dir,
+    // A RUNTIME connect must NEVER spawn a browser: a daemon/headless start with
+    // no stored tokens would otherwise pop the user's browser mid-connect. So the
+    // runtime provider's opener THROWS instead — the SDK's redirectToAuthorization
+    // surfaces as a clear "authorize first" connect failure. The interactive
+    // `muse mcp login` builds its OWN provider with a real opener.
+    openBrowser: () => {
+      throw new Error(
+        `MCP server '${server.name}' requires OAuth authorization. ` +
+          `Run \`muse mcp login ${server.name}\` first — Muse does not open a browser during a background connection.`
+      );
+    },
+    redirectPort: oauthConfig.redirectPort,
+    // Keyed by the STABLE server name, not the random runtime `id`: this is the
+    // one identifier `muse mcp login` (file-backed, no running store) and the
+    // runtime connector both know, so a token saved by login is found on connect.
+    serverId: server.name
+  });
 }
 
 /**

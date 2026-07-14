@@ -315,3 +315,14 @@ export function resolveInboxInjectionCursorFile(env: MuseEnvironment, providerId
 export function resolveModelKeysFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_MODEL_KEYS_FILE", "models.json");
 }
+
+/**
+ * Directory holding per-remote-MCP-server OAuth 2.1 state (one
+ * `<serverId>.json` per server: tokens, DCR client info, PKCE verifier,
+ * CSRF state). Kept OUT of `mcp.json` (the server registry) so a token is
+ * never written into the config a user edits/shares, and encrypted at rest
+ * via the credential-encryption helpers when `MUSE_CREDENTIALS_ENCRYPT` is on.
+ */
+export function resolveOAuthStoreDir(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_MCP_OAUTH_DIR", "mcp-oauth");
+}

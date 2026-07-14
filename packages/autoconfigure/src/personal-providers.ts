@@ -79,6 +79,7 @@ export {
   resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
+  resolveOAuthStoreDir,
   resolveNotesDir,
   resolveNotesIndexFile,
   resolveObjectivesFile,
