@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
 /**
@@ -63,26 +63,28 @@ export function validateExtraction(
     return { ok: true };
   }
   const isNonEmptyString = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
-  const missing: string[] = [];
-  const required = Array.isArray(schema.required) ? (schema.required as JsonValue[]) : [];
+  const missing = new Set<string>();
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((entry): entry is string => typeof entry === "string")
+    : [];
   for (const name of required) {
-    if (typeof name === "string" && !isNonEmptyString(data[name])) {
-      missing.push(name);
+    if (!isNonEmptyString(data[name])) {
+      missing.add(name);
     }
   }
   const properties = schema.properties;
-  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+  if (isRecord(properties)) {
     for (const [name, spec] of Object.entries(properties)) {
-      if (missing.includes(name) || !(name in data)) {
+      if (missing.has(name) || !(name in data)) {
         continue;
       }
-      const declaresString = spec && typeof spec === "object" && !Array.isArray(spec) && (spec as JsonObject).type === "string";
+      const declaresString = isRecord(spec) && spec.type === "string";
       if (declaresString && typeof data[name] !== "string") {
-        missing.push(name);
+        missing.add(name);
       }
     }
   }
-  return missing.length === 0 ? { ok: true } : { ok: false, missing };
+  return missing.size === 0 ? { ok: true } : { ok: false, missing: Array.from(missing) };
 }
 
 /**
@@ -121,14 +123,14 @@ export async function extractStructuredFromImage(
   } catch {
     return { error: "extraction output was not valid JSON", ok: false, raw };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     return { error: "extraction output was not a JSON object", ok: false, raw };
   }
-  const validation = validateExtraction(parsed as JsonObject, input.schema);
+  const validation = validateExtraction(parsed, input.schema);
   if (!validation.ok) {
     return { error: `extraction omitted required field(s): ${validation.missing.join(", ")}`, ok: false, raw };
   }
-  return { data: parsed as JsonObject, ok: true, raw };
+  return { data: parsed, ok: true, raw };
 }
 
 export interface VisionDescribeInput {

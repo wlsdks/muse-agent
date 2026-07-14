@@ -261,7 +261,7 @@ export function parseRunnerCommandRequest(value: JsonObject): RunnerCommandReque
 
 function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed = JSON.parse(value);
 
     if (!isRecord(parsed)) {
       return undefined;

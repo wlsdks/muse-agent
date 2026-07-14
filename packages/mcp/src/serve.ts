@@ -20,7 +20,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { once } from "node:events";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool, MuseToolContext } from "@muse/tools";
 
 export interface MuseToolsMcpServerOptions {
@@ -63,7 +63,7 @@ export function createMuseToolsMcpServer(options: MuseToolsMcpServerOptions): Se
       return errorResult(`Unknown tool '${request.params.name}'. Call tools/list first.`);
     }
 
-    const args = (request.params.arguments ?? {}) as JsonObject;
+    const args = isRecord(request.params.arguments) ? request.params.arguments : {};
     const missing = missingRequiredArgs(tool.definition.inputSchema, args);
     if (missing.length > 0) {
       return errorResult(`'${tool.definition.name}' is missing required argument(s): ${missing.join(", ")}`);
@@ -111,18 +111,17 @@ export async function runStdioMcpServer(server: Server, onListening?: () => void
  * content, so a tool's real schema reaches the client byte-identical.
  */
 function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
-  const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
-    ? (schema.properties as Record<string, object>)
-    : undefined;
+  const properties = isRecord(schema.properties) ? schema.properties : undefined;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : undefined;
-  return {
+  const inputSchema = {
     type: "object",
     ...(properties ? { properties } : {}),
     ...(required && required.length > 0 ? { required } : {}),
     ...(schema.additionalProperties !== undefined ? { additionalProperties: schema.additionalProperties } : {})
-  } as Tool["inputSchema"];
+  } satisfies Tool["inputSchema"];
+  return inputSchema;
 }
 
 function missingRequiredArgs(schema: JsonObject, args: JsonObject): readonly string[] {

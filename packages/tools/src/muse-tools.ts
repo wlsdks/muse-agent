@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "./index.js";
 import {
   createBase64Tool,
@@ -97,13 +97,13 @@ function createJsonQueryTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const path = typeof args["path"] === "string" ? (args["path"] as string).trim() : "";
+      const path = typeof args["path"] === "string" ? args["path"].trim() : "";
       const document = args["document"] ?? null;
       if (path.length === 0) {
         return { error: "path is required" };
       }
       const segments = path.split(".").map((segment) => segment.trim()).filter((segment) => segment.length > 0);
-      let cursor: JsonValue | null = document as JsonValue;
+      let cursor: JsonValue | null = document === null || document === undefined ? null : document;
       for (const segment of segments) {
         if (cursor === null || cursor === undefined) {
           return { found: false, path, value: null };
@@ -116,9 +116,9 @@ function createJsonQueryTool(): MuseTool {
           cursor = cursor[index] ?? null;
           continue;
         }
-        if (typeof cursor === "object") {
-          const record = cursor as Record<string, JsonValue | null>;
-          if (!Object.prototype.hasOwnProperty.call(record, segment)) {
+        if (isRecord(cursor)) {
+          const record = cursor;
+          if (!Object.hasOwn(record, segment)) {
             return { found: false, path, value: null };
           }
           cursor = record[segment] ?? null;
@@ -151,7 +151,7 @@ function createUrlPartsTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const raw = typeof args["url"] === "string" ? (args["url"] as string).trim() : "";
+      const raw = typeof args["url"] === "string" ? args["url"].trim() : "";
       if (raw.length === 0) {
         return { error: "url is required" };
       }
@@ -252,9 +252,9 @@ function createRegexExtractTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const pattern = typeof args["pattern"] === "string" ? (args["pattern"] as string) : "";
-      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
-      const flagsInput = typeof args["flags"] === "string" ? (args["flags"] as string) : "g";
+      const pattern = typeof args["pattern"] === "string" ? args["pattern"] : "";
+      const text = typeof args["text"] === "string" ? args["text"] : "";
+      const flagsInput = typeof args["flags"] === "string" ? args["flags"] : "g";
       if (pattern.length === 0) {
         return { error: "pattern is required" };
       }
@@ -294,4 +294,3 @@ function createRegexExtractTool(): MuseTool {
     }
   };
 }
-
