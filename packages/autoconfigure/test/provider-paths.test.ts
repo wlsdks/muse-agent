@@ -1,4 +1,5 @@
-import { homedir } from "node:os";
+import { mkdtempSync } from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -42,8 +43,14 @@ import {
   resolveVetoesFile,
 } from "../src/provider-paths.js";
 
-const env = (overrides: Record<string, string> = {}): MuseEnvironment => overrides as MuseEnvironment;
-const dotMuse = (name: string) => join(homedir(), ".muse", name);
+// An isolated HOME the whole test file resolves under: every default check
+// asserts `<isoHome>/.muse/<name>`, never the owner's real home. This is what
+// the fail-close guard requires — a test that omits it is refused (see the
+// "fail-close under vitest" block below).
+const isoHome = mkdtempSync(join(tmpdir(), "muse-provider-paths-"));
+const env = (overrides: Record<string, string> = {}): MuseEnvironment =>
+  ({ HOME: isoHome, ...overrides }) as MuseEnvironment;
+const dotMuse = (name: string) => join(isoHome, ".muse", name);
 
 // [resolver, env key it reads, default name under ~/.muse]
 const RESOLVERS: ReadonlyArray<readonly [(e: MuseEnvironment) => string, string, string]> = [
@@ -85,7 +92,7 @@ const RESOLVERS: ReadonlyArray<readonly [(e: MuseEnvironment) => string, string,
 ];
 
 describe("provider-paths shared resolution (via resolveTasksFile)", () => {
-  it("defaults to ~/.muse/<name> when the override is unset, blank, or whitespace", () => {
+  it("defaults to <home>/.muse/<name> when the override is unset, blank, or whitespace", () => {
     expect(resolveTasksFile(env())).toBe(dotMuse("tasks.json"));
     expect(resolveTasksFile(env({ MUSE_TASKS_FILE: "" }))).toBe(dotMuse("tasks.json"));
     expect(resolveTasksFile(env({ MUSE_TASKS_FILE: "   " }))).toBe(dotMuse("tasks.json"));
@@ -106,7 +113,7 @@ describe("provider-paths shared resolution (via resolveTasksFile)", () => {
 });
 
 describe("each resolver maps to its own env key and default name", () => {
-  it("falls back to the right ~/.muse default for every resolver", () => {
+  it("falls back to the right <home>/.muse default for every resolver", () => {
     for (const [resolve, , defaultName] of RESOLVERS) {
       expect(resolve(env())).toBe(dotMuse(defaultName));
     }
@@ -122,5 +129,42 @@ describe("each resolver maps to its own env key and default name", () => {
   it("covers a distinct env key and default name per resolver", () => {
     expect(new Set(RESOLVERS.map(([, key]) => key)).size).toBe(RESOLVERS.length);
     expect(new Set(RESOLVERS.map(([, , name]) => name)).size).toBe(RESOLVERS.length);
+  });
+});
+
+describe("fail-close under vitest — refuse the real-home store fallback", () => {
+  // The genuine account home is what the guard forbids under vitest — writing
+  // there is the pollution. `env.HOME` pointed at it forces the exact fallback
+  // a test that forgot to isolate would hit (its ambient HOME still resolves
+  // here when the per-file setup is absent).
+  const realHome = userInfo().homedir;
+
+  it("throws when a resolver would land on the genuine account home", () => {
+    expect(() => resolveTasksFile({ HOME: realHome } as MuseEnvironment)).toThrow(/test isolation/i);
+    expect(() => resolveActionLogFile({ HOME: realHome } as MuseEnvironment)).toThrow(/test isolation/i);
+  });
+
+  it("names the specific missing MUSE_* override in the thrown message (per-resolver, not generic)", () => {
+    // Input-dependent: each resolver names ITS OWN key — a guard that hard-coded
+    // one key or dropped the key entirely would fail one of these.
+    expect(() => resolveTasksFile({ HOME: realHome } as MuseEnvironment)).toThrow(/MUSE_TASKS_FILE/);
+    expect(() => resolveActionLogFile({ HOME: realHome } as MuseEnvironment)).toThrow(/MUSE_ACTION_LOG_FILE/);
+    expect(() => resolvePlanCacheFile({ HOME: realHome } as MuseEnvironment)).toThrow(/MUSE_PLAN_CACHE_FILE/);
+  });
+
+  it("does NOT throw once the test isolates via env.HOME, and resolves under that tmp home", () => {
+    // Output tracks the input HOME — proving the guard keys off the resolved
+    // home (genuine vs tmp), not a blanket vitest refusal.
+    expect(resolveTasksFile(env())).toBe(dotMuse("tasks.json"));
+    const otherHome = mkdtempSync(join(tmpdir(), "muse-provider-paths-alt-"));
+    expect(resolveTasksFile({ HOME: otherHome } as MuseEnvironment)).toBe(join(otherHome, ".muse", "tasks.json"));
+  });
+
+  it("does NOT throw when an explicit override is given even pointed at the real home", () => {
+    // The override is itself the isolation decision, so the real-home fallback
+    // never runs — the override wins before the guard.
+    expect(resolveTasksFile({ HOME: realHome, MUSE_TASKS_FILE: "/custom/t.json" } as MuseEnvironment)).toBe(
+      "/custom/t.json"
+    );
   });
 });

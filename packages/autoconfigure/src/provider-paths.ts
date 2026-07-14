@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join as pathJoin } from "node:path";
 
 import type { MuseEnvironment } from "./index.js";
@@ -26,6 +26,25 @@ function expandLeadingTilde(p: string): string {
   return p;
 }
 
+// The OWNER's real home, read from the OS account (getpwuid), NOT from
+// `$HOME`. `os.homedir()` follows a mutated `process.env.HOME`, so it can't
+// tell an isolated test HOME from the genuine one; `userInfo().homedir` is the
+// account truth and is immune to that mutation — exactly what the guard needs
+// to recognise "this would write into the developer's actual ~/.muse". Cached
+// once (the syscall is stable); falls back to homedir() on the rare no-passwd
+// box (some containers) where userInfo() throws.
+const genuineHomeDir = ((): string => {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return homedir();
+  }
+})();
+
+function runningUnderVitest(): boolean {
+  return Boolean(process.env.VITEST || process.env.VITEST_WORKER_ID);
+}
+
 function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: string): string {
   const override = env[envKey]?.trim();
   if (override && override.length > 0) {
@@ -36,7 +55,20 @@ function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: s
   // Ambient process.env.HOME backs a caller-scoped env that omits HOME, matching
   // the api tick resolvers' convention.
   const home = env.HOME?.trim() || process.env.HOME?.trim();
-  return pathJoin(home && home.length > 0 ? home : homedir(), ".muse", defaultName);
+  const resolvedHome = home && home.length > 0 ? home : homedir();
+  // Fail-close under vitest: refuse to fall through to the owner's REAL home.
+  // A test that forgets to isolate ~/.muse (no `${envKey}` override AND no
+  // isolated `env.HOME`) must fail LOUD here instead of silently writing into
+  // the real store. Production (no vitest env) keeps the real ~/.muse as before.
+  if (runningUnderVitest() && resolvedHome === genuineHomeDir) {
+    throw new Error(
+      `[muse test isolation] ${envKey} store path would fall back to the REAL home ` +
+        `(${pathJoin(resolvedHome, ".muse", defaultName)}) under vitest. ` +
+        `Isolate the test: pass an explicit env.HOME=<tmpdir>, or set ${envKey} to a temp path. ` +
+        `Refusing to write to the owner's real ~/.muse.`
+    );
+  }
+  return pathJoin(resolvedHome, ".muse", defaultName);
 }
 
 export function resolveNotesDir(env: MuseEnvironment): string {
