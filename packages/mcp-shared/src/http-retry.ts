@@ -1,3 +1,5 @@
+import { sleep } from "@muse/shared";
+
 /**
  * Shared HTTP retry-with-backoff for read-only / idempotent actuator
  * fetches (weather lookups, inbox reads). State-changing sends must
@@ -101,7 +103,7 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
   const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const delay = options.sleep ?? sleep;
   const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(0, options.timeoutMs as number) : 15_000;
   const maxRetryAfterMs = Number.isFinite(options.maxRetryAfterMs) ? Math.max(0, options.maxRetryAfterMs as number) : 30_000;
 
@@ -146,7 +148,7 @@ export async function fetchWithRetry(
       if (externalSignal && onExternalAbort) externalSignal.removeEventListener("abort", onExternalAbort);
     }
     const backoffMs = baseDelayMs * 2 ** attempt;
-    await sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : backoffMs);
+    await delay(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : backoffMs);
   }
   throw lastError ?? new Error("fetchWithRetry: retries exhausted");
 }

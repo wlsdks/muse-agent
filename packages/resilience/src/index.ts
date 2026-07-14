@@ -1,4 +1,4 @@
-import { finiteOr } from "@muse/shared";
+import { finiteOr, sleep } from "@muse/shared";
 
 import { classifyError, isCancellationLikeError } from "./error-classifier.js";
 import type { FallbackStrategy } from "./fallback-strategy.js";
@@ -492,8 +492,4 @@ export function scaleRequestTimeout(
 }
 
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
+export const delay = sleep;

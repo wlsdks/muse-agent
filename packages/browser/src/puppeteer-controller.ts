@@ -16,6 +16,8 @@ import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { sleep } from "@muse/shared";
+
 import {
   Browser as InstalledBrowser,
   ChromeReleaseChannel,
@@ -146,7 +148,7 @@ export class PuppeteerBrowserController implements BrowserController {
     for (let attempt = 0; attempt < 150; attempt += 1) {
       const browser = await this.connectToExisting();
       if (browser) return browser;
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await sleep(200);
     }
     throw new Error("Chrome did not expose its DevTools port within 30s — is Chrome installed?");
   }
@@ -205,7 +207,7 @@ export class PuppeteerBrowserController implements BrowserController {
       // window catches it; a normal click (no new tab) isn't taxed beyond it.
       const newest = await Promise.race([
         opened,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), NEW_TAB_WINDOW_MS))
+        sleep(NEW_TAB_WINDOW_MS).then(() => null)
       ]);
       if (newest && !newest.isClosed()) {
         this.page = newest;
@@ -312,7 +314,7 @@ export class PuppeteerBrowserController implements BrowserController {
   async snapshot(): Promise<PageSnapshot> {
     let snapshot = await this.captureSnapshot();
     for (let retry = 0; retry < SETTLE_RETRIES && looksUnsettled(snapshot); retry += 1) {
-      await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
+      await sleep(SETTLE_DELAY_MS);
       snapshot = await this.captureSnapshot();
     }
     // Consume the navigation status ONCE per observation — AFTER the settle-retry

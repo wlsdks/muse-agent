@@ -53,6 +53,7 @@ import {
   sourceKey,
   type PersistedTask
 } from "@muse/stores";
+import { sleep } from "@muse/shared";
 import { isQuietHour, parseQuietHours, readCheckins, selectDueCheckins } from "@muse/proactivity";
 import type { Command } from "commander";
 
@@ -561,10 +562,7 @@ export interface CompanionModelFns {
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
-  return Promise.race([
-    p.catch(() => undefined),
-    new Promise<undefined>((res) => setTimeout(() => res(undefined), ms))
-  ]);
+  return Promise.race([p.catch(() => undefined), sleep(ms).then(() => undefined)]);
 }
 
 /**

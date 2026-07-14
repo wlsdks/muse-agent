@@ -1,4 +1,5 @@
 import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
+import { sleep } from "@muse/shared";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -86,7 +87,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
-    this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    this.sleep = options.retry?.sleep ?? sleep;
     this.timeoutMs = Number.isFinite(options.retry?.timeoutMs) ? Math.max(0, Math.trunc(options.retry!.timeoutMs!)) : 15_000;
   }
 

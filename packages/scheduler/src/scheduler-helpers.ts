@@ -6,8 +6,7 @@
  */
 
 import type { ScheduledJobExecutionTable, ScheduledJobTable } from "@muse/db";
-import { toDate } from "@muse/shared";
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { sleep, toDate, type JsonObject, type JsonValue } from "@muse/shared";
 import { CronExpressionParser } from "cron-parser";
 import type { Insertable, Selectable } from "kysely";
 
@@ -322,11 +321,7 @@ export function parseNotificationChannel(
   return { destination, providerId };
 }
 
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
+export const delay = sleep;
 
 function resolveTimeZone(timeZone: string): string {
   try {

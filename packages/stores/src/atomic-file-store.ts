@@ -29,6 +29,8 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { sleep } from "@muse/shared";
+
 export interface AtomicWriteOptions {
   /** fsync the tmp file before rename (durable against a crash mid-rename). Default true. */
   readonly fsync?: boolean;
@@ -67,7 +69,7 @@ export async function atomicWriteFile(file: string, contents: string, options: A
         if (process.platform !== "win32" || attempt >= 20 || (code !== "EPERM" && code !== "EACCES")) {
           throw cause;
         }
-        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 5 + attempt * 5));
+        await sleep(5 + attempt * 5);
       }
     }
     await fs.chmod(file, mode).catch(() => undefined);

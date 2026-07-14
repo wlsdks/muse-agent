@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import type { SecretRef, SecretSource } from "../types.js";
 
@@ -15,19 +16,15 @@ export type ArgvRunner = (
   args: readonly string[]
 ) => Promise<{ readonly stdout: string }>;
 
-const defaultRunner: ArgvRunner = (file, args) =>
-  new Promise((resolve, reject) => {
-    // execFile takes a FIXED executable + an argv ARRAY: the OS execve's it
-    // directly, so NO shell parses it — a name like `; rm -rf ~` is one inert
-    // argument, never a command. (Never `exec` with an interpolated string.)
-    execFile(file, [...args], { timeout: 5_000 }, (error, stdout) => {
-      if (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-      resolve({ stdout });
-    });
-  });
+const execFileAsync = promisify(execFile);
+
+const defaultRunner: ArgvRunner = async (file, args) => {
+  // execFile takes a FIXED executable + an argv ARRAY: the OS execve's it
+  // directly, so NO shell parses it — a name like `; rm -rf ~` is one inert
+  // argument, never a command. (Never `exec` with an interpolated string.)
+  const { stdout } = await execFileAsync(file, [...args], { encoding: "utf8", timeout: 5_000 }) as { stdout: string };
+  return { stdout };
+};
 
 export interface KeychainSourceOptions {
   /** Keychain item service (`-s`). Defaults to `ref.service ?? "muse"`. */

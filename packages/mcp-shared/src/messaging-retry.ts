@@ -15,6 +15,7 @@
  */
 
 import { MessagingProviderError, type MessagingProviderRegistry, type OutboundReceipt } from "@muse/messaging";
+import { sleep } from "@muse/shared";
 
 const BACKOFFS_MS: readonly number[] = [0, 200, 800];
 /**
@@ -35,7 +36,7 @@ export async function sendWithRetry(
   message: { readonly destination: string; readonly text: string },
   options: SendWithRetryOptions = {}
 ): Promise<OutboundReceipt> {
-  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const delay = options.sleep ?? sleep;
   let lastError: unknown;
   for (let attempt = 0; attempt < BACKOFFS_MS.length; attempt += 1) {
     if (attempt > 0) {
@@ -46,7 +47,7 @@ export async function sendWithRetry(
       const serverHint = lastError instanceof MessagingProviderError && lastError.retryAfterMs !== undefined
         ? Math.min(lastError.retryAfterMs, RETRY_AFTER_CAP_MS)
         : undefined;
-      await sleep(serverHint ?? BACKOFFS_MS[attempt] ?? 0);
+      await delay(serverHint ?? BACKOFFS_MS[attempt] ?? 0);
     }
     try {
       return await registry.send(providerId, message);

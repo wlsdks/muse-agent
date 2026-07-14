@@ -38,6 +38,8 @@ export {
   type EncryptedCredentialEnvelope
 } from "./credential-encryption.js";
 
+export { sleep } from "./sleep.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];

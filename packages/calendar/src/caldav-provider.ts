@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
 import { parseCalendarQueryResponse, renderCalendarQueryReport, renderVEvent } from "./caldav-ics.js";
+import { sleep } from "@muse/shared";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -78,7 +79,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
-    this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    this.sleep = options.retry?.sleep ?? sleep;
   }
 
   describe(): CalendarProviderInfo {
@@ -243,4 +244,3 @@ function applyOptional(existing: string | undefined, next: string | null | undef
   }
   return next ?? existing;
 }
-
