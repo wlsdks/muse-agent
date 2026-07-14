@@ -10,11 +10,12 @@
  * without re-implementing the per-file scans.
  */
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { join as pathJoin } from "node:path";
+import { delimiter as pathDelimiter, join as pathJoin } from "node:path";
 
 import { isRecord } from "@muse/shared";
+import { hasStoredGmailCredentialSync } from "@muse/stores";
 
 import { parseBoolean, parseBooleanTriState, parseInteger } from "./env-parsers.js";
 import {
@@ -271,6 +272,18 @@ export interface SetupStatusSnapshot {
     readonly nextStep?: string;
   };
   readonly messaging: { readonly status: "ok" | "info"; readonly providers: readonly string[]; readonly nextStep?: string };
+  readonly email: {
+    readonly status: "ok" | "info";
+    /** `oauth` = the encrypted `muse setup email` record; `env` = MUSE_GMAIL_TOKEN; `none` = not configured. */
+    readonly source: "oauth" | "env" | "none";
+    readonly nextStep?: string;
+  };
+  readonly remote: {
+    readonly status: "ok" | "info";
+    /** `tailscale` binary detected on PATH or the macOS App-Store bundle — fs/env only, never exec'd here. */
+    readonly tailscaleFound: boolean;
+    readonly nextStep?: string;
+  };
   readonly webSearch: { readonly status: "ok" | "info"; readonly enabled: boolean; readonly maxUses: number; readonly source: "default" | "env" };
   readonly userMemory: {
     readonly status: "ok" | "info";
@@ -518,6 +531,60 @@ export function resolveVoiceStatus(
 }
 
 /**
+ * Resolve the `email` row for `muse setup` / `--json`. `hasStoredCredential`
+ * is computed by the caller so this stays pure and directly testable — the
+ * store read itself is skipped entirely under local-only (never even opened,
+ * matching the calendar/messaging credential-file rule elsewhere in this
+ * module) rather than probed and then discarded here.
+ */
+export function resolveEmailSetupStatus(
+  env: Readonly<Record<string, string | undefined>>,
+  hasStoredCredential: boolean
+): SetupStatusSnapshot["email"] {
+  if (hasStoredCredential) {
+    return { source: "oauth", status: "ok" };
+  }
+  if (env.MUSE_GMAIL_TOKEN?.trim()) {
+    return { source: "env", status: "ok" };
+  }
+  return { nextStep: "muse setup email", source: "none", status: "info" };
+}
+
+/** App-Store variant of the macOS Tailscale client bundles the CLI here (mirrors apps/cli/src/commands-remote.ts). */
+const TAILSCALE_MACOS_APP_BUNDLE_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+
+/**
+ * fs/env-ONLY tailscale presence check for the `muse setup` remote row — no
+ * exec, unlike `resolveTailscaleBinary` (apps/cli/src/commands-remote.ts),
+ * which shells out to `tailscale version` to confirm a working install. A
+ * status survey must not spawn a process just to render one row; PATH
+ * scanning + the known macOS app-bundle path are enough to say "found".
+ */
+export function detectTailscaleBinaryPresent(
+  env: Readonly<Record<string, string | undefined>>,
+  options: { readonly exists?: (path: string) => boolean; readonly osPlatform?: NodeJS.Platform } = {}
+): boolean {
+  const exists = options.exists ?? existsSync;
+  const osPlatform = options.osPlatform ?? process.platform;
+  if (osPlatform === "darwin" && exists(TAILSCALE_MACOS_APP_BUNDLE_CLI)) {
+    return true;
+  }
+  const pathValue = env.PATH?.trim() || process.env.PATH || "";
+  const binaryName = osPlatform === "win32" ? "tailscale.exe" : "tailscale";
+  return pathValue
+    .split(pathDelimiter)
+    .filter((dir) => dir.length > 0)
+    .some((dir) => exists(pathJoin(dir, binaryName)));
+}
+
+/** Resolve the `remote` row for `muse setup` / `--json` from a fs/env-only tailscale presence check. */
+export function resolveRemoteSetupStatus(tailscaleFound: boolean): SetupStatusSnapshot["remote"] {
+  return tailscaleFound
+    ? { nextStep: "muse remote enable", status: "ok", tailscaleFound: true }
+    : { nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false };
+}
+
+/**
  * Read the persisted `defaultModel` from the CLI config store
  * (`~/.config/muse/config.json`) — the value `muse setup local` / the
  * first-run wizard write. Setup status credits it exactly like the CLI
@@ -653,6 +720,17 @@ export async function collectSetupStatusJson(options: {
   const messagingFile = integrationEnv?.messaging.credentialsFile ?? resolveMessagingCredentialsFile(env);
   const messagingHits = await readMessagingProviderState(messagingFile, env, integrationEnv);
 
+  // The encrypted Gmail OAuth record can hold a live refresh token. Under
+  // local-only, status must not open it just to render a row — same rule as
+  // the calendar/messaging credential files above.
+  const hasStoredGmailCredential = integrationLocalOnly
+    ? false
+    : hasStoredGmailCredentialSync({ configDir: pathJoin(home, ".config", "muse"), credentialKey: env.MUSE_CREDENTIAL_KEY });
+  const emailStatus = integrationLocalOnly
+    ? { nextStep: "Gmail email/inbox is disabled while MUSE_LOCAL_ONLY=true", source: "none" as const, status: "info" as const }
+    : resolveEmailSetupStatus(env, hasStoredGmailCredential);
+  const remoteStatus = resolveRemoteSetupStatus(detectTailscaleBinaryPresent(env));
+
   // User-memory auto-extract (default-on as of the recent flip).
   const autoExtractEnv = env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase();
   const autoExtractEnabled = autoExtractEnv === undefined
@@ -732,6 +810,8 @@ export async function collectSetupStatusJson(options: {
         ? { nextStep: "Run `muse setup messaging` for Telegram / Discord / Slack / LINE tokens" }
         : {})
     },
+    email: emailStatus,
+    remote: remoteStatus,
     mcp: {
       externalServerCount: mcpCount,
       file: mcpFile,

@@ -75,6 +75,14 @@ describe("museQuickstartHelp", () => {
     expect(help).toMatch(/LOCAL model by default/);
     expect(help).toContain("cloud egress is refused");
   });
+
+  it("lists the daily-use trio + muse update, and stays a tight funnel (<=12 lines)", () => {
+    const help = museQuickstartHelp();
+    for (const cmd of ["muse today", "muse chats", "muse scheduler add", "muse update"]) {
+      expect(help).toContain(cmd);
+    }
+    expect(help.split("\n").length).toBeLessThanOrEqual(12);
+  });
 });
 
 describe("muse --help first screen (wiring)", () => {

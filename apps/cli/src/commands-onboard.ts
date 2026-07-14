@@ -199,5 +199,7 @@ export function registerOnboardCommand(program: Command, io: ProgramIO): void {
         io.stdout(`\n💡 ${report.dataHint.detail}\n   $ ${report.dataHint.command}\n`);
       }
       io.stdout("\nVerify your setup any time (models, local-only posture, index):\n   $ muse doctor --local\n");
+      io.stdout("\nSchedule a recurring prompt: `muse scheduler add \"...\" --every \"daily 9am\"`\n");
+      io.stdout("Every agent file write is undoable — `muse rollback`.\n");
     });
 }

@@ -1,11 +1,11 @@
-import { promises as fs } from "node:fs";
+import { mkdtempSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
-import { buildModelSection, collectSetupStatusJson, evaluateLocalOnlyPosture, evaluateWebEgressStatus, readActuatorReadiness, readConfigDefaultModel, readMessagingProviderState, readModelKeyState, readWebSearchEnvSnapshot, resolveVoiceStatus } from "../src/setup-status.js";
+import { buildModelSection, collectSetupStatusJson, detectTailscaleBinaryPresent, evaluateLocalOnlyPosture, evaluateWebEgressStatus, readActuatorReadiness, readConfigDefaultModel, readMessagingProviderState, readModelKeyState, readWebSearchEnvSnapshot, resolveEmailSetupStatus, resolveRemoteSetupStatus, resolveVoiceStatus } from "../src/setup-status.js";
 import { resolveIntegrationEnvironment } from "../src/integration-environment.js";
 
 const MISSING_KEYS_FILE = "/dev/null/no-such-keys.json";
@@ -651,4 +651,87 @@ describe("readModelKeyState ↔ resolveDefaultModel parity", () => {
       expect(model).toMatch(/\S/);
     });
   }
+});
+
+describe("resolveEmailSetupStatus — R2-3", () => {
+  it("a stored OAuth credential wins, even when MUSE_GMAIL_TOKEN is also set", () => {
+    expect(resolveEmailSetupStatus({ MUSE_GMAIL_TOKEN: "tok" }, true)).toEqual({ source: "oauth", status: "ok" });
+  });
+
+  it("falls back to MUSE_GMAIL_TOKEN when no stored credential exists", () => {
+    expect(resolveEmailSetupStatus({ MUSE_GMAIL_TOKEN: "tok" }, false)).toEqual({ source: "env", status: "ok" });
+  });
+
+  it("reports not-set-up with the `muse setup email` next step when neither is present", () => {
+    expect(resolveEmailSetupStatus({}, false)).toEqual({ nextStep: "muse setup email", source: "none", status: "info" });
+  });
+
+  it("ignores a blank MUSE_GMAIL_TOKEN (whitespace-only)", () => {
+    expect(resolveEmailSetupStatus({ MUSE_GMAIL_TOKEN: "   " }, false)).toEqual({ nextStep: "muse setup email", source: "none", status: "info" });
+  });
+});
+
+describe("resolveRemoteSetupStatus — R2-3", () => {
+  it("found → ok, next step is `muse remote enable`", () => {
+    expect(resolveRemoteSetupStatus(true)).toEqual({ nextStep: "muse remote enable", status: "ok", tailscaleFound: true });
+  });
+
+  it("not found → info, next step points at the remote-access guide", () => {
+    expect(resolveRemoteSetupStatus(false)).toEqual({ nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false });
+  });
+});
+
+describe("detectTailscaleBinaryPresent — fs/env-only, no exec (R2-3)", () => {
+  it("finds the macOS App-Store bundle CLI without touching PATH", () => {
+    const exists = (path: string) => path === "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+    expect(detectTailscaleBinaryPresent({}, { exists, osPlatform: "darwin" })).toBe(true);
+  });
+
+  it("scans PATH entries for a `tailscale` binary on non-darwin", () => {
+    const exists = (path: string) => path === "/usr/local/bin/tailscale";
+    expect(detectTailscaleBinaryPresent(
+      { PATH: "/usr/bin:/usr/local/bin" },
+      { exists, osPlatform: "linux" }
+    )).toBe(true);
+  });
+
+  it("reports not found when neither the bundle nor any PATH entry has it", () => {
+    const exists = () => false;
+    expect(detectTailscaleBinaryPresent({ PATH: "/usr/bin:/usr/local/bin" }, { exists, osPlatform: "darwin" })).toBe(false);
+  });
+
+  it("checks the win32 binary name (tailscale.exe), not the POSIX name", () => {
+    const seen: string[] = [];
+    const exists = (path: string) => { seen.push(path); return false; };
+    detectTailscaleBinaryPresent({ PATH: "C:\\bin" }, { exists, osPlatform: "win32" });
+    expect(seen.some((p) => p.endsWith("tailscale.exe"))).toBe(true);
+    expect(seen.some((p) => p.endsWith("tailscale"))).toBe(false);
+  });
+});
+
+describe("collectSetupStatusJson — email/remote rows (R2-3)", () => {
+  it("email is not-set-up and disabled under local-only even when MUSE_GMAIL_TOKEN is set (never opens the credential store)", async () => {
+    const snapshot = await collectSetupStatusJson({
+      env: { HOME: tmpdir(), MUSE_GMAIL_TOKEN: "tok", MUSE_LOCAL_ONLY: "true" }
+    });
+    expect(snapshot.email).toMatchObject({ source: "none", status: "info" });
+    expect(snapshot.email.nextStep).toContain("MUSE_LOCAL_ONLY=true");
+  });
+
+  it("email reports the env-token source when local-only is off and no stored credential exists", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-setup-email-"));
+    const snapshot = await collectSetupStatusJson({
+      env: { HOME: root, MUSE_GMAIL_TOKEN: "tok", MUSE_LOCAL_ONLY: "false" }
+    });
+    expect(snapshot.email).toEqual({ source: "env", status: "ok" });
+  });
+
+  it("remote row is present and self-consistent (ok+found or info+not-found, never a contradiction)", async () => {
+    const snapshot = await collectSetupStatusJson({ env: { HOME: tmpdir() } });
+    if (snapshot.remote.tailscaleFound) {
+      expect(snapshot.remote).toEqual({ nextStep: "muse remote enable", status: "ok", tailscaleFound: true });
+    } else {
+      expect(snapshot.remote).toEqual({ nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false });
+    }
+  });
 });

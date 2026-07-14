@@ -397,7 +397,7 @@ Examples:
 
   setup
     .command("status", { isDefault: true })
-    .description("Print a configuration health-check (model, MCP, calendar, notes, tasks, voice, messaging, web search)")
+    .description("Print a configuration health-check (model, MCP, calendar, notes, tasks, voice, messaging, email, remote, web search)")
     .option("--json", "Emit structured JSON instead of the formatted status report")
     .action(async (options: { readonly json?: boolean }) => {
       if (options.json) {
@@ -613,6 +613,24 @@ export function formatSetupStatusLines(snap: SetupStatusSnapshot): string[] {
     push("info", "messaging", "no providers yet");
     pushNext(snap.messaging.nextStep);
   }
+
+  // email
+  if (snap.email.source === "oauth") {
+    push("ok", "email", "connected (oauth, auto-refresh)");
+  } else if (snap.email.source === "env") {
+    push("ok", "email", "via MUSE_GMAIL_TOKEN (hourly expiry)");
+  } else {
+    push("info", "email", "not set up");
+  }
+  pushNext(snap.email.nextStep);
+
+  // remote (tailscale)
+  if (snap.remote.tailscaleFound) {
+    push("ok", "remote", "tailscale found");
+  } else {
+    push("info", "remote", "not found");
+  }
+  pushNext(snap.remote.nextStep);
 
   // web search
   const ws = snap.webSearch;

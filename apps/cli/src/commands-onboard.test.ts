@@ -1,6 +1,8 @@
+import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { computeOnboarding, type OnboardingState } from "./commands-onboard.js";
+import { computeOnboarding, registerOnboardCommand, type OnboardingState } from "./commands-onboard.js";
+import type { ProgramIO } from "./program.js";
 
 const base: OnboardingState = {
   chatModel: "qwen3:8b",
@@ -66,5 +68,23 @@ describe("computeOnboarding — the single next step to the first cited answer",
     const r = next({ ...base, browsingVisitCount: 0, contactsCount: 0, indexBuilt: true, installedModels: ["qwen3:8b", "nomic-embed-text"], noteFileCount: 12, ollamaReachable: true });
     expect(r.ready).toBe(true);
     expect(r.dataHint?.command).toBe("muse setup data");
+  });
+});
+
+describe("muse onboard — closing hints (R2-3)", () => {
+  it("ends with a scheduling example and the rollback safety line", async () => {
+    const out: string[] = [];
+    const io: ProgramIO = {
+      fetch: (() => Promise.reject(new Error("no network in test"))) as typeof globalThis.fetch,
+      stderr: () => undefined,
+      stdout: (s) => out.push(s)
+    };
+    const program = new Command();
+    registerOnboardCommand(program, io);
+    await program.parseAsync(["node", "muse", "onboard"]);
+    const text = out.join("");
+    expect(text).toContain("muse scheduler add");
+    expect(text).toContain("muse rollback");
+    expect(text).toContain("undoable");
   });
 });
