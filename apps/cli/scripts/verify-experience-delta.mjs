@@ -23,6 +23,7 @@
  * Exit 0 if every case passes, 1 otherwise. LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,7 +33,6 @@ const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 
 const userId = "stark";
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const QUESTION = "Which city do I live in? If you don't know, say you're not sure.";
 const FACT = "busan";
 
@@ -53,7 +53,7 @@ async function askFreshSession(text) {
 async function teach(text) {
   const asm = createMuseRuntimeAssembly();
   await asm.agentRuntime.run({ messages: [{ content: text, role: "user" }], metadata: { userId }, model });
-  await sleep(9000); // let fire-and-forget auto-extract persist the fact
+  await delay(9000); // let fire-and-forget auto-extract persist the fact
 }
 
 console.log(`experience-delta — cross-session A/B, model ${model}\n`);

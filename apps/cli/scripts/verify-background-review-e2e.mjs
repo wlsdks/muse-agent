@@ -19,6 +19,7 @@
  * Exit 0 if every case passes, 1 otherwise. LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -40,7 +41,6 @@ const store = asm.userMemoryStore;
 if (!runtime) { console.error("no agent runtime (no model provider)"); process.exit(2); }
 
 const userId = "stark";
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const messages = [];
 
 async function turn(text) {
@@ -48,7 +48,7 @@ async function turn(text) {
   const result = await runtime.run({ messages: [...messages], metadata: { userId }, model });
   const reply = result.response?.output ?? "";
   messages.push({ content: reply, role: "assistant" });
-  await sleep(9000); // let the fire-and-forget review (auto-extract + arms) land
+  await delay(9000); // let the fire-and-forget review (auto-extract + arms) land
   return reply;
 }
 
