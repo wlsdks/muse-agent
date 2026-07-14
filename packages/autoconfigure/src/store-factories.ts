@@ -70,6 +70,7 @@ import {
   type SessionTagStore
 } from "@muse/runtime-state";
 import {
+  FileScheduledJobStore,
   InMemoryDistributedSchedulerLock,
   InMemoryScheduledJobExecutionStore,
   InMemoryScheduledJobStore,
@@ -207,9 +208,19 @@ export function createMcpSecurityPolicyStore(
 }
 
 export function createSchedulerStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): ScheduledJobStore {
-  return db
-    ? new KyselyScheduledJobStore(db)
-    : new InMemoryScheduledJobStore({ maxJobs: parseInteger(env.MUSE_SCHEDULER_MAX_JOBS, 1_000) });
+  const maxJobs = parseInteger(env.MUSE_SCHEDULER_MAX_JOBS, 1_000);
+  if (db) return new KyselyScheduledJobStore(db);
+  // DB-less daily-driver (CLI, or an API server with no Postgres configured):
+  // persist to ~/.muse/scheduled-jobs.json so a `muse scheduler add`-created
+  // job survives a process restart instead of vanishing with an in-memory
+  // store — parity with the task-memory / user-memory / conversation-summary
+  // file stores above. Opt out via MUSE_SCHEDULER_PERSIST=false (tests
+  // wanting a clean slate per run).
+  if (env.MUSE_SCHEDULER_PERSIST === "false") {
+    return new InMemoryScheduledJobStore({ maxJobs });
+  }
+  const file = env.MUSE_SCHEDULED_JOBS_FILE?.trim();
+  return new FileScheduledJobStore({ maxJobs, ...(file && file.length > 0 ? { file } : {}) });
 }
 
 export function createSchedulerExecutionStore(

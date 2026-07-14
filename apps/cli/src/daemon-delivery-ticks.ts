@@ -46,13 +46,25 @@ import {
   type InterruptionBudgetWiring,
   type QuietHourRange
 } from "@muse/proactivity";
-import { formatBirthdayBriefLine, queryContacts, readEpisodes, readProactiveHistory, resolveUpcomingBirthdays } from "@muse/stores";
+import {
+  defaultExecutionTimeoutMs,
+  FileScheduledJobStore,
+  InMemoryScheduledJobExecutionStore,
+  parseNotificationChannel,
+  ScheduledJobExecutionRecorder,
+  type ScheduledJob,
+  type ScheduledJobExecutionStore,
+  type ScheduledJobStore
+} from "@muse/scheduler";
+import { formatBirthdayBriefLine, isSchedulerPaused, queryContacts, readEpisodes, readProactiveHistory, resolveUpcomingBirthdays } from "@muse/stores";
 
 import { backgroundStoreFile } from "./commands-background.js";
 import { checkinsFile } from "./commands-checkins.js";
 import type { FollowupModel } from "./commands-daemon-connections.js";
 import { resolveReflectionsFile, runReflectionPass, shouldRunReflection } from "./commands-reflections.js";
 import { maybeAutoPrune } from "./local-state-retention.js";
+import { runSchedulerJobAndWait, type SchedulerJobOutcome } from "./scheduler-job-runner.js";
+import { isScheduledJobDue } from "./scheduler-tick-due.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 
 import type { TickRunState } from "./daemon-selflearn-ticks.js";
@@ -162,6 +174,138 @@ export function makeRemindersTick(deps: MakeRemindersTickDeps): () => Promise<vo
     if (summary.errors.length > 0) {
       stdout(`, ${summary.errors.length.toString()} error(s)`);
       for (const error of summary.errors) {
+        stdout(`\n  ! ${error}`);
+      }
+    }
+    stdout("\n");
+  };
+}
+
+export interface MakeSchedulerTickDeps {
+  readonly destination: string;
+  readonly provider: string;
+  readonly messagingRegistry: MessagingProviderRegistry;
+  readonly schedulerFile: string;
+  readonly pauseFile: string;
+  readonly executionTimeoutMs?: number;
+  readonly env: NodeJS.ProcessEnv;
+  readonly stdout: (message: string) => void;
+  /** Test seam — inject a store instead of a real FileScheduledJobStore. */
+  readonly store?: ScheduledJobStore;
+  /** Test seam — inject an execution-record store instead of a fresh in-memory one. */
+  readonly executionStore?: ScheduledJobExecutionStore;
+  /** Test seam — inject the job-execution primitive instead of a real detached spawn. */
+  readonly runJob?: typeof runSchedulerJobAndWait;
+  readonly now?: () => Date;
+}
+
+/**
+ * User-scheduled recurring agent prompts ("매일 아침 9시에 오늘 일정
+ * 요약해서 보내줘"). Poll model, NOT an in-process cron timer — each tick
+ * reads the enabled `agent`-type jobs from the file store and computes
+ * due-ness deterministically (`isScheduledJobDue`/`computeNextRunAt`), so a
+ * daemon restart never loses an armed job. Execution reuses the DETACHED
+ * job-worker path from `commands-jobs.ts` (`runSchedulerJobAndWait`) — this
+ * tick never assembles a second in-daemon agent runtime. Quiet hours do NOT
+ * suppress this tick (the user explicitly scheduled it — reminders
+ * precedent). The scheduler pause file (`muse scheduler pause`) does.
+ */
+export function makeSchedulerTick(deps: MakeSchedulerTickDeps): () => Promise<void> {
+  const { destination, provider, messagingRegistry, schedulerFile, pauseFile, env, stdout } = deps;
+  const store: ScheduledJobStore = deps.store ?? new FileScheduledJobStore({ file: schedulerFile });
+  const executionRecorder = new ScheduledJobExecutionRecorder(deps.executionStore ?? new InMemoryScheduledJobExecutionStore());
+  const runJob = deps.runJob ?? runSchedulerJobAndWait;
+  const now = deps.now ?? (() => new Date());
+  const fallbackTimeoutMs = deps.executionTimeoutMs ?? defaultExecutionTimeoutMs;
+  // In-process overlap guard: a job whose previous run is still in flight
+  // when the NEXT tick fires is skipped rather than double-run — mirrors
+  // `DynamicScheduler.runningJobIds`. Scoped to this daemon process's
+  // lifetime (a restart naturally clears it, which is correct — nothing is
+  // actually still running after a restart).
+  const runningJobIds = new Set<string>();
+
+  return async (): Promise<void> => {
+    const tag = `[${new Date().toISOString()}]`;
+
+    if (await isSchedulerPaused(pauseFile)) {
+      stdout(`${tag} scheduler: paused\n`);
+      return;
+    }
+
+    let jobs: readonly ScheduledJob[];
+    try {
+      jobs = await store.list();
+    } catch (cause) {
+      stdout(`${tag} scheduler: failed to read the job store: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+      return;
+    }
+
+    const nowDate = now();
+    const due = jobs.filter((job) => job.enabled && job.jobType === "agent" && isScheduledJobDue(job, nowDate));
+
+    let fired = 0;
+    const errors: string[] = [];
+
+    for (const job of due) {
+      if (runningJobIds.has(job.id)) {
+        await store.updateExecutionResult(job.id, "skipped", "skipped: previous run still in progress");
+        continue;
+      }
+      runningJobIds.add(job.id);
+      const startedAt = now();
+      try {
+        await store.updateExecutionResult(job.id, "running");
+        const outcome: SchedulerJobOutcome = await runJob(
+          job.agentPrompt ?? "",
+          { model: job.agentModel },
+          { timeoutMs: job.executionTimeoutMs ?? fallbackTimeoutMs },
+          { env }
+        );
+
+        if (outcome.status === "success") {
+          await store.updateExecutionResult(job.id, "success", outcome.text);
+          const target = job.notificationChannelId
+            ? parseNotificationChannel(job.notificationChannelId, provider)
+            : { destination, providerId: provider };
+          await messagingRegistry.send(target.providerId, { destination: target.destination, text: outcome.text });
+          fired += 1;
+          await executionRecorder.recordExecution({
+            durationMs: now().getTime() - startedAt.getTime(),
+            dryRun: false,
+            job,
+            result: outcome.text,
+            startedAt,
+            status: "success"
+          });
+        } else {
+          // "capacity" (concurrency cap reached — nothing spawned) and
+          // "timeout"/"failed" both land here: no delivery of partial text,
+          // only lastStatus/lastResult + the execution record change.
+          const status = outcome.status === "capacity" ? "skipped" : "failed";
+          await store.updateExecutionResult(job.id, status, outcome.error);
+          errors.push(`${job.name}: ${outcome.error}`);
+          await executionRecorder.recordExecution({
+            durationMs: now().getTime() - startedAt.getTime(),
+            dryRun: false,
+            job,
+            result: outcome.error,
+            startedAt,
+            status
+          });
+        }
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        await store.updateExecutionResult(job.id, "failed", message);
+        errors.push(`${job.name}: ${message}`);
+      } finally {
+        runningJobIds.delete(job.id);
+      }
+    }
+
+    stdout(`${tag} scheduler: fired ${fired.toString()}/${due.length.toString()} due`);
+    if (errors.length > 0) {
+      stdout(`, ${errors.length.toString()} error(s)`);
+      for (const error of errors) {
         stdout(`\n  ! ${error}`);
       }
     }

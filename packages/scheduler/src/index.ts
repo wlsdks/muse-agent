@@ -19,6 +19,7 @@ export {
   mapScheduledJobRow,
   normalizeScheduledJob,
   normalizeScheduledJobExecution,
+  parseNotificationChannel,
   renderTemplateVariables,
   requireText,
   resolveJobTimeout
@@ -219,6 +220,10 @@ export {
   KyselyScheduledJobStore,
   buildScheduledJobListQuery
 } from "./scheduler-stores.js";
+
+export { defaultScheduledJobsFile, FileScheduledJobStore } from "./scheduler-file-store.js";
+
+export { parseCadence, CADENCE_ACCEPTED_FORMS } from "./cadence-parser.js";
 
 export {
   defaultExecutionTimeoutMs,

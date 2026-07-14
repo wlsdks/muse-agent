@@ -94,6 +94,7 @@ import {
   NodeCronScheduler,
   ScheduledJobDispatcher,
   ScheduledMcpToolInvoker,
+  SchedulerMessaging,
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
@@ -186,6 +187,7 @@ import {
   createPersonalToolExposurePolicy,
   createRunnerTools,
   createScheduledAgentExecutor,
+  createSchedulerMessagingSender,
   resolveStreamIdleTimeoutMs
 } from "./runtime-wiring.js";
 import {
@@ -526,22 +528,34 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const schedulerStore = createSchedulerStore(db, env);
   const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
   const schedulerLock = createSchedulerLock(db, env);
+  const schedulerCronEnabled = parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true);
   const schedulerService = new DynamicScheduler({
     dispatcher: new ScheduledJobDispatcher({
       agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
       mcpInvoker: new ScheduledMcpToolInvoker(mcp.manager)
     }),
-    cronScheduler: parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true)
-      ? new NodeCronScheduler()
-      : undefined,
+    cronScheduler: schedulerCronEnabled ? new NodeCronScheduler() : undefined,
     executionStore: schedulerExecutionStore,
     distributedLock: schedulerLock,
     // User kill-switch: a cron-fired job is skipped while the user has paused
     // the scheduler (toggled by `muse scheduler pause`); manual triggers still run.
     isPaused: () => isSchedulerPaused(defaultSchedulerPauseFile(env)),
+    // Delivers a completed scheduled-agent job's result to
+    // job.notificationChannelId — without this the default no-op
+    // SchedulerMessaging silently discards every job's output.
+    messagingService: new SchedulerMessaging(createSchedulerMessagingSender(messagingRegistry)),
     store: schedulerStore
   });
   schedulerHandle.current = schedulerService;
+  if (schedulerCronEnabled) {
+    // Re-arm every enabled job's cron timer after a process restart — with
+    // no caller, `loadEnabledJobs` (which exists precisely for this) was
+    // never invoked, so a persisted job never fired again once the process
+    // that created it exited. Fire-and-forget: assembly itself stays
+    // synchronous, and a failure here (e.g. a corrupt persisted cron
+    // expression) must not block the whole runtime from coming up.
+    void schedulerService.loadEnabledJobs().catch(() => undefined);
+  }
 
   assertAuthConfigCoherent(env, Boolean(authService));
 

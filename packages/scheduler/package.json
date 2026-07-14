@@ -21,6 +21,7 @@
     "@muse/mcp": "workspace:*",
     "@muse/resilience": "workspace:*",
     "@muse/shared": "workspace:*",
+    "@muse/stores": "workspace:*",
     "@muse/tools": "workspace:*",
     "cron-parser": "^5.6.1",
     "kysely": "^0.29.2"

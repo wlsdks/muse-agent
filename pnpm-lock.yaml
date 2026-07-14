@@ -186,6 +186,9 @@ importers:
       '@muse/recall':
         specifier: workspace:*
         version: link:../../packages/recall
+      '@muse/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@muse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -775,6 +778,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools

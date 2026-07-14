@@ -121,6 +121,23 @@ export class InMemoryScheduledJobStore implements ScheduledJobStore {
     this.jobs.delete(id);
   }
 
+  /**
+   * Bulk-load already-normalized jobs verbatim — no name-dedup check, no id
+   * generation, no re-validation. The hydration path for a file-backed
+   * wrapper (`FileScheduledJobStore`) reading its own previously-written
+   * JSON, where re-running `save`'s duplicate-name guard would throw on a
+   * perfectly valid persisted pair. NOT for untrusted/external input.
+   */
+  restore(jobs: readonly ScheduledJob[]): void {
+    this.jobs.clear();
+
+    for (const job of jobs) {
+      this.jobs.set(job.id, job);
+    }
+
+    this.evictOverflow();
+  }
+
   updateExecutionResult(id: string, status: JobExecutionStatus, result?: string | null): void {
     const existing = this.jobs.get(id);
 

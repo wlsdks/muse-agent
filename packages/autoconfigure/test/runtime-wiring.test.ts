@@ -1,5 +1,7 @@
 import { DEFAULT_STREAM_IDLE_TIMEOUT_MS } from "@muse/agent-core";
-import { describe, expect, it } from "vitest";
+import type { MessagingProviderRegistry } from "@muse/messaging";
+import type { ScheduledJob } from "@muse/scheduler";
+import { describe, expect, it, vi } from "vitest";
 
 import type { MuseEnvironment } from "../src/index.js";
 import {
@@ -8,6 +10,7 @@ import {
   createInputGuards,
   createOutputGuards,
   createRunnerTools,
+  createSchedulerMessagingSender,
   resolveStreamIdleTimeoutMs,
 } from "../src/runtime-wiring.js";
 
@@ -153,5 +156,55 @@ describe("buildContextWindowOptions", () => {
     const barrel = await import("../src/index.js");
     expect(barrel.buildContextWindowOptions).toBe(buildContextWindowOptions);
     expect(barrel.buildContextWindowOptions(env())).toEqual(buildContextWindowOptions(env()));
+  });
+});
+
+function fakeJob(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
+  return {
+    cronExpression: "0 9 * * *",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    enabled: true,
+    id: "job-1",
+    jobType: "agent",
+    maxRetryCount: 3,
+    name: "morning-brief",
+    retryOnFailure: false,
+    tags: [],
+    timezone: "UTC",
+    toolArguments: {},
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+describe("createSchedulerMessagingSender — AC3, delivers a scheduled job's result to notificationChannelId", () => {
+  it("splits 'provider:destination' and sends through that provider", async () => {
+    const send = vi.fn().mockResolvedValue({ providerId: "telegram", status: "sent" });
+    const registry = { send } as unknown as MessagingProviderRegistry;
+    const sender = createSchedulerMessagingSender(registry);
+
+    await sender.sendMessage("ignored-target", "today's brief", fakeJob({ notificationChannelId: "telegram:12345" }));
+
+    expect(send).toHaveBeenCalledWith("telegram", { destination: "12345", text: "today's brief" });
+  });
+
+  it("a bare destination with no provider prefix defaults to the always-registered 'log' provider", async () => {
+    const send = vi.fn().mockResolvedValue({ providerId: "log", status: "sent" });
+    const registry = { send } as unknown as MessagingProviderRegistry;
+    const sender = createSchedulerMessagingSender(registry);
+
+    await sender.sendMessage("ignored-target", "hello", fakeJob({ notificationChannelId: "@me" }));
+
+    expect(send).toHaveBeenCalledWith("log", { destination: "@me", text: "hello" });
+  });
+
+  it("a job with no notificationChannelId (only webhookUrl) does NOT call the registry — webhook delivery is out of scope for this sender", async () => {
+    const send = vi.fn();
+    const registry = { send } as unknown as MessagingProviderRegistry;
+    const sender = createSchedulerMessagingSender(registry);
+
+    await sender.sendMessage("https://example.com/hook", "text", fakeJob({ webhookUrl: "https://example.com/hook" }));
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

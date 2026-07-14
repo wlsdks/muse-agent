@@ -803,14 +803,15 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [
+      "add",
       "create-agent",
-      "delete",
       "dry-run",
       "executions",
       "list",
       "next",
       "pause",
       "pause-status",
+      "remove",
       "resume",
       "trigger"
     ]

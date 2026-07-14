@@ -36,7 +36,8 @@ import {
 } from "@muse/autoconfigure";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
-import { queryActionLog, readReminders, readTasks } from "@muse/stores";
+import { defaultScheduledJobsFile } from "@muse/scheduler";
+import { defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile } from "node:child_process";
@@ -78,7 +79,8 @@ import {
   makeProactiveTick,
   makeRemindersTick,
   makeReflectionTick,
-  makeRetentionPruneTick
+  makeRetentionPruneTick,
+  makeSchedulerTick
 } from "./daemon-delivery-ticks.js";
 import type { ProgramIO } from "./program.js";
 import { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
@@ -659,6 +661,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}):\n`);
         io.stdout(`  proactive:  enabled\n`);
         io.stdout(`  reminders:  enabled\n`);
+        io.stdout(`  scheduler:  enabled (recurring \`muse scheduler add\` jobs; \`muse scheduler pause\` suspends)\n`);
         io.stdout(`  followup:   ${followupModel ? "enabled" : "disabled (no model resolved)"}\n`);
         io.stdout(`  ambient:    ${ambientRunner ? "enabled" : "disabled (set MUSE_AMBIENT_RULES)"}\n`);
         io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : "disabled (set MUSE_WEB_WATCH_CONFIG)"}\n`);
@@ -686,6 +689,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  config:     ${configFile}\n`);
         io.stdout(`  tasks:      ${tasksFile}\n`);
         io.stdout(`  reminders:  ${remindersFile}\n`);
+        io.stdout(`  scheduler:  ${defaultScheduledJobsFile(e)}\n`);
         io.stdout(`  followups:  ${followupsFile}\n`);
         io.stdout(`  objectives: ${objectivesFile}\n`);
         // Will it come back after a reboot? (launchd / schtasks install)
@@ -733,6 +737,20 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         messagingRegistry,
         provider,
         remindersFile,
+        stdout: io.stdout
+      });
+
+      // Recurring scheduled agent prompts ("매일 아침 9시에 오늘 일정 요약해서
+      // 보내줘") — created locally via `muse scheduler add`, no API server
+      // required. Quiet hours do NOT suppress it (reminders precedent: the
+      // user explicitly scheduled it); `muse scheduler pause` does.
+      const schedulerTick = makeSchedulerTick({
+        destination,
+        env: e,
+        messagingRegistry,
+        pauseFile: defaultSchedulerPauseFile(e),
+        provider,
+        schedulerFile: defaultScheduledJobsFile(e),
         stdout: io.stdout
       });
 
@@ -1010,6 +1028,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();
+        await schedulerTick();
         await followupTick();
         await checkinsTick();
         await patternTick();

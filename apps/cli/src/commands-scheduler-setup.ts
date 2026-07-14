@@ -10,6 +10,7 @@
  */
 
 import { collectSetupStatusJson, resolveFollowupsFile, type SetupStatusSnapshot } from "@muse/autoconfigure";
+import { CADENCE_ACCEPTED_FORMS, defaultScheduledJobsFile, FileScheduledJobStore, parseCadence } from "@muse/scheduler";
 import { defaultSchedulerPauseFile, readFollowups, readSchedulerPauseState, setSchedulerPaused } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -33,15 +34,108 @@ export interface SchedulerSetupHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+/**
+ * `add` / `list` / `delete` / `pause` / `resume` / `pause-status` are
+ * LOCAL-FIRST: they read/write `~/.muse/scheduled-jobs.json`
+ * (`FileScheduledJobStore`) directly, no API server required — this is the
+ * product requirement ("no API server, no Postgres, no cron syntax
+ * knowledge required"). `create-agent` / `trigger` / `dry-run` /
+ * `executions` / `next` stay API-backed: they need either the live agent
+ * runtime (`trigger`/`dry-run` actually EXECUTE the job) or execution
+ * history the CLI process doesn't hold. When no db is configured, the API
+ * server's own `createSchedulerStore` ALSO resolves to the same
+ * `FileScheduledJobStore` file (`store-factories.ts`), so a job created via
+ * `muse scheduler add` is visible to a running `muse api` too — the split
+ * only appears once Postgres is configured, which is the deliberate
+ * Kysely-vs-file boundary already documented on `createSchedulerStore`.
+ */
 export function registerSchedulerCommands(program: Command, io: ProgramIO, helpers: SchedulerSetupHelpers): void {
   const { apiRequest, writeOutput } = helpers;
   const scheduler = program.command("scheduler").description("Manage scheduled jobs");
 
   scheduler
+    .command("add")
+    .description("Create a recurring scheduled agent prompt — local file store, no API server required")
+    .argument("<prompt...>", `What Muse should do each time this fires, e.g. "오늘 일정 요약해서 보내줘"`)
+    .requiredOption("--every <cadence>", `Recurrence. Accepted forms: ${CADENCE_ACCEPTED_FORMS.join("; ")}`)
+    .option("--name <name>", "Job name (default: derived from the prompt)")
+    .option("--deliver <provider:destination>", `Delivery override, e.g. "telegram:12345" (default: the running \`muse daemon\`'s own provider/destination)`)
+    .option("--model <model>", "Agent model override (default: the daemon's default model)")
+    .option("--disabled", "Create disabled — won't fire until re-enabled")
+    .action(async (
+      promptParts: readonly string[],
+      options: { readonly every: string; readonly name?: string; readonly deliver?: string; readonly model?: string; readonly disabled?: boolean }
+    ) => {
+      const prompt = promptParts.join(" ").trim();
+      if (prompt.length === 0) {
+        io.stderr(`usage: muse scheduler add "<prompt>" --every "<cadence>"\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const cadence = parseCadence(options.every);
+      if (cadence instanceof Error) {
+        io.stderr(`muse scheduler add: ${cadence.message}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const store = new FileScheduledJobStore({ file: defaultScheduledJobsFile() });
+      const name = options.name?.trim() || prompt.slice(0, 60);
+      try {
+        const job = await store.save({
+          agentModel: options.model,
+          agentPrompt: prompt,
+          cronExpression: cadence.cronExpression,
+          enabled: options.disabled !== true,
+          jobType: "agent",
+          name,
+          notificationChannelId: options.deliver,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        });
+        io.stdout(`Scheduled '${job.name}' (${job.id}) — cron ${job.cronExpression} (${job.timezone}).\n`);
+        io.stdout(`Fires via \`muse daemon\` (\`muse daemon --install\` to survive logout). Manage with \`muse scheduler list\` / \`muse scheduler delete ${job.id}\`.\n`);
+      } catch (cause) {
+        io.stderr(`muse scheduler add: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        process.exitCode = 1;
+      }
+    });
+
+  scheduler
     .command("list")
-    .description("List scheduled jobs")
-    .action(async (_options, command) => {
-      writeOutput(io, await apiRequest(io, command, "/api/scheduler/jobs"));
+    .description("List scheduled jobs (local file store, no API server required)")
+    .option("--json", "Emit structured JSON instead of the formatted list")
+    .action(async (options: { readonly json?: boolean }) => {
+      const store = new FileScheduledJobStore({ file: defaultScheduledJobsFile() });
+      const jobs = await store.list();
+      if (options.json) {
+        writeOutput(io, { jobs });
+        return;
+      }
+      if (jobs.length === 0) {
+        io.stdout(`No scheduled jobs. Create one with \`muse scheduler add "<prompt>" --every "<cadence>"\`.\n`);
+        return;
+      }
+      io.stdout(`${jobs.length.toString()} scheduled job(s):\n`);
+      for (const job of jobs) {
+        const status = job.enabled ? job.lastStatus ?? "pending" : "disabled";
+        io.stdout(`  ${job.id}  ${job.name}  cron=${job.cronExpression} (${job.timezone})  [${status}]\n`);
+      }
+    });
+
+  scheduler
+    .command("remove")
+    .alias("delete")
+    .description("Delete a scheduled job (local file store, no API server required)")
+    .argument("<job-id>", "Job ID (see `muse scheduler list`)")
+    .action(async (jobId: string) => {
+      const store = new FileScheduledJobStore({ file: defaultScheduledJobsFile() });
+      const existing = await store.findById(jobId);
+      if (!existing) {
+        io.stderr(`muse scheduler remove: no job with id '${jobId}' (run \`muse scheduler list\`)\n`);
+        process.exitCode = 1;
+        return;
+      }
+      await store.delete(jobId);
+      io.stdout(`Deleted scheduled job '${existing.name}' (${jobId}).\n`);
     });
 
   scheduler
@@ -82,17 +176,6 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
       writeOutput(
         io,
         await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}/dry-run`, undefined, "POST")
-      );
-    });
-
-  scheduler
-    .command("delete")
-    .description("Delete a scheduled job")
-    .argument("<job-id>", "Job ID")
-    .action(async (jobId: string, _options, command) => {
-      writeOutput(
-        io,
-        await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}`, undefined, "DELETE")
       );
     });
 

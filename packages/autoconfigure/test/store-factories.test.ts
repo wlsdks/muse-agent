@@ -35,7 +35,6 @@ describe("store factories toggle on DB presence", () => {
       { inMem: createSessionTagStore(undefined), kysely: createSessionTagStore(fakeDb), inMemName: "InMemorySessionTagStore", kyselyName: "KyselySessionTagStore" },
       { inMem: createMcpServerStore(undefined, env), kysely: createMcpServerStore(fakeDb, env), inMemName: "InMemoryMcpServerStore", kyselyName: "KyselyMcpServerStore" },
       { inMem: createMcpSecurityPolicyStore(undefined, {}), kysely: createMcpSecurityPolicyStore(fakeDb, {}), inMemName: "InMemoryMcpSecurityPolicyStore", kyselyName: "KyselyMcpSecurityPolicyStore" },
-      { inMem: createSchedulerStore(undefined, env), kysely: createSchedulerStore(fakeDb, env), inMemName: "InMemoryScheduledJobStore", kyselyName: "KyselyScheduledJobStore" },
       { inMem: createSchedulerExecutionStore(undefined, env), kysely: createSchedulerExecutionStore(fakeDb, env), inMemName: "InMemoryScheduledJobExecutionStore", kyselyName: "KyselyScheduledJobExecutionStore" },
       { inMem: createSchedulerLock(undefined, env), kysely: createSchedulerLock(fakeDb, env), inMemName: "InMemoryDistributedSchedulerLock", kyselyName: "KyselyDistributedSchedulerLock" },
     ];
@@ -96,6 +95,22 @@ describe("createConversationSummaryStore", () => {
   it("falls back to the in-memory store when persistence is explicitly disabled", () => {
     expect(className(createConversationSummaryStore(undefined, { MUSE_CONVERSATION_SUMMARY_PERSIST: "false" } as MuseEnvironment))).toBe(
       "InMemoryConversationSummaryStore",
+    );
+  });
+});
+
+describe("createSchedulerStore (AC1 — file-backed default for the DB-less daily driver)", () => {
+  it("uses the Kysely store when a DB is present", () => {
+    expect(className(createSchedulerStore(fakeDb, env))).toBe("KyselyScheduledJobStore");
+  });
+
+  it("defaults to the persistent FILE store with no DB — a `muse scheduler add`-created job survives a fresh CLI process", () => {
+    expect(className(createSchedulerStore(undefined, env))).toBe("FileScheduledJobStore");
+  });
+
+  it("falls back to the in-memory store when persistence is explicitly disabled", () => {
+    expect(className(createSchedulerStore(undefined, { MUSE_SCHEDULER_PERSIST: "false" } as MuseEnvironment))).toBe(
+      "InMemoryScheduledJobStore",
     );
   });
 });

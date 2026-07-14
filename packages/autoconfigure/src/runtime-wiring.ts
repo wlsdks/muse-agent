@@ -32,7 +32,8 @@ import {
   type OutputGuardStage
 } from "@muse/agent-core";
 import { DEFAULT_WORKING_BUDGET_RATIO, type ConversationTrimOptions } from "@muse/memory";
-import type { ScheduledAgentExecutor } from "@muse/scheduler";
+import type { MessagingProviderRegistry } from "@muse/messaging";
+import { parseNotificationChannel, type MessageSender, type ScheduledAgentExecutor, type ScheduledJob } from "@muse/scheduler";
 import {
   createDefaultToolExposurePolicy,
   type MuseTool,
@@ -79,6 +80,30 @@ export function createScheduledAgentExecutor(
       });
 
       return result.response.output;
+    }
+  };
+}
+
+/**
+ * `MessageSender` adapter over the assembled `MessagingProviderRegistry` —
+ * lets `SchedulerMessaging.sendResult` actually deliver a completed
+ * scheduled-agent job's output instead of the default no-op sender
+ * (`runtime-assembly.ts` previously constructed `DynamicScheduler` with no
+ * `messagingService`, so a scheduled job's result was computed and then
+ * discarded). Only `job.notificationChannelId` is honored
+ * (`"provider:destination"`, or a bare destination on the `"log"`
+ * provider) — `job.webhookUrl` delivery stays out of scope, so a job with
+ * ONLY a webhookUrl silently does not send here (webhook delivery is a
+ * separate, unbuilt surface, not a misrouted provider lookup).
+ */
+export function createSchedulerMessagingSender(registry: MessagingProviderRegistry): MessageSender {
+  return {
+    async sendMessage(_target: string, text: string, job: ScheduledJob): Promise<void> {
+      if (!job.notificationChannelId) {
+        return;
+      }
+      const { providerId, destination } = parseNotificationChannel(job.notificationChannelId, "log");
+      await registry.send(providerId, { destination, text });
     }
   };
 }

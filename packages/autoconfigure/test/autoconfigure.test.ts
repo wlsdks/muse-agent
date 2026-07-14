@@ -116,10 +116,11 @@ const standardRunnerContainmentCases: readonly { readonly name: string; readonly
 
 describe("autoconfigure", () => {
   it("assembles default runtime without auth when no secret is configured", async () => {
-    // PERSIST=false keeps the task store in-memory: this test verifies the assembly
-    // WIRES a usable store, not file persistence (covered in store-factories +
-    // file-task-memory-store tests), and must not write to the real ~/.muse.
-    const assembly = createMuseRuntimeAssembly({ env: { MUSE_TASK_MEMORY_PERSIST: "false" } });
+    // PERSIST=false keeps the task/scheduler stores in-memory: this test verifies
+    // the assembly WIRES a usable store, not file persistence (covered in
+    // store-factories + file-task-memory-store + scheduler-file-store tests), and
+    // must not read/write the real ~/.muse.
+    const assembly = createMuseRuntimeAssembly({ env: { MUSE_SCHEDULER_PERSIST: "false", MUSE_TASK_MEMORY_PERSIST: "false" } });
 
     expect(assembly.authService).toBeUndefined();
     expect(assembly.requireAuth).toBe(false);
@@ -133,7 +134,7 @@ describe("autoconfigure", () => {
     expect(assembly.observability.followupSuggestionStore.aggregateStats().totalImpressions).toBe(0);
     // The local-first default provider registers its own generate breaker.
     expect(assembly.resilience.circuitBreakerRegistry.names()).toEqual(["model.generate"]);
-    expect(assembly.scheduler.store.list()).toEqual([]);
+    expect(await assembly.scheduler.store.list()).toEqual([]);
     expect(assembly.scheduler.service).toBeTruthy();
     expect(assembly.toolRegistry.list().map((tool) => tool.definition.name)).toEqual(expect.arrayContaining([
       "scheduler_list_jobs",
@@ -359,11 +360,12 @@ describe("autoconfigure", () => {
     }
   });
 
-  it("assembles auth and API options when JWT secret is configured", () => {
+  it("assembles auth and API options when JWT secret is configured", async () => {
     const options = createApiServerOptions({
       env: {
         MUSE_AUTH_JWT_SECRET: "0123456789abcdef0123456789abcdef",
         MUSE_REQUIRE_AUTH: "true",
+        MUSE_SCHEDULER_PERSIST: "false", // in-memory: no real-~/.muse read/write
         MUSE_TASK_MEMORY_PERSIST: "false" // in-memory: assert sync purgeExpired, no real-~/.muse write
       }
     });
@@ -373,7 +375,7 @@ describe("autoconfigure", () => {
     expect(options.cors).toEqual({ allowCredentials: true });
     expect(options.requireAuth).toBe(true);
     expect(options.mcp.manager).toBeTruthy();
-    expect(options.scheduler.store.list()).toEqual([]);
+    expect(await options.scheduler.store.list()).toEqual([]);
     expect(options.debugReplayCaptureStore).toBeTruthy();
     expect(options.taskMemoryMaintenance.purgeExpired(new Date())).toBe(0);
   });

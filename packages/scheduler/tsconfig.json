@@ -26,6 +26,9 @@
       "path": "../shared"
     },
     {
+      "path": "../stores"
+    },
+    {
       "path": "../tools"
     }
   ]

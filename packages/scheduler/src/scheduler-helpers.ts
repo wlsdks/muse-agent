@@ -290,6 +290,38 @@ function resolveTemplateValue(value: JsonValue, job: ScheduledJob): JsonValue {
   return value;
 }
 
+/**
+ * Resolve a job's `notificationChannelId` to a concrete
+ * `{ providerId, destination }` pair. Accepts `"provider:destination"`
+ * (e.g. `"telegram:12345"`) or a bare destination, which falls back to
+ * `defaultProviderId` — every messaging registry always registers a `"log"`
+ * provider, so passing `"log"` here as the default never throws
+ * PROVIDER_NOT_FOUND. Deliberately does NOT special-case `webhookUrl`
+ * (out of scope for S1) — callers that fall back to `job.webhookUrl` when
+ * `notificationChannelId` is unset must not route it through this parser, a
+ * URL's own `:` would be misread as a provider prefix.
+ */
+export function parseNotificationChannel(
+  raw: string,
+  defaultProviderId: string
+): { readonly providerId: string; readonly destination: string } {
+  const trimmed = raw.trim();
+  const separatorIndex = trimmed.indexOf(":");
+
+  if (separatorIndex <= 0) {
+    return { destination: trimmed, providerId: defaultProviderId };
+  }
+
+  const providerId = trimmed.slice(0, separatorIndex).trim();
+  const destination = trimmed.slice(separatorIndex + 1).trim();
+
+  if (!providerId || !destination) {
+    return { destination: trimmed, providerId: defaultProviderId };
+  }
+
+  return { destination, providerId };
+}
+
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

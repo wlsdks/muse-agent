@@ -474,6 +474,61 @@ describe("DynamicScheduler", () => {
   });
 });
 
+describe("DynamicScheduler.loadEnabledJobs — restart re-arm (AC3)", () => {
+  it("re-arms every ENABLED job already in the store against the cron scheduler", async () => {
+    const store = new InMemoryScheduledJobStore();
+    // Seed the store directly (bypassing `service.create`) to simulate jobs
+    // that already existed BEFORE this DynamicScheduler instance (and its
+    // in-memory `handles` map) was constructed — the restart scenario.
+    await store.save({ agentPrompt: "a", cronExpression: "0 9 * * *", jobType: "agent", name: "enabled-1" });
+    await store.save({ agentPrompt: "b", cronExpression: "0 10 * * *", enabled: false, jobType: "agent", name: "disabled" });
+    await store.save({ agentPrompt: "c", cronExpression: "0 11 * * *", jobType: "agent", name: "enabled-2" });
+
+    const scheduled: string[] = [];
+    const cronScheduler: CronScheduler = {
+      schedule: (job) => {
+        scheduled.push(job.name);
+        return { cancel: () => undefined };
+      }
+    };
+    const service = new DynamicScheduler({
+      cronScheduler,
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async () => "done" },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      store
+    });
+
+    const count = await service.loadEnabledJobs();
+
+    expect(count).toBe(2);
+    expect(scheduled.sort()).toEqual(["enabled-1", "enabled-2"]);
+  });
+
+  it("re-arms nothing (and never touches the cron scheduler) when the store is empty", async () => {
+    const store = new InMemoryScheduledJobStore();
+    const scheduled: string[] = [];
+    const cronScheduler: CronScheduler = {
+      schedule: (job) => {
+        scheduled.push(job.name);
+        return { cancel: () => undefined };
+      }
+    };
+    const service = new DynamicScheduler({
+      cronScheduler,
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async () => "done" },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      store
+    });
+
+    expect(await service.loadEnabledJobs()).toBe(0);
+    expect(scheduled).toEqual([]);
+  });
+});
+
 describe("scheduler tools", () => {
   it("exposes scheduler create, list, trigger, and dry-run actions as Muse tools", async () => {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });

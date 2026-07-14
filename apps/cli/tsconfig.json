@@ -65,6 +65,9 @@
       "path": "../../packages/recall"
     },
     {
+      "path": "../../packages/scheduler"
+    },
+    {
       "path": "../../packages/shared"
     },
     {
