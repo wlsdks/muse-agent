@@ -300,7 +300,11 @@ async function runOAuthCallbackServer(
 
     const open = options.io.openBrowser;
     if (open) {
-      Promise.resolve(open(launchUrl)).catch(() => undefined);
+      try {
+        await open(launchUrl);
+      } catch {
+        // Ignore open failures in background browser launch flow.
+      }
     }
 
     while (true) {

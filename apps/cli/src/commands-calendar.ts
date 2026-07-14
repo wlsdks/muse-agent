@@ -79,7 +79,7 @@ function localCalendarProvider(): LocalCalendarProvider {
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
 function listLocalEventsWide(provider: LocalCalendarProvider): Promise<readonly CalendarEvent[]> {
   const now = Date.now();
-  return Promise.resolve(provider.listEvents({ from: new Date(now - 3650 * 86_400_000), to: new Date(now + 3650 * 86_400_000) }));
+  return provider.listEvents({ from: new Date(now - 3650 * 86_400_000), to: new Date(now + 3650 * 86_400_000) });
 }
 
 export function registerCalendarCommands(program: Command, io: ProgramIO, helpers: CalendarCommandHelpers): void {

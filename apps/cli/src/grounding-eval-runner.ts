@@ -56,7 +56,7 @@ export function runGroundingEval(corpus: GroundingEvalCorpus, deps: RunGrounding
   const rank = (query: string) =>
     rankKnowledgeChunks(query, corpus.notes, { diversify: true, embed: deps.embed, hybrid: true, topK });
   if (deps.gate === "off") {
-    return scoreGroundingEval(corpus, { classify: () => "confident", rank, verify: () => Promise.resolve(GATE_OFF_VERDICT) });
+    return scoreGroundingEval(corpus, { classify: () => "confident", rank, verify: async () => GATE_OFF_VERDICT });
   }
   return scoreGroundingEval(corpus, {
     rank,

@@ -21,8 +21,8 @@ export class DaemonStopSignal {
     this.wakers.clear();
   }
 
-  sleep(ms: number): Promise<void> {
-    if (this.isStopped) return Promise.resolve();
+  async sleep(ms: number): Promise<void> {
+    if (this.isStopped) return;
     return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         this.wakers.delete(wake);

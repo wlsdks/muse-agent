@@ -164,7 +164,7 @@ function createRankingEmbedFn(deps: McpServeDependencies): (text: string) => Pro
 }
 
 async function currentUserMemoryFacts(deps: McpServeDependencies): Promise<readonly MemoryFact[]> {
-  const memory = await Promise.resolve(deps.userMemoryStore.findByUserId(deps.userId));
+  const memory = await deps.userMemoryStore.findByUserId(deps.userId);
   return memory ? allUserMemoryFacts({ facts: memory.facts, preferences: memory.preferences }) : [];
 }
 
@@ -346,7 +346,7 @@ function buildUserModelReadTool(deps: McpServeDependencies): MuseTool {
       }
       const kind: UserModelReadKind = isUserModelReadKind(rawKind) ? rawKind : "all";
 
-      const memory = await Promise.resolve(deps.userMemoryStore.findByUserId(deps.userId));
+      const memory = await deps.userMemoryStore.findByUserId(deps.userId);
       const out: Record<string, JsonValue> = {};
 
       if (kind === "facts" || kind === "all") {

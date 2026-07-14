@@ -107,6 +107,6 @@ export function runChatGroundingEval(
   const topK = deps.topK ?? 4;
   return scoreGroundingEval(corpus, {
     rank: (query) => rankKnowledgeChunks(query, corpus.notes, { diversify: true, embed: deps.embed, hybrid: true, topK }),
-    verify: (answer, matches, query) => Promise.resolve(chatGateVerify(answer, matches, query))
+    verify: async (answer, matches, query) => chatGateVerify(answer, matches, query)
   });
 }

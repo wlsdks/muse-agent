@@ -235,10 +235,10 @@ export interface GmailTokenSourceDeps {
  */
 export function createGmailTokenSource(deps: GmailTokenSourceDeps): () => Promise<string> {
   let inflight: Promise<string> | undefined;
-  return function getAccessToken(): Promise<string> {
+  return async function getAccessToken(): Promise<string> {
     const envToken = deps.env.MUSE_GMAIL_TOKEN?.trim();
     if (envToken) {
-      return Promise.resolve(envToken);
+      return envToken;
     }
     if (!inflight) {
       inflight = resolveStoredAccessToken(deps).finally(() => {

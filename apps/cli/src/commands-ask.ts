@@ -300,7 +300,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         return;
       }
 
-      const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userKey));
+      const userMemory = await assembly.userMemoryStore.findByUserId(userKey);
       // The shared behavioural-rule budget (agent-core's selectBehaviouralRules)
       // decides which vetoes/preferences/goals reach the persona for THIS
       // turn's actual query — a turn-relevant veto is always admitted; see

@@ -326,7 +326,7 @@ export async function runLocalChat(
   // sessions, instead of forgetting everything the moment the conversation resets.
   const userId = resolveDefaultUserKey({});
   const userMemory = assembly.userMemoryStore
-    ? await Promise.resolve(assembly.userMemoryStore.findByUserId(userId)).catch(() => undefined)
+    ? await assembly.userMemoryStore.findByUserId(userId).catch(() => undefined)
     : undefined;
   // qwen3:8b free-associates remembered ENTITY facts into unrelated turns —
   // it volunteered the user's dog in a hydration answer and a "good morning"
@@ -697,4 +697,3 @@ export function wireReplGracefulExit(args: {
     process.off("SIGINT", sigintProcess);
   };
 }
-

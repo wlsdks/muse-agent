@@ -286,7 +286,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           modelProvider = assembly.modelProvider as unknown as Parameters<typeof runDueProactiveNotices>[0]["modelProvider"];
           agentModel = assembly.defaultModel;
         }
-        const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userId));
+        const userMemory = await assembly.userMemoryStore.findByUserId(userId);
         if (userMemory) {
           const { buildMusePersona } = await import("@muse/recall");
           personaPreamble = buildMusePersona(userMemory, userId);

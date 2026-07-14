@@ -177,7 +177,7 @@ Examples:
     .action(async (key: string | undefined, options: ForgetOptions) => {
       const userKey = composeKey(options.user, options.persona);
       const assembly = createMuseRuntimeAssembly();
-      const memory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userKey));
+      const memory = await assembly.userMemoryStore.findByUserId(userKey);
 
       if (options.all) {
         if (!options.force) {

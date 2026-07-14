@@ -128,7 +128,11 @@ export async function runGmailOAuthLoopback(params: {
 
     params.stdout(`Open this URL to authorize Gmail access:\n  ${authUrl.toString()}\n\nWaiting for the browser redirect on ${redirectUri} ...\n`);
     if (params.openBrowser) {
-      await Promise.resolve(params.openBrowser(authUrl.toString())).catch(() => undefined);
+      try {
+        await params.openBrowser(authUrl.toString());
+      } catch {
+        // Non-blocking open step.
+      }
     }
 
     let code: string;

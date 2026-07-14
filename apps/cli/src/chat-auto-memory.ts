@@ -133,18 +133,18 @@ export async function applyTurnLearnings(
   facts: Readonly<Record<string, string>>,
   preferences: Readonly<Record<string, string>>
 ): Promise<{ readonly summary?: string; readonly confirmation?: string }> {
-  const before = (await Promise.resolve(store.findByUserId(userId)))?.factHistory ?? [];
+  const before = (await store.findByUserId(userId))?.factHistory ?? [];
   const wroteFacts: Record<string, string> = {};
   const wrotePrefs: Record<string, string> = {};
   for (const [key, value] of Object.entries(facts).slice(0, 5)) {
-    await Promise.resolve(store.upsertFact(userId, key, value));
+    await store.upsertFact(userId, key, value);
     wroteFacts[key] = value;
   }
   for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
-    await Promise.resolve(store.upsertPreference(userId, key, value));
+    await store.upsertPreference(userId, key, value);
     wrotePrefs[key] = value;
   }
-  const after = await Promise.resolve(store.findByUserId(userId));
+  const after = await store.findByUserId(userId);
   const changes = selectNewSupersessions(before, after?.factHistory ?? []);
   const changedKeys = new Set(changes.map((entry) => entry.key));
   const confirmation = after ? formatLearnedConfirmation(changes, after) : undefined;

@@ -295,8 +295,8 @@ export async function searchRecall(opts: {
   const warn = opts.onWarn ?? ((): void => undefined);
 
   const [notesIndex, episodeIndex] = await Promise.all([
-    source === "episodes" ? Promise.resolve(undefined) : loadNotesIndex(defaultNotesIndexFile()),
-    source === "notes" ? Promise.resolve(undefined) : loadEpisodeIndex(defaultEpisodeIndexFile())
+    source === "episodes" ? undefined : loadNotesIndex(defaultNotesIndexFile()),
+    source === "notes" ? undefined : loadEpisodeIndex(defaultEpisodeIndexFile())
   ]);
   if (source !== "episodes" && !notesIndex) {
     warn("(recall: no notes-index.json — run `muse notes reindex` to populate)\n");

@@ -102,7 +102,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // persona — otherwise the system prompt keeps injecting a fact the user just
   // dropped (what /memory shows would diverge from what's actually injected).
   const memoryHolder: { current: Awaited<ReturnType<NonNullable<typeof memoryStore>["findByUserId"]>> | undefined } = {
-    current: memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined
+    current: memoryStore ? await memoryStore.findByUserId(userId) : undefined
   };
   // Contested-fact caution on the CHAT persona (parity with ask's grounding block):
   // a fact whose value FLIPPED across confirmations is volatile, so the persona must
@@ -119,7 +119,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     } catch { contestedHolder.current = new Set(); }
   };
   const refreshMemory = async (): Promise<void> => {
-    if (memoryStore) memoryHolder.current = await Promise.resolve(memoryStore.findByUserId(userId));
+    if (memoryStore) memoryHolder.current = await memoryStore.findByUserId(userId);
     await refreshContestedKeys();
   };
   await refreshContestedKeys();
@@ -315,7 +315,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const memorySnapshot = async (): Promise<MemorySnapshot | undefined> => {
     if (!memoryStore) return undefined;
     try {
-      const m = await Promise.resolve(memoryStore.findByUserId(userId));
+      const m = await memoryStore.findByUserId(userId);
       return m
         ? {
           facts: m.facts,
@@ -333,7 +333,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const forgetMemory = async (key: string): Promise<boolean> => {
     if (!memoryStore?.forget) return false;
     try {
-      const removed = await Promise.resolve(memoryStore.forget(userId, key));
+      const removed = await memoryStore.forget(userId, key);
       if (removed) {
         await refreshMemory();
         // Retraction marker (sibling of the CLI `memory forget`): the auto-extractor
@@ -350,7 +350,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const rememberFact = async (key: string, value: string): Promise<boolean> => {
     if (!memoryStore) return false;
     try {
-      await Promise.resolve(memoryStore.upsertFact(userId, key, value));
+      await memoryStore.upsertFact(userId, key, value);
       await refreshMemory();
       return true;
     } catch {
@@ -360,7 +360,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const setPreference = async (key: string, value: string): Promise<boolean> => {
     if (!memoryStore) return false;
     try {
-      await Promise.resolve(memoryStore.upsertPreference(userId, key, value));
+      await memoryStore.upsertPreference(userId, key, value);
       await refreshMemory();
       return true;
     } catch {
@@ -370,7 +370,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const wipeMemory = async (): Promise<boolean> => {
     if (!memoryStore) return false;
     try {
-      const dropped = await Promise.resolve(memoryStore.deleteByUserId(userId));
+      const dropped = await memoryStore.deleteByUserId(userId);
       await refreshMemory();
       return dropped;
     } catch {

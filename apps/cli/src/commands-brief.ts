@@ -342,7 +342,7 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       }
       const model = options.model ?? assembly.defaultModel!;
 
-      const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userKey));
+      const userMemory = await assembly.userMemoryStore.findByUserId(userKey);
       const personaPrompt = userMemory ? buildMusePersona(userMemory, userKey) : undefined;
       // The user's KNOWN name, if they ever told Muse one — so the greeting uses
       // their real name or none at all. Without this guard the small model fills
