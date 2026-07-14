@@ -156,11 +156,12 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   const onStderrData = (chunk: unknown): void => {
     appendChunk(stderr, chunk);
   };
+  const onIoError = (): void => undefined;
   child.stdout.on("data", onStdoutData);
   child.stderr.on("data", onStderrData);
-  child.stdout.on("error", () => undefined);
-  child.stderr.on("error", () => undefined);
-  child.stdin.on("error", () => undefined);
+  child.stdout.on("error", onIoError);
+  child.stderr.on("error", onIoError);
+  child.stdin.on("error", onIoError);
 
   if (stdin !== undefined) {
     child.stdin.write(stdin);
@@ -224,6 +225,9 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   } finally {
     child.stdout.off("data", onStdoutData);
     child.stderr.off("data", onStderrData);
+    child.stdout.off("error", onIoError);
+    child.stderr.off("error", onIoError);
+    child.stdin.off("error", onIoError);
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
 }
