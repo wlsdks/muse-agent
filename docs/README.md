@@ -42,6 +42,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 | 문서 | 무엇 |
 |---|---|
 | **[setup-local-llm.md](setup-local-llm.md)** | 로컬 LLM(Ollama 등)으로 Muse를 띄우는 설치 가이드 |
+| **[guides/remote-access.md](guides/remote-access.md)** | `muse remote enable` — Tailscale로 휴대폰에서 Muse 웹 UI 열기 (tailnet-only) |
 
 ## 더 깊이 — 설계 노트
 

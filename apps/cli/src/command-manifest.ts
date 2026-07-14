@@ -785,6 +785,17 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "remote",
+    "description": "Serve the Muse web UI to your own devices over Tailscale (tailnet-only, never the public internet)",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "disable",
+      "enable",
+      "status"
+    ]
+  },
+  {
     "name": "resume",
     "description": "Resume a crashed/interrupted run from its last checkpoint (fault-tolerant execution)",
     "argsTerm": "[run-id]",
