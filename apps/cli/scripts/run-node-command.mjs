@@ -24,50 +24,51 @@ const KILL_SIGNAL = "SIGKILL";
  * @returns {Promise<NodeCommandResult>}
  */
 export function runNodeCommand({ command, args, cwd, env, timeoutMs = DEFAULT_TIMEOUT_MS }) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const finish = ({ exitCode, signal = null }) => {
-      if (settled) return;
-      settled = true;
-      resolve({ exitCode, signal, stdout: stdout.trim(), stderr: stderr.trim() });
-    };
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill(KILL_SIGNAL);
-    }, timeoutMs);
-
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      finish({ exitCode: 1, signal: error.name === "AbortError" ? "ABORT" : null });
-    });
-
-    child.on("close", (code, signal) => {
-      clearTimeout(timer);
-      if (timedOut) {
-        finish({ exitCode: TIMEOUT_EXIT_CODE, signal });
-      } else {
-        finish({ exitCode: code ?? 1, signal });
-      }
-    });
+  const result = Promise.withResolvers();
+  const child = spawn(command, args, {
+    cwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"]
   });
+
+  let stdout = "";
+  let stderr = "";
+  let timedOut = false;
+  let settled = false;
+
+  const finish = ({ exitCode, signal = null }) => {
+    if (settled) return;
+    settled = true;
+    result.resolve({ exitCode, signal, stdout: stdout.trim(), stderr: stderr.trim() });
+  };
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill(KILL_SIGNAL);
+  }, timeoutMs);
+
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr?.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  child.on("error", (error) => {
+    clearTimeout(timer);
+    finish({ exitCode: 1, signal: error.name === "AbortError" ? "ABORT" : null });
+  });
+
+  child.on("close", (code, signal) => {
+    clearTimeout(timer);
+    if (timedOut) {
+      finish({ exitCode: TIMEOUT_EXIT_CODE, signal });
+    } else {
+      finish({ exitCode: code ?? 1, signal });
+    }
+  });
+
+  return result.promise;
 }
