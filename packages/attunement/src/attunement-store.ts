@@ -12,6 +12,8 @@ import {
   OUTCOMES,
   SUPPRESSION_MODES,
   THREAD_KINDS,
+  isCoherentArtifactProvider,
+  isValidProviderId,
   type ArtifactLink,
   type ArtifactReference,
   type AttunementState,
@@ -43,6 +45,8 @@ export interface CreateThreadInput {
 export interface LinkArtifactInput {
   readonly artifactId: string;
   readonly artifactType: ArtifactLink["artifactType"];
+  /** Defaults to `"local"`; a `resource` MUST pass `mcp:<server>`. */
+  readonly providerId?: string;
   readonly role: ArtifactLink["role"];
   readonly threadId: string;
 }
@@ -50,11 +54,18 @@ export interface LinkArtifactInput {
 /**
  * The provider-facing boundary that proves a supplied source is exact and
  * canonical before the generic store makes it durable. The core deliberately
- * cannot search task titles or resolve a notes vault by itself.
+ * cannot search task titles, resolve a notes vault, or reach an MCP server by
+ * itself — the adapter confirms existence and returns the canonical id and the
+ * provider it resolved against.
  */
-export type ArtifactLinkValidator = (input: Pick<LinkArtifactInput, "artifactId" | "artifactType">) => Promise<{
+export type ArtifactLinkValidator = (input: {
   readonly artifactId: string;
   readonly artifactType: ArtifactLink["artifactType"];
+  readonly providerId: string;
+}) => Promise<{
+  readonly artifactId: string;
+  readonly artifactType: ArtifactLink["artifactType"];
+  readonly providerId: string;
 }>;
 
 export interface LinkArtifactOptions extends AttunementStoreOptions {
@@ -107,6 +118,14 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function isSafeVersion(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
@@ -115,7 +134,8 @@ function isReference(value: unknown): value is ArtifactReference {
   return isRecord(value)
     && isNonEmptyString(value.artifactId)
     && isOneOf(value.artifactType, ARTIFACT_TYPES)
-    && value.providerId === "local"
+    && isValidProviderId(value.providerId)
+    && isCoherentArtifactProvider(value.artifactType, value.providerId)
     && isOneOf(value.role, ARTIFACT_ROLES);
 }
 
@@ -227,6 +247,14 @@ function validateTitle(value: string): string {
 function assertSafeArtifactId(value: string, artifactType: ArtifactLink["artifactType"], source: string): string {
   const id = value.trim();
   if (id.length === 0) throw new AttunementStoreError(`${source} returned an empty canonical id`);
+  if (artifactType === "resource") {
+    // An external resource id is opaque to the store (the adapter proved it),
+    // but it is still stored and later echoed, so bound it and reject control
+    // characters that could corrupt the persisted JSON or terminal output.
+    if (id.length > 512) throw new AttunementStoreError(`${source} returned a resource id over the 512-character limit`);
+    if (hasControlCharacter(id)) throw new AttunementStoreError(`${source} returned a resource id with control characters`);
+    return id;
+  }
   if (artifactType !== "note") return id;
   if (/^(?:[A-Za-z]:[\\/]|[\\/])/u.test(id)
     || id.includes("\\")
@@ -274,7 +302,7 @@ function validateStateRelations(state: AttunementState): void {
 
   const threads = new Map(state.threads.map((thread) => [thread.id, thread]));
   for (const thread of state.threads) {
-    const linkKeys = thread.links.map((link) => `${link.artifactType}:${link.artifactId}`);
+    const linkKeys = thread.links.map((link) => `${link.providerId}:${link.artifactType}:${link.artifactId}`);
     assertUnique(linkKeys, `artifact links on thread '${thread.id}'`);
     if (thread.links.some((link) => link.threadId !== thread.id)) {
       throw new AttunementStoreError(`attunement store has a link assigned to the wrong thread '${thread.id}'`);
@@ -414,20 +442,36 @@ export async function linkArtifact(
   input: LinkArtifactInput,
   options: LinkArtifactOptions
 ): Promise<{ readonly created: boolean; readonly link: ArtifactLink }> {
-  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task or note");
+  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task, note, or resource");
   if (!ARTIFACT_ROLES.includes(input.role)) throw new AttunementStoreError("artifact role must be context or next-step");
   if (input.role === "next-step" && input.artifactType !== "task") {
     throw new AttunementStoreError("only a local task can be a next-step");
   }
-  if (typeof options?.validateArtifact !== "function") {
-    throw new AttunementStoreError("linking requires an exact local artifact validator");
+  const requestedProvider = input.providerId ?? "local";
+  if (!isValidProviderId(requestedProvider) || !isCoherentArtifactProvider(input.artifactType, requestedProvider)) {
+    throw new AttunementStoreError(
+      `provider '${requestedProvider}' does not match a ${input.artifactType} (task/note are 'local'; a resource is 'mcp:<server>')`
+    );
   }
-  const validated = await options.validateArtifact({ artifactId: input.artifactId, artifactType: input.artifactType });
+  if (typeof options?.validateArtifact !== "function") {
+    throw new AttunementStoreError("linking requires an exact artifact validator");
+  }
+  const validated = await options.validateArtifact({
+    artifactId: input.artifactId,
+    artifactType: input.artifactType,
+    providerId: requestedProvider
+  });
   if (validated.artifactType !== input.artifactType) throw new AttunementStoreError("artifact validator changed the artifact type");
+  if (validated.providerId !== requestedProvider) throw new AttunementStoreError("artifact validator changed the provider");
+  if (!isCoherentArtifactProvider(validated.artifactType, validated.providerId)) {
+    throw new AttunementStoreError("artifact validator returned an incoherent provider for this artifact type");
+  }
+  const providerId = validated.providerId;
   const artifactId = assertSafeArtifactId(validated.artifactId, input.artifactType, "artifact validator");
   return mutate<{ readonly created: boolean; readonly link: ArtifactLink }>(file, (state) => {
     const thread = requireThread(state, input.threadId);
-    const existing = thread.links.find((link) => link.artifactType === input.artifactType && link.artifactId === artifactId);
+    const existing = thread.links.find((link) =>
+      link.artifactType === input.artifactType && link.artifactId === artifactId && link.providerId === providerId);
     if (existing) {
       if (existing.role === input.role) return { changed: false, result: { created: false, link: existing }, state };
       throw new AttunementStoreError(`artifact '${artifactId}' is already linked as ${existing.role}; unlink it before changing its role`);
@@ -440,7 +484,7 @@ export async function linkArtifact(
       artifactType: input.artifactType,
       linkedAt: nowIso(options),
       linkedBy: "user",
-      providerId: "local",
+      providerId,
       role: input.role,
       threadId: thread.id
     };

@@ -8,8 +8,40 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
+
+/**
+ * A source provider id. `"local"` backs task/note artifacts read from Muse's
+ * own on-disk stores; `mcp:<server>` backs a `resource` read at display time
+ * from a connected external MCP server. The string is deliberately narrow: an
+ * unknown/malformed provider id is rejected fail-close so a corrupt store never
+ * silently loads, and only these two shapes are honoured.
+ */
+export type ArtifactProviderId = string;
+
+const MCP_PROVIDER_PATTERN = /^mcp:[A-Za-z0-9._-]+$/u;
+
+/** `"local"` or `mcp:<server>` (server = one or more of `[A-Za-z0-9._-]`). */
+export function isValidProviderId(value: unknown): value is ArtifactProviderId {
+  return value === "local" || (typeof value === "string" && MCP_PROVIDER_PATTERN.test(value));
+}
+
+/** Build the canonical provider id for an external MCP server. */
+export function mcpProviderId(server: string): string {
+  return `mcp:${server}`;
+}
+
+/**
+ * Provider/type coherence (the grounding invariant): a `resource` is external
+ * and MUST carry an `mcp:` provider; a `task`/`note` is Muse-local and MUST be
+ * `local`. Enforced at parse and at link time so the two can never be crossed.
+ */
+export function isCoherentArtifactProvider(artifactType: ArtifactType, providerId: string): boolean {
+  return artifactType === "resource"
+    ? MCP_PROVIDER_PATTERN.test(providerId)
+    : providerId === "local";
+}
 
 export const ARTIFACT_ROLES = ["context", "next-step"] as const;
 export type ArtifactRole = (typeof ARTIFACT_ROLES)[number];
@@ -29,7 +61,7 @@ export type ContinuitySuppression = (typeof SUPPRESSION_MODES)[number];
 export interface ArtifactReference {
   readonly artifactId: string;
   readonly artifactType: ArtifactType;
-  readonly providerId: "local";
+  readonly providerId: ArtifactProviderId;
   readonly role: ArtifactRole;
 }
 

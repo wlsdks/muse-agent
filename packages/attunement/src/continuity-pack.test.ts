@@ -60,6 +60,64 @@ describe("buildContinuityPack", () => {
     expect(hidden.policy.nextStep).toBe("hidden");
   });
 
+  it("shows a resolved external resource as evidence and never promotes it to a next-step", async () => {
+    const resourceLink: ArtifactLink = {
+      artifactId: "facebook/react/issues/1",
+      artifactType: "resource",
+      linkedAt: "2026-07-14T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "mcp:github",
+      role: "context",
+      threadId: "thread_work"
+    };
+    const withResource: AttunementState = {
+      deliveries: [],
+      nextPolicyVersion: 1,
+      resetReceipts: [],
+      schemaVersion: 1,
+      threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink, taskLink], policy: baselinePolicy(), title: "Ship the adapter" }],
+      undoResetReceipts: []
+    };
+    const pack = await buildContinuityPack(withResource, "thread_work", async (link) => {
+      if (link.artifactType === "resource") {
+        return { ...link, summary: "untrusted body text", title: "Fix the render loop" };
+      }
+      return { ...link, taskStatus: "open", title: "Finish invitation list" };
+    });
+
+    const resource = pack.evidence.find((entry) => entry.reference.artifactType === "resource");
+    expect(resource?.status).toBe("available");
+    expect(resource?.artifact?.title).toBe("Fix the render loop");
+    expect(resource?.artifact?.providerId).toBe("mcp:github");
+    // The resource is context; the next-step still comes only from the local open task.
+    expect(pack.nextStep?.title).toBe("Finish invitation list");
+    expect(pack.nextStep?.artifactType).toBe("task");
+  });
+
+  it("marks an unresolvable external resource unavailable and never fabricates a title", async () => {
+    const resourceLink: ArtifactLink = {
+      artifactId: "facebook/react/issues/999",
+      artifactType: "resource",
+      linkedAt: "2026-07-14T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "mcp:github",
+      role: "context",
+      threadId: "thread_work"
+    };
+    const withResource: AttunementState = {
+      deliveries: [],
+      nextPolicyVersion: 1,
+      resetReceipts: [],
+      schemaVersion: 1,
+      threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink], policy: baselinePolicy(), title: "Ship the adapter" }],
+      undoResetReceipts: []
+    };
+    const pack = await buildContinuityPack(withResource, "thread_work", async () => undefined);
+    const resource = pack.evidence[0]!;
+    expect(resource.status).toBe("unavailable");
+    expect(resource.artifact).toBeUndefined();
+  });
+
   it("carries the previous outcome only when policy asks to acknowledge it", async () => {
     const base = state(policyForOutcome("ignored", 1));
     const withDelivery: AttunementState = {

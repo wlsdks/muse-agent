@@ -26,7 +26,7 @@ function deterministicOptions(): LinkArtifactOptions {
   return {
     idFactory: () => `id-${(++index).toString()}`,
     now: () => new Date("2026-07-14T00:00:00.000Z"),
-    validateArtifact: async ({ artifactId, artifactType }) => ({ artifactId, artifactType })
+    validateArtifact: async ({ artifactId, artifactType, providerId }) => ({ artifactId, artifactType, providerId })
   };
 }
 
@@ -95,10 +95,10 @@ describe("Personal Continuity store", () => {
     const thread = await createPersonalThread(file, { kind: "life", title: "Keep the move grounded" }, options);
     const input = { artifactId: "short-id", artifactType: "task" as const, role: "context" as const, threadId: thread.id };
 
-    await expect(linkArtifact(file, input, undefined as never)).rejects.toThrow("requires an exact local artifact validator");
+    await expect(linkArtifact(file, input, undefined as never)).rejects.toThrow("requires an exact artifact validator");
     const linked = await linkArtifact(file, input, {
       ...options,
-      validateArtifact: async ({ artifactType }) => ({ artifactId: "task_full-canonical-id", artifactType })
+      validateArtifact: async ({ artifactType }) => ({ artifactId: "task_full-canonical-id", artifactType, providerId: "local" })
     });
     expect(linked.link.artifactId).toBe("task_full-canonical-id");
 
@@ -115,7 +115,7 @@ describe("Personal Continuity store", () => {
       threadId: thread.id
     }, {
       ...options,
-      validateArtifact: async ({ artifactType }) => ({ artifactId: "/outside.md", artifactType })
+      validateArtifact: async ({ artifactType }) => ({ artifactId: "/outside.md", artifactType, providerId: "local" })
     })).rejects.toThrow("unsafe relative note id");
     await expect(linkArtifact(file, {
       artifactId: "task_type-check",
@@ -124,7 +124,7 @@ describe("Personal Continuity store", () => {
       threadId: thread.id
     }, {
       ...options,
-      validateArtifact: async () => ({ artifactId: "note.md", artifactType: "note" })
+      validateArtifact: async () => ({ artifactId: "note.md", artifactType: "note", providerId: "local" })
     })).rejects.toThrow("changed the artifact type");
   });
 
@@ -214,6 +214,98 @@ describe("Personal Continuity store", () => {
       const thread = await createPersonalThread(file, { kind: "work", title: `Reject ${label}` });
       const invalid = cloneState(await readAttunementState(file));
       corrupt(invalid, thread.id);
+      writeFileSync(file, JSON.stringify(invalid), "utf8");
+      await expect(readAttunementState(file), label).rejects.toBeInstanceOf(AttunementStoreError);
+    }
+  });
+});
+
+describe("Personal Continuity store — external MCP resource sources", () => {
+  const mcpValidator: LinkArtifactOptions["validateArtifact"] = async ({ artifactId, artifactType, providerId }) => ({
+    artifactId: artifactType === "resource" ? "facebook/react/issues/1" : artifactId,
+    artifactType,
+    providerId
+  });
+
+  it("links a resource behind an mcp:<server> provider and reloads it unchanged", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "work", title: "Ship the adapter" }, options);
+    const linked = await linkArtifact(file, {
+      artifactId: "facebook/react/issues/1",
+      artifactType: "resource",
+      providerId: "mcp:github",
+      role: "context",
+      threadId: thread.id
+    }, { ...options, validateArtifact: mcpValidator });
+
+    expect(linked.created).toBe(true);
+    expect(linked.link.providerId).toBe("mcp:github");
+    expect(linked.link.artifactType).toBe("resource");
+
+    // The persisted mcp file parses back with the resource link intact — proof
+    // an mcp:-provider state file loads, not only a local-only one.
+    const reloaded = await readAttunementState(file);
+    expect(reloaded.threads[0]!.links[0]).toMatchObject({ artifactId: "facebook/react/issues/1", providerId: "mcp:github", artifactType: "resource" });
+  });
+
+  it("keeps parsing a legacy local-only state file", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Legacy local thread" }, options);
+    await linkArtifact(file, { artifactId: "task_legacy", artifactType: "task", role: "next-step", threadId: thread.id }, options);
+    // A pre-existing state file only ever held providerId "local" — it must load byte-for-byte unchanged.
+    const reloaded = await readAttunementState(file);
+    expect(reloaded.threads[0]!.links[0]!.providerId).toBe("local");
+  });
+
+  it("rejects a resource whose role is next-step (an external artifact is context-only)", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "work", title: "Resource cannot be next-step" }, options);
+    await expect(linkArtifact(file, {
+      artifactId: "facebook/react/issues/1",
+      artifactType: "resource",
+      providerId: "mcp:github",
+      role: "next-step",
+      threadId: thread.id
+    }, { ...options, validateArtifact: mcpValidator })).rejects.toThrow("only a local task can be a next-step");
+  });
+
+  it("fails closed on an incoherent provider/type at the link boundary", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "work", title: "Coherence gate" }, options);
+    // resource with a local provider
+    await expect(linkArtifact(file, {
+      artifactId: "x", artifactType: "resource", providerId: "local", role: "context", threadId: thread.id
+    }, { ...options, validateArtifact: mcpValidator })).rejects.toThrow("does not match a resource");
+    // task with an mcp: provider
+    await expect(linkArtifact(file, {
+      artifactId: "task_x", artifactType: "task", providerId: "mcp:github", role: "context", threadId: thread.id
+    }, { ...options, validateArtifact: mcpValidator })).rejects.toThrow("does not match a task");
+    // a validator that swaps to an incoherent provider is caught after validation
+    await expect(linkArtifact(file, {
+      artifactId: "facebook/react/issues/1", artifactType: "resource", providerId: "mcp:github", role: "context", threadId: thread.id
+    }, { ...options, validateArtifact: async ({ artifactId, artifactType }) => ({ artifactId, artifactType, providerId: "local" }) }))
+      .rejects.toThrow("changed the provider");
+  });
+
+  it("fails closed on a persisted state file with a malformed or incoherent provider id", async () => {
+    const cases: readonly [string, (link: Record<string, unknown>) => void][] = [
+      ["empty mcp server", (link) => { link.providerId = "mcp:"; }],
+      ["unknown provider word", (link) => { link.providerId = "evil"; }],
+      ["local with trailing space", (link) => { link.providerId = "local "; }],
+      ["resource carrying a local provider", (link) => { link.artifactType = "resource"; link.providerId = "local"; }],
+      ["task carrying an mcp provider", (link) => { link.providerId = "mcp:github"; }]
+    ];
+    for (const [label, corrupt] of cases) {
+      const file = stateFile();
+      const options = deterministicOptions();
+      const thread = await createPersonalThread(file, { kind: "work", title: `Reject ${label}` }, options);
+      await linkArtifact(file, { artifactId: "task_seed", artifactType: "task", role: "context", threadId: thread.id }, options);
+      const invalid = cloneState(await readAttunementState(file));
+      corrupt(invalid.threads[0]!.links[0]!);
       writeFileSync(file, JSON.stringify(invalid), "utf8");
       await expect(readAttunementState(file), label).rejects.toBeInstanceOf(AttunementStoreError);
     }

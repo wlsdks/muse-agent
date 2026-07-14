@@ -969,6 +969,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "outcome",
       "reset",
       "start",
+      "stats",
       "undo-reset",
       "unlink"
     ]

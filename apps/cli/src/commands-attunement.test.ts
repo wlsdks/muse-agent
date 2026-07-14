@@ -6,7 +6,8 @@ import { writeTasks, type PersistedTask } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerAttunementCommands } from "./commands-attunement.js";
+import { registerAttunementCommands, type AttunementCommandDeps } from "./commands-attunement.js";
+import type { McpToolCaller } from "./attunement-mcp-resource.js";
 
 interface Fixture {
   readonly attunementFile: string;
@@ -21,7 +22,7 @@ function fixture(): Fixture {
   return { attunementFile: join(root, "attunement.json"), notesDir, taskFile: join(root, "tasks.json") };
 }
 
-async function run(fixture: Fixture, args: string[]): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
+async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDeps): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const previous = {
@@ -36,7 +37,7 @@ async function run(fixture: Fixture, args: string[]): Promise<{ readonly exitCod
   try {
     const program = new Command();
     program.exitOverride();
-    registerAttunementCommands(program, { stderr: (line: string) => stderr.push(line), stdout: (line: string) => stdout.push(line) });
+    registerAttunementCommands(program, { stderr: (line: string) => stderr.push(line), stdout: (line: string) => stdout.push(line) }, deps ?? {});
     await program.parseAsync(["node", "muse", ...args]);
   } catch (cause) {
     exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
@@ -133,5 +134,109 @@ describe("muse thread / continue — Personal Continuity", () => {
     symlinkSync(outside, join(f.notesDir, "escaped.md"));
     const escaped = await run(f, ["thread", "link", id, "note", "escaped.md", "--role", "context"]);
     expect(escaped.stderr).toContain("escapes the local notes vault");
+  });
+});
+
+const CANNED_ISSUE = { body: "Concurrent renders drop updates.", number: 7, state: "open", title: "Fix the render loop" };
+
+function githubFakeCaller(reachable = true): McpToolCaller {
+  return async (server, tool, args) => {
+    if (!reachable) throw new Error("ECONNREFUSED");
+    if (server === "github" && tool === "get_issue" && args["owner"] === "facebook" && args["repo"] === "react" && args["issue_number"] === 7) {
+      return CANNED_ISSUE;
+    }
+    throw new Error("resource not found");
+  };
+}
+
+describe("muse thread — external MCP resource links", () => {
+  it("links a known github resource with the canonical id and shows it as evidence; rejects unknown + next-step", async () => {
+    const f = fixture();
+    const deps: AttunementCommandDeps = { mcpResourceCaller: githubFakeCaller() };
+    const started = await run(f, ["thread", "start", "Ship", "the", "adapter", "--kind", "work"], deps);
+    const id = threadId(started.stdout);
+
+    const linked = await run(f, ["thread", "link", id, "resource", "github/facebook/react/issues/7", "--role", "context"], deps);
+    expect(linked.stdout).toContain("mcp:github:resource:facebook/react/issues/7");
+
+    // Unknown resource ⇒ fail-closed, no link.
+    const unknown = await run(f, ["thread", "link", id, "resource", "github/facebook/react/issues/999", "--role", "context"], deps);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.stderr).toContain("could not read resource");
+
+    // A resource can never be a next-step.
+    const asNext = await run(f, ["thread", "link", id, "resource", "github/facebook/react/issues/7", "--role", "next-step"], deps);
+    expect(asNext.exitCode).toBe(1);
+    expect(asNext.stderr).toContain("context-only");
+
+    const continued = await run(f, ["continue", id], deps);
+    expect(continued.stdout).toContain("[resource:facebook/react/issues/7] Fix the render loop");
+    expect(continued.stdout).toContain("Concurrent renders drop updates.");
+  });
+
+  it("marks a resource unavailable when the MCP server is unreachable — no fabricated title", async () => {
+    const f = fixture();
+    // Link while reachable, then resolve while the server is down.
+    const started = await run(f, ["thread", "start", "Ship", "the", "adapter", "--kind", "work"], { mcpResourceCaller: githubFakeCaller(true) });
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "resource", "github/facebook/react/issues/7", "--role", "context"], { mcpResourceCaller: githubFakeCaller(true) });
+
+    const continued = await run(f, ["continue", id], { mcpResourceCaller: githubFakeCaller(false) });
+    expect(continued.stdout).toContain("[resource:facebook/react/issues/7] unavailable");
+    expect(continued.stdout).not.toContain("Fix the render loop");
+  });
+
+  it("fails closed with 'connect the MCP server first' when no MCP runtime is wired", async () => {
+    const f = fixture();
+    const deps: AttunementCommandDeps = { mcpResourceCaller: undefined };
+    const started = await run(f, ["thread", "start", "Ship", "the", "adapter", "--kind", "work"], deps);
+    const id = threadId(started.stdout);
+    const linked = await run(f, ["thread", "link", id, "resource", "github/facebook/react/issues/7", "--role", "context"], deps);
+    expect(linked.exitCode).toBe(1);
+    expect(linked.stderr).toContain("connect the MCP server 'github' first");
+  });
+});
+
+describe("muse thread stats — kill-criterion instrument", () => {
+  it("counts outcomes across deliveries and reports the first-20 window", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    const started = await run(f, ["thread", "start", "Track", "outcomes", "--kind", "work"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", TASK.id.slice(0, 13), "--role", "next-step"]);
+
+    for (const outcome of ["used", "used", "rejected", "ignored"]) {
+      const continued = await run(f, ["continue", id]);
+      const deliveryId = continued.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+      expect(deliveryId).toBeTruthy();
+      await run(f, ["thread", "outcome", deliveryId!, outcome]);
+    }
+    // One more pack opened but left without feedback.
+    await run(f, ["continue", id]);
+
+    const stats = await run(f, ["thread", "stats", "--json"]);
+    const parsed = JSON.parse(stats.stdout) as {
+      totalDeliveries: number;
+      withOutcome: number;
+      outcomes: Record<string, number>;
+      firstPacks: { considered: number; used: number; rejected: number };
+    };
+    expect(parsed.totalDeliveries).toBe(5);
+    expect(parsed.withOutcome).toBe(4);
+    expect(parsed.outcomes).toEqual({ adjusted: 0, ignored: 1, rejected: 1, used: 2 });
+    expect(parsed.firstPacks).toEqual({ considered: 5, rejected: 1, used: 2 });
+
+    const text = await run(f, ["thread", "stats"]);
+    expect(text.stdout).toContain("used: 2");
+    expect(text.stdout).toContain("rejected 1/5");
+  });
+
+  it("reports zeros on empty state without crashing", async () => {
+    const f = fixture();
+    const stats = await run(f, ["thread", "stats", "--json"]);
+    expect(stats.exitCode).toBeUndefined();
+    const parsed = JSON.parse(stats.stdout) as { totalDeliveries: number; firstPacks: { considered: number } };
+    expect(parsed.totalDeliveries).toBe(0);
+    expect(parsed.firstPacks.considered).toBe(0);
   });
 });

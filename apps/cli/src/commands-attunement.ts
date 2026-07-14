@@ -11,6 +11,7 @@ import {
   createPersonalThread,
   inspectThread,
   linkArtifact,
+  mcpProviderId,
   openContinuityDelivery,
   readAttunementState,
   recordContinuityOutcome,
@@ -19,6 +20,8 @@ import {
   unlinkArtifact,
   type ArtifactLink,
   type ArtifactLinkValidator,
+  type AttunementState,
+  type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
   type PersonalThread
@@ -29,12 +32,28 @@ import { promises as fs } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import type { Command } from "commander";
 
+import {
+  resolveMcpResourceArtifact,
+  serverFromProviderId,
+  validateMcpResource,
+  type McpToolCaller
+} from "./attunement-mcp-resource.js";
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-const ARTIFACT_TYPES = ["task", "note"] as const;
+const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
+
+export interface AttunementCommandDeps {
+  /**
+   * Calls a READ tool on a connected MCP server so a `resource` link can be
+   * validated / resolved. Defaults to a lazily-built live McpManager; tests
+   * inject a contract-faithful fake. Absent runtime ⇒ resource linking fails
+   * closed with a "connect the MCP server first" message.
+   */
+  readonly mcpResourceCaller?: McpToolCaller;
+}
 
 function environment(): Record<string, string | undefined> {
   return process.env as Record<string, string | undefined>;
@@ -124,49 +143,177 @@ async function canonicalTaskId(raw: string): Promise<string> {
 
 /**
  * The store refuses unvalidated links. This adapter is the only place that
- * knows the local task and notes providers, so it returns their exact,
- * canonical identifiers rather than trusting a CLI argument.
+ * knows the local task/notes providers and the external MCP resource provider,
+ * so it returns their exact, canonical identifiers rather than trusting a CLI
+ * argument. A `resource` is confirmed to exist on its named, connected MCP
+ * server before any link is stored.
  */
-const validateLocalArtifact: ArtifactLinkValidator = async ({ artifactId, artifactType }) => {
-  if (artifactType === "task") {
-    return { artifactId: await canonicalTaskId(artifactId), artifactType };
-  }
-  const note = await readCanonicalLocalNote(artifactId);
-  if (!note) throw new AttunementStoreError(`no local note with exact id '${artifactId}'`);
-  return { artifactId: note.artifactId, artifactType };
-};
+function createArtifactValidator(mcpCaller: McpToolCaller | undefined): ArtifactLinkValidator {
+  return async ({ artifactId, artifactType, providerId }) => {
+    if (artifactType === "resource") {
+      const server = serverFromProviderId(providerId);
+      const resolved = await validateMcpResource(server, artifactId, mcpCaller);
+      return { artifactId: resolved.artifactId, artifactType, providerId: resolved.providerId };
+    }
+    if (artifactType === "task") {
+      return { artifactId: await canonicalTaskId(artifactId), artifactType, providerId: "local" };
+    }
+    const note = await readCanonicalLocalNote(artifactId);
+    if (!note) throw new AttunementStoreError(`no local note with exact id '${artifactId}'`);
+    return { artifactId: note.artifactId, artifactType, providerId: "local" };
+  };
+}
 
-const resolveExactArtifact: ExactArtifactResolver = async (link) => {
-  if (link.artifactType === "task") {
-    const task = await readTaskById(tasksFile(), link.artifactId);
-    if (!task) return undefined;
+function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): ExactArtifactResolver {
+  return async (link) => {
+    if (link.artifactType === "resource") {
+      // The resolved title/summary is UNTRUSTED external text; it is displayed
+      // as evidence and never elevated to a Muse-authored fact. Any failure ⇒
+      // undefined ⇒ `unavailable`, never a fabricated placeholder.
+      return resolveMcpResourceArtifact(serverFromProviderId(link.providerId), link.artifactId, link.role, mcpCaller);
+    }
+    if (link.artifactType === "task") {
+      const task = await readTaskById(tasksFile(), link.artifactId);
+      if (!task) return undefined;
+      return {
+        artifactId: task.id,
+        artifactType: "task",
+        providerId: "local",
+        role: link.role,
+        ...(task.notes ? { summary: task.notes.slice(0, 240) } : {}),
+        taskStatus: task.status,
+        title: task.title,
+        updatedAt: task.completedAt ?? task.createdAt
+      };
+    }
+    const note = await readCanonicalLocalNote(link.artifactId);
+    if (!note) return undefined;
+    // The stored canonical ID must remain canonical after re-resolution; a note
+    // moved or symlinked to another in-vault path is unavailable rather than
+    // silently becoming a different source.
+    if (note.artifactId !== link.artifactId) return undefined;
     return {
-      artifactId: task.id,
-      artifactType: "task",
+      artifactId: note.artifactId,
+      artifactType: "note",
       providerId: "local",
       role: link.role,
-      ...(task.notes ? { summary: task.notes.slice(0, 240) } : {}),
-      taskStatus: task.status,
-      title: task.title,
-      updatedAt: task.completedAt ?? task.createdAt
+      ...(note.summary ? { summary: note.summary } : {}),
+      title: note.title,
+      updatedAt: note.updatedAt
     };
-  }
-  const note = await readCanonicalLocalNote(link.artifactId);
-  if (!note) return undefined;
-  // The stored canonical ID must remain canonical after re-resolution; a note
-  // moved or symlinked to another in-vault path is unavailable rather than
-  // silently becoming a different source.
-  if (note.artifactId !== link.artifactId) return undefined;
-  return {
-    artifactId: note.artifactId,
-    artifactType: "note",
-    providerId: "local",
-    role: link.role,
-    ...(note.summary ? { summary: note.summary } : {}),
-    title: note.title,
-    updatedAt: note.updatedAt
   };
-};
+}
+
+/**
+ * Lazily build a live MCP tool caller from the runtime assembly, so a resource
+ * link/resolve reaches a connected server. Kept out of the module top level
+ * (heavy runtime import) and only constructed when a resource operation runs.
+ * Any inability to reach the server surfaces as a fail-closed error (link) or
+ * `unavailable` (display), never a fabricated resource.
+ */
+function defaultMcpResourceCaller(): McpToolCaller {
+  return async (server, toolName, args) => {
+    const { createMuseRuntimeAssembly, seedExternalMcpServers } = await import("@muse/autoconfigure");
+    const assembly = createMuseRuntimeAssembly();
+    const manager = assembly.mcp.manager;
+    if (!manager.isExternalTransportAllowed()) {
+      throw new AttunementStoreError(
+        `external MCP transport is disabled (local-only mode); cannot link a resource from '${server}'`
+      );
+    }
+    await seedExternalMcpServers(assembly.mcp.serverStore, assembly.mcp.externalServerInputs);
+    await manager.initializeFromStore();
+    if (manager.getStatus(server) !== "connected") {
+      await manager.connect(server);
+    }
+    const tool = manager.toMuseTools().find((candidate) => candidate.definition.name === `${server}.${toolName}`);
+    if (!tool) {
+      throw new AttunementStoreError(
+        `connect the MCP server '${server}' first — tool '${toolName}' is not available (run \`muse mcp connect ${server}\`)`
+      );
+    }
+    return tool.execute(args as never, { runId: `attunement_resource_${Date.now().toString()}`, userId: "owner" });
+  };
+}
+
+/**
+ * Parse `muse thread link <id> resource <server>/<resource-id>` into a link
+ * input. A resource is context-only (an external artifact can never be the
+ * next thing YOU do), so next-step is rejected here with a clear message.
+ */
+function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"], threadId: string): {
+  readonly artifactId: string;
+  readonly artifactType: ArtifactLink["artifactType"];
+  readonly providerId: string;
+  readonly role: ArtifactLink["role"];
+  readonly threadId: string;
+} {
+  if (role === "next-step") {
+    throw new AttunementStoreError(
+      "a resource is context-only; an external artifact cannot be a next-step (the next step stays a local open task)"
+    );
+  }
+  const separator = rawArtifactId.indexOf("/");
+  const server = separator > 0 ? rawArtifactId.slice(0, separator).trim() : "";
+  const resourceId = separator > 0 ? rawArtifactId.slice(separator + 1).trim() : "";
+  if (!server || !resourceId) {
+    throw new AttunementStoreError(
+      "a resource must be '<server>/<resource-id>', e.g. github/facebook/react/issues/123"
+    );
+  }
+  return { artifactId: resourceId, artifactType: "resource", providerId: mcpProviderId(server), role, threadId };
+}
+
+const KILL_CRITERION_FIRST_PACKS = 20;
+
+export interface ContinuityStats {
+  readonly totalDeliveries: number;
+  readonly withOutcome: number;
+  readonly outcomes: Record<ContinuityOutcome, number>;
+  readonly firstPacks: {
+    readonly considered: number;
+    readonly used: number;
+    readonly rejected: number;
+  };
+}
+
+/**
+ * Deterministic per-outcome accounting over all deliveries + a "first 20 packs"
+ * window — the kill-criterion instrument (used<20% or rejected>30% ⇒ fix pack
+ * usefulness before more automation). Reads only persisted deliveries; empty
+ * state yields zeros, not a crash.
+ */
+export function computeContinuityStats(state: AttunementState): ContinuityStats {
+  const outcomes: Record<ContinuityOutcome, number> = { adjusted: 0, ignored: 0, rejected: 0, used: 0 };
+  let withOutcome = 0;
+  for (const delivery of state.deliveries) {
+    if (delivery.outcome) {
+      outcomes[delivery.outcome.outcome] += 1;
+      withOutcome += 1;
+    }
+  }
+  const firstDeliveries = [...state.deliveries]
+    .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
+    .slice(0, KILL_CRITERION_FIRST_PACKS);
+  const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
+  const rejected = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
+  return {
+    totalDeliveries: state.deliveries.length,
+    withOutcome,
+    outcomes,
+    firstPacks: { considered: firstDeliveries.length, rejected, used }
+  };
+}
+
+export function formatContinuityStats(stats: ContinuityStats): string {
+  const { outcomes, firstPacks } = stats;
+  const lines = [
+    `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
+    `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
+    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`
+  ];
+  return `${lines.join("\n")}\n`;
+}
 
 function formatEvidence(pack: ContinuityPack): string[] {
   return pack.evidence.map((entry) => {
@@ -224,7 +371,7 @@ async function resolveContinueThreadId(threadId: string | undefined): Promise<st
   return selectThreadInteractively((await readAttunementState(attunementFile())).threads);
 }
 
-async function runContinue(io: ProgramIO, threadId: string | undefined): Promise<void> {
+async function runContinue(io: ProgramIO, threadId: string | undefined, resolveExactArtifact: ExactArtifactResolver): Promise<void> {
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
   const state = await readAttunementState(file);
@@ -246,7 +393,10 @@ async function commandAction(command: Command, io: ProgramIO, label: string, act
   }
 }
 
-export function registerAttunementCommands(program: Command, io: ProgramIO): void {
+export function registerAttunementCommands(program: Command, io: ProgramIO, deps: AttunementCommandDeps = {}): void {
+  const mcpResourceCaller = deps.mcpResourceCaller ?? defaultMcpResourceCaller();
+  const validateArtifact = createArtifactValidator(mcpResourceCaller);
+  const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller);
   const thread = program.command("thread").description("Keep an explicitly chosen life or work thread ready to resume");
 
   thread
@@ -283,21 +433,29 @@ export function registerAttunementCommands(program: Command, io: ProgramIO): voi
 
   thread
     .command("link <thread-id> <artifact-type> <artifact-id>")
-    .description("Explicitly link one exact local task or note to a thread")
-    .requiredOption("--role <context|next-step>", "how this source is used")
+    .description("Explicitly link one exact local task/note, or an external MCP resource (<server>/<resource-id>), to a thread")
+    .requiredOption("--role <context|next-step>", "how this source is used (a resource is context-only)")
+    .addHelpText("after", `
+Examples:
+  $ muse thread link <thread-id> task <task-id> --role next-step
+  $ muse thread link <thread-id> note ideas.md --role context
+  $ muse thread link <thread-id> resource github/facebook/react/issues/123 --role context`)
     .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly role: string }, command: Command) => {
       await commandAction(command, io, "thread link", async () => {
         const type = artifactType.trim().toLowerCase();
         const role = options.role.trim().toLowerCase();
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
         assertChoice(role, ARTIFACT_ROLES, "--role");
-        const result = await linkArtifact(attunementFile(), {
-          artifactId,
-          artifactType: type as ArtifactLink["artifactType"],
-          role: role as ArtifactLink["role"],
-          threadId: threadId.trim()
-        }, { validateArtifact: validateLocalArtifact });
-        io.stdout(`${result.created ? "Linked" : "Already linked"} ${result.link.artifactType}:${result.link.artifactId} as ${result.link.role}\n`);
+        const input = type === "resource"
+          ? buildResourceLinkInput(artifactId, role as ArtifactLink["role"], threadId.trim())
+          : {
+              artifactId,
+              artifactType: type as ArtifactLink["artifactType"],
+              role: role as ArtifactLink["role"],
+              threadId: threadId.trim()
+            };
+        const result = await linkArtifact(attunementFile(), input, { validateArtifact });
+        io.stdout(`${result.created ? "Linked" : "Already linked"} ${result.link.providerId}:${result.link.artifactType}:${result.link.artifactId} as ${result.link.role}\n`);
       });
     });
 
@@ -319,11 +477,22 @@ export function registerAttunementCommands(program: Command, io: ProgramIO): voi
       .command(`${name} [thread-id]`)
       .description("Prepare a grounded continuity pack from this thread's explicit local links")
       .action(async (threadId: string | undefined, _options: unknown, command: Command) => {
-        await commandAction(command, io, "continue", () => runContinue(io, threadId));
+        await commandAction(command, io, "continue", () => runContinue(io, threadId, resolveExactArtifact));
       });
   };
   registerContinue(thread, "continue");
   registerContinue(program, "continue");
+
+  thread
+    .command("stats")
+    .description("Show continuity outcome counts (used/adjusted/ignored/rejected) and the first-20-packs kill-criterion check")
+    .option("--json", "Print structured stats")
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      await commandAction(command, io, "thread stats", async () => {
+        const stats = computeContinuityStats(await readAttunementState(attunementFile()));
+        io.stdout(options.json ? `${JSON.stringify(stats, null, 2)}\n` : formatContinuityStats(stats));
+      });
+    });
 
   thread
     .command("inspect <thread-id>")
