@@ -40,7 +40,12 @@ import { defaultScheduledJobsFile } from "@muse/scheduler";
 import { defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
-import { execFile } from "node:child_process/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+// node:child_process has no /promises submodule — promisify is the
+// supported promise form of execFile.
+const execFile = promisify(execFileCallback);
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
