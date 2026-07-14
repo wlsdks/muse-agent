@@ -7,9 +7,9 @@ import type { IncomingMessage } from "node:http";
 // it deterministically; `timers/promises` isn't reliably intercepted by fake
 // timers.
 export function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, milliseconds);
+  return promise;
 }
 
 export async function waitForShutdownSignal(signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"]): Promise<NodeJS.Signals> {
