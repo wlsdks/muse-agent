@@ -132,6 +132,7 @@ async function invokeWithFallback(args: InvokeModelArgs): Promise<ModelResponse>
         ...(args.request.maxOutputTokens !== undefined ? { maxOutputTokens: args.request.maxOutputTokens } : {}),
         messages: args.request.messages,
         ...(args.request.metadata !== undefined ? { metadata: args.request.metadata } : {}),
+        ...(args.request.signal !== undefined ? { signal: args.request.signal } : {}),
         ...(args.request.temperature !== undefined ? { temperature: args.request.temperature } : {})
       },
       error

@@ -13,6 +13,8 @@ export interface FallbackCommand {
   readonly metadata?: JsonObject;
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
+  /** Propagate turn cancellation into a fallback call; a fallback must never outlive its caller. */
+  readonly signal?: AbortSignal;
 }
 
 export interface FallbackStrategy {
@@ -65,6 +67,7 @@ export class ModelFallbackStrategy implements FallbackStrategy {
           messages: command.messages,
           metadata: command.metadata,
           model,
+          signal: command.signal,
           temperature: command.temperature
         });
 
