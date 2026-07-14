@@ -139,34 +139,41 @@ export async function readPipedStdin(options: ReadPipedStdinOptions = {}): Promi
   }
   const firstByteTimeoutMs = options.firstByteTimeoutMs ?? 200;
   stream.setEncoding("utf8");
-  return await new Promise<string>((resolve) => {
-    let raw = "";
-    let gotData = false;
-    let done = false;
-    const onData = (chunk: string | Buffer): void => {
-      gotData = true;
-      raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-    };
-    const finish = (): void => {
-      if (done) return;
-      done = true;
+  const { promise, resolve } = Promise.withResolvers<string>();
+  let raw = "";
+  let gotData = false;
+  let done = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const onData = (chunk: string | Buffer): void => {
+    gotData = true;
+    raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+  };
+
+  const finish = (): void => {
+    if (done) return;
+    done = true;
+    if (timer !== undefined) {
       clearTimeout(timer);
-      stream.off("data", onData);
-      stream.off("end", finish);
-      stream.off("error", finish);
-      stream.pause();
-      resolve(raw.trim());
-    };
-    // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
-    // but once data is flowing we wait for the real EOF.
-    const timer = setTimeout(() => {
-      if (!gotData) finish();
-    }, firstByteTimeoutMs);
-    stream.on("data", onData);
-    stream.once("end", finish);
-    stream.once("error", finish);
-    stream.resume();
-  });
+    }
+    stream.off("data", onData);
+    stream.off("end", finish);
+    stream.off("error", finish);
+    stream.pause();
+    resolve(raw.trim());
+  };
+
+  // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
+  // but once data is flowing we wait for the real EOF.
+  timer = setTimeout(() => {
+    if (!gotData) finish();
+  }, firstByteTimeoutMs);
+  stream.on("data", onData);
+  stream.once("end", finish);
+  stream.once("error", finish);
+  stream.resume();
+
+  return promise;
 }
 
 export function createTuiChatSubmitter(
