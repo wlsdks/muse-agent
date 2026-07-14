@@ -1,6 +1,6 @@
-import { Buffer } from "node:buffer";
 import { isRecord, redactSecretsInText } from "@muse/shared";
 import { spawn, type ChildProcess } from "node:child_process";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import type { JsonObject } from "@muse/shared";
 
@@ -142,72 +142,54 @@ export async function invokeRustRunner(
   runnerPath: string,
   request: RunnerCommandRequest
 ): Promise<RunnerCommandResponse> {
-  return new Promise((resolve) => {
-    const child = spawn(runnerPath, [], {
-      stdio: ["pipe", "pipe", "pipe"]
+  try {
+    const responseText = JSON.stringify(request);
+    const result = await runCommandWithTimeout({
+      command: runnerPath,
+      stdin: `${responseText}\n`,
+      timeoutMs: runnerWatchdogMs(request),
+      spawnImpl: spawn,
+      maxStdoutBytes: 200_000,
+      maxStderrBytes: 200_000
     });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let settled = false;
-    const settle = (response: RunnerCommandResponse): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(watchdog);
-      resolve(response);
+
+    if (result.timedOut) {
+      return {
+        error: `runner process exceeded the ${runnerWatchdogMs(request).toString()}ms watchdog and was killed`,
+        ok: false,
+        status: null,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        timedOut: true,
+        truncated: false
+      };
+    }
+
+    const parsed = parseRunnerResponse(result.stdout);
+    if (parsed) {
+      return parsed;
+    }
+
+    return {
+      error: "runner returned invalid JSON",
+      ok: false,
+      status: null,
+      stderr: result.stderr,
+      stdout: result.stdout,
+      timedOut: false,
+      truncated: false
     };
-
-    const watchdog = setTimeout(() => {
-      const alreadySettled = settled;
-      child.kill("SIGKILL");
-      if (!alreadySettled) {
-        settle({
-          error: `runner process exceeded the ${runnerWatchdogMs(request).toString()}ms watchdog and was killed`,
-          ok: false,
-          status: null,
-          stderr: Buffer.concat(stderr).toString("utf8"),
-          stdout: Buffer.concat(stdout).toString("utf8"),
-          timedOut: true,
-          truncated: false
-        });
-      }
-    }, runnerWatchdogMs(request));
-
-    attachReadStreamErrorAbsorber(child.stdout);
-    attachReadStreamErrorAbsorber(child.stderr);
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", (error) => {
-      settle({
-        error: error.message,
-        ok: false,
-        status: null,
-        stderr: "",
-        stdout: "",
-        timedOut: false,
-        truncated: false
-      });
-    });
-    child.on("close", () => {
-      const output = Buffer.concat(stdout).toString("utf8");
-      const parsed = parseRunnerResponse(output);
-
-      if (parsed) {
-        settle(parsed);
-        return;
-      }
-
-      settle({
-        error: "runner returned invalid JSON",
-        ok: false,
-        status: null,
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        stdout: output,
-        timedOut: false,
-        truncated: false
-      });
-    });
-    writeRunnerStdin(child, request);
-  });
+  } catch (cause) {
+    return {
+      error: cause instanceof Error ? cause.message : String(cause),
+      ok: false,
+      status: null,
+      stderr: "",
+      stdout: "",
+      timedOut: false,
+      truncated: false
+    };
+  }
 }
 
 /**
@@ -363,4 +345,3 @@ function readPositiveInteger(value: unknown, max?: number): number | undefined {
   }
   return max !== undefined ? Math.min(value, max) : value;
 }
-

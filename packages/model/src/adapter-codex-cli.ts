@@ -21,6 +21,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import {
   DEFAULT_MODEL_CALL_TIMEOUT_MS,
@@ -62,6 +63,10 @@ export interface CodexInvocationResult {
   readonly exitCode: number | null;
   readonly stderr: string;
   readonly usage?: { readonly outputTokens: number };
+}
+
+function isErrnoException(value: unknown): value is NodeJS.ErrnoException {
+  return value instanceof Error && "code" in value;
 }
 
 async function defaultWorkspace(): Promise<{ readonly dir: string; readonly outFile: string }> {
@@ -127,6 +132,18 @@ function codexErrorFromExit(exitCode: number | null, diagnostics: string): Model
   return new ModelProviderError(CODEX_PROVIDER_ID, `codex exec failed: ${detail}${hint}`, false);
 }
 
+function codexErrorFromSpawnCause(binary: string, cause: unknown): ModelProviderError | undefined {
+  if (isErrnoException(cause) && (cause.code === "ENOENT" || cause.code === "EACCES")) {
+    return new ModelProviderError(
+      CODEX_PROVIDER_ID,
+      `could not run '${binary}': ${cause.message} — is the official codex CLI installed and on PATH? (npm i -g @openai/codex)`,
+      false
+    );
+  }
+
+  return undefined;
+}
+
 /**
  * Run ONE non-interactive completion through the official `codex exec` with the
  * verified-safe flags and return the final assistant message (read from the `-o`
@@ -152,110 +169,46 @@ export async function runCodexExecSafe(prompt: string, deps: CodexInvocationDeps
   });
 
   try {
-    return await new Promise<CodexInvocationResult>((resolve, reject) => {
-      let stdout = "";
-      let stderr = "";
-      let timedOut = false;
-      let aborted = false;
-      let settled = false;
-
-      const child = spawnImpl(binary, args, {
-        cwd: workspace.dir,
-        env: deps.env ?? process.env,
-        stdio: ["ignore", "pipe", "pipe"]
-      });
-
-      const timer =
-        timeoutMs > 0
-          ? setTimeout(() => {
-            timedOut = true;
-            child.kill("SIGKILL");
-          }, timeoutMs)
-          : undefined;
-
-      const onAbort = (): void => {
-        aborted = true;
-        child.kill("SIGKILL");
-      };
-      if (deps.signal) {
-        deps.signal.addEventListener("abort", onAbort, { once: true });
-        // The signal can fire during the async workspace setup above, before the
-        // listener existed — re-check so that abort is never dropped.
-        if (deps.signal.aborted) {
-          onAbort();
-        }
-      }
-
-      const cleanup = (): void => {
-        if (timer) clearTimeout(timer);
-        if (deps.signal) deps.signal.removeEventListener("abort", onAbort);
-      };
-
-      child.stdout?.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr?.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-
-      child.on("error", (error: Error) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        // ENOENT etc. — the binary isn't runnable. Not transient; NON-retryable.
-        reject(
-          new ModelProviderError(
-            CODEX_PROVIDER_ID,
-            `could not run '${binary}': ${error.message} — is the official codex CLI installed and on PATH? (npm i -g @openai/codex)`,
-            false
-          )
-        );
-      });
-
-      child.on("close", (code) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        const diagnostics = `${stderr}\n${stdout}`;
-        if (aborted) {
-          reject(new ModelProviderError(CODEX_PROVIDER_ID, "codex exec cancelled by the caller", false));
-          return;
-        }
-        if (timedOut) {
-          reject(
-            new ModelProviderError(
-              CODEX_PROVIDER_ID,
-              `codex exec timed out after ${String(timeoutMs)}ms`,
-              true
-            )
-          );
-          return;
-        }
-        if (code !== 0) {
-          reject(codexErrorFromExit(code, diagnostics));
-          return;
-        }
-        readFile(workspace.outFile, "utf8")
-          .then((raw) => {
-            const tokens = parseCodexTokensUsed(diagnostics);
-            resolve({
-              exitCode: code,
-              output: raw.trim(),
-              stderr: stderr.trim(),
-              ...(tokens !== undefined ? { usage: { outputTokens: tokens } } : {})
-            });
-          })
-          .catch((cause: unknown) => {
-            reject(
-              new ModelProviderError(
-                CODEX_PROVIDER_ID,
-                `codex exec produced no readable output file: ${cause instanceof Error ? cause.message : String(cause)}`,
-                false
-              )
-            );
-          });
-      });
+    const execution = await runCommandWithTimeout({
+      command: binary,
+      args,
+      timeoutMs,
+      spawnImpl: spawnImpl,
+      cwd: workspace.dir,
+      env: deps.env ?? process.env,
+      abortSignal: deps.signal,
+      killSignal: "SIGKILL"
     });
+
+    if (execution.timedOut) {
+      throw new ModelProviderError(CODEX_PROVIDER_ID, `codex exec timed out after ${String(timeoutMs)}ms`, true);
+    }
+
+    if (execution.exitCode !== 0) {
+      throw codexErrorFromExit(execution.exitCode, `${execution.stderr}\n${execution.stdout}`);
+    }
+
+    const raw = await readFile(workspace.outFile, "utf8");
+    const tokens = parseCodexTokensUsed(`${execution.stderr}\n${execution.stdout}`);
+    return {
+      exitCode: execution.exitCode,
+      output: raw.trim(),
+      stderr: execution.stderr.trim(),
+      ...(tokens !== undefined ? { usage: { outputTokens: tokens } } : {})
+    };
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") {
+      throw new ModelProviderError(CODEX_PROVIDER_ID, "codex exec cancelled by the caller", false);
+    }
+
+    const spawnError = codexErrorFromSpawnCause(binary, cause);
+    if (spawnError) {
+      throw spawnError;
+    }
+
+    throw cause instanceof ModelProviderError
+      ? cause
+      : new ModelProviderError(CODEX_PROVIDER_ID, cause instanceof Error ? cause.message : String(cause), false);
   } finally {
     await rm(workspace.dir, { force: true, recursive: true }).catch(() => undefined);
   }

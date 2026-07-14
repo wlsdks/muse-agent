@@ -18,6 +18,8 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
+import { runCommandWithTimeout } from "@muse/shared";
+
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import type {
   MessagingProvider,
@@ -41,38 +43,23 @@ export type OsascriptRunner = (script: string) => Promise<OsascriptRunResult>;
 
 const NOTIFICATION_OSASCRIPT_TIMEOUT_MS = 30_000;
 
-export function defaultRunner(
+export async function defaultRunner(
   script: string,
   spawnFn: typeof spawn = spawn
 ): Promise<OsascriptRunResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawnFn("osascript", ["-e", script], { stdio: ["ignore", "ignore", "pipe"] });
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without this watchdog a wedged Notification Center leaves
-    // osascript blocked, so `send()` never resolves and the
-    // awaiting firing/proactive loop tick hangs forever.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => reject(new Error(
-        `osascript notification timed out after ${NOTIFICATION_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed`
-      )));
-    }, NOTIFICATION_OSASCRIPT_TIMEOUT_MS);
-    // Raw chunks are decoded ONCE from the concatenated bytes on close —
-    // never per-chunk — so a multi-byte UTF-8 character split across two
-    // `data` events decodes correctly instead of U+FFFD on both halves.
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => { finish(() => resolve({ exitCode: code, stderr: Buffer.concat(stderrChunks).toString("utf8") })); });
+  const result = await runCommandWithTimeout({
+    command: "osascript",
+    args: ["-e", script],
+    timeoutMs: NOTIFICATION_OSASCRIPT_TIMEOUT_MS,
+    spawnImpl: spawnFn,
+    killSignal: "SIGKILL"
   });
+
+  if (result.timedOut) {
+    throw new Error(`osascript notification timed out after ${NOTIFICATION_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed`);
+  }
+
+  return { exitCode: result.exitCode, stderr: result.stderr };
 }
 
 export interface MacosNotificationProviderOptions {

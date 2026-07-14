@@ -37,37 +37,37 @@ const SUCCESS_HTML =
 export async function startOAuthCallbackServer(
   options: OAuthCallbackServerOptions
 ): Promise<OAuthCallbackServer> {
-  let resolveCode: (value: { readonly code: string }) => void;
-  let rejectCode: (reason: Error) => void;
+  const codeDeferred = Promise.withResolvers<{ readonly code: string }>();
   let settled = false;
-  const codePromise = new Promise<{ readonly code: string }>((resolve, reject) => {
-    resolveCode = resolve;
-    rejectCode = reject;
-  });
-  // A rejection that no one has awaited yet must not crash the process as an
-  // unhandled rejection; the login flow awaits it right after startup.
-  codePromise.catch(() => undefined);
 
   const settleResolve = (value: { readonly code: string }): void => {
-    if (settled) return;
-    settled = true;
-    resolveCode(value);
+    if (!settled) {
+      settled = true;
+      codeDeferred.resolve(value);
+    }
   };
   const settleReject = (reason: Error): void => {
-    if (settled) return;
-    settled = true;
-    rejectCode(reason);
+    if (!settled) {
+      settled = true;
+      codeDeferred.reject(reason);
+    }
   };
 
   const server = createServer((req, res) => handleRequest(req, res, options.expectedState, settleResolve, settleReject));
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.port ?? 0, "127.0.0.1", () => {
-      server.removeListener("error", reject);
-      resolve();
-    });
-  });
+  const listening = Promise.withResolvers<void>();
+  const onListeningError = (error: Error): void => {
+    server.removeListener("listening", onListening);
+    listening.reject(error);
+  };
+  const onListening = (): void => {
+    server.removeListener("error", onListeningError);
+    listening.resolve();
+  };
+  server.once("error", onListeningError);
+  server.once("listening", onListening);
+  server.listen(options.port ?? 0, "127.0.0.1");
+  await listening.promise;
 
   const address = server.address();
   const port = address && typeof address === "object" ? address.port : options.port ?? 0;
@@ -79,14 +79,20 @@ export async function startOAuthCallbackServer(
 
   const close = async (): Promise<void> => {
     clearTimeout(timeout);
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
+    if (!server.listening) {
+      return;
+    }
+    const closeResult = Promise.withResolvers<void>();
+    server.once("close", () => {
+      closeResult.resolve();
     });
+    server.close();
+    await closeResult.promise;
   };
 
   return {
     port,
-    waitForCode: () => codePromise,
+    waitForCode: () => codeDeferred.promise,
     close
   };
 }

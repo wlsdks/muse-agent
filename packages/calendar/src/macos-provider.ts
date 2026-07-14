@@ -10,6 +10,7 @@ import type {
   CalendarRange,
   CredentialRequirement
 } from "./types.js";
+import { runCommandWithTimeout } from "@muse/shared";
 
 export interface MacOsCalendarProviderOptions {
   readonly calendarName?: string;
@@ -183,60 +184,36 @@ export class MacOsCalendarProvider implements CalendarProvider {
   }
 
   private async runScript(script: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.osascriptPath, ["-"], { stdio: ["pipe", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      const finish = (action: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        action();
-      };
-      const timer = setTimeout(() => {
-        const wasSettled = settled;
-        child.kill("SIGKILL");
-        if (!wasSettled) {
-          finish(() => reject(new CalendarProviderError(
-            this.id,
-            "OSASCRIPT_TIMEOUT",
-            `osascript timed out after ${this.timeoutMs.toString()}ms and was killed (wedged AppleScript or an unanswered Calendar permission prompt?)`
-          )));
-        }
-      }, this.timeoutMs);
-
-      child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-      child.on("error", (error) => {
-        finish(() => reject(new CalendarProviderError(this.id, "OSASCRIPT_FAILED", error.message, error)));
-      });
-
-      child.on("close", (code) => {
-        finish(() => {
-          if (code === 0) {
-            resolve(stdout);
-            return;
-          }
-
-          if (/not allowed to access|don't have permission/iu.test(stderr)) {
-            reject(new CalendarProviderError(this.id, "EVENT_PERMISSION", "Calendar access permission denied — grant access to your terminal in System Settings → Privacy & Security → Calendars."));
-            return;
-          }
-
-          if (/EVENT_NOT_FOUND/u.test(stderr)) {
-            reject(new CalendarProviderError(this.id, "EVENT_NOT_FOUND", "macOS Calendar event not found"));
-            return;
-          }
-
-          reject(new CalendarProviderError(this.id, `EXIT_${code}`, `osascript failed: ${stderr.trim().slice(0, 500)}`));
-        });
-      });
-
-      child.stdin.write(script);
-      child.stdin.end();
+    const result = await runCommandWithTimeout({
+      command: this.osascriptPath,
+      args: ["-"],
+      stdin: script,
+      timeoutMs: this.timeoutMs,
+      maxStdoutBytes: 200_000,
+      maxStderrBytes: 200_000
     });
+
+    if (result.timedOut) {
+      throw new CalendarProviderError(
+        this.id,
+        "OSASCRIPT_TIMEOUT",
+        `osascript timed out after ${this.timeoutMs.toString()}ms and was killed (wedged AppleScript or an unanswered Calendar permission prompt?)`
+      );
+    }
+
+    if (result.exitCode === 0) {
+      return result.stdout;
+    }
+
+    if (/not allowed to access|don't have permission/iu.test(result.stderr)) {
+      throw new CalendarProviderError(this.id, "EVENT_PERMISSION", "Calendar access permission denied — grant access to your terminal in System Settings → Privacy & Security → Calendars.");
+    }
+
+    if (/EVENT_NOT_FOUND/u.test(result.stderr)) {
+      throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", "macOS Calendar event not found");
+    }
+
+    throw new CalendarProviderError(this.id, `EXIT_${result.exitCode ?? "UNKNOWN"}`, `osascript failed: ${result.stderr.trim().slice(0, 500)}`);
   }
 }
 

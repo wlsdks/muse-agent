@@ -18,7 +18,7 @@
 
 import { spawn } from "node:child_process";
 
-import { redactSecretsInText, type JsonObject, type JsonValue } from "@muse/shared";
+import { redactSecretsInText, runCommandWithTimeout, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import { readOptionalNumber, readOptionalString } from "./muse-tools-helpers.js";
@@ -275,74 +275,25 @@ function runChild(
   args: readonly string[],
   options: RunChildOptions
 ): Promise<RunChildResult> {
-  return new Promise((resolve, reject) => {
-    let child;
-    try {
-      child = spawnFn(bin, [...args], {
-        ...(options.cwd ? { cwd: options.cwd } : {}),
-        ...(options.env ? { env: options.env } : {}),
-        stdio: ["pipe", "pipe", "pipe"]
-      });
-    } catch (cause) {
-      reject(cause instanceof Error ? cause : new Error(String(cause)));
-      return;
-    }
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // ignore — process may have already exited
-      }
-    }, options.timeoutMs);
-
-    // Buffer chunks are accumulated raw (capped by BYTE count) and decoded
-    // ONCE at close via `decodeCapped` — never per-chunk — so a multi-byte
-    // UTF-8 character split across two `data` events decodes correctly
-    // instead of becoming U+FFFD replacement chars on both sides.
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutBytes < MAX_STREAM_BYTES) {
-        stdoutChunks.push(chunk);
-        stdoutBytes += chunk.length;
-      }
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrBytes < MAX_STREAM_BYTES) {
-        stderrChunks.push(chunk);
-        stderrBytes += chunk.length;
-      }
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on("close", (exitCode, signal) => {
-      clearTimeout(timer);
-      resolve({
-        exitCode,
-        signal: typeof signal === "string" ? signal : null,
-        stderr: decodeCapped(stderrChunks),
-        stdout: decodeCapped(stdoutChunks),
-        timedOut
-      });
-    });
-
-    if (child.stdin) {
-      child.stdin.on("error", () => undefined);
-      if (options.stdin) {
-        child.stdin.write(options.stdin);
-      }
-      child.stdin.end();
-    }
-  });
+  return runCommandWithTimeout({
+    command: bin,
+    args: [...args],
+    stdin: options.stdin,
+    timeoutMs: options.timeoutMs,
+    spawnImpl: spawnFn,
+    maxStdoutBytes: MAX_STREAM_BYTES,
+    maxStderrBytes: MAX_STREAM_BYTES,
+    ...(options.cwd ? { cwd: options.cwd } : {}),
+    ...(options.env ? { env: options.env } : {})
+  }).then((result) => ({
+    exitCode: result.exitCode,
+    signal: result.signal,
+    stderr: decodeCapped(result.stderr),
+    stdout: decodeCapped(result.stdout),
+    timedOut: result.timedOut
+  }));
 }
 
-function decodeCapped(chunks: readonly Buffer[]): string {
-  const decoded = Buffer.concat(chunks).toString("utf8");
-  return decoded.length > MAX_STREAM_CHARS ? `${decoded.slice(0, MAX_STREAM_CHARS)}\n…[truncated]` : decoded;
+function decodeCapped(value: string): string {
+  return value.length > MAX_STREAM_CHARS ? `${value.slice(0, MAX_STREAM_CHARS)}\n…[truncated]` : value;
 }
