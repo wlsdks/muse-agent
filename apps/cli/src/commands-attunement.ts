@@ -287,6 +287,14 @@ export interface ContinuityStats {
     readonly used: number;
     readonly rejected: number;
   };
+  /**
+   * This is deliberately a release gate, not an automation switch. Passing
+   * the outcome threshold never enables proactive delivery by itself.
+   */
+  readonly automationGate: {
+    readonly reasons: readonly string[];
+    readonly status: "hold" | "manual-only";
+  };
 }
 
 /**
@@ -309,11 +317,24 @@ export function computeContinuityStats(state: AttunementState): ContinuityStats 
     .slice(0, KILL_CRITERION_FIRST_PACKS);
   const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
   const rejected = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
+  const reasons: string[] = [];
+  if (firstDeliveries.length < KILL_CRITERION_FIRST_PACKS) {
+    reasons.push(`need ${String(KILL_CRITERION_FIRST_PACKS - firstDeliveries.length)} more eligible deliveries before evaluating automation`);
+  } else {
+    if (used * 100 < 20 * firstDeliveries.length) reasons.push("used rate is below the 20% kill criterion");
+    if (rejected * 100 > 30 * firstDeliveries.length) reasons.push("rejection rate exceeds the 30% kill criterion");
+  }
   return {
     totalDeliveries: state.deliveries.length,
     withOutcome,
     outcomes,
-    firstPacks: { considered: firstDeliveries.length, rejected, used }
+    firstPacks: { considered: firstDeliveries.length, rejected, used },
+    automationGate: reasons.length > 0
+      ? { reasons, status: "hold" }
+      : {
+          reasons: ["outcome threshold passed; proactive delivery remains disabled pending the separate Slice B consent and timing gate"],
+          status: "manual-only"
+        }
   };
 }
 
@@ -322,7 +343,8 @@ export function formatContinuityStats(stats: ContinuityStats): string {
   const lines = [
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
-    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`
+    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
+    `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`
   ];
   return `${lines.join("\n")}\n`;
 }
