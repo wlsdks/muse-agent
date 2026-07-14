@@ -1,4 +1,4 @@
-import { stripUntrustedTerminalChars, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, stripUntrustedTerminalChars, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -138,7 +138,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
               return {
                 backend: "searxng",
                 query,
-                results: deduped as JsonValue,
+                results: deduped,
                 total: deduped.length
               };
             }
@@ -200,7 +200,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
           if (parsed.length === 0) {
             return { error: "parser returned 0 results — backend markup may have shifted" };
           }
-          return { backend: "duckduckgo", query, results: parsed as JsonValue, total: parsed.length };
+          return { backend: "duckduckgo", query, results: parsed, total: parsed.length };
         },
         inputSchema: buildJsonToolSchema(
           {
@@ -245,12 +245,6 @@ interface QuerySearxngArgs {
   readonly timeRange?: "day" | "week" | "month" | "year";
 }
 
-interface SearxngResultRow {
-  readonly title?: unknown;
-  readonly url?: unknown;
-  readonly content?: unknown;
-}
-
 /**
  * Hit `<searxngUrl>/search?q=...&format=json`. SearXNG returns
  * `{ results: [{title, url, content, ...}], …}`. Returns
@@ -283,19 +277,22 @@ async function querySearxng(args: QuerySearxngArgs): Promise<readonly SearchResu
     return undefined;
   }
   try {
-    const payload = await response.json() as unknown;
-    if (!payload || typeof payload !== "object") return undefined;
-    const rows = (payload as { results?: unknown }).results;
+    const payload: unknown = await response.json();
+    if (!isRecord(payload)) return undefined;
+    const rows = payload.results;
     if (!Array.isArray(rows)) return undefined;
     const out: SearchResult[] = [];
-    for (const row of rows as readonly SearxngResultRow[]) {
+    for (const rawRow of rows) {
+      if (!isRecord(rawRow)) {
+        continue;
+      }
       if (out.length >= args.maxResults) break;
-      if (typeof row.url !== "string" || typeof row.title !== "string") continue;
-      const snippet = typeof row.content === "string" ? row.content : "";
+      if (typeof rawRow.url !== "string" || typeof rawRow.title !== "string") continue;
+      const snippet = typeof rawRow.content === "string" ? rawRow.content : "";
       out.push({
         snippet: capSnippet(snippet),
-        title: sanitizeSearchField(row.title),
-        url: sanitizeSearchField(row.url)
+        title: sanitizeSearchField(rawRow.title),
+        url: sanitizeSearchField(rawRow.url)
       });
     }
     return out;

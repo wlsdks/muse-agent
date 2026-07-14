@@ -1,4 +1,4 @@
-import { errorMessage, type JsonObject } from "@muse/shared";
+import { errorMessage, isRecord, type JsonObject } from "@muse/shared";
 
 export { errorMessage };
 
@@ -33,10 +33,10 @@ export function readBoolean(args: JsonObject, key: string): boolean | undefined 
 
 export function readJsonObject(args: JsonObject, key: string): Record<string, unknown> | undefined {
   const value = args[key];
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return undefined;
   }
-  return value as Record<string, unknown>;
+  return value;
 }
 
 /**
@@ -57,8 +57,8 @@ export function buildJsonToolSchema(
 ): JsonObject {
   return {
     additionalProperties: false,
-    properties: properties as JsonObject,
+    properties,
     type: "object",
     ...(required && required.length > 0 ? { required: [...required] } : {})
-  };
+  } satisfies JsonObject;
 }

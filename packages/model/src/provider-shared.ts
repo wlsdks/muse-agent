@@ -5,7 +5,7 @@
  * specific wire transforms stay in their respective files.
  */
 
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { ModelCapabilities, ModelEvent, ModelResponse } from "./index.js";
 
@@ -38,7 +38,7 @@ export function isJsonValue(value: unknown): boolean {
 
 export function parseJson(value: string): unknown {
   try {
-    return JSON.parse(value) as unknown;
+    return JSON.parse(value);
   } catch {
     return undefined;
   }
@@ -68,7 +68,7 @@ export function sanitizeToolCallName(raw: string | undefined): string {
   return cleaned.length > 0 ? cleaned : "unknown";
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
+function isPlainObject(v: unknown): v is JsonObject {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
@@ -113,11 +113,11 @@ export function sanitizeLoneSurrogates(text: string): string {
 }
 
 /** Walk a parsed JSON value, scrubbing lone surrogates from every string key + value. */
-function sanitizeSurrogatesDeep(value: unknown): unknown {
+function sanitizeSurrogatesDeep(value: unknown): JsonValue {
   if (typeof value === "string") return sanitizeLoneSurrogates(value);
   if (Array.isArray(value)) return value.map(sanitizeSurrogatesDeep);
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+  if (isPlainObject(value)) {
+    const out: Record<string, JsonValue> = {};
     for (const [k, v] of Object.entries(value)) {
       out[sanitizeLoneSurrogates(k)] = sanitizeSurrogatesDeep(v);
     }
@@ -134,7 +134,10 @@ export function recoverToolArgsJson(raw: string): Record<string, unknown> | unde
   if (fenceMatch) {
     try {
       const parsed = JSON.parse(fenceMatch[1]!);
-      if (isPlainObject(parsed)) return sanitizeSurrogatesDeep(parsed) as Record<string, unknown>;
+      if (isPlainObject(parsed)) {
+        const sanitized = sanitizeSurrogatesDeep(parsed);
+        if (isPlainObject(sanitized)) return sanitized;
+      }
     } catch { /* fall through */ }
   }
 
@@ -164,7 +167,10 @@ export function recoverToolArgsJson(raw: string): Record<string, unknown> | unde
   const candidate = trimmed.slice(firstBrace, lastClose + 1);
   try {
     const parsed = JSON.parse(candidate);
-    if (isPlainObject(parsed)) return sanitizeSurrogatesDeep(parsed) as Record<string, unknown>;
+    if (isPlainObject(parsed)) {
+      const sanitized = sanitizeSurrogatesDeep(parsed);
+      if (isPlainObject(sanitized)) return sanitized;
+    }
   } catch { /* fall through */ }
 
   // Last resort: repair the malformations a small local model commonly emits (trailing commas,
@@ -172,7 +178,10 @@ export function recoverToolArgsJson(raw: string): Record<string, unknown> | unde
   // ignored, so this can only recover a real call, never produce a wrong value.
   try {
     const repaired = JSON.parse(repairLooseJson(candidate));
-    if (isPlainObject(repaired)) return sanitizeSurrogatesDeep(repaired) as Record<string, unknown>;
+    if (isPlainObject(repaired)) {
+      const sanitized = sanitizeSurrogatesDeep(repaired);
+      if (isPlainObject(sanitized)) return sanitized;
+    }
   } catch { /* fall through */ }
 
   return undefined;
