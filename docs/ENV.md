@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **558** variables.
+Total: **565** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -49,6 +49,7 @@ Total: **558** variables.
 | `MUSE_APP_NAME` | packages/autoconfigure |
 | `MUSE_ASK_MAX_TOOLS` | apps/cli |
 | `MUSE_ASK_REASONING_PRINCIPLES` | apps/cli |
+| `MUSE_ATTUNEMENT_FILE` | packages/autoconfigure |
 | `MUSE_AUTHORED_SKILLS_DIR` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_JWT_EXPIRATION_MS` | packages/autoconfigure |
 | `MUSE_AUTH_JWT_SECRET` | apps/cli, packages/autoconfigure |
@@ -122,6 +123,7 @@ Total: **558** variables.
 | `MUSE_CHAT_GROUNDING` | apps/cli |
 | `MUSE_CHAT_HISTORY_WINDOW` | apps/cli |
 | `MUSE_CHAT_MAX_TOOLS` | apps/cli |
+| `MUSE_CHAT_WRITE_ENABLED` | apps/api |
 | `MUSE_CHECKINS_AUTOSCAN_ENABLED` | apps/cli |
 | `MUSE_CHECKINS_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_CHECKPOINTS_DIR` | packages/autoconfigure |
@@ -148,11 +150,12 @@ Total: **558** variables.
 | `MUSE_CONVERSATION_SUMMARY_FILE` | packages/autoconfigure, packages/memory |
 | `MUSE_CONVERSATION_SUMMARY_PERSIST` | packages/autoconfigure |
 | `MUSE_CORS_ALLOWED_ORIGINS` | packages/autoconfigure |
-| `MUSE_CREDENTIALS_ENCRYPT` | apps/cli, packages/autoconfigure, packages/messaging, packages/shared |
+| `MUSE_CREDENTIALS_ENCRYPT` | apps/cli, packages/autoconfigure, packages/mcp, packages/messaging, packages/shared |
 | `MUSE_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_CREDENTIAL_KEY` | apps/cli |
 | `MUSE_CROSS_LINGUAL_COSINE_FLOOR` | packages/recall |
 | `MUSE_DAEMON_CONFIG_FILE` | apps/cli |
+| `MUSE_DAEMON_OFFER_FILE` | apps/cli |
 | `MUSE_DAEMON_PLIST_FILE` | apps/cli |
 | `MUSE_DAEMON_SETTINGS_FILE` | apps/api |
 | `MUSE_DEFAULT_MODEL` | apps/api, apps/cli, packages/autoconfigure |
@@ -173,7 +176,6 @@ Total: **558** variables.
 | `MUSE_DRIFT_DEVIATION_THRESHOLD` | packages/autoconfigure |
 | `MUSE_DRIFT_MIN_SAMPLES` | packages/autoconfigure |
 | `MUSE_DRIFT_WINDOW_SIZE` | packages/autoconfigure |
-| `MUSE_EFFICACY_MODEL` | apps/cli |
 | `MUSE_EMAIL_SYNC_ENABLED` | apps/cli |
 | `MUSE_EMAIL_SYNC_INTERVAL_MS` | apps/cli |
 | `MUSE_EMAIL_SYNC_LIMIT` | apps/cli |
@@ -189,6 +191,8 @@ Total: **558** variables.
 | `MUSE_EPISODIC_RECALL_MIN_SCORE` | packages/autoconfigure |
 | `MUSE_EPISODIC_RECALL_TOPK` | packages/autoconfigure |
 | `MUSE_EVAL_FAST` | apps/cli |
+| `MUSE_EVAL_MODEL` | apps/cli |
+| `MUSE_EVAL_REPEAT` | apps/cli |
 | `MUSE_EXPORT_MAGIC` | apps/cli |
 | `MUSE_EXPORT_PASSPHRASE` | apps/cli |
 | `MUSE_EXPORT_VERSION` | apps/cli |
@@ -295,12 +299,14 @@ Total: **558** variables.
 | `MUSE_MCP_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MCP_MAX_SERVERS` | packages/autoconfigure |
 | `MUSE_MCP_MAX_TOOL_OUTPUT_LENGTH` | packages/autoconfigure |
+| `MUSE_MCP_OAUTH_DIR` | packages/autoconfigure |
+| `MUSE_MCP_OAUTH_REDIRECT_PORT` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_ENABLED` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_INITIAL_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_MAX_ATTEMPTS` | packages/autoconfigure |
 | `MUSE_MCP_RECONNECT_MAX_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
-| `MUSE_MEMORY_KEY` | apps/cli, packages/autoconfigure, packages/calendar, packages/memory, packages/messaging, packages/shared, packages/stores |
+| `MUSE_MEMORY_KEY` | apps/cli, packages/autoconfigure, packages/calendar, packages/mcp, packages/memory, packages/messaging, packages/shared, packages/stores |
 | `MUSE_MENTION` | apps/api |
 | `MUSE_MESSAGING_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MESSAGING_LIBNOTIFY_ENABLED` | packages/autoconfigure, packages/messaging |
@@ -382,7 +388,7 @@ Total: **558** variables.
 | `MUSE_PLAYBOOK_EMBED_RANK` | apps/cli |
 | `MUSE_PLAYBOOK_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_PLAYBOOK_INJECTIONS_FILE` | apps/cli |
-| `MUSE_PLAYBOOK_INJECT_TOPK` | apps/cli |
+| `MUSE_PLAYBOOK_INJECT_TOPK` | packages/agent-core |
 | `MUSE_PREFERENCE_AUTOINFER_ENABLED` | apps/cli |
 | `MUSE_PRIVACY_ROUTING` | apps/cli, packages/policy |
 | `MUSE_PROACTIVE_` | apps/cli |
@@ -453,6 +459,7 @@ Total: **558** variables.
 | `MUSE_RESPONSE_ZERO_RESULT_OVERCLAIM_FILTER_ENABLED` | packages/autoconfigure |
 | `MUSE_RETRY_INITIAL_DELAY_MS` | packages/autoconfigure |
 | `MUSE_RETRY_MAX_ATTEMPTS` | packages/autoconfigure |
+| `MUSE_RULE_BUDGET` | packages/agent-core |
 | `MUSE_RUNTIME_SPEC` | apps/cli |
 | `MUSE_RUNTIME_SPEC_TEXT` | apps/cli |
 | `MUSE_RUN_LOG_MAX_FILES` | apps/cli |
