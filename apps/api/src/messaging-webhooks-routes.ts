@@ -51,14 +51,17 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
       // over the exact bytes. JSON.parse for the typed body.
       rawBodyByRequest.set(request, body);
       try {
-        done(null, body.length === 0 ? {} : (JSON.parse(body) as unknown));
+        done(null, body.length === 0 ? {} : JSON.parse(body));
       } catch (err) {
-        done(err as Error, undefined);
+        const parseError = err instanceof Error ? err : new Error(`Invalid JSON body: ${String(err)}`);
+        done(parseError, undefined);
       }
     }
   );
 
-  instance.post("/api/messaging/webhooks/line", async (request, reply) => {
+  instance.post<{ Body: LineWebhookBody | null }>(
+    "/api/messaging/webhooks/line",
+    async (request, reply) => {
     const raw = rawBodyByRequest.get(request);
     if (typeof raw !== "string") {
       return reply.status(400).send({ code: "MESSAGING_WEBHOOK_NO_BODY", message: "raw body unavailable" });
@@ -71,7 +74,7 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
     if (!safeEquals(expected, headerSig)) {
       return reply.status(401).send({ code: "MESSAGING_WEBHOOK_BAD_SIGNATURE", message: "signature mismatch" });
     }
-    const body = request.body as LineWebhookBody | null;
+    const body = request.body;
     const events = body?.events ?? [];
     let stored = 0;
     for (const event of events) {

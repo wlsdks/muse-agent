@@ -17,6 +17,7 @@ import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDu
 import { mirrorReminderToApple } from "@muse/macos";
 import type { FastifyInstance } from "fastify";
 
+import { readBodyString, readQueryString, readRouteParam, toBody } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import { parseHistoryLimit } from "./server-input-utils.js";
 import type { ServerOptions } from "./server.js";
@@ -32,6 +33,27 @@ interface RemindersRoutesGate {
   readonly reminderHistoryFile?: string;
 }
 
+const RECURRENCE_VALUES = ["daily", "weekly", "monthly", "yearly"] as const;
+
+function parseReminderRecurrence(value: unknown): ReminderRecurrence | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const candidate = value.trim().toLowerCase();
+  switch (candidate) {
+    case RECURRENCE_VALUES[0]:
+      return "daily";
+    case RECURRENCE_VALUES[1]:
+      return "weekly";
+    case RECURRENCE_VALUES[2]:
+      return "monthly";
+    case RECURRENCE_VALUES[3]:
+      return "yearly";
+    default:
+      return undefined;
+  }
+}
+
 export function registerRemindersRoutes(server: FastifyInstance, gate: RemindersRoutesGate): void {
   const { remindersFile } = gate;
 
@@ -39,7 +61,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const status = readReminderStatusFilter((request.query as { readonly status?: string } | undefined)?.status);
+    const status = readReminderStatusFilter(readQueryString(request, "status"));
     const reminders = await readReminders(remindersFile);
     const filtered = filterReminders(reminders, status, () => new Date());
     const sorted = [...filtered].sort(compareRemindersByDueAt);
@@ -50,17 +72,12 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = request.body as {
-      readonly text?: unknown;
-      readonly dueAt?: unknown;
-      readonly via?: unknown;
-      readonly recurrence?: unknown;
-    } | null;
-    const text = typeof body?.text === "string" ? body.text.trim() : "";
+    const body = toBody(request.body);
+    const text = readBodyString(body, "text") ?? "";
     if (text.length === 0) {
       return reply.status(400).send({ code: "INVALID_REMINDER", message: "text must be a non-empty string" });
     }
-    const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
+    const dueAtRaw = readBodyString(body, "dueAt") ?? "";
     if (dueAtRaw.length === 0) {
       return reply.status(400).send({ code: "INVALID_REMINDER", message: "dueAt is required" });
     }
@@ -68,11 +85,11 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (parsed instanceof Error) {
       return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
     }
-    if (body?.recurrence !== undefined && body.recurrence !== "daily" && body.recurrence !== "weekly" && body.recurrence !== "monthly" && body.recurrence !== "yearly") {
+    const recurrence = parseReminderRecurrence(body.recurrence);
+    if (body.recurrence !== undefined && recurrence === undefined) {
       return reply.status(400).send({ code: "INVALID_REMINDER_RECURRENCE", message: "recurrence must be 'daily', 'weekly', 'monthly', or 'yearly'" });
     }
-    const recurrence = body?.recurrence as ReminderRecurrence | undefined;
-    const viaResult = parseReminderVia(body?.via);
+    const viaResult = parseReminderVia(body.via);
     if (viaResult instanceof Error) {
       return reply.status(400).send({ code: "INVALID_REMINDER_VIA", message: viaResult.message });
     }
@@ -98,14 +115,19 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     });
   });
 
-  server.post("/api/reminders/:id/snooze", async (request, reply) => {
+  server.post<{ Params: { readonly id: string } }>(
+    "/api/reminders/:id/snooze",
+    async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
-    const body = request.body as { readonly dueAt?: unknown } | null;
+    const id = readRouteParam(request, "id");
+    if (id === undefined) {
+      return reply.status(400).send({ code: "INVALID_REMINDER_ID", message: "id is required" });
+    }
+    const body = toBody(request.body);
     let nextDueAt: string;
-    const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
+    const dueAtRaw = readBodyString(body, "dueAt") ?? "";
     if (dueAtRaw.length > 0) {
       const parsed = parseReminderDueAt(dueAtRaw, () => new Date());
       if (parsed instanceof Error) {
@@ -127,14 +149,19 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     return reply.status(200).send(serializeReminder(snoozed));
   });
 
-  server.post("/api/reminders/:id/fire", async (request, reply) => {
+  server.post<{ Params: { readonly id: string } }>(
+    "/api/reminders/:id/fire",
+    async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
-    const body = request.body as { readonly firedAt?: unknown } | null;
+    const id = readRouteParam(request, "id");
+    if (id === undefined) {
+      return reply.status(400).send({ code: "INVALID_REMINDER_ID", message: "id is required" });
+    }
+    const body = toBody(request.body);
     let firedAt: string;
-    const firedAtRaw = typeof body?.firedAt === "string" ? body.firedAt.trim() : "";
+    const firedAtRaw = readBodyString(body, "firedAt") ?? "";
     if (firedAtRaw.length > 0) {
       const parsed = new Date(firedAtRaw);
       if (Number.isNaN(parsed.getTime())) {
@@ -153,15 +180,23 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
     }
     await writeReminders(remindersFile, next);
-    const fired = next.find((reminder) => reminder.id === id) as PersistedReminder;
+    const fired = next.find((reminder) => reminder.id === id);
+    if (!fired) {
+      return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
+    }
     return reply.status(200).send(serializeReminder(fired));
   });
 
-  server.delete("/api/reminders/:id", async (request, reply) => {
+  server.delete<{ Params: { readonly id: string } }>(
+    "/api/reminders/:id",
+    async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+    if (id === undefined) {
+      return reply.status(400).send({ code: "INVALID_REMINDER_ID", message: "id is required" });
+    }
     const reminders = await readReminders(remindersFile);
     const next = reminders.filter((reminder) => reminder.id !== id);
     if (next.length === reminders.length) {
@@ -177,8 +212,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
         return reply;
       }
-      const query = (request.query as { readonly limit?: string } | undefined) ?? {};
-      const limit = parseHistoryLimit(query.limit, 500);
+      const limit = parseHistoryLimit(readQueryString(request, "limit"), 500);
       const entries = await readReminderHistory(historyFile, limit);
       return { entries, total: entries.length };
     });

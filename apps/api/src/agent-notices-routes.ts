@@ -24,6 +24,7 @@ import type { FastifyInstance } from "fastify";
 import { EventEmitter, on as waitForEvent } from "node:events";
 import { Readable } from "node:stream";
 
+import { readQueryString } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -40,8 +41,7 @@ export function registerAgentNoticesRoutes(
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const query = request.query as { readonly userId?: string } | undefined;
-    const userId = query?.userId?.trim();
+    const userId = readQueryString(request, "userId");
     if (!userId) {
       return reply.status(400).send({
         code: "USER_ID_REQUIRED",
