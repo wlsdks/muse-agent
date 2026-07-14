@@ -245,18 +245,20 @@ function serializeTaskState(s: TaskState): SerializedTaskState {
 }
 
 function deserializeTaskState(r: SerializedTaskState): TaskState {
+  const createdAt = parseTaskDate(r.createdAt);
+  const updatedAt = parseTaskDate(r.updatedAt);
   return {
-    blockers: (r.blockers ?? []).map((b): TaskBlocker => ({ description: b.description, ...(b.owner ? { owner: b.owner } : {}), ...(b.createdAt ? { createdAt: new Date(b.createdAt) } : {}) })),
-    decisions: (r.decisions ?? []).map((d): TaskDecision => ({ summary: d.summary, ...(d.reason ? { reason: d.reason } : {}), ...(d.decidedAt ? { decidedAt: new Date(d.decidedAt) } : {}) })),
+    blockers: (r.blockers ?? []).map(deserializeTaskBlocker),
+    decisions: (r.decisions ?? []).map(deserializeTaskDecision),
     goal: r.goal,
-    plan: (r.plan ?? []).map((p): TaskPlanItem => ({ step: p.step, ...(p.status ? { status: p.status } : {}), ...(p.updatedAt ? { updatedAt: new Date(p.updatedAt) } : {}) })),
+    plan: (r.plan ?? []).map(deserializeTaskPlanItem),
     sessionId: r.sessionId,
     taskId: r.taskId,
     ...(r.metadata ? { metadata: r.metadata } : {}),
     ...(r.status ? { status: r.status } : {}),
     ...(r.userId ? { userId: r.userId } : {}),
-    ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
-    ...(r.updatedAt ? { updatedAt: new Date(r.updatedAt) } : {})
+    ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {})
   };
 }
 
@@ -582,18 +584,20 @@ export function assertTaskMemoryQuality(state: TaskState): void {
 export function mapTaskMemoryRow(row: unknown): TaskState {
   const source = isRecord(row) ? row : {};
   const userId = nullableString(source.user_id);
+  const createdAt = parseTaskDate(source.created_at);
+  const updatedAt = parseTaskDate(source.updated_at);
 
   return {
-    blockers: parseTaskArray(source.blockers_json, parseTaskBlocker),
-    createdAt: dateValue(source.created_at),
-    decisions: parseTaskArray(source.decisions_json, parseTaskDecision),
+    blockers: parseTaskArray(source.blockers_json, parseTaskBlocker).map(deserializeTaskBlocker),
+    ...(createdAt ? { createdAt } : {}),
+    decisions: parseTaskArray(source.decisions_json, parseTaskDecision).map(deserializeTaskDecision),
     goal: stringValue(source.goal),
     metadata: parseTaskMetadataRecord(source.metadata_json),
-    plan: parseTaskArray(source.plan_json, parseTaskPlanItem),
+    plan: parseTaskArray(source.plan_json, parseTaskPlanItem).map(deserializeTaskPlanItem),
     sessionId: stringValue(source.session_id),
     status: taskStatusValue(source.status),
     taskId: stringValue(source.task_id),
-    updatedAt: dateValue(source.updated_at),
+    ...(updatedAt ? { updatedAt } : {}),
     ...(userId ? { userId } : {})
   };
 }
@@ -641,10 +645,6 @@ function stringValue(value: unknown): string {
 
 function nullableString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function dateValue(value: unknown): Date {
-  return value instanceof Date ? value : new Date(typeof value === "string" ? value : 0);
 }
 
 function taskStatusValue(value: unknown): TaskStatus {
@@ -775,6 +775,15 @@ function parseTaskBlocker(value: unknown): SerializedTaskBlocker | undefined {
   };
 }
 
+function deserializeTaskBlocker(blocker: SerializedTaskBlocker): TaskBlocker {
+  const createdAt = parseTaskDate(blocker.createdAt);
+  return {
+    description: blocker.description,
+    ...(blocker.owner ? { owner: blocker.owner } : {}),
+    ...(createdAt ? { createdAt } : {})
+  };
+}
+
 function parseTaskDecision(value: unknown): SerializedTaskDecision | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -789,6 +798,15 @@ function parseTaskDecision(value: unknown): SerializedTaskDecision | undefined {
     summary,
     ...(toOptionalString(value.reason) ? { reason: value.reason } : {}),
     ...(toOptionalString(value.decidedAt) ? { decidedAt: value.decidedAt } : {})
+  };
+}
+
+function deserializeTaskDecision(decision: SerializedTaskDecision): TaskDecision {
+  const decidedAt = parseTaskDate(decision.decidedAt);
+  return {
+    summary: decision.summary,
+    ...(decision.reason ? { reason: decision.reason } : {}),
+    ...(decidedAt ? { decidedAt } : {})
   };
 }
 
@@ -807,6 +825,26 @@ function parseTaskPlanItem(value: unknown): SerializedTaskPlanItem | undefined {
     ...(parseTaskPlanStatus(value.status) ? { status: value.status } : {}),
     ...(toOptionalString(value.updatedAt) ? { updatedAt: value.updatedAt } : {})
   };
+}
+
+function deserializeTaskPlanItem(item: SerializedTaskPlanItem): TaskPlanItem {
+  const updatedAt = parseTaskDate(item.updatedAt);
+  return {
+    step: item.step,
+    ...(item.status ? { status: item.status } : {}),
+    ...(updatedAt ? { updatedAt } : {})
+  };
+}
+
+function parseTaskDate(value: unknown): Date | undefined {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value : undefined;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function parseTaskPlanStatus(value: unknown): value is TaskPlanItem["status"] {

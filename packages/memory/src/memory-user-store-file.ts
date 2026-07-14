@@ -229,7 +229,7 @@ function storedToMemory(stored: StoredMemory): UserMemory {
     userId: stored.userId,
     ...(stored.userModel ? { userModel: stored.userModel } : {}),
     ...(stored.factHistory
-      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
+      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }
