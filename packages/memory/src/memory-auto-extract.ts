@@ -16,7 +16,7 @@
  */
 
 import type { ModelMessage, ModelProvider, ModelResponse } from "@muse/model";
-import { redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
+import { isRecord, redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
 import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 import { keysWithActiveRetraction } from "./belief-provenance-store.js";
@@ -30,6 +30,7 @@ import { dropEphemeralFacts } from "./memory-ephemeral-value-guard.js";
 import type {
   FactSupersession,
   UserGoalSlot,
+  UserMemory,
   UserMemoryStore,
   UserVetoSlot
 } from "./index.js";
@@ -468,11 +469,15 @@ export function dropModelAssertedSlots(
     // The raw extractor array is untrusted: a malformed element (null, a bare
     // string, a missing/non-string value) is passed THROUGH so the downstream
     // sanitizer rejects it — the gate only judges well-formed slots, never throws.
-    if (!slot || typeof slot !== "object" || typeof (slot as ExtractedSlot).value !== "string") {
+    if (!isExtractedSlotValue(slot)) {
       return true;
     }
-    return !isModelAssertedValue((slot as ExtractedSlot).value, userTokens, assistantTokens);
+    return !isModelAssertedValue(slot.value, userTokens, assistantTokens);
   });
+}
+
+function isExtractedSlotValue(value: unknown): value is { readonly value: string } {
+  return isRecord(value) && typeof value.value === "string";
 }
 
 function readSessionId(context: AgentRunContextView): string | undefined {
@@ -658,10 +663,15 @@ async function persist(
   // be resurfaced by the auto-extractor — an inference overriding an explicit user
   // retraction is the auto-vs-user authority inversion (source: user > auto). A later
   // deliberate re-`set` clears the marker (keysWithActiveRetraction). Fail-open.
-  const retractedKeys: ReadonlySet<string> = provenance
-    ? keysWithActiveRetraction(await provenance.store.query(userId).catch(() => []))
-    : new Set<string>();
-  const applyOp = (kind: "fact" | "preference", key: string, value: string, current: string | undefined): void => {
+  let retractedKeys: ReadonlySet<string> = new Set<string>();
+  if (provenance) {
+    try {
+      retractedKeys = keysWithActiveRetraction(await provenance.store.query(userId));
+    } catch {
+      retractedKeys = new Set<string>();
+    }
+  }
+  const applyOp = (kind: "fact" | "preference", key: string, normalizedKey: string, value: string, current: string | undefined): void => {
     const op = classifyMemoryOperation(current, value);
     if (op === "noop") {
       return;
@@ -672,18 +682,20 @@ async function persist(
       if (forget) writes.push(safeWrite(forget(userId, key, kind)));
       return;
     }
-    if (retractedKeys.has(normalizeMemoryKey(key))) {
+    if (retractedKeys.has(normalizedKey)) {
       // The user forgot this key — don't let an inference silently re-persist it.
       return;
     }
-    writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));
+    writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, normalizedKey, value) : store.upsertPreference(userId, normalizedKey, value)));
     collectProvenance(kind, key, value);
   };
   for (const [key, value] of factEntries) {
-    applyOp("fact", key, value, existing?.facts?.[normalizeMemoryKey(key)]);
+    const normalizedKey = normalizeMemoryKey(key);
+    applyOp("fact", key, normalizedKey, value, existing?.facts?.[normalizedKey]);
   }
   for (const [key, value] of preferenceEntries) {
-    applyOp("preference", key, value, existing?.preferences?.[normalizeMemoryKey(key)]);
+    const normalizedKey = normalizeMemoryKey(key);
+    applyOp("preference", key, normalizedKey, value, existing?.preferences?.[normalizedKey]);
   }
   // Typed-slot writes are skipped silently when the store doesn't
   // support upsertUserModelSlot (an optional method on

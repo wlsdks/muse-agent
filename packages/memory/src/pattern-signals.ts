@@ -199,7 +199,7 @@ function parseTaskSignal(raw: unknown): TaskSignal | undefined {
 
   return {
     createdAtMs,
-    id: raw.id,
+    id,
     status,
     title,
     ...(completedAtMs !== undefined ? { completedAtMs } : {}),

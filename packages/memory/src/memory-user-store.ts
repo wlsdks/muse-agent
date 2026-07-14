@@ -19,7 +19,18 @@ import type { MuseDatabase } from "@muse/db";
 import { isRecord, redactSecretsInText, type JsonObject, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import { classifyValueChange } from "./belief-provenance-store.js";
-import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
+import {
+  EMPTY_USER_MODEL,
+  type FactSupersession,
+  type UserGoalSlot,
+  type UserMemory,
+  type UserMemoryStore,
+  type UserModel,
+  type UserModelSlot,
+  type UserPreferenceSlot,
+  type UserScheduleSlot,
+  type UserVetoSlot
+} from "./index.js";
 
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
 
@@ -462,11 +473,20 @@ function parseUserModelJson(raw: unknown): UserModel | undefined {
   return result;
 }
 
-function parseSlotArray(raw: unknown, expectedKind: UserModelSlot["kind"]): readonly UserModelSlot[] {
+type UserModelSlotByKind = {
+  preference: UserPreferenceSlot;
+  schedule: UserScheduleSlot;
+  veto: UserVetoSlot;
+  goal: UserGoalSlot;
+};
+
+type UserModelSlotByKindArray<K extends UserModelSlot["kind"]> = readonly UserModelSlotByKind[K][];
+
+function parseSlotArray<K extends UserModelSlot["kind"]>(raw: unknown, expectedKind: K): UserModelSlotByKindArray<K> {
   if (!Array.isArray(raw)) {
     return [];
   }
-  const out: UserModelSlot[] = [];
+  const out: UserModelSlotByKind[K][] = [];
   for (const entry of raw) {
     if (!isRecord(entry)) {
       continue;
@@ -481,7 +501,7 @@ function parseSlotArray(raw: unknown, expectedKind: UserModelSlot["kind"]): read
     if (!updatedAt || Number.isNaN(updatedAt.getTime())) {
       continue;
     }
-    const base = {
+    const baseSlot = {
       id: entry.id,
       updatedAt,
       value: entry.value,
@@ -489,31 +509,35 @@ function parseSlotArray(raw: unknown, expectedKind: UserModelSlot["kind"]): read
     };
     if (expectedKind === "preference") {
       out.push({
-        ...base,
+        ...baseSlot,
         kind: "preference",
         ...(typeof entry.category === "string" ? { category: entry.category } : {})
       });
-    } else if (expectedKind === "schedule") {
+      continue;
+    }
+    if (expectedKind === "schedule") {
       out.push({
-        ...base,
+        ...baseSlot,
         kind: "schedule",
         ...(typeof entry.recurrence === "string" ? { recurrence: entry.recurrence } : {})
       });
-    } else if (expectedKind === "veto") {
+      continue;
+    }
+    if (expectedKind === "veto") {
       out.push({
-        ...base,
+        ...baseSlot,
         kind: "veto",
         ...(typeof entry.scope === "string" ? { scope: entry.scope } : {})
       });
-    } else if (expectedKind === "goal") {
-      const dueAt = typeof entry.dueAt === "string" ? new Date(entry.dueAt) : undefined;
-      out.push({
-        ...base,
-        kind: "goal",
-        ...(dueAt && !Number.isNaN(dueAt.getTime()) ? { dueAt } : {}),
-        ...(typeof entry.progress === "number" ? { progress: entry.progress } : {})
-      });
+      continue;
     }
+    const dueAt = typeof entry.dueAt === "string" ? new Date(entry.dueAt) : undefined;
+    out.push({
+      ...baseSlot,
+      kind: "goal",
+      ...(dueAt && !Number.isNaN(dueAt.getTime()) ? { dueAt } : {}),
+      ...(typeof entry.progress === "number" ? { progress: entry.progress } : {})
+    });
   }
   return out;
 }

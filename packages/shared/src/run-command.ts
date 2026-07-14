@@ -83,6 +83,37 @@ function createRunCommandResult(
   return { exitCode, signal, stdout, stderr, timedOut };
 }
 
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  readonly reject: (reason?: unknown) => void;
+}
+
+function createAbortDeferred<T>(): Deferred<T> {
+  let reject: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((_, deferredReject) => {
+    reject = deferredReject;
+  });
+  return {
+    promise,
+    reject(value: unknown): void {
+      if (!reject) {
+        return;
+      }
+      reject(value);
+    }
+  };
+}
+
+function exitCodePayload(child: ChildProcess, stdout: StreamAccumulator, stderr: StreamAccumulator, encoding: BufferEncoding): Promise<RunCommandResult> {
+  return once(child, "close").then(([exitCode, signal]) => createRunCommandResult(
+    exitCode,
+    signal ?? null,
+    Buffer.concat(stdout.chunks).toString(encoding),
+    Buffer.concat(stderr.chunks).toString(encoding),
+    false
+  ));
+}
+
 export async function runCommandWithTimeout(options: RunCommandOptions): Promise<RunCommandResult> {
   const {
     command,
@@ -136,24 +167,17 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   }
   child.stdin.end();
 
-  const outcome = Promise.race([
-    once(child, "close").then(([exitCode, signal]) => ({
-      exitCode,
-      signal: signal ?? null,
-      stderr: Buffer.concat(stderr.chunks).toString(encoding),
-      stdout: Buffer.concat(stdout.chunks).toString(encoding),
-      timedOut: false
-    }).then((result) => createRunCommandResult(result.exitCode, result.signal, result.stdout, result.stderr, result.timedOut)),
-    once(child, "error").then(([error]) => {
-      throw asError(error);
-    })
-  ]);
+  const closeResult = exitCodePayload(child, stdout, stderr, encoding);
+  const errorResult = once(child, "error").then(([error]) => {
+    throw asError(error);
+  });
+  const outcome = Promise.race([closeResult, errorResult]);
 
   const hasFiniteTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
 
   const abortPromise = abortSignal
     ? (() => {
-      const abortDeferred = Promise.withResolvers<never>();
+      const abortDeferred = createAbortDeferred<never>();
       const onAbort = (): void => {
         child.kill(killSignal);
         abortDeferred.reject(abortError(abortSignal.reason));
