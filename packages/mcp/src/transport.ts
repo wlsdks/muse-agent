@@ -286,10 +286,23 @@ function resolveStringRecord(value: JsonValue | undefined): Record<string, strin
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function createRemoteRequestInit(server: McpServer): RequestInit | undefined {
+/**
+ * Build the RequestInit the SDK reuses for EVERY request to a remote MCP server.
+ *
+ * `config.headers` is the field every config path actually writes — the mcp.json
+ * loader, `muse mcp config-add --header`, and the official-preset credential seam
+ * (`<NAME>_MCP_TOKEN` → `Authorization: Bearer …`). It used to be dropped on the
+ * floor: this only read the `authToken`/`bearerToken` convenience keys, which
+ * NOTHING writes, so a supplied `Authorization` header never reached the wire and
+ * every authenticated remote server (GitHub/Notion/Linear/Sentry/Atlassian) 401'd.
+ * The headers are now merged, with an explicit `authToken`/`bearerToken` (the more
+ * specific "this is the credential" signal) winning the `Authorization` slot.
+ */
+export function createRemoteRequestInit(server: McpServer): RequestInit | undefined {
+  const headers = resolveStringRecord(server.config.headers) ?? {};
   const token = resolveOptionalString(server.config.authToken) ?? resolveOptionalString(server.config.bearerToken);
-
-  return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  const merged = token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+  return Object.keys(merged).length > 0 ? { headers: merged } : undefined;
 }
 
 /**

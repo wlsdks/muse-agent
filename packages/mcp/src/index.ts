@@ -287,7 +287,7 @@ export {
 export { McpManager } from "./manager.js";
 
 // Transport connector + SDK connection adapter live in `./transport.ts`.
-export { DefaultMcpTransportConnector } from "./transport.js";
+export { createRemoteRequestInit, DefaultMcpTransportConnector } from "./transport.js";
 
 // Kysely-backed persistence lives in `./server-stores.ts`.
 export { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "./server-stores.js";
