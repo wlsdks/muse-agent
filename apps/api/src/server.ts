@@ -681,6 +681,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
                 composeChatReply: createComposeChatReply({ model: ackModel, modelProvider: options.modelProvider })
               }
             : {}),
+          conversationStore,
           env,
           model: ackModel,
           registry: messaging,
@@ -779,6 +780,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
                 composeChatReply: createComposeChatReply({ model: ackModel, modelProvider: options.modelProvider })
               }
             : {}),
+          conversationStore,
           env,
           model: ackModel,
           registry: messaging,

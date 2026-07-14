@@ -65,6 +65,34 @@ describe("conversationStoreThreadedTurnStore — the runner backend", () => {
     expect(await backend.read("telegram:c1")).toEqual([{ content: "hi from c1", role: "user" }]);
     expect(await backend.read("telegram:c2")).toEqual([{ content: "hi from c2", role: "user" }]);
   });
+
+  // S5: slash commands (/new /status /model /help) are control-plane, not
+  // conversation content — appending them would pollute the next turn's
+  // context and, for /new specifically, immediately re-add a turn to the
+  // very conversation it just cleared.
+  it("skips persisting a slash-command turn pair (leading '/' in the user turn)", async () => {
+    const store = new FileConversationStore({ file: tmpConversationsFile() });
+    const backend = conversationStoreThreadedTurnStore(store, { origin: "telegram" });
+    await backend.append("telegram:555", [
+      { content: "/status", role: "user" },
+      { content: "Muse status: model=default...", role: "assistant" }
+    ]);
+    expect(await backend.read("telegram:555")).toEqual([]);
+    expect(await store.get("telegram:555")).toBeUndefined();
+  });
+
+  it("a message that merely CONTAINS a slash mid-text is persisted normally (only a leading '/' is control-plane)", async () => {
+    const store = new FileConversationStore({ file: tmpConversationsFile() });
+    const backend = conversationStoreThreadedTurnStore(store, { origin: "telegram" });
+    await backend.append("telegram:555", [
+      { content: "what's the a/b test result?", role: "user" },
+      { content: "here's the result...", role: "assistant" }
+    ]);
+    expect(await backend.read("telegram:555")).toEqual([
+      { content: "what's the a/b test result?", role: "user" },
+      { content: "here's the result...", role: "assistant" }
+    ]);
+  });
 });
 
 describe("migrateLegacyThreadFile — one-time lossless import", () => {

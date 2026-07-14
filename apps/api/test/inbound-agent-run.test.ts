@@ -1698,3 +1698,100 @@ describe("createInboundAgentRun capability describer fast-path (channel parity)"
     expect(reply).toContain("Telegram");
   });
 });
+
+// S5: in-channel slash commands, wired into the pre-handler chain right
+// after the pairing gate and before the approval/veto handlers + any model
+// dispatch. AC3 safety invariants — gate ordering and fail-close — live here
+// (the commands' own reply content is covered by inbound-slash-commands.test.ts).
+describe("createInboundAgentRun in-channel slash commands (S5)", () => {
+  function buildSlash(dir: string, agentCalls: string[], extraEnv: Record<string, string> = {}) {
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        agentCalls.push("run");
+        return { response: { output: "answer" } };
+      }
+    };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      ...extraEnv
+    };
+    return { env, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry }) };
+  }
+
+  it("a paired owner's /help is answered deterministically — the agent never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const { run } = buildSlash(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "/help", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("/new");
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("gate ordering: an UNPAIRED chat's /status still gets the pairing prompt — no status leak", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = { run: async () => { agentCalls.push("run"); return { response: { output: "answer" } }; } };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+    };
+    const run = createInboundAgentRun({ agentRuntime, env, model: "default", registry });
+    const reply = await run({ messages: [{ content: "/status", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(reply).not.toContain("model=");
+    expect(reply).not.toContain("pending approvals=");
+    expect(reply).toContain("private personal assistant");
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("an unknown command (/foo) never invokes the agent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const { run } = buildSlash(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "/foo", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("/help");
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("a message that merely CONTAINS a slash mid-text is NOT intercepted — the normal agent run answers it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const { run } = buildSlash(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "what's the a/b test result?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toBe("answer");
+    expect(agentCalls).toHaveLength(1);
+  });
+
+  it("group posture: a paired-in group chat's /help works — no new group permission introduced", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const { run } = buildSlash(dir, agentCalls, {
+      MUSE_CHANNEL_ALLOWED_CHATS: "log:-100999",
+      MUSE_CHANNEL_GROUP_ENABLED: "true"
+    });
+    const reply = await run({ messages: [{ content: "/help", role: "user" }], providerId: "log", scope: "shared", source: "-100999" });
+    expect(reply).toContain("/new");
+    expect(agentCalls).toHaveLength(0);
+  });
+
+  it("group posture: a NOT-allowed shared chat's /help gets the group refusal, same as any other message", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slash-"));
+    const agentCalls: string[] = [];
+    const { run } = buildSlash(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "/help", role: "user" }], providerId: "log", scope: "shared", source: "-100999" });
+    expect(reply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    expect(agentCalls).toHaveLength(0);
+  });
+});

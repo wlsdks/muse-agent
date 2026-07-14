@@ -46,6 +46,7 @@ import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
+import { handleInboundSlashCommand, type SlashConversationStore } from "./inbound-slash-commands.js";
 import { handleInboundVetoReply } from "./inbound-veto-handler.js";
 import { detectUnscheduledRememberIntent } from "./remember-intent.js";
 import { resolveProactiveTrustFile } from "./tick-daemons.js";
@@ -97,6 +98,15 @@ export interface InboundAgentRunOptions {
    * (the branch behaves exactly as before: no snapshot, empty evidence).
    */
   readonly userMemoryStore?: UserMemoryStore;
+  /**
+   * Backs the in-channel slash commands (S5, `/new` `/status` `/model`
+   * `/help`) — `/new` clears THIS chat's turns through the same store the
+   * threaded runner reads/writes (`threaded-conversation-store.ts`), and
+   * `/status` reports the turn count. Optional — a caller that omits it
+   * still gets `/status`/`/model`/`/help`, and `/new` degrades to a safe
+   * "not available" reply instead of throwing.
+   */
+  readonly conversationStore?: SlashConversationStore;
 }
 
 /**
@@ -258,7 +268,7 @@ async function scheduleUserSideFollowups(
 }
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
-  const { agentRuntime, composeAck, composeChatReply, env, model, registry, userMemoryStore } = options;
+  const { agentRuntime, composeAck, composeChatReply, conversationStore, env, model, registry, userMemoryStore } = options;
   return async ({ messages, providerId, source, scope: rawScope, notify }) => {
     // Conversation-scope capability profile (P7-3, the sequel to TOFU
     // pairing): a group/shared chat gets a STRICTLY narrower posture than
@@ -309,6 +319,24 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         await adoptChannelOwner(ownersFile, providerId, source);
         return PAIRING_CODE_SUCCESS_NOTICE;
       }
+    }
+    // Deterministic slash commands (S5, `/new` `/status` `/model` `/help`):
+    // AFTER the pairing gate (an unpaired chat never reaches this — its
+    // "/status" gets the pairing prompt, not a status leak) and BEFORE the
+    // approval/veto handlers and any model dispatch — a leading "/" is
+    // ALWAYS handled here, fail-close (an unknown command gets help text,
+    // never the agent). `threaded-conversation-store.ts`'s `append` skips
+    // persisting a slash-originated turn, so these stay control-plane only.
+    const slashReply = await handleInboundSlashCommand({
+      conversationStore,
+      model,
+      pendingApprovalsFile: resolvePendingApprovalsFile(env),
+      providerId,
+      source,
+      text: latestUserText
+    });
+    if (slashReply !== undefined) {
+      return slashReply;
     }
     // Approval-reply hijack guard: a pending approval is 1:1-scoped state
     // (outbound-safety — only the paired owner may confirm a draft), so a

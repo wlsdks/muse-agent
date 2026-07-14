@@ -35,6 +35,13 @@ export function conversationStoreThreadedTurnStore(
 ): ThreadedTurnStore {
   return {
     append: async (key, turns) => {
+      // Control-plane slash commands (S5, /new /status /model /help) are
+      // not conversation content — persisting them would pollute the next
+      // turn's context and, for /new specifically, immediately re-add a
+      // turn to the very conversation it just cleared.
+      if (turns.some((turn) => turn.role === "user" && turn.content.trim().startsWith("/"))) {
+        return;
+      }
       try {
         await store.appendTurns(
           key,
