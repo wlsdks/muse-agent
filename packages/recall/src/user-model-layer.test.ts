@@ -1,7 +1,7 @@
 import { MUSE_IDENTITY_CORE } from "@muse/prompts";
 import { describe, expect, it } from "vitest";
 
-import { buildMusePersona, formatCurrentContextLine, PERSONA_ENTRY_CAP_CEILING, personaEntryCap } from "./muse-persona.js";
+import { buildMusePersona, formatCurrentContextLine, PERSONA_ENTRY_CAP_CEILING, personaEntryCap } from "./user-model-layer.js";
 
 describe("formatCurrentContextLine", () => {
   it("emits a single 'Current local context: YYYY-MM-DD HH:MM Weekday <part-of-day> (TZ).' line", () => {
