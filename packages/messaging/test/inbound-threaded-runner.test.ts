@@ -4,11 +4,25 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createThreadedInboundRunner, type ThreadTurn } from "../src/index.js";
+import { createThreadedInboundRunner, fileThreadedTurnStore, type ThreadedTurnStore, type ThreadTurn } from "../src/index.js";
+
+/** An in-memory `ThreadedTurnStore` fake — proves the runner's prepend/
+ *  isolate/persist logic is generic across backends (the API server wires
+ *  the SAME runner to a `FileConversationStore`-backed store in production;
+ *  this fake exercises the identical contract without touching disk). */
+function memoryThreadedTurnStore(): ThreadedTurnStore {
+  const threads = new Map<string, ThreadTurn[]>();
+  return {
+    append: async (key, turns) => {
+      threads.set(key, [...(threads.get(key) ?? []), ...turns]);
+    },
+    read: async (key) => threads.get(key) ?? []
+  };
+}
 
 describe("createThreadedInboundRunner — multi-turn inbound retains context", () => {
   it("prepends prior turns on the next message of the same channel, isolated per channel", async () => {
-    const threadFile = join(mkdtempSync(join(tmpdir(), "muse-thread-")), "threads.json");
+    const store = memoryThreadedTurnStore();
     const seen: ThreadTurn[][] = [];
     let n = 0;
     const runner = createThreadedInboundRunner({
@@ -17,7 +31,7 @@ describe("createThreadedInboundRunner — multi-turn inbound retains context", (
         n += 1;
         return `reply-${n.toString()}`;
       },
-      threadFile
+      store
     });
 
     // Turn 1 on chat-1: no prior history.
@@ -43,7 +57,7 @@ describe("createThreadedInboundRunner — multi-turn inbound retains context", (
   });
 
   it("threads notify through to the wrapped run unmodified, but never persists the ack as a thread turn", async () => {
-    const threadFile = join(mkdtempSync(join(tmpdir(), "muse-thread-")), "threads.json");
+    const store = memoryThreadedTurnStore();
     const notified: string[] = [];
     const notify = async (text: string) => {
       notified.push(text);
@@ -55,7 +69,7 @@ describe("createThreadedInboundRunner — multi-turn inbound retains context", (
         await passedNotify?.("on it — I'll let you know");
         return "final reply";
       },
-      threadFile
+      store
     });
 
     const reply = await runner.run({ notify, providerId: "telegram", source: "chat-1", text: "book a flight" });
@@ -69,6 +83,27 @@ describe("createThreadedInboundRunner — multi-turn inbound retains context", (
       { content: "book a flight", role: "user" },
       { content: "final reply", role: "assistant" },
       { content: "did it work?", role: "user" }
+    ]);
+  });
+
+  it("fileThreadedTurnStore — the file-backed adapter round-trips through createThreadedInboundRunner identically", async () => {
+    const threadFile = join(mkdtempSync(join(tmpdir(), "muse-thread-")), "threads.json");
+    const seen: ThreadTurn[][] = [];
+    const runner = createThreadedInboundRunner({
+      run: async ({ messages }) => {
+        seen.push([...messages]);
+        return "reply-1";
+      },
+      store: fileThreadedTurnStore(threadFile)
+    });
+
+    await runner.run({ providerId: "telegram", source: "chat-1", text: "hi" });
+    await runner.run({ providerId: "telegram", source: "chat-1", text: "again" });
+
+    expect(seen[1]).toEqual([
+      { content: "hi", role: "user" },
+      { content: "reply-1", role: "assistant" },
+      { content: "again", role: "user" }
     ]);
   });
 });

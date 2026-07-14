@@ -66,6 +66,33 @@ export type ConversationRefResolution =
 export const MAX_TURNS_PER_CONVERSATION = 200;
 const TITLE_MAX_CHARS = 40;
 
+// The CLI's read-side AI-context window (`chat-history.ts`'s
+// HISTORY_TURN_LIMIT * 2) — every surface that prepends prior turns as
+// model context (CLI --continue, the web/API single-message form) shares
+// this ONE number so the cap can't drift between surfaces.
+export const CHAT_CONTEXT_TURN_LIMIT = 24;
+
+/**
+ * The last `limit` user/assistant turns, oldest of the kept window first —
+ * the shared read-side filter every chat-history reader uses (the CLI's
+ * `CHAT_CONTEXT_TURN_LIMIT`, Telegram/Matrix's smaller thread cap). `limit`
+ * is a raw turn count, not a pair count, so callers stay explicit about
+ * what they're asking for. System/boundary turns are dropped — the same
+ * "seed history stays clean" contract `readLastChatHistory` already had.
+ */
+export function recentChatTurns(
+  turns: readonly ConversationTurn[],
+  limit: number
+): readonly (ConversationTurn & { readonly role: "user" | "assistant" })[] {
+  const filtered: (ConversationTurn & { readonly role: "user" | "assistant" })[] = [];
+  for (const turn of turns) {
+    if ((turn.role === "user" || turn.role === "assistant") && turn.content.length > 0) {
+      filtered.push(turn as ConversationTurn & { readonly role: "user" | "assistant" });
+    }
+  }
+  return filtered.slice(-limit);
+}
+
 function deriveTitle(turns: readonly ConversationTurn[]): string {
   const source = turns.find((turn) => turn.role === "user")?.content ?? turns[0]?.content;
   if (!source) {

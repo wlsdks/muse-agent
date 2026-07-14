@@ -21,13 +21,16 @@ export { appendAckCursor, readAckCursor } from "./inbox-ack-cursor.js";
 
 export {
   appendThreadTurns,
+  readAllThreads,
   readThread,
   type ThreadTurn
 } from "./inbound-thread-store.js";
 
 export {
   createThreadedInboundRunner,
-  type ThreadedAgentRun
+  fileThreadedTurnStore,
+  type ThreadedAgentRun,
+  type ThreadedTurnStore
 } from "./inbound-threaded-runner.js";
 
 export {

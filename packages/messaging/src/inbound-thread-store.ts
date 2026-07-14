@@ -2,6 +2,14 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 /**
+ * DEPRECATED (S3b) production backend — the API server now wires Telegram/
+ * Matrix through `FileConversationStore` (`apps/api/src/threaded-conversation-
+ * store.ts`) so a channel thread is an addressable conversation, same store
+ * the CLI/web use. This module survives ONLY for the one-time migration read
+ * of a pre-existing `${inboxFile}.threads.json` file, and as a still-valid
+ * generic `ThreadedTurnStore` backend (`fileThreadedTurnStore`) for a caller
+ * that hasn't migrated. Do not add new production call sites.
+ *
  * Per-channel conversation memory for the inbound reply loop, so a
  * channel chat is a continuous session (the user's 2nd message
  * sees the 1st turn). Keyed by `${providerId}:${source}` — each
@@ -58,6 +66,12 @@ async function readAll(file: string): Promise<Record<string, ThreadTurn[]>> {
 
 export async function readThread(file: string, key: string): Promise<readonly ThreadTurn[]> {
   return (await readAll(file))[key] ?? [];
+}
+
+/** Every thread in the legacy file, keyed by `${providerId}:${source}` —
+ *  ONLY for the one-time migration into `FileConversationStore` (S3b). */
+export async function readAllThreads(file: string): Promise<Readonly<Record<string, readonly ThreadTurn[]>>> {
+  return readAll(file);
 }
 
 const writeQueues = new Map<string, Promise<unknown>>();

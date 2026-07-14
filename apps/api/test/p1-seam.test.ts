@@ -8,6 +8,7 @@ import {
   appendInbound,
   createChannelApprovalGate,
   createThreadedInboundRunner,
+  fileThreadedTurnStore,
   type InboundMessage
 } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
@@ -71,7 +72,7 @@ describe("P1 seam — two-way channel conversation composes end-to-end", () => {
         }
         return last.includes("name is Sam") ? "Noted, Sam." : "ok";
       },
-      threadFile
+      store: fileThreadedTurnStore(threadFile)
     });
     const handle = startInboundReplyTick({ cursorFile, inboxFile, registry, runner });
 

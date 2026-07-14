@@ -87,6 +87,17 @@ export async function* toSseStream(
       readonly persist: (userId?: string) => Promise<readonly PersistedApproval[]>;
       readonly userId?: string;
     };
+    /**
+     * S3b conversation continuity: `conversationId` rides the `grounding` AND
+     * (extended-mode) `done` frames, and `persistTurn` appends the user+
+     * assistant pair to the shared store ONLY once the final gated/honest
+     * answer is known — a stream that errors before this point (no `done`)
+     * persists nothing (AC5).
+     */
+    readonly conversation?: {
+      readonly conversationId: string;
+      readonly persistTurn: (answerText: string) => Promise<void>;
+    };
   }
 ): AsyncIterable<string> {
   // Post-stream grounding gate (CLI-chat parity): raw deltas stream live, then the
@@ -210,8 +221,12 @@ export async function* toSseStream(
         firstResult: { response: { output: gate.answer }, toolsUsed: [...toolNames] },
         query: grounding.question
       });
+      if (grounding.conversation) {
+        await grounding.conversation.persistTurn(honest.response.output);
+      }
       yield `event: grounding\ndata: ${sseData(JSON.stringify({
         answer: honest.response.output,
+        ...(grounding.conversation ? { conversationId: grounding.conversation.conversationId } : {}),
         gated: gate.gated || honest.response.output !== gate.answer,
         strippedCitations: gate.strippedCitations,
         verdict: gate.groundingVerdict
@@ -232,6 +247,7 @@ export async function* toSseStream(
     }
 
     yield `event: done\ndata: ${sseData(JSON.stringify({
+      ...(grounding?.conversation ? { conversationId: grounding.conversation.conversationId } : {}),
       model: event.response.model,
       response: event.response.output,
       runId: event.runId,

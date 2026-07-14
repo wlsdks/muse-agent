@@ -29,6 +29,8 @@ export interface ChatResponse {
   readonly citations?: readonly Citation[];
   readonly toolsUsed?: readonly string[];
   readonly pendingApprovals?: readonly PendingApproval[];
+  /** S3b: the shared-conversation-store id this turn was appended to (server-issued if the client omitted one). */
+  readonly conversationId?: string;
 }
 
 export interface TaskRow {

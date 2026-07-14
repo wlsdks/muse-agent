@@ -5,11 +5,13 @@
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export {
+  CHAT_CONTEXT_TURN_LIMIT,
   defaultConversationsFile,
   FileConversationStore,
   InMemoryConversationStore,
   MAX_TURNS_PER_CONVERSATION,
   newConversationId,
+  recentChatTurns,
   resolveConversationRef
 } from "./conversation-store.js";
 export type { Conversation, ConversationRefResolution, ConversationSummary, ConversationTurn } from "./conversation-store.js";

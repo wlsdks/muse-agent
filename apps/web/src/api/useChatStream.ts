@@ -26,6 +26,10 @@ export interface ApproveOutcome {
 }
 
 const STORE_KEY = "muse.chat.transcript";
+// S3b: the shared-conversation-store id this transcript continues. Kept as
+// its own key (not folded into the transcript blob) so "clear" can drop it
+// independent of any future transcript-shape change.
+const CONVERSATION_ID_KEY = "muse.chat.conversationId";
 
 function loadTranscript(): readonly ChatTurn[] {
   try {
@@ -35,6 +39,21 @@ function loadTranscript(): readonly ChatTurn[] {
   } catch {
     return [];
   }
+}
+
+function loadConversationId(): string | undefined {
+  try {
+    return window.localStorage.getItem(CONVERSATION_ID_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `/api/chat/stream` request body — carries the stored conversationId
+ *  (round-tripped from a prior `done`/`grounding` frame) so the server
+ *  continues the same conversation; omitted entirely on a fresh chat. */
+export function chatStreamRequestBody(message: string, conversationId?: string): { readonly message: string; readonly conversationId?: string } {
+  return { message, ...(conversationId ? { conversationId } : {}) };
 }
 
 function approvePath(id: string): string {
@@ -103,6 +122,7 @@ export async function applyApprove(
  */
 export function useChatStream(baseUrl: string, token: string) {
   const [turns, setTurns] = useState<readonly ChatTurn[]>(() => loadTranscript());
+  const [conversationId, setConversationId] = useState<string | undefined>(() => loadConversationId());
   const [pending, setPending] = useState(false);
   const [activeTool, setActiveTool] = useState<string>("");
   const [thinking, setThinking] = useState(false);
@@ -119,12 +139,26 @@ export function useChatStream(baseUrl: string, token: string) {
     }
   }, [turns]);
 
+  useEffect(() => {
+    try {
+      if (conversationId) {
+        window.localStorage.setItem(CONVERSATION_ID_KEY, conversationId);
+      } else {
+        window.localStorage.removeItem(CONVERSATION_ID_KEY);
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [conversationId]);
+
   const reset = useCallback(() => {
     setTurns([]);
     setError(null);
     setActiveTool("");
+    setConversationId(undefined);
     try {
       window.localStorage.removeItem(STORE_KEY);
+      window.localStorage.removeItem(CONVERSATION_ID_KEY);
     } catch {
       /* storage unavailable */
     }
@@ -162,7 +196,7 @@ export function useChatStream(baseUrl: string, token: string) {
 
       try {
         const res = await fetch(new URL("/api/chat/stream", baseUrl).toString(), {
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify(chatStreamRequestBody(text, conversationId)),
           headers: {
             accept: "text/event-stream",
             "content-type": "application/json",
@@ -183,6 +217,9 @@ export function useChatStream(baseUrl: string, token: string) {
             t.tools = body.toolsUsed ?? [];
             t.pendingApprovals = readPendingApprovals(body);
           });
+          if (body.conversationId) {
+            setConversationId(body.conversationId);
+          }
           return;
         }
 
@@ -207,7 +244,7 @@ export function useChatStream(baseUrl: string, token: string) {
             if (!data) {
               continue;
             }
-            handleEvent(eventName, data, commit, setActiveTool, setThinking);
+            handleEvent(eventName, data, commit, setActiveTool, setThinking, setConversationId);
           }
         }
       } catch (cause) {
@@ -225,7 +262,7 @@ export function useChatStream(baseUrl: string, token: string) {
         draftRef.current = null;
       }
     },
-    [baseUrl, pending, token]
+    [baseUrl, conversationId, pending, token]
   );
 
   const approve = useCallback(
@@ -244,7 +281,7 @@ export function useChatStream(baseUrl: string, token: string) {
     [approving, client]
   );
 
-  return { activeTool, approve, approving, error, pending, reset, send, thinking, turns };
+  return { activeTool, approve, approving, conversationId, error, pending, reset, send, thinking, turns };
 }
 
 export function handleEvent(
@@ -252,7 +289,8 @@ export function handleEvent(
   dataLine: string,
   commit: (mut: (t: ChatTurn) => void) => void,
   setActiveTool: (name: string) => void,
-  setThinking: (on: boolean) => void
+  setThinking: (on: boolean) => void,
+  onConversationId?: (id: string) => void
 ): void {
   if (eventName === "stage") {
     setThinking(true);
@@ -277,11 +315,14 @@ export function handleEvent(
   // a fabricated/uncited claim after the raw tokens streamed by.
   if (eventName === "grounding") {
     try {
-      const payload = JSON.parse(dataLine) as { answer?: string };
+      const payload = JSON.parse(dataLine) as { answer?: string; conversationId?: string };
       if (typeof payload.answer === "string" && payload.answer.length > 0) {
         commit((t) => {
           t.text = payload.answer!;
         });
+      }
+      if (typeof payload.conversationId === "string" && payload.conversationId.length > 0) {
+        onConversationId?.(payload.conversationId);
       }
     } catch {
       /* ignore malformed grounding frame */
@@ -294,6 +335,9 @@ export function handleEvent(
     setThinking(false);
     try {
       const payload = JSON.parse(dataLine) as ChatResponse;
+      if (payload.conversationId) {
+        onConversationId?.(payload.conversationId);
+      }
       commit((t) => {
         const finalText = payload.response ?? payload.content;
         if (finalText) {

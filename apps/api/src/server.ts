@@ -64,6 +64,8 @@ import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { createComposeChatReply } from "./inbound-chat-reply.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
+import { conversationStoreThreadedTurnStore, migrateLegacyThreadFile } from "./threaded-conversation-store.js";
+import { defaultConversationsFile, FileConversationStore } from "@muse/stores";
 
 import { DiscordProvider, MatrixProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
@@ -150,6 +152,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   const agentSpecRegistry = options.agentSpecRegistry ?? new InMemoryAgentSpecRegistry();
   const agentSpecResolver = new RuleBasedAgentSpecResolver(agentSpecRegistry);
+  // S3b shared conversation store — SAME file the CLI/web threads use, so a
+  // Telegram/Matrix chat shows up in `muse chats` too. Cheap to construct
+  // (no I/O until a call touches it), so built unconditionally.
+  const conversationStore = new FileConversationStore({ file: options.conversationsFile ?? defaultConversationsFile() });
   const runtimeSettings =
     options.runtimeSettings ?? new RuntimeSettings(new InMemoryRuntimeSettingsStore());
   const authService = options.authService;
@@ -658,6 +664,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const telegramInboxFile = options.telegramInboxFile;
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
+    // One-time legacy thread-file migration into the shared conversation
+    // store — fire-and-forget so server boot never blocks on it; idempotent
+    // (a no-op once the file's renamed aside), and any failure leaves the
+    // legacy file intact so the NEXT boot retries the whole thing.
+    void migrateLegacyThreadFile(`${telegramInboxFile}.threads.json`, conversationStore, { origin: "telegram" })
+      .catch((error) => server.log.warn(`telegram thread migration failed: ${String(error)}`));
     replyStarters.telegram = () => {
       const ackModel = options.defaultModel ?? "default";
       const runner: InboundAgentRunner = createThreadedInboundRunner({
@@ -674,7 +686,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
           registry: messaging,
           userMemoryStore: options.userMemoryStore
         }),
-        threadFile: `${telegramInboxFile}.threads.json`
+        store: conversationStoreThreadedTurnStore(conversationStore, { origin: "telegram" })
       });
       const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
         ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
@@ -753,6 +765,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const matrixInboxFile = options.matrixInboxFile;
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
+    // Same one-time, fire-and-forget legacy migration as the Telegram block above.
+    void migrateLegacyThreadFile(`${matrixInboxFile}.threads.json`, conversationStore, { origin: "matrix" })
+      .catch((error) => server.log.warn(`matrix thread migration failed: ${String(error)}`));
     replyStarters.matrix = () => {
       const ackModel = options.defaultModel ?? "default";
       const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
@@ -769,7 +784,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
           registry: messaging,
           userMemoryStore: options.userMemoryStore
         }),
-        threadFile: `${matrixInboxFile}.threads.json`
+        store: conversationStoreThreadedTurnStore(conversationStore, { origin: "matrix" })
       });
       const matrixReplyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
         ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)

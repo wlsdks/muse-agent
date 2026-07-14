@@ -255,6 +255,14 @@ export interface ServerOptions {
    * pattern; this option just routes the read.
    */
   readonly injectionDetectionCounter?: InjectionDetectionCounter;
+  /**
+   * Path to the shared conversation store (default
+   * `~/.muse/conversations.json` — the SAME default the CLI's
+   * `chat-history.ts` resolves). A single-`message` `/api/chat`(`/stream`)
+   * body threads through this store for continuity (S3b); an explicit
+   * `{messages:[...]}` body bypasses it entirely.
+   */
+  readonly conversationsFile?: string;
 }
 
 interface ToolCatalogEntry {

@@ -19,9 +19,11 @@ import { MUSE_CLI_VERSION } from "./muse-version.js";
 import { cliContextFromGlobals, setCliContext } from "./cli-context.js";
 import { formatUnknownSubcommand } from "./unknown-subcommand.js";
 import {
+  activeConversationId,
   appendLastChatTurn,
   clearLastChatHistory,
-  readLastChatHistory
+  readLastChatHistory,
+  setActiveConversationId
 } from "./chat-history.js";
 import {
   apiRequest,
@@ -302,7 +304,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     )
     .option(
       "-c, --continue",
-      "include prior turns from the active conversation so the model remembers it across CLI invocations (--local only)"
+      "include prior turns from the active conversation so the model remembers it across CLI invocations (--local reads history locally; remote sends the active conversation id and the server continues it)"
     )
     .option(
       "--reset",
@@ -423,16 +425,30 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         ? ""
         : (await loadActivePersonaPreamble().catch(() => "")).trim();
 
+      // Remote continuity (AC4): --continue or --resume (already applied to
+      // the pointer above) sends the ACTIVE conversation id so the server
+      // prepends its prior turns. Without either, remote stays a one-off —
+      // the server mints a fresh id, and the response still updates the
+      // pointer below so it becomes resumable on a LATER -c/--resume.
+      const remoteConversationId = !options.local && (options.continue || options.resume)
+        ? await activeConversationId()
+        : undefined;
+
       const body = options.local
         ? await runLocalChat(io, message, model, agentMode, { disableTools: toolsDisabled, priorHistory, ...(imageAttachments.length > 0 ? { imageAttachments } : {}) })
         : options.stream
-          ? await streamRemoteChat(io, command, message, model, options.json === true, agentMode, options.webSearch === false, personaPreamble)
+          ? await streamRemoteChat(io, command, message, model, options.json === true, agentMode, options.webSearch === false, personaPreamble, remoteConversationId)
         : await apiRequest(io, command, "/api/chat", dropUndefined({
           message,
           model,
           metadata,
+          conversationId: remoteConversationId,
           systemPrompt: personaPreamble.length > 0 ? personaPreamble : undefined
         }));
+
+      if (!options.local && isRecord(body) && typeof body.conversationId === "string" && body.conversationId.length > 0) {
+        await setActiveConversationId(body.conversationId);
+      }
 
       if (options.log !== false) {
         const apiOptions = await readApiOptions(io, command, { includeStoredToken: false });

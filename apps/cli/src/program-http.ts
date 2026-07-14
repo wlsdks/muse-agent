@@ -288,7 +288,8 @@ export async function streamRemoteChat(
   jsonMode: boolean,
   agentMode: string | undefined,
   disableWebSearch?: boolean,
-  systemPrompt?: string
+  systemPrompt?: string,
+  conversationId?: string
 ) {
   const { baseUrl, token } = await readApiOptions(io, command);
   const metadataTools = disableWebSearch ? { web_search: false } : undefined;
@@ -301,6 +302,7 @@ export async function streamRemoteChat(
       message,
       model,
       metadata,
+      conversationId,
       systemPrompt: systemPrompt && systemPrompt.trim().length > 0 ? systemPrompt.trim() : undefined
     })),
     headers: {
@@ -317,6 +319,7 @@ export async function streamRemoteChat(
 
   let output = "";
   let streamCitations: Array<{ url: string; title: string }> | undefined;
+  let responseConversationId: string | undefined;
 
   for await (const event of readSseEvents(response)) {
     if (event.event === "error") {
@@ -349,6 +352,21 @@ export async function streamRemoteChat(
       continue;
     }
 
+    // AC1/AC4: the `grounding` frame carries `conversationId` on BOTH compat
+    // and extended modes — the CLI's remote stream always runs compat, so
+    // this (not `done`, which stays empty in compat) is where the id lands.
+    if (event.event === "grounding") {
+      try {
+        const parsed = JSON.parse(event.data) as { conversationId?: string };
+        if (typeof parsed.conversationId === "string" && parsed.conversationId.length > 0) {
+          responseConversationId = parsed.conversationId;
+        }
+      } catch {
+        // Malformed grounding event — ignore and continue.
+      }
+      continue;
+    }
+
     if (event.event === "done") {
       break;
     }
@@ -367,6 +385,7 @@ export async function streamRemoteChat(
 
   return {
     citations: streamCitations,
+    conversationId: responseConversationId,
     response: output,
     streamed: true
   };

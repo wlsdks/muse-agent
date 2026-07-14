@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   MessagingProviderRegistry,
   createThreadedInboundRunner,
+  fileThreadedTurnStore,
   respondToInbound,
   type InboundAgentRunner
 } from "../src/index.js";
@@ -70,7 +71,7 @@ describe("createThreadedInboundRunner threads scope into the wrapped run", () =>
         seenScopes.push((input as { readonly scope?: string }).scope);
         return "reply";
       },
-      threadFile
+      store: fileThreadedTurnStore(threadFile)
     });
 
     await runner.run({ providerId: "telegram", scope: "direct", source: "chat-1", text: "hi" } as Parameters<InboundAgentRunner["run"]>[0]);

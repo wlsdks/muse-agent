@@ -40,11 +40,13 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  CHAT_CONTEXT_TURN_LIMIT,
   defaultActiveConversationFile,
   defaultConversationsFile,
   FileConversationStore,
   newConversationId,
   readActiveConversationId,
+  recentChatTurns,
   resolveConversationRef,
   writeActiveConversationId,
   type Conversation,
@@ -191,6 +193,16 @@ export async function activeConversationId(): Promise<string> {
   return ensureActiveConversationId();
 }
 
+/**
+ * Point the active conversation at `id` without resolving/validating it
+ * against the store — used by remote `muse chat` (AC4) to adopt a
+ * server-generated conversationId as resumable after a turn completes, the
+ * same way a local turn's persistence implicitly keeps the pointer current.
+ */
+export async function setActiveConversationId(id: string): Promise<void> {
+  await writeActiveConversationId(id, activePointerFile());
+}
+
 /** `muse chats` / `/sessions` listing: every conversation, newest first. */
 export async function listConversations(): Promise<readonly ConversationSummary[]> {
   return conversationStore().list();
@@ -247,16 +259,11 @@ export async function deleteConversation(id: string): Promise<{ readonly deleted
 export async function readLastChatHistory(): Promise<readonly LastChatLine[]> {
   const id = await ensureActiveConversationId();
   const conversation = await conversationStore().get(id);
-  const lines: LastChatLine[] = [];
-  for (const turn of conversation?.turns ?? []) {
-    if ((turn.role !== "user" && turn.role !== "assistant") || turn.content.length === 0) continue;
-    lines.push({
-      content: turn.content,
-      role: turn.role,
-      ...(turn.untrustedOnly === true ? { untrustedOnly: true } : {})
-    });
-  }
-  return lines.slice(-HISTORY_TURN_LIMIT * 2);
+  return recentChatTurns(conversation?.turns ?? [], CHAT_CONTEXT_TURN_LIMIT).map((turn) => ({
+    content: turn.content,
+    role: turn.role,
+    ...(turn.untrustedOnly === true ? { untrustedOnly: true } : {})
+  }));
 }
 
 export async function appendLastChatTurn(turn: {

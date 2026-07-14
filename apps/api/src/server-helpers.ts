@@ -29,6 +29,7 @@ import { gateChatAnswerGrounding } from "@muse/recall";
 
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChatApprovalGate, formatApprovalNotice, type ChatPendingDraft, type PersistedApproval } from "./chat-approval-gate.js";
+import { resolveChatConversationPlan, withPriorConversationTurns } from "./chat-conversation-continuity.js";
 import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import type { AgentSpecInput } from "@muse/agent-specs";
 import type { RuntimeSettingType } from "@muse/runtime-settings";
@@ -152,7 +153,11 @@ export async function runChat(
     return reply.status(400).send(parsed.error);
   }
 
-  const baseInput = await applyWebSearchPolicy(parsed.value, body, options);
+  const conversationPlan = await resolveChatConversationPlan(body, options);
+  const baseInputRaw = await applyWebSearchPolicy(parsed.value, body, options);
+  const baseInput = conversationPlan
+    ? { ...baseInputRaw, messages: withPriorConversationTurns(baseInputRaw.messages, conversationPlan.priorMessages) }
+    : baseInputRaw;
   const writeWiring = chatWriteApprovalWiring(options);
   const runInput = writeWiring
     ? {
@@ -200,6 +205,12 @@ export async function runChat(
     const finalResult = finalGate.gated && finalGate.answer !== honest.response.output
       ? { ...honest, response: { ...honest.response, output: finalGate.answer } }
       : honest;
+    // Persisted AFTER every gate (grounding + honest-action) so a fabricated/
+    // uncited claim never lands in a future turn's context — and only on this
+    // success path, so a failed run appends nothing (AC5, atomic pair-append).
+    if (conversationPlan) {
+      await conversationPlan.persistTurn(finalResult.response.output);
+    }
     // Pending-approval notice is code-appended AFTER the grounding + honest-action
     // gates (never model text) so it can't be dropped as fabricated, and persisted
     // only now — a run the model abandoned before any write never reaches here with
@@ -207,9 +218,10 @@ export async function runChat(
     const delivered = writeWiring && writeWiring.drafts.length > 0
       ? await withApprovalNotice(finalResult, writeWiring, chatUserId(runInput, authUserId))
       : { pendingApprovals: [] as readonly PersistedApproval[], result: finalResult };
+    const conversationField = conversationPlan ? { conversationId: conversationPlan.conversationId } : {};
     return responseMode === "compat"
-      ? toCompatChatResponse(delivered.result, finalGate, delivered.pendingApprovals)
-      : toExtendedChatResponse(delivered.result, finalGate, delivered.pendingApprovals);
+      ? { ...toCompatChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField }
+      : { ...toExtendedChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField };
   } catch (error) {
     return sendAgentError(reply, error, responseMode);
   }
@@ -275,7 +287,11 @@ export async function runChatStream(
     return reply.status(400).send(parsed.error);
   }
 
-  const baseInput = await applyWebSearchPolicy(parsed.value, body, options);
+  const conversationPlan = await resolveChatConversationPlan(body, options);
+  const baseInputRaw = await applyWebSearchPolicy(parsed.value, body, options);
+  const baseInput = conversationPlan
+    ? { ...baseInputRaw, messages: withPriorConversationTurns(baseInputRaw.messages, conversationPlan.priorMessages) }
+    : baseInputRaw;
   const writeWiring = chatWriteApprovalWiring(options);
   const runInput = writeWiring
     ? {
@@ -294,6 +310,9 @@ export async function runChatStream(
     Readable.from(
       toSseStream(options.agentRuntime.stream({ ...runInput, streamRawDeltas: true }), responseMode, {
         question: lastUserQuestion(runInput.messages),
+        ...(conversationPlan
+          ? { conversation: { conversationId: conversationPlan.conversationId, persistTurn: conversationPlan.persistTurn } }
+          : {}),
         ...(writeWiring
           ? { chatWrite: { drafts: writeWiring.drafts, persist: writeWiring.persist, userId: chatUserId(runInput, authUserId) } }
           : {})
