@@ -47,6 +47,8 @@ ${args}
   <true/>
   <key>ProcessType</key>
   <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
   <key>StandardOutPath</key>
   <string>${xmlEscape(opts.stdoutPath)}</string>
   <key>StandardErrorPath</key>
@@ -61,4 +63,31 @@ export function resolveLaunchAgentFile(env: NodeJS.ProcessEnv): string {
   if (explicit && explicit.length > 0) return explicit;
   const home = env.HOME?.trim()?.length ? env.HOME.trim() : homedir();
   return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
+}
+
+export interface LaunchctlListInfo {
+  /** Present + > 0 only when the job is RUNNING right now. */
+  readonly pid?: number;
+  /** Exit status of the job's most recent stop, when launchd reports one. */
+  readonly lastExitStatus?: number;
+}
+
+/**
+ * Parse `launchctl list <label>` output for a FOUND label. launchd prints an
+ * NSDictionary-style dump (quoted keys, not JSON) — e.g. `"PID" = 1234;` and
+ * `"LastExitStatus" = 0;` — never a simple exit code. A present PID means the
+ * job is running now; its absence combined with a non-zero LastExitStatus
+ * means launchd has the label registered but the job crashed or failed to
+ * start (crash-looping) — the two states `list`'s own exit code alone can't
+ * distinguish (both exit 0: registered proves nothing about actually running).
+ */
+export function parseLaunchctlListInfo(stdout: string): LaunchctlListInfo {
+  const pidMatch = /"PID"\s*=\s*(\d+);/.exec(stdout);
+  const statusMatch = /"LastExitStatus"\s*=\s*(-?\d+);/.exec(stdout);
+  const pid = pidMatch ? Number(pidMatch[1]) : undefined;
+  const lastExitStatus = statusMatch ? Number(statusMatch[1]) : undefined;
+  return {
+    ...(pid !== undefined && Number.isFinite(pid) && pid > 0 ? { pid } : {}),
+    ...(lastExitStatus !== undefined && Number.isFinite(lastExitStatus) ? { lastExitStatus } : {})
+  };
 }

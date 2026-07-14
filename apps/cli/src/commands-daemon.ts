@@ -20,4 +20,4 @@
 export { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
 export { chromeSnapshotConnectionFromTools } from "./commands-daemon-connections.js";
 export { type DaemonHelpers, registerDaemonCommands } from "./commands-daemon-register.js";
-export { buildLaunchAgentPlist, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+export { buildLaunchAgentPlist, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";

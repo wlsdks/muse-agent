@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MuseTool } from "@muse/tools";
 
-import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
+import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
 
 function fakeChromeTools(snapshotText: string): MuseTool[] {
   const mk = (name: string, result: string): MuseTool => ({
@@ -47,7 +47,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; platform?: DaemonHelpers["platform"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -75,6 +75,7 @@ async function runDaemon(
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
+      ...(opts.runLaunchctl ? { runLaunchctl: opts.runLaunchctl } : {}),
       ...(opts.platform ? { platform: opts.platform } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
@@ -608,23 +609,157 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("--install writes a valid LaunchAgent plist at the configured path", async () => {
+  it("--install UNLOADS any stale definition BEFORE (re)loading, then LOADS via launchctl, passing the exact argv", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-install-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const calls: (readonly string[])[] = [];
+    const runLaunchctl = async (args: readonly string[]) => {
+      calls.push(args);
+      if (args[0] === "unload") return { code: 1, stderr: "Could not find specified service", stdout: "" }; // nothing loaded yet — fine
+      if (args[0] === "load") return { code: 0, stderr: "", stdout: "" };
+      // `list <label>` — launchd's real dump format, not tab-separated.
+      return { code: 0, stderr: "", stdout: '{\n\t"PID" = 555;\n\t"LastExitStatus" = 0;\n\t"Label" = "com.muse.daemon";\n};\n' };
+    };
 
-    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, platform: "darwin", registry });
+    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, platform: "darwin", registry, runLaunchctl });
 
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toContain("LaunchAgent written");
-    expect(res.stdout).toContain("launchctl load -w");
+    expect(res.stdout).toContain("loaded via launchctl and RUNNING (pid 555");
     expect(existsSync(plistFile)).toBe(true);
     expect(sent).toHaveLength(0);
+    // The exact argv passed to the seam, IN ORDER — unload adopts the fresh
+    // plist before load, never a shell string, never a guess.
+    expect(calls[0]).toEqual(["unload", "-w", plistFile]);
+    expect(calls[1]).toEqual(["load", "-w", plistFile]);
+    expect(calls[2]).toEqual(["list", "com.muse.daemon"]);
     if (process.platform === "darwin") {
       expect(() => execFileSync("plutil", ["-lint", plistFile], { encoding: "utf8" })).not.toThrow();
     }
+  });
+
+  it("--install reports FAILURE (never success) when launchctl returns non-zero and the agent isn't actually registered", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-fail-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const runLaunchctl = async (args: readonly string[]) =>
+      args[0] === "load"
+        ? { code: 5, stderr: "Load failed: 5: Input/output error", stdout: "" }
+        : { code: 1, stderr: "", stdout: "" }; // `unload`/`list` both confirm nothing is registered
+
+    const res = await runDaemon(["--install"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("launchctl load failed");
+    expect(res.stdout).not.toContain("loaded via launchctl");
+    // The plist is still written (harmless), but never claimed as running.
+    expect(existsSync(plistFile)).toBe(true);
+  });
+
+  it("--install reports FAILURE (not success) when launchctl registers the label but it is CRASH-LOOPING (no pid, non-zero LastExitStatus)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-crashloop-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "unload") return { code: 1, stderr: "Could not find specified service", stdout: "" };
+      if (args[0] === "load") return { code: 0, stderr: "", stdout: "" };
+      // `list` — registered (exit 0) but no PID and a non-zero LastExitStatus:
+      // the job crashed/failed to start, and a code-only check can't see it.
+      return { code: 0, stderr: "", stdout: '{\n\t"LastExitStatus" = 78;\n\t"Label" = "com.muse.daemon";\n};\n' };
+    };
+
+    const res = await runDaemon(["--install"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("crash-looping");
+    expect(res.stderr).toContain("last exit status 78");
+    expect(res.stdout).not.toContain("RUNNING");
+  });
+
+  it("--install re-adopts an already-loaded label after unload+load, verified running via the pid in `list`", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-idem-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "unload") return { code: 0, stderr: "", stdout: "" }; // the STALE definition unloads cleanly
+      if (args[0] === "load") return { code: 3, stderr: "Service already loaded", stdout: "" }; // some launchd versions still report this
+      return { code: 0, stderr: "", stdout: '{\n\t"PID" = 4242;\n\t"LastExitStatus" = 0;\n};\n' }; // `list` confirms it's actually running
+    };
+
+    const res = await runDaemon(["--install"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("loaded via launchctl and RUNNING (pid 4242");
+    expect(res.stderr).toBe("");
+  });
+
+  it("--uninstall unloads, VERIFIES via list that the label is gone, then removes the plist", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-uninstall-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    writeFileSync(plistFile, "<plist/>", "utf8");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const calls: (readonly string[])[] = [];
+    const runLaunchctl = async (args: readonly string[]) => {
+      calls.push(args);
+      if (args[0] === "list") return { code: 1, stderr: "Could not find specified service", stdout: "" }; // confirms GONE
+      return { code: 0, stderr: "", stdout: "" };
+    };
+
+    const res = await runDaemon(["--uninstall"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("unloaded and removed");
+    expect(calls[0]).toEqual(["unload", "-w", plistFile]);
+    expect(calls[1]).toEqual(["list", "com.muse.daemon"]);
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--uninstall KEEPS the plist and fails when `list` shows the job is STILL registered/running after unload (no orphan daemon)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-uninstall-stuck-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    writeFileSync(plistFile, "<plist/>", "utf8");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "unload") return { code: 5, stderr: "Operation not permitted", stdout: "" };
+      // `list` still finds it — unload did NOT actually take effect.
+      return { code: 0, stderr: "", stdout: '{\n\t"PID" = 999;\n\t"LastExitStatus" = 0;\n};\n' };
+    };
+
+    const res = await runDaemon(["--uninstall"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("still registered");
+    expect(res.stderr).toContain("pid 999");
+    // The plist is KEPT — a second --uninstall still has a route back,
+    // instead of an orphaned KeepAlive daemon with nothing left to remove.
+    expect(existsSync(plistFile)).toBe(true);
+  });
+
+  it("--uninstall on a machine with no plist is a clean no-op, not a crash", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-uninstall-none-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const calls: (readonly string[])[] = [];
+    const runLaunchctl = async (args: readonly string[]) => {
+      calls.push(args);
+      return { code: 0, stderr: "", stdout: "" };
+    };
+
+    const res = await runDaemon(["--uninstall"], { env, platform: "darwin", registry, runLaunchctl });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("was not installed");
+    expect(calls).toHaveLength(0); // never shells out to unload something that isn't there
+    expect(existsSync(plistFile)).toBe(false);
   });
 
   it("--install on win32 registers a schtasks ONLOGON task and writes NO plist", async () => {
@@ -663,6 +798,35 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain("Access is denied");
     expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--install on linux fails closed — writes NO plist and never touches launchctl (unsupported platform, gated before any I/O)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-linux-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const calls: (readonly string[])[] = [];
+    const runLaunchctl = async (args: readonly string[]) => { calls.push(args); return { code: 0, stderr: "", stdout: "" }; };
+
+    const res = await runDaemon(["--install"], { env, platform: "linux", registry, runLaunchctl });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("only wired for macOS");
+    expect(existsSync(plistFile)).toBe(false); // no macOS plist litter on a Linux box
+    expect(calls).toHaveLength(0); // never execs a nonexistent launchctl
+  });
+
+  it("--uninstall on linux fails closed instead of attempting a macOS-only unload", async () => {
+    const env = tmpEnv();
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const calls: (readonly string[])[] = [];
+    const runLaunchctl = async (args: readonly string[]) => { calls.push(args); return { code: 0, stderr: "", stdout: "" }; };
+
+    const res = await runDaemon(["--uninstall"], { env, platform: "linux", registry, runLaunchctl });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("only wired for macOS");
+    expect(calls).toHaveLength(0);
   });
 
   it("--status on win32 reports schtasks autostart state from the query", async () => {
@@ -862,6 +1026,8 @@ describe("buildLaunchAgentPlist — resident daemon via launchd", () => {
     expect(xml).toContain("<key>ProcessType</key>");
     expect(xml).toContain("<string>Background</string>");
     expect(xml).toContain("<string>daemon</string>");
+    // LowPriorityIO throttles disk I/O contention with the user's own work.
+    expect(xml).toContain("<key>LowPriorityIO</key>");
     if (process.platform === "darwin") {
       expect(() => execFileSync("plutil", ["-lint", file], { encoding: "utf8" })).not.toThrow();
     }
@@ -876,6 +1042,28 @@ describe("buildLaunchAgentPlist — resident daemon via launchd", () => {
     });
     expect(xml).toContain("echo a &amp;&amp; echo &lt;b&gt;");
     expect(xml).not.toContain("echo a && echo <b>");
+  });
+});
+
+describe("parseLaunchctlListInfo — distinguish RUNNING from registered-but-crash-looping", () => {
+  it("extracts the pid from a real launchd `list <label>` dump when the job is running", () => {
+    const stdout = '{\n\t"StandardOutPath" = "/x/out.log";\n\t"LastExitStatus" = 0;\n\t"PID" = 1234;\n\t"Label" = "com.muse.daemon";\n};\n';
+    expect(parseLaunchctlListInfo(stdout)).toEqual({ lastExitStatus: 0, pid: 1234 });
+  });
+
+  it("reports NO pid + a non-zero LastExitStatus when the job is registered but crash-looping", () => {
+    const stdout = '{\n\t"LastExitStatus" = 78;\n\t"Label" = "com.muse.daemon";\n};\n';
+    expect(parseLaunchctlListInfo(stdout)).toEqual({ lastExitStatus: 78 });
+  });
+
+  it("ignores a pid of 0 (never a real running process id)", () => {
+    const stdout = '{\n\t"LastExitStatus" = 0;\n\t"PID" = 0;\n};\n';
+    expect(parseLaunchctlListInfo(stdout)).toEqual({ lastExitStatus: 0 });
+  });
+
+  it("returns an empty result for a not-found label (unload confirmed / never installed)", () => {
+    expect(parseLaunchctlListInfo("")).toEqual({});
+    expect(parseLaunchctlListInfo("Could not find specified service")).toEqual({});
   });
 });
 

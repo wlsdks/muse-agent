@@ -40,10 +40,10 @@ import { queryActionLog, readReminders, readTasks } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
-import { buildSchtasksCreateArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
+import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
 
@@ -218,20 +218,65 @@ export interface DaemonHelpers {
    * is never called proves the gate held. Absent → the real locate + sync.
    */
   readonly browsingSync?: (args: { readonly env: NodeJS.ProcessEnv; readonly storeFile: string; readonly limit: number }) => Promise<{ readonly synced: number; readonly total: number }>;
-  /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status branches. */
+  /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status/--uninstall branches. */
   readonly schtasksRun?: (args: readonly string[]) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
-  /** Test seam — platform override for the --install / --status autostart branches. */
+  /**
+   * Test seam — runs `launchctl` with an argv array on the darwin
+   * --install/--uninstall branches. Defaults to a real `execFile("launchctl", …)`.
+   * Injected by tests so `--install`/`--uninstall` can be proven WITHOUT ever
+   * touching the real user's launchd — the hard boundary for this seam.
+   */
+  readonly runLaunchctl?: (args: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }>;
+  /** Test seam — platform override for the --install / --status / --uninstall autostart branches. */
   readonly platform?: NodeJS.Platform;
 }
 
-const defaultSchtasksRun = (args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
-  new Promise((resolve) => {
+/**
+ * True inside a vitest worker. Both defaults below check this BEFORE
+ * shelling out — a test that forgets to inject `schtasksRun`/`runLaunchctl`
+ * must fail loudly instead of actually registering a scheduled task or
+ * loading a real launchd job on the machine running the suite.
+ */
+function isRunningUnderVitest(): boolean {
+  return (process.env.VITEST ?? "").trim().length > 0 || process.env.VITEST_WORKER_ID !== undefined;
+}
+
+const defaultSchtasksRun = (args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+  if (isRunningUnderVitest()) {
+    return Promise.reject(new Error(
+      `refusing to exec real schtasks under vitest (args: ${args.join(" ")}) — inject DaemonHelpers.schtasksRun in this test`
+    ));
+  }
+  return new Promise((resolve) => {
     execFile("schtasks", [...args], { timeout: 15_000 }, (error, stdout, stderr) => {
       const rawCode = (error as { code?: number | string } | null)?.code;
       const exitCode = error ? (typeof rawCode === "number" ? rawCode : 1) : 0;
       resolve({ exitCode, stderr: stderr.toString(), stdout: stdout.toString() });
     });
   });
+};
+
+/**
+ * NEVER reaches real launchctl under vitest, even if a test forgets to
+ * inject `runLaunchctl` — the hard boundary this seam exists to guarantee
+ * (see the header comment on `DaemonHelpers.runLaunchctl`). Loading a real
+ * LaunchAgent from a test run would leave a KeepAlive daemon resident on the
+ * contributor's machine.
+ */
+const defaultRunLaunchctl = (args: readonly string[]): Promise<{ code: number; stdout: string; stderr: string }> => {
+  if (isRunningUnderVitest()) {
+    return Promise.reject(new Error(
+      `refusing to exec real launchctl under vitest (args: ${args.join(" ")}) — inject DaemonHelpers.runLaunchctl in this test`
+    ));
+  }
+  return new Promise((resolve) => {
+    execFile("launchctl", [...args], { timeout: 15_000 }, (error, stdout, stderr) => {
+      const rawCode = (error as { code?: number | string } | null)?.code;
+      const code = error ? (typeof rawCode === "number" ? rawCode : 1) : 0;
+      resolve({ code, stderr: stderr.toString(), stdout: stdout.toString() });
+    });
+  });
+};
 
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
   const env = () => helpers.env?.() ?? process.env;
@@ -244,7 +289,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--print", "Also echo every delivered notice to stdout (watch the daemon work in the foreground)")
     .option("--status", "Print which daemon ticks are enabled for the current config, then exit")
     .option("--init", "Write the resolved provider + destination to the daemon config file, then exit")
-    .option("--install", "Write a macOS LaunchAgent plist so the daemon survives logout/reboot, then exit")
+    .option("--install", "Write a macOS LaunchAgent plist AND load it via launchctl so the daemon survives logout/reboot, then exit")
+    .option("--uninstall", "Unload the macOS LaunchAgent (or remove the Windows scheduled task) and delete its file, then exit")
     .option("--interval <seconds>", "Tick interval in seconds (default 60)", "60")
     .option("--lead-minutes <minutes>", "Imminent-window lead in minutes (default 10)", "10")
     .option("--provider <id>", "Messaging provider id (default MUSE_PROACTIVE_PROVIDER, else 'log')")
@@ -255,6 +301,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       readonly status?: boolean;
       readonly init?: boolean;
       readonly install?: boolean;
+      readonly uninstall?: boolean;
       readonly interval: string;
       readonly leadMinutes: string;
       readonly provider?: string;
@@ -292,11 +339,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             taskName: SCHTASKS_TASK_NAME
           }));
           if (result.exitCode === 0) {
-            io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  schtasks /Delete /F /TN ${SCHTASKS_TASK_NAME}\n`);
+            io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  muse daemon --uninstall\n`);
           } else {
             io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
             process.exitCode = 1;
           }
+          return;
+        }
+        if (plat !== "darwin") {
+          io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
+          process.exitCode = 1;
           return;
         }
         const plistFile = resolveLaunchAgentFile(e);
@@ -308,9 +360,101 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           stderrPath: join(logDir, "daemon.err.log"),
           stdoutPath: join(logDir, "daemon.out.log")
         });
+
+        const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+
+        // Unload any stale definition FIRST. `load -w` is NOT reliably
+        // idempotent for an already-loaded label — some launchd versions
+        // return non-zero AND don't re-read the plist, so a bare load after
+        // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
+        // leave launchd running the OLD programArguments until logout. A
+        // failed unload here (nothing was loaded yet) is expected and fine.
+        await runLaunchctl(["unload", "-w", plistFile]);
+
         mkdirSync(dirname(plistFile), { recursive: true });
         writeFileSync(plistFile, plist, "utf8");
-        io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  load it with:  launchctl load -w ${plistFile}\n  logs: ${logDir}\n`);
+
+        const loadResult = await runLaunchctl(["load", "-w", plistFile]);
+        // The source of truth for success is the verifying `list` call, not
+        // `load`'s own exit code — and `list` exiting 0 only proves the label
+        // is REGISTERED, not that it is actually running. Parse its dump for
+        // a PID (running now) vs a non-zero LastExitStatus with no PID
+        // (registered but crash-looping) so neither is reported as healthy.
+        const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+        const registered = listResult.code === 0;
+        const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
+
+        if (registered && pid !== undefined) {
+          const loadReportedNonZero = loadResult.code !== 0;
+          io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
+          return;
+        }
+
+        if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
+          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
+          process.exitCode = 1;
+          return;
+        }
+
+        if (registered) {
+          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
+          process.exitCode = 1;
+          return;
+        }
+
+        // launchctl failed AND the agent does not show up as registered —
+        // never claim success on a plist that isn't actually loaded.
+        io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
+        process.exitCode = 1;
+        return;
+      }
+
+      if (options.uninstall) {
+        const plat = helpers.platform ?? process.platform;
+        if (plat === "win32") {
+          const run = helpers.schtasksRun ?? defaultSchtasksRun;
+          const result = await run(buildSchtasksDeleteArgs(SCHTASKS_TASK_NAME));
+          // A missing task also exits non-zero on schtasks — treat any
+          // outcome here as "nothing left registered", never a crash.
+          io.stdout(result.exitCode === 0
+            ? `muse daemon scheduled task '${SCHTASKS_TASK_NAME}' removed\n`
+            : `muse daemon scheduled task '${SCHTASKS_TASK_NAME}' was not installed (nothing to remove)\n`);
+          return;
+        }
+        if (plat !== "darwin") {
+          io.stderr(`muse daemon --uninstall is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'.\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const plistFile = resolveLaunchAgentFile(e);
+        if (!existsSync(plistFile)) {
+          io.stdout(`muse daemon LaunchAgent was not installed at ${plistFile} (nothing to remove)\n`);
+          return;
+        }
+        const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+        await runLaunchctl(["unload", "-w", plistFile]);
+        // Verify with `list` — `unload`'s own exit code is not trustworthy
+        // (a genuine failure there previously got excused in prose without
+        // ever being checked). Only delete the plist once the label is
+        // confirmed GONE; otherwise the user is left with a running
+        // KeepAlive daemon and no plist on disk to `--uninstall` a second
+        // time — an orphan with no route back.
+        const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+        const stillRegistered = listResult.code === 0;
+        if (stillRegistered) {
+          const { pid } = parseLaunchctlListInfo(listResult.stdout);
+          io.stderr(`launchctl unload did NOT stop ${LAUNCH_AGENT_LABEL} — it is still registered${pid !== undefined ? ` and running (pid ${pid.toString()})` : ""}. Keeping ${plistFile} so you have a route back.\n  Run \`launchctl unload -w ${plistFile}\` manually (or \`launchctl remove ${LAUNCH_AGENT_LABEL}\`), then retry \`muse daemon --uninstall\`.\n`);
+          process.exitCode = 1;
+          return;
+        }
+        try {
+          rmSync(plistFile);
+        } catch (cause) {
+          io.stderr(`launchctl unload succeeded but failed to remove ${plistFile}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        io.stdout(`muse daemon LaunchAgent unloaded and removed (${plistFile})\n`);
         return;
       }
 
