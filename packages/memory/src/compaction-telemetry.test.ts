@@ -8,7 +8,7 @@ import {
 
 // A ModelProviderError-shaped duck-typed value (mirrors
 // packages/model/src/provider-base.ts without importing @muse/model).
-function providerError(message: string, retryable: boolean, status?: number): CompactionFailureStatusLike & Error {
+function providerError(message: string, retryable: boolean, status?: number): CompactionFailureStatusLike {
   const error = new Error(message);
   return {
     ...error,

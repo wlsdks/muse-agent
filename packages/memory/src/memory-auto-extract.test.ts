@@ -7,24 +7,39 @@ import { InMemoryUserMemoryStore } from "./memory-user-store.js";
 import { formatLearnedConfirmation } from "./recently-learned.js";
 
 function fakeProvider(extractionJson: string): ModelProvider {
+  const response: ModelResponse = {
+    id: "fake-test-provider",
+    model: "fake-model",
+    output: extractionJson
+  };
+
   return {
     id: "fake",
     listModels: async () => [],
-    generate: async () => ({ output: extractionJson }) as ModelResponse,
+    generate: async () => response,
     // eslint-disable-next-line require-yield
     stream: async function* () {
       throw new Error("not used");
     }
-  } as unknown as ModelProvider;
+  };
 }
 
 type AfterCompleteArgs = Parameters<NonNullable<ReturnType<typeof createUserMemoryAutoExtractHook>["afterComplete"]>>;
 
 function turn(userId: string, userText: string): AfterCompleteArgs {
-  return [
-    { runId: "r", input: { messages: [{ role: "user", content: userText }], metadata: { userId } } } as AfterCompleteArgs[0],
-    { output: "ok" } as ModelResponse
-  ];
+  const input: AfterCompleteArgs[0] = {
+    runId: "r",
+    input: {
+      messages: [{ role: "user", content: userText }],
+      metadata: { userId }
+    }
+  };
+  const response: AfterCompleteArgs[1] = {
+    id: "fake-test-provider-response",
+    model: "fake-model",
+    output: "ok"
+  };
+  return [input, response];
 }
 
 describe("createUserMemoryAutoExtractHook — onLearned", () => {
