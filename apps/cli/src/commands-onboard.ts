@@ -146,10 +146,10 @@ async function gatherState(io: ProgramIO): Promise<OnboardingState> {
   }
   const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL).replace(/^ollama\//u, "");
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
-  const notesDir = resolveNotesDir(env as Record<string, string | undefined>);
+  const notesDir = resolveNotesDir(env);
   const noteFileCount = countCorpusFiles(notesDir);
   const indexFile = env.MUSE_NOTES_INDEX_FILE?.trim() || join(homedir(), ".muse", "notes-index.json");
-  const { browsingVisitCount, contactsCount } = await countPersonalData(env as Record<string, string | undefined>);
+  const { browsingVisitCount, contactsCount } = await countPersonalData(env);
   return { browsingVisitCount, chatModel, contactsCount, embedModel, indexBuilt: existsSync(indexFile), installedModels, notesDir, noteFileCount, ollamaReachable };
 }
 

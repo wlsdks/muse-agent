@@ -36,7 +36,7 @@ function resolveHomeCommandEnvironment(deps: HomeCommandDeps) {
   // Deliberately use accessors instead of a spread/merge. The resolver reads
   // local-only then URL before token; a blocked remote URL therefore never
   // invokes the source token getter, even when explicit URL/token deps exist.
-  const env = Object.create(null) as MuseEnvironment;
+  const env: MuseEnvironment = Object.create(null);
   Object.defineProperties(env, {
     MUSE_HOMEASSISTANT_TOKEN: {
       configurable: true,

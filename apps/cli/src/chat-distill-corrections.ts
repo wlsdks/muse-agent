@@ -137,7 +137,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   // (the daemon ticks checked it; this did not). It gates BOTH halves: no new
   // strategy is distilled AND no existing reward moves, since a decay is
   // unlearning and the pause forbids learning in either direction.
-  if (await isLearningPaused(resolveLearningPauseFile(env as Record<string, string | undefined>))) {
+  if (await isLearningPaused(resolveLearningPauseFile(env))) {
     return { decayed: [], lowConsistencyRejected: 0, reason: "learning is paused (muse playbook resume)", reinforced: [], status: "skipped" };
   }
 
@@ -165,7 +165,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
     return { decayed: [], reason: "no user corrections or approvals in this session", reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
 
-  const playbookFile = options.playbookFile ?? resolvePlaybookFile(env as Record<string, string | undefined>);
+  const playbookFile = options.playbookFile ?? resolvePlaybookFile(env);
   const existing = await queryPlaybook(playbookFile, ownerId);
   const existingTexts = existing.map((entry) => entry.text);
   const adjustedIds = new Set<string>();

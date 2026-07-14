@@ -64,7 +64,7 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
     return { reason: "no procedural corrections this session", status: "skipped" };
   }
 
-  const dir = options.authoredDir ?? resolveAuthoredSkillsDir(env as Record<string, string | undefined>);
+  const dir = options.authoredDir ?? resolveAuthoredSkillsDir(env);
   const store = new AuthoredSkillStore({
     dir,
     ...(options.existingNames ? { existingNames: options.existingNames } : {})
@@ -148,9 +148,9 @@ export async function applySkillRewardsFromSession(options: SkillRewardOptions):
 
   const skills = options.listSkills
     ? await options.listSkills()
-    : await new AuthoredSkillStore({ dir: options.authoredDir ?? resolveAuthoredSkillsDir(env as Record<string, string | undefined>) })
-        .listAuthored()
-        .catch(() => [] as readonly Skill[]);
+    : await new AuthoredSkillStore({ dir: options.authoredDir ?? resolveAuthoredSkillsDir(env) })
+      .listAuthored()
+      .catch((): readonly Skill[] => []);
   if (skills.length === 0) {
     return empty;
   }

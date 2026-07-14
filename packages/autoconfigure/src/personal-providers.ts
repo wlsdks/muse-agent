@@ -179,7 +179,7 @@ function createModelEnvironmentOverlay(
 
   // A fresh target avoids Proxy invariant interaction with an arbitrary
   // source Proxy. Every virtual own property is configurable.
-  const target = Object.create(null) as Record<string, never>;
+  const target: Record<string, never> = Object.create(null);
   return new Proxy(target, {
     defineProperty: () => false,
     deleteProperty: () => false,
@@ -226,7 +226,7 @@ function createModelEnvironmentOverlay(
     },
     preventExtensions: () => false,
     set: () => false
-  }) as MuseEnvironment;
+  });
 }
 
 export function mergeModelKeysFromFile(

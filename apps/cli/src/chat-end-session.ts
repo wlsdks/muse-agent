@@ -182,7 +182,7 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
     };
   }
 
-  const episodesFile = options.episodesFile ?? resolveEpisodesFile(env as Record<string, string | undefined>);
+  const episodesFile = options.episodesFile ?? resolveEpisodesFile(env);
   const ownerId = range.userId ?? options.userId;
   if (!ownerId) {
     return { reason: "no userId available (boundary missing it, no fallback supplied)", status: "skipped" };
@@ -194,7 +194,7 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   // when it isn't novel vs the recently-stored episodes. Fail-OPEN on a read
   // error (never lose a session over a transient read failure).
   try {
-    const recentSummaries = (await readEpisodes(episodesFile, env as NodeJS.ProcessEnv))
+    const recentSummaries = (await readEpisodes(episodesFile, env))
       .filter((e) => e.userId === ownerId)
       .sort((a, b) => b.endedAt.localeCompare(a.endedAt))
       .map((e) => e.summary);

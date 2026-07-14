@@ -127,12 +127,23 @@ export function resolveDoctorLocalRuntime(options: DoctorLocalRuntimeOptions = {
   const sidecar = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim();
   const proactiveHeartbeatDir = partialPaths.proactiveHeartbeatDir
     ?? (sidecar && sidecar.length > 0 ? dirname(sidecar) : museHome);
-  const launchAgentEnv = Object.create(env) as NodeJS.ProcessEnv;
-  Object.defineProperty(launchAgentEnv, "HOME", {
-    configurable: true,
-    enumerable: true,
-    value: homeDir,
-    writable: false
+  const launchAgentEnvBase: NodeJS.ProcessEnv = Object.create(null);
+  const launchAgentEnv = new Proxy(launchAgentEnvBase, {
+    get(_target, key) {
+      return key === "HOME" ? homeDir : Reflect.get(env, key);
+    },
+    getOwnPropertyDescriptor(_target, key) {
+      if (key === "HOME") {
+        return { configurable: true, enumerable: true, value: homeDir, writable: false };
+      }
+      return Reflect.getOwnPropertyDescriptor(env, key);
+    },
+    has(_target, key) {
+      if (key === "HOME") {
+        return true;
+      }
+      return key in env;
+    }
   });
   const launchAgentFile = partialPaths.launchAgentFile
     ?? resolveLaunchAgentFile(launchAgentEnv);
@@ -402,7 +413,7 @@ function createDoctorEnvironmentView(merged: MuseEnvironment, runtime: DoctorLoc
   // Inherit direct reads from the already-safe model projection, but give every
   // legacy helper an explicit runtime-owned path. No source spread/ownKeys is
   // involved, so a local-only poison env remains safe.
-  const view = Object.create(merged) as Record<string, string | undefined>;
+  const view: MuseEnvironment = Object.create(merged);
   const values: Record<string, string> = {
     HOME: runtime.homeDir,
     MUSE_BACKGROUND_PROCESSES_FILE: runtime.paths.backgroundFile,

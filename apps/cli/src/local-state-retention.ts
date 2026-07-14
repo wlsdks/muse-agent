@@ -197,9 +197,9 @@ export async function maybeAutoPrune(options: MaybeAutoPruneOptions = {}): Promi
     const workspaceDir = options.workspaceDir ?? process.cwd();
 
     const runs = await safePrune(() => pruneRunsByAge(join(workspaceDir, ".muse", "runs"), { ageDays: windows.runsAgeDays, now }));
-    const checkpoints = await safePrune(() => pruneCheckpointsByAge(resolveCheckpointsDir(env as MuseEnvironment), { ageDays: windows.checkpointsAgeDays, now }));
-    const actionLog = await safePrune(() => pruneActionLogByAge(resolveActionLogFile(env as MuseEnvironment), { ageDays: windows.actionLogAgeDays, now }, env));
-    const learnQueue = await safePrune(() => pruneLearnQueueByAge(resolveLearnQueueFile(env as Record<string, string | undefined>), { ageDays: windows.learnQueueAgeDays, now }));
+    const checkpoints = await safePrune(() => pruneCheckpointsByAge(resolveCheckpointsDir(env), { ageDays: windows.checkpointsAgeDays, now }));
+    const actionLog = await safePrune(() => pruneActionLogByAge(resolveActionLogFile(env), { ageDays: windows.actionLogAgeDays, now }, env));
+    const learnQueue = await safePrune(() => pruneLearnQueueByAge(resolveLearnQueueFile(env), { ageDays: windows.learnQueueAgeDays, now }));
 
     try {
       await writePruneMeta(metaFile, { lastPrunedAtMs: now });

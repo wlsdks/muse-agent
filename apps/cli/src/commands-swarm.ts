@@ -6,7 +6,7 @@
  * the user-facing half of the personal swarm's "inbound is inert" guarantee.
  */
 
-import { createServer } from "node:http";
+import { createServer, type IncomingHttpHeaders } from "node:http";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +24,16 @@ import { councilCorpusMatches, defaultEmbedModel, isCouncilGroundedMode } from "
 import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 import { readRequestBody, waitForShutdownSignal } from "./async-promises.js";
+
+function normalizeA2ARequestHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string | undefined>> {
+  const normalized: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === "string") {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
 
 /**
  * Read an inbound A2A request body with a hard size cap so an unbounded
@@ -294,7 +304,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
           return;
         }
       } else {
-        const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env as Record<string, string | undefined>) });
+        const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env) });
         const skill = (await store.listAuthored()).find((s) => s.name === skillName);
         if (!skill) {
           io.stderr(`muse swarm share: no authored skill named '${skillName}' (see \`muse skills authored\`, or pass --file <path>).\n`);
@@ -371,7 +381,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
           .then((body) =>
             handler({
               body,
-              headers: req.headers as Record<string, string | undefined>,
+              headers: normalizeA2ARequestHeaders(req.headers),
               method: req.method ?? "GET",
               path: req.url ?? "/"
             })
