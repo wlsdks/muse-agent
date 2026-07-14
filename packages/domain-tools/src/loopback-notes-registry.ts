@@ -13,6 +13,9 @@ import {
   type NotesSearchHit
 } from "./notes-providers.js";
 
+const EMPTY_NOTES_ENTRIES: readonly NotesEntry[] = [];
+const EMPTY_NOTES_SEARCH_HITS: readonly NotesSearchHit[] = [];
+
 /**
  * `muse.notes-multi` — provider-neutral notes MCP surface backed by
  * `NotesProviderRegistry`. Exposes the same five operations the
@@ -74,7 +77,7 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
                     try {
                       return await provider.list(folder);
                     } catch {
-                      return [] as readonly NotesEntry[];
+                      return EMPTY_NOTES_ENTRIES;
                     }
                   })
                 )).flat();
@@ -149,7 +152,7 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
                     try {
                       return await provider.search(query, limit);
                     } catch {
-                      return [] as readonly NotesSearchHit[];
+                      return EMPTY_NOTES_SEARCH_HITS;
                     }
                   })
                 )).flat();

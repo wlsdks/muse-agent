@@ -60,6 +60,8 @@ import { chatRepeatWeaknessNudge, chatResolveWeakness, looksLikeRefusal, recordC
 export { chatRepeatWeaknessNudge, chatResolveWeakness, recordChatWeaknessForTurn, recordChatTurnWeakness, type ChatRepeatNudgeDeps, type RecordChatWeaknessDeps, type ResolveChatWeaknessDeps } from "./chat-weakness-ledger.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
+type GroundingResult = Awaited<ReturnType<typeof retrieveChatGrounding>>;
+const EMPTY_GROUNDING_RESULT: GroundingResult = { block: "", matches: [] };
 
 export type AgentMode = "react" | "plan_execute";
 
@@ -396,7 +398,7 @@ export async function runLocalChat(
     }
   }
   const { block: groundingBlock, matches } = isCasual
-    ? { block: "", matches: [] as Awaited<ReturnType<typeof retrieveChatGrounding>>["matches"] }
+    ? EMPTY_GROUNDING_RESULT
     : await retrieveChatGrounding(retrievalQuery);
   // Reply in the user's language: without this the local model drifts to English
   // for "assistant-y" replies — a Korean "회의 취소해줘" got an English "sir,

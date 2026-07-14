@@ -76,6 +76,7 @@ export { runChatInk } from "./chat-ink-run.js";
 const h = React.createElement;
 
 const SLASH_COMMANDS = slashCommandsForPlatform("chat");
+const EMPTY_PROACTIVE_ITEMS = (): readonly ProactiveItem[] => [];
 
 // Third-party-outbound actuators: in chat these reach the fail-closed
 // approval gate, which flags them louder ("Outbound action") and never sends
@@ -381,21 +382,21 @@ export function MuseChatApp(props: {
     const tick = async (): Promise<void> => {
       if (!idleRef.current) return;
       const now = Date.now();
-      const items = check ? await check().catch(() => [] as readonly ProactiveItem[]) : [];
+      const items = check ? await check().catch(EMPTY_PROACTIVE_ITEMS) : [];
       // Background jobs + `/orchestrate` fan-outs that finished since the chat
       // opened are surfaced once each (their own pre-phrased line — ONE entry
       // per orchestration, never one per sub-agent), not via the reminder
       // time-window.
-      const completedJobs = jobsDone ? await jobsDone().catch(() => [] as readonly ProactiveItem[]) : [];
+      const completedJobs = jobsDone ? await jobsDone().catch(EMPTY_PROACTIVE_ITEMS) : [];
       const completedOrchestrations = orchestrationsDone
-        ? await orchestrationsDone().catch(() => [] as readonly ProactiveItem[])
+        ? await orchestrationsDone().catch(EMPTY_PROACTIVE_ITEMS)
         : [];
       const completed = [...completedJobs, ...completedOrchestrations];
       // Due check-ins + fireable pattern suggestions — already-phrased nudges
       // the daemon would push to the channel; surface them in-chat once each,
       // verbatim (not the imminent time-window — a check-in due hours ago and an
       // undated pattern still belong here).
-      const nudges = nudge ? await nudge().catch(() => [] as readonly ProactiveItem[]) : [];
+      const nudges = nudge ? await nudge().catch(EMPTY_PROACTIVE_ITEMS) : [];
       if (!active) return;
       const unseen = pickUnseen(imminentItems(items, now, PROACTIVE_LEAD_MS), seenRef.current);
       const unseenJobs = pickUnseen(completed, seenRef.current);

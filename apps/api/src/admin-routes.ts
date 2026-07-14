@@ -180,7 +180,7 @@ export function recordedSpans(tracer: unknown): readonly unknown[] {
     typeof tracer === "object" &&
     "recordedSpans" in tracer &&
     typeof tracer.recordedSpans === "function"
-    ? tracer.recordedSpans() as readonly unknown[]
+    ? asReadonlyUnknownArray(tracer.recordedSpans())
     : [];
 }
 
@@ -194,10 +194,14 @@ export function recordedTraceEvents(traceSink: unknown, runId?: string): readonl
     "listByRunId" in traceSink &&
     typeof traceSink.listByRunId === "function"
   ) {
-    return traceSink.listByRunId(runId) as readonly unknown[];
+    return asReadonlyUnknownArray(traceSink.listByRunId(runId));
   }
 
   return "list" in traceSink && typeof traceSink.list === "function"
-    ? traceSink.list() as readonly unknown[]
+    ? asReadonlyUnknownArray(traceSink.list())
     : [];
+}
+
+function asReadonlyUnknownArray(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [];
 }

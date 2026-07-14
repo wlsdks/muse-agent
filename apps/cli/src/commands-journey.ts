@@ -38,6 +38,7 @@ import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
+const EMPTY_BELIEF_PROVENANCE: readonly BeliefProvenance[] = [];
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -49,7 +50,7 @@ function isJourneyStoreKind(value: string): value is JourneyStoreKind {
 
 async function loadFactRecords(userId: string): Promise<readonly JourneyFactRecord[]> {
   const store = new FileBeliefProvenanceStore(defaultBeliefProvenanceFile());
-  const records = await store.query(userId).catch(() => [] as readonly BeliefProvenance[]);
+  const records = await store.query(userId).catch(() => EMPTY_BELIEF_PROVENANCE);
   return factRecordsFromProvenance(records);
 }
 

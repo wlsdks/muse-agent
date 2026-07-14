@@ -26,6 +26,9 @@ import {
   type TasksProviderRegistry
 } from "./tasks-providers.js";
 
+const EMPTY_TASKS: readonly Task[] = [];
+const EMPTY_TASK_SEARCH_HITS: readonly TaskSearchHit[] = [];
+
 export interface TasksRegistryMcpServerOptions {
   readonly registry: TasksProviderRegistry;
 }
@@ -72,7 +75,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
                     try {
                       return await provider.list(status);
                     } catch {
-                      return [] as readonly Task[];
+                      return EMPTY_TASKS;
                     }
                   })
                 )).flat();
@@ -191,7 +194,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
                     try {
                       return await provider.search(query, limit);
                     } catch {
-                      return [] as readonly TaskSearchHit[];
+                      return EMPTY_TASK_SEARCH_HITS;
                     }
                   })
                 )).flat();

@@ -245,7 +245,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
             return { error: "Refusing to clear without confirm:true (this is irreversible — pass confirm:true to proceed)" };
           }
           try {
-            const before = (await readEpisodes(file)) as readonly PersistedEpisode[];
+            const before = await readEpisodes(file);
             await clearEpisodes(file);
             return { cleared: true, removed: before.length };
           } catch (cause) {
@@ -320,4 +320,3 @@ async function runLlmJudge(
   }
   return out;
 }
-
