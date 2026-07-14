@@ -21,6 +21,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { isRecord } from "@muse/shared";
 import type { MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely } from "kysely";
 import type {
@@ -39,7 +40,6 @@ import type {
 } from "./index.js";
 import { DEFAULT_TASK_MEMORY_RETENTION_MS } from "./index.js";
 
-type TaskMemoryRow = Record<string, unknown>;
 type TaskMemoryInsert = Insertable<MuseDatabase["task_memories"]>;
 
 type RequiredTaskState = Omit<
@@ -154,9 +154,7 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
 
   private trimOldest(): void {
     while (this.tasks.size > this.maxTasks) {
-      const oldest = [...this.tasks.values()].sort((left, right) =>
-        left.updatedAt.getTime() - right.updatedAt.getTime()
-      )[0];
+      const oldest = findOldestTaskState(this.tasks.values());
 
       if (!oldest) {
         return;
@@ -173,6 +171,16 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
       }
     }
   }
+}
+
+function findOldestTaskState(states: Iterable<RequiredTaskState>): RequiredTaskState | undefined {
+  let oldest: RequiredTaskState | undefined;
+  for (const state of states) {
+    if (!oldest || state.updatedAt < oldest.updatedAt) {
+      oldest = state;
+    }
+  }
+  return oldest;
 }
 
 export class TaskMemoryQualityError extends Error {
@@ -193,13 +201,31 @@ interface SerializedTaskState {
   readonly sessionId: string;
   readonly goal: string;
   readonly userId?: string;
-  readonly status?: string;
-  readonly plan: readonly { readonly step: string; readonly status?: string; readonly updatedAt?: string }[];
-  readonly decisions: readonly { readonly summary: string; readonly reason?: string; readonly decidedAt?: string }[];
-  readonly blockers: readonly { readonly description: string; readonly owner?: string; readonly createdAt?: string }[];
+  readonly status?: TaskStatus;
+  readonly plan: readonly SerializedTaskPlanItem[];
+  readonly decisions: readonly SerializedTaskDecision[];
+  readonly blockers: readonly SerializedTaskBlocker[];
   readonly metadata: Readonly<Record<string, string>>;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+interface SerializedTaskPlanItem {
+  readonly step: string;
+  readonly status?: TaskPlanItem["status"];
+  readonly updatedAt?: string;
+}
+
+interface SerializedTaskDecision {
+  readonly summary: string;
+  readonly reason?: string;
+  readonly decidedAt?: string;
+}
+
+interface SerializedTaskBlocker {
+  readonly description: string;
+  readonly owner?: string;
+  readonly createdAt?: string;
 }
 
 function serializeTaskState(s: TaskState): SerializedTaskState {
@@ -223,11 +249,11 @@ function deserializeTaskState(r: SerializedTaskState): TaskState {
     blockers: (r.blockers ?? []).map((b): TaskBlocker => ({ description: b.description, ...(b.owner ? { owner: b.owner } : {}), ...(b.createdAt ? { createdAt: new Date(b.createdAt) } : {}) })),
     decisions: (r.decisions ?? []).map((d): TaskDecision => ({ summary: d.summary, ...(d.reason ? { reason: d.reason } : {}), ...(d.decidedAt ? { decidedAt: new Date(d.decidedAt) } : {}) })),
     goal: r.goal,
-    plan: (r.plan ?? []).map((p): TaskPlanItem => ({ step: p.step, ...(p.status ? { status: p.status as TaskPlanItem["status"] } : {}), ...(p.updatedAt ? { updatedAt: new Date(p.updatedAt) } : {}) })),
+    plan: (r.plan ?? []).map((p): TaskPlanItem => ({ step: p.step, ...(p.status ? { status: p.status } : {}), ...(p.updatedAt ? { updatedAt: new Date(p.updatedAt) } : {}) })),
     sessionId: r.sessionId,
     taskId: r.taskId,
     ...(r.metadata ? { metadata: r.metadata } : {}),
-    ...(r.status ? { status: r.status as TaskStatus } : {}),
+    ...(r.status ? { status: r.status } : {}),
     ...(r.userId ? { userId: r.userId } : {}),
     ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
     ...(r.updatedAt ? { updatedAt: new Date(r.updatedAt) } : {})
@@ -247,16 +273,8 @@ async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   } catch {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return []; // corrupt ⇒ empty, never throw (task recall is best-effort)
-  }
-  const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { tasks?: unknown }).tasks)
-    ? (parsed as { tasks: SerializedTaskState[] }).tasks
-    : [];
-  return list.filter((entry) => entry && typeof entry.taskId === "string" && entry.taskId.length > 0).map(deserializeTaskState);
+  const list = parseTaskStatesFromFilePayload(raw);
+  return list.map(deserializeTaskState);
 }
 
 async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promise<void> {
@@ -375,7 +393,7 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
       ]))
       .executeTakeFirst();
 
-    return row ? mapTaskMemoryRow(row as TaskMemoryRow) : undefined;
+    return row ? mapTaskMemoryRow(row) : undefined;
   }
 
   async findActiveBySession(sessionId: string, userId?: string): Promise<TaskState | undefined> {
@@ -384,11 +402,11 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
       : undefined;
 
     if (userScoped) {
-      return mapTaskMemoryRow(userScoped as TaskMemoryRow);
+      return mapTaskMemoryRow(userScoped);
     }
 
     const sessionScoped = await buildActiveTaskMemoryQuery(this.db, sessionId).executeTakeFirst();
-    return sessionScoped ? mapTaskMemoryRow(sessionScoped as TaskMemoryRow) : undefined;
+    return sessionScoped ? mapTaskMemoryRow(sessionScoped) : undefined;
   }
 
   async clear(taskId: string): Promise<void> {
@@ -561,20 +579,21 @@ export function assertTaskMemoryQuality(state: TaskState): void {
   }
 }
 
-export function mapTaskMemoryRow(row: TaskMemoryRow): TaskState {
-  const userId = nullableString(row.user_id);
+export function mapTaskMemoryRow(row: unknown): TaskState {
+  const source = isRecord(row) ? row : {};
+  const userId = nullableString(source.user_id);
 
   return {
-    blockers: jsonArray<TaskBlocker>(row.blockers_json),
-    createdAt: dateValue(row.created_at),
-    decisions: jsonArray<TaskDecision>(row.decisions_json),
-    goal: stringValue(row.goal),
-    metadata: jsonRecord(row.metadata_json),
-    plan: jsonArray<TaskPlanItem>(row.plan_json),
-    sessionId: stringValue(row.session_id),
-    status: taskStatusValue(row.status),
-    taskId: stringValue(row.task_id),
-    updatedAt: dateValue(row.updated_at),
+    blockers: parseTaskArray(source.blockers_json, parseTaskBlocker),
+    createdAt: dateValue(source.created_at),
+    decisions: parseTaskArray(source.decisions_json, parseTaskDecision),
+    goal: stringValue(source.goal),
+    metadata: parseTaskMetadataRecord(source.metadata_json),
+    plan: parseTaskArray(source.plan_json, parseTaskPlanItem),
+    sessionId: stringValue(source.session_id),
+    status: taskStatusValue(source.status),
+    taskId: stringValue(source.task_id),
+    updatedAt: dateValue(source.updated_at),
     ...(userId ? { userId } : {})
   };
 }
@@ -632,15 +651,87 @@ function taskStatusValue(value: unknown): TaskStatus {
   return value === "blocked" || value === "completed" || value === "cancelled" ? value : "active";
 }
 
-function jsonArray<T>(value: unknown): readonly T[] {
+function parseTaskStatesFromFilePayload(raw: string): readonly SerializedTaskState[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+
+  if (!isRecord(parsed) || !Array.isArray(parsed.tasks)) {
+    return [];
+  }
+
+  const out: SerializedTaskState[] = [];
+  for (const entry of parsed.tasks) {
+    const parsedEntry = parseSerializedTaskState(entry);
+    if (parsedEntry) {
+      out.push(parsedEntry);
+    }
+  }
+
+  return out;
+}
+
+function parseSerializedTaskState(value: unknown): SerializedTaskState | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const taskId = toNonEmptyString(value.taskId);
+  const sessionId = toNonEmptyString(value.sessionId);
+  const goal = toNonEmptyString(value.goal);
+  if (!taskId || !sessionId || !goal) {
+    return undefined;
+  }
+
+  const userId = toOptionalString(value.userId);
+  const plan = parseTaskArray(value.plan, parseTaskPlanItem);
+  const decisions = parseTaskArray(value.decisions, parseTaskDecision);
+  const blockers = parseTaskArray(value.blockers, parseTaskBlocker);
+  const metadata = parseTaskMetadataRecord(value.metadata);
+  const createdAt = toOptionalString(value.createdAt);
+  const updatedAt = toOptionalString(value.updatedAt);
+
+  return {
+    taskId,
+    sessionId,
+    goal,
+    ...(userId ? { userId } : {}),
+    status: parseTaskStatus(value.status),
+    plan,
+    decisions,
+    blockers,
+    metadata,
+    ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {})
+  };
+}
+
+function parseTaskStatus(value: unknown): TaskStatus | undefined {
+  if (value === "active" || value === "blocked" || value === "completed" || value === "cancelled") {
+    return value;
+  }
+  return undefined;
+}
+
+function parseTaskArray<T>(value: unknown, parseEntry: (entry: unknown) => T | undefined): readonly T[] {
   if (Array.isArray(value)) {
-    return value as readonly T[];
+    const out: T[] = [];
+    for (const entry of value) {
+      const parsed = parseEntry(entry);
+      if (parsed !== undefined) {
+        out.push(parsed);
+      }
+    }
+    return out;
   }
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value) as unknown;
-      return Array.isArray(parsed) ? parsed as readonly T[] : [];
+      const parsed = JSON.parse(value);
+      return parseTaskArray(parsed, parseEntry);
     } catch {
       return [];
     }
@@ -649,14 +740,14 @@ function jsonArray<T>(value: unknown): readonly T[] {
   return [];
 }
 
-function jsonRecord(value: unknown): Readonly<Record<string, string>> {
+function parseTaskMetadataRecord(value: unknown): Readonly<Record<string, string>> {
   if (isStringRecord(value)) {
     return value;
   }
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value) as unknown;
+      const parsed = JSON.parse(value);
       return isStringRecord(parsed) ? parsed : {};
     } catch {
       return {};
@@ -664,6 +755,70 @@ function jsonRecord(value: unknown): Readonly<Record<string, string>> {
   }
 
   return {};
+}
+
+function parseTaskBlocker(value: unknown): SerializedTaskBlocker | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const description = toNonEmptyString(value.description);
+  if (!description) {
+    return undefined;
+  }
+
+  const owner = toOptionalString(value.owner);
+  return {
+    description,
+    ...(owner ? { owner } : {}),
+    ...(toOptionalString(value.createdAt) ? { createdAt: value.createdAt } : {})
+  };
+}
+
+function parseTaskDecision(value: unknown): SerializedTaskDecision | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const summary = toNonEmptyString(value.summary);
+  if (!summary) {
+    return undefined;
+  }
+
+  return {
+    summary,
+    ...(toOptionalString(value.reason) ? { reason: value.reason } : {}),
+    ...(toOptionalString(value.decidedAt) ? { decidedAt: value.decidedAt } : {})
+  };
+}
+
+function parseTaskPlanItem(value: unknown): SerializedTaskPlanItem | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const step = toNonEmptyString(value.step);
+  if (!step) {
+    return undefined;
+  }
+
+  return {
+    step,
+    ...(parseTaskPlanStatus(value.status) ? { status: value.status } : {}),
+    ...(toOptionalString(value.updatedAt) ? { updatedAt: value.updatedAt } : {})
+  };
+}
+
+function parseTaskPlanStatus(value: unknown): value is TaskPlanItem["status"] {
+  return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled";
+}
+
+function toNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {
