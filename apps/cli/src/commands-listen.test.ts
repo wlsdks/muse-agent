@@ -109,7 +109,7 @@ describe("muse listen — full mic→STT→agent→TTS round-trip", () => {
         },
         spawnRec: () => fakeRec() as unknown as ChildProcess,
         waitForEnter: async () => {},
-        which: (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
+        which: async (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
       }
     };
 
@@ -156,7 +156,7 @@ describe("muse listen (push-to-talk) — a failed transcribe ends cleanly, not a
         playAudio: async () => {},
         spawnRec: () => fakeRec(),
         waitForEnter: async () => {},
-        which: (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
+        which: async (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
       }
     };
 
@@ -219,7 +219,7 @@ describe("muse listen --wake — a transient STT failure on the follow-up prompt
           return fakeRec();
         },
         waitForEnter: async () => {},
-        which: (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
+        which: async (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
       }
     };
 
@@ -272,7 +272,7 @@ describe("muse listen --wake — the core wake-word contract", () => {
         // cleanly after the single wake turn.
         spawnRec: () => { recCalls += 1; if (recCalls >= 2) throw new Error("stop"); return fakeRec(); },
         waitForEnter: async () => {},
-        which: (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
+        which: async (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
       }
     };
     const program = new Command();
@@ -302,7 +302,7 @@ describe("muse listen --wake — the core wake-word contract", () => {
         // throws to end the loop.
         spawnRec: () => { recCalls += 1; if (recCalls >= 2) throw new Error("stop"); return fakeRec(); },
         waitForEnter: async () => {},
-        which: (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
+        which: async (bin: string) => (bin === "sox" ? "/usr/bin/sox" : undefined)
       }
     };
     const program = new Command();

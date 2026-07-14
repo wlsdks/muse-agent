@@ -123,7 +123,9 @@ function sanitizeSurrogatesDeep(value: unknown): JsonValue {
     }
     return out;
   }
-  return value;
+  // Parsed JSON can only leave number | boolean | null here; anything
+  // else (undefined, function) came from a non-JSON caller — map to null.
+  return typeof value === "number" || typeof value === "boolean" ? value : null;
 }
 
 export function recoverToolArgsJson(raw: string): Record<string, unknown> | undefined {

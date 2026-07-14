@@ -126,11 +126,14 @@ export async function extractStructuredFromImage(
   if (!isRecord(parsed)) {
     return { error: "extraction output was not a JSON object", ok: false, raw };
   }
-  const validation = validateExtraction(parsed, input.schema);
+  // parsed is the result of JSON.parse on the model's raw output, so it is
+  // already JSON-safe data — narrow to JsonObject accordingly.
+  const parsedObject = parsed as JsonObject;
+  const validation = validateExtraction(parsedObject, input.schema);
   if (!validation.ok) {
     return { error: `extraction omitted required field(s): ${validation.missing.join(", ")}`, ok: false, raw };
   }
-  return { data: parsed, ok: true, raw };
+  return { data: parsedObject, ok: true, raw };
 }
 
 export interface VisionDescribeInput {

@@ -89,7 +89,7 @@ export function createComposeAck(
     const timeout = sleepWithTimer(timeoutMs, null, {
       ref: false,
       signal: timeoutController.signal
-    }).then(() => null as const);
+    }).then(() => null);
     const signal = timeoutSignal;
     try {
       const response = await Promise.race([

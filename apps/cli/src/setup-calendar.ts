@@ -321,7 +321,7 @@ async function runOAuthCallbackServer(
         throw new Error("OAuth callback server closed unexpectedly");
       }
 
-      const [request, response] = requestResult.event.value as readonly [IncomingMessage, ServerResponse];
+      const [request, response] = requestResult.event.value as unknown as readonly [IncomingMessage, ServerResponse];
 
       if (!request.url) {
         response.statusCode = 400;
@@ -359,6 +359,6 @@ async function runOAuthCallbackServer(
     }
   } finally {
     server.close();
-    await iterator.return();
+    await iterator.return?.();
   }
 }

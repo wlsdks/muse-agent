@@ -118,7 +118,7 @@ describe("runOsascript", () => {
     const promise = runOsascript(spawnFn);
     child.stderr.emit("data", Buffer.from("not allowed", "utf8"));
     child.emit("close", 2);
-    await expect(promise).rejects.toThrow(/osascript exited 2: not allowed/u);
+    await expect(promise).rejects.toThrow(/osascript exited with code 2: not allowed/u);
   });
 
   it("rejects on a spawn error", async () => {

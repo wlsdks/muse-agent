@@ -323,7 +323,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const applyDelta = (base: PersistedTask): PersistedTask => {
             const merged: Record<string, unknown> = { ...base, ...sets };
             for (const key of clears) delete merged[key];
-            return merged as PersistedTask;
+            return merged as unknown as PersistedTask;
           };
           // Fallback for the return value if the task vanished concurrently (i < 0,
           // no write): reflect the requested change against the snapshot we resolved.

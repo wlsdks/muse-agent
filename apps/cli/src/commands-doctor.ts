@@ -547,13 +547,11 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // reachable" while `muse ask` works.
   const ollama_base = resolveOllamaUrl(env);
   let ollamaModels: readonly OllamaTagsEntry[] | undefined;
-  let health_ok = false;
   try {
     const probe = await probeOllamaModels(ollama_base, { fetchImpl: runtime.fetchImpl, timeoutMs: 1_500 });
     if (probe.reachable) {
       const models = probe.models.map((model): OllamaTagsEntry => ({ name: model.name, size: model.size ?? 0 }));
       ollamaModels = models;
-      health_ok = true;
       checks.push({ detail: `${ollama_base} — ${ollamaModels.length.toString()} model(s) loaded`, name: "ollama", status: "ok" });
     } else {
       const probeDetail = probe.status === undefined

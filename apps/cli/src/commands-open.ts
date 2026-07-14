@@ -101,8 +101,8 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   return hits;
 }
 
-function toRecord(value: { readonly [key: string]: unknown }): Record<string, unknown> {
-  return { ...value };
+function toRecord<T extends object>(value: T): Record<string, unknown> {
+  return { ...value } as Record<string, unknown>;
 }
 
 export function registerOpenCommand(program: Command, io: ProgramIO): void {

@@ -102,6 +102,6 @@ export async function* streamNoticesFor(
     }
   } finally {
     unsubscribe();
-    void wakeupNotifications.return();
+    void wakeupNotifications.return?.();
   }
 }

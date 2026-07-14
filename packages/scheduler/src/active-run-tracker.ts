@@ -9,7 +9,7 @@
  * without real timers.
  */
 
-import { sleep } from "@muse/shared";
+import { sleep as defaultSleep } from "@muse/shared";
 
 export type DrainOutcome = "drained" | "timeout";
 
@@ -38,7 +38,7 @@ export class ActiveRunTracker {
    */
   async drain(
     timeoutMs: number,
-    sleep: (ms: number) => Promise<void> = sleep
+    sleep: (ms: number) => Promise<void> = defaultSleep
   ): Promise<DrainOutcome> {
     if (this.active.size === 0) {
       return "drained";

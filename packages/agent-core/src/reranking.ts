@@ -58,6 +58,6 @@ export async function rerankTopK<T extends { readonly score: number; readonly te
   } catch {
     return matches;
   }
-  const reordered = applyReranking(head, scores).map(({ rerankScore: _drop, ...rest }) => rest as T);
+  const reordered = applyReranking(head, scores).map(({ rerankScore: _drop, ...rest }) => rest as unknown as T);
   return [...reordered, ...matches.slice(head.length)];
 }

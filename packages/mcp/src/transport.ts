@@ -458,7 +458,9 @@ function normalizeJsonValue(value: unknown): JsonValue {
 }
 
 function toJsonObject(value: unknown): JsonObject {
-  return isRecord(value) ? value : {};
+  // value is untrusted MCP wire data (already JSON-decoded), so a record
+  // here is already JSON-safe — narrow to JsonObject accordingly.
+  return isRecord(value) ? (value as JsonObject) : {};
 }
 
 async function closeQuietly(client: Client): Promise<void> {

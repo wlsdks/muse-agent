@@ -122,7 +122,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
             const sorted = [...records]
               .sort((left, right) => right.firedAtMs - left.firedAtMs)
               .slice(0, limit);
-            return { fired: sorted as JsonValue, total: sorted.length };
+            return { fired: sorted as unknown as JsonValue, total: sorted.length };
           } catch (cause) {
             return { error: errorMessage(cause) };
           }

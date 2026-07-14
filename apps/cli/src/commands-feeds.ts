@@ -147,57 +147,55 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
   const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
   const optionsSleep = options.sleep ?? sleep;
   const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
-  try {
-    const fetched = await fetchFeedWithPublicRedirects(url, {
-      baseDelayMs,
-      fetchImpl,
-      ...(options.lookup ? { lookup: options.lookup } : {}),
-      retries,
-      sleep: optionsSleep,
-      ...(timeoutSignal ? { signal: timeoutSignal } : {}),
-      timeoutMs
-    });
-    if (!fetched.ok) {
-      if (fetched.phase === "initial") {
-        throw new Error(`feed URL is not an allowed public http(s) address: ${url}`);
-      }
-      throw new Error(`feed ${url} redirect failed: ${fetched.message}`);
+  const fetched = await fetchFeedWithPublicRedirects(url, {
+    baseDelayMs,
+    fetchImpl,
+    ...(options.lookup ? { lookup: options.lookup } : {}),
+    retries,
+    sleep: optionsSleep,
+    ...(timeoutSignal ? { signal: timeoutSignal } : {}),
+    timeoutMs
+  });
+  if (!fetched.ok) {
+    if (fetched.phase === "initial") {
+      throw new Error(`feed URL is not an allowed public http(s) address: ${url}`);
     }
-    const response = fetched.response;
-    if (!response.ok) {
-      throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
-    }
-    const declared = response.headers.get("content-length");
-    if (declared !== null) {
-      const declaredBytes = Number.parseInt(declared, 10);
-      if (Number.isFinite(declaredBytes) && declaredBytes > maxBodyBytes) {
-        throw new Error(`feed body ${url} declared ${declaredBytes.toString()} bytes; cap is ${maxBodyBytes.toString()}`);
-      }
-    }
-    if (!response.body) {
-      return "";
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let total = 0;
-    let body = "";
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > maxBodyBytes) {
-          await reader.cancel();
-          throw new Error(`feed body ${url} exceeded ${maxBodyBytes.toString()} bytes`);
-        }
-        body += decoder.decode(value, { stream: true });
-      }
-      body += decoder.decode();
-    } finally {
-      try { reader.releaseLock(); } catch { /* released by cancel or natural completion */ }
-    }
-    return body;
+    throw new Error(`feed ${url} redirect failed: ${fetched.message}`);
   }
+  const response = fetched.response;
+  if (!response.ok) {
+    throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
+  }
+  const declared = response.headers.get("content-length");
+  if (declared !== null) {
+    const declaredBytes = Number.parseInt(declared, 10);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxBodyBytes) {
+      throw new Error(`feed body ${url} declared ${declaredBytes.toString()} bytes; cap is ${maxBodyBytes.toString()}`);
+    }
+  }
+  if (!response.body) {
+    return "";
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let total = 0;
+  let body = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBodyBytes) {
+        await reader.cancel();
+        throw new Error(`feed body ${url} exceeded ${maxBodyBytes.toString()} bytes`);
+      }
+      body += decoder.decode(value, { stream: true });
+    }
+    body += decoder.decode();
+  } finally {
+    try { reader.releaseLock(); } catch { /* released by cancel or natural completion */ }
+  }
+  return body;
 }
 
 export function slugifyUrl(url: string): string {

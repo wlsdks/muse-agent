@@ -204,12 +204,14 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         true
       );
     }
-    const json = parsed;
+    // isJsonObject proves it's an object; the wire shape beyond that is
+    // Ollama's contract, declared once in OllamaNativeChatResponse.
+    const json = parsed as OllamaNativeChatResponse;
     return {
       id: `${this.id}-${Date.now().toString()}`,
       model: json.model ?? request.model ?? this.nativeDefaultModel ?? "unknown",
       output: stripLeadingThinkBlock(json.message?.content ?? ""),
-      raw: json,
+      raw: parsed,
       ...(json.message?.thinking ? { reasoning: json.message.thinking } : {}),
       ...(json.message?.tool_calls && json.message.tool_calls.length > 0
         ? {
@@ -530,10 +532,6 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         : {})
     };
   }
-}
-
-interface OllamaShowResponse {
-  readonly model_info?: JsonObject;
 }
 
 /**

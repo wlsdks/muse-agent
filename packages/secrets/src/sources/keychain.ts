@@ -1,4 +1,7 @@
-import { execFile } from "node:child_process/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 import type { SecretRef, SecretSource } from "../types.js";
 

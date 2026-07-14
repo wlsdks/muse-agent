@@ -292,12 +292,12 @@ export class PuppeteerBrowserController implements BrowserController {
       });
       observer.observe(body, { attributes: true, childList: true, characterData: true, subtree: true });
       state.observer = observer;
-      (window as { [key: string]: unknown })[marker] = state;
+      (window as unknown as { [key: string]: unknown })[marker] = state;
     }, 400, DOM_SETTLE_SIGNAL);
     try {
       await page.waitForFunction(
         (quietMs: number, marker: string) => {
-          const state = (window as { [key: string]: { updatedAt: number; observer?: MutationObserver } | undefined })[marker];
+          const state = (window as unknown as { [key: string]: { updatedAt: number; observer?: MutationObserver } | undefined })[marker];
           if (!state?.updatedAt) return true;
           return Date.now() - state.updatedAt >= quietMs;
         },
@@ -312,9 +312,9 @@ export class PuppeteerBrowserController implements BrowserController {
       /* page navigated away mid-wait */
     } finally {
       await page.evaluate((marker: string) => {
-        const state = (window as { [key: string]: { observer?: MutationObserver } | undefined })[marker];
+        const state = (window as unknown as { [key: string]: { observer?: MutationObserver } | undefined })[marker];
         state?.observer?.disconnect();
-        delete (window as { [key: string]: unknown })[marker];
+        delete (window as unknown as { [key: string]: unknown })[marker];
       }, DOM_SETTLE_SIGNAL);
     }
   }

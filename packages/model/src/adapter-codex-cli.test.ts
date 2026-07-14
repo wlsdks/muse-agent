@@ -26,9 +26,15 @@ function fakeSpawn(opts: { output?: string; stderr?: string; code?: number; erro
   const calls: Array<{ cmd: string; args: readonly string[] }> = [];
   const spawn = ((cmd: string, args: readonly string[]) => {
     calls.push({ args, cmd });
-    const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      stdin: EventEmitter & { write: () => void; end: () => void };
+      kill: () => void;
+    };
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
+    child.stdin = Object.assign(new EventEmitter(), { end: () => undefined, write: () => undefined });
     child.kill = () => {
       queueMicrotask(() => child.emit("close", null));
     };

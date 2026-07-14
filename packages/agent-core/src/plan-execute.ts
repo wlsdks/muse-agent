@@ -134,7 +134,9 @@ function toPlanSteps(entries: readonly unknown[]): readonly PlanStep[] | null {
       return null;
     }
     steps.push({
-      args: argsValue ?? {},
+      // entries come from JSON.parse of the model's plan text, so a record
+      // here is already JSON-safe data — narrow to JsonObject accordingly.
+      args: (argsValue as JsonObject | undefined) ?? {},
       description: typeof descriptionValue === "string" ? descriptionValue : "",
       tool: toolValue
     });
@@ -179,7 +181,7 @@ function stepKey(step: PlanStep): string {
 function stableStringify(obj: JsonObject): string {
   const sorted: Record<string, JsonValue> = {};
   for (const key of Object.keys(obj).sort()) {
-    sorted[key] = normalizeArgValue(obj[key]);
+    sorted[key] = normalizeArgValue(obj[key] ?? null);
   }
   return JSON.stringify(sorted);
 }
@@ -520,7 +522,7 @@ function normalizeArgValue(value: JsonValue): JsonValue {
   }
   const normalized: Record<string, JsonValue> = {};
   for (const key of Object.keys(value).sort()) {
-    normalized[key] = normalizeArgValue(value[key]);
+    normalized[key] = normalizeArgValue(value[key] ?? null);
   }
   return normalized;
 }

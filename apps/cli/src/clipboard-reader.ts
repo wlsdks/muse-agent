@@ -1,4 +1,7 @@
-import { execFile } from "node:child_process/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 /**
  * Read the OS clipboard so `muse ask --clipboard` can ground on text the user
@@ -37,6 +40,4 @@ export async function readClipboardText(platform: NodeJS.Platform = process.plat
   }
   const { stdout } = await execFile(spec.cmd, [...spec.args], { maxBuffer: 4_000_000 });
   return stdout;
-}
-  });
 }

@@ -443,9 +443,9 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
     try {
       await fetchFeedWithPublicRedirects("https://93.184.216.34/feed.xml", {
         baseDelayMs: 0,
-        controller,
         fetchImpl: (async () => { fetches += 1; return new Response("unexpected"); }) as typeof globalThis.fetch,
         retries: 0,
+        signal: controller.signal,
         sleep: async () => {},
         timeoutMs: 37
       });

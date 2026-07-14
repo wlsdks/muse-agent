@@ -5,13 +5,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { execFile } from "node:child_process/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
 import { Command } from "commander";
 import { createProgram, defaultConfigPath, uniqueCommandPrefix } from "../src/program.js";
 import { registerListenCommand, type ListenShells } from "../src/commands-listen.js";
 import { formatNoticeStamp } from "../src/commands-agent-notices.js";
 import { formatLocalDateTime } from "../src/human-formatters.js";
 import { appendChatTurn } from "../src/tui.js";
+
+const execFile = promisify(execFileCallback);
 
 function captureOutput() {
   const output: string[] = [];

@@ -178,10 +178,11 @@ export class OnExitWatcher {
       toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal)
     );
 
-    const onPollPromise = trigger.pollMs
+    const pollMs = trigger.pollMs;
+    const onPollPromise = pollMs
       ? (async () => {
           while (child.pid >= 0 && this.isAlive(child.pid)) {
-            await sleep(trigger.pollMs);
+            await sleep(pollMs);
           }
           return toOutcome(timedOut ? "timed-out" : "exited", null, null);
         })()

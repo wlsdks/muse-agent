@@ -10,7 +10,10 @@
  * perception blip can't crash the tick.
  */
 
-import { execFile } from "node:child_process/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 import type { AmbientSignal, AmbientSignalSource } from "./ambient-notice-loop.js";
 

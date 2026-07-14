@@ -144,24 +144,22 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
     readonly truncated: boolean;
   }> {
     const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
-    const requestInit = timeoutSignal === undefined
+    const requestInit: RequestInit = timeoutSignal === undefined
       ? { ...init, redirect: "error" }
       : { ...init, redirect: "error", signal: timeoutSignal };
-    try {
-      // fetchWithRetry layers transient-failure retry (429/5xx/network) on
-      // top; timeoutMs:0 means retry layer retries only physical transport
-      // failures, while timeoutSignal governs both headers and any body read.
-      const response = await fetchWithRetry(fetchImpl, url.toString(), {
-        ...retryOptions,
-        timeoutMs: 0,
-        init: requestInit
-      });
-      if (!readBody) {
-        return { body: undefined, headers: response.headers, status: response.status, truncated: false };
-      }
-      const { body, truncated } = await readBodyWithCap(response);
-      return { body, headers: response.headers, status: response.status, truncated };
+    // fetchWithRetry layers transient-failure retry (429/5xx/network) on
+    // top; timeoutMs:0 means retry layer retries only physical transport
+    // failures, while timeoutSignal governs both headers and any body read.
+    const response = await fetchWithRetry(fetchImpl, url.toString(), {
+      ...retryOptions,
+      timeoutMs: 0,
+      init: requestInit
+    });
+    if (!readBody) {
+      return { body: undefined, headers: response.headers, status: response.status, truncated: false };
     }
+    const { body, truncated } = await readBodyWithCap(response);
+    return { body, headers: response.headers, status: response.status, truncated };
   }
 
   function headersToObject(headers: Headers): Record<string, string> {

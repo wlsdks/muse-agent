@@ -121,7 +121,7 @@ function countCorpusFiles(dir: string, cap = 1_000): number {
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
-      const full = join((e as { parentPath?: string; path?: string }).parentPath ?? (e as { path: string }).path ?? dir, e.name);
+      const full = join((e as unknown as { parentPath?: string; path?: string }).parentPath ?? (e as unknown as { path: string }).path ?? dir, e.name);
       if (e.isDirectory()) stack.push(full);
       else if (e.isFile() && /\.(md|markdown|txt|pdf)$/iu.test(e.name)) count += 1;
       if (count >= cap) break;

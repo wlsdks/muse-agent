@@ -117,7 +117,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
       try {
         const entries = await readReminderHistory(historyFile, limit);
         return {
-          entries: entries as JsonValue,
+          entries: entries as unknown as JsonValue,
           total: entries.length
         };
       } catch (error) {

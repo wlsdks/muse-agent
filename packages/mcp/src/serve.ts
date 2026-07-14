@@ -63,7 +63,9 @@ export function createMuseToolsMcpServer(options: MuseToolsMcpServerOptions): Se
       return errorResult(`Unknown tool '${request.params.name}'. Call tools/list first.`);
     }
 
-    const args = isRecord(request.params.arguments) ? request.params.arguments : {};
+    // MCP tool arguments arrive over the wire as JSON, so a record here is
+    // already JSON-safe data — narrow to JsonObject accordingly.
+    const args: JsonObject = isRecord(request.params.arguments) ? (request.params.arguments as JsonObject) : {};
     const missing = missingRequiredArgs(tool.definition.inputSchema, args);
     if (missing.length > 0) {
       return errorResult(`'${tool.definition.name}' is missing required argument(s): ${missing.join(", ")}`);
@@ -111,7 +113,7 @@ export async function runStdioMcpServer(server: Server, onListening?: () => void
  * content, so a tool's real schema reaches the client byte-identical.
  */
 function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
-  const properties = isRecord(schema.properties) ? schema.properties : undefined;
+  const properties = isRecord(schema.properties) ? (schema.properties as Record<string, object>) : undefined;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : undefined;

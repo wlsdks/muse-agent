@@ -138,7 +138,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
               return {
                 backend: "searxng",
                 query,
-                results: deduped,
+                results: deduped as unknown as JsonValue,
                 total: deduped.length
               };
             }
@@ -200,7 +200,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
           if (parsed.length === 0) {
             return { error: "parser returned 0 results — backend markup may have shifted" };
           }
-          return { backend: "duckduckgo", query, results: parsed, total: parsed.length };
+          return { backend: "duckduckgo", query, results: parsed as unknown as JsonValue, total: parsed.length };
         },
         inputSchema: buildJsonToolSchema(
           {

@@ -19,13 +19,12 @@ const rejectingBus = (): AgentMessageBus => ({
 });
 
 async function withHangGuard<T>(p: Promise<T>, label: string): Promise<T> {
-  let timer: NodeJS.Timeout;
   const guard = Promise.withResolvers<never>();
-  timer = setTimeout(() => guard.reject(new Error(`hung: ${label}`)), 2_000);
+  const timer: NodeJS.Timeout = setTimeout(() => guard.reject(new Error(`hung: ${label}`)), 2_000);
   try {
     return await Promise.race([p, guard.promise]);
   } finally {
-    clearTimeout(timer!);
+    clearTimeout(timer);
   }
 }
 

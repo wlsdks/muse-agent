@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-
 import { CalendarProviderError } from "./errors.js";
 import type {
   CalendarEvent,
@@ -184,14 +182,24 @@ export class MacOsCalendarProvider implements CalendarProvider {
   }
 
   private async runScript(script: string): Promise<string> {
-    const result = await runCommandWithTimeout({
-      command: this.osascriptPath,
-      args: ["-"],
-      stdin: script,
-      timeoutMs: this.timeoutMs,
-      maxStdoutBytes: 200_000,
-      maxStderrBytes: 200_000
-    });
+    let result: Awaited<ReturnType<typeof runCommandWithTimeout>>;
+    try {
+      result = await runCommandWithTimeout({
+        command: this.osascriptPath,
+        args: ["-"],
+        stdin: script,
+        timeoutMs: this.timeoutMs,
+        maxStdoutBytes: 200_000,
+        maxStderrBytes: 200_000
+      });
+    } catch (error) {
+      throw new CalendarProviderError(
+        this.id,
+        "OSASCRIPT_FAILED",
+        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error : undefined
+      );
+    }
 
     if (result.timedOut) {
       throw new CalendarProviderError(

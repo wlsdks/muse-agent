@@ -19,8 +19,6 @@
  */
 
 import type { Readable } from "node:stream";
-import { once } from "node:events";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
@@ -139,36 +137,34 @@ export async function readPipedStdin(options: ReadPipedStdinOptions = {}): Promi
   }
   const firstByteTimeoutMs = options.firstByteTimeoutMs ?? 200;
   stream.setEncoding("utf8");
-  const waitForFirstByte = Promise.race<
-    { kind: "data"; chunk: string | Buffer }
-    | { kind: "end" | "error" | "timeout" }
-  >([
-    once(stream, "data").then(([chunk]) => ({ kind: "data" as const, chunk })),
-    once(stream, "end").then(() => ({ kind: "end" as const })),
-    once(stream, "error").then(() => ({ kind: "error" as const })),
-    sleep(firstByteTimeoutMs).then(() => ({ kind: "timeout" as const }))
-  ]);
-
-  const firstSignal = await waitForFirstByte;
-  stream.pause();
-
-  if (firstSignal.kind !== "data") {
-    return "";
-  }
-
-  let raw = typeof firstSignal.chunk === "string" ? firstSignal.chunk : firstSignal.chunk.toString("utf8");
-
-  stream.resume();
-  try {
-    for await (const chunk of stream) {
+  return await new Promise<string>((resolve) => {
+    let raw = "";
+    let gotData = false;
+    let done = false;
+    const onData = (chunk: string | Buffer): void => {
+      gotData = true;
       raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-    }
-  } catch {
-    // Legacy behavior: stream errors while reading piped input are treated as a
-    // read stop, not a hard failure for CLI invocation.
-  }
-
-  return raw.trim();
+    };
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      stream.off("data", onData);
+      stream.off("end", finish);
+      stream.off("error", finish);
+      stream.pause();
+      resolve(raw.trim());
+    };
+    // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
+    // but once data is flowing we wait for the real EOF.
+    const timer = setTimeout(() => {
+      if (!gotData) finish();
+    }, firstByteTimeoutMs);
+    stream.on("data", onData);
+    stream.once("end", finish);
+    stream.once("error", finish);
+    stream.resume();
+  });
 }
 
 export function createTuiChatSubmitter(
@@ -329,8 +325,9 @@ export async function runLocalChat(
   // "what's my name?" and honour the stored response-language preference across
   // sessions, instead of forgetting everything the moment the conversation resets.
   const userId = resolveDefaultUserKey({});
-  const userMemory = assembly.userMemoryStore
-    ? await assembly.userMemoryStore.findByUserId(userId).catch(() => undefined)
+  const userMemoryStore = assembly.userMemoryStore;
+  const userMemory = userMemoryStore
+    ? await Promise.resolve(userMemoryStore.findByUserId(userId)).catch(() => undefined)
     : undefined;
   // qwen3:8b free-associates remembered ENTITY facts into unrelated turns —
   // it volunteered the user's dog in a hydration answer and a "good morning"

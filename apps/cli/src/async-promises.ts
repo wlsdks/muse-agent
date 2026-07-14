@@ -1,10 +1,15 @@
-import { setTimeout as sleepWithTimer } from "node:timers/promises";
 import { once } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import type { IncomingMessage } from "node:http";
 
+// A plain `setTimeout`/`clearTimeout` wrapper — not `node:timers/promises` —
+// so callers under `vi.useFakeTimers()` (watchdog timeout tests) can advance
+// it deterministically; `timers/promises` isn't reliably intercepted by fake
+// timers.
 export function sleep(milliseconds: number): Promise<void> {
-  return sleepWithTimer(milliseconds);
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 export async function waitForShutdownSignal(signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"]): Promise<NodeJS.Signals> {

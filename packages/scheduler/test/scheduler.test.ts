@@ -330,7 +330,6 @@ describe("ScheduledJobDispatcher", () => {
   });
 
   it("reports timeout failures with job context", async () => {
-    const waitForRelease = Promise.withResolvers<string>();
     const dispatcher = new ScheduledJobDispatcher({
       agentExecutor: {
         execute: async () => {

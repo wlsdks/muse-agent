@@ -95,7 +95,7 @@ export function createHistoryMcpServer(options: HistoryMcpServerOptions): Loopba
           ...(sinceMs !== undefined ? { sinceMs } : {})
         });
         return {
-          entries: entries as JsonValue,
+          entries: entries as unknown as JsonValue,
           total: entries.length
         };
       } catch (error) {

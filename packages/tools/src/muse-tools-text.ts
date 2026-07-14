@@ -261,8 +261,12 @@ function toSummaryValue(value: unknown): JsonValue {
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return value;
   }
+  // flattenIntoKv re-derives shape at each recursion step (Array.isArray /
+  // isRecord guards), so a container value only needs to be narrowed to
+  // "array or record" here — the deep JsonValue shape is validated lazily
+  // as flattenIntoKv walks each child.
   if (Array.isArray(value) || isRecord(value)) {
-    return value;
+    return value as JsonValue;
   }
   return null;
 }

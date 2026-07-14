@@ -106,8 +106,8 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
       try {
         const result = await pollAll();
         return {
-          errors: result.errors,
-          ingestedByProvider: result.ingestedByProvider
+          errors: result.errors as unknown as JsonValue,
+          ingestedByProvider: result.ingestedByProvider as unknown as JsonValue
         };
       } catch (error) {
         return { error: errorMessage(error) };
@@ -186,7 +186,7 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           "`displayName`, and a free-form `description`. Empty array means no provider is configured.",
         execute: async (): Promise<JsonObject> => {
           const providers = registry.describe();
-          return { providers };
+          return { providers: providers as unknown as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -223,9 +223,9 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           try {
             const inbound = await registry.fetchInbound(providerId, Object.keys(opts).length > 0 ? opts : undefined);
             return {
-              inbound: inbound.map((entry) => ({
-                ...entry,
-                ...(entry.raw === undefined ? {} : { raw: sanitizeJsonValue(entry.raw) })
+              inbound: inbound.map(({ raw, ...rest }) => ({
+                ...rest,
+                ...(raw === undefined ? {} : { raw: sanitizeJsonValue(raw) })
               })),
               providerId,
               total: inbound.length
@@ -368,7 +368,7 @@ function sanitizeJsonValue(value: unknown): JsonValue | undefined {
   if (value === undefined || typeof value !== "object") {
     return undefined;
   }
-  const out: JsonObject = {};
+  const out: Record<string, JsonValue> = {};
   for (const [key, raw] of Object.entries(value)) {
     const nested = sanitizeJsonValue(raw);
     if (nested !== undefined) {

@@ -15,9 +15,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 import { platform } from "node:process";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
+import { sleep } from "./async-promises.js";
 import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 

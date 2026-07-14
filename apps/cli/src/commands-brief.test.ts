@@ -176,7 +176,7 @@ describe("playAudioFile (muse brief --speak player watchdog)", () => {
     const { child, spawnFn } = makeFakeSpawn();
     const promise = playAudioFile("aplay", "/tmp/brief.wav", spawnFn);
     child.emit("close", 3);
-    await expect(promise).rejects.toThrow(/aplay exit 3/u);
+    await expect(promise).rejects.toThrow(/aplay exited with code 3/u);
   });
 
   it("rejects on a spawn error (player not installed)", async () => {

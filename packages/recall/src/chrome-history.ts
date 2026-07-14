@@ -131,8 +131,8 @@ async function queryVisits(dbFile: string, sinceVisitTime: number, limit: number
     // WebKit-epoch µs overflows a JS number, so read + bind integers as BigInt.
     statement.setReadBigInts(true);
     const cursor = BigInt(Math.max(0, Math.round(sinceVisitTime)));
-    const rows = statement.all(cursor, limit);
-    return rows.filter((row): row is RawVisitRow => isRawVisitRow(row));
+    const rows: readonly unknown[] = statement.all(cursor, limit);
+    return rows.filter(isRawVisitRow);
   } finally {
     db.close();
   }

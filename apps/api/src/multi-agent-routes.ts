@@ -569,7 +569,7 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
     }
   } finally {
     args.messageBus.clear();
-    void wakeupNotifications.return();
+    void wakeupNotifications.return?.();
   }
 }
 

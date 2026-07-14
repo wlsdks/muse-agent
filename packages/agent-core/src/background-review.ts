@@ -203,10 +203,9 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
       // arm throws leaves its trigger tripped and re-fires next turn — the same
       // "no trigger is lost" invariant the in-flight-skip path holds (MAST
       // fail-close: a failed sub-step must not silently discard its retrigger).
-      void runReview({ context, response, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId })
-        .then(() => {
-          counters.reset(userId, { iters: decision.reviewSkill, toolFailures: decision.reviewSkill, turns: decision.reviewMemory });
-        })
+      void Promise.resolve()
+        .then(() => runReview({ context, response, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId }))
+        .then(() => { counters.reset(userId, { iters: decision.reviewSkill, toolFailures: decision.reviewSkill, turns: decision.reviewMemory }); })
         .catch((error) => options.onError?.(error))
         .finally(() => { inFlight.delete(userId); });
     }

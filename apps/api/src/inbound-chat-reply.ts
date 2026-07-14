@@ -132,7 +132,7 @@ export function createComposeChatReply(
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const fallbackTimeoutController = new AbortController();
     const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: fallbackTimeoutController.signal }).then(() => {
-      return null as const;
+      return null;
     });
     try {
       const response = await Promise.race([

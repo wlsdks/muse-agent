@@ -228,7 +228,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       }
       io.stdout(formatTaskList({
         status: payload.status,
-        tasks: payload.tasks as Parameters<typeof formatTaskList>[0]["tasks"],
+        tasks: payload.tasks as unknown as Parameters<typeof formatTaskList>[0]["tasks"],
         total: payload.total
       }));
     });
@@ -331,7 +331,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, created);
         return;
       }
-      io.stdout(formatTaskAdded(created as Parameters<typeof formatTaskAdded>[0]));
+      io.stdout(formatTaskAdded(created as unknown as Parameters<typeof formatTaskAdded>[0]));
     });
 
   tasks
@@ -377,7 +377,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         io.stdout(`Task [${String(completed.id).slice(0, 12)}] ${String(completed.title)} was already done${when ? ` (completed ${formatLocalDateTime(when)})` : ""} — no change.\n`);
         return;
       }
-      io.stdout(formatTaskCompleted(completed as Parameters<typeof formatTaskCompleted>[0]));
+      io.stdout(formatTaskCompleted(completed as unknown as Parameters<typeof formatTaskCompleted>[0]));
     });
 
   tasks

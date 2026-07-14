@@ -365,10 +365,11 @@ function wrapTokenUsageSink(
     }
   };
   if (isQueryableTokenUsageSink(inner)) {
-    return {
+    const queryableBase: QueryableTokenUsageSink = {
       ...base,
       list: () => inner.list()
     };
+    return queryableBase;
   }
   return base;
 }
