@@ -127,14 +127,15 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     const store = new FileMessagingCredentialStore(gate.integrationEnv.messaging.credentialsFile);
     const fromFile = new Set(await store.list());
     const { ownersFile, pairingCodesFile } = gate.integrationEnv.messaging;
-    const owners = Object.fromEntries(
-      await Promise.all(CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)]))
-    ) as Record<string, string | undefined>;
+    const ownerPairs = await Promise.all(
+      CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)] as const)
+    );
+    const owners = new Map(ownerPairs);
     return {
       providers: await Promise.all(CONNECTABLE.map(async (provider) => {
         const source = pathsFor(gate.integrationEnv, provider.id).envConfigured ? "env" : fromFile.has(provider.id) ? "file" : null;
         const configured = source !== null;
-        const pairedOwner = owners[provider.id];
+        const pairedOwner = owners.get(provider.id);
         // A pairing code is only meaningful once the provider is connected
         // AND no owner has claimed it yet — this is the code the owner
         // reads here and sends to the bot to complete pairing (P2 #9: TOFU

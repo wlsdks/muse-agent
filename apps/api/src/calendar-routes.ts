@@ -157,7 +157,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       await gate.registry.deleteEvent(providerId, id);
       // Lifecycle-link contract: a deleted event's linked reminders go with it
       // on EVERY surface (best-effort — a sync failure never fails the delete).
-      await syncRemindersOnEventDelete(resolveRemindersFile(process.env as Record<string, string | undefined>), id);
+      await syncRemindersOnEventDelete(resolveRemindersFile(process.env), id);
       return reply.status(204).send();
     } catch (error) {
       return reply.status(502).send({ code: "CALENDAR_DELETE_FAILED", message: error instanceof Error ? error.message : String(error) });

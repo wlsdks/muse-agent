@@ -359,9 +359,9 @@ async function applyWebSearchPolicy(
     messages: runInput.messages,
     metadata: runInput.metadata,
     model: runInput.model ?? "default"
-  };
-  const wrapped = buildModelRequestWithWebSearch(modelRequest, {
-    env: process.env as Record<string, string | undefined>,
+    };
+    const wrapped = buildModelRequestWithWebSearch(modelRequest, {
+    env: process.env,
     override,
     settings: { webSearch: webSearchSettings }
   });

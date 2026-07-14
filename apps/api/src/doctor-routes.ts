@@ -4,6 +4,7 @@ import { computeDoctorChecks, DOCTOR_FIXES, type DoctorCheck } from "./doctor-ch
 import { readDaemonSettingsSync, writeDaemonSetting } from "./daemon-settings-store.js";
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
 import { requireAuthenticated } from "./server-helpers.js";
+import { toBody } from "./compat-parsers.js";
 import { shapeDaemonFlags, type DaemonStatusSource } from "./settings-routes.js";
 
 import type { FastifyInstance } from "fastify";
@@ -102,7 +103,7 @@ export function registerDoctorRoutes(server: FastifyInstance, gate: DoctorRoutes
       if (!authed(request, reply)) {
         return reply;
       }
-      const body = (request.body ?? {}) as { id?: string };
+      const body = toBody(request.body);
       const fixId = typeof body.id === "string" ? body.id : "";
       const flagKey = DOCTOR_FIXES[fixId];
       if (!flagKey) {

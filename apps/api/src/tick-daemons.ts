@@ -562,7 +562,7 @@ export function startConsolidateDaemonIfConfigured(
       ? createFileBackedActivityTracker({ file: presenceFile })
       : createInMemoryActivityTracker();
     server.addHook("onRequest", async (request) => {
-      const path = (request as { readonly url?: string }).url ?? "";
+      const path = request.url;
       if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
         tracker.record();
       }

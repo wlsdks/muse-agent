@@ -23,6 +23,7 @@ import {
   type ParseResult,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
+import { readRouteParam } from "./compat-parsers.js";
 
 export function parseAgentSpecInput(value: unknown, id?: string): ParseResult<AgentSpecInput> {
   if (!isRecord(value)) {
@@ -68,8 +69,12 @@ export async function findAgentSpecOrReply(
   if (!options.requireAuthenticated(request, reply)) {
     return undefined;
   }
+  const id = readRouteParam(request, "id");
 
-  const { id } = request.params as { readonly id: string };
+  if (!id) {
+    return reply.status(400).send(errorResponse("Invalid agent spec id"));
+  }
+
   const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
   if (!spec) {

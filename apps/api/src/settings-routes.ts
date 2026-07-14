@@ -1,5 +1,6 @@
 import { parseBoolean } from "@muse/autoconfigure";
 import { parseQuietHours } from "@muse/proactivity";
+import { toBody } from "./compat-parsers.js";
 
 import { readDaemonSettingsSync, readQuietHoursSettingSync, writeDaemonSetting, writeQuietHoursSetting, type DaemonSettings } from "./daemon-settings-store.js";
 import type { FastifyInstance } from "fastify";
@@ -123,7 +124,7 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       if (!authed(request, reply)) {
         return reply;
       }
-      const body = (request.body ?? {}) as { key?: string; enabled?: boolean };
+      const body = toBody(request.body);
       const key = typeof body.key === "string" ? body.key : "";
       if (!DAEMON_FLAGS.some(([known]) => known === key)) {
         return reply.status(404).send({ reason: `unknown daemon flag "${key}"` });
@@ -150,7 +151,7 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       if (!authed(request, reply)) {
         return reply;
       }
-      const body = (request.body ?? {}) as { enabled?: boolean; range?: string };
+      const body = toBody(request.body);
       if (typeof body.enabled !== "boolean") {
         return reply.status(400).send({ reason: "enabled must be a boolean" });
       }
