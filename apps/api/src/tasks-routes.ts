@@ -24,6 +24,7 @@ import { type TasksProviderRegistry } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
+import { coerceStringArray, readBodyString, readQueryString, readRouteParam, toBody } from "./compat-parsers.js";
 import type { ServerOptions } from "./server.js";
 
 interface TasksRoutesGate {
@@ -47,7 +48,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const status = readTaskStatusFilter((request.query as { readonly status?: string } | undefined)?.status);
+    const status = readTaskStatusFilter(readQueryString(request, "status"));
     const tasks = await readTasks(tasksFile);
     const filtered = tasks
       .filter((task) => status === "all" || task.status === status)
@@ -59,18 +60,13 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = request.body as {
-      readonly title?: unknown;
-      readonly notes?: unknown;
-      readonly tags?: unknown;
-      readonly dueAt?: unknown;
-    } | null;
-    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    const body = toBody(request.body);
+    const title = readBodyString(body, "title") ?? "";
     if (title.length === 0) {
       return reply.status(400).send({ code: "INVALID_TASK", message: "title must be a non-empty string" });
     }
     let dueAt: string | undefined;
-    const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
+    const dueAtRaw = readBodyString(body, "dueAt") ?? "";
     if (dueAtRaw.length > 0) {
       const parsed = parseTaskDueAt(dueAtRaw, () => new Date());
       if (parsed instanceof Error) {
@@ -78,16 +74,15 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       }
       dueAt = parsed;
     }
+    const requestTags = coerceStringArray(body.tags);
     const tasks = await readTasks(tasksFile);
     const created: PersistedTask = {
       createdAt: new Date().toISOString(),
       id: `task_${randomUUID()}`,
       status: "open",
       title,
-      ...(typeof body?.notes === "string" && body.notes.trim().length > 0 ? { notes: body.notes.trim() } : {}),
-      ...(Array.isArray(body?.tags)
-        ? { tags: (body.tags as unknown[]).filter((entry): entry is string => typeof entry === "string") }
-        : {}),
+      ...(typeof body.notes === "string" && body.notes.trim().length > 0 ? { notes: body.notes.trim() } : {}),
+      ...(requestTags ? { tags: requestTags } : {}),
       ...(dueAt ? { dueAt } : {})
     };
     await writeTasks(tasksFile, [...tasks, created]);
@@ -98,14 +93,11 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
-    const body = request.body as {
-      readonly title?: unknown;
-      readonly notes?: unknown;
-      readonly tags?: unknown;
-      readonly dueAt?: unknown;
-      readonly urgent?: unknown;
-    };
+    const id = readRouteParam(request, "id");
+    if (!id) {
+      return reply.status(400).send({ code: "INVALID_TASK_ID", message: "task id is required" });
+    }
+    const body = toBody(request.body);
     const tasks = await readTasks(tasksFile);
     const index = tasks.findIndex((task) => task.id === id);
     if (index < 0) {
@@ -122,15 +114,16 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       }
       dueAt = parsed;
     }
+    const requestTags = coerceStringArray(body.tags);
     const patched: PersistedTask = {
       ...existing,
       ...(typeof body.title === "string" && body.title.trim().length > 0 ? { title: body.title.trim() } : {}),
       ...(typeof body.notes === "string"
         ? body.notes.length > 0 ? { notes: body.notes } : { notes: undefined }
         : {}),
-      ...(Array.isArray(body.tags)
-        ? body.tags.length > 0
-          ? { tags: (body.tags as unknown[]).filter((entry): entry is string => typeof entry === "string") }
+      ...(requestTags
+        ? requestTags.length > 0
+          ? { tags: requestTags }
           : { tags: undefined }
         : {}),
       ...(dueAt === null
@@ -148,7 +141,10 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+    if (!id) {
+      return reply.status(400).send({ code: "INVALID_TASK_ID", message: "task id is required" });
+    }
     const tasks = await readTasks(tasksFile);
     const index = tasks.findIndex((task) => task.id === id);
     if (index < 0) {
@@ -165,7 +161,10 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const { id } = request.params as { readonly id: string };
+    const id = readRouteParam(request, "id");
+    if (!id) {
+      return reply.status(400).send({ code: "INVALID_TASK_ID", message: "task id is required" });
+    }
     const tasks = await readTasks(tasksFile);
     const next = tasks.filter((task) => task.id !== id);
     if (next.length === tasks.length) {

@@ -3,6 +3,7 @@ import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
+import { readRouteParam, toBody } from "./compat-parsers.js";
 import type { ServerOptions } from "./server.js";
 
 interface WeaknessView {
@@ -120,14 +121,24 @@ export function shapeSkills(skills: readonly Skill[], rewards: Record<string, nu
  * Covers missing, null, string, NaN, Infinity, and zero inputs.
  */
 export function parseRewardDelta(body: unknown): number | undefined {
-  if (body === null || body === undefined || typeof body !== "object" || Array.isArray(body)) {
-    return undefined;
-  }
-  const delta = (body as Record<string, unknown>)["delta"];
+  const payload = toBody(body);
+  const delta = payload.delta;
   if (typeof delta !== "number" || !Number.isFinite(delta) || delta === 0) {
     return undefined;
   }
   return delta;
+}
+
+function readSkillName(request: Parameters<typeof requireAuthenticated>[0]): string | undefined {
+  const raw = readRouteParam(request, "name");
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 interface ReflectionView {
@@ -216,15 +227,18 @@ export function registerSelfImprovementRoutes(server: FastifyInstance, gate: Sel
     if (!authed(request, reply)) {
       return reply;
     }
-    const { name } = request.params as { name: string };
+    const name = readSkillName(request);
+    if (!name) {
+      return reply.status(400).send({ error: "invalid skill name" });
+    }
     const delta = parseRewardDelta(request.body);
     if (delta === undefined) {
       return reply.status(400).send({ error: "invalid delta" });
     }
-    const reward = await adjustSkillReward(gate.skillRewardsFile, decodeURIComponent(name), delta);
+    const reward = await adjustSkillReward(gate.skillRewardsFile, name, delta);
     if (reward === undefined) {
       return reply.status(400).send({ error: "invalid skill name" });
     }
-    return { name: decodeURIComponent(name), reward };
+    return { name, reward };
   });
 }
