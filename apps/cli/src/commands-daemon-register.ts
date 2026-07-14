@@ -37,7 +37,7 @@ import {
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
-import { defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks } from "@muse/stores";
+import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks, recordProactiveHeartbeat } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
@@ -90,7 +90,7 @@ import {
 } from "./daemon-delivery-ticks.js";
 import type { ProgramIO } from "./program.js";
 import { isGmailConfigured } from "./resolve-gmail-provider.js";
-import { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
+import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
@@ -344,7 +344,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // `helpers.env` is a test/composition seam, not an escape hatch. A
       // supplied false cannot downgrade the ambient local-only posture.
       const localOnly = isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e);
-      const interval = parseBoundedFlag(options.interval, "--interval", 5, 86_400, 60);
+      const interval = parseBoundedFlag(options.interval, "--interval", 5, 86_400, DEFAULT_DAEMON_INTERVAL_MS / 1000);
       const leadMinutes = parseBoundedFlag(options.leadMinutes, "--lead-minutes", 1, 1_440, 10);
       // Precedence: flag > env > config file > hardcoded default. The
       // config file (muse daemon --init) lets the user persist
@@ -1056,7 +1056,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         workspaceDir: io.workspaceDir ?? process.cwd()
       });
 
+      // R2-1: a generic "the daemon completed a tick round" mark, distinct
+      // from proactiveTick's own alive/fired pair (which only reflects the
+      // proactive sub-tick). Written FIRST, before any sub-tick can throw,
+      // so `muse scheduler add` / `muse status` can answer "is the daemon
+      // loop actually running" without depending on any one sub-tick's
+      // internals. Fail-soft — a heartbeat write failure never breaks a tick.
+      const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
       const runTick = async (): Promise<void> => {
+        await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();

@@ -2,13 +2,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { readBrowsingStore } from "@muse/recall";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { appendDigestItem, enqueueLearnEvent, readDigestQueue, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
+import { appendDigestItem, enqueueLearnEvent, readDigestQueue, readPendingLearnEvents, readPlaybook, readProactiveHeartbeat, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
 import { buildCheckinQuestion, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -957,6 +957,45 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain("is not registered");
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
+  it("--once records a fresh daemon-loop heartbeat mark, distinct from proactive's own alive/fired", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const before = Date.now();
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+    expect(res.exitCode).toBeUndefined();
+
+    // MUSE_PROACTIVE_SIDECAR_FILE lives directly under the heartbeat dir
+    // (defaultProactiveHeartbeatDir mirrors this), so its dirname is where
+    // ALL heartbeat marks — alive/fired AND daemon-loop — land.
+    const heartbeatDir = dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!);
+    const heartbeat = await readProactiveHeartbeat(heartbeatDir);
+    expect(heartbeat.daemonLoop).toBeDefined();
+    expect(Date.parse(heartbeat.daemonLoop!.at)).toBeGreaterThanOrEqual(before);
+    expect(heartbeat.daemonLoop!.pid).toBe(process.pid);
+  });
+
+  it("each daemon-loop round writes a NEWER mark (runDaemonLoop ticks it every round)", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const heartbeatDir = dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!);
+
+    await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+    const first = (await readProactiveHeartbeat(heartbeatDir)).daemonLoop!.at;
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+    const second = (await readProactiveHeartbeat(heartbeatDir)).daemonLoop!.at;
+
+    expect(Date.parse(second)).toBeGreaterThan(Date.parse(first));
   });
 });
 

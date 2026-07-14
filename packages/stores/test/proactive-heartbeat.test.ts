@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  classifyDaemonLoopHeartbeat,
   classifyProactiveHeartbeat,
   defaultProactiveHeartbeatDir,
   readProactiveHeartbeat,
@@ -88,6 +89,47 @@ describe("classifyProactiveHeartbeat — alive vs fired recency", () => {
     const v = classifyProactiveHeartbeat(hb, { nowMs });
     expect(v.aliveAgeMs).toBe(60_000);
     expect(v.firedAgeMs).toBe(60_000);
+  });
+});
+
+describe("daemon-loop signal — a third mark independent of alive/fired", () => {
+  it("writes and reads back a daemon-loop mark, alongside (not overwriting) alive/fired", async () => {
+    expect(await recordProactiveHeartbeat(dir, "alive", at("2026-07-01T10:00:00Z"), 111)).toBe(true);
+    expect(await recordProactiveHeartbeat(dir, "daemon-loop", at("2026-07-01T10:00:02Z"), 222)).toBe(true);
+    const hb = await readProactiveHeartbeat(dir);
+    expect(hb.alive).toEqual({ at: "2026-07-01T10:00:00.000Z", pid: 111 });
+    expect(hb.daemonLoop).toEqual({ at: "2026-07-01T10:00:02.000Z", pid: 222 });
+    expect(hb.fired).toBeUndefined();
+  });
+});
+
+describe("classifyDaemonLoopHeartbeat — plain alive/stale/unknown, no fired counterpart", () => {
+  const nowMs = Date.parse("2026-07-01T10:10:00Z");
+  const mark = (iso: string) => ({ at: iso, pid: 1 });
+
+  it("unknown: no daemon-loop mark at all", () => {
+    const v = classifyDaemonLoopHeartbeat({}, { nowMs, staleMs: 180_000 });
+    expect(v.status).toBe("unknown");
+    expect(v.ageMs).toBeUndefined();
+  });
+
+  it("alive: mark within the threshold", () => {
+    const hb: ProactiveHeartbeat = { daemonLoop: mark("2026-07-01T10:09:00Z") }; // 60s old
+    const v = classifyDaemonLoopHeartbeat(hb, { nowMs, staleMs: 180_000 });
+    expect(v.status).toBe("alive");
+    expect(v.ageMs).toBe(60_000);
+  });
+
+  it("stale: mark older than the threshold", () => {
+    const hb: ProactiveHeartbeat = { daemonLoop: mark("2026-07-01T10:05:00Z") }; // 5min old
+    const v = classifyDaemonLoopHeartbeat(hb, { nowMs, staleMs: 180_000 });
+    expect(v.status).toBe("stale");
+    expect(v.detail).toMatch(/stopped/i);
+  });
+
+  it("is a boundary check (exactly at the threshold is still alive)", () => {
+    const hb: ProactiveHeartbeat = { daemonLoop: mark("2026-07-01T10:07:00Z") }; // exactly 180_000ms old
+    expect(classifyDaemonLoopHeartbeat(hb, { nowMs, staleMs: 180_000 }).status).toBe("alive");
   });
 });
 

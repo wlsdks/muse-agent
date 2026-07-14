@@ -11,14 +11,63 @@
 
 import { collectSetupStatusJson, resolveFollowupsFile, type SetupStatusSnapshot } from "@muse/autoconfigure";
 import { CADENCE_ACCEPTED_FORMS, defaultScheduledJobsFile, FileScheduledJobStore, parseCadence } from "@muse/scheduler";
-import { defaultSchedulerPauseFile, readFollowups, readSchedulerPauseState, setSchedulerPaused } from "@muse/stores";
+import {
+  classifyDaemonLoopHeartbeat,
+  defaultProactiveHeartbeatDir,
+  defaultSchedulerPauseFile,
+  readFollowups,
+  readProactiveHeartbeat,
+  readSchedulerPauseState,
+  setSchedulerPaused,
+  type DaemonLoopHeartbeatVerdict
+} from "@muse/stores";
 import type { Command } from "commander";
 
+import { DEFAULT_DAEMON_INTERVAL_MS } from "./commands-daemon-loop.js";
 import { runCalendarSetup } from "./setup-calendar.js";
 import { runEmailSetup } from "./setup-email.js";
 import { runMessagingSetup } from "./setup-messaging.js";
 import { runModelSetup, SETUP_MODEL_PROVIDER_SPECS } from "./setup-model.js";
 import type { ProgramIO } from "./program.js";
+
+/**
+ * A job saved while the daemon is stale/absent will NOT fire — the file
+ * store write always succeeds regardless of whether anything is reading
+ * it. 3x the daemon's own default tick interval (`DEFAULT_DAEMON_INTERVAL_MS`)
+ * gives one missed tick of slack before crying wolf on an otherwise-healthy
+ * daemon that happened to tick just before this check ran.
+ */
+export const SCHEDULER_ADD_DAEMON_STALE_MS = 3 * DEFAULT_DAEMON_INTERVAL_MS;
+
+/**
+ * Fail-LOUD (not fail-close): the job is already saved by the time this
+ * runs, so a stale/absent daemon can't be allowed to silently ship a job
+ * the user will never see fire. Pure formatter — takes the classified
+ * verdict, returns the exact block to print. Bilingual (EN/KO) per the
+ * product's dual-language convention for anything the user reads once and
+ * needs to act on immediately.
+ */
+export function formatDaemonLivenessNotice(verdict: DaemonLoopHeartbeatVerdict): string {
+  if (verdict.status === "alive") {
+    return `Daemon alive — next tick within ~${Math.round(DEFAULT_DAEMON_INTERVAL_MS / 1000).toString()}s.\n`;
+  }
+  const reason = verdict.status === "stale"
+    ? `no daemon-loop heartbeat in the last ${Math.round(SCHEDULER_ADD_DAEMON_STALE_MS / 60_000).toString()} min`
+    : "the daemon has never run on this box";
+  return [
+    "",
+    "⚠️  WARNING: this job will NOT fire until `muse daemon` is running.",
+    `   (${reason})`,
+    "   Run in the foreground now:   muse daemon",
+    "   Or install it to always run: muse daemon --install",
+    "",
+    "⚠️  경고: `muse daemon`이 실행 중이어야 이 작업이 실행됩니다. 지금은 실행되지 않습니다.",
+    `   (${verdict.status === "stale" ? `최근 ${Math.round(SCHEDULER_ADD_DAEMON_STALE_MS / 60_000).toString()}분간 데몬 신호 없음` : "이 기기에서 데몬이 실행된 적이 없습니다"})`,
+    "   포그라운드로 지금 실행:      muse daemon",
+    "   상시 실행으로 설치:          muse daemon --install",
+    ""
+  ].join("\n");
+}
 
 function providerIdList(): string {
   return SETUP_MODEL_PROVIDER_SPECS.map((spec) => spec.id).join(" / ");
@@ -33,6 +82,10 @@ export interface SchedulerSetupHelpers {
     method?: "GET" | "POST" | "PUT" | "DELETE"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
+  /** Test seam — override the heartbeat dir instead of `defaultProactiveHeartbeatDir(process.env)`. */
+  readonly heartbeatDir?: string;
+  /** Test seam — injectable clock for the `scheduler add` liveness check. */
+  readonly now?: () => Date;
 }
 
 /**
@@ -94,6 +147,18 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
         });
         io.stdout(`Scheduled '${job.name}' (${job.id}) — cron ${job.cronExpression} (${job.timezone}).\n`);
         io.stdout(`Fires via \`muse daemon\` (\`muse daemon --install\` to survive logout). Manage with \`muse scheduler list\` / \`muse scheduler delete ${job.id}\`.\n`);
+        // Fail-LOUD, not fail-close: the job is already saved above, so a
+        // stale/absent daemon must be surfaced loudly rather than let the
+        // user believe it will fire. A --disabled job needs `scheduler
+        // resume`/re-enable regardless of daemon state, so the daemon
+        // liveness line would be a misleading distraction there — skip it.
+        if (job.enabled) {
+          const heartbeatDir = helpers.heartbeatDir ?? defaultProactiveHeartbeatDir(process.env);
+          const now = helpers.now ?? (() => new Date());
+          const heartbeat = await readProactiveHeartbeat(heartbeatDir);
+          const verdict = classifyDaemonLoopHeartbeat(heartbeat, { nowMs: now().getTime(), staleMs: SCHEDULER_ADD_DAEMON_STALE_MS });
+          io.stdout(formatDaemonLivenessNotice(verdict));
+        }
       } catch (cause) {
         io.stderr(`muse scheduler add: ${cause instanceof Error ? cause.message : String(cause)}\n`);
         process.exitCode = 1;

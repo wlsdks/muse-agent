@@ -30,7 +30,17 @@ import { dirname, join } from "node:path";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
-export type ProactiveHeartbeatSignal = "alive" | "fired";
+/**
+ * `"daemon-loop"` is a THIRD, independent signal (R2-1): the proactive
+ * tick's `alive`/`fired` pair only reflects `runDueProactiveNotices`
+ * specifically. `daemon-loop` is touched once per `runTick` round in
+ * `muse daemon` — i.e. the whole tick composition (scheduler, reminders,
+ * followups, …), not just the proactive sub-tick — so a caller that only
+ * cares "is the daemon process actually looping" (e.g. `muse scheduler
+ * add`'s liveness warning, `muse status`) doesn't have to reach through an
+ * unrelated package's internal tick to answer that.
+ */
+export type ProactiveHeartbeatSignal = "alive" | "fired" | "daemon-loop";
 
 export interface ProactiveHeartbeatMark {
   /** ISO timestamp the signal was recorded. */
@@ -42,13 +52,17 @@ export interface ProactiveHeartbeatMark {
 export interface ProactiveHeartbeat {
   readonly alive?: ProactiveHeartbeatMark;
   readonly fired?: ProactiveHeartbeatMark;
+  readonly daemonLoop?: ProactiveHeartbeatMark;
 }
 
 const ALIVE_FILE = "proactive-heartbeat-alive.json";
 const FIRED_FILE = "proactive-heartbeat-fired.json";
+const DAEMON_LOOP_FILE = "proactive-heartbeat-daemon-loop.json";
 
 function fileFor(dir: string, signal: ProactiveHeartbeatSignal): string {
-  return join(dir, signal === "alive" ? ALIVE_FILE : FIRED_FILE);
+  if (signal === "alive") return join(dir, ALIVE_FILE);
+  if (signal === "fired") return join(dir, FIRED_FILE);
+  return join(dir, DAEMON_LOOP_FILE);
 }
 
 /**
@@ -106,13 +120,14 @@ async function readMark(path: string): Promise<ProactiveHeartbeatMark | undefine
   return undefined;
 }
 
-/** Read both heartbeat marks. Missing / corrupt files degrade to undefined, never throw. */
+/** Read all heartbeat marks. Missing / corrupt files degrade to undefined, never throw. */
 export async function readProactiveHeartbeat(dir: string): Promise<ProactiveHeartbeat> {
-  const [alive, fired] = await Promise.all([
+  const [alive, fired, daemonLoop] = await Promise.all([
     readMark(fileFor(dir, "alive")),
-    readMark(fileFor(dir, "fired"))
+    readMark(fileFor(dir, "fired")),
+    readMark(fileFor(dir, "daemon-loop"))
   ]);
-  return { ...(alive ? { alive } : {}), ...(fired ? { fired } : {}) };
+  return { ...(alive ? { alive } : {}), ...(fired ? { fired } : {}), ...(daemonLoop ? { daemonLoop } : {}) };
 }
 
 export type ProactiveHeartbeatStatus = "healthy" | "failing" | "dead" | "unknown";
@@ -203,4 +218,50 @@ export function classifyProactiveHeartbeat(
     detail: `proactive ticker healthy — last tick ${humanAge(aliveAgeMs)}, last clean pass ${humanAge(firedAgeMs)}`,
     status: "healthy"
   };
+}
+
+export type DaemonLoopHeartbeatStatus = "alive" | "stale" | "unknown";
+
+export interface DaemonLoopHeartbeatVerdict {
+  readonly status: DaemonLoopHeartbeatStatus;
+  readonly detail: string;
+  /** Age in ms of the daemon-loop mark, or undefined when absent/unparseable. */
+  readonly ageMs?: number;
+}
+
+export interface DaemonLoopHeartbeatThresholds {
+  readonly nowMs: number;
+  /**
+   * Older than this ⇒ the daemon loop is presumed not running. Callers
+   * derive this from their own default tick interval (there is no
+   * store-owned default here — `muse daemon`'s interval is a CLI concern);
+   * the R2-1 callers use 3x the daemon's default tick interval.
+   */
+  readonly staleMs: number;
+}
+
+/**
+ * Diagnose the daemon's per-round `daemon-loop` mark. Simpler than
+ * `classifyProactiveHeartbeat` on purpose: this signal has no `fired`
+ * counterpart to distinguish "running but failing" from "dead" — it only
+ * answers "has ANY tick round started recently" — so the verdict is a
+ * plain three-state alive/stale/unknown, sharing the same age + humanAge
+ * primitives as `classifyProactiveHeartbeat`.
+ */
+export function classifyDaemonLoopHeartbeat(
+  heartbeat: ProactiveHeartbeat,
+  thresholds: DaemonLoopHeartbeatThresholds
+): DaemonLoopHeartbeatVerdict {
+  const ageMs = markAgeMs(heartbeat.daemonLoop, thresholds.nowMs);
+  if (ageMs === undefined) {
+    return { detail: "no daemon-loop heartbeat yet — `muse daemon` may never have run on this box", status: "unknown" };
+  }
+  if (ageMs > thresholds.staleMs) {
+    return {
+      ageMs,
+      detail: `daemon loop looks stopped — last round started ${humanAge(ageMs)} (> ${humanAge(thresholds.staleMs)} threshold)`,
+      status: "stale"
+    };
+  }
+  return { ageMs, detail: `daemon loop alive — last round ${humanAge(ageMs)}`, status: "alive" };
 }

@@ -17,7 +17,7 @@
  *     file resolver, re-exported below.
  */
 
-export { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
+export { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 export { chromeSnapshotConnectionFromTools } from "./commands-daemon-connections.js";
 export { type DaemonHelpers, registerDaemonCommands } from "./commands-daemon-register.js";
 export { buildLaunchAgentPlist, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";

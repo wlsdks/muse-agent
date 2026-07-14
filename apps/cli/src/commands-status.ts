@@ -14,18 +14,30 @@
  *   5. notification log — file path + last line
  */
 
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot, type MuseEnvironment } from "@muse/autoconfigure";
 import { FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
-import { readFollowups, readObjectives, readReminders } from "@muse/stores";
+import {
+  classifyDaemonLoopHeartbeat,
+  defaultProactiveHeartbeatDir,
+  readFollowups,
+  readObjectives,
+  readProactiveHeartbeat,
+  readReminders,
+  type DaemonLoopHeartbeatStatus,
+  type ProactiveHeartbeat
+} from "@muse/stores";
 import { readSessionLock } from "@muse/proactivity";
 import { summariseEpisodesRows, summariseFollowupsRows, summariseObjectivesRows, summarisePatternsFiredRows, summariseRemindersRows } from "@muse/domain-tools";
 import { isGoalKey, isVetoKey } from "@muse/recall";
 import type { Command } from "commander";
 
+import { DEFAULT_DAEMON_INTERVAL_MS } from "./commands-daemon-loop.js";
+import { resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
 import {
   BUILTIN_PERSONAS,
   isBuiltinPersonaId,
@@ -36,6 +48,13 @@ import { formatRelativeTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 import { readTrust } from "./commands-trust.js";
 import { sleep, waitForShutdownSignal } from "./async-promises.js";
+
+/**
+ * `muse scheduler add` derives its stale threshold the same way — 3x the
+ * daemon's own default tick interval — so the two surfaces never disagree
+ * about what "stale" means.
+ */
+const DAEMON_HEARTBEAT_STALE_MS = 3 * DEFAULT_DAEMON_INTERVAL_MS;
 
 /**
  * Version marker for the `muse status --json` payload.
@@ -82,6 +101,7 @@ export interface StatusPaths {
   readonly personaFile: string;
   readonly beliefProvenanceFile: string;
   readonly trustFile: string;
+  readonly daemonHeartbeatDir: string;
 }
 
 export interface StatusRuntime {
@@ -89,6 +109,8 @@ export interface StatusRuntime {
   readonly homeDir: string;
   readonly paths: StatusPaths;
   readonly readTrust: (userKey: string) => ReturnType<typeof readTrust>;
+  /** Test seam — overrides `process.platform` for the macOS launchd install probe. */
+  readonly platform: NodeJS.Platform;
 }
 
 export interface StatusRuntimeOptions {
@@ -96,6 +118,7 @@ export interface StatusRuntimeOptions {
   readonly homeDir?: string;
   readonly paths?: Partial<StatusPaths>;
   readonly readTrust?: StatusRuntime["readTrust"];
+  readonly platform?: NodeJS.Platform;
 }
 
 function envValue(runtime: StatusRuntime, key: string): string | undefined {
@@ -118,6 +141,10 @@ export function resolveStatusRuntime(options: StatusRuntimeOptions = {}): Status
   const homeDir = options.homeDir?.trim() || env.HOME?.trim() || homedir();
   const defaults: StatusPaths = {
     beliefProvenanceFile: statusPath(env, homeDir, "MUSE_BELIEF_PROVENANCE_FILE", "belief-provenance.json"),
+    // Not a per-field MUSE_*_FILE override like its siblings — mirrors the
+    // daemon/doctor readers (`defaultProactiveHeartbeatDir`), which co-locate
+    // the heartbeat dir with the proactive sidecar via MUSE_PROACTIVE_SIDECAR_FILE.
+    daemonHeartbeatDir: defaultProactiveHeartbeatDir(env),
     episodesFile: statusPath(env, homeDir, "MUSE_EPISODES_FILE", "episodes.json"),
     followupsFile: statusPath(env, homeDir, "MUSE_FOLLOWUPS_FILE", "followups.json"),
     messagingLogFile: statusPath(env, homeDir, "MUSE_MESSAGING_LOG_FILE", "notifications.log"),
@@ -138,6 +165,7 @@ export function resolveStatusRuntime(options: StatusRuntimeOptions = {}): Status
     env,
     homeDir,
     paths,
+    platform: options.platform ?? process.platform,
     readTrust: options.readTrust ?? ((userKey) => readTrust(userKey, paths.trustFile))
   };
 }
@@ -283,6 +311,38 @@ interface ProactiveHistoryEntry {
   readonly text?: string;
 }
 
+export interface DaemonStatusSnapshot {
+  readonly status: DaemonLoopHeartbeatStatus;
+  readonly detail: string;
+  readonly lastHeartbeatAtIso?: string;
+  /** undefined off-macOS — the launchd probe (`existsSync` on the plist) is macOS-only. */
+  readonly installed?: boolean;
+}
+
+/**
+ * "Is `muse daemon` actually running" for the at-a-glance dashboard —
+ * the R2-1 gap this closes: a non-dev who creates a schedule had no way
+ * to see daemon liveness short of `muse daemon --status` (a separate,
+ * undiscovered command). Pure-ish: only two cheap, fail-soft reads (a
+ * JSON mark file + `existsSync` on the plist, never a subprocess spawn),
+ * so it's safe to call on every `status` render including `--watch`.
+ * Exported for direct test coverage.
+ */
+export async function readDaemonStatus(
+  heartbeatDir: string,
+  plistFile: string | undefined,
+  nowMs: number = Date.now()
+): Promise<DaemonStatusSnapshot> {
+  const heartbeat = await readProactiveHeartbeat(heartbeatDir).catch(() => ({}) as ProactiveHeartbeat);
+  const verdict = classifyDaemonLoopHeartbeat(heartbeat, { nowMs, staleMs: DAEMON_HEARTBEAT_STALE_MS });
+  return {
+    detail: verdict.detail,
+    status: verdict.status,
+    ...(heartbeat.daemonLoop?.at ? { lastHeartbeatAtIso: heartbeat.daemonLoop.at } : {}),
+    ...(plistFile !== undefined ? { installed: existsSync(plistFile) } : {})
+  };
+}
+
 async function collectStatus(userId: string, runtime: StatusRuntime) {
   const { env, paths } = runtime;
   const userMemoryFile = paths.userMemoryFile;
@@ -358,6 +418,9 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   const tokenCost = await readTokenCostToday(paths.tokenCostFile);
   const rag = await readRagStatus(paths.notesIndexFile);
 
+  const daemonPlistFile = runtime.platform === "darwin" ? resolveLaunchAgentFile(env as NodeJS.ProcessEnv) : undefined;
+  const daemon = await readDaemonStatus(paths.daemonHeartbeatDir, daemonPlistFile);
+
   return {
     // Bump only on breaking field renames/removals (not additive
     // changes) — jq pipelines branch on this.
@@ -401,6 +464,7 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
         ...(builtinDescription ? { description: builtinDescription } : {})
       }
     },
+    daemon,
     tasks: {
       file: tasksFile,
       totalOpen: allTasks.filter((task) => task.status === "open").length,
@@ -641,6 +705,23 @@ export function formatPrivacyPosture(posture: LocalOnlyStatusSnapshot): string {
 }
 
 /**
+ * One-line `muse daemon` liveness for the at-a-glance dashboard (R2-1):
+ * installed? + last heartbeat relative time + verdict. A schedule created
+ * via `muse scheduler add` fires ONLY while this reads "alive" — a user
+ * who never scrolls to `muse daemon --status` should still see it here.
+ * `rel` is the caller's injected relative-time formatter so this stays a
+ * pure string function (no `Date.now()` inside), matching the rest of
+ * `renderStatus`'s formatting helpers.
+ */
+export function formatDaemonStatusLine(daemon: DaemonStatusSnapshot, rel: (iso: string) => string): string {
+  const verdictLabel = daemon.status === "alive" ? "alive" : daemon.status === "stale" ? "stale" : "not running";
+  const lastTick = daemon.lastHeartbeatAtIso ? `, last tick ${rel(daemon.lastHeartbeatAtIso)}` : "";
+  const installedLabel = daemon.installed === undefined ? "" : daemon.installed ? " (installed)" : " (not installed)";
+  const hint = daemon.status === "alive" ? "" : " — run `muse daemon` or `muse daemon --install`";
+  return `  daemon: ${verdictLabel}${lastTick}${installedLabel}${hint}\n`;
+}
+
+/**
  * Parse `--interval <n>` (seconds) for `muse status --watch`.
  * Default 5s, clamped to [1, 3600] so a bad input can't lock the
  * loop into a single tick or starve the terminal with sub-second
@@ -716,6 +797,8 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
         io.stdout(`    providers: 0 configured — set GEMINI_API_KEY / ANTHROPIC_API_KEY / etc. or run muse setup model\n`);
       }
       io.stdout(`    privacy: ${formatPrivacyPosture(snap.localOnly)}\n`);
+      io.stdout("\n");
+      io.stdout(formatDaemonStatusLine(snap.daemon, rel));
       io.stdout("\n");
       if (snap.session.dnd) {
         io.stdout(`  (DND) proactive notices paused${snap.session.until ? ` until ${snap.session.until}` : ""} — \`muse session unlock\` to resume\n\n`);

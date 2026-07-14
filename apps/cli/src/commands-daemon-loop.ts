@@ -1,6 +1,17 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 /**
+ * `muse daemon`'s default `--interval` (seconds → ms). Kept in this small,
+ * dependency-free module (not `commands-daemon-register.ts`, which pulls in
+ * the whole tick-composition graph) so a cheap liveness check elsewhere
+ * (`muse scheduler add`'s stale-daemon warning, `muse status`'s daemon
+ * line) can import just the constant instead of the entire daemon command.
+ * Those callers derive their staleness threshold from this SAME constant
+ * (3x it) rather than inventing an uncalibrated one.
+ */
+export const DEFAULT_DAEMON_INTERVAL_MS = 60_000;
+
+/**
  * Stop flag for the daemon foreground loop with an INTERRUPTIBLE
  * sleep: `stop()` both flips `stopped` and wakes any in-flight
  * `sleep()` so ctrl-c exits at once instead of waiting out the tick

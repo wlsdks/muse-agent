@@ -2,11 +2,23 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { recordProactiveHeartbeat } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { Command } from "commander";
 
-import { formatPrivacyPosture, readRagStatus, readRecentlyForgottenLine, readRecentlyLearnedLine, readTokenCostToday, registerStatusCommand, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
+import {
+  formatDaemonStatusLine,
+  formatPrivacyPosture,
+  readDaemonStatus,
+  readRagStatus,
+  readRecentlyForgottenLine,
+  readRecentlyLearnedLine,
+  readTokenCostToday,
+  registerStatusCommand,
+  resolveStatusWatchIntervalMs,
+  suggestPatternHints
+} from "./commands-status.js";
 import type { ProgramIO } from "./program.js";
 
 function tmpFile(name: string, contents: string): string {
@@ -228,6 +240,100 @@ describe("formatPrivacyPosture", () => {
   it("states a benign opted-out posture when no cloud credentials are configured", () => {
     expect(formatPrivacyPosture({ detail: "off by explicit opt-out (no cloud credentials configured)", enabled: false, status: "ok" }))
       .toBe("local-only off — no cloud credentials configured");
+  });
+});
+
+describe("readDaemonStatus — daemon liveness for the dashboard (R2-1)", () => {
+  function hbDir(): string {
+    return mkdtempSync(join(tmpdir(), "muse-status-hb-"));
+  }
+
+  it("unknown → not running, no last-heartbeat field, when the daemon has never run", async () => {
+    const snap = await readDaemonStatus(hbDir(), undefined, Date.parse("2026-07-01T10:00:00Z"));
+    expect(snap.status).toBe("unknown");
+    expect(snap.lastHeartbeatAtIso).toBeUndefined();
+    expect(snap.installed).toBeUndefined();
+  });
+
+  it("alive → fresh mark within 3x the daemon's default tick interval", async () => {
+    const dir = hbDir();
+    await recordProactiveHeartbeat(dir, "daemon-loop", () => new Date("2026-07-01T09:59:30Z"));
+    const snap = await readDaemonStatus(dir, undefined, Date.parse("2026-07-01T10:00:00Z"));
+    expect(snap.status).toBe("alive");
+    expect(snap.lastHeartbeatAtIso).toBe("2026-07-01T09:59:30.000Z");
+  });
+
+  it("stale → mark older than the threshold", async () => {
+    const dir = hbDir();
+    await recordProactiveHeartbeat(dir, "daemon-loop", () => new Date("2026-07-01T09:00:00Z"));
+    const snap = await readDaemonStatus(dir, undefined, Date.parse("2026-07-01T10:00:00Z"));
+    expect(snap.status).toBe("stale");
+  });
+
+  it("reports installed:true/false from the plist file's existence when a plistFile is given", async () => {
+    const dir = hbDir();
+    const missingPlist = join(dir, "no-such.plist");
+    expect((await readDaemonStatus(dir, missingPlist)).installed).toBe(false);
+
+    const realPlist = join(dir, "com.muse.daemon.plist");
+    writeFileSync(realPlist, "<plist/>", "utf8");
+    expect((await readDaemonStatus(dir, realPlist)).installed).toBe(true);
+  });
+});
+
+describe("formatDaemonStatusLine — pure renderer per verdict", () => {
+  const rel = (iso: string) => `REL(${iso})`;
+
+  it("alive, installed → no hint, shows install state", () => {
+    const line = formatDaemonStatusLine(
+      { detail: "x", installed: true, lastHeartbeatAtIso: "2026-07-01T09:59:30Z", status: "alive" },
+      rel
+    );
+    expect(line).toContain("daemon: alive");
+    expect(line).toContain("REL(2026-07-01T09:59:30Z)");
+    expect(line).toContain("(installed)");
+    expect(line).not.toContain("run `muse daemon`");
+  });
+
+  it("stale → surfaces the recovery hint", () => {
+    const line = formatDaemonStatusLine({ detail: "x", status: "stale" }, rel);
+    expect(line).toContain("daemon: stale");
+    expect(line).toContain("run `muse daemon` or `muse daemon --install`");
+  });
+
+  it("unknown (never ran) → 'not running' + recovery hint, no last-tick clause", () => {
+    const line = formatDaemonStatusLine({ detail: "x", status: "unknown" }, rel);
+    expect(line).toContain("daemon: not running");
+    expect(line).not.toContain("last tick");
+    expect(line).toContain("run `muse daemon`");
+  });
+});
+
+describe("muse status — daemon line (wiring, R2-1)", () => {
+  it("renders `daemon: alive` end-to-end from an injected fresh heartbeat", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-status-daemon-wire-"));
+    await recordProactiveHeartbeat(dir, "daemon-loop", () => new Date());
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (s) => { out.push(s); } };
+    const program = new Command();
+    program.exitOverride();
+    registerStatusCommand(program, io, { paths: { daemonHeartbeatDir: dir }, platform: "linux" });
+    await program.parseAsync(["node", "muse", "status"]);
+    const text = out.join("");
+    expect(text).toContain("daemon: alive");
+  });
+
+  it("renders `daemon: not running` end-to-end when the heartbeat dir is empty", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-status-daemon-wire-empty-"));
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (s) => { out.push(s); } };
+    const program = new Command();
+    program.exitOverride();
+    registerStatusCommand(program, io, { paths: { daemonHeartbeatDir: dir }, platform: "linux" });
+    await program.parseAsync(["node", "muse", "status"]);
+    const text = out.join("");
+    expect(text).toContain("daemon: not running");
+    expect(text).toContain("run `muse daemon`");
   });
 });
 

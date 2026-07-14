@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { SetupStatusSnapshot } from "@muse/autoconfigure";
+import { recordProactiveHeartbeat } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +18,16 @@ vi.mock("./setup-messaging.js", () => ({
   runMessagingSetup: (io: { stdout(s: string): void }) => { io.stdout("messaging step\n"); return Promise.resolve(); }
 }));
 
-import { comparePreviewEntriesByWhen, formatSetupStatusLines, registerSchedulerCommands, runSetupWizard, type PreviewEntry } from "./commands-scheduler-setup.js";
+import {
+  comparePreviewEntriesByWhen,
+  formatDaemonLivenessNotice,
+  formatSetupStatusLines,
+  registerSchedulerCommands,
+  runSetupWizard,
+  SCHEDULER_ADD_DAEMON_STALE_MS,
+  type PreviewEntry,
+  type SchedulerSetupHelpers
+} from "./commands-scheduler-setup.js";
 import type { ProgramIO } from "./program.js";
 
 const entry = (when: string, label: string, kind: PreviewEntry["kind"] = "reminder"): PreviewEntry =>
@@ -90,6 +100,94 @@ describe("muse scheduler next — scheduled followups appear alongside jobs + re
     const followupEntries = payload.entries.filter((e) => e.kind === "followup");
     expect(followupEntries.map((e) => e.label)).toEqual(["check the deploy"]);
     expect(payload.entries.some((e) => e.label === "cancelled promise")).toBe(false);
+  });
+});
+
+describe("formatDaemonLivenessNotice — pure formatter per verdict", () => {
+  it("alive → one quiet confirmation line, no warning", () => {
+    const out = formatDaemonLivenessNotice({ ageMs: 5_000, detail: "x", status: "alive" });
+    expect(out).toContain("Daemon alive");
+    expect(out).not.toContain("WARNING");
+    expect(out).not.toContain("경고");
+  });
+
+  it("stale → prominent bilingual warning block with exact recovery commands", () => {
+    const out = formatDaemonLivenessNotice({ ageMs: 999_999, detail: "x", status: "stale" });
+    expect(out).toContain("WARNING");
+    expect(out).toContain("muse daemon");
+    expect(out).toContain("muse daemon --install");
+    expect(out).toContain("경고");
+  });
+
+  it("unknown (never ran) → prominent bilingual warning block", () => {
+    const out = formatDaemonLivenessNotice({ detail: "x", status: "unknown" });
+    expect(out).toContain("WARNING");
+    expect(out).toContain("경고");
+  });
+});
+
+describe("muse scheduler add — daemon liveness warning (R2-1)", () => {
+  const prevJobsFile = process.env.MUSE_SCHEDULED_JOBS_FILE;
+  afterEach(() => {
+    if (prevJobsFile === undefined) delete process.env.MUSE_SCHEDULED_JOBS_FILE;
+    else process.env.MUSE_SCHEDULED_JOBS_FILE = prevJobsFile;
+  });
+
+  async function runAdd(
+    args: string[],
+    seam: Pick<SchedulerSetupHelpers, "heartbeatDir" | "now">
+  ): Promise<string> {
+    const dir = mkdtempSync(join(tmpdir(), "muse-sched-add-"));
+    process.env.MUSE_SCHEDULED_JOBS_FILE = join(dir, "scheduled-jobs.json");
+    const stdout: string[] = [];
+    const io = { stderr: () => {}, stdout: (s: string) => stdout.push(s) } as unknown as ProgramIO;
+    const helpers: SchedulerSetupHelpers = {
+      apiRequest: async () => ({}),
+      writeOutput: () => {},
+      ...seam
+    };
+    const program = new Command();
+    program.exitOverride();
+    registerSchedulerCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "scheduler", "add", ...args], { from: "node" });
+    return stdout.join("");
+  }
+
+  it("fresh daemon-loop heartbeat → quiet confirmation line, no warning block", async () => {
+    const hbDir = mkdtempSync(join(tmpdir(), "muse-sched-hb-fresh-"));
+    await recordProactiveHeartbeat(hbDir, "daemon-loop", () => new Date("2026-07-01T09:59:30Z"));
+    const out = await runAdd(
+      ["say hi", "--every", "daily 9am"],
+      { heartbeatDir: hbDir, now: () => new Date("2026-07-01T10:00:00Z") }
+    );
+    expect(out).toContain("Scheduled 'say hi'");
+    expect(out).toContain("Daemon alive");
+    expect(out).not.toContain("WARNING");
+  });
+
+  it("stale daemon-loop heartbeat (older than 3x the tick interval) → prominent bilingual warning block", async () => {
+    const hbDir = mkdtempSync(join(tmpdir(), "muse-sched-hb-stale-"));
+    const now = new Date("2026-07-01T10:00:00Z");
+    await recordProactiveHeartbeat(hbDir, "daemon-loop", () => new Date(now.getTime() - SCHEDULER_ADD_DAEMON_STALE_MS - 1_000));
+    const out = await runAdd(["say hi", "--every", "daily 9am"], { heartbeatDir: hbDir, now: () => now });
+    expect(out).toContain("WARNING");
+    expect(out).toContain("muse daemon --install");
+    expect(out).toContain("경고");
+  });
+
+  it("absent heartbeat (daemon never ran on this box) → prominent bilingual warning block", async () => {
+    const hbDir = mkdtempSync(join(tmpdir(), "muse-sched-hb-absent-"));
+    const out = await runAdd(["say hi", "--every", "daily 9am"], { heartbeatDir: hbDir });
+    expect(out).toContain("WARNING");
+    expect(out).toContain("경고");
+  });
+
+  it("--disabled job skips the liveness check — it needs `scheduler resume`, not the daemon", async () => {
+    const hbDir = mkdtempSync(join(tmpdir(), "muse-sched-hb-disabled-"));
+    const out = await runAdd(["say hi", "--every", "daily 9am", "--disabled"], { heartbeatDir: hbDir });
+    expect(out).toContain("Scheduled 'say hi'");
+    expect(out).not.toContain("WARNING");
+    expect(out).not.toContain("Daemon alive");
   });
 });
 
