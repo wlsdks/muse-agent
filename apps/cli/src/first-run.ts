@@ -522,11 +522,11 @@ export async function runFirstRunSetupInteractive(deps: RunFirstRunInteractiveDe
       confirm: (options) => clack.confirm(options),
       intro: (message) => clack.intro(message),
       isCancel: (value) => clack.isCancel(value),
-      multiselect: (options) => clack.multiselect(options as never) as Promise<never>,
+      multiselect: <T>(options) => clack.multiselect(options),
       note: (message, title) => clack.note(message, title),
       outro: (message) => clack.outro(message),
       password: (options) => clack.password(options),
-      select: (options) => clack.select(options as never) as Promise<never>,
+      select: <T>(options) => clack.select(options),
       step: (header) => process.stdout.write(renderStepDivider(header))
     };
     const stdio = { stderr: (m: string) => process.stderr.write(m), stdout: (m: string) => process.stdout.write(m) };
