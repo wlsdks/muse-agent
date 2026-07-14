@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { errorMessage } from "../lib/error-message.js";
 import { buildPersonaRaw, layerLabelKey, splitPersonaBody, type PersonaFieldValues } from "./prompt-lab-logic.js";
 
 import type { ApiClient } from "../api/client.js";
@@ -15,6 +16,12 @@ import type {
 
 const PREVIEW_SURFACES = ["chat", "ask"] as const;
 type PreviewSurface = (typeof PREVIEW_SURFACES)[number];
+const DEFAULT_PREVIEW_SURFACE: PreviewSurface = PREVIEW_SURFACES[0];
+
+function parsePreviewSurface(value: string): PreviewSurface {
+  const normalized = PREVIEW_SURFACES.find((surface) => surface === value);
+  return normalized ?? DEFAULT_PREVIEW_SURFACE;
+}
 
 const EMPTY_FIELDS: PersonaFieldValues = { language: "", maxWords: "", register: "" };
 
@@ -74,6 +81,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
         question: question.trim()
       })
   });
+  const experimentError = errorMessage(experiment.error);
 
   return (
     <div className="content-narrow">
@@ -166,7 +174,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
               {save.isSuccess && !save.data.sanitized && <Badge tone="ok">{t("pl.editor.saved")}</Badge>}
               {save.isSuccess && save.data.sanitized && <Badge tone="warn">{t("pl.editor.sanitized")}</Badge>}
             </div>
-            {save.error && <div className="banner err" style={{ marginTop: 8 }}>{(save.error as Error).message}</div>}
+            {save.error && <div className="banner err" style={{ marginTop: 8 }}>{errorMessage(save.error)}</div>}
           </AsyncBlock>
         </Card>
       </div>
@@ -181,7 +189,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
             <select
               className="input"
               value={previewSurface}
-              onChange={(event) => setPreviewSurface(event.target.value as PreviewSurface)}
+              onChange={(event) => setPreviewSurface(parsePreviewSurface(event.target.value))}
             >
               {PREVIEW_SURFACES.map((surface) => (
                 <option key={surface} value={surface}>
@@ -244,7 +252,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
           </div>
           {experiment.error && (
             <div className="banner err" style={{ marginTop: 8 }}>
-              {(experiment.error as Error).message.includes("503") ? t("pl.experiment.unavailable") : (experiment.error as Error).message}
+              {experimentError.includes("503") ? t("pl.experiment.unavailable") : experimentError}
             </div>
           )}
           {experiment.data && (

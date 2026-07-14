@@ -8,6 +8,8 @@ import type { ApiClient } from "../api/client.js";
 import type { UserMemoryResponse } from "../api/types.js";
 import type { Translate } from "../i18n/index.js";
 
+const FALLBACK_USER_MEMORY: UserMemoryResponse = {};
+
 // The label that introduces the timestamp lives in `memory.updated`, NOT
 // baked onto `memory.subtitle` — otherwise the subtitle dangles a bare
 // "Updated" with no value whenever the memory has no `updatedAt` yet.
@@ -33,7 +35,7 @@ export function MemoryView({ client, onNavigate }: { client: ApiClient; onNaviga
         return await client.get<UserMemoryResponse>(`/api/user-memory/${encodeURIComponent(userId)}`);
       } catch {
         // 404 = no memory recorded for this id yet.
-        return {} as UserMemoryResponse;
+        return FALLBACK_USER_MEMORY;
       }
     },
     queryKey: ["memory", client.baseUrl, userId]
