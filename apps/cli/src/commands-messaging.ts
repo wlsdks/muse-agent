@@ -12,7 +12,7 @@
  */
 
 import { confirm, isCancel } from "@clack/prompts";
-import { buildMessagingRegistry, resolveActionLogFile } from "@muse/autoconfigure";
+import { buildMessagingRegistry, resolveActionLogFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type {
   InboundMessage,
   MessagingProviderInfo,
@@ -35,6 +35,10 @@ export interface MessagingSendDeps {
   readonly approvalGate?: MessageApprovalGate;
   readonly actionLogFile?: string;
   readonly registry?: Pick<MessagingProviderRegistry, "send">;
+}
+
+function environment(): MuseEnvironment {
+  return process.env;
 }
 
 /**
@@ -84,7 +88,7 @@ export function registerMessagingCommands(
     .action(async (options: SharedOptions, command) => {
       let providers: readonly MessagingProviderInfo[];
       if (options.local) {
-        const registry = buildMessagingRegistry(process.env as Record<string, string | undefined>);
+        const registry = buildMessagingRegistry(environment());
         providers = registry.describe();
       } else {
         const payload = await helpers.apiRequest(io, command, "/api/messaging/providers") as {
@@ -151,10 +155,11 @@ export function registerMessagingCommands(
       options: { readonly limit?: string; readonly source?: string } & SharedOptions,
       command
     ) => {
+      const env = environment();
       const limitNum = options.limit ? Number(options.limit) : undefined;
       let inbound: readonly InboundMessage[];
       if (options.local) {
-        const registry = buildMessagingRegistry(process.env as Record<string, string | undefined>);
+        const registry = buildMessagingRegistry(env);
         const opts: { limit?: number; source?: string } = {};
         if (limitNum !== undefined && Number.isFinite(limitNum)) {
           opts.limit = limitNum;
@@ -204,6 +209,7 @@ export function registerMessagingCommands(
       options: SharedOptions & { readonly user?: string },
       command
     ) => {
+      const env = environment();
       const text = textParts.join(" ").trim();
       if (text.length === 0) {
         throw new Error("text is required");
@@ -214,7 +220,7 @@ export function registerMessagingCommands(
       // draft and waits for an explicit terminal confirm. (The API path is gated
       // server-side via the runtime tool-approval gate.)
       if (options.local) {
-        const registry = deps.registry ?? buildMessagingRegistry(process.env as Record<string, string | undefined>);
+        const registry = deps.registry ?? buildMessagingRegistry(env);
         const gate: MessageApprovalGate = deps.approvalGate ?? ((draft) => {
           // Fail-closed when the confirm prompt can't be delivered: a non-TTY
           // (piped / scripted / CI) has no one to confirm, so refuse rather than
@@ -229,7 +235,7 @@ export function registerMessagingCommands(
               : { approved: true });
         });
         const outcome = await sendMessageWithApproval({
-          actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+          actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
           approvalGate: gate,
           destination,
           providerId: provider,

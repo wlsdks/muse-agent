@@ -26,7 +26,7 @@ import {
   type ExactArtifactResolver,
   type PersonalThread
 } from "@muse/attunement";
-import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { resolveAttunementFile, resolveNotesDir, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readTaskById, readTasks } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
@@ -55,8 +55,8 @@ export interface AttunementCommandDeps {
   readonly mcpResourceCaller?: McpToolCaller;
 }
 
-function environment(): Record<string, string | undefined> {
-  return process.env as Record<string, string | undefined>;
+function environment(): MuseEnvironment {
+  return process.env;
 }
 
 function attunementFile(): string {

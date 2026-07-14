@@ -17,7 +17,8 @@ import {
   recordRetraction,
   type BeliefProvenance
 } from "@muse/memory";
-import { resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
+import { resolveAuthoredSkillsDir, resolvePlaybookFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 import { AuthoredSkillStore } from "@muse/skills";
 import {
   factRecordsFromProvenance,
@@ -38,6 +39,10 @@ import { resolveDefaultUserKey } from "./user-id.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
 
+function environment(): MuseEnvironment {
+  return process.env;
+}
+
 function isJourneyStoreKind(value: string): value is JourneyStoreKind {
   return (JOURNEY_KINDS as readonly string[]).includes(value);
 }
@@ -49,10 +54,10 @@ async function loadFactRecords(userId: string): Promise<readonly JourneyFactReco
 }
 
 async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
-  const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
+  const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(environment()) });
   const skills = await store.listAuthored().catch(() => []);
   return skills.map((skill) => {
-    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata["muse"] : {};
     const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt : undefined;
     const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
     return {
@@ -65,7 +70,7 @@ async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
 }
 
 async function loadStrategyRecords(userId: string): Promise<readonly JourneyStrategyRecord[]> {
-  const entries = await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userId).catch(() => []);
+  const entries = await queryPlaybook(resolvePlaybookFile(environment()), userId).catch(() => []);
   return entries.map((entry) => ({
     createdAt: entry.createdAt,
     id: entry.id,
@@ -188,7 +193,7 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           return;
         }
         if (target.storeKind === "strategy") {
-          await removePlaybookStrategy(resolvePlaybookFile(process.env as Record<string, string | undefined>), target.ref);
+          await removePlaybookStrategy(resolvePlaybookFile(environment()), target.ref);
           io.stdout(`Removed strategy [${target.ref.slice(0, 12)}]\n`);
           return;
         }

@@ -529,7 +529,10 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       if (options.user) { params.set("userId", options.user); }
       if (options.session) { params.set("sessionId", options.session); }
       const qs = params.toString();
-      const snapshot = await apiRequest(io, command, `/api/active-context${qs ? `?${qs}` : ""}`) as Record<string, unknown>;
+      const snapshot = await apiRequest(io, command, `/api/active-context${qs ? `?${qs}` : ""}`);
+      if (!isRecord(snapshot)) {
+        command.error("active-context API returned an invalid payload", { exitCode: 1 });
+      }
       if (options.json) {
         writeOutput(io, snapshot);
         return;

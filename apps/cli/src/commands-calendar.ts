@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
+import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
 import { computeAvailability } from "@muse/mcp-shared";
 import { readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/stores";
@@ -55,6 +55,10 @@ import { parseIcsEvents } from "./ics-parser.js";
 import { withApiLocalFallback } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
+function environment(): MuseEnvironment {
+  return process.env;
+}
+
 export interface CalendarCommandHelpers {
   readonly apiRequest: (
     io: ProgramIO,
@@ -72,7 +76,7 @@ interface SharedOptions {
 }
 
 function localCalendarProvider(): LocalCalendarProvider {
-  const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
+  const file = resolveLocalCalendarFile(environment());
   return new LocalCalendarProvider({ file });
 }
 
@@ -465,10 +469,10 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         // time phrase — record the previously-dead `time-parse` weakness so a recurring
         // misread surfaces for remediation. Fail-soft: never mask the user-facing error.
         try {
-          await recordTimeParseWeakness(options.at, true, {
-            recordWeakness,
-            weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
-          });
+            await recordTimeParseWeakness(options.at, true, {
+              recordWeakness,
+              weaknessesFile: resolveWeaknessesFile(environment())
+            });
         } catch { /* ledger write must never surface as a command error */ }
         throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm', 'in 2 hours'), got '${options.at}'`);
       }
@@ -513,7 +517,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           throw new Error("--remind must be a non-negative number of minutes");
         }
         reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`, event.id);
-        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+        const remindersFile = resolveRemindersFile(environment());
         await writeReminders(remindersFile, [...await readReminders(remindersFile), reminder]);
       }
       if (options.json) {
@@ -559,7 +563,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       // NOT abort the event deletion (the primary action already succeeded).
       let clearedReminders = 0;
       try {
-        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+            const remindersFile = resolveRemindersFile(environment());
         const { kept, removed } = removeRemindersForEvent(await readReminders(remindersFile), match.id);
         if (removed > 0) {
           await writeReminders(remindersFile, kept);
@@ -617,7 +621,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           try {
             await recordTimeParseWeakness(options.at, true, {
               recordWeakness,
-              weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
+            weaknessesFile: resolveWeaknessesFile(environment())
             });
           } catch { /* ledger write must never surface as a command error */ }
           throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm'), got '${options.at}'`);
@@ -651,7 +655,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       let shiftedReminders = 0;
       if (options.at !== undefined) {
         try {
-          const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+          const remindersFile = resolveRemindersFile(environment());
           const { next, shifted } = rescheduleRemindersForEvent(await readReminders(remindersFile), match.id, match.startsAt, updated.startsAt);
           if (shifted > 0) {
             await writeReminders(remindersFile, next);
