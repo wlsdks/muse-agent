@@ -404,7 +404,7 @@ export interface MessagingConnectResponse {
 }
 export interface EmailStatusResponse {
   readonly configured: boolean;
-  readonly method: "oauth" | "env" | null;
+  readonly method: "oauth" | "imap" | "env" | null;
   readonly hasRefreshToken?: boolean;
 }
 interface InboundMessage {

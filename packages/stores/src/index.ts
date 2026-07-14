@@ -27,15 +27,20 @@ export { withFileLock } from "./encrypted-file.js";
 export {
   credentialPath,
   defaultCredentialPath,
+  deleteEmailImapCredential,
   deleteGmailCredential,
   deleteStoredToken,
+  hasStoredEmailImapCredentialSync,
   hasStoredGmailCredentialSync,
+  readEmailImapCredential,
+  readEmailImapCredentialSync,
   readGmailCredential,
   readStoredToken,
+  writeEmailImapCredential,
   writeGmailCredential,
   writeStoredToken
 } from "./encrypted-credentials.js";
-export type { CredentialStoreIO, GmailOAuthCredential } from "./encrypted-credentials.js";
+export type { CredentialStoreIO, GmailOAuthCredential, ImapEmailCredential } from "./encrypted-credentials.js";
 export { quarantineCorruptStore } from "./store-quarantine.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";

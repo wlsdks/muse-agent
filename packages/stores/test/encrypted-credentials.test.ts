@@ -7,14 +7,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   credentialPath,
+  deleteEmailImapCredential,
   deleteGmailCredential,
+  hasStoredEmailImapCredentialSync,
   hasStoredGmailCredentialSync,
+  readEmailImapCredential,
   readGmailCredential,
   readStoredToken,
+  writeEmailImapCredential,
   writeGmailCredential,
   writeStoredToken,
   type CredentialStoreIO,
-  type GmailOAuthCredential
+  type GmailOAuthCredential,
+  type ImapEmailCredential
 } from "../src/encrypted-credentials.js";
 
 /**
@@ -99,5 +104,38 @@ describe("encrypted-credentials — byte-compatible with the pre-move on-disk fo
     await deleteGmailCredential(io());
     expect(await readGmailCredential(io())).toBeUndefined();
     expect(await readStoredToken(io(), "https://api.example.com")).toBe("fresh-token");
+  });
+
+  it("decrypts a store written by the OLD (pre-E2) format — no `emailImap` key at all — cleanly reporting not-configured", async () => {
+    await writeLegacyCredentialFile(credentialPath(io()), "fixture-key-aaaaaaaaaaaaaaaaaa", {
+      gmail: { clientId: "cid", clientSecret: "csecret", refreshToken: "rt-1" },
+      tokens: { "https://api.example.com": { token: "legacy-token", updatedAt: "2026-01-01T00:00:00Z" } }
+    });
+    expect(await readEmailImapCredential(io())).toBeUndefined();
+    expect(hasStoredEmailImapCredentialSync(io())).toBe(false);
+    // The Gmail OAuth section written by the SAME legacy file is unaffected.
+    expect(await readGmailCredential(io())).toEqual({ clientId: "cid", clientSecret: "csecret", refreshToken: "rt-1" });
+  });
+
+  it("a fresh emailImap (App Password) write round-trips, coexists with an existing gmail section, and independent deletes don't disturb each other", async () => {
+    const gmail: GmailOAuthCredential = { clientId: "cid", clientSecret: "csecret", refreshToken: "rt-1" };
+    const emailImap: ImapEmailCredential = { appPassword: "abcdabcdabcdabcd", email: "user@gmail.com" };
+    await writeGmailCredential(io(), gmail);
+    await writeEmailImapCredential(io(), emailImap);
+    expect(await readGmailCredential(io())).toEqual(gmail);
+    expect(await readEmailImapCredential(io())).toEqual(emailImap);
+    expect(hasStoredEmailImapCredentialSync(io())).toBe(true);
+
+    await deleteEmailImapCredential(io());
+    expect(await readEmailImapCredential(io())).toBeUndefined();
+    expect(hasStoredEmailImapCredentialSync(io())).toBe(false);
+    // Deleting the App Password record must NOT touch the sibling OAuth record.
+    expect(await readGmailCredential(io())).toEqual(gmail);
+  });
+
+  it("stores a non-Gmail IMAP host override (e.g. Naver) unchanged", async () => {
+    const emailImap: ImapEmailCredential = { appPassword: "pw", email: "user@naver.com", imapHost: "imap.naver.com", smtpHost: "smtp.naver.com" };
+    await writeEmailImapCredential(io(), emailImap);
+    expect(await readEmailImapCredential(io())).toEqual(emailImap);
   });
 });

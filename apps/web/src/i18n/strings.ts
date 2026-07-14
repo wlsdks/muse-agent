@@ -450,8 +450,9 @@ const en = {
   "int.step.matrix.3": "Paste the homeserver URL (e.g. https://matrix.org) and the access token here.",
   "int.email.title": "Email (Gmail)",
   "int.email.connectedOauth": "Gmail connected — token auto-refreshes",
+  "int.email.connectedImap": "Connected via app password (IMAP)",
   "int.email.connectedEnv": "Gmail via MUSE_GMAIL_TOKEN (expires hourly) — run `muse setup email` for permanent auth",
-  "int.email.notConfigured": "Not connected — run `muse setup email` in the terminal. It opens your Mac's browser for the one-time Google consent screen.",
+  "int.email.notConfigured": "Not connected — run `muse setup email` in the terminal. Choose \"App Password\" for a 2-minute setup (Gmail or any other IMAP provider, no Google Cloud project) or \"Google OAuth\" for the browser consent flow.",
   "int.delivery.hint": "Scheduler delivery value: {value} — this is the `muse scheduler add --deliver` value for this chat.",
 
   "nav.promptLab": "Prompt Lab",
@@ -938,8 +939,9 @@ const ko: Strings = {
   "int.step.matrix.3": "홈서버 URL(예: https://matrix.org)과 액세스 토큰을 여기에 붙여넣으세요.",
   "int.email.title": "이메일 (Gmail)",
   "int.email.connectedOauth": "Gmail 연결됨 — 토큰 자동 갱신",
+  "int.email.connectedImap": "앱 비밀번호(IMAP)로 연결됨",
   "int.email.connectedEnv": "MUSE_GMAIL_TOKEN으로 연결됨(1시간마다 만료) — 영구 인증은 터미널에서 `muse setup email` 실행",
-  "int.email.notConfigured": "미연결 — 터미널에서 `muse setup email`을 실행하세요. Mac 브라우저가 열리며 Google 동의 화면이 1회 표시됩니다.",
+  "int.email.notConfigured": "미연결 — 터미널에서 `muse setup email`을 실행하세요. \"앱 비밀번호\"를 선택하면 2분 만에 설정됩니다(Gmail 또는 다른 IMAP 제공자, Google Cloud 프로젝트 불필요). \"Google OAuth\"는 브라우저 동의 화면 방식입니다.",
   "int.delivery.hint": "스케줄러 발송 값: {value} — 이 채팅용 `muse scheduler add --deliver` 값입니다.",
 
   "nav.promptLab": "프롬프트 랩",

@@ -58,6 +58,11 @@ describe("emailStatusView", () => {
     expect(emailStatusView(status)).toEqual({ messageKey: "int.email.connectedOauth", tone: "ok" });
   });
 
+  it("configured via App Password (IMAP) → ok", () => {
+    const status: EmailStatusResponse = { configured: true, method: "imap" };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.connectedImap", tone: "ok" });
+  });
+
   it("configured via MUSE_GMAIL_TOKEN env → warn (raw token, expires hourly)", () => {
     const status: EmailStatusResponse = { configured: true, method: "env" };
     expect(emailStatusView(status)).toEqual({ messageKey: "int.email.connectedEnv", tone: "warn" });

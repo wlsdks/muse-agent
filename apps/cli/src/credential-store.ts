@@ -15,14 +15,19 @@
 export {
   credentialPath,
   defaultCredentialPath,
+  deleteEmailImapCredential,
   deleteGmailCredential,
   deleteStoredToken,
+  hasStoredEmailImapCredentialSync,
   hasStoredGmailCredentialSync,
+  readEmailImapCredential,
+  readEmailImapCredentialSync,
   readGmailCredential,
   readStoredToken,
+  writeEmailImapCredential,
   writeGmailCredential,
   writeStoredToken
 } from "@muse/stores";
-export type { CredentialStoreIO, GmailOAuthCredential } from "@muse/stores";
+export type { CredentialStoreIO, GmailOAuthCredential, ImapEmailCredential } from "@muse/stores";
 
 export { isRecord } from "@muse/shared";

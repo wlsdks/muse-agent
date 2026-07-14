@@ -124,6 +124,16 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     expect(summarizeActuators(env(), io).armed).toContain("email_send");
   });
 
+  it("adds email_send from a STORED `muse setup email` App Password (IMAP) credential too — E2", async () => {
+    const { writeEmailImapCredential } = await import("./credential-store.js");
+    const configDir = mkdtempSync(join(tmpdir(), "muse-actuator-gmail-imap-"));
+    const io: ProgramIO = { configDir, stderr: () => {}, stdout: () => {} };
+    await writeEmailImapCredential(io, { appPassword: "app-pass-1234567890abcd", email: "user@gmail.com" });
+    const tools = buildActuatorTools({ confirmAction: async () => true, env: env(), io, userId: "stark" });
+    expect(tools.map((t) => t.definition.name).sort()).toEqual(["email_forward", "email_reply", "email_send", "web_action"]);
+    expect(summarizeActuators(env(), io).armed).toContain("email_send");
+  });
+
   it("drops web_action when MUSE_WEB_EGRESS=false (airplane mode)", () => {
     const tools = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_WEB_EGRESS: "false" }), io: fakeIo(), userId: "stark" });
     expect(tools.map((t) => t.definition.name)).not.toContain("web_action");
@@ -285,7 +295,7 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
     const banner = formatActuatorBanner(summarizeActuators(env(), fakeIo()));
     expect(banner).toContain("actuators armed: web_action");
     expect(banner).toContain("fires only on your confirm");
-    expect(banner).toContain("actuator unavailable: email_send — run `muse setup email` or set MUSE_GMAIL_TOKEN");
+    expect(banner).toContain("actuator unavailable: email_send — run `muse setup email` (App Password or Google OAuth) or set MUSE_GMAIL_TOKEN");
     expect(banner.endsWith("\n")).toBe(true);
   });
 });

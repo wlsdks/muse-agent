@@ -669,6 +669,18 @@ describe("resolveEmailSetupStatus — R2-3", () => {
   it("ignores a blank MUSE_GMAIL_TOKEN (whitespace-only)", () => {
     expect(resolveEmailSetupStatus({ MUSE_GMAIL_TOKEN: "   " }, false)).toEqual({ nextStep: "muse setup email", source: "none", status: "info" });
   });
+
+  it("E2: a stored App Password (IMAP) credential reports source:'imap' when no OAuth record is stored", () => {
+    expect(resolveEmailSetupStatus({}, false, true)).toEqual({ source: "imap", status: "ok" });
+  });
+
+  it("E2: an OAuth credential wins over a stored App Password credential when BOTH are present", () => {
+    expect(resolveEmailSetupStatus({}, true, true)).toEqual({ source: "oauth", status: "ok" });
+  });
+
+  it("E2: an App Password credential wins over MUSE_GMAIL_TOKEN", () => {
+    expect(resolveEmailSetupStatus({ MUSE_GMAIL_TOKEN: "tok" }, false, true)).toEqual({ source: "imap", status: "ok" });
+  });
 });
 
 describe("resolveRemoteSetupStatus — R2-3", () => {

@@ -18,11 +18,16 @@ function render(status: EmailStatusResponse | undefined): string {
   );
 }
 
-describe("EmailStatusCard — Gmail status card, all three states", () => {
+describe("EmailStatusCard — email status card, all four states", () => {
   it("configured via OAuth: shows the auto-refresh copy", () => {
     const html = render({ configured: true, hasRefreshToken: true, method: "oauth" });
     expect(html).toContain(DICTIONARIES.en["int.email.connectedOauth"]);
     expect(html).toContain(DICTIONARIES.en["int.email.title"]);
+  });
+
+  it("configured via App Password (IMAP): shows the IMAP copy", () => {
+    const html = render({ configured: true, method: "imap" });
+    expect(html).toContain(DICTIONARIES.en["int.email.connectedImap"]);
   });
 
   it("configured via MUSE_GMAIL_TOKEN env: shows the hourly-expiry + permanent-auth copy", () => {
@@ -31,11 +36,11 @@ describe("EmailStatusCard — Gmail status card, all three states", () => {
     expect(html).toContain("muse setup email");
   });
 
-  it("not configured: points at `muse setup email` and mentions the browser consent step", () => {
+  it("not configured: points at `muse setup email` and names both setup methods", () => {
     const html = render({ configured: false, method: null });
     expect(html).toContain("muse setup email");
-    expect(html).toContain("browser");
-    expect(html).toContain("Google consent");
+    expect(html).toContain("App Password");
+    expect(html).toContain("Google OAuth");
   });
 
   it("undefined status (query not yet resolved) renders the not-configured state, never throws", () => {

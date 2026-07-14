@@ -617,6 +617,8 @@ export function formatSetupStatusLines(snap: SetupStatusSnapshot): string[] {
   // email
   if (snap.email.source === "oauth") {
     push("ok", "email", "connected (oauth, auto-refresh)");
+  } else if (snap.email.source === "imap") {
+    push("ok", "email", "connected (app password, IMAP)");
   } else if (snap.email.source === "env") {
     push("ok", "email", "via MUSE_GMAIL_TOKEN (hourly expiry)");
   } else {

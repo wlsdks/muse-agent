@@ -1,16 +1,22 @@
 /**
- * `muse setup email` — guided Gmail OAuth wizard (loopback + PKCE), so a
- * non-developer runs this ONCE and `muse email` / `muse inbox` / the daemon
- * email-sync tick keep working forever, refreshing their own access token
- * (gmail-oauth.ts) instead of the old raw-1-hour-token dead end.
+ * `muse setup email` — asks the connection method first, then runs one of
+ * two wizards:
  *
- * Split for testability (AC3: "unit tests with an injected fake browser
- * opener + fake token endpoint, never a real network call"):
- * `runGmailOAuthLoopback` is the non-interactive PKCE/state/callback-server/
- * code-exchange dance (fully fake-injectable); `runEmailSetup` adds the
- * clack prompts + credential-store write + connectivity proof around it.
+ *   1. App Password (RECOMMENDED) — email + a Gmail/IMAP-provider app
+ *      password, immediate real-IMAP verification, done in ~2 minutes. No
+ *      Google Cloud project (hermes-agent's approach; works for Gmail and
+ *      any other IMAP provider by supplying host overrides).
+ *   2. Google OAuth (loopback + PKCE) — the original flow, UNCHANGED, for
+ *      when a refresh-token-based integration is preferred.
  *
- * Deliberately does NOT gate on MUSE_LOCAL_ONLY: Gmail is the user's own
+ * Split for testability (AC3: "unit tests with injected prompts + an
+ * injected verifier, never a real network call"): `runGmailOAuthLoopback`
+ * is the non-interactive PKCE/state/callback-server/code-exchange dance;
+ * `runAppPasswordEmailSetup` is the App Password prompt+verify+store
+ * sequence; `runEmailSetup` is the method-selecting entrypoint both live
+ * behind.
+ *
+ * Deliberately does NOT gate on MUSE_LOCAL_ONLY: email is the user's own
  * data plane (not an LLM call), so wiring it up is allowed regardless of
  * local-only posture (unlike setup-calendar.ts / setup-messaging.ts, which
  * DO refuse — those wire genuinely remote services the local-only posture
@@ -19,10 +25,11 @@
 
 import { spawn } from "node:child_process";
 
-import { password, text, isCancel } from "@clack/prompts";
+import { password, select, text, isCancel } from "@clack/prompts";
+import { ImapSmtpEmailProvider, type ImapSmtpEmailProviderConfig } from "@muse/domain-tools";
 import { startOAuthCallbackServer, type OAuthCallbackServer } from "@muse/mcp";
 
-import { writeGmailCredential, type GmailOAuthCredential } from "./credential-store.js";
+import { writeEmailImapCredential, writeGmailCredential, type GmailOAuthCredential, type ImapEmailCredential } from "./credential-store.js";
 import { generateOAuthState, generatePkcePair } from "./setup-calendar.js";
 import { exchangeGmailAuthorizationCode, GMAIL_AUTH_ENDPOINT, GMAIL_SCOPES, preflightGmailClient, type GmailClientPreflightResult, type GmailTokenExchangeResult } from "./gmail-oauth.js";
 import type { ProgramIO } from "./program.js";
@@ -221,7 +228,23 @@ export interface SetupEmailIO extends ProgramIO {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-export interface SetupEmailDeps extends GmailOAuthLoopbackDeps {
+export type EmailSetupMethod = "apppassword" | "oauth";
+
+export type ImapVerifyOutcome =
+  | { readonly ok: true; readonly messageCount: number }
+  | { readonly ok: false; readonly error: Error };
+
+export interface AppPasswordSetupDeps {
+  readonly promptEmail?: () => Promise<string | undefined>;
+  readonly promptAppPassword?: () => Promise<string | undefined>;
+  readonly promptImapHost?: () => Promise<string | undefined>;
+  readonly promptSmtpHost?: () => Promise<string | undefined>;
+  /** Real IMAP login + mailbox open, injectable so tests never touch a socket. */
+  readonly verifyImapConnection?: (config: ImapSmtpEmailProviderConfig) => Promise<ImapVerifyOutcome>;
+}
+
+export interface SetupEmailDeps extends GmailOAuthLoopbackDeps, AppPasswordSetupDeps {
+  readonly promptMethod?: () => Promise<EmailSetupMethod | undefined>;
   readonly promptClientId?: () => Promise<string | undefined>;
   readonly promptClientSecret?: () => Promise<string | undefined>;
   readonly verifyProfile?: (accessToken: string, fetchImpl: typeof fetch) => Promise<string | undefined>;
@@ -231,7 +254,135 @@ export interface SetupEmailResult {
   readonly ok: boolean;
 }
 
+async function defaultPromptMethod(): Promise<EmailSetupMethod | undefined> {
+  const value = await select({
+    message: "How do you want to connect email?",
+    options: [
+      { hint: "2 minutes, Gmail or any other IMAP provider — no Google Cloud project", label: "App Password (recommended)", value: "apppassword" as const },
+      { hint: "existing flow — needs a Google Cloud project + OAuth client", label: "Google OAuth", value: "oauth" as const }
+    ]
+  });
+  return isCancel(value) ? undefined : value;
+}
+
 export async function runEmailSetup(io: SetupEmailIO, deps: Partial<SetupEmailDeps> = {}): Promise<SetupEmailResult> {
+  const method = await (deps.promptMethod ?? defaultPromptMethod)();
+  if (!method) {
+    io.stdout("Setup cancelled.\n");
+    return { ok: false };
+  }
+  if (method === "apppassword") {
+    return runAppPasswordEmailSetup(io, deps);
+  }
+  return runOAuthEmailSetup(io, deps);
+}
+
+const APP_PASSWORD_WALKTHROUGH = `
+App Password setup — about 2 minutes, no Google Cloud project needed.
+
+  Google:
+  1. Turn on 2-Step Verification (if it isn't already):
+     https://myaccount.google.com/signinoptions/two-step-verification
+  2. Generate a 16-character App Password:
+     https://myaccount.google.com/apppasswords
+  3. Paste the 16 characters below — Google shows them with spaces
+     ("abcd efgh ijkl mnop"); spaces are stripped automatically.
+
+  Any other provider (Naver, Daum, ...): check that provider's mail
+  settings / security page for its own IMAP/app-password option, then
+  answer the IMAP/SMTP host prompts below.
+
+`;
+
+/** `email@gmail.com` (case-insensitive) — the only address family that gets Gmail's IMAP/SMTP hosts by default. */
+function isGmailAddress(email: string): boolean {
+  return /@gmail\.com$/iu.test(email.trim());
+}
+
+async function defaultPromptEmail(): Promise<string | undefined> {
+  const value = await text({
+    message: "Email address:",
+    placeholder: "you@gmail.com",
+    validate: (input) => {
+      const trimmed = (input ?? "").trim();
+      if (trimmed.length === 0) return "Email is required";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(trimmed)) return "That doesn't look like a valid email address";
+      return undefined;
+    }
+  });
+  return isCancel(value) || typeof value !== "string" || value.trim().length === 0 ? undefined : value.trim();
+}
+
+async function defaultPromptAppPassword(): Promise<string | undefined> {
+  const value = await password({
+    message: "App password (spaces are fine — they're stripped):",
+    validate: (input) => ((input ?? "").replace(/\s+/gu, "").length === 0 ? "App password is required" : undefined)
+  });
+  if (isCancel(value) || typeof value !== "string") return undefined;
+  const stripped = value.replace(/\s+/gu, "");
+  return stripped.length > 0 ? stripped : undefined;
+}
+
+async function defaultPromptHost(label: string): Promise<string | undefined> {
+  const value = await text({ message: `${label} host (leave blank to use the provider default):`, placeholder: `${label.toLowerCase()}.example.com` });
+  return isCancel(value) || typeof value !== "string" || value.trim().length === 0 ? undefined : value.trim();
+}
+
+async function defaultVerifyImapConnection(config: ImapSmtpEmailProviderConfig): Promise<ImapVerifyOutcome> {
+  try {
+    const { messageCount } = await new ImapSmtpEmailProvider(config).verifyConnection();
+    return { messageCount, ok: true };
+  } catch (cause) {
+    return { error: cause instanceof Error ? cause : new Error(String(cause)), ok: false };
+  }
+}
+
+export async function runAppPasswordEmailSetup(io: SetupEmailIO, deps: Partial<AppPasswordSetupDeps> = {}): Promise<SetupEmailResult> {
+  io.stdout(APP_PASSWORD_WALKTHROUGH);
+
+  const email = await (deps.promptEmail ?? defaultPromptEmail)();
+  if (!email) {
+    io.stdout("Setup cancelled.\n");
+    return { ok: false };
+  }
+  const rawAppPassword = await (deps.promptAppPassword ?? defaultPromptAppPassword)();
+  // Spaces stripped unconditionally here (not just in the default prompt) —
+  // Google always displays the 16 characters with spaces, and a pasted
+  // value must be normalised the same way whether the prompt is real or
+  // injected by a test.
+  const appPassword = rawAppPassword?.replace(/\s+/gu, "");
+  if (!appPassword) {
+    io.stdout("Setup cancelled.\n");
+    return { ok: false };
+  }
+
+  let imapHost: string | undefined;
+  let smtpHost: string | undefined;
+  if (!isGmailAddress(email)) {
+    imapHost = await (deps.promptImapHost ?? (() => defaultPromptHost("IMAP")))();
+    smtpHost = await (deps.promptSmtpHost ?? (() => defaultPromptHost("SMTP")))();
+  }
+
+  const credential: ImapEmailCredential = {
+    appPassword,
+    email,
+    ...(imapHost ? { imapHost } : {}),
+    ...(smtpHost ? { smtpHost } : {})
+  };
+
+  const verify = deps.verifyImapConnection ?? defaultVerifyImapConnection;
+  const verified = await verify(credential);
+  if (!verified.ok) {
+    io.stderr(`muse setup email: could not connect — ${verified.error.message}\n`);
+    return { ok: false };
+  }
+
+  await writeEmailImapCredential(io, credential);
+  io.stdout(`✓ connected — inbox has ${verified.messageCount.toString()} message${verified.messageCount === 1 ? "" : "s"}\n`);
+  return { ok: true };
+}
+
+async function runOAuthEmailSetup(io: SetupEmailIO, deps: Partial<SetupEmailDeps>): Promise<SetupEmailResult> {
   io.stdout(WALKTHROUGH);
 
   const clientId = await (deps.promptClientId ?? defaultPromptClientId)();

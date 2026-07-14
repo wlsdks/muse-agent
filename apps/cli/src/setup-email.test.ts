@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OAuthCallbackServer } from "@muse/mcp";
 
-import { readGmailCredential } from "./credential-store.js";
+import { readEmailImapCredential, readGmailCredential } from "./credential-store.js";
 import { runEmailSetup, runGmailOAuthLoopback, type SetupEmailIO } from "./setup-email.js";
 
 function captureIo(overrides: Partial<SetupEmailIO> = {}): { readonly io: SetupEmailIO; readonly lines: string[] } {
@@ -132,8 +132,18 @@ describe("runGmailOAuthLoopback — the non-interactive PKCE/state/callback/exch
   });
 });
 
-describe("runEmailSetup — the full wizard (clack prompts injected, never real stdin/network)", () => {
+describe("runEmailSetup — method selection", () => {
+  it("cancelling the method prompt stores nothing and returns ok:false, without asking either wizard's questions", async () => {
+    const { io, lines } = captureIo({ configDir: path.join(tmpdir(), "muse-setup-email-unused") });
+    const result = await runEmailSetup(io, { promptMethod: async () => undefined });
+    expect(result.ok).toBe(false);
+    expect(lines.join("")).toContain("cancelled");
+  });
+});
+
+describe("runEmailSetup — the OAuth wizard (choice 2, unchanged; clack prompts injected, never real stdin/network)", () => {
   let workdir: string;
+  const oauth = { promptMethod: async () => "oauth" as const };
 
   beforeEach(async () => {
     workdir = await mkdtemp(path.join(tmpdir(), "muse-setup-email-"));
@@ -144,7 +154,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
 
   it("cancelling at the Client ID prompt stores NOTHING and returns ok:false", async () => {
     const { io, lines } = captureIo({ configDir: workdir });
-    const result = await runEmailSetup(io, { promptClientId: async () => undefined });
+    const result = await runEmailSetup(io, { ...oauth, promptClientId: async () => undefined });
     expect(result.ok).toBe(false);
     expect(lines.join("")).toContain("cancelled");
     expect(await readGmailCredential(io)).toBeUndefined();
@@ -153,6 +163,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
   it("cancelling at the Client Secret prompt stores NOTHING and returns ok:false", async () => {
     const { io } = captureIo({ configDir: workdir });
     const result = await runEmailSetup(io, {
+      ...oauth,
       promptClientId: async () => "cid",
       promptClientSecret: async () => undefined
     });
@@ -164,6 +175,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
     const { io } = captureIo({ configDir: workdir, env: { MUSE_LOCAL_ONLY: "true" } });
     const server = fakeCallbackServer({ code: "auth-code-1" });
     const result = await runEmailSetup(io, {
+      ...oauth,
       exchangeCode: async () => ({ accessToken: "at-1", expiresAt: Date.now() + 3600_000, refreshToken: "rt-1" }),
       promptClientId: async () => "cid",
       promptClientSecret: async () => "csecret",
@@ -178,6 +190,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
     const { io, lines } = captureIo({ configDir: workdir });
     const server = fakeCallbackServer({ rejectWith: new Error("OAuth state mismatch: the callback did not carry the expected CSRF state") });
     const result = await runEmailSetup(io, {
+      ...oauth,
       promptClientId: async () => "cid",
       promptClientSecret: async () => "csecret",
       startCallbackServer: server.start
@@ -191,6 +204,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
     const { io, lines } = captureIo({ configDir: workdir });
     const server = fakeCallbackServer({ code: "auth-code-1" });
     const result = await runEmailSetup(io, {
+      ...oauth,
       exchangeCode: async () => ({ accessToken: "at-1", expiresAt: Date.now() + 3600_000, refreshToken: "rt-1" }),
       promptClientId: async () => "cid",
       promptClientSecret: async () => "csecret",
@@ -209,6 +223,7 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
     const { io, lines } = captureIo({ configDir: workdir });
     const server = fakeCallbackServer({ code: "auth-code-1" });
     const result = await runEmailSetup(io, {
+      ...oauth,
       exchangeCode: async () => ({ accessToken: "at-1", expiresAt: Date.now() + 3600_000, refreshToken: "rt-1" }),
       promptClientId: async () => "cid",
       promptClientSecret: async () => "csecret",
@@ -226,18 +241,130 @@ describe("runEmailSetup — the full wizard (clack prompts injected, never real 
       async () => {
         const { io, lines } = captureIo({ configDir: workdir });
         const server = fakeCallbackServer({ rejectWith: new Error("boom") });
-        await runEmailSetup(io, { promptClientId: async () => "cid", promptClientSecret: async () => secretMarker, startCallbackServer: server.start });
+        await runEmailSetup(io, { ...oauth, promptClientId: async () => "cid", promptClientSecret: async () => secretMarker, startCallbackServer: server.start });
         return lines;
       },
       async () => {
         const { io, lines } = captureIo({ configDir: workdir });
         const server = fakeCallbackServer({ code: "c" });
         await runEmailSetup(io, {
+          ...oauth,
           exchangeCode: async () => ({ accessToken: "at", expiresAt: Date.now() + 1000, refreshToken: "rt" }),
           promptClientId: async () => "cid",
           promptClientSecret: async () => secretMarker,
           startCallbackServer: server.start,
           verifyProfile: async () => "user@example.com"
+        });
+        return lines;
+      }
+    ];
+    for (const run of paths) {
+      const lines = await run() as string[];
+      expect(lines.join("")).not.toContain(secretMarker);
+    }
+  });
+});
+
+describe("runEmailSetup — the App Password wizard (choice 1, recommended; prompts + verifier injected, never a real socket)", () => {
+  let workdir: string;
+  const apppassword = { promptMethod: async () => "apppassword" as const };
+
+  beforeEach(async () => {
+    workdir = await mkdtemp(path.join(tmpdir(), "muse-setup-email-imap-"));
+  });
+  afterEach(async () => {
+    await rm(workdir, { force: true, recursive: true });
+  });
+
+  it("cancelling at the email prompt stores NOTHING and returns ok:false", async () => {
+    const { io, lines } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, { ...apppassword, promptEmail: async () => undefined });
+    expect(result.ok).toBe(false);
+    expect(lines.join("")).toContain("cancelled");
+    expect(await readEmailImapCredential(io)).toBeUndefined();
+  });
+
+  it("cancelling at the app-password prompt stores NOTHING and returns ok:false", async () => {
+    const { io } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, {
+      ...apppassword,
+      promptAppPassword: async () => undefined,
+      promptEmail: async () => "user@gmail.com"
+    });
+    expect(result.ok).toBe(false);
+    expect(await readEmailImapCredential(io)).toBeUndefined();
+  });
+
+  it("happy path (Gmail): verifies via IMAP login, stores the credential (chmod 600), reports the mailbox count, never asks for a host override", async () => {
+    const { io, lines } = captureIo({ configDir: workdir });
+    let hostPromptCalled = false;
+    const result = await runEmailSetup(io, {
+      ...apppassword,
+      promptAppPassword: async () => "abcd efgh ijkl mnop",
+      promptEmail: async () => "user@gmail.com",
+      promptImapHost: async () => { hostPromptCalled = true; return undefined; },
+      verifyImapConnection: async (config) => {
+        expect(config).toEqual({ appPassword: "abcdefghijklmnop", email: "user@gmail.com" });
+        return { messageCount: 12, ok: true };
+      }
+    });
+    expect(result.ok).toBe(true);
+    expect(hostPromptCalled).toBe(false);
+    expect(await readEmailImapCredential(io)).toEqual({ appPassword: "abcdefghijklmnop", email: "user@gmail.com" });
+    expect(lines.some((line) => line.includes("inbox has 12 messages"))).toBe(true);
+    const fileStat = await stat(path.join(workdir, "credentials.json"));
+    expect((fileStat.mode & 0o777).toString(8)).toBe("600");
+  });
+
+  it("happy path (non-Gmail): asks for IMAP/SMTP host overrides and stores them", async () => {
+    const { io } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, {
+      ...apppassword,
+      promptAppPassword: async () => "pw",
+      promptEmail: async () => "user@naver.com",
+      promptImapHost: async () => "imap.naver.com",
+      promptSmtpHost: async () => "smtp.naver.com",
+      verifyImapConnection: async () => ({ messageCount: 1, ok: true })
+    });
+    expect(result.ok).toBe(true);
+    expect(await readEmailImapCredential(io)).toEqual({
+      appPassword: "pw", email: "user@naver.com", imapHost: "imap.naver.com", smtpHost: "smtp.naver.com"
+    });
+  });
+
+  it("a failed verification (wrong password / 2FA not enabled / network) stores NOTHING, returns ok:false, and reports the actionable error", async () => {
+    const { io, lines } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, {
+      ...apppassword,
+      promptAppPassword: async () => "wrongpw",
+      promptEmail: async () => "user@gmail.com",
+      verifyImapConnection: async () => ({ error: new Error("IMAP login rejected for user@gmail.com — check the app password"), ok: false })
+    });
+    expect(result.ok).toBe(false);
+    expect(lines.some((line) => line.includes("could not connect") && line.includes("check the app password"))).toBe(true);
+    expect(await readEmailImapCredential(io)).toBeUndefined();
+  });
+
+  it("never prints the app password to stdout/stderr across the cancelled, failed, or successful paths", async () => {
+    const secretMarker = "SECRET-MARKER-should-never-leak";
+    const paths: Array<() => Promise<unknown>> = [
+      async () => {
+        const { io, lines } = captureIo({ configDir: workdir });
+        await runEmailSetup(io, {
+          ...apppassword,
+          promptAppPassword: async () => secretMarker,
+          promptEmail: async () => "user@gmail.com",
+          verifyImapConnection: async () => ({ error: new Error("IMAP login rejected"), ok: false })
+        });
+        return lines;
+      },
+      async () => {
+        const { io, lines } = captureIo({ configDir: workdir });
+        await runEmailSetup(io, {
+          ...apppassword,
+          promptAppPassword: async () => secretMarker,
+          promptEmail: async () => "user@gmail.com",
+          verifyImapConnection: async () => ({ messageCount: 1, ok: true })
         });
         return lines;
       }

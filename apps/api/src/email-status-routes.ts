@@ -3,14 +3,15 @@
  * "is my email connected?", mirroring `registerProactiveRoutes`'s shape.
  *
  * Reads the SAME encrypted `~/.config/muse/credentials.json` the CLI's
- * `muse setup email` writes (`@muse/stores`'s `readGmailCredential`, moved
- * there in R2-2 specifically so this route could exist without apps/api
- * importing from apps/cli). Never echoes a token/secret/client id — only a
- * boolean + method label. A decryption failure or absent file degrades to
- * `configured: false` (readGmailCredential itself is fail-soft), never a 500.
+ * `muse setup email` writes (`@muse/stores`'s `readGmailCredential` /
+ * `readEmailImapCredential`, moved there in R2-2 specifically so this
+ * route could exist without apps/api importing from apps/cli). Never
+ * echoes a token/secret/client id/app password — only a boolean + method
+ * label. A decryption failure or absent file degrades to
+ * `configured: false` (both readers are fail-soft), never a 500.
  */
 
-import { readGmailCredential, type CredentialStoreIO } from "@muse/stores";
+import { readEmailImapCredential, readGmailCredential, type CredentialStoreIO } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -32,7 +33,7 @@ export interface EmailStatusGate {
 
 export interface EmailStatusResponse {
   readonly configured: boolean;
-  readonly method: "oauth" | "env" | null;
+  readonly method: "oauth" | "imap" | "env" | null;
   readonly hasRefreshToken?: boolean;
 }
 
@@ -53,15 +54,20 @@ export function registerEmailStatusRoutes(server: FastifyInstance, gate: EmailSt
     // the MUSE_GMAIL_TOKEN check above.
     const io: CredentialStoreIO = { configDir: gate.credentialsDir, credentialKey: env.MUSE_CREDENTIAL_KEY };
     const credential = await readGmailCredential(io);
-    if (!credential) {
-      const response: EmailStatusResponse = { configured: false, method: null };
+    if (credential) {
+      const response: EmailStatusResponse = {
+        configured: true,
+        hasRefreshToken: Boolean(credential.refreshToken),
+        method: "oauth"
+      };
       return response;
     }
-    const response: EmailStatusResponse = {
-      configured: true,
-      hasRefreshToken: Boolean(credential.refreshToken),
-      method: "oauth"
-    };
+    const imapCredential = await readEmailImapCredential(io);
+    if (imapCredential) {
+      const response: EmailStatusResponse = { configured: true, method: "imap" };
+      return response;
+    }
+    const response: EmailStatusResponse = { configured: false, method: null };
     return response;
   });
 }

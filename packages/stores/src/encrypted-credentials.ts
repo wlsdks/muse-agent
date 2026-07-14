@@ -57,9 +57,24 @@ export interface GmailOAuthCredential {
   readonly refreshTokenInvalid?: boolean;
 }
 
+/**
+ * The App Password (IMAP/SMTP) record `muse setup email`'s recommended
+ * path writes — a SIBLING of `gmail` (OAuth), not a replacement: both can
+ * exist, and `resolveGmailProvider` picks between them. Works for Gmail
+ * (`imapHost`/`smtpHost` omitted → Gmail defaults) and any other IMAP
+ * provider (Naver, Daum, …) by supplying the host overrides.
+ */
+export interface ImapEmailCredential {
+  readonly email: string;
+  readonly appPassword: string;
+  readonly imapHost?: string;
+  readonly smtpHost?: string;
+}
+
 interface CredentialStore {
   readonly tokens: Record<string, StoredCredential>;
   readonly gmail?: GmailOAuthCredential;
+  readonly emailImap?: ImapEmailCredential;
 }
 
 interface EncryptedCredentialFile {
@@ -149,6 +164,26 @@ export async function deleteGmailCredential(io: CredentialStoreIO): Promise<void
   await writeCredentialStore(io, rest);
 }
 
+export async function readEmailImapCredential(io: CredentialStoreIO): Promise<ImapEmailCredential | undefined> {
+  try {
+    return (await readCredentialStore(io)).emailImap;
+  } catch {
+    // Same degrade-to-undefined posture as readGmailCredential.
+    return undefined;
+  }
+}
+
+export async function writeEmailImapCredential(io: CredentialStoreIO, credential: ImapEmailCredential): Promise<void> {
+  const store = await readCredentialStore(io, { startFreshIfUnreadable: true });
+  await writeCredentialStore(io, { ...store, emailImap: credential });
+}
+
+export async function deleteEmailImapCredential(io: CredentialStoreIO): Promise<void> {
+  const store = await readCredentialStore(io, { startFreshIfUnreadable: true });
+  const { emailImap: _removed, ...rest } = store;
+  await writeCredentialStore(io, rest);
+}
+
 /**
  * Synchronous "is Gmail connected" check for callers that must stay sync
  * (`resolveGmailProvider` and the actuator availability banner, both of
@@ -172,6 +207,40 @@ export function hasStoredGmailCredentialSync(io: CredentialStoreIO): boolean {
     return isCredentialStore(store) && store.gmail !== undefined && !store.gmail.refreshTokenInvalid;
   } catch {
     return false;
+  }
+}
+
+/** Same synchronous, fail-soft posture as `hasStoredGmailCredentialSync`, for the App Password (IMAP) record. */
+export function hasStoredEmailImapCredentialSync(io: CredentialStoreIO): boolean {
+  return readEmailImapCredentialSync(io) !== undefined;
+}
+
+/**
+ * Synchronous read of the App Password record — unlike Gmail's OAuth
+ * provider (which only needs a lazily-resolving token SOURCE at
+ * construction time and can defer the real decrypt), `ImapSmtpEmailProvider`
+ * needs the full `{email, appPassword, ...}` record up front, so
+ * `resolveGmailProvider` (which must stay synchronous — every existing
+ * call site depends on that) needs a sync read, not just a sync boolean
+ * check. Every crypto primitive here is already sync (see
+ * `hasStoredGmailCredentialSync`); fail-soft: any read/parse/decrypt
+ * failure reads as "not configured", never throws.
+ */
+export function readEmailImapCredentialSync(io: CredentialStoreIO): ImapEmailCredential | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(credentialPath(io), "utf8");
+  } catch {
+    return undefined;
+  }
+  try {
+    const file = JSON.parse(raw) as unknown;
+    if (!isEncryptedCredentialFile(file)) return undefined;
+    const plaintext = decryptCredentialPayload(io, file);
+    const store = JSON.parse(plaintext) as unknown;
+    return isCredentialStore(store) ? store.emailImap : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -296,8 +365,10 @@ function isCredentialStore(value: unknown): value is CredentialStore {
       && typeof credential.updatedAt === "string")
     // `gmail` is a new, optional field — an OLD credentials.json (written
     // before this field existed) has no `gmail` key at all and must keep
-    // loading exactly as it did before (backward compatibility).
-    && (value.gmail === undefined || isGmailOAuthCredential(value.gmail));
+    // loading exactly as it did before (backward compatibility). `emailImap`
+    // is the same shape of addition (E2): absence must read cleanly too.
+    && (value.gmail === undefined || isGmailOAuthCredential(value.gmail))
+    && (value.emailImap === undefined || isImapEmailCredential(value.emailImap));
 }
 
 function isGmailOAuthCredential(value: unknown): value is GmailOAuthCredential {
@@ -308,6 +379,14 @@ function isGmailOAuthCredential(value: unknown): value is GmailOAuthCredential {
     && (value.accessToken === undefined || typeof value.accessToken === "string")
     && (value.accessTokenExpiresAt === undefined || typeof value.accessTokenExpiresAt === "number")
     && (value.refreshTokenInvalid === undefined || typeof value.refreshTokenInvalid === "boolean");
+}
+
+function isImapEmailCredential(value: unknown): value is ImapEmailCredential {
+  return isRecord(value)
+    && typeof value.email === "string"
+    && typeof value.appPassword === "string"
+    && (value.imapHost === undefined || typeof value.imapHost === "string")
+    && (value.smtpHost === undefined || typeof value.smtpHost === "string");
 }
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {

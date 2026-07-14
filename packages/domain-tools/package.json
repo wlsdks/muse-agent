@@ -18,6 +18,11 @@
     "@muse/proactivity": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*",
-    "@muse/tools": "workspace:*"
+    "@muse/tools": "workspace:*",
+    "imapflow": "^1.4.7",
+    "nodemailer": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.1"
   }
 }

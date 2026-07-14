@@ -37,13 +37,16 @@ export function requiresHomeserver(providerId: string): boolean {
 
 export interface EmailStatusView {
   readonly tone: "ok" | "warn" | "neutral";
-  readonly messageKey: "int.email.connectedOauth" | "int.email.connectedEnv" | "int.email.notConfigured";
+  readonly messageKey: "int.email.connectedOauth" | "int.email.connectedImap" | "int.email.connectedEnv" | "int.email.notConfigured";
 }
 
-/** Card copy for the Gmail status card — pure so the three states stay unit-testable. */
+/** Card copy for the email status card — pure so the four states stay unit-testable. */
 export function emailStatusView(status: EmailStatusResponse | undefined): EmailStatusView {
   if (status?.configured && status.method === "oauth") {
     return { messageKey: "int.email.connectedOauth", tone: "ok" };
+  }
+  if (status?.configured && status.method === "imap") {
+    return { messageKey: "int.email.connectedImap", tone: "ok" };
   }
   if (status?.configured && status.method === "env") {
     // Live and usable, but the raw MUSE_GMAIL_TOKEN has no refresh — it

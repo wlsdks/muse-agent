@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { delimiter as pathDelimiter, join as pathJoin } from "node:path";
 
 import { isRecord } from "@muse/shared";
-import { hasStoredGmailCredentialSync } from "@muse/stores";
+import { hasStoredEmailImapCredentialSync, hasStoredGmailCredentialSync } from "@muse/stores";
 
 import { parseBoolean, parseBooleanTriState, parseInteger } from "./env-parsers.js";
 import {
@@ -274,8 +274,8 @@ export interface SetupStatusSnapshot {
   readonly messaging: { readonly status: "ok" | "info"; readonly providers: readonly string[]; readonly nextStep?: string };
   readonly email: {
     readonly status: "ok" | "info";
-    /** `oauth` = the encrypted `muse setup email` record; `env` = MUSE_GMAIL_TOKEN; `none` = not configured. */
-    readonly source: "oauth" | "env" | "none";
+    /** `oauth`/`imap` = the encrypted `muse setup email` record (Google OAuth / App Password); `env` = MUSE_GMAIL_TOKEN; `none` = not configured. */
+    readonly source: "oauth" | "imap" | "env" | "none";
     readonly nextStep?: string;
   };
   readonly remote: {
@@ -531,18 +531,23 @@ export function resolveVoiceStatus(
 }
 
 /**
- * Resolve the `email` row for `muse setup` / `--json`. `hasStoredCredential`
- * is computed by the caller so this stays pure and directly testable — the
- * store read itself is skipped entirely under local-only (never even opened,
- * matching the calendar/messaging credential-file rule elsewhere in this
- * module) rather than probed and then discarded here.
+ * Resolve the `email` row for `muse setup` / `--json`. `hasStoredOAuthCredential`
+ * / `hasStoredImapCredential` are computed by the caller so this stays pure and
+ * directly testable — the store read itself is skipped entirely under
+ * local-only (never even opened, matching the calendar/messaging
+ * credential-file rule elsewhere in this module) rather than probed and
+ * then discarded here.
  */
 export function resolveEmailSetupStatus(
   env: Readonly<Record<string, string | undefined>>,
-  hasStoredCredential: boolean
+  hasStoredOAuthCredential: boolean,
+  hasStoredImapCredential = false
 ): SetupStatusSnapshot["email"] {
-  if (hasStoredCredential) {
+  if (hasStoredOAuthCredential) {
     return { source: "oauth", status: "ok" };
+  }
+  if (hasStoredImapCredential) {
+    return { source: "imap", status: "ok" };
   }
   if (env.MUSE_GMAIL_TOKEN?.trim()) {
     return { source: "env", status: "ok" };
@@ -720,15 +725,16 @@ export async function collectSetupStatusJson(options: {
   const messagingFile = integrationEnv?.messaging.credentialsFile ?? resolveMessagingCredentialsFile(env);
   const messagingHits = await readMessagingProviderState(messagingFile, env, integrationEnv);
 
-  // The encrypted Gmail OAuth record can hold a live refresh token. Under
-  // local-only, status must not open it just to render a row — same rule as
-  // the calendar/messaging credential files above.
-  const hasStoredGmailCredential = integrationLocalOnly
-    ? false
-    : hasStoredGmailCredentialSync({ configDir: pathJoin(home, ".config", "muse"), credentialKey: env.MUSE_CREDENTIAL_KEY });
+  // The encrypted Gmail OAuth / App Password records can hold a live
+  // refresh token / password. Under local-only, status must not open
+  // either just to render a row — same rule as the calendar/messaging
+  // credential files above.
+  const emailCredentialIo = { configDir: pathJoin(home, ".config", "muse"), credentialKey: env.MUSE_CREDENTIAL_KEY };
+  const hasStoredGmailCredential = integrationLocalOnly ? false : hasStoredGmailCredentialSync(emailCredentialIo);
+  const hasStoredImapCredential = integrationLocalOnly ? false : hasStoredEmailImapCredentialSync(emailCredentialIo);
   const emailStatus = integrationLocalOnly
     ? { nextStep: "Gmail email/inbox is disabled while MUSE_LOCAL_ONLY=true", source: "none" as const, status: "info" as const }
-    : resolveEmailSetupStatus(env, hasStoredGmailCredential);
+    : resolveEmailSetupStatus(env, hasStoredGmailCredential, hasStoredImapCredential);
   const remoteStatus = resolveRemoteSetupStatus(detectTailscaleBinaryPresent(env));
 
   // User-memory auto-extract (default-on as of the recent flip).
