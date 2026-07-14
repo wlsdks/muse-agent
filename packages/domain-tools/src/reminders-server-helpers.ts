@@ -36,7 +36,7 @@ export function resolveReminderRefOrError(
       ok: false,
       response: {
         error: `"${ref}" matches multiple reminders — say which one`,
-        candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue
+        candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text }))
       }
     };
   }
@@ -73,7 +73,7 @@ export function serializeSortedReminders(
   const sorted = [...filtered].sort(compareRemindersByDueAt);
   const shownList = sorted.slice(0, maxListEntries);
   return {
-    reminders: shownList.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
+    reminders: [...shownList.map((reminder) => serializeReminderForModel(reminder, now))],
     shown: shownList.length,
     total: sorted.length
   };

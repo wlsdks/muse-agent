@@ -1,4 +1,4 @@
-import { isRecord, stripUntrustedTerminalChars, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -138,7 +138,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
               return {
                 backend: "searxng",
                 query,
-                results: deduped as unknown as JsonValue,
+                results: [...deduped],
                 total: deduped.length
               };
             }
@@ -200,7 +200,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
           if (parsed.length === 0) {
             return { error: "parser returned 0 results — backend markup may have shifted" };
           }
-          return { backend: "duckduckgo", query, results: parsed as unknown as JsonValue, total: parsed.length };
+          return { backend: "duckduckgo", query, results: [...parsed], total: parsed.length };
         },
         inputSchema: buildJsonToolSchema(
           {

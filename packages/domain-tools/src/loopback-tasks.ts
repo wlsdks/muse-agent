@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
 import { readString, readStringArray, errorMessage } from "@muse/mcp";
@@ -92,7 +92,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const tags = readStringArray(args, "tags") ?? undefined;
           const guard = assertNoSecretInPersistedFields({ title, notes });
           if (!guard.safe) {
-            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+            return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
           }
           const urgent = args["urgent"] === true;
           const dueAtRaw = readString(args, "dueAt")?.trim();
@@ -119,7 +119,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTaskForModel(created, now) as JsonValue };
+          return { task: serializeTaskForModel(created, now) };
         },
         inputSchema: {
           additionalProperties: false,
@@ -162,7 +162,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             return {
               dueWithinDays: Math.max(0, Math.trunc(dueRaw)),
               shown: due.length,
-              tasks: due.map((task) => serializeTaskForModel(task, now)) as JsonValue,
+              tasks: due.map((task) => serializeTaskForModel(task, now)),
               total: allDue.length,
               ...(tagLabel ? { tag: tagLabel } : {})
             };
@@ -176,7 +176,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           return {
             shown: filtered.length,
             status,
-            tasks: filtered.map((task) => serializeTaskForModel(task, now)) as JsonValue,
+            tasks: filtered.map((task) => serializeTaskForModel(task, now)),
             total: matching.length,
             ...(tagLabel ? { tag: tagLabel } : {})
           };
@@ -209,7 +209,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const tasks = await readTasks(file);
           const resolution = resolveTaskRef(tasks, ref);
           if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) as JsonValue };
+            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) };
           }
           if (resolution.status !== "resolved") {
             return { error: `task not found: ${ref}` };
@@ -231,7 +231,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTaskForModel(completed, now) as JsonValue };
+          return { task: serializeTaskForModel(completed, now) };
         },
         inputSchema: {
           additionalProperties: false,
@@ -262,7 +262,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const tasks = await readTasks(file);
           const resolution = resolveTaskRef(tasks, ref);
           if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) as JsonValue };
+            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) };
           }
           if (resolution.status !== "resolved") {
             return { error: `task not found: ${ref}` };
@@ -277,14 +277,15 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           }
           const guard = assertNoSecretInPersistedFields({ title, notes: notesArg });
           if (!guard.safe) {
-            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+            return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
           }
           // Build the field-level DELTA (which fields to set / clear), not a whole
           // stale snapshot — then re-apply it to the FRESH task inside the write queue
           // (mirror `complete`), so a concurrent change to OTHER fields survives instead
           // of being clobbered by a last-writer-wins overwrite.
-          const sets: Record<string, unknown> = {};
-          const clears: string[] = [];
+          type MutablePersistedTask = { -readonly [K in keyof PersistedTask]: PersistedTask[K] };
+          const sets: Partial<Pick<PersistedTask, "title" | "notes" | "dueAt" | "urgent">> = {};
+          const clears: Array<"notes" | "dueAt" | "urgent"> = [];
           if (title && title.length > 0) {
             sets.title = title;
           }
@@ -321,9 +322,13 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             }
           }
           const applyDelta = (base: PersistedTask): PersistedTask => {
-            const merged: Record<string, unknown> = { ...base, ...sets };
-            for (const key of clears) delete merged[key];
-            return merged as unknown as PersistedTask;
+            const merged: MutablePersistedTask = { ...base, ...sets };
+            for (const key of clears) {
+              if (key === "notes") merged.notes = undefined;
+              else if (key === "dueAt") merged.dueAt = undefined;
+              else merged.urgent = undefined;
+            }
+            return merged;
           };
           // Fallback for the return value if the task vanished concurrently (i < 0,
           // no write): reflect the requested change against the snapshot we resolved.
@@ -340,7 +345,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTaskForModel(updated, now) as JsonValue };
+          return { task: serializeTaskForModel(updated, now) };
         },
         inputSchema: {
           additionalProperties: false,
@@ -376,7 +381,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const tasks = await readTasks(file);
           const resolution = resolveTaskRef(tasks, ref);
           if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) as JsonValue };
+            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) };
           }
           if (resolution.status !== "resolved") {
             return { error: `task not found: ${ref}` };
@@ -428,7 +433,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           return {
             query,
             status,
-            tasks: matches.map((task) => serializeTaskForModel(task, now)) as JsonValue,
+            tasks: matches.map((task) => serializeTaskForModel(task, now)),
             total: matches.length
           };
         },
@@ -449,4 +454,3 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
     ]
   };
 }
-

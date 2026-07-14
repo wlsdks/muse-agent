@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
@@ -117,7 +117,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
       try {
         const entries = await readReminderHistory(historyFile, limit);
         return {
-          entries: entries as unknown as JsonValue,
+          entries: [...entries],
           total: entries.length
         };
       } catch (error) {
@@ -167,7 +167,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           }
           const guard = assertNoSecretInPersistedFields({ text });
           if (!guard.safe) {
-            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+            return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
           }
           const dueAtRaw = readString(args, "dueAt")?.trim();
           if (!dueAtRaw) {
@@ -215,7 +215,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             }
           }
           return {
-            reminder: serializeReminderForModel(created, now) as JsonValue,
+            reminder: serializeReminderForModel(created, now),
             ...(recurrenceNote ? { note: recurrenceNote } : {}),
             ...(mirrorNote ? { mirrorNote } : {})
           };
@@ -360,7 +360,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { reminder: serializeReminderForModel(snoozed, now) as JsonValue };
+          return { reminder: serializeReminderForModel(snoozed, now) };
         },
         inputSchema: {
           additionalProperties: false,
@@ -410,7 +410,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: errorMessage(error) };
           }
           const fired = next.find((reminder) => reminder.id === lookup.reminder.id) as PersistedReminder;
-          return { reminder: serializeReminderForModel(fired, now) as JsonValue };
+          return { reminder: serializeReminderForModel(fired, now) };
         },
         inputSchema: {
           additionalProperties: false,

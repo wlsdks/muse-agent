@@ -88,7 +88,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
               .sort((left, right) => right.confidence - left.confidence)
               .slice(0, limit);
             return {
-              patterns: matches.map(serializePatternMatch) as JsonValue,
+              patterns: matches.map(serializePatternMatch),
               total: matches.length
             };
           } catch (cause) {
@@ -122,7 +122,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
             const sorted = [...records]
               .sort((left, right) => right.firedAtMs - left.firedAtMs)
               .slice(0, limit);
-            return { fired: sorted as unknown as JsonValue, total: sorted.length };
+            return { fired: [...sorted], total: sorted.length };
           } catch (cause) {
             return { error: errorMessage(cause) };
           }
@@ -175,11 +175,11 @@ function serializePatternMatch(match: PatternMatch): JsonObject {
     id: match.id,
     suggestion: match.suggestion,
     ...(match.category === "time-of-day-action"
-      ? { bucket: match.bucket as JsonValue, relatedPaths: match.relatedPaths as JsonValue }
+      ? { bucket: { ...match.bucket }, relatedPaths: [...match.relatedPaths] }
       : {
-          bucket: match.bucket as JsonValue,
+          bucket: { ...match.bucket },
           missingThisWeek: match.missingThisWeek,
-          relatedTitles: match.relatedTitles as JsonValue
+          relatedTitles: [...match.relatedTitles]
         })
   };
 }

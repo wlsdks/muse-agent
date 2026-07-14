@@ -176,7 +176,7 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
       // Return the candidates so the model re-targets by ordinal.
       return {
         error: {
-          ambiguous: result.candidates as unknown as JsonValue,
+          ambiguous: [...result.candidates],
           reason: `"${target}" matches ${result.candidates.length.toString()} elements — which one? Re-target with an ordinal, e.g. "the first ${target}" or "the second ${target}".`
         }
       };
@@ -189,7 +189,7 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
       const hint = fieldNames.length > 0 ? ` — type into one of these fields instead: ${fieldNames.join(", ")}` : " — there is no text field on this page";
       return {
         error: {
-          fields: result.fields as unknown as JsonValue,
+          fields: [...result.fields],
           reason: `"${target}" is not a text field${hint}.`
         }
       };

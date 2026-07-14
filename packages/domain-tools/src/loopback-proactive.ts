@@ -12,7 +12,7 @@
  * is wired enough to surface audit data).
  */
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readProactiveHistory } from "@muse/stores";
@@ -38,7 +38,7 @@ export function createProactiveMcpServer(options: ProactiveMcpServerOptions): Lo
       try {
         const entries = await readProactiveHistory(options.historyFile, limit);
         return {
-          entries: entries as unknown as JsonValue,
+          entries: [...entries],
           total: entries.length
         };
       } catch (error) {

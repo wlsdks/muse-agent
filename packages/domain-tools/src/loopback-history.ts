@@ -14,7 +14,7 @@
  * without bouncing through a shell.
  */
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import {
@@ -95,7 +95,7 @@ export function createHistoryMcpServer(options: HistoryMcpServerOptions): Loopba
           ...(sinceMs !== undefined ? { sinceMs } : {})
         });
         return {
-          entries: entries as unknown as JsonValue,
+          entries: [...entries],
           total: entries.length
         };
       } catch (error) {

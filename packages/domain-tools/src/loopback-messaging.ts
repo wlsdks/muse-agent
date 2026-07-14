@@ -106,8 +106,8 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
       try {
         const result = await pollAll();
         return {
-          errors: result.errors as unknown as JsonValue,
-          ingestedByProvider: result.ingestedByProvider as unknown as JsonValue
+          errors: [...result.errors],
+          ingestedByProvider: { ...result.ingestedByProvider }
         };
       } catch (error) {
         return { error: errorMessage(error) };
@@ -186,7 +186,7 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           "`displayName`, and a free-form `description`. Empty array means no provider is configured.",
         execute: async (): Promise<JsonObject> => {
           const providers = registry.describe();
-          return { providers: providers as unknown as JsonValue };
+          return { providers: [...providers] };
         },
         inputSchema: {
           additionalProperties: false,
