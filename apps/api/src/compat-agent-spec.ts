@@ -6,7 +6,7 @@
  * for /.well-known/agent-card.json and /api/admin/agent-specs/* routes.
  */
 
-import type { AgentSpec, AgentSpecInput, AgentSpecRegistry } from "@muse/agent-specs";
+import type { AgentCard, AgentSpec, AgentSpecInput, AgentSpecRegistry } from "@muse/agent-specs";
 import { buildAgentCard, type AgentCardToolInput } from "@muse/agent-specs";
 import type { JsonObject } from "@muse/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -132,7 +132,7 @@ export function toAgentSpecResponse(spec: AgentSpec): JsonObject {
   };
 }
 
-export async function agentCardResponse(options: CompatibilityRouteOptions): Promise<JsonObject> {
+export async function agentCardResponse(options: CompatibilityRouteOptions): Promise<AgentCard> {
   const specs = await options.agentSpecRegistry.listEnabled();
   const tools = options.agentCardToolProvider
     ? await options.agentCardToolProvider()
@@ -144,7 +144,7 @@ export async function agentCardResponse(options: CompatibilityRouteOptions): Pro
     tools,
     version: options.agentCardIdentity?.version ?? "1.0.0"
   });
-  return card as unknown as JsonObject;
+  return card;
 }
 
 function agentCardCapabilitiesFromSpecs(specs: readonly AgentSpec[]): readonly AgentCardToolInput[] {
