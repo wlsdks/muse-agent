@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
 
-import { resolveNotesDir } from "@muse/autoconfigure";
+import { resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
 import { createNotesMcpServer, deriveMirrorNoteTitle, fetchReadableUrl } from "@muse/domain-tools";
 import { isInteractiveWebEgressAllowed, isLocalOnlyEnabled } from "@muse/model";
 import { mirrorNoteToApple } from "@muse/macos";
@@ -40,13 +40,17 @@ export interface NotesCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+function environment(): MuseEnvironment {
+  return process.env;
+}
+
 interface SharedOptions {
   readonly local?: boolean;
   readonly json?: boolean;
 }
 
 async function callLocalTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+  const notesDir = resolveNotesDir(environment());
   const server = createNotesMcpServer({ notesDir });
   const tool = server.tools.find((entry) => entry.name === name);
   if (!tool) {
@@ -540,7 +544,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       // counterpart of `rename`'s link-preservation). Best-effort, never blocks.
       let backlinks: readonly string[] = [];
       if (options.local) {
-        backlinks = await notesLinkingTo(resolveNotesDir(process.env as Record<string, string | undefined>), notePath).catch(() => []);
+        backlinks = await notesLinkingTo(resolveNotesDir(environment()), notePath).catch(() => []);
         payload = await callLocalTool("delete", { path: notePath });
       } else {
         payload = (await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE")) as Record<string, unknown>;
@@ -572,7 +576,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--dry-run", "Show how many links would be rewritten without changing anything")
     .option("--json", "Print the raw result")
     .action(async (from: string, to: string, options: { readonly dryRun?: boolean; readonly json?: boolean }) => {
-      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+      const notesDir = resolveNotesDir(environment());
       const result = await renameNoteWithLinkRewrite(notesDir, from, to, options.dryRun === true);
       if (options.json) {
         helpers.writeOutput(io, result);
@@ -599,7 +603,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--max-distance <n>", "Max edit distance to treat a typo as the same note (default 2)")
     .option("--json", "Print the raw result")
     .action(async (options: { readonly dryRun?: boolean; readonly maxDistance?: string; readonly json?: boolean }) => {
-      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+      const notesDir = resolveNotesDir(environment());
       const maxDistance = options.maxDistance !== undefined && Number.isFinite(Number(options.maxDistance))
         ? Math.max(1, Math.trunc(Number(options.maxDistance)))
         : 2;

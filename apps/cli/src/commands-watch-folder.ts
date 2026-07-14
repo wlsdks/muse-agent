@@ -32,6 +32,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildMessagingRegistry,
+  type MuseEnvironment,
   resolveNotesDir,
   resolveProactiveHistoryFile,
   resolveTasksFile
@@ -61,6 +62,10 @@ interface WatchOptions {
   readonly defaultLeadMinutes?: string;
   readonly ingest?: boolean;
   readonly notesPrefix?: string;
+}
+
+function environment(): MuseEnvironment {
+  return process.env;
 }
 
 /**
@@ -187,7 +192,8 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       const asTask = options.asTask === true;
       const ingestMode = options.ingest === true;
       const notesPrefix = (options.notesPrefix ?? "inbox").trim().replace(/^\/+|\/+$/gu, "");
-      const notesDir = ingestMode ? resolveNotesDir(process.env as Record<string, string | undefined>) : undefined;
+      const env = environment();
+      const notesDir = ingestMode ? resolveNotesDir(env) : undefined;
       // strict Number() so a "90m" unit-slip rejects instead of
       // becoming 90 (parseInt eats the suffix).
       let defaultLead = 60;
@@ -206,12 +212,12 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
         }
         defaultLead = Math.max(1, Math.trunc(parsed));
       }
-      const tasksFile = asTask ? resolveTasksFile(process.env as Record<string, string | undefined>) : undefined;
+      const tasksFile = asTask ? resolveTasksFile(env) : undefined;
 
       await mkdir(dir, { recursive: true });
       await mkdir(processedDir, { recursive: true });
 
-      const registry = buildMessagingRegistry(process.env as Record<string, string | undefined>);
+      const registry = buildMessagingRegistry(env);
       if (!registry.has(provider)) {
         const known = registry.list().map((p) => p.id);
         const suggestion = closestCommandName(provider, known);
@@ -220,7 +226,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
         process.exitCode = 1;
         return;
       }
-      const historyFile = resolveProactiveHistoryFile(process.env as Record<string, string | undefined>);
+      const historyFile = resolveProactiveHistoryFile(env);
 
       io.stdout(`muse watch-folder — watching ${dir}\n`);
       if (ingestMode) {

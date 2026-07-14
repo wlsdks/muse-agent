@@ -17,8 +17,26 @@
 
 import { randomUUID } from "node:crypto";
 
-import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
-import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+<<<<<<< HEAD
+import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile, type MuseEnvironment } from "@muse/autoconfigure";
+import {
+  classifyDaemonLoopHeartbeat,
+  compareRemindersByDueAt,
+  defaultProactiveHeartbeatDir,
+  filterReminders,
+  fireReminder,
+  parseReminderDueAt,
+  readProactiveHeartbeat,
+  readReminderHistory,
+  readReminders,
+  readReminderStatusFilter,
+  resolveReminderRef,
+  serializeReminder,
+  writeReminders,
+  type PersistedReminder,
+  type ReminderHistoryEntry,
+  type ReminderRecurrence,
+} from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -70,7 +88,11 @@ interface SharedOptions {
 }
 
 function localRemindersFile(): string {
-  return resolveRemindersFile(process.env as Record<string, string | undefined>);
+  return resolveRemindersFile(environment());
+}
+
+function environment(): MuseEnvironment {
+  return process.env;
 }
 
 const remindLocalFallback = <T>(
@@ -437,9 +459,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           throw new Error("--watch requires --via and --destination");
         }
         const intervalMs = clampWatchInterval(options.watchInterval);
-        const registry: MessagingProviderRegistry = buildMessagingRegistry(
-          process.env as Record<string, string | undefined>
-        );
+        const registry: MessagingProviderRegistry = buildMessagingRegistry(environment());
         const file = localRemindersFile();
         let firing = false;
         const tick = async (): Promise<void> => {
@@ -502,9 +522,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         throw new Error("--via and --destination are required (or use --dry-run for a preview)");
       }
 
-      const registry: MessagingProviderRegistry = buildMessagingRegistry(
-        process.env as Record<string, string | undefined>
-      );
+      const registry: MessagingProviderRegistry = buildMessagingRegistry(environment());
       const summary = await runDueReminders({
         destination,
         file,
@@ -540,7 +558,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       const limit = parseLimitOrDefault(options.limit);
       type HistoryPayload = { entries: readonly ReminderHistoryEntry[]; total: number };
       const historyLocal = async (): Promise<HistoryPayload> => {
-        const file = resolveReminderHistoryFile(process.env as Record<string, string | undefined>);
+        const file = resolveReminderHistoryFile(environment());
         const entries = await readReminderHistory(file, limit);
         return { entries, total: entries.length };
       };

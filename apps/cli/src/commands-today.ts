@@ -19,7 +19,8 @@ import {
   createMuseRuntimeAssembly,
   resolveContactsFile,
   resolveEpisodesFile,
-  resolveTasksFile
+  resolveTasksFile,
+  type MuseEnvironment
 } from "@muse/autoconfigure";
 import { queryContacts, readTasks, readEpisodes } from "@muse/stores";
 import {
@@ -84,6 +85,10 @@ import {
   type SpeakerShells
 } from "./voice-playback.js";
 
+function environment(): MuseEnvironment {
+  return process.env;
+}
+
 export interface TodayCommandShells {
   readonly tts?: TextToSpeechProvider;
   readonly speaker?: SpeakerShells;
@@ -105,6 +110,7 @@ export interface TodayCommandHelpers {
    */
   readonly shells?: TodayCommandShells;
 }
+
 
 export function registerTodayCommands(program: Command, io: ProgramIO, helpers: TodayCommandHelpers): void {
   program
@@ -184,7 +190,8 @@ Examples:
         }
       }
 
-      const weatherLine = await resolveTodayWeatherLine(process.env as Record<string, string | undefined>);
+      const env = environment();
+      const weatherLine = await resolveTodayWeatherLine(env);
       if (weatherLine) {
         briefing = { ...briefing, weather: weatherLine };
       }
@@ -193,7 +200,7 @@ Examples:
       // feeds store and merged here — same pattern as weather — so the
       // brief surfaces the user's ambient world-state on BOTH the local
       // and remote paths (the API daemon doesn't compose feeds).
-      const headlines = await resolveTodayFeedHeadlines(process.env as Record<string, string | undefined>, lookaheadHours);
+      const headlines = await resolveTodayFeedHeadlines(env, lookaheadHours);
       if (headlines && headlines.length > 0) {
         briefing = { ...briefing, headlines };
       }
@@ -204,7 +211,7 @@ Examples:
       // feeds, so it works on both the local and remote briefing paths. Fail-soft.
       if (briefing.events && briefing.events.length > 0) {
         try {
-          const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>));
+          const contacts = await queryContacts(resolveContactsFile(env));
           if (contacts.length > 0) {
             briefing = {
               ...briefing,
@@ -237,7 +244,7 @@ Examples:
         try {
           const { collectDueRevisits } = await import("./commands-notes-rag.js");
           const { resolveNotesDir } = await import("@muse/autoconfigure");
-          const due = await collectDueRevisits(resolveNotesDir(process.env as Record<string, string | undefined>));
+          const due = await collectDueRevisits(resolveNotesDir(env));
           revisitSection = formatRevisitSection(due);
         } catch {
           // unreadable notes dir must not fail the brief
@@ -250,7 +257,7 @@ Examples:
       let staleTasksSection = "";
       if (!options.json) {
         try {
-          const all = await readTasks(resolveTasksFile(process.env as Record<string, string | undefined>));
+          const all = await readTasks(resolveTasksFile(env));
           staleTasksSection = formatStaleTasksSection(selectStaleTasks(all, Date.now()));
         } catch {
           // unreadable tasks file must not fail the brief
@@ -264,7 +271,7 @@ Examples:
       if (!options.json) {
         try {
           const { resolveNotesDir } = await import("@muse/autoconfigure");
-          const mtimes = await collectNoteMtimes(resolveNotesDir(process.env as Record<string, string | undefined>));
+          const mtimes = await collectNoteMtimes(resolveNotesDir(env));
           focusSection = formatNoteFocusSection(selectNoteFocus(mtimes, Date.now()));
         } catch {
           // unreadable notes dir must not fail the brief
@@ -276,7 +283,7 @@ Examples:
       let episodeRevisitLine = "";
       if (!options.json) {
         try {
-          const episodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
+          const episodes = await readEpisodes(resolveEpisodesFile(env));
           episodeRevisitLine = formatEpisodeRevisitLine(selectEpisodeToRevisit(episodes, Date.now()));
         } catch {
           // unreadable episodes file must not fail the brief
@@ -298,7 +305,7 @@ Examples:
           // still gets only the prose.
           const { resolveNotesDir } = await import("@muse/autoconfigure");
           const { LocalDirNotesProvider } = await import("@muse/domain-tools");
-          const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+          const notesDir = resolveNotesDir(env);
           const provider = new LocalDirNotesProvider({ notesDir });
           const title = `Today brief — ${shortDateLabel(briefing.generatedAt)}`;
           // Scrub the LLM brief before it persists — a task/event
@@ -359,7 +366,7 @@ async function findTodayConnections(query: string, embedModel = DEFAULT_EMBED_MO
   const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
   let episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
   if (episodeEntries.length > 0) {
-    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((e) => e.id));
+    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(environment()))).map((e) => e.id));
     episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
   }
   const queryVec = await embed(query, embedModel);
