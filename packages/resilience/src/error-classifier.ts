@@ -15,6 +15,7 @@
  * FailoverReason taxonomy; Muse's own, trimmed to the classes that
  * actually change what the runtime does.
  */
+import { isRecord } from "@muse/shared";
 
 export type ErrorReason =
   | "auth"
@@ -162,31 +163,44 @@ function extractRetryAfterMs(error: unknown, message: string): number | null {
 }
 
 function readHeader(error: unknown, name: string): string | null {
-  if (typeof error !== "object" || error === null) return null;
-  for (const holder of [error, (error as { response?: unknown }).response]) {
-    if (typeof holder !== "object" || holder === null) continue;
-    const headers = (holder as { headers?: unknown }).headers;
-    if (typeof headers !== "object" || headers === null) continue;
-    // Header bags: a plain object, or a Map/Headers with a get().
-    const getter = (headers as { get?: unknown }).get;
+  if (!isRecord(error)) return null;
+  for (const holder of [error, error.response]) {
+    if (!isRecord(holder)) continue;
+    const headers = holder.headers;
+    if (!isRecord(headers) && !isRecordLikeGetter(headers)) continue;
+
+    const getter = isRecordLikeGetter(headers) ? headers.get : undefined;
     if (typeof getter === "function") {
-      const value = (getter as (k: string) => unknown).call(headers, name);
+      const value = getter.call(headers, name);
       if (typeof value === "string") return value;
     }
+
+    if (!isRecord(headers)) continue;
     for (const key of [name, name.toLowerCase()]) {
-      const value = (headers as Record<string, unknown>)[key];
+      const value = headers[key];
       if (typeof value === "string" || typeof value === "number") return String(value);
     }
   }
   return null;
 }
 
+type GetHeaderValue = (name: string) => unknown;
+
+function isRecordLikeGetter(value: unknown): value is { get: GetHeaderValue } {
+  return (
+    isRecord(value) &&
+    "get" in value &&
+    typeof value.get === "function" &&
+    value.get.length >= 1
+  );
+}
+
 function extractStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null) return null;
+  if (!isRecord(error)) return null;
   const candidates = [
     readNumberProp(error, "status"),
     readNumberProp(error, "statusCode"),
-    readNumberProp((error as { response?: unknown }).response, "status")
+    readNumberProp(isRecord(error.response) ? error.response : undefined, "status")
   ];
   for (const c of candidates) {
     if (c !== null && c >= 100 && c < 600) return c;
@@ -197,8 +211,8 @@ function extractStatus(error: unknown): number | null {
 function directMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
-  if (typeof value === "object" && value !== null) {
-    const m = (value as { message?: unknown }).message;
+  if (isRecord(value)) {
+    const m = value.message;
     if (typeof m === "string") return m;
   }
   return "";
@@ -215,21 +229,20 @@ function directMessage(value: unknown): string {
  */
 function extractMessage(error: unknown): string {
   const parts: string[] = [directMessage(error)];
-  if (typeof error === "object" && error !== null) {
-    const e = error as Record<string, unknown>;
-    parts.push(directMessage(e.error));
-    const meta = e.metadata;
-    if (typeof meta === "object" && meta !== null) {
-      const raw = (meta as Record<string, unknown>).raw;
+  if (isRecord(error)) {
+    parts.push(directMessage(error.error));
+    const meta = error.metadata;
+    if (isRecord(meta)) {
+      const raw = meta.raw;
       if (typeof raw === "string") {
         try {
           const parsed = JSON.parse(raw) as unknown;
-          parts.push(directMessage((parsed as { error?: unknown }).error) || directMessage(parsed) || raw);
+          parts.push(directMessage(isRecord(parsed) ? parsed.error : undefined) || directMessage(parsed) || raw);
         } catch {
           parts.push(raw);
         }
       } else {
-        parts.push(directMessage((raw as { error?: unknown } | null)?.error) || directMessage(raw));
+        parts.push(directMessage(isRecord(raw) ? raw.error : undefined) || directMessage(raw));
       }
     }
   }
@@ -239,22 +252,22 @@ function extractMessage(error: unknown): string {
 
 function errorName(error: unknown): string {
   if (error instanceof Error) return error.name;
-  if (typeof error === "object" && error !== null) {
-    const n = (error as { name?: unknown }).name;
+  if (isRecord(error)) {
+    const n = error.name;
     if (typeof n === "string") return n;
   }
   return "";
 }
 
 function readNumberProp(obj: unknown, key: string): number | null {
-  if (typeof obj !== "object" || obj === null) return null;
-  const value = (obj as Record<string, unknown>)[key];
+  if (!isRecord(obj)) return null;
+  const value = obj[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function readBooleanProp(obj: unknown, key: string): boolean | null {
-  if (typeof obj !== "object" || obj === null) return null;
-  const value = (obj as Record<string, unknown>)[key];
+  if (!isRecord(obj)) return null;
+  const value = obj[key];
   return typeof value === "boolean" ? value : null;
 }
 
@@ -268,10 +281,8 @@ function readBooleanProp(obj: unknown, key: string): boolean | null {
  * can import it without a reverse dependency on index.ts.
  */
 export function isCancellationLikeError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
+  if (!isRecord(error)) {
     return false;
   }
-
-  const record = error as { readonly code?: unknown; readonly name?: unknown };
-  return record.name === "AbortError" || record.code === "ABORT_ERR";
+  return error.name === "AbortError" || error.code === "ABORT_ERR";
 }

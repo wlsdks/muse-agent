@@ -17,9 +17,15 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 interface PersistedShape {
   readonly version: 1;
   readonly since: string;
+}
+
+function isPersistedMatrixSince(value: unknown): value is PersistedShape {
+  return isRecord(value) && value.version === 1 && typeof value.since === "string" && value.since.length > 0;
 }
 
 export async function readMatrixSince(file: string): Promise<string | undefined> {
@@ -31,18 +37,14 @@ export async function readMatrixSince(file: string): Promise<string | undefined>
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") {
+  if (!isPersistedMatrixSince(parsed)) {
     return undefined;
   }
-  const candidate = (parsed as { since?: unknown }).since;
-  if (typeof candidate !== "string" || candidate.length === 0) {
-    return undefined;
-  }
-  return candidate;
+  return parsed.since;
 }
 
 export async function writeMatrixSince(file: string, since: string): Promise<void> {

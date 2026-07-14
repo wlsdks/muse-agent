@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ModelRequest, ModelResponse } from "@muse/model";
-import type { JsonObject, JsonValue } from "@muse/shared";
-import { escapeRegex } from "@muse/shared";
+import { isRecord, escapeRegex, type JsonObject, type JsonValue } from "@muse/shared";
 
 export {
   cacheUnknownModel,
@@ -216,14 +215,13 @@ export class AnthropicPromptCache implements PromptCache {
   }
 
   extractCacheMetrics(nativeUsage: unknown): PromptCacheMetrics | undefined {
-    if (!nativeUsage || typeof nativeUsage !== "object") {
+    if (!isRecord(nativeUsage)) {
       return undefined;
     }
 
-    const usage = nativeUsage as Record<string, unknown>;
-    const cacheCreationInputTokens = numberValue(usage.cache_creation_input_tokens);
-    const cacheReadInputTokens = numberValue(usage.cache_read_input_tokens);
-    const regularInputTokens = numberValue(usage.input_tokens);
+    const cacheCreationInputTokens = numberValue(nativeUsage.cache_creation_input_tokens);
+    const cacheReadInputTokens = numberValue(nativeUsage.cache_read_input_tokens);
+    const regularInputTokens = numberValue(nativeUsage.input_tokens);
 
     if (cacheCreationInputTokens === 0 && cacheReadInputTokens === 0 && regularInputTokens === 0) {
       return undefined;

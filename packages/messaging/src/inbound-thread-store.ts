@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 /**
  * DEPRECATED (S3b) production backend — the API server now wires Telegram/
  * Matrix through `FileConversationStore` (`apps/api/src/threaded-conversation-
@@ -33,11 +35,19 @@ interface PersistedShape {
 }
 
 function isTurn(value: unknown): value is ThreadTurn {
-  if (!value || typeof value !== "object") {
+  if (!isRecord(value)) {
     return false;
   }
-  const turn = value as ThreadTurn;
-  return (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string";
+  return (value.role === "user" || value.role === "assistant") && typeof value.content === "string";
+}
+
+function isPersistedThreadStore(value: unknown): value is PersistedShape {
+  return (
+    isRecord(value) &&
+    value.version === 1 &&
+    isRecord(value.threads) &&
+    Object.values(value.threads).every((thread) => Array.isArray(thread) && thread.every(isTurn))
+  );
 }
 
 async function readAll(file: string): Promise<Record<string, ThreadTurn[]>> {
@@ -48,10 +58,13 @@ async function readAll(file: string): Promise<Record<string, ThreadTurn[]>> {
     return {};
   }
   try {
-    const parsed = JSON.parse(raw) as { version?: unknown; threads?: unknown };
-    if (parsed && parsed.version === 1 && parsed.threads && typeof parsed.threads === "object") {
+    const parsed = JSON.parse(raw);
+    if (isPersistedThreadStore(parsed)) {
+      return { ...parsed.threads };
+    }
+    if (isRecord(parsed) && parsed.version === 1 && isRecord(parsed.threads)) {
       const out: Record<string, ThreadTurn[]> = {};
-      for (const [key, value] of Object.entries(parsed.threads as Record<string, unknown>)) {
+      for (const [key, value] of Object.entries(parsed.threads)) {
         if (Array.isArray(value)) {
           out[key] = value.filter(isTurn);
         }

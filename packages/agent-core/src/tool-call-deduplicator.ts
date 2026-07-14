@@ -1,5 +1,6 @@
 import type { ModelToolCall } from "@muse/model";
 import type { ToolExecutionResult } from "@muse/tools";
+import { isRecord } from "@muse/shared";
 
 /**
  * Tool-call deduplicator.
@@ -111,11 +112,10 @@ export function stableJson(value: unknown): string {
     return `[${value.map((item) => stableJson(item)).join(",")}]`;
   }
 
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
       .join(",")}}`;
   }
 

@@ -24,7 +24,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import { atomicWriteFile, quarantineCorruptStore, withFileLock } from "@muse/stores";
 
 import type {
@@ -52,18 +52,18 @@ async function readScheduledJobs(file: string): Promise<readonly ScheduledJob[]>
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
 
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { jobs?: unknown }).jobs)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.jobs)) {
     await quarantineCorruptStore(file);
     return [];
   }
 
-  return (parsed as { jobs: readonly unknown[] }).jobs.flatMap((entry): readonly ScheduledJob[] => {
+  return parsed.jobs.flatMap((entry): readonly ScheduledJob[] => {
     const job = reviveScheduledJob(entry);
     return job ? [job] : [];
   });
@@ -103,55 +103,54 @@ function toJsonObject(value: unknown): JsonObject {
  * the whole file (mirrors `isPersistedReminder`'s per-entry fail-soft).
  */
 function reviveScheduledJob(raw: unknown): ScheduledJob | undefined {
-  if (!raw || typeof raw !== "object") {
+  if (!isRecord(raw)) {
     return undefined;
   }
-  const r = raw as Record<string, unknown>;
 
-  if (typeof r.id !== "string" || r.id.length === 0) return undefined;
-  if (typeof r.name !== "string" || r.name.length === 0) return undefined;
-  if (typeof r.cronExpression !== "string" || r.cronExpression.length === 0) return undefined;
-  if (typeof r.timezone !== "string" || r.timezone.length === 0) return undefined;
-  if (r.jobType !== "agent" && r.jobType !== "mcp_tool") return undefined;
+  if (typeof raw.id !== "string" || raw.id.length === 0) return undefined;
+  if (typeof raw.name !== "string" || raw.name.length === 0) return undefined;
+  if (typeof raw.cronExpression !== "string" || raw.cronExpression.length === 0) return undefined;
+  if (typeof raw.timezone !== "string" || raw.timezone.length === 0) return undefined;
+  if (raw.jobType !== "agent" && raw.jobType !== "mcp_tool") return undefined;
 
-  const createdAt = reviveDate(r.createdAt);
-  const updatedAt = reviveDate(r.updatedAt);
+  const createdAt = reviveDate(raw.createdAt);
+  const updatedAt = reviveDate(raw.updatedAt);
   if (!createdAt || !updatedAt) return undefined;
 
-  const lastRunAt = r.lastRunAt !== undefined ? reviveDate(r.lastRunAt) : undefined;
-  const lastStatus = r.lastStatus;
+  const lastRunAt = raw.lastRunAt !== undefined ? reviveDate(raw.lastRunAt) : undefined;
+  const lastStatus = raw.lastStatus;
   const validLastStatus: JobExecutionStatus | undefined =
     lastStatus === "success" || lastStatus === "failed" || lastStatus === "running" || lastStatus === "skipped"
       ? lastStatus
       : undefined;
 
   return {
-    agentMaxToolCalls: optionalNumber(r.agentMaxToolCalls),
-    agentModel: optionalString(r.agentModel),
-    agentPrompt: optionalString(r.agentPrompt),
-    agentSystemPrompt: optionalString(r.agentSystemPrompt),
+    agentMaxToolCalls: optionalNumber(raw.agentMaxToolCalls),
+    agentModel: optionalString(raw.agentModel),
+    agentPrompt: optionalString(raw.agentPrompt),
+    agentSystemPrompt: optionalString(raw.agentSystemPrompt),
     createdAt,
-    cronExpression: r.cronExpression,
-    description: optionalString(r.description),
-    enabled: typeof r.enabled === "boolean" ? r.enabled : true,
-    executionTimeoutMs: optionalNumber(r.executionTimeoutMs),
-    id: r.id,
-    jobType: r.jobType as ScheduledJobType,
-    lastResult: optionalString(r.lastResult),
+    cronExpression: raw.cronExpression,
+    description: optionalString(raw.description),
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
+    executionTimeoutMs: optionalNumber(raw.executionTimeoutMs),
+    id: raw.id,
+    jobType: raw.jobType as ScheduledJobType,
+    lastResult: optionalString(raw.lastResult),
     lastRunAt,
     lastStatus: validLastStatus,
-    maxRetryCount: optionalNumber(r.maxRetryCount) ?? 3,
-    mcpServerName: optionalString(r.mcpServerName),
-    name: r.name,
-    notificationChannelId: optionalString(r.notificationChannelId),
-    personaId: optionalString(r.personaId),
-    retryOnFailure: typeof r.retryOnFailure === "boolean" ? r.retryOnFailure : false,
-    tags: Array.isArray(r.tags) ? r.tags.filter((tag): tag is string => typeof tag === "string") : [],
-    timezone: r.timezone,
-    toolArguments: toJsonObject(r.toolArguments as JsonValue),
-    toolName: optionalString(r.toolName),
+    maxRetryCount: optionalNumber(raw.maxRetryCount) ?? 3,
+    mcpServerName: optionalString(raw.mcpServerName),
+    name: raw.name,
+    notificationChannelId: optionalString(raw.notificationChannelId),
+    personaId: optionalString(raw.personaId),
+    retryOnFailure: typeof raw.retryOnFailure === "boolean" ? raw.retryOnFailure : false,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    timezone: raw.timezone,
+    toolArguments: toJsonObject(raw.toolArguments as JsonValue),
+    toolName: optionalString(raw.toolName),
     updatedAt,
-    webhookUrl: optionalString(r.webhookUrl)
+    webhookUrl: optionalString(raw.webhookUrl)
   };
 }
 

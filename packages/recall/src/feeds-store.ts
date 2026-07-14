@@ -17,7 +17,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { isRecord, stripUntrustedTerminalChars } from "@muse/shared";
 import { XMLParser } from "fast-xml-parser";
 
 import { roundVectorForStore } from "./browsing-store.js";
@@ -163,19 +163,23 @@ export function parseFeedBody(body: string): readonly FeedEntry[] {
   });
   let doc: Record<string, unknown>;
   try {
-    doc = parser.parse(body) as Record<string, unknown>;
+    const parsed = parser.parse(body);
+    if (!isRecord(parsed)) {
+      return [];
+    }
+    doc = parsed;
   } catch {
     return [];
   }
   // RSS 2.0
-  const rss = (doc as { rss?: { channel?: { item?: unknown } } }).rss;
-  if (rss && rss.channel) {
+  const rss = isRecord(doc.rss) ? doc.rss : undefined;
+  if (isRecord(rss) && isRecord(rss.channel)) {
     const items = toArray(rss.channel.item);
     return items.flatMap((item) => toRssEntry(item));
   }
   // Atom
-  const atom = (doc as { feed?: { entry?: unknown } }).feed;
-  if (atom) {
+  const atom = isRecord(doc.feed) ? doc.feed : undefined;
+  if (isRecord(atom) && atom.entry !== undefined) {
     const entries = toArray(atom.entry);
     return entries.flatMap((entry) => toAtomEntry(entry));
   }
@@ -189,7 +193,8 @@ function toArray<T>(value: T | T[] | undefined): readonly T[] {
 
 function toRssEntry(item: unknown): readonly FeedEntry[] {
   if (!item || typeof item !== "object") return [];
-  const raw = item as Record<string, unknown>;
+  if (!isRecord(item)) return [];
+  const raw = item;
   const title = sanitizeFeedText(readScalar(raw.title));
   const link = sanitizeFeedText(readScalar(raw.link));
   const id = sanitizeFeedText(readScalar(raw.guid)) || link || title;
@@ -205,7 +210,8 @@ function toRssEntry(item: unknown): readonly FeedEntry[] {
 
 function toAtomEntry(entry: unknown): readonly FeedEntry[] {
   if (!entry || typeof entry !== "object") return [];
-  const raw = entry as Record<string, unknown>;
+  if (!isRecord(entry)) return [];
+  const raw = entry;
   const title = sanitizeFeedText(readScalar(raw.title));
   const link = sanitizeFeedText(pickAtomLinkHref(raw.link));
   const id = sanitizeFeedText(readScalar(raw.id)) || link || title;
@@ -231,8 +237,8 @@ function toAtomEntry(entry: unknown): readonly FeedEntry[] {
  */
 function pickAtomLinkHref(linkRaw: unknown): string {
   if (typeof linkRaw === "string") return linkRaw;
-  const candidates = (Array.isArray(linkRaw) ? linkRaw : [linkRaw]).filter(
-    (l): l is Record<string, unknown> => Boolean(l) && typeof l === "object"
+  const candidates = (Array.isArray(linkRaw) ? linkRaw : [linkRaw]).filter((l): l is Record<string, unknown> =>
+    isRecord(l)
   );
   let firstHref = "";
   for (const candidate of candidates) {
@@ -248,8 +254,8 @@ function pickAtomLinkHref(linkRaw: unknown): string {
 function readScalar(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value && typeof value === "object" && "#text" in value) {
-    const inner = (value as { "#text"?: unknown })["#text"];
+  if (isRecord(value) && "#text" in value) {
+    const inner = value["#text"];
     if (typeof inner === "string") return inner;
   }
   return undefined;

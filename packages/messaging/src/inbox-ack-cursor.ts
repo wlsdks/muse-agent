@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 /**
  * Persisted set of inbound message keys (`${providerId}:${messageId}`)
  * whose delegation ack has already been DELIVERED, so a restart or a
@@ -20,6 +22,10 @@ interface PersistedShape {
   readonly acked: readonly string[];
 }
 
+function isPersistedAckCursor(value: unknown): value is PersistedShape {
+  return isRecord(value) && value.version === 1 && Array.isArray(value.acked) && value.acked.every((item) => typeof item === "string");
+}
+
 export async function readAckCursor(file: string): Promise<ReadonlySet<string>> {
   let raw: string;
   try {
@@ -28,9 +34,9 @@ export async function readAckCursor(file: string): Promise<ReadonlySet<string>> 
     return new Set();
   }
   try {
-    const parsed = JSON.parse(raw) as { version?: unknown; acked?: unknown };
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.acked)) {
-      return new Set(parsed.acked.filter((k): k is string => typeof k === "string"));
+    const parsed = JSON.parse(raw);
+    if (isPersistedAckCursor(parsed)) {
+      return new Set(parsed.acked);
     }
   } catch {
     // malformed → treat as empty; worst case one duplicate ack, never a lost final answer

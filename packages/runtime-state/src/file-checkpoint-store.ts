@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId, isRecord, type JsonObject } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
@@ -29,8 +29,8 @@ function serialize(checkpoint: ExecutionCheckpoint): JsonObject {
 }
 
 function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const r = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return undefined;
+  const r = raw;
   if (typeof r.runId !== "string" || typeof r.step !== "number" || !Number.isFinite(r.step)) return undefined;
   const createdAt = typeof r.createdAt === "string" ? new Date(r.createdAt) : new Date(0);
   return {
@@ -45,7 +45,7 @@ function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
 const byStep = (a: ExecutionCheckpoint, b: ExecutionCheckpoint): number => a.step - b.step;
 
 function checkpointPhase(c: ExecutionCheckpoint): string {
-  const p = (c.state as { phase?: unknown }).phase;
+  const p = isRecord(c.state) ? c.state.phase : undefined;
   return typeof p === "string" ? p : "unknown";
 }
 

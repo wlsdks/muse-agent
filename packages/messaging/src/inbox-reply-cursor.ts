@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 /**
  * Persisted set of inbound message keys (`${providerId}:${messageId}`)
  * the conversational reply loop has already answered, so a restart
@@ -22,6 +24,10 @@ interface PersistedShape {
   readonly handled: readonly string[];
 }
 
+function isPersistedReplyCursor(value: unknown): value is PersistedShape {
+  return isRecord(value) && value.version === 1 && Array.isArray(value.handled) && value.handled.every((item) => typeof item === "string");
+}
+
 export async function readReplyCursor(file: string): Promise<ReadonlySet<string>> {
   let raw: string;
   try {
@@ -30,9 +36,9 @@ export async function readReplyCursor(file: string): Promise<ReadonlySet<string>
     return new Set();
   }
   try {
-    const parsed = JSON.parse(raw) as { version?: unknown; handled?: unknown };
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.handled)) {
-      return new Set(parsed.handled.filter((k): k is string => typeof k === "string"));
+    const parsed = JSON.parse(raw);
+    if (isPersistedReplyCursor(parsed)) {
+      return new Set(parsed.handled);
     }
   } catch {
     // malformed → treat as empty; the loop just re-answers (idempotent enough)
