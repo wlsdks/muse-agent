@@ -58,15 +58,15 @@ function registerDebugReplayRoutes(server: FastifyInstance, options: Compatibili
     for (const capture of [...captures, ...stored]) {
       byId.set(stringField(capture.id, ""), capture);
     }
-    return [...byId.values()].slice(0, limit);
+  return [...byId.values()].slice(0, limit);
   });
 
-  server.get("/api/admin/debug/replay/:id", async (request, reply) => {
+  server.get<{ readonly Params: { readonly id: string } }>("/api/admin/debug/replay/:id", async (request, reply) => {
     if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
-    const { id } = request.params as { readonly id: string };
+    const { id } = request.params;
     const stored = await getDebugReplayCapture(options, id);
     if (stored) {
       return stored;
@@ -91,7 +91,7 @@ function registerStatsRoutes(server: FastifyInstance, options: CompatibilityRout
       });
     }
     const snapshot = await options.museObservabilitySnapshot();
-    return snapshot as unknown as JsonObject;
+    return toJsonObject(snapshot);
   });
 }
 

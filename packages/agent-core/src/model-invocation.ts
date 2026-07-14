@@ -19,7 +19,7 @@
 import { estimateCostUsd } from "@muse/cache";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import { retry, scaleRequestTimeout, withTimeout } from "@muse/resilience";
-import { decideWebSearchPolicy, parseModelName, USAGE_RECORDED_BY_RUNTIME_FLAG, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchSettings } from "@muse/model";
+import { decideWebSearchPolicy, parseModelName, USAGE_RECORDED_BY_RUNTIME_FLAG, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchPolicy, type WebSearchSettings } from "@muse/model";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import type { JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
@@ -40,18 +40,15 @@ export function buildModelRequestWithWebSearch(
   }
 ): ModelRequest {
   const parsed = parseModelName(request.model);
-  const policy = decideWebSearchPolicy({
+  const policy: WebSearchPolicy = decideWebSearchPolicy({
     model: { provider: parsed.providerId ?? "", modelId: parsed.modelId },
     settings: ctx.settings,
     override: ctx.override,
     env: ctx.env
   });
-  // Cast is safe: WebSearchPolicy only contains JsonValue-compatible fields
-  // (boolean + number), but lacks the index signature JsonObject requires.
-  const policyAsJson = policy as unknown as JsonObject;
   return {
     ...request,
-    metadata: { ...(request.metadata ?? {}), webSearchPolicy: policyAsJson }
+    metadata: { ...(request.metadata ?? {}), webSearchPolicy: { ...policy } }
   };
 }
 
