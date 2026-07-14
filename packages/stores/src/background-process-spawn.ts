@@ -29,6 +29,8 @@ export interface BackgroundSpawner {
   spawn(command: string, options: { readonly cwd?: string; readonly logFile: string }): SpawnedChild;
 }
 
+type ReadProcessStartTime = (pid: number) => string | undefined | Promise<string | undefined>;
+
 export interface SpawnBackgroundDeps {
   readonly storeFile: string;
   readonly spawner: BackgroundSpawner;
@@ -38,7 +40,7 @@ export interface SpawnBackgroundDeps {
   /** Returns a refusal reason when the command is catastrophic, else undefined. Wire classifyDangerousCommand. */
   readonly classifyDanger?: (command: string) => string | undefined;
   /** Returns the OS-level start-time for a live pid (undefined if unreadable). Wire a `ps`-backed reader. */
-  readonly readProcessStartTime?: (pid: number) => string | undefined;
+  readonly readProcessStartTime?: ReadProcessStartTime;
 }
 
 export async function spawnBackgroundProcess(
@@ -58,7 +60,7 @@ export async function spawnBackgroundProcess(
   const id = deps.newId();
   const logFile = deps.logFileFor(id);
   const child = deps.spawner.spawn(trimmed, { ...(options.cwd ? { cwd: options.cwd } : {}), logFile });
-  const osStartTime = deps.readProcessStartTime?.(child.pid);
+  const osStartTime = deps.readProcessStartTime ? await deps.readProcessStartTime(child.pid) : undefined;
   const record: BackgroundProcessRecord = {
     id,
     pid: child.pid,
@@ -118,7 +120,7 @@ export async function stopBackgroundProcess(
   id: string,
   kill: (pid: number) => void,
   now: () => Date,
-  readProcessStartTime?: (pid: number) => string | undefined
+  readProcessStartTime?: ReadProcessStartTime
 ): Promise<StopBackgroundResult> {
   const record = await getBackgroundProcess(storeFile, id);
   if (!record) {
@@ -127,7 +129,8 @@ export async function stopBackgroundProcess(
   if (record.status !== "running") {
     return "already_done";
   }
-  if (readProcessStartTime && !pidIdentityMatches(record, readProcessStartTime(record.pid))) {
+  const currentStartTime = readProcessStartTime ? await readProcessStartTime(record.pid) : undefined;
+  if (readProcessStartTime && !pidIdentityMatches(record, currentStartTime)) {
     await updateBackgroundProcess(storeFile, id, { status: "exited", endedAt: now().toISOString() });
     return "pid_reused";
   }
@@ -158,22 +161,28 @@ export async function reconcileBackgroundProcesses(
   storeFile: string,
   isAlive: (pid: number) => boolean,
   now: () => Date,
-  readProcessStartTime?: (pid: number) => string | undefined
+  readProcessStartTime?: ReadProcessStartTime
 ): Promise<readonly string[]> {
   const reconciled: string[] = [];
-  await mutateBackgroundProcesses(storeFile, (current) =>
-    current.map((process) => {
+  await mutateBackgroundProcesses(storeFile, async (current) => {
+    const reconciledCurrent = await Promise.all(current.map(async (process) => {
       if (process.status !== "running") {
         return process;
       }
-      const stillTracked =
-        isAlive(process.pid) && (!readProcessStartTime || pidIdentityMatches(process, readProcessStartTime(process.pid)));
+      const alive = isAlive(process.pid);
+      if (!alive) {
+        reconciled.push(process.id);
+        return { ...process, status: "exited" as const, endedAt: now().toISOString() };
+      }
+      const currentStartTime = readProcessStartTime ? await readProcessStartTime(process.pid) : undefined;
+      const stillTracked = !readProcessStartTime || pidIdentityMatches(process, currentStartTime);
       if (!stillTracked) {
         reconciled.push(process.id);
         return { ...process, status: "exited" as const, endedAt: now().toISOString() };
       }
       return process;
-    })
-  );
+    }));
+    return reconciledCurrent;
+  });
   return reconciled;
 }

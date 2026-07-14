@@ -90,10 +90,12 @@ export async function writeBackgroundProcesses(file: string, processes: readonly
 /** Serialized read-modify-write under a cross-process file lock. */
 export async function mutateBackgroundProcesses(
   file: string,
-  fn: (current: readonly BackgroundProcessRecord[]) => readonly BackgroundProcessRecord[]
+  fn: (
+    current: readonly BackgroundProcessRecord[]
+  ) => readonly BackgroundProcessRecord[] | Promise<readonly BackgroundProcessRecord[]>
 ): Promise<readonly BackgroundProcessRecord[]> {
   return withFileLock(file, async () => {
-    const next = fn(await readBackgroundProcesses(file));
+    const next = await fn(await readBackgroundProcesses(file));
     await writeBackgroundProcesses(file, next);
     return next;
   });

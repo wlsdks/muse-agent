@@ -6,7 +6,7 @@
  * check; the spawn/stop tool + agent wiring is the attended follow-up.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -27,6 +27,7 @@ import {
 } from "@muse/stores";
 
 import { commandErrorLine } from "./format-cli-error.js";
+import { waitForChildProcessResult } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
 export function backgroundStoreFile(): string {
@@ -83,12 +84,25 @@ export function isProcessAlive(pid: number): boolean {
  * Linux-only — so it portably distinguishes "same process" from "OS reused
  * this pid for someone else" without needing to parse the date format.
  */
-export function readProcessStartTime(pid: number): string | undefined {
-  const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" });
-  if (result.status !== 0) {
+export async function readProcessStartTime(pid: number): Promise<string | undefined> {
+  const processStartReader: ChildProcess = spawn("ps", ["-o", "lstart=", "-p", String(pid)], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const stderrChunks: Buffer[] = [];
+  const stdoutChunks: Buffer[] = [];
+  processStartReader.stdout?.on("data", (chunk) => {
+    stdoutChunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  });
+  processStartReader.stderr?.on("data", (chunk) => {
+    stderrChunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  });
+
+  try {
+    await waitForChildProcessResult(processStartReader, "ps", stderrChunks);
+  } catch {
     return undefined;
   }
-  const value = result.stdout.trim();
+  const value = Buffer.concat(stdoutChunks).toString("utf8").trim();
   return value.length > 0 ? value : undefined;
 }
 
