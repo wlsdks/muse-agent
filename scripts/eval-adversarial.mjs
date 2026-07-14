@@ -41,6 +41,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createCalendarMcpServer, createNotesMcpServer, createRemindersMcpServer, createTasksMcpServer } from "../packages/domain-tools/dist/index.js";
 import { CalendarProviderRegistry, LocalCalendarProvider } from "../packages/calendar/dist/index.js";
@@ -421,37 +422,44 @@ async function ollamaReachable() {
 }
 
 function runRunner(request, env) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(RUNNER_PATH, [], { env: { ...process.env, ...env } });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.on("error", reject);
-    child.on("close", () => {
-      try {
-        resolve(JSON.parse(stdout));
-      } catch {
-        reject(new Error(`runner produced non-JSON output: ${stdout || stderr}`));
-      }
-    });
-    child.stdin.write(JSON.stringify(request));
-    child.stdin.end();
+  const runnerCall = Promise.withResolvers();
+  const child = spawn(RUNNER_PATH, [], { env: { ...process.env, ...env } });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
   });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  child.on("error", (cause) => runnerCall.reject(cause instanceof Error ? cause : new Error(String(cause))));
+  child.on("close", () => {
+    try {
+      runnerCall.resolve(JSON.parse(stdout));
+    } catch {
+      runnerCall.reject(new Error(`runner produced non-JSON output: ${stdout || stderr}`));
+    }
+  });
+  child.stdin.write(JSON.stringify(request));
+  child.stdin.end();
+  return runnerCall.promise;
 }
 
 function listenEphemeral() {
-  return new Promise((resolve) => {
-    let accepted = false;
-    const server = net.createServer((socket) => {
-      accepted = true;
-      socket.destroy();
-    });
-    server.listen(0, "127.0.0.1", () => resolve({ getAccepted: () => accepted, port: server.address().port, server }));
+  const listenerStarted = Promise.withResolvers();
+  let accepted = false;
+  const server = net.createServer((socket) => {
+    accepted = true;
+    socket.destroy();
   });
+  server.once("error", (cause) => listenerStarted.reject(cause instanceof Error ? cause : new Error(String(cause))));
+  server.listen(0, "127.0.0.1", () => {
+    listenerStarted.resolve({ getAccepted: () => accepted, port: server.address().port, server });
+  });
+  return listenerStarted.promise;
 }
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms) => sleep(ms);
 
 async function solveWriteEscape(testCase) {
   rmSync(testCase.targetPath, { force: true });

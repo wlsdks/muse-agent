@@ -94,11 +94,11 @@ const SYSTEM = [
 ].join(" ");
 
 function runTest(testPath) {
-  return new Promise((resolve) => {
-    const child = spawn("node", [testPath], { stdio: "ignore" });
-    child.on("error", () => resolve(false));
-    child.on("close", (code) => resolve(code === 0));
-  });
+  const settled = Promise.withResolvers();
+  const child = spawn("node", [testPath], { stdio: "ignore" });
+  child.on("error", () => settled.resolve(false));
+  child.on("close", (code) => settled.resolve(code === 0));
+  return settled.promise;
 }
 
 const logTool = (tool) => ({

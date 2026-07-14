@@ -253,7 +253,10 @@ const statusServer = createServer((req, res) => {
   res.writeHead(404, { "content-type": "text/html" });
   res.end("<!doctype html><title>404 Not Found</title><h1>Not Found</h1><p>No such page.</p>");
 });
-await new Promise((resolve) => statusServer.listen(0, "127.0.0.1", resolve));
+const startStatusServer = Promise.withResolvers();
+statusServer.once("error", (cause) => startStatusServer.reject(cause instanceof Error ? cause : new Error(String(cause))));
+statusServer.listen(0, "127.0.0.1", () => startStatusServer.resolve());
+await startStatusServer.promise;
 const statusPort = statusServer.address().port;
 
 let launched = false;

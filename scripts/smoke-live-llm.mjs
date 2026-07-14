@@ -23,6 +23,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const rootDir = process.cwd();
 const port = await findFreePort();
@@ -778,22 +779,22 @@ async function pickProvider() {
 }
 
 async function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, () => {
-      const address = server.address();
-      const resolvedPort = typeof address === "object" && address !== null ? address.port : undefined;
-      server.close(() => {
-        if (resolvedPort) {
-          resolve(resolvedPort);
-        } else {
-          reject(new Error("Could not allocate a free port"));
-        }
-      });
+  const { promise, reject, resolve } = Promise.withResolvers<number>();
+  const server = net.createServer();
+  server.unref();
+  server.once("error", reject);
+  server.listen(0, () => {
+    const address = server.address();
+    const resolvedPort = typeof address === "object" && address !== null ? address.port : undefined;
+    server.close(() => {
+      if (resolvedPort) {
+        resolve(resolvedPort);
+      } else {
+        reject(new Error("Could not allocate a free port"));
+      }
     });
   });
+  return promise;
 }
 
 async function waitForHealth(url, deadlineMs) {
@@ -807,22 +808,22 @@ async function waitForHealth(url, deadlineMs) {
     } catch {
       // ignore until ready
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await sleep(250);
   }
   throw new Error(`API did not become ready at ${url} within ${deadlineMs}ms`);
 }
 
 async function waitForExit(child, timeoutMs) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve(undefined);
-    }, timeoutMs);
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve(undefined);
-    });
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    resolve();
+  }, timeoutMs);
+  child.once("exit", () => {
+    clearTimeout(timer);
+    resolve();
   });
+  return promise;
 }
 
 function assert(condition, message) {

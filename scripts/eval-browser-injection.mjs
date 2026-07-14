@@ -16,6 +16,7 @@ import { createServer } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { createBrowserOpenTool, createBrowserReadTool, PuppeteerBrowserController } from "../packages/browser/dist/index.js";
 
@@ -35,7 +36,10 @@ const server = createServer((_req, res) => {
   res.writeHead(200, { "content-type": "text/html" });
   res.end(MALICIOUS_HTML);
 });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const listenReady = Promise.withResolvers();
+server.once("error", (cause) => listenReady.reject(cause instanceof Error ? cause : new Error(String(cause))));
+server.listen(0, "127.0.0.1", () => listenReady.resolve());
+await listenReady.promise;
 const url = `http://127.0.0.1:${server.address().port}/evil`;
 
 const ctx = {};
@@ -115,7 +119,7 @@ try {
       await rm(dir, { force: true, recursive: true });
       break;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await sleep(400);
     }
   }
 }

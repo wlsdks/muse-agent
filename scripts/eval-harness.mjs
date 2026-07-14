@@ -70,6 +70,7 @@
  * @param {(line:string)=>void} [opts.err=console.error]
  */
 import { createHash } from "node:crypto";
+import { setTimeout as sleepTimer } from "node:timers/promises";
 
 /**
  * Spotlight (delimiter-fence) attacker-influenceable content fed to a judge so
@@ -189,7 +190,7 @@ export async function runEvalSuite(opts) {
   const err = opts.err ?? console.error;
   const infraRetries = Math.max(0, Math.trunc(opts.infraRetries ?? DEFAULT_INFRA_RETRIES));
   const infraBackoffMs = Math.max(0, Math.trunc(opts.infraBackoffMs ?? DEFAULT_INFRA_BACKOFF_MS));
-  const sleep = opts.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const sleep = opts.sleep ?? sleepTimer;
 
   let total = 0;
   let passed = 0;

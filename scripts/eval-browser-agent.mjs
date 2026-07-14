@@ -16,6 +16,7 @@ import { createServer } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import {
   createBrowserBackTool,
@@ -63,7 +64,10 @@ await writeFile(join(dir, "shop.html"), SHOP_HTML);
 // not read arbitrary local files via the browser; file_read is the bounded
 // local path). Loopback-only on an ephemeral port.
 const server = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(SHOP_HTML); });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const serverListen = Promise.withResolvers();
+server.once("error", (cause) => serverListen.reject(cause instanceof Error ? cause : new Error(String(cause))));
+server.listen(0, "127.0.0.1", () => serverListen.resolve());
+await serverListen.promise;
 const url = `http://127.0.0.1:${server.address().port}/shop`;
 
 const controller = new PuppeteerBrowserController({ headless: true, userDataDir: join(dir, "profile") });
@@ -130,7 +134,7 @@ try {
       await rm(dir, { force: true, recursive: true });
       break;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await sleep(400);
     }
   }
 }

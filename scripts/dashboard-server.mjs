@@ -36,14 +36,14 @@ const esc = (s) =>
   );
 
 function git(args) {
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      args,
-      { cwd: repoRoot, timeout: 5000, maxBuffer: 1024 * 1024 },
-      (err, stdout) => resolve(err ? "" : stdout.trim()),
-    );
-  });
+  const waitForExit = Promise.withResolvers();
+  execFile(
+    "git",
+    args,
+    { cwd: repoRoot, timeout: 5000, maxBuffer: 1024 * 1024 },
+    (err, stdout) => waitForExit.resolve(err ? "" : stdout.trim()),
+  );
+  return waitForExit.promise;
 }
 
 async function openGoals() {

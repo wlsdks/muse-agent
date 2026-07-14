@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import net from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 
@@ -1105,20 +1106,21 @@ try {
 }
 
 async function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => {
-        if (typeof address === "object" && address?.port) {
-          resolve(address.port);
-          return;
-        }
-        reject(new Error("Could not allocate a local smoke-test port"));
-      });
+  const waitForListen = Promise.withResolvers();
+  const server = net.createServer();
+  server.unref();
+  server.on("error", (cause) => waitForListen.reject(cause instanceof Error ? cause : new Error(String(cause))));
+  server.listen(0, "127.0.0.1", () => {
+    const address = server.address();
+    server.close(() => {
+      if (typeof address === "object" && address?.port) {
+        waitForListen.resolve(address.port);
+        return;
+      }
+      waitForListen.reject(new Error("Could not allocate a local smoke-test port"));
     });
   });
+  return waitForListen.promise;
 }
 
 async function waitForHealth(url, timeoutMs) {
@@ -1133,7 +1135,7 @@ async function waitForHealth(url, timeoutMs) {
     } catch {
       // API still starting.
     }
-    await delay(250);
+    await sleep(250);
   }
   throw new Error(`Timed out waiting for ${url}`);
 }
@@ -1144,19 +1146,15 @@ function assert(condition, message) {
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function waitForExit(child, timeoutMs) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, timeoutMs);
-    child.once("exit", () => {
-      clearTimeout(timeout);
-      resolve();
-    });
+  const done = Promise.withResolvers();
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    done.resolve();
+  }, timeoutMs);
+  child.once("exit", () => {
+    clearTimeout(timer);
+    done.resolve();
   });
+  return done.promise;
 }
