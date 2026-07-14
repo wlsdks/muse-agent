@@ -5,6 +5,7 @@
  */
 
 import { ModelProviderError } from "@muse/model";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 /**
  * Default idle cut for the streaming path (3 min). Overridable per-run via
@@ -34,18 +35,19 @@ export async function* withStreamIdleTimeout<T>(
   const iterator = source[Symbol.asyncIterator]();
   try {
     for (;;) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const idle = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new ModelProviderError(providerId, `model stream idle for >${idleMs.toString()}ms — provider stalled`, false)),
-          idleMs
+      const timerController = new AbortController();
+      const idle = sleepWithTimer(idleMs, undefined, { signal: timerController.signal }).then(() => {
+        throw new ModelProviderError(
+          providerId,
+          `model stream idle for >${idleMs.toString()}ms — provider stalled`,
+          false
         );
       });
       let step: IteratorResult<T>;
       try {
         step = await Promise.race([iterator.next(), idle]);
       } finally {
-        if (timer) clearTimeout(timer);
+        timerController.abort();
       }
       if (step.done) return;
       yield step.value;

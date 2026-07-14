@@ -2,6 +2,7 @@ import type { AgentRunInput, AgentRunResult } from "@muse/agent-core";
 import { neutralizeInjectionSpans } from "@muse/agent-core";
 import { trimToolOutput } from "@muse/memory";
 import { createRunId, errorMessage } from "@muse/shared";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 import type { OrchestrationStepResult } from "./index.js";
 import { parseHandoffPart } from "./worker-result.js";
 import { joinMessages } from "./workers.js";
@@ -28,14 +29,14 @@ export async function withDeadline<T>(operation: () => Promise<T>, timeoutMs: nu
   if (!timeoutMs || timeoutMs <= 0) {
     return operation();
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} exceeded the ${timeoutMs.toString()}ms deadline`)), timeoutMs);
+  const timeoutController = new AbortController();
+  const deadline = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+    throw new Error(`${label} exceeded the ${timeoutMs.toString()}ms deadline`);
   });
   try {
     return await Promise.race([operation(), deadline]);
   } finally {
-    if (timer) clearTimeout(timer);
+    timeoutController.abort();
   }
 }
 

@@ -15,6 +15,7 @@ import type { ToolExecutionResult } from "@muse/tools";
 import type { Awaitable } from "@muse/cache";
 import type { HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import type { AgentRunContext, HookStage } from "./types.js";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 /** Mirror of the runtime's pluggable hook registry surface. */
 interface HookRegistryLike {
@@ -45,17 +46,16 @@ async function invokeWithTimeout(invoke: () => Awaitable<void>, timeoutMs: numbe
     await work;
     return;
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`hook exceeded ${timeoutMs.toString()}ms timeout`)), timeoutMs);
-    (timer as { unref?: () => void }).unref?.();
+  const timeoutController = new AbortController();
+  const timeout = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal, ref: false }).then(() => {
+    throw new Error(`hook exceeded ${timeoutMs.toString()}ms timeout`);
   });
   try {
     // A late rejection of `work` after the timeout wins is still observed by
     // race's attached handler, so it never surfaces as an unhandled rejection.
     await Promise.race([work, timeout]);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    timeoutController.abort();
   }
 }
 

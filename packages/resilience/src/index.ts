@@ -1,4 +1,5 @@
 import { finiteOr, sleep } from "@muse/shared";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 import { classifyError, isCancellationLikeError } from "./error-classifier.js";
 import type { FallbackStrategy } from "./fallback-strategy.js";
@@ -389,22 +390,18 @@ export async function withTimeout<T>(
   }
 
   const controller = abortControllerFactory();
-  let timeout: NodeJS.Timeout | undefined;
+  const timeoutController = new AbortController();
 
   try {
     return await Promise.race([
       operation(controller.signal),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          controller.abort();
-          reject(new TimeoutError(timeoutMs));
-        }, timeoutMs);
+      sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+        controller.abort();
+        throw new TimeoutError(timeoutMs);
       })
     ]);
   } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
+    timeoutController.abort();
   }
 }
 

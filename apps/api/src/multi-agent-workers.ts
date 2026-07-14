@@ -8,11 +8,26 @@
  */
 
 import type { ModelProvider } from "@muse/model";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 const SUMMARIZER_SYSTEM_PROMPT =
   "You are summarizing the output of a sub-agent for a parent orchestrator. Return a single concise summary (3 sentences max) capturing the key facts, decisions, and any error / blocker. Drop reasoning steps and verbose framing. Output the summary text only — no preamble, no markdown.";
 const SUMMARIZER_MAX_OUTPUT_TOKENS = 256;
 const SUMMARIZER_REQUEST_TIMEOUT_MS = 15_000;
+
+async function callWithTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      operation,
+      sleepWithTimer(timeoutMs, undefined, { signal: controller.signal }).then(() => {
+        throw new Error(message);
+      })
+    ]);
+  } finally {
+    controller.abort();
+  }
+}
 
 export function createWorkerSummarizer(
   modelProvider: ModelProvider | undefined,
@@ -23,27 +38,21 @@ export function createWorkerSummarizer(
   }
   return async (workerId, output) => {
     const userContent = `Sub-agent id: ${workerId}\n\nSub-agent output:\n${output}`;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const response = await Promise.race([
-        modelProvider.generate({
-          maxOutputTokens: SUMMARIZER_MAX_OUTPUT_TOKENS,
-          messages: [
-            { content: SUMMARIZER_SYSTEM_PROMPT, role: "system" },
-            { content: userContent, role: "user" }
-          ],
-          model,
-          temperature: 0.2
-        }),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("summarizer timeout")), SUMMARIZER_REQUEST_TIMEOUT_MS);
-        })
-      ]);
-      const text = response.output?.trim() ?? "";
-      return text.length > 0 ? text : output;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+    const response = await callWithTimeout(
+      modelProvider.generate({
+        maxOutputTokens: SUMMARIZER_MAX_OUTPUT_TOKENS,
+        messages: [
+          { content: SUMMARIZER_SYSTEM_PROMPT, role: "system" },
+          { content: userContent, role: "user" }
+        ],
+        model,
+        temperature: 0.2
+      }),
+      SUMMARIZER_REQUEST_TIMEOUT_MS,
+      "summarizer timeout"
+    );
+    const text = response.output?.trim() ?? "";
+    return text.length > 0 ? text : output;
   };
 }
 
@@ -73,32 +82,26 @@ export function createAnswerVerifier(
     return undefined;
   }
   return async (objective, output) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const response = await Promise.race([
-        modelProvider.generate({
-          maxOutputTokens: VERIFIER_MAX_OUTPUT_TOKENS,
-          messages: [
-            { content: VERIFIER_SYSTEM_PROMPT, role: "system" },
-            { content: `USER REQUEST:\n${objective}\n\nANSWER:\n${output}`, role: "user" }
-          ],
-          model,
-          temperature: 0
-        }),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("verifier timeout")), SYNTHESIZER_REQUEST_TIMEOUT_MS);
-        })
-      ]);
-      const text = (response.output ?? "").trim();
-      const missing = /^\s*missing\s*:\s*(.+)$/im.exec(text);
-      if (missing && missing[1]) {
-        return { missing: missing[1].trim(), satisfied: false };
-      }
-      // SATISFIED, or anything unparseable → do not falsely flag a healthy answer.
-      return { satisfied: true };
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
+    const response = await callWithTimeout(
+      modelProvider.generate({
+        maxOutputTokens: VERIFIER_MAX_OUTPUT_TOKENS,
+        messages: [
+          { content: VERIFIER_SYSTEM_PROMPT, role: "system" },
+          { content: `USER REQUEST:\n${objective}\n\nANSWER:\n${output}`, role: "user" }
+        ],
+        model,
+        temperature: 0
+      }),
+      SYNTHESIZER_REQUEST_TIMEOUT_MS,
+      "verifier timeout"
+    );
+    const text = (response.output ?? "").trim();
+    const missing = /^\s*missing\s*:\s*(.+)$/im.exec(text);
+    if (missing && missing[1]) {
+      return { missing: missing[1].trim(), satisfied: false };
     }
+    // SATISFIED, or anything unparseable → do not falsely flag a healthy answer.
+    return { satisfied: true };
   };
 }
 const SYNTHESIZER_REQUEST_TIMEOUT_MS = 20_000;
@@ -115,25 +118,19 @@ export function createWorkerSynthesizer(
     // re-synthesis to cover it, still grounded in the sub-agents' outputs.
     const guidanceLine = guidance && guidance.trim().length > 0 ? `\n\n[Guidance: ${guidance.trim()}]` : "";
     const userContent = `${parts.map((p) => `### ${p.workerId}\n${p.output}`).join("\n\n")}${guidanceLine}`;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const response = await Promise.race([
-        modelProvider.generate({
-          maxOutputTokens: SYNTHESIZER_MAX_OUTPUT_TOKENS,
-          messages: [
-            { content: SYNTHESIZER_SYSTEM_PROMPT, role: "system" },
-            { content: userContent, role: "user" }
-          ],
-          model,
-          temperature: 0.3
-        }),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("synthesizer timeout")), SYNTHESIZER_REQUEST_TIMEOUT_MS);
-        })
-      ]);
-      return response.output?.trim() ?? "";
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+    const response = await callWithTimeout(
+      modelProvider.generate({
+        maxOutputTokens: SYNTHESIZER_MAX_OUTPUT_TOKENS,
+        messages: [
+          { content: SYNTHESIZER_SYSTEM_PROMPT, role: "system" },
+          { content: userContent, role: "user" }
+        ],
+        model,
+        temperature: 0.3
+      }),
+      SYNTHESIZER_REQUEST_TIMEOUT_MS,
+      "synthesizer timeout"
+    );
+    return response.output?.trim() ?? "";
   };
 }

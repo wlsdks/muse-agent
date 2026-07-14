@@ -17,6 +17,7 @@
 
 import type { ModelMessage, ModelProvider, ModelResponse } from "@muse/model";
 import { redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
+import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 import { keysWithActiveRetraction } from "./belief-provenance-store.js";
 import type { BeliefProvenance, BeliefProvenanceStore } from "./belief-provenance-store.js";
@@ -359,16 +360,16 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
  * model from hanging `afterComplete` indefinitely.
  */
 async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timerHandle: ReturnType<typeof setTimeout> | undefined;
-  const timer = new Promise<never>((_, reject) => {
-    timerHandle = setTimeout(() => reject(new Error("auto-extract: extraction timed out")), timeoutMs);
-  });
+  const timeoutController = new AbortController();
   try {
-    return await Promise.race([promise, timer]);
+    return await Promise.race([
+      promise,
+      sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+        throw new Error("auto-extract: extraction timed out");
+      })
+    ]);
   } finally {
-    if (timerHandle !== undefined) {
-      clearTimeout(timerHandle);
-    }
+    timeoutController.abort();
   }
 }
 
@@ -735,4 +736,3 @@ async function safeWrite(awaitable: unknown): Promise<void> {
     // partial failure tolerated
   }
 }
-
