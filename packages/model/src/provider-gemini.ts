@@ -98,15 +98,18 @@ function sanitizeGeminiSchemaInner(schema: unknown, depth: number, seen: WeakSet
   if (!schema || typeof schema !== "object") {
     return schema;
   }
+  if (Array.isArray(schema)) {
+    return schema.map((entry) => sanitizeGeminiSchemaInner(entry, depth + 1, seen));
+  }
+  if (!isRecord(schema)) {
+    return schema;
+  }
 
   if (depth > MAX_SCHEMA_DEPTH || seen.has(schema)) {
     return {};
   }
-  seen.add(schema);
-
-  if (Array.isArray(schema)) {
-    return schema.map((entry) => sanitizeGeminiSchemaInner(entry, depth + 1, seen));
-  }
+  const obj = schema;
+  seen.add(obj);
 
   const stripped = new Set([
     "$schema",
@@ -121,13 +124,13 @@ function sanitizeGeminiSchemaInner(schema: unknown, depth: number, seen: WeakSet
   ]);
 
   const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(obj)) {
     if (stripped.has(key)) {
       continue;
     }
-    if (key === "properties" && value && typeof value === "object") {
+    if (key === "properties" && isRecord(value)) {
       const nested: Record<string, unknown> = {};
-      for (const [propertyKey, propertyValue] of Object.entries(value as Record<string, unknown>)) {
+      for (const [propertyKey, propertyValue] of Object.entries(value)) {
         nested[propertyKey] = sanitizeGeminiSchemaInner(propertyValue, depth + 1, seen);
       }
       result[key] = nested;
@@ -253,8 +256,12 @@ export function fromGeminiResponse(providerId: string, model: string, payload: u
   )?.groundingMetadata?.groundingChunks ?? [];
   const citations: WebSearchCitation[] = [];
   for (const chunk of groundingChunks) {
-    if (chunk?.web?.uri && chunk.web.title) {
-      citations.push({ url: chunk.web.uri, title: chunk.web.title, providerRaw: chunk as Record<string, unknown> });
+    if (isJsonObject(chunk) && isRecord(chunk.web) && chunk.web.uri && chunk.web.title) {
+      citations.push({
+        url: chunk.web.uri,
+        title: chunk.web.title,
+        providerRaw: chunk
+      });
     }
   }
 

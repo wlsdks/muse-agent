@@ -121,21 +121,20 @@ export function parsePlan(text: string): readonly PlanStep[] | null {
 function toPlanSteps(entries: readonly unknown[]): readonly PlanStep[] | null {
   const steps: PlanStep[] = [];
   for (const entry of entries) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    if (!isRecord(entry)) {
       return null;
     }
-    const record = entry as Record<string, unknown>;
-    const toolValue = record["tool"];
-    const argsValue = record["args"];
-    const descriptionValue = record["description"];
+    const toolValue = entry["tool"];
+    const argsValue = entry["args"];
+    const descriptionValue = entry["description"];
     if (typeof toolValue !== "string") {
       return null;
     }
-    if (argsValue !== undefined && (argsValue === null || typeof argsValue !== "object" || Array.isArray(argsValue))) {
+    if (argsValue !== undefined && !isRecord(argsValue)) {
       return null;
     }
     steps.push({
-      args: (argsValue as JsonObject | undefined) ?? {},
+      args: argsValue ?? {},
       description: typeof descriptionValue === "string" ? descriptionValue : "",
       tool: toolValue
     });
@@ -180,7 +179,7 @@ function stepKey(step: PlanStep): string {
 function stableStringify(obj: JsonObject): string {
   const sorted: Record<string, JsonValue> = {};
   for (const key of Object.keys(obj).sort()) {
-    sorted[key] = obj[key] as JsonValue;
+    sorted[key] = normalizeArgValue(obj[key]);
   }
   return JSON.stringify(sorted);
 }
@@ -513,18 +512,22 @@ function normalizeArgValue(value: JsonValue): JsonValue {
     return trimmed;
   }
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeArgValue(item as JsonValue));
+    return value.map((item) => normalizeArgValue(item));
   }
   // object — recurse
+  if (!isRecord(value)) {
+    return {};
+  }
   const normalized: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value as Record<string, JsonValue>).sort()) {
-    normalized[key] = normalizeArgValue((value as Record<string, JsonValue>)[key] as JsonValue);
+  for (const key of Object.keys(value).sort()) {
+    normalized[key] = normalizeArgValue(value[key]);
   }
   return normalized;
 }
 
 function normalizeArgs(args: JsonObject): JsonObject {
-  return normalizeArgValue(args as JsonValue) as JsonObject;
+  const normalized = normalizeArgValue(args);
+  return isRecord(normalized) ? normalized : {};
 }
 
 /**
@@ -661,13 +664,12 @@ export function classifyStepEffect(output: string | null): StepEffectVerdict {
   }
   if (trimmed.startsWith("{")) {
     try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const envelope = parsed as Record<string, unknown>;
-        if (typeof envelope["error"] === "string" && envelope["error"].trim().length > 0) {
-          return { effectFailed: true, reason: envelope["error"].trim() };
+      const parsed = JSON.parse(trimmed);
+      if (isRecord(parsed)) {
+        if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+          return { effectFailed: true, reason: parsed.error.trim() };
         }
-        if (envelope["ok"] === false || envelope["success"] === false) {
+        if (parsed.ok === false || parsed.success === false) {
           return { effectFailed: true, reason: firstLine(trimmed) };
         }
       }

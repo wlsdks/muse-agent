@@ -40,7 +40,7 @@ import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { pathToFileURL } from "node:url";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { ToolRisk } from "@muse/tools";
 
 import { toErrorMessage } from "./error-utils.js";
@@ -376,11 +376,11 @@ export function resolveOAuthProviderForServer(
  * `withOfficialMcpRisk`, so this only tightens generic/un-curated servers.
  */
 export function riskFromMcpAnnotations(annotations: unknown): ToolRisk {
-  if (!annotations || typeof annotations !== "object" || Array.isArray(annotations)) {
+  if (!isRecord(annotations)) {
     return "write";
   }
 
-  const values = annotations as Record<string, unknown>;
+  const values = annotations;
 
   if (values.destructiveHint === true) {
     return "execute";
@@ -394,11 +394,11 @@ export function riskFromMcpAnnotations(annotations: unknown): ToolRisk {
 }
 
 function formatMcpToolResult(result: unknown): string | JsonValue {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
+  if (!isRecord(result)) {
     return normalizeJsonValue(result);
   }
 
-  const value = result as Record<string, unknown>;
+  const value = result;
   const prefix = value.isError === true ? "Error: " : "";
 
   if ("structuredContent" in value && value.structuredContent !== undefined) {
@@ -410,12 +410,11 @@ function formatMcpToolResult(result: unknown): string | JsonValue {
   if (Array.isArray(value.content)) {
     const textBlocks = value.content
       .map((item) => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) {
+        if (!isRecord(item)) {
           return undefined;
         }
 
-        const block = item as Record<string, unknown>;
-        return block.type === "text" && typeof block.text === "string" ? block.text : undefined;
+        return item.type === "text" && typeof item.text === "string" ? item.text : undefined;
       })
       .filter((text): text is string => typeof text === "string");
 
@@ -459,7 +458,7 @@ function normalizeJsonValue(value: unknown): JsonValue {
 }
 
 function toJsonObject(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+  return isRecord(value) ? value : {};
 }
 
 async function closeQuietly(client: Client): Promise<void> {

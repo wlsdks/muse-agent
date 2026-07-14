@@ -16,14 +16,21 @@
  */
 
 import { truncateErrorBody } from "@muse/shared";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
   localModelCapabilities
 } from "./provider-wire.js";
 import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus, modelCallSignal } from "./provider-base.js";
-import { createLeadingThinkStripper, parseJson, recoverToolArgsJson, sanitizeToolCallName, stripLeadingThinkBlock } from "./provider-shared.js";
+import {
+  createLeadingThinkStripper,
+  isJsonObject,
+  parseJson,
+  recoverToolArgsJson,
+  sanitizeToolCallName,
+  stripLeadingThinkBlock
+} from "./provider-shared.js";
 import type {
   ModelEvent,
   ModelInfo,
@@ -45,6 +52,17 @@ export const DEFAULT_OLLAMA_NUM_CTX = 32_768;
 // chat and must never block startup — on timeout it fails soft to today's
 // configured num_ctx.
 export const DEFAULT_CONTEXT_PROBE_TIMEOUT_MS = 3_000;
+
+type OllamaImageAttachment = {
+  readonly dataBase64: string;
+  readonly mimeType: string;
+};
+
+const isOllamaImageAttachment = (attachment: { mimeType?: string; dataBase64?: unknown }): attachment is OllamaImageAttachment => {
+  return attachment.mimeType?.startsWith("image/") === true
+    && typeof attachment.dataBase64 === "string"
+    && isWellFormedBase64(attachment.dataBase64);
+};
 
 export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeBaseUrl: string;
@@ -179,7 +197,14 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         true
       );
     }
-    const json = parsed as OllamaNativeChatResponse;
+    if (!isJsonObject(parsed)) {
+      throw new ModelProviderError(
+        this.id,
+        `Ollama /api/chat response was invalid for decoding: ${truncateErrorBody(rawBody) || resp.statusText}`,
+        true
+      );
+    }
+    const json = parsed;
     return {
       id: `${this.id}-${Date.now().toString()}`,
       model: json.model ?? request.model ?? this.nativeDefaultModel ?? "unknown",
@@ -192,9 +217,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
               const rawArgs = typeof tc.function?.arguments === "string"
                 ? safeParseToolArgs(tc.function.arguments)
                 : (tc.function?.arguments ?? {});
-              const args: JsonObject = (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs))
-                ? rawArgs as JsonObject
-                : {};
+              const args: JsonObject = isJsonObject(rawArgs) ? rawArgs : {};
               return {
                 arguments: args,
                 id: tc.id ?? `tool-${i.toString()}`,
@@ -263,7 +286,11 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     const handleLine = function* (line: string): Generator<ModelEvent> {
       let parsed: OllamaNativeChatResponse;
       try {
-        parsed = JSON.parse(line) as OllamaNativeChatResponse;
+        const parsedValue = parseJson(line);
+        if (!isRecord(parsedValue)) {
+          return;
+        }
+        parsed = parsedValue;
       } catch { return; }
       // Once Ollama has sent 200 + headers, a mid-generation failure
       // (OOM, context overflow, model eviction under load) arrives as
@@ -304,9 +331,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
           const rawArgs = typeof tc.function?.arguments === "string"
             ? safeParseToolArgs(tc.function.arguments)
             : (tc.function?.arguments ?? {});
-          const args: JsonObject = (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs))
-            ? rawArgs as JsonObject
-            : {};
+          const args: JsonObject = isJsonObject(rawArgs) ? rawArgs : {};
           const name = sanitizeToolCallName(tc.function?.name);
           const id = tc.id ?? `tool-${(toolFallbackIndex++).toString()}`;
           const key = tc.id ?? `${name}:${JSON.stringify(args)}`;
@@ -442,8 +467,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         const images = msg.role === "tool"
           ? []
           : (msg.attachments ?? [])
-              .filter((a) => a.mimeType.startsWith("image/") && typeof a.dataBase64 === "string" && isWellFormedBase64(a.dataBase64))
-              .map((a) => a.dataBase64 as string);
+              .filter(isOllamaImageAttachment)
+              .map((a) => a.dataBase64);
         return {
           ...(msg.role === "tool"
             ? { content: msg.content, role: "tool", tool_call_id: msg.toolCallId }
@@ -508,7 +533,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 }
 
 interface OllamaShowResponse {
-  readonly model_info?: Record<string, unknown>;
+  readonly model_info?: JsonObject;
 }
 
 /**
@@ -520,11 +545,11 @@ interface OllamaShowResponse {
  * version. Returns a positive integer or undefined on any unexpected shape.
  */
 export function extractOllamaContextLength(modelInfo: unknown): number | undefined {
-  if (!modelInfo || typeof modelInfo !== "object" || Array.isArray(modelInfo)) {
+  if (!isRecord(modelInfo)) {
     return undefined;
   }
-  const info = modelInfo as Record<string, unknown>;
-  const arch = typeof info["general.architecture"] === "string" ? (info["general.architecture"] as string) : undefined;
+  const info = modelInfo;
+  const arch = typeof info["general.architecture"] === "string" ? info["general.architecture"] : undefined;
   const keys: string[] = [];
   if (arch) keys.push(`${arch}.context_length`);
   for (const key of Object.keys(info)) {
@@ -582,10 +607,10 @@ export async function probeOllamaContextWindow(
     }
     const raw = await resp.text().catch(() => "");
     const parsed = parseJson(raw);
-    if (!parsed || typeof parsed !== "object") {
+    if (!isRecord(parsed)) {
       return undefined;
     }
-    return extractOllamaContextLength((parsed as OllamaShowResponse).model_info);
+    return extractOllamaContextLength(parsed.model_info);
   } catch {
     return undefined;
   }
@@ -594,8 +619,7 @@ export async function probeOllamaContextWindow(
 const MAX_OLLAMA_SCHEMA_DEPTH = 64;
 const OLLAMA_SCHEMA_STRIP = new Set(["$schema", "$id"]);
 
-const isNullTypeSchema = (branch: unknown): boolean =>
-  !!branch && typeof branch === "object" && !Array.isArray(branch) && (branch as Record<string, unknown>).type === "null";
+const isNullTypeSchema = (branch: unknown): boolean => isRecord(branch) && branch.type === "null";
 
 /**
  * Normalize a tool input-schema into the subset llama.cpp's GBNF grammar
@@ -613,19 +637,20 @@ export function sanitizeOllamaToolSchema(schema: unknown): unknown {
 }
 
 function sanitizeOllamaSchemaInner(schema: unknown, depth: number, seen: WeakSet<object>): unknown {
-  if (!schema || typeof schema !== "object") {
+  if (schema === null || typeof schema !== "object") {
     return schema;
   }
-  if (depth > MAX_OLLAMA_SCHEMA_DEPTH || seen.has(schema)) {
-    return {};
-  }
-  seen.add(schema);
-
   if (Array.isArray(schema)) {
     return schema.map((entry) => sanitizeOllamaSchemaInner(entry, depth + 1, seen));
   }
-
-  const obj = schema as Record<string, unknown>;
+  if (!isRecord(schema)) {
+    return schema;
+  }
+  const obj = schema;
+  if (depth > MAX_OLLAMA_SCHEMA_DEPTH || seen.has(obj)) {
+    return {};
+  }
+  seen.add(obj);
 
   // Nullable anyOf/oneOf idiom: exactly one non-null branch ⇒ collapse to it,
   // merging any sibling keywords (description, etc.); the branch wins on conflict.
@@ -633,9 +658,9 @@ function sanitizeOllamaSchemaInner(schema: unknown, depth: number, seen: WeakSet
     const branches = obj[unionKey];
     if (Array.isArray(branches)) {
       const nonNull = branches.filter((branch) => !isNullTypeSchema(branch));
-      if (nonNull.length === 1 && nonNull[0] && typeof nonNull[0] === "object") {
+      if (nonNull.length === 1 && isRecord(nonNull[0])) {
         const { [unionKey]: _dropped, ...siblings } = obj;
-        return sanitizeOllamaSchemaInner({ ...siblings, ...(nonNull[0] as Record<string, unknown>) }, depth, seen);
+        return sanitizeOllamaSchemaInner({ ...siblings, ...nonNull[0] }, depth, seen);
       }
     }
   }
@@ -650,9 +675,9 @@ function sanitizeOllamaSchemaInner(schema: unknown, depth: number, seen: WeakSet
       result[key] = nonNull[0] ?? value[0];
       continue;
     }
-    if (key === "properties" && value && typeof value === "object") {
+    if (key === "properties" && isRecord(value)) {
       const nested: Record<string, unknown> = {};
-      for (const [propertyKey, propertyValue] of Object.entries(value as Record<string, unknown>)) {
+      for (const [propertyKey, propertyValue] of Object.entries(value)) {
         nested[propertyKey] = sanitizeOllamaSchemaInner(propertyValue, depth + 1, seen);
       }
       result[key] = nested;
@@ -680,8 +705,8 @@ function mapTokenLogprobs(
   entries: readonly { readonly token?: string; readonly logprob?: number }[]
 ): TokenLogprob[] {
   return entries
-    .filter((entry) => typeof entry.token === "string" && typeof entry.logprob === "number")
-    .map((entry) => ({ logprob: entry.logprob as number, token: entry.token as string }));
+    .filter((entry): entry is { readonly token: string; readonly logprob: number } => typeof entry.token === "string" && typeof entry.logprob === "number")
+    .map((entry) => ({ logprob: entry.logprob, token: entry.token }));
 }
 
 interface OllamaNativeChatResponse {
