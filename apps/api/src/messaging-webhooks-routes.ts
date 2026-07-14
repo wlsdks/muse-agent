@@ -18,8 +18,6 @@ import {
 } from "@muse/messaging";
 import type { FastifyPluginAsync } from "fastify";
 
-const LINE_BODY_KEY = "__museRawBody";
-
 interface LineWebhookEvent {
   readonly type?: string;
   readonly timestamp?: number;
@@ -39,6 +37,8 @@ export interface LineWebhookOptions {
 }
 
 export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (instance, opts) => {
+  const rawBodyByRequest = new WeakMap<object, string>();
+
   // Buffer-mode parser scoped to this plugin so signature verification
   // sees the bytes LINE actually sent. Default JSON parsing on the
   // outer instance is unchanged — this only affects routes inside
@@ -49,7 +49,7 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
     (request, body: string, done) => {
       // Stash the raw string so the route handler can run HMAC-SHA256
       // over the exact bytes. JSON.parse for the typed body.
-      (request as unknown as Record<string, unknown>)[LINE_BODY_KEY] = body;
+      rawBodyByRequest.set(request, body);
       try {
         done(null, body.length === 0 ? {} : (JSON.parse(body) as unknown));
       } catch (err) {
@@ -59,7 +59,7 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
   );
 
   instance.post("/api/messaging/webhooks/line", async (request, reply) => {
-    const raw = (request as unknown as Record<string, unknown>)[LINE_BODY_KEY];
+    const raw = rawBodyByRequest.get(request);
     if (typeof raw !== "string") {
       return reply.status(400).send({ code: "MESSAGING_WEBHOOK_NO_BODY", message: "raw body unavailable" });
     }
