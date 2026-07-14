@@ -15,7 +15,7 @@
  * the orchestration logic without needing audio hardware.
  */
 
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { platform } from "node:process";
 import { once } from "node:events";
 
@@ -34,7 +34,7 @@ import { waitForChildProcessResult } from "./async-promises.js";
 
 export interface ListenShells {
   /** Returns the absolute path to a binary on PATH, or undefined when missing. */
-  readonly which: (binary: string) => string | undefined;
+  readonly which: (binary: string) => Promise<string | undefined>;
   /** Spawns `rec` to capture mic input; stdout streams a WAV byte stream. */
   readonly spawnRec: (args: readonly string[]) => ChildProcess;
   /** Spawns the platform's audio player; resolves on exit. */
@@ -96,7 +96,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         command.error("Missing voice providers", { exitCode: 1 });
         return;
       }
-      const soxPath = shells.which("sox") ?? shells.which("rec");
+      const soxPath = (await shells.which("sox")) ?? (await shells.which("rec"));
       if (!soxPath) {
         io.stderr("sox is not installed. Install: `brew install sox` (macOS) or `apt install sox` (Linux).\n");
         command.error("sox missing", { exitCode: 1 });
@@ -281,12 +281,25 @@ export function defaultShells(): ListenShells {
         process.stdin.pause();
       }
     },
-    which: (binary) => {
-      const result = spawnSync(platform === "win32" ? "where" : "which", [binary], { encoding: "utf8" });
-      if (result.status !== 0) {
+    which: async (binary) => {
+      const resolver = platform === "win32" ? "where" : "which";
+      const child = spawn(resolver, [binary], { stdio: ["ignore", "pipe", "pipe"] });
+      const stderrChunks: Buffer[] = [];
+      const stdoutChunks: Buffer[] = [];
+      child.stdout?.on("data", (chunk) => {
+        stdoutChunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+      });
+      child.stderr?.on("data", (chunk) => {
+        stderrChunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+      });
+
+      try {
+        await waitForChildProcessResult(child, resolver, stderrChunks);
+      } catch {
         return undefined;
       }
-      const path = result.stdout.split(/\r?\n/u).find((line) => line.trim().length > 0);
+
+      const path = Buffer.concat(stdoutChunks).toString("utf8").split(/\r?\n/u).find((line) => line.trim().length > 0);
       return path?.trim();
     }
   };
