@@ -93,7 +93,7 @@ export function trimConversationMessages(
     const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
     const kept =
       lastUserIndex >= 0 && messages.length > 1
-        ? [messages[lastUserIndex] as ConversationMessage]
+        ? [messages[lastUserIndex]]
         : messages;
 
     const keptSet = new Set<ConversationMessage>(kept);
@@ -131,7 +131,7 @@ export function trimConversationMessages(
   const trimTarget = triggeredByHard
     ? hardBudgetTokens
     : triggeredByWorking
-      ? (workingTarget as number)
+      ? workingTarget ?? hardBudgetTokens
       : hardBudgetTokens;
 
   if (options.compactionStrategy === "importance") {
@@ -525,7 +525,7 @@ function removeUnansweredToolCalls(
     // the orphan tool_result this pass exists to prevent.
     const pending = (message.toolCalls ?? []).map((toolCall) => toolCall.id);
     for (let probe = index + 1; probe < messages.length && messages[probe]?.role === "tool"; probe++) {
-      consumeToolResponse(messages[probe] as ConversationMessage, pending);
+      consumeToolResponse(messages[probe], pending);
     }
     const unanswered = new Set(pending);
 

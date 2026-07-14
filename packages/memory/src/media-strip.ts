@@ -31,7 +31,7 @@ export interface StripStaleImagesResult {
   readonly strippedCount: number;
 }
 
-function isInlineImage(mimeType: string, dataBase64: string | undefined): boolean {
+function isInlineImage(mimeType: string, dataBase64: string | undefined): dataBase64 is string {
   return typeof dataBase64 === "string" && dataBase64.length > 0 && mimeType.toLowerCase().startsWith("image/");
 }
 
@@ -61,7 +61,7 @@ export function stripStaleImageAttachments(
   let mutated = false;
 
   for (let i = 0; i < messages.length; i++) {
-    const message = messages[i] as ConversationMessage;
+    const message = messages[i];
     // Only history strictly before the current (last user) turn is stale.
     if (i >= boundary || !message.attachments || message.attachments.length === 0) {
       out.push(message);
@@ -72,8 +72,9 @@ export function stripStaleImageAttachments(
     const notes: string[] = [];
     for (const attachment of message.attachments) {
       if (isInlineImage(attachment.mimeType, attachment.dataBase64)) {
+        const bytes = attachment.dataBase64;
         strippedCount++;
-        notes.push(`[image omitted: ${attachment.mimeType} ~${approxKb(attachment.dataBase64 as string)}KB]`);
+        notes.push(`[image omitted: ${attachment.mimeType} ~${approxKb(bytes)}KB]`);
       } else {
         kept.push(attachment);
       }
