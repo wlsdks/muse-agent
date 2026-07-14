@@ -26,6 +26,7 @@ import {
   type TextToSpeechProvider
 } from "@muse/voice";
 import type { Command } from "commander";
+import { isRecord } from "@muse/shared";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { ProgramIO } from "./program.js";
@@ -79,6 +80,14 @@ export async function safeTranscribe(
   }
 }
 
+function toChatReply(raw: unknown): string {
+  if (!isRecord(raw)) {
+    return "(no reply)";
+  }
+  const content = raw.content;
+  return typeof content === "string" ? content.trim() : "(no reply)";
+}
+
 export function registerListenCommand(program: Command, io: ProgramIO, helpers: ListenHelpers): void {
   program
     .command("listen")
@@ -105,10 +114,8 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
 
       const runVoiceTurn = async (prompt: string): Promise<void> => {
         io.stdout(`You: ${prompt}\n`);
-        const chatResponse = await helpers.apiRequest(io, command, "/api/chat", { message: prompt }, "POST") as {
-          readonly content?: string;
-        };
-        const reply = chatResponse.content?.trim() ?? "(no reply)";
+        const chatResponse = await helpers.apiRequest(io, command, "/api/chat", { message: prompt }, "POST");
+        const reply = toChatReply(chatResponse);
         io.stdout(`Muse: ${reply}\n`);
         await synthesizeAndPlay(
           providers.tts!,
