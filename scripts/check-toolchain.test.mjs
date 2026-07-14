@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EXPECTED_BUILD_MAJOR, EXPECTED_MODULE_MAJOR, hasConcurrentProjectGraphFlags, parseMajor, readRootScripts } from "./check-toolchain.mjs";
+import { EXPECTED_BUILD_MAJOR, EXPECTED_MODULE_MAJOR, hasConcurrentProjectGraphFlags, hasNoEmitFlag, parseMajor, readRootScripts } from "./check-toolchain.mjs";
 
 test("parseMajor reads the major from tsc's version output and from a semver", () => {
   assert.equal(parseMajor("7.0.2"), 7);
@@ -29,4 +29,5 @@ test("ts7-fast scripts declare checkers/builders concurrency flags", () => {
   const scripts = readRootScripts();
   assert.equal(hasConcurrentProjectGraphFlags(scripts["build:ts7-fast"] ?? ""), true);
   assert.equal(hasConcurrentProjectGraphFlags(scripts["typecheck:ts7-fast"] ?? ""), true);
+  assert.equal(hasNoEmitFlag(scripts["typecheck:ts7-fast"] ?? ""), true);
 });

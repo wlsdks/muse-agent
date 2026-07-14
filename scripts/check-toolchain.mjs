@@ -46,6 +46,10 @@ export function hasConcurrentProjectGraphFlags(command) {
   return /--checkers\s+\d+/u.test(command) && /--builders\s+\d+/u.test(command);
 }
 
+export function hasNoEmitFlag(command) {
+  return /--noEmit\b/u.test(command);
+}
+
 function main() {
   const require = createRequire(import.meta.url);
   const moduleVersion = require("typescript").version;
@@ -76,6 +80,9 @@ function main() {
   }
   if (!hasConcurrentProjectGraphFlags(scripts["typecheck:ts7-fast"] ?? "")) {
     problems.push("typecheck:ts7-fast must include both --checkers and --builders");
+  }
+  if (!hasNoEmitFlag(scripts["typecheck:ts7-fast"] ?? "")) {
+    problems.push("typecheck:ts7-fast must include --noEmit");
   }
 
   if (problems.length > 0) {
