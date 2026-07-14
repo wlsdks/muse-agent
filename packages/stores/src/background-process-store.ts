@@ -17,6 +17,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { isRecord } from "@muse/shared";
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
 
@@ -48,17 +49,14 @@ export interface BackgroundProcessRecord {
 const STATUSES: ReadonlySet<string> = new Set(["running", "exited", "failed", "killed"]);
 
 export function isBackgroundProcessRecord(value: unknown): value is BackgroundProcessRecord {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
   return (
-    typeof record.id === "string" &&
-    typeof record.pid === "number" &&
-    typeof record.command === "string" &&
-    typeof record.startedAt === "string" &&
-    typeof record.status === "string" &&
-    STATUSES.has(record.status)
+    typeof value.id === "string" &&
+    typeof value.pid === "number" &&
+    typeof value.command === "string" &&
+    typeof value.startedAt === "string" &&
+    typeof value.status === "string" &&
+    STATUSES.has(value.status)
   );
 }
 
@@ -71,14 +69,14 @@ export async function readBackgroundProcesses(file: string): Promise<readonly Ba
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { processes?: unknown }).processes)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.processes)) {
     return [];
   }
-  return (parsed as { processes: unknown[] }).processes.flatMap((entry): readonly BackgroundProcessRecord[] =>
+  return parsed.processes.flatMap((entry): readonly BackgroundProcessRecord[] =>
     isBackgroundProcessRecord(entry) ? [entry] : []
   );
 }

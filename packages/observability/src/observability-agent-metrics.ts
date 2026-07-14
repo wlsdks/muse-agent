@@ -15,7 +15,7 @@
  */
 
 import type { ModelUsage } from "@muse/model";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type {
   PromptDriftDetector,
   SloAlertEvaluator
@@ -158,7 +158,8 @@ export function createDerivedAgentMetrics(options: DerivedAgentMetricsOptions): 
 }
 
 function toJsonObject(value: object): JsonObject {
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== undefined)
-  ) as JsonObject;
+  if (!isRecord(value)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as JsonObject;
 }

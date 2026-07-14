@@ -23,7 +23,7 @@
  * network transport is a separate package that routes through these gates.
  */
 
-import { redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText } from "@muse/shared";
 
 /** The ONLY payload kinds allowed to cross the swarm — procedural know-how, never data. */
 export type A2APayloadKind = "skill" | "strategy" | "council-utterance";
@@ -134,15 +134,14 @@ export interface InboundDecision {
 }
 
 function isEnvelope(value: unknown): value is A2AEnvelope {
-  if (!value || typeof value !== "object") return false;
-  const e = value as Record<string, unknown>;
-  return typeof e.kind === "string"
-    && typeof e.content === "string"
-    && typeof e.fromPeerId === "string"
-    && typeof e.redacted === "boolean"
+  if (!isRecord(value)) return false;
+  return typeof value.kind === "string"
+    && typeof value.content === "string"
+    && typeof value.fromPeerId === "string"
+    && typeof value.redacted === "boolean"
     // label is optional, but when present it MUST be a string — a non-string label
     // (array/object) would otherwise slip past the type-guard into the store.
-    && (e.label === undefined || typeof e.label === "string");
+    && (value.label === undefined || typeof value.label === "string");
 }
 
 /**

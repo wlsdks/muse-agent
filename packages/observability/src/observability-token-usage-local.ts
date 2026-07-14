@@ -13,6 +13,7 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
 import type { QueryableTokenUsageSink, TokenUsageRecord } from "./index.js";
 
 function finite(value: unknown): number {
@@ -35,20 +36,21 @@ function serializeRecord(event: TokenUsageRecord): Record<string, unknown> {
   };
 }
 
-function deserializeRecord(raw: Record<string, unknown>): TokenUsageRecord {
-  const recordedAt = typeof raw.recordedAt === "string" ? new Date(raw.recordedAt) : undefined;
+function deserializeRecord(raw: unknown): TokenUsageRecord {
+  const source = isRecord(raw) ? raw : {};
+  const recordedAt = typeof source.recordedAt === "string" ? new Date(source.recordedAt) : undefined;
   return {
-    completionTokens: finite(raw.completionTokens),
-    model: typeof raw.model === "string" ? raw.model : "unknown",
-    promptTokens: finite(raw.promptTokens),
-    provider: typeof raw.provider === "string" ? raw.provider : "unknown",
-    totalTokens: finite(raw.totalTokens),
-    ...(typeof raw.stepType === "string" ? { stepType: raw.stepType } : {}),
-    ...(raw.promptCachedTokens !== undefined ? { promptCachedTokens: finite(raw.promptCachedTokens) } : {}),
-    ...(raw.reasoningTokens !== undefined ? { reasoningTokens: finite(raw.reasoningTokens) } : {}),
-    ...(raw.estimatedCostUsd !== undefined ? { estimatedCostUsd: finite(raw.estimatedCostUsd) } : {}),
+    completionTokens: finite(source.completionTokens),
+    model: typeof source.model === "string" ? source.model : "unknown",
+    promptTokens: finite(source.promptTokens),
+    provider: typeof source.provider === "string" ? source.provider : "unknown",
+    totalTokens: finite(source.totalTokens),
+    ...(typeof source.stepType === "string" ? { stepType: source.stepType } : {}),
+    ...(source.promptCachedTokens !== undefined ? { promptCachedTokens: finite(source.promptCachedTokens) } : {}),
+    ...(source.reasoningTokens !== undefined ? { reasoningTokens: finite(source.reasoningTokens) } : {}),
+    ...(source.estimatedCostUsd !== undefined ? { estimatedCostUsd: finite(source.estimatedCostUsd) } : {}),
     ...(recordedAt && !Number.isNaN(recordedAt.getTime()) ? { recordedAt } : {}),
-    runId: typeof raw.runId === "string" ? raw.runId : "unknown"
+    runId: typeof source.runId === "string" ? source.runId : "unknown"
   };
 }
 
@@ -120,7 +122,9 @@ export async function readLocalTokenUsage(filePath: string): Promise<TokenUsageR
     if (trimmed.length === 0) continue;
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (parsed && typeof parsed === "object") out.push(deserializeRecord(parsed as Record<string, unknown>));
+      if (isRecord(parsed)) {
+        out.push(deserializeRecord(parsed));
+      }
     } catch {
       /* a half-written / corrupt line carries no signal — skip, never throw */
     }

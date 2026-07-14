@@ -11,6 +11,7 @@
 import { promises as fs } from "node:fs";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { isRecord } from "@muse/shared";
 
 /** Reward bounds — must match agent-core's PLAYBOOK_REWARD_MIN/MAX (mcp stays free of an agent-core dependency). */
 export const SKILL_REWARD_MIN = -5;
@@ -33,16 +34,19 @@ export async function readSkillRewards(file: string): Promise<Record<string, num
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
-  const rewards = (parsed as { rewards?: unknown })?.rewards;
-  if (!rewards || typeof rewards !== "object" || Array.isArray(rewards)) {
+  if (!isRecord(parsed) || !isRecord(parsed.rewards)) {
+    return {};
+  }
+  const rewards = parsed.rewards;
+  if (Array.isArray(rewards)) {
     return {};
   }
   const out: Record<string, number> = {};
-  for (const [name, value] of Object.entries(rewards as Record<string, unknown>)) {
+  for (const [name, value] of Object.entries(rewards)) {
     if (name.length > 0 && typeof value === "number" && Number.isFinite(value)) {
       out[name] = Math.max(SKILL_REWARD_MIN, Math.min(SKILL_REWARD_MAX, value));
     }

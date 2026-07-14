@@ -13,7 +13,7 @@
  */
 
 import type { MuseDatabase, TraceEventTable } from "@muse/db";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import type {
   MuseTracer,
@@ -319,7 +319,5 @@ function readStringAttribute(attributes: SpanAttributes, key: string): string | 
 }
 
 function toJsonObject(value: object): JsonObject {
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== undefined)
-  ) as JsonObject;
+  return Object.fromEntries(Object.entries(isRecord(value) ? value : {}).filter(([, entry]) => entry !== undefined)) as JsonObject;
 }
