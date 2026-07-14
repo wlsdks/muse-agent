@@ -33,7 +33,15 @@ import {
   type UserModel,
   type UserModelSlot
 } from "./index.js";
-import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, normalizeMemoryKey, resolveForgetTarget, sanitizeUserMemoryValue } from "./memory-user-store.js";
+import {
+  appendFactHistory,
+  collectFactSupersessions,
+  mergeRecordTouchLast,
+  normalizeMemoryKey,
+  parseUserModelJson,
+  resolveForgetTarget,
+  sanitizeUserMemoryValue
+} from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -62,13 +70,15 @@ type StoredMemory = {
   readonly recentTopics: readonly string[];
   readonly updatedAt: string;
   readonly userModel?: UserModel;
-  readonly factHistory?: readonly {
-    readonly key: string;
-    readonly previousValue: string;
-    readonly replacedAt: string;
-    readonly kind?: "refine" | "contradict";
-    readonly scope?: "fact" | "preference";
-  }[];
+  readonly factHistory?: readonly StoredFactHistoryEntry[];
+};
+
+type StoredFactHistoryEntry = {
+  readonly key: string;
+  readonly previousValue: string;
+  readonly replacedAt: string;
+  readonly kind?: "refine" | "contradict";
+  readonly scope?: "fact" | "preference";
 };
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
@@ -121,13 +131,14 @@ function coerceStoredMemory(raw: unknown, fallbackUserId: string): StoredMemory 
   if (!userId) {
     return undefined;
   }
+  const userModel = parseUserModelJson(raw.userModel);
   return {
     facts: coerceStringRecord(raw.facts),
     preferences: coerceStringRecord(raw.preferences),
     recentTopics: coerceStringArray(raw.recentTopics),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : new Date(0).toISOString(),
     userId,
-    ...(raw.userModel !== undefined && isRecord(raw.userModel) ? { userModel: raw.userModel } : {}),
+    ...(userModel ? { userModel } : {}),
     ...(Array.isArray(raw.factHistory) ? { factHistory: coerceFactHistory(raw.factHistory) } : {})
   };
 }
@@ -152,8 +163,8 @@ function coerceStringArray(raw: unknown): readonly string[] {
   return raw.filter((value): value is string => typeof value === "string");
 }
 
-function coerceFactHistory(raw: readonly unknown[]): StoredMemory["factHistory"] {
-  const out: StoredMemory["factHistory"] = [];
+function coerceFactHistory(raw: readonly unknown[]): StoredFactHistoryEntry[] {
+  const out: StoredFactHistoryEntry[] = [];
   for (const entry of raw) {
     if (!isRecord(entry)) {
       continue;
@@ -164,7 +175,7 @@ function coerceFactHistory(raw: readonly unknown[]): StoredMemory["factHistory"]
       || typeof entry.previousValue !== "string"
       || typeof entry.replacedAt !== "string"
       || (entry.kind !== undefined && entry.kind !== "refine" && entry.kind !== "contradict")
-      || (entry.scope !== undefined && entry.scope !== "preference")
+      || (entry.scope !== undefined && entry.scope !== "fact" && entry.scope !== "preference")
     ) {
       continue;
     }
@@ -188,7 +199,7 @@ function memoryToStored(memory: UserMemory): StoredMemory {
     userId: memory.userId,
     ...(memory.userModel ? { userModel: memory.userModel } : {}),
     ...(memory.factHistory
-      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
+      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}), ...(entry.scope ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }

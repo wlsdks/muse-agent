@@ -450,18 +450,25 @@ function slotToJson(slot: UserModelSlot): JsonObject {
   return base;
 }
 
-function parseUserModelJson(raw: unknown): UserModel | undefined {
-  if (!isRecord(raw)) {
+type RawJsonRecord = Record<string, unknown>;
+
+function asRawJsonRecord(value: unknown): RawJsonRecord | undefined {
+  return isRecord(value) ? (value as RawJsonRecord) : undefined;
+}
+
+export function parseUserModelJson(raw: unknown): UserModel | undefined {
+  const record = asRawJsonRecord(raw);
+  if (!record) {
     return undefined;
   }
+
   const result: UserModel = {
-    goals: parseSlotArray(raw.goals, "goal"),
-    preferences: parseSlotArray(raw.preferences, "preference"),
-    schedule: parseSlotArray(raw.schedule, "schedule"),
-    vetoes: parseSlotArray(raw.vetoes, "veto")
+    goals: parseUserModelSlots(record.goals, parseUserGoalSlot),
+    preferences: parseUserModelSlots(record.preferences, parseUserPreferenceSlot),
+    schedule: parseUserModelSlots(record.schedule, parseUserScheduleSlot),
+    vetoes: parseUserModelSlots(record.vetoes, parseUserVetoSlot)
   };
-  // Any kind populated → return; otherwise undefined so callers see
-  // legacy (no-userModel) shape for users who never wrote one.
+
   if (
     result.goals.length === 0 &&
     result.preferences.length === 0 &&
@@ -473,73 +480,107 @@ function parseUserModelJson(raw: unknown): UserModel | undefined {
   return result;
 }
 
-type UserModelSlotByKind = {
-  preference: UserPreferenceSlot;
-  schedule: UserScheduleSlot;
-  veto: UserVetoSlot;
-  goal: UserGoalSlot;
-};
-
-type UserModelSlotByKindArray<K extends UserModelSlot["kind"]> = readonly UserModelSlotByKind[K][];
-
-function parseSlotArray<K extends UserModelSlot["kind"]>(raw: unknown, expectedKind: K): UserModelSlotByKindArray<K> {
+function parseUserModelSlots<T>(raw: unknown, parseSlot: (slot: unknown) => T | undefined): readonly T[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  const out: UserModelSlotByKind[K][] = [];
+  const out: T[] = [];
   for (const entry of raw) {
-    if (!isRecord(entry)) {
-      continue;
+    const parsed = parseSlot(entry);
+    if (parsed !== undefined) {
+      out.push(parsed);
     }
-    if (entry.kind !== expectedKind) {
-      continue;
-    }
-    if (typeof entry.id !== "string" || typeof entry.value !== "string") {
-      continue;
-    }
-    const updatedAt = typeof entry.updatedAt === "string" ? new Date(entry.updatedAt) : undefined;
-    if (!updatedAt || Number.isNaN(updatedAt.getTime())) {
-      continue;
-    }
-    const baseSlot = {
-      id: entry.id,
-      updatedAt,
-      value: entry.value,
-      ...(typeof entry.confidence === "number" ? { confidence: entry.confidence } : {})
-    };
-    if (expectedKind === "preference") {
-      out.push({
-        ...baseSlot,
-        kind: "preference",
-        ...(typeof entry.category === "string" ? { category: entry.category } : {})
-      });
-      continue;
-    }
-    if (expectedKind === "schedule") {
-      out.push({
-        ...baseSlot,
-        kind: "schedule",
-        ...(typeof entry.recurrence === "string" ? { recurrence: entry.recurrence } : {})
-      });
-      continue;
-    }
-    if (expectedKind === "veto") {
-      out.push({
-        ...baseSlot,
-        kind: "veto",
-        ...(typeof entry.scope === "string" ? { scope: entry.scope } : {})
-      });
-      continue;
-    }
-    const dueAt = typeof entry.dueAt === "string" ? new Date(entry.dueAt) : undefined;
-    out.push({
-      ...baseSlot,
-      kind: "goal",
-      ...(dueAt && !Number.isNaN(dueAt.getTime()) ? { dueAt } : {}),
-      ...(typeof entry.progress === "number" ? { progress: entry.progress } : {})
-    });
   }
   return out;
+}
+
+function parseUserModelSlotBase(value: unknown): { readonly id: string; readonly updatedAt: Date; readonly value: string; readonly confidence?: number } | undefined {
+  const record = asRawJsonRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  if (typeof record.id !== "string" || typeof record.value !== "string" || typeof record.kind !== "string") {
+    return undefined;
+  }
+  const updatedAt = parseUserModelDate(record.updatedAt);
+  if (!updatedAt) {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    updatedAt,
+    value: record.value,
+    ...(typeof record.confidence === "number" && Number.isFinite(record.confidence) ? { confidence: record.confidence } : {})
+  };
+}
+
+function parseUserPreferenceSlot(entry: unknown): UserPreferenceSlot | undefined {
+  const record = asRawJsonRecord(entry);
+  const base = parseUserModelSlotBase(entry);
+  if (!base || !record || record.kind !== "preference") {
+    return undefined;
+  }
+  const category = typeof record.category === "string" && record.category.trim().length > 0 ? record.category : undefined;
+  return {
+    ...base,
+    kind: "preference",
+    ...(category ? { category } : {})
+  };
+}
+
+function parseUserScheduleSlot(entry: unknown): UserScheduleSlot | undefined {
+  const record = asRawJsonRecord(entry);
+  const base = parseUserModelSlotBase(entry);
+  if (!base || !record || record.kind !== "schedule") {
+    return undefined;
+  }
+  const recurrence = typeof record.recurrence === "string" && record.recurrence.trim().length > 0 ? record.recurrence : undefined;
+  return {
+    ...base,
+    kind: "schedule",
+    ...(recurrence ? { recurrence } : {})
+  };
+}
+
+function parseUserVetoSlot(entry: unknown): UserVetoSlot | undefined {
+  const record = asRawJsonRecord(entry);
+  const base = parseUserModelSlotBase(entry);
+  if (!base || !record || record.kind !== "veto") {
+    return undefined;
+  }
+  const scope = typeof record.scope === "string" && record.scope.trim().length > 0 ? record.scope : undefined;
+  return {
+    ...base,
+    kind: "veto",
+    ...(scope ? { scope } : {})
+  };
+}
+
+function parseUserGoalSlot(entry: unknown): UserGoalSlot | undefined {
+  const record = asRawJsonRecord(entry);
+  const base = parseUserModelSlotBase(entry);
+  if (!base || !record || record.kind !== "goal") {
+    return undefined;
+  }
+  const dueAt = parseUserModelDate(record.dueAt);
+  const progress = typeof record.progress === "number" && Number.isFinite(record.progress) ? record.progress : undefined;
+  return {
+    ...base,
+    kind: "goal",
+    ...(dueAt ? { dueAt } : {}),
+    ...(progress !== undefined ? { progress } : {})
+  };
+}
+
+function parseUserModelDate(value: unknown): Date | undefined {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date : undefined;
+  }
+  return undefined;
 }
 
 function cloneUserMemory(memory: UserMemory | undefined): UserMemory | undefined {
