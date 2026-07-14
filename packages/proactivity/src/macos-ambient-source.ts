@@ -12,6 +12,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import type { AmbientSignal, AmbientSignalSource } from "./ambient-notice-loop.js";
 
@@ -46,6 +47,8 @@ export function parseActiveWindowSignal(stdout: string | undefined): AmbientSign
   const window = (lines[1] ?? "").trim();
   return window.length > 0 ? { app, window } : { app };
 }
+
+const execFileAsync = promisify(execFile);
 
 export interface MacOsActiveWindowSourceOptions {
   /** Injectable osascript runner (returns stdout, or undefined on failure). Default spawns `osascript`. */
@@ -113,17 +116,13 @@ export class MacOsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultOsascriptRun(osascriptPath: string, script: string, timeoutMs: number): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
-    execFile(osascriptPath, ["-e", script], { timeout: timeoutMs }, (error, stdout) => {
-      resolve(error ? undefined : stdout);
-    });
-  });
+  return execFileAsync(osascriptPath, ["-e", script], { timeout: timeoutMs })
+    .then(([stdout]) => stdout)
+    .catch(() => undefined);
 }
 
 function defaultPbpasteRun(pbpastePath: string, timeoutMs: number): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
-    execFile(pbpastePath, [], { timeout: timeoutMs }, (error, stdout) => {
-      resolve(error ? undefined : stdout);
-    });
-  });
+  return execFileAsync(pbpastePath, [], { timeout: timeoutMs })
+    .then(([stdout]) => stdout)
+    .catch(() => undefined);
 }

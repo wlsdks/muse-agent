@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { promisify } from "node:util";
 
 export interface FakeMcpAdminServer {
   readonly close: () => Promise<void>;
@@ -128,7 +129,8 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
     response.end();
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const listen = promisify(server.listen.bind(server)) as (port: number, hostname: string) => Promise<void>;
+  await listen(0, "127.0.0.1");
   const address = server.address();
 
   if (!address || typeof address === "string") {
@@ -136,8 +138,10 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
   }
 
   return {
-    close: () => new Promise<void>((resolve, reject) =>
-      server.close((error) => error ? reject(error) : resolve())),
+    close: () => {
+      const close = promisify(server.close.bind(server)) as () => Promise<void>;
+      return close();
+    },
     url: `http://127.0.0.1:${address.port}`
   };
 }

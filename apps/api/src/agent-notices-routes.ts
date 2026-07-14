@@ -21,6 +21,7 @@
 
 import type { AgentInitiatedNotice, AgentInitiatedNoticeBroker } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
+import { EventEmitter, on as waitForEvent } from "node:events";
 import { Readable } from "node:stream";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -63,21 +64,19 @@ export async function* streamNoticesFor(
   socket: { once(event: "close", listener: () => void): void }
 ): AsyncIterable<string> {
   const queue: AgentInitiatedNotice[] = [];
-  let resolveNext: (() => void) | undefined;
   let closed = false;
+  const wakeup = new EventEmitter();
+  const wakeupNotifications = waitForEvent(wakeup, "wakeup");
 
   const onClose = () => {
     closed = true;
-    resolveNext?.();
-    resolveNext = undefined;
+    wakeup.emit("wakeup");
   };
   socket.once("close", onClose);
 
   const unsubscribe = broker.subscribe(userId, (notice) => {
     queue.push(notice);
-    const resume = resolveNext;
-    resolveNext = undefined;
-    resume?.();
+    wakeup.emit("wakeup");
   });
 
   try {
@@ -94,7 +93,7 @@ export async function* streamNoticesFor(
 
     while (!closed) {
       if (queue.length === 0) {
-        await new Promise<void>((resolve) => { resolveNext = resolve; });
+        await wakeupNotifications.next();
         continue;
       }
       const next = queue.shift();
@@ -103,5 +102,6 @@ export async function* streamNoticesFor(
     }
   } finally {
     unsubscribe();
+    void wakeupNotifications.return();
   }
 }

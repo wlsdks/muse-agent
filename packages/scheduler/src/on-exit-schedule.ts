@@ -22,8 +22,10 @@
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
+import { once } from "node:events";
 
 import { classifyDangerousCommand } from "@muse/tools";
+import { sleep } from "@muse/shared";
 
 import { SchedulerValidationError } from "./scheduler-errors.js";
 import type { Awaitable } from "./index.js";
@@ -79,10 +81,15 @@ export interface OnExitWatchOutcome {
   readonly durationMs: number;
 }
 
+type SpawnExitEvent = {
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+};
+
 export interface OnExitSpawnedChild {
   readonly pid: number;
   kill(signal: NodeJS.Signals): void;
-  onExit(listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void;
+  waitForExit(): Promise<SpawnExitEvent>;
 }
 
 export interface OnExitSpawner {
@@ -102,8 +109,12 @@ export function createNodeOnExitSpawner(): OnExitSpawner {
             /* already dead */
           }
         },
-        onExit(listener) {
-          child.on("exit", (code, signal) => listener(code, signal));
+        async waitForExit() {
+          const [exitCode, signal] = await once(child, "exit");
+          return {
+            exitCode: exitCode as number | null,
+            signal: (signal as NodeJS.Signals | null)
+          };
         },
         pid: child.pid ?? -1
       };
@@ -143,47 +154,54 @@ export class OnExitWatcher {
     const startedAt = this.now();
     const child = this.spawner.spawn(trigger.command);
     let timedOut = false;
-    let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
-    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    const elapsedMs = () => this.now().getTime() - startedAt.getTime();
 
-    return new Promise((resolve) => {
-      const clearTimers = () => {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        if (killTimer) clearTimeout(killTimer);
-        if (pollTimer) clearInterval(pollTimer);
-      };
+    const clearTimers = () => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (killTimer) clearTimeout(killTimer);
+    };
 
-      const finish = (status: OnExitWatchStatus, exitCode: number | null, signal: NodeJS.Signals | null) => {
-        if (settled) return;
-        settled = true;
-        clearTimers();
-        resolve({ durationMs: this.now().getTime() - startedAt.getTime(), exitCode, signal, status });
-      };
-
-      child.onExit((exitCode, signal) => {
-        finish(timedOut ? "timed-out" : "exited", exitCode, signal);
-      });
-
-      if (trigger.timeoutMs) {
-        timeoutHandle = setTimeout(() => {
-          timedOut = true;
-          child.kill("SIGTERM");
-          killTimer = setTimeout(() => {
-            child.kill("SIGKILL");
-          }, this.killGraceMs);
-        }, trigger.timeoutMs);
-      }
-
-      if (trigger.pollMs) {
-        pollTimer = setInterval(() => {
-          if (!settled && child.pid >= 0 && !this.isAlive(child.pid)) {
-            finish(timedOut ? "timed-out" : "exited", null, null);
-          }
-        }, trigger.pollMs);
-      }
+    const toOutcome = (
+      status: Exclude<OnExitWatchStatus, "watcher-lost">,
+      exitCode: number | null,
+      signal: NodeJS.Signals | null
+    ): OnExitWatchOutcome => ({
+      durationMs: elapsedMs(),
+      exitCode,
+      signal,
+      status
     });
+
+    const onExitPromise = child.waitForExit().then(({ exitCode, signal }) =>
+      toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal)
+    );
+
+    const onPollPromise = trigger.pollMs
+      ? (async () => {
+          while (child.pid >= 0 && this.isAlive(child.pid)) {
+            await sleep(trigger.pollMs);
+          }
+          return toOutcome(timedOut ? "timed-out" : "exited", null, null);
+        })()
+      : undefined;
+
+    if (trigger.timeoutMs) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          child.kill("SIGKILL");
+        }, this.killGraceMs);
+      }, trigger.timeoutMs);
+    }
+
+    if (onPollPromise) {
+      return Promise.race([onExitPromise, onPollPromise]).finally(clearTimers);
+    }
+
+    return onExitPromise.finally(clearTimers);
   }
 }
 

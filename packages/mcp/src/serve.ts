@@ -17,6 +17,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { once } from "node:events";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -92,12 +93,14 @@ export function createMuseToolsMcpServer(options: MuseToolsMcpServerOptions): Se
  */
 export async function runStdioMcpServer(server: Server, onListening?: () => void): Promise<void> {
   const transport = new StdioServerTransport();
-  await new Promise<void>((resolve, reject) => {
-    transport.onclose = () => resolve();
-    server.connect(transport)
-      .then(() => onListening?.())
-      .catch(reject);
-  });
+  transport.onclose = () => {
+    // Align with prior behavior where STDIO transport completion closes the
+    // server command loop; no-op here because process stdin close remains the
+    // lifetime signal in this harness.
+  };
+  await server.connect(transport);
+  onListening?.();
+  await once(process.stdin, "close");
 }
 
 /**

@@ -11,6 +11,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import type { AmbientSignal, AmbientSignalSource } from "./ambient-notice-loop.js";
 
@@ -47,6 +48,8 @@ export function parseWindowsActiveWindow(stdout: string | undefined): AmbientSig
   const window = (lines[1] ?? "").trim();
   return window.length > 0 ? { app, window } : { app };
 }
+
+const execFileAsync = promisify(execFile);
 
 export interface WindowsActiveWindowSourceOptions {
   /** Injectable PowerShell runner (returns stdout, or undefined on failure). Default spawns `powershell.exe`. */
@@ -109,9 +112,7 @@ export class WindowsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultPowerShellRun(script: string, timeoutMs: number): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
-    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs }, (error, stdout) => {
-      resolve(error ? undefined : stdout);
-    });
-  });
+  return execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs })
+    .then(([stdout]) => stdout)
+    .catch(() => undefined);
 }

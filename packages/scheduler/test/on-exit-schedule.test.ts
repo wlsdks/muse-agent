@@ -80,11 +80,13 @@ describe("OnExitWatcher.watch — real child process", () => {
   });
 
   it("falls back to the pollMs liveness probe when the exit event is never delivered", async () => {
-    let onExitListener: ((code: number | null, signal: NodeJS.Signals | null) => void) | undefined;
+    let waitForExit: ((value: { exitCode: number | null; signal: NodeJS.Signals | null }) => void) | undefined;
     const child: OnExitSpawnedChild = {
       kill: vi.fn(),
-      onExit(listener) {
-        onExitListener = listener;
+      waitForExit() {
+        return new Promise((resolve) => {
+          waitForExit = resolve;
+        });
       },
       pid: 4242
     };
@@ -98,7 +100,7 @@ describe("OnExitWatcher.watch — real child process", () => {
 
     expect(outcome.status).toBe("exited");
     expect(outcome.exitCode).toBeNull();
-    expect(onExitListener).toBeTypeOf("function");
+    expect(waitForExit).toBeTypeOf("function");
   }, 10_000);
 });
 

@@ -80,6 +80,7 @@ const SETTLE_DELAY_MS = 700;
 const WAIT_DEFAULT_MS = 10_000;
 const WAIT_MAX_MS = 30_000;
 const WAIT_MIN_MS = 500;
+const DOM_SETTLE_SIGNAL = "__museDomSettleSignal__";
 
 export class PuppeteerBrowserController implements BrowserController {
   private browser: Browser | undefined;
@@ -195,28 +196,21 @@ export class PuppeteerBrowserController implements BrowserController {
   private async withNewTabFollow(action: () => Promise<void>): Promise<void> {
     const browser = this.browser;
     if (!browser) { await action(); return; }
-    let resolveNew: (page: Page | null) => void = () => { /* set below */ };
-    const opened = new Promise<Page | null>((resolve) => { resolveNew = resolve; });
-    const onTarget = (target: { page: () => Promise<Page | null> }): void => {
-      target.page().then((page) => resolveNew(page)).catch(() => resolveNew(null));
-    };
-    browser.once("targetcreated", onTarget);
-    try {
-      await action();
-      // A new tab fires `targetcreated` essentially at click time, so a short
-      // window catches it; a normal click (no new tab) isn't taxed beyond it.
-      const newest = await Promise.race([
-        opened,
-        sleep(NEW_TAB_WINDOW_MS).then(() => null)
-      ]);
-      if (newest && !newest.isClosed()) {
-        this.page = newest;
-        this.registerDialogHandler(newest);
-        await newest.bringToFront().catch(() => { /* best-effort */ });
-        await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
-      }
-    } finally {
-      browser.off("targetcreated", onTarget);
+    const knownTargets = new Set(browser.targets());
+
+    await action();
+    // A new tab fires `targetcreated` essentially at click time, so a short
+    // window catches it; a normal click (no new tab) isn't taxed beyond it.
+    const newestTarget = await browser
+      .waitForTarget((candidate) => !knownTargets.has(candidate), { timeout: NEW_TAB_WINDOW_MS })
+      .catch(() => null);
+    const newest = newestTarget ? await newestTarget.page().catch(() => null) : null;
+
+    if (newest && !newest.isClosed()) {
+      this.page = newest;
+      this.registerDialogHandler(newest);
+      await newest.bringToFront().catch(() => { /* best-effort */ });
+      await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
     }
   }
 
@@ -289,16 +283,40 @@ export class PuppeteerBrowserController implements BrowserController {
    * hard-capped so a forever-animating page can't wedge it.
    */
   private async settleDom(page: Page): Promise<void> {
-    await page.evaluate((quietMs: number, capMs: number) => new Promise<void>((resolve) => {
-      const target = document.body;
-      if (!target) { resolve(); return; }
-      let quiet: ReturnType<typeof setTimeout>;
-      const finish = (): void => { clearTimeout(quiet); clearTimeout(cap); observer.disconnect(); resolve(); };
-      const observer = new MutationObserver(() => { clearTimeout(quiet); quiet = setTimeout(finish, quietMs); });
-      observer.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
-      quiet = setTimeout(finish, quietMs);
-      const cap = setTimeout(finish, capMs);
-    }), 400, 4_000).catch(() => { /* page navigated away mid-wait */ });
+    await page.evaluate((quietMs: number, marker: string) => {
+      const body = document.body;
+      if (!body) return;
+      const state = { updatedAt: Date.now() } as { updatedAt: number; observer: MutationObserver };
+      const observer = new MutationObserver(() => {
+        state.updatedAt = Date.now();
+      });
+      observer.observe(body, { attributes: true, childList: true, characterData: true, subtree: true });
+      state.observer = observer;
+      (window as { [key: string]: unknown })[marker] = state;
+    }, 400, DOM_SETTLE_SIGNAL);
+    try {
+      await page.waitForFunction(
+        (quietMs: number, marker: string) => {
+          const state = (window as { [key: string]: { updatedAt: number; observer?: MutationObserver } | undefined })[marker];
+          if (!state?.updatedAt) return true;
+          return Date.now() - state.updatedAt >= quietMs;
+        },
+        {
+          polling: "mutation",
+          timeout: 4_000
+        },
+        400,
+        DOM_SETTLE_SIGNAL
+      );
+    } catch {
+      /* page navigated away mid-wait */
+    } finally {
+      await page.evaluate((marker: string) => {
+        const state = (window as { [key: string]: { observer?: MutationObserver } | undefined })[marker];
+        state?.observer?.disconnect();
+        delete (window as { [key: string]: unknown })[marker];
+      }, DOM_SETTLE_SIGNAL);
+    }
   }
 
   async open(url: string): Promise<PageSnapshot> {

@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { EventEmitter, on as waitForEvent } from "node:events";
 import { summarizeTokenConfidence, type AgentRunInput, type AgentRunResult, type AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
@@ -489,13 +490,12 @@ interface SseStreamArgs {
 /** Exported for direct test coverage of the unsubscribe lifecycle. */
 export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable<string> {
   const queue: AgentMessage[] = [];
-  let resolveNext: (() => void) | undefined;
+  const wakeup = new EventEmitter();
+  const wakeupNotifications = waitForEvent(wakeup, "wakeup");
 
   args.messageBus.subscribe("__sse__", (message) => {
     queue.push(message);
-    const resume = resolveNext;
-    resolveNext = undefined;
-    resume?.();
+    wakeup.emit("wakeup");
   });
 
   let result: MultiAgentOrchestrationResult | undefined;
@@ -506,14 +506,12 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
     (value) => {
       result = value;
       finished = true;
-      resolveNext?.();
-      resolveNext = undefined;
+      wakeup.emit("wakeup");
     },
     (error) => {
       runtimeError = error;
       finished = true;
-      resolveNext?.();
-      resolveNext = undefined;
+      wakeup.emit("wakeup");
     }
   );
 
@@ -525,9 +523,7 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
 
     while (!finished || queue.length > 0) {
       if (queue.length === 0 && !finished) {
-        await new Promise<void>((resolve) => {
-          resolveNext = resolve;
-        });
+        await wakeupNotifications.next();
         continue;
       }
 
@@ -573,6 +569,7 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
     }
   } finally {
     args.messageBus.clear();
+    void wakeupNotifications.return();
   }
 }
 
