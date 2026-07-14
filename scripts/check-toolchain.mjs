@@ -25,6 +25,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -35,6 +36,15 @@ export function parseMajor(version) {
 
 export const EXPECTED_BUILD_MAJOR = 7;
 export const EXPECTED_MODULE_MAJOR = 6;
+
+export function readRootScripts() {
+  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  return JSON.parse(raw).scripts ?? {};
+}
+
+export function hasConcurrentProjectGraphFlags(command) {
+  return /--checkers\s+\d+/u.test(command) && /--builders\s+\d+/u.test(command);
+}
 
 function main() {
   const require = createRequire(import.meta.url);
@@ -52,6 +62,20 @@ function main() {
     problems.push(
       `the \`typescript\` MODULE is v${moduleVersion} — typescript-eslint and knip import it and crash on ${EXPECTED_BUILD_MAJOR}.0, which ships no compiler API (it lands in 7.1). Keep it at ${EXPECTED_MODULE_MAJOR}.`
     );
+  }
+
+  const scripts = readRootScripts();
+  if (scripts.build !== "pnpm run build:ts7-fast") {
+    problems.push("root build script must use `pnpm run build:ts7-fast`");
+  }
+  if (!hasConcurrentProjectGraphFlags(scripts["build:ts7-fast"] ?? "")) {
+    problems.push("build:ts7-fast must include both --checkers and --builders");
+  }
+  if (scripts.typecheck !== "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck") {
+    problems.push("typecheck must run `typecheck:ts7-fast` and web typecheck");
+  }
+  if (!hasConcurrentProjectGraphFlags(scripts["typecheck:ts7-fast"] ?? "")) {
+    problems.push("typecheck:ts7-fast must include both --checkers and --builders");
   }
 
   if (problems.length > 0) {

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EXPECTED_BUILD_MAJOR, EXPECTED_MODULE_MAJOR, parseMajor } from "./check-toolchain.mjs";
+import { EXPECTED_BUILD_MAJOR, EXPECTED_MODULE_MAJOR, hasConcurrentProjectGraphFlags, parseMajor, readRootScripts } from "./check-toolchain.mjs";
 
 test("parseMajor reads the major from tsc's version output and from a semver", () => {
   assert.equal(parseMajor("7.0.2"), 7);
@@ -17,4 +17,16 @@ test("parseMajor yields NaN on garbage rather than a wrong number", () => {
 test("the split is build-on-7, module-on-6 (TS7 ships no compiler API until 7.1)", () => {
   assert.equal(EXPECTED_BUILD_MAJOR, 7);
   assert.equal(EXPECTED_MODULE_MAJOR, 6);
+});
+
+test("root scripts keep TS7-fast build/typecheck paths", () => {
+  const scripts = readRootScripts();
+  assert.equal(scripts.build, "pnpm run build:ts7-fast");
+  assert.equal(scripts.typecheck, "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck");
+});
+
+test("ts7-fast scripts declare checkers/builders concurrency flags", () => {
+  const scripts = readRootScripts();
+  assert.equal(hasConcurrentProjectGraphFlags(scripts["build:ts7-fast"] ?? ""), true);
+  assert.equal(hasConcurrentProjectGraphFlags(scripts["typecheck:ts7-fast"] ?? ""), true);
 });
