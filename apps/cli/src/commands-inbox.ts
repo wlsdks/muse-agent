@@ -3,20 +3,21 @@
  * Reads the most-recent inbox messages (no SDK, no new dep) and prints
  * a triage summary + listing. READ ONLY — no outbound-safety gate.
  *
- * The access token comes from `MUSE_GMAIL_TOKEN` (a Gmail OAuth2
- * access token with gmail.readonly scope). A guided `muse auth gmail`
- * flow is a future slice; for now the user supplies the token.
+ * Auth resolves through `resolveGmailProvider`: `muse setup email`'s
+ * refreshing OAuth record, or `MUSE_GMAIL_TOKEN` (a raw access token) as
+ * an explicit override.
  */
 
 import { resolveContactsFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { queryContacts } from "@muse/stores";
-import { extractEmailAddress, GmailEmailProvider, summarizeInbox, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/domain-tools";
+import { extractEmailAddress, summarizeInbox, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { ProgramIO } from "./program.js";
+import { resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 interface InboxOptions {
   readonly limit?: string;
@@ -97,7 +98,7 @@ export function registerInboxCommand(
 ): void {
   program
     .command("inbox")
-    .description("Read + triage your Gmail inbox (read-only; needs MUSE_GMAIL_TOKEN)")
+    .description("Read + triage your Gmail inbox (read-only; run `muse setup email` or set MUSE_GMAIL_TOKEN)")
     .argument("[id]", "A message id (the short id shown in the listing) to read its full body; omit to list the inbox")
     .option("--limit <n>", "How many recent messages to read (1-50, default 10)")
     .option("--json", "Emit the message summaries (or, with an id, the full message) as JSON")
@@ -111,13 +112,13 @@ export function registerInboxCommand(
       }
       let email = provider;
       if (!email) {
-        const token = env.MUSE_GMAIL_TOKEN?.trim();
-        if (!token) {
-          io.stderr("muse inbox: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.readonly scope).\n");
+        const resolved = resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
+        if (!resolved) {
+          io.stderr("muse inbox: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.readonly scope).\n");
           process.exitCode = 1;
           return;
         }
-        email = new GmailEmailProvider(token, io.fetch ?? globalThis.fetch);
+        email = resolved;
       }
 
       const target = id?.trim();

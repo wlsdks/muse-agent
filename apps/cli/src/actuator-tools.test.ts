@@ -54,7 +54,11 @@ describe("buildContactsApprovalGate — draft-first, fail-closed in non-TTY", ()
 });
 
 function fakeIo(): ProgramIO {
-  return { stderr: () => {}, stdout: () => {} };
+  // A configDir that can never exist keeps `resolveGmailProvider`'s stored-
+  // credential lookup hermetic — without this it falls back to the real
+  // `~/.config/muse/credentials.json` (defaultCredentialPath), coupling
+  // these tests to whatever's actually on the machine running them.
+  return { configDir: "/nonexistent-actuator-tools-test-config-dir", stderr: () => {}, stdout: () => {} };
 }
 
 function env(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
@@ -104,6 +108,22 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     expect(tools.map((t) => t.definition.name).sort()).toEqual(["email_forward", "email_reply", "email_send", "web_action"]);
   });
 
+  it("adds email_send from a STORED `muse setup email` OAuth credential too — not just MUSE_GMAIL_TOKEN", async () => {
+    const { writeGmailCredential } = await import("./credential-store.js");
+    const configDir = mkdtempSync(join(tmpdir(), "muse-actuator-gmail-oauth-"));
+    const io: ProgramIO = { configDir, stderr: () => {}, stdout: () => {} };
+    await writeGmailCredential(io, {
+      accessToken: "cached-at",
+      accessTokenExpiresAt: Date.now() + 10 * 60_000,
+      clientId: "cid",
+      clientSecret: "csecret",
+      refreshToken: "rt-1"
+    });
+    const tools = buildActuatorTools({ confirmAction: async () => true, env: env(), io, userId: "stark" });
+    expect(tools.map((t) => t.definition.name).sort()).toEqual(["email_forward", "email_reply", "email_send", "web_action"]);
+    expect(summarizeActuators(env(), io).armed).toContain("email_send");
+  });
+
   it("drops web_action when MUSE_WEB_EGRESS=false (airplane mode)", () => {
     const tools = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_WEB_EGRESS: "false" }), io: fakeIo(), userId: "stark" });
     expect(tools.map((t) => t.definition.name)).not.toContain("web_action");
@@ -125,7 +145,7 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     });
 
     const tools = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
-    const summary = summarizeActuators(localEnv);
+    const summary = summarizeActuators(localEnv, fakeIo());
 
     expect(tools.map((tool) => tool.definition.name)).not.toContain("email_send");
     expect(summary.unavailable.find((item) => item.name === "email_send")?.hint).toContain("MUSE_LOCAL_ONLY=true");
@@ -161,7 +181,7 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
       }
     });
     const built = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
-    const summary = summarizeActuators(localEnv);
+    const summary = summarizeActuators(localEnv, fakeIo());
     expect(built.map((tool) => tool.definition.name)).not.toContain("home_action");
     expect(summary.armed).not.toContain("home_action");
     expect(summary.unavailable.find((item) => item.name === "home_action")?.hint).toContain("canonical loopback remains available");
@@ -176,7 +196,7 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     });
     const built = buildActuatorTools({ confirmAction: async () => true, env: localEnv, io: fakeIo(), userId: "stark" });
     expect(built.map((tool) => tool.definition.name)).toContain("home_action");
-    expect(summarizeActuators(localEnv).armed).toContain("home_action");
+    expect(summarizeActuators(localEnv, fakeIo()).armed).toContain("home_action");
   });
 
   it("every actuator tool is execute-risk (gated, local-mode only)", () => {
@@ -219,7 +239,7 @@ describe.sequential("buildActuatorTools — ambient Home Assistant local-only fl
 
 describe("summarizeActuators — armed-state visibility + config hints", () => {
   it("arms only web_action with no provider env, with hints for the rest", () => {
-    const summary = summarizeActuators(env());
+    const summary = summarizeActuators(env(), fakeIo());
     expect(summary.armed).toEqual(["web_action"]);
     expect(summary.unavailable.map((u) => u.name).sort()).toEqual(["email_forward", "email_reply", "email_send", "home_action"]);
     expect(summary.unavailable.find((u) => u.name === "email_send")?.hint).toContain("MUSE_GMAIL_TOKEN");
@@ -228,19 +248,20 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
 
   it("arms all three when every provider env is set", () => {
     const summary = summarizeActuators(
-      env({ MUSE_GMAIL_TOKEN: "tok", MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" })
+      env({ MUSE_GMAIL_TOKEN: "tok", MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }),
+      fakeIo()
     );
     expect([...summary.armed].sort()).toEqual(["email_forward", "email_reply", "email_send", "home_action", "web_action"]);
     expect(summary.unavailable).toEqual([]);
   });
 
   it("requires BOTH Home Assistant vars to arm home_action", () => {
-    const summary = summarizeActuators(env({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }));
+    const summary = summarizeActuators(env({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }), fakeIo());
     expect(summary.armed).not.toContain("home_action");
   });
 
   it("does not arm web_action when web egress is off, and hints why", () => {
-    const summary = summarizeActuators(env({ MUSE_WEB_EGRESS: "off" }));
+    const summary = summarizeActuators(env({ MUSE_WEB_EGRESS: "off" }), fakeIo());
     expect(summary.armed).not.toContain("web_action");
     expect(summary.unavailable.find((u) => u.name === "web_action")?.hint).toContain("MUSE_WEB_EGRESS");
   });
@@ -256,15 +277,15 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
       const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" })
         .map((t) => t.definition.name)
         .sort();
-      expect([...summarizeActuators(e).armed].sort()).toEqual(built);
+      expect([...summarizeActuators(e, fakeIo()).armed].sort()).toEqual(built);
     }
   });
 
   it("formats a confirm-safety banner plus one hint line per unavailable actuator", () => {
-    const banner = formatActuatorBanner(summarizeActuators(env()));
+    const banner = formatActuatorBanner(summarizeActuators(env(), fakeIo()));
     expect(banner).toContain("actuators armed: web_action");
     expect(banner).toContain("fires only on your confirm");
-    expect(banner).toContain("actuator unavailable: email_send — set MUSE_GMAIL_TOKEN");
+    expect(banner).toContain("actuator unavailable: email_send — run `muse setup email` or set MUSE_GMAIL_TOKEN");
     expect(banner.endsWith("\n")).toBe(true);
   });
 });
@@ -274,14 +295,14 @@ describe("macOS actuators — opt-in via MUSE_MACOS_ACTUATORS", () => {
     const e = env();
     const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
     expect(built.some((n) => n.startsWith("mac_"))).toBe(false);
-    expect(summarizeActuators(e).armed.some((n) => n.startsWith("mac_"))).toBe(false);
+    expect(summarizeActuators(e, fakeIo()).armed.some((n) => n.startsWith("mac_"))).toBe(false);
   });
 
   it("arm all three when the flag is set, and stay in lockstep (armed == built)", () => {
     const e = env({ MUSE_MACOS_ACTUATORS: "1" });
     const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
     expect(built).toEqual(expect.arrayContaining(["mac_shortcut_run", "mac_app_read", "mac_message_send"]));
-    expect([...summarizeActuators(e).armed].sort()).toEqual([...built].sort());
+    expect([...summarizeActuators(e, fakeIo()).armed].sort()).toEqual([...built].sort());
   });
 
   it("classify risk correctly: the read is read-risk, the state-changers are execute-risk", () => {
@@ -298,7 +319,7 @@ describe("Windows actuators — opt-in via MUSE_WINDOWS_ACTUATORS", () => {
     const e = env();
     const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
     expect(built.some((n) => n.startsWith("win_"))).toBe(false);
-    expect(summarizeActuators(e).armed.some((n) => n.startsWith("win_"))).toBe(false);
+    expect(summarizeActuators(e, fakeIo()).armed.some((n) => n.startsWith("win_"))).toBe(false);
   });
 
   it("arm all seven when the flag is set, and stay in lockstep (armed == built)", () => {
@@ -307,7 +328,7 @@ describe("Windows actuators — opt-in via MUSE_WINDOWS_ACTUATORS", () => {
       .map((t) => t.definition.name).filter((n) => n.startsWith("win_"));
     expect(built).toEqual(expect.arrayContaining(["win_app_open", "win_app_read", "win_screenshot", "win_system_set"]));
     expect(built).toHaveLength(7);
-    const armed = summarizeActuators(e).armed.filter((n) => n.startsWith("win_"));
+    const armed = summarizeActuators(e, fakeIo()).armed.filter((n) => n.startsWith("win_"));
     expect([...armed].sort()).toEqual([...built].sort());
   });
 

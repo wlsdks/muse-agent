@@ -108,12 +108,24 @@ function messageIds(list: Record<string, unknown>): string[] {
  */
 export class GmailAuthError extends Error {}
 
+/**
+ * Either a raw access token (env-override / test backcompat) or a function
+ * that RESOLVES one per request — the seam a refreshing OAuth token source
+ * (apps/cli's `createGmailTokenSource`) plugs into so `GmailEmailProvider`
+ * never has to know refresh tokens or expiry exist.
+ */
+export type GmailAccessTokenSource = string | (() => Promise<string>);
+
 export class GmailEmailProvider implements EmailProvider, EmailSender, EmailReader, EmailSearcher {
   constructor(
-    private readonly accessToken: string,
+    private readonly accessTokenSource: GmailAccessTokenSource,
     private readonly fetchImpl: typeof globalThis.fetch = globalThis.fetch,
     private readonly retryOptions: RetryOptions = {}
   ) {}
+
+  private resolveAccessToken(): Promise<string> {
+    return typeof this.accessTokenSource === "function" ? this.accessTokenSource() : Promise.resolve(this.accessTokenSource);
+  }
 
   async sendEmail(to: string, subject: string, body: string): Promise<string | undefined> {
     const mime = [
@@ -135,9 +147,12 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     const maxRetryAfterMs = Number.isFinite(this.retryOptions.maxRetryAfterMs) ? Math.max(0, this.retryOptions.maxRetryAfterMs as number) : 30_000;
     const sleep = this.retryOptions.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     for (let attempt = 0; ; attempt += 1) {
+      // Resolved every attempt (not hoisted before the loop): a retried send
+      // must use the CURRENT token, not one that expired between attempts.
+      const accessToken = await this.resolveAccessToken();
       const response = await this.fetchImpl(`${GMAIL_BASE}/messages/send`, {
         body: JSON.stringify({ raw }),
-        headers: { authorization: `Bearer ${this.accessToken}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
         method: "POST"
       });
       if (response.status === 401 || response.status === 403) {
@@ -167,9 +182,10 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     // Reads are idempotent → retry transient 429/5xx so inbox triage
     // survives a Gmail blip. sendEmail deliberately does NOT retry
     // (a retried send could deliver the message twice).
+    const accessToken = await this.resolveAccessToken();
     const response = await fetchWithRetry(this.fetchImpl, url, {
       ...this.retryOptions,
-      init: { headers: { authorization: `Bearer ${this.accessToken}` } }
+      init: { headers: { authorization: `Bearer ${accessToken}` } }
     });
     if (response.status === 401 || response.status === 403) {
       throw new GmailAuthError(`Gmail auth rejected (${response.status.toString()}) — the access token is missing, expired, or lacks gmail.readonly scope`);

@@ -15,6 +15,7 @@ import { defaultSchedulerPauseFile, readFollowups, readSchedulerPauseState, setS
 import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
+import { runEmailSetup } from "./setup-email.js";
 import { runMessagingSetup } from "./setup-messaging.js";
 import { runModelSetup, SETUP_MODEL_PROVIDER_SPECS } from "./setup-model.js";
 import type { ProgramIO } from "./program.js";
@@ -354,6 +355,16 @@ Examples:
     .description("Configure messenger providers (telegram / discord / slack / line) and store tokens")
     .action(async () => {
       await runMessagingSetup({ stderr: io.stderr, stdout: io.stdout });
+    });
+
+  setup
+    .command("email")
+    .description("Connect Gmail via guided OAuth (browser consent) — the access token refreshes itself after")
+    .action(async () => {
+      const result = await runEmailSetup(io);
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
     });
 
   setup

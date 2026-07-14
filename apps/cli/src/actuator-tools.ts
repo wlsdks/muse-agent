@@ -16,7 +16,7 @@ import { createBrowserActionTracker } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveHomeAssistantEnvironment, type MuseEnvironment } from "@muse/autoconfigure";
 import { recordPendingApproval } from "@muse/messaging";
 import { appendActionLog, queryContacts, resolveContact } from "@muse/stores";
-import { GmailEmailProvider, createEmailForwardTool, createEmailReplyTool, createEmailSendTool, createHomeActionTool, createWebActionTool, createAllowlistPathValidator, type EmailApprovalGate, type HostLookup, type MessageApprovalGate, type WebActionApprovalGate } from "@muse/domain-tools";
+import { createEmailForwardTool, createEmailReplyTool, createEmailSendTool, createHomeActionTool, createWebActionTool, createAllowlistPathValidator, type EmailApprovalGate, type HostLookup, type MessageApprovalGate, type WebActionApprovalGate } from "@muse/domain-tools";
 import { defaultFileReadRoots, type FsWriteApprovalGate, type FsWriteDraft } from "@muse/fs";
 import { isWebEgressAllowed } from "@muse/model";
 import {
@@ -65,6 +65,7 @@ import { confirm, isCancel } from "@clack/prompts";
 
 import { resolveBrowserMaxActions } from "./browser-action-budget-config.js";
 import type { ProgramIO } from "./program.js";
+import { isGmailConfigured, resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 export interface ActuatorSummary {
   readonly armed: readonly string[];
@@ -77,7 +78,7 @@ export interface ActuatorSummary {
  * the armed set equals the built tool names) so the banner never claims
  * a capability the agent can't actually use.
  */
-export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
+export function summarizeActuators(env: MuseEnvironment, io: ProgramIO): ActuatorSummary {
   const webEgress = isWebEgressAllowed(env);
   // Resolve the Home Assistant endpoint once, before any token read. Its
   // local-only value is also the monotonic posture used for the Gmail rows.
@@ -93,12 +94,12 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
     unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_send" });
     unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_reply" });
     unavailable.push({ hint: "Gmail is disabled while MUSE_LOCAL_ONLY=true", name: "email_forward" });
-  } else if (env.MUSE_GMAIL_TOKEN?.trim()) {
+  } else if (isGmailConfigured(io, env)) {
     armed.push("email_send", "email_reply", "email_forward");
   } else {
-    unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_send" });
-    unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_reply" });
-    unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_forward" });
+    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_send" });
+    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_reply" });
+    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_forward" });
   }
 
   if (homeAssistant.status === "configured") {
@@ -474,15 +475,14 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
     tools.push(createWebActionTool({ actionLogFile, approvalGate: webGate, fetchImpl, ...(deps.lookup ? { lookup: deps.lookup } : {}), userId }));
   }
 
-  const gmailToken = localOnly ? undefined : env.MUSE_GMAIL_TOKEN?.trim();
-  if (gmailToken) {
+  const gmail = localOnly ? undefined : resolveGmailProvider({ env, fetchImpl, io });
+  if (gmail) {
     const contactsFile = resolveContactsFile(env);
     const emailGate = buildEmailApprovalGate({
       confirmAction,
       io,
       ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {})
     });
-    const gmail = new GmailEmailProvider(gmailToken, fetchImpl);
     tools.push(
       createEmailSendTool({
         actionLogFile,

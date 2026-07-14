@@ -17,6 +17,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { isRecord } from "@muse/shared";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import path from "node:path";
 
@@ -27,8 +28,26 @@ interface StoredCredential {
   readonly updatedAt: string;
 }
 
+/**
+ * The Gmail OAuth record `muse setup email` writes and `GmailTokenSource`
+ * (gmail-oauth.ts) refreshes. `refreshTokenInvalid` is set (never cleared
+ * automatically) when the token endpoint returns `invalid_grant` — the
+ * refresh token is kept for diagnosis, but the flag short-circuits every
+ * further refresh attempt until the user re-runs `muse setup email`.
+ */
+export interface GmailOAuthCredential {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly refreshToken: string;
+  readonly accessToken?: string;
+  /** Epoch ms. */
+  readonly accessTokenExpiresAt?: number;
+  readonly refreshTokenInvalid?: boolean;
+}
+
 interface CredentialStore {
   readonly tokens: Record<string, StoredCredential>;
+  readonly gmail?: GmailOAuthCredential;
 }
 
 interface EncryptedCredentialFile {
@@ -94,6 +113,54 @@ export async function deleteStoredToken(io: ProgramIO, baseUrl: string): Promise
   const store = await readCredentialStore(io, { startFreshIfUnreadable: true });
   const { [baseUrl]: _removed, ...tokens } = store.tokens;
   await writeCredentialStore(io, { tokens });
+}
+
+export async function readGmailCredential(io: ProgramIO): Promise<GmailOAuthCredential | undefined> {
+  try {
+    return (await readCredentialStore(io)).gmail;
+  } catch {
+    // Same degrade-to-undefined posture as readStoredToken: a corrupted
+    // store on a read path must never crash a caller that only wants to
+    // know whether Gmail is connected.
+    return undefined;
+  }
+}
+
+export async function writeGmailCredential(io: ProgramIO, credential: GmailOAuthCredential): Promise<void> {
+  const store = await readCredentialStore(io, { startFreshIfUnreadable: true });
+  await writeCredentialStore(io, { ...store, gmail: credential });
+}
+
+export async function deleteGmailCredential(io: ProgramIO): Promise<void> {
+  const store = await readCredentialStore(io, { startFreshIfUnreadable: true });
+  const { gmail: _removed, ...rest } = store;
+  await writeCredentialStore(io, rest);
+}
+
+/**
+ * Synchronous "is Gmail connected" check for callers that must stay sync
+ * (`resolveGmailProvider` and the actuator availability banner, both of
+ * which decide construction/armed-status before any async work starts).
+ * Every crypto primitive here (scrypt / AES-GCM) is already sync — only the
+ * fs read differs from `readCredentialStore`. Fail-soft: any read/parse/
+ * decrypt failure reads as "not connected", never throws.
+ */
+export function hasStoredGmailCredentialSync(io: ProgramIO): boolean {
+  let raw: string;
+  try {
+    raw = readFileSync(credentialPath(io), "utf8");
+  } catch {
+    return false;
+  }
+  try {
+    const file = JSON.parse(raw) as unknown;
+    if (!isEncryptedCredentialFile(file)) return false;
+    const plaintext = decryptCredentialPayload(io, file);
+    const store = JSON.parse(plaintext) as unknown;
+    return isCredentialStore(store) && store.gmail !== undefined && !store.gmail.refreshTokenInvalid;
+  } catch {
+    return false;
+  }
 }
 
 async function readCredentialStore(
@@ -214,7 +281,21 @@ function isCredentialStore(value: unknown): value is CredentialStore {
     && isRecord(value.tokens)
     && Object.values(value.tokens).every((credential) => isRecord(credential)
       && typeof credential.token === "string"
-      && typeof credential.updatedAt === "string");
+      && typeof credential.updatedAt === "string")
+    // `gmail` is a new, optional field — an OLD credentials.json (written
+    // before this field existed) has no `gmail` key at all and must keep
+    // loading exactly as it did before (backward compatibility).
+    && (value.gmail === undefined || isGmailOAuthCredential(value.gmail));
+}
+
+function isGmailOAuthCredential(value: unknown): value is GmailOAuthCredential {
+  return isRecord(value)
+    && typeof value.clientId === "string"
+    && typeof value.clientSecret === "string"
+    && typeof value.refreshToken === "string"
+    && (value.accessToken === undefined || typeof value.accessToken === "string")
+    && (value.accessTokenExpiresAt === undefined || typeof value.accessTokenExpiresAt === "number")
+    && (value.refreshTokenInvalid === undefined || typeof value.refreshTokenInvalid === "boolean");
 }
 
 export { isRecord } from "@muse/shared";

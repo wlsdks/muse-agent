@@ -83,6 +83,7 @@ import {
   makeSchedulerTick
 } from "./daemon-delivery-ticks.js";
 import type { ProgramIO } from "./program.js";
+import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 
@@ -695,9 +696,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : "disabled (set MUSE_DIGEST_ENABLED=false to keep off)"}\n`);
         io.stdout(`  email-sync: ${localOnly
           ? "disabled (MUSE_LOCAL_ONLY=true; Gmail standard paths are closed)"
-          : parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && e.MUSE_GMAIL_TOKEN?.trim()
+          : parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && isGmailConfigured(io, e)
             ? "enabled (recent emails → recall)"
-            : "disabled (set MUSE_EMAIL_SYNC_ENABLED + MUSE_GMAIL_TOKEN)"}\n`);
+            : "disabled (set MUSE_EMAIL_SYNC_ENABLED, then `muse setup email` or MUSE_GMAIL_TOKEN)"}\n`);
         io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
         io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : "disabled (set MUSE_CONFLICT_WATCH_ENABLED)"}\n`);
         io.stdout(`  browsing:   ${parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false) ? `enabled (Chrome history → recall every ${(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ?? "60").toString()} min)` : "disabled (set MUSE_BROWSING_AUTO_SYNC)"}\n`);
@@ -858,6 +859,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         : (helpers.makeEmailSyncTick ?? makeEmailSyncTick)({
           env: e,
           intervalMs: emailSyncIntervalMs,
+          io,
           lastRunMs: lastEmailSyncMs,
           limit: emailSyncLimit,
           notesDir: resolveNotesDir(e),

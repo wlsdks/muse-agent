@@ -412,7 +412,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
   },
   {
     "name": "inbox",
-    "description": "Read + triage your Gmail inbox (read-only; needs MUSE_GMAIL_TOKEN)",
+    "description": "Read + triage your Gmail inbox (read-only; run `muse setup email` or set MUSE_GMAIL_TOKEN)",
     "argsTerm": "[id]",
     "hasOptions": true,
     "subcommands": []
@@ -856,6 +856,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "calendar",
       "cloud",
       "data",
+      "email",
       "local",
       "messaging",
       "model",

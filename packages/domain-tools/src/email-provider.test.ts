@@ -185,3 +185,45 @@ describe("GmailEmailProvider.sendEmail — 429-only safe retry (non-idempotent s
     expect(fake.calls()).toBe(3); // initial + 2 retries, then give up
   });
 });
+
+describe("GmailEmailProvider — function-based accessTokenSource (the refreshing-OAuth seam)", () => {
+  it("calls the token-source function to resolve the Bearer header on a READ, not once at construction — a refreshing source can mint a NEW token on every call", async () => {
+    let tokenSourceCalls = 0;
+    const tokens = ["token-1", "token-2"];
+    const tokenSource = async (): Promise<string> => {
+      const t = tokens[tokenSourceCalls]!;
+      tokenSourceCalls += 1;
+      return t;
+    };
+    const bearersSeen: string[] = [];
+    const fetchImpl = (async (_url: string | URL, init?: { headers?: Record<string, string> }) => {
+      bearersSeen.push(init?.headers?.authorization ?? "");
+      return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const provider = new GmailEmailProvider(tokenSource, fetchImpl);
+
+    await provider.listRecent(5);
+    await provider.listRecent(5);
+
+    expect(tokenSourceCalls).toBe(2); // resolved fresh EVERY request, not cached in the provider itself
+    expect(bearersSeen).toEqual(["Bearer token-1", "Bearer token-2"]);
+  });
+
+  it("a rejecting token-source (e.g. GmailOAuthInvalidGrantError from the runtime source) propagates as the call's rejection — the provider does not swallow it", async () => {
+    const tokenSource = async (): Promise<string> => { throw new Error("re-run muse setup email"); };
+    const fetchImpl = (async () => new Response("{}", { status: 200 })) as unknown as typeof globalThis.fetch;
+    await expect(new GmailEmailProvider(tokenSource, fetchImpl).listRecent(5)).rejects.toThrow(/re-run muse setup email/u);
+  });
+
+  it("sendEmail also resolves the token via the function source (not just reads)", async () => {
+    let calls = 0;
+    const tokenSource = async (): Promise<string> => { calls += 1; return "fn-token"; };
+    const fetchImpl = (async (_url: string | URL, init?: { headers?: Record<string, string> }) => {
+      expect(init?.headers?.authorization).toBe("Bearer fn-token");
+      return new Response(JSON.stringify({ id: "m1" }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const id = await new GmailEmailProvider(tokenSource, fetchImpl).sendEmail("a@b.com", "hi", "body");
+    expect(id).toBe("m1");
+    expect(calls).toBe(1);
+  });
+});

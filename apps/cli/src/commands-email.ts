@@ -11,12 +11,13 @@ import { join } from "node:path";
 import { resolveActionLogFile, resolveContactsFile, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { queryContacts } from "@muse/stores";
-import { GmailEmailProvider, extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender } from "@muse/domain-tools";
+import { extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender, type GmailEmailProvider } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
 import { syncEmailsToNotes } from "./email-sync.js";
 import type { ProgramIO } from "./program.js";
+import { resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 interface SendOptions {
   readonly to?: string;
@@ -65,7 +66,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       if (rejectWhenLocalOnly("send")) return;
       const sender = deps.sender ?? buildGmailSender(io, env);
       if (!sender) {
-        io.stderr("muse email send: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.send scope).\n");
+        io.stderr("muse email send: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.send scope).\n");
         process.exitCode = 1;
         return;
       }
@@ -116,7 +117,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       const reader = deps.reader ?? provider;
       const sender = deps.sender ?? provider;
       if (!reader || !sender) {
-        io.stderr("muse email reply: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.send scope).\n");
+        io.stderr("muse email reply: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.send scope).\n");
         process.exitCode = 1;
         return;
       }
@@ -171,7 +172,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       const reader = deps.reader ?? provider;
       const sender = deps.sender ?? provider;
       if (!reader || !sender) {
-        io.stderr("muse email forward: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.send scope).\n");
+        io.stderr("muse email forward: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.send scope).\n");
         process.exitCode = 1;
         return;
       }
@@ -217,13 +218,13 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
 
   email
     .command("sync")
-    .description("Pull your recent emails into local notes so `muse ask` can recall them (Gmail; needs MUSE_GMAIL_TOKEN, read-only)")
+    .description("Pull your recent emails into local notes so `muse ask` can recall them (Gmail, read-only; run `muse setup email` or set MUSE_GMAIL_TOKEN)")
     .option("--limit <n>", "How many recent inbox emails to sync (default 20, max 100)", "20")
     .action(async (options: { readonly limit?: string }) => {
       if (rejectWhenLocalOnly("sync")) return;
       const provider = deps.emailSource ?? buildGmailReader(io, env);
       if (!provider) {
-        io.stderr("muse email sync: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.readonly scope).\n");
+        io.stderr("muse email sync: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.readonly scope).\n");
         process.exitCode = 1;
         return;
       }
@@ -248,16 +249,11 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
 }
 
 function buildGmailReader(io: ProgramIO, env: MuseEnvironment): EmailProvider | undefined {
-  const token = env.MUSE_GMAIL_TOKEN?.trim();
-  return token ? new GmailEmailProvider(token, io.fetch ?? globalThis.fetch) : undefined;
+  return resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
 }
 
 function buildGmailProvider(io: ProgramIO, env: MuseEnvironment): GmailEmailProvider | undefined {
-  const token = env.MUSE_GMAIL_TOKEN?.trim();
-  if (!token) {
-    return undefined;
-  }
-  return new GmailEmailProvider(token, io.fetch ?? globalThis.fetch);
+  return resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
 }
 
 function buildGmailSender(io: ProgramIO, env: MuseEnvironment): EmailSender | undefined {

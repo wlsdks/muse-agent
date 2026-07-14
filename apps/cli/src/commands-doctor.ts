@@ -45,6 +45,7 @@ import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
 import { defaultCredentialPath } from "./credential-store.js";
+import { emailAuthCheck } from "./commands-doctor-email.js";
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
 import { loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
@@ -638,6 +639,17 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // Outbound messengers (Telegram/Discord/Slack/LINE) — opt-in; surface which
   // are wired so the user knows why `muse messaging send` has/has no target.
   checks.push({ name: "messaging", ...messagingConfigCheck(env) });
+
+  // Gmail — opt-in; for the refreshing OAuth path (`muse setup email`), a
+  // live probe that the stored refresh token still works, not just that a
+  // credential file exists. `configDir` is derived from the SAME
+  // `credentialFile` path doctor already resolves, so this reads the exact
+  // store `muse setup email` writes to, not a second, divergent path.
+  checks.push(await emailAuthCheck(
+    { configDir: dirname(runtime.paths.credentialFile), fetch: runtime.fetchImpl, stderr: () => undefined, stdout: () => undefined },
+    env,
+    runtime.fetchImpl
+  ));
 
   // Focus / Do-Not-Disturb toggling (mac_system_set focus_on/focus_off) rides a
   // named user Shortcut — report whether those shortcuts exist. Only meaningful

@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { parseBoolean, type MessagingPollDispatchers } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
-import { GmailEmailProvider, selectUpcomingConflicts, type EmailProvider } from "@muse/domain-tools";
+import { selectUpcomingConflicts, type EmailProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { runDueObjectives, type AmbientNoticeRunner, type EvidenceRecord, type ObjectiveEvaluation, type WebWatchRunner } from "@muse/proactivity";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
@@ -31,6 +31,8 @@ import type { StandingObjective } from "@muse/stores";
 import { defaultEmbedModel } from "./council-corpus.js";
 import { syncEmailsToNotes } from "./email-sync.js";
 import { embed } from "./embed.js";
+import type { ProgramIO } from "./program.js";
+import { resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 import type { TickRunState } from "./daemon-selflearn-ticks.js";
 
@@ -177,6 +179,7 @@ export function makeConflictWatchTick(deps: MakeConflictWatchTickDeps): () => Pr
 
 export interface MakeEmailSyncTickDeps {
   readonly env: NodeJS.ProcessEnv;
+  readonly io: ProgramIO;
   readonly notesDir: string;
   readonly limit: number;
   readonly intervalMs: number;
@@ -189,19 +192,28 @@ export interface MakeEmailSyncTickDeps {
 /**
  * Continuous email ingestion — the always-on half of `muse email sync`: pull
  * recent emails into recallable notes on its own tick, opt-in
- * (MUSE_EMAIL_SYNC_ENABLED + MUSE_GMAIL_TOKEN), interval-throttled, fail-soft.
+ * (MUSE_EMAIL_SYNC_ENABLED + a configured Gmail auth — `muse setup email` or
+ * MUSE_GMAIL_TOKEN), interval-throttled, fail-soft.
  */
 export function makeEmailSyncTick(deps: MakeEmailSyncTickDeps): () => Promise<void> {
-  const { env: e, notesDir, limit, intervalMs, lastRunMs, stdout, emailSyncProvider } = deps;
+  const { env: e, io, notesDir, limit, intervalMs, lastRunMs, stdout, emailSyncProvider } = deps;
+  // Resolved lazily on the FIRST enabled, non-local-only tick (not eagerly
+  // at setup, and not on every tick): defense in depth keeps a direct
+  // lower-level call from reading the Gmail token/credential store while
+  // local-only, and caching afterward avoids re-decrypting the credential
+  // store every interval over a daemon's lifetime.
+  const providerHolder: { current?: Pick<EmailProvider, "listRecent"> } = {};
   return async (): Promise<void> => {
     // Defense in depth: daemon registration normally omits this entire
     // callback under local-only, and a direct lower-level call must not read
     // Gmail token/provider either.
     if (isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e)) return;
     if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return;
-    const token = e.MUSE_GMAIL_TOKEN?.trim();
-    const provider = emailSyncProvider ?? (token ? new GmailEmailProvider(token) : undefined);
-    if (!provider) return; // opt-in: no token, no sync
+    if (!providerHolder.current) {
+      providerHolder.current = emailSyncProvider ?? resolveGmailProvider({ env: e, io });
+    }
+    const provider = providerHolder.current;
+    if (!provider) return; // opt-in: not configured, no sync
     const nowMs = Date.now();
     if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return;
     lastRunMs.current = nowMs;

@@ -50,7 +50,7 @@ export async function buildAskToolWiring(params: {
   if (useActuators) {
     const actuatorMod = await import("./actuator-tools.js");
     const actuatorEnv = process.env as MuseEnvironment;
-    io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv)));
+    io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv, io)));
     extraTools = actuatorMod.buildActuatorTools({
       describeScreenImage: async (input) =>
         screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false },
