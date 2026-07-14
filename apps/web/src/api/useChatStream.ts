@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 
-import type { ChatResponse, Citation } from "./types.js";
+import type { ChatResponse, Citation, PendingApproval } from "./types.js";
+
+export type { PendingApproval } from "./types.js";
 
 export interface ChatTurn {
   readonly role: "user" | "assistant";
   text: string;
   citations?: readonly Citation[];
   tools?: readonly string[];
+  pendingApprovals?: readonly PendingApproval[];
+}
+
+/** Confirm-endpoint result for a single approval. `ran:true` = the tool
+ * executed and the approval is cleared; `ran:false` = the tool reported an
+ * error (server keeps it pending). A 404/403/409 THROWS through the api
+ * client instead of returning here. */
+export interface ApproveOutcome {
+  readonly ran: boolean;
+  readonly tool: string;
+  readonly result?: unknown;
 }
 
 const STORE_KEY = "muse.chat.transcript";
@@ -20,6 +34,63 @@ function loadTranscript(): readonly ChatTurn[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function approvePath(id: string): string {
+  return `/api/chat/approvals/${encodeURIComponent(id)}/approve`;
+}
+
+/** Reads the `pendingApprovals` array off a non-streaming JSON chat body,
+ * dropping a malformed/absent value to `undefined`. */
+export function readPendingApprovals(body: ChatResponse): readonly PendingApproval[] | undefined {
+  return Array.isArray(body.pendingApprovals) ? body.pendingApprovals : undefined;
+}
+
+/** Pure transition for a SUCCESSFUL run (`ran:true`): on the turn that owns
+ * `id`, drop that approval (its button vanishes) and append the ran note.
+ * Every other turn is returned untouched by identity. A `ran:false` result is
+ * NOT applied here — the server left that entry pending, so the card must stay
+ * for a retry (see `applyApprove`). */
+export function applyApproveOutcome(
+  turns: readonly ChatTurn[],
+  id: string,
+  outcome: ApproveOutcome
+): readonly ChatTurn[] {
+  return turns.map((turn) => {
+    const list = turn.pendingApprovals;
+    if (!list?.some((a) => a.id === id)) {
+      return turn;
+    }
+    return {
+      ...turn,
+      pendingApprovals: list.filter((a) => a.id !== id),
+      text: `${turn.text}\n\n✅ Ran ${outcome.tool}.`
+    };
+  });
+}
+
+/** The whole approve flow behind one injectable seam: POST the confirm
+ * endpoint through `post`. A `ran:true` result clears the card; a `ran:false`
+ * result (the tool errored, server KEPT it pending) leaves the card and reports
+ * it, so the retry affordance stays in sync with the server; a throw
+ * (404/403/409/network) does the same. The hook wires real `client.post` +
+ * setters into it; tests drive it with fakes. */
+export async function applyApprove(
+  post: <T>(path: string) => Promise<T>,
+  id: string,
+  setTurns: (update: (prev: readonly ChatTurn[]) => readonly ChatTurn[]) => void,
+  setError: (message: string) => void
+): Promise<void> {
+  try {
+    const outcome = await post<ApproveOutcome>(approvePath(id));
+    if (outcome.ran) {
+      setTurns((prev) => applyApproveOutcome(prev, id, outcome));
+    } else {
+      setError(`${outcome.tool} did not run — it's still pending. Try again.`);
+    }
+  } catch (cause) {
+    setError(cause instanceof Error ? cause.message : "approval failed");
   }
 }
 
@@ -36,7 +107,9 @@ export function useChatStream(baseUrl: string, token: string) {
   const [activeTool, setActiveTool] = useState<string>("");
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approving, setApproving] = useState<readonly string[]>([]);
   const draftRef = useRef<ChatTurn | null>(null);
+  const client = useMemo(() => createApiClient(baseUrl, token), [baseUrl, token]);
 
   useEffect(() => {
     try {
@@ -108,6 +181,7 @@ export function useChatStream(baseUrl: string, token: string) {
             t.text = body.response ?? body.content ?? "";
             t.citations = body.citations ?? [];
             t.tools = body.toolsUsed ?? [];
+            t.pendingApprovals = readPendingApprovals(body);
           });
           return;
         }
@@ -154,10 +228,26 @@ export function useChatStream(baseUrl: string, token: string) {
     [baseUrl, pending, token]
   );
 
-  return { activeTool, error, pending, reset, send, thinking, turns };
+  const approve = useCallback(
+    async (id: string) => {
+      if (approving.includes(id)) {
+        return;
+      }
+      setError(null);
+      setApproving((ids) => [...ids, id]);
+      try {
+        await applyApprove(client.post, id, setTurns, setError);
+      } finally {
+        setApproving((ids) => ids.filter((x) => x !== id));
+      }
+    },
+    [approving, client]
+  );
+
+  return { activeTool, approve, approving, error, pending, reset, send, thinking, turns };
 }
 
-function handleEvent(
+export function handleEvent(
   eventName: string,
   dataLine: string,
   commit: (mut: (t: ChatTurn) => void) => void,
@@ -166,6 +256,20 @@ function handleEvent(
 ): void {
   if (eventName === "stage") {
     setThinking(true);
+    return;
+  }
+
+  if (eventName === "pending-approvals") {
+    try {
+      const payload = JSON.parse(dataLine) as { pendingApprovals?: readonly PendingApproval[] };
+      if (Array.isArray(payload.pendingApprovals) && payload.pendingApprovals.length > 0) {
+        commit((t) => {
+          t.pendingApprovals = payload.pendingApprovals;
+        });
+      }
+    } catch {
+      /* ignore malformed pending-approvals frame */
+    }
     return;
   }
 

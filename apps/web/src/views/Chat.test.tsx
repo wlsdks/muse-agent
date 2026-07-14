@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState } from "./Chat.js";
+import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState, PendingApprovals } from "./Chat.js";
 import { DICTIONARIES } from "../i18n/strings.js";
 import { I18nProvider } from "../i18n/index.js";
 
+import type { PendingApproval } from "../api/useChatStream.js";
 import type { ReactElement } from "react";
 import type { Translate } from "../i18n/index.js";
 
@@ -100,6 +101,86 @@ describe("applyStarterPrompt — fill + focus, never auto-send", () => {
     const textareaRef = { current: null };
     expect(() => applyStarterPrompt("hello", setDraft, textareaRef)).not.toThrow();
     expect(setDraft).toHaveBeenCalledWith("hello");
+  });
+});
+
+/** Collect every element in a plain (unrendered) tree matching a predicate —
+ * used to reach the `Button` COMPONENT node (whose type is a function, not a
+ * raw "button"), so we can read its props / invoke its onClick without a DOM. */
+function collectMatching(
+  node: unknown,
+  predicate: (el: ReactElement) => boolean,
+  acc: ReactElement[] = []
+): ReactElement[] {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      collectMatching(child, predicate, acc);
+    }
+    return acc;
+  }
+  if (!isReactElement(node)) {
+    return acc;
+  }
+  if (predicate(node)) {
+    acc.push(node);
+  }
+  const children = (node.props as { children?: unknown }).children;
+  if (children !== undefined) {
+    collectMatching(children, predicate, acc);
+  }
+  return acc;
+}
+
+const APPROVAL: PendingApproval = {
+  draft: "Hi Sam — running 10 min late, please start without me.",
+  id: "a1",
+  tool: "send_message"
+};
+
+describe("PendingApprovals — draft-first write-approval cards", () => {
+  it("renders the drafted content, tool, and an accessible approve group", () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <PendingApprovals approvals={[APPROVAL]} approving={[]} onApprove={() => {}} t={identityT} />
+      </I18nProvider>
+    );
+    expect(html).toContain('role="group"');
+    expect(html).toContain("pending-approvals");
+    expect(html).toContain("send_message");
+    expect(html).toContain("running 10 min late");
+  });
+
+  it("the approve button calls onApprove with that approval's id", () => {
+    const onApprove = vi.fn();
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: [], onApprove, t: identityT });
+    const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
+    expect(clickable).toHaveLength(1);
+    (clickable[0]!.props as { onClick: () => void }).onClick();
+    expect(onApprove).toHaveBeenCalledWith("a1");
+  });
+
+  it("disables the button for an approval whose confirm is in flight", () => {
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: ["a1"], onApprove: () => {}, t: identityT });
+    const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
+    expect((clickable[0]!.props as { disabled?: boolean }).disabled).toBe(true);
+  });
+
+  it("surfaces a confirm error near the buttons without dropping the approval", () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <PendingApprovals
+          approvals={[APPROVAL]}
+          approving={[]}
+          onApprove={() => {}}
+          errorText="404: unknown or expired approval"
+          t={identityT}
+        />
+      </I18nProvider>
+    );
+    expect(html).toContain("banner err");
+    expect(html).toContain("unknown or expired approval");
+    // the card is still there for a retry
+    expect(html).toContain("send_message");
   });
 });
 

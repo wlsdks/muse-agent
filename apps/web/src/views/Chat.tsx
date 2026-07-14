@@ -10,6 +10,7 @@ import { readToken } from "../lib/token-storage.js";
 import { shouldStickToBottom } from "./chat-autoscroll.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { PendingApproval } from "../api/useChatStream.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 import type { RefObject } from "react";
 
@@ -53,6 +54,57 @@ export function StarterChips({ onPick, t }: { onPick: (prompt: string) => void; 
   );
 }
 
+/** Draft-first write approvals surfaced under an assistant turn. Takes `t`
+ * and the approve callback as props (no hooks) so it renders directly in a
+ * test, mirroring `StarterChips`. Each card shows the drafted content and a
+ * per-approval Approve button; the button is disabled while its own confirm
+ * request is in flight, and `errorText` surfaces a failed confirm near it. */
+export function PendingApprovals({
+  approvals,
+  approving,
+  onApprove,
+  errorText,
+  t
+}: {
+  approvals: readonly PendingApproval[];
+  approving: readonly string[];
+  onApprove: (id: string) => void;
+  errorText?: string | null;
+  t: Translate;
+}) {
+  return (
+    <div className="pending-approvals" role="group" aria-live="polite" aria-label={t("chat.approval.heading")}>
+      <div className="pending-approvals-head">{t("chat.approval.heading")}</div>
+      {approvals.map((a) => {
+        const inFlight = approving.includes(a.id);
+        return (
+          <div className="approval-card" key={a.id}>
+            <span className="tool-chip">
+              <Icon.tool className="nav-icon" /> {a.tool}
+            </span>
+            <div className="approval-draft">
+              <Markdown text={a.draft} />
+            </div>
+            <div className="approval-actions">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={inFlight}
+                onClick={() => onApprove(a.id)}
+                ariaLabel={t("chat.approval.approveAria", { tool: a.tool })}
+              >
+                {inFlight ? <span className="spinner" /> : null}
+                {t("chat.approval.approve")}
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+      {errorText ? <div className="banner err">{errorText}</div> : null}
+    </div>
+  );
+}
+
 /** The chat empty state: welcome copy + starter chips. Hidden once a
  * conversation has messages (`hasMessages`), so a returning user with a
  * transcript never sees onboarding chips. */
@@ -82,7 +134,10 @@ export function ChatEmptyState({
 export function ChatView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const token = readToken();
-  const { activeTool, error, pending, reset, send, thinking, turns } = useChatStream(client.baseUrl, token);
+  const { activeTool, approve, approving, error, pending, reset, send, thinking, turns } = useChatStream(
+    client.baseUrl,
+    token
+  );
   const [elapsedS, setElapsedS] = useState(0);
   useEffect(() => {
     if (!pending) {
@@ -189,6 +244,15 @@ export function ChatView({ client }: { client: ApiClient }) {
                       </span>
                     ))}
                   </div>
+                )}
+                {turn.role === "assistant" && (turn.pendingApprovals?.length ?? 0) > 0 && (
+                  <PendingApprovals
+                    approvals={turn.pendingApprovals ?? []}
+                    approving={approving}
+                    onApprove={(id) => void approve(id)}
+                    errorText={error}
+                    t={t}
+                  />
                 )}
                 {(turn.citations?.length ?? 0) > 0 && (
                   <div className="citations">

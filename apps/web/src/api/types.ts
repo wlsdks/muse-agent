@@ -15,6 +15,12 @@ export interface Citation {
   readonly title: string;
 }
 
+export interface PendingApproval {
+  readonly id: string;
+  readonly tool: string;
+  readonly draft: string;
+}
+
 export interface ChatResponse {
   readonly content?: string;
   readonly response?: string;
@@ -22,6 +28,7 @@ export interface ChatResponse {
   readonly model?: string;
   readonly citations?: readonly Citation[];
   readonly toolsUsed?: readonly string[];
+  readonly pendingApprovals?: readonly PendingApproval[];
 }
 
 export interface TaskRow {

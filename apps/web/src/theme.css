@@ -1490,6 +1490,39 @@ button {
   color: var(--ink-subtle);
 }
 
+/* ── Draft-first write approvals ─────────────────────────── */
+
+.pending-approvals {
+  margin-top: var(--s-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+}
+.pending-approvals-head {
+  font-size: 13px;
+  color: var(--ink-subtle);
+  font-weight: 600;
+}
+.approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+  padding: var(--s-sm) var(--s-md);
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--hairline));
+  background: var(--surface-2);
+}
+.approval-draft {
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.approval-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-sm);
+  flex-wrap: wrap;
+}
+
 /* ── Toast / banner ──────────────────────────────────────── */
 
 .banner {
