@@ -2,10 +2,12 @@
 
 import type { AgentSpecRegistry } from "@muse/agent-specs";
 import type { RuntimeSettings } from "@muse/runtime-settings";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import { requireAuthenticated, toAdminRunSummary } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
+
+import { readQueryInteger, readQueryString, readRouteParam } from "./compat-parsers.js";
 
 export interface AdminGate {
   readonly authService: ServerOptions["authService"];
@@ -39,7 +41,7 @@ export function registerAdminRunRoutes(
     };
   });
 
-  server.get("/admin/users/:userId/runs", async (request, reply) => {
+  server.get("/admin/users/:userId/runs", async (request: FastifyRequest<{ Params: { userId: string } }>, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
@@ -51,7 +53,14 @@ export function registerAdminRunRoutes(
       });
     }
 
-    const { userId } = request.params as { readonly userId: string };
+    const userId = readRouteParam(request, "userId");
+    if (userId === undefined) {
+      return reply.status(400).send({
+        code: "MISSING_PARAM",
+        message: "userId is required"
+      });
+    }
+
     return options.historyStore.listRunsByUser(userId);
   });
 
@@ -83,12 +92,12 @@ export function registerAdminRunRoutes(
     return { messages, run, toolCalls };
   };
 
-  server.get("/admin/runs/:runId", async (request, reply) => {
-    return findRunDetail(request, reply, (request.params as { readonly runId: string }).runId);
+  server.get("/admin/runs/:runId", async (request: FastifyRequest<{ Params: { runId: string } }>, reply) => {
+    return findRunDetail(request, reply, readRouteParam(request, "runId") ?? "");
   });
 
-  server.get("/api/admin/runs/:runId", async (request, reply) => {
-    return findRunDetail(request, reply, (request.params as { readonly runId: string }).runId);
+  server.get("/api/admin/runs/:runId", async (request: FastifyRequest<{ Params: { runId: string } }>, reply) => {
+    return findRunDetail(request, reply, readRouteParam(request, "runId") ?? "");
   });
 
   server.get("/api/admin/runs", async (request, reply) => {
@@ -103,19 +112,17 @@ export function registerAdminRunRoutes(
       });
     }
 
-    const limitRaw = (request.query as { readonly limit?: string } | undefined)?.limit;
+    const limitRaw = readQueryInteger(request, "limit", Number.NaN);
     let limit: number | undefined;
 
-    if (limitRaw !== undefined) {
-      const trimmed = limitRaw.trim();
-      const parsed = /^\d+$/u.test(trimmed) ? Number(trimmed) : Number.NaN;
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1_000) {
+    if (Number.isInteger(limitRaw)) {
+      if (limitRaw < 0 || limitRaw > 1_000) {
         return reply.status(400).send({
           code: "INVALID_LIMIT",
           message: "limit must be an integer between 0 and 1000"
         });
       }
-      limit = parsed;
+      limit = limitRaw;
     }
 
     const runs = await options.historyStore.listRuns(limit !== undefined ? { limit } : {});
@@ -136,7 +143,14 @@ export function registerAdminRunRoutes(
         message: "Run history store is not configured"
       });
     }
-    const { runId } = request.params as { readonly runId: string };
+    const runId = readRouteParam(request, "runId");
+    if (runId === undefined) {
+      return reply.status(400).send({
+        code: "MISSING_PARAM",
+        message: "runId is required"
+      });
+    }
+
     const deleted = await options.historyStore.deleteRun(runId);
     if (!deleted) {
       return reply.status(404).send({
@@ -157,7 +171,7 @@ export function registerAdminRunRoutes(
         message: "Run history store is not configured"
       });
     }
-    const before = (request.query as { readonly before?: string } | undefined)?.before;
+    const before = readQueryString(request, "before");
     if (!before) {
       return reply.status(400).send({
         code: "MISSING_BEFORE",

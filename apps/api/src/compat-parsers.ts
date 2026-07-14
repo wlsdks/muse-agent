@@ -96,8 +96,15 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 export function readQueryString(request: FastifyRequest, key: string): string | undefined {
-  const value = (request.query as Record<string, unknown>)[key];
+  const query = isRecord(request.query) ? request.query : {};
+  const value = query[key];
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+export function readRouteParam(request: FastifyRequest, key: string): string | undefined {
+  const params = isRecord(request.params) ? request.params : {};
+  const value = params[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
@@ -122,8 +129,10 @@ export function readQueryBoolean(request: FastifyRequest, key: string, fallback:
   return raw === "true" || raw === "1";
 }
 
-export function readAuthUserId(request: FastifyRequest): string | undefined {
-  return (request as { auth?: { userId?: string } }).auth?.userId;
+export type AuthAwareRequest = FastifyRequest & { auth?: { userId?: string } };
+
+export function readAuthUserId(request: AuthAwareRequest): string | undefined {
+  return request.auth?.userId;
 }
 
 export function readBodyString(value: unknown, key: string): string | undefined {
