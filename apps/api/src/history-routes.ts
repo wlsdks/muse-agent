@@ -16,7 +16,7 @@
 import { ACTIVITY_KINDS, readActivityFeed, type ActivityKind } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
 
-import { readQueryInteger } from "./compat-parsers.js";
+import { readQueryInteger, readQueryString } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -31,35 +31,36 @@ interface HistoryRoutesGate {
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 200;
+const ACTIVITY_KINDS_LIST = [...ACTIVITY_KINDS];
+
+function parseActivityKind(value: string | undefined): ActivityKind | undefined {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate) {
+    return undefined;
+  }
+  return ACTIVITY_KINDS_LIST.find((kind) => kind === candidate);
+}
 
 export function registerHistoryRoutes(server: FastifyInstance, gate: HistoryRoutesGate): void {
   server.get("/api/history", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-
-    const query = (request.query as { kind?: string; sinceIso?: string } | undefined) ?? {};
-
-    let kind: ActivityKind | undefined;
-    if (typeof query.kind === "string" && query.kind.length > 0) {
-      const normalized = query.kind.trim().toLowerCase();
-      if (!ACTIVITY_KINDS.has(normalized as ActivityKind)) {
-        return reply.status(400).send({
-          error: `kind must be one of: ${[...ACTIVITY_KINDS].join(", ")} (got '${normalized}')`
-        });
-      }
-      kind = normalized as ActivityKind;
+    const kindParam = readQueryString(request, "kind");
+    const kind = parseActivityKind(kindParam);
+    if (kindParam !== undefined && kind === undefined) {
+      return reply.status(400).send({
+        error: `kind must be one of: ${[...ACTIVITY_KINDS].join(", ")} (got '${kindParam}')`
+      });
     }
-
-    let sinceMs: number | undefined;
-    if (typeof query.sinceIso === "string" && query.sinceIso.length > 0) {
-      const parsed = Date.parse(query.sinceIso);
-      if (!Number.isFinite(parsed)) {
-        return reply.status(400).send({
-          error: `sinceIso must be a parseable ISO timestamp (got '${query.sinceIso}')`
-        });
-      }
-      sinceMs = parsed;
+    const sinceIso = readQueryString(request, "sinceIso");
+    const sinceMs = sinceIso === undefined
+      ? undefined
+      : Date.parse(sinceIso);
+    if (sinceMs !== undefined && !Number.isFinite(sinceMs)) {
+      return reply.status(400).send({
+        error: `sinceIso must be a parseable ISO timestamp (got '${sinceIso}')`
+      });
     }
 
     // Strict-parse via the shared helper so a `?limit=20x` /
