@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -59,7 +59,7 @@ export function createDiffMcpServer(): LoopbackMcpServer {
               line: entry.line,
               ...(entry.leftLine !== undefined ? { leftLine: entry.leftLine } : {}),
               ...(entry.rightLine !== undefined ? { rightLine: entry.rightLine } : {})
-            })) as JsonValue,
+            })),
             equals: diff.length - inserts - deletes,
             inserts
           } satisfies JsonObject;

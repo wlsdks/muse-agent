@@ -74,7 +74,7 @@ export function createContextReferenceMcpServer(
             if (!snapshot) {
               return { found: false };
             }
-            return { found: true, snapshot: snapshot as JsonValue };
+            return { found: true, snapshot: sanitizeJsonValue(snapshot) };
           },
           inputSchema: {
             additionalProperties: false,
@@ -143,7 +143,7 @@ export function createContextReferenceMcpServer(
             ...(entry.source ? { source: entry.source } : {})
           }));
           return {
-            refs: refs as JsonValue,
+            refs,
             total: refs.length
           };
         },
@@ -159,4 +159,27 @@ export function createContextReferenceMcpServer(
       ...activeTool
     ]
   };
+}
+
+function sanitizeJsonValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (value === undefined || typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeJsonValue);
+  }
+  if (typeof value === "object") {
+    const out: JsonObject = {};
+    for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = sanitizeJsonValue(entryValue);
+    }
+    return out;
+  }
+  return String(value);
 }

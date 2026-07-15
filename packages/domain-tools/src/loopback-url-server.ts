@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -50,7 +50,7 @@ export function createUrlMcpServer(): LoopbackMcpServer {
             pathname: parsed.pathname,
             port: parsed.port,
             protocol: parsed.protocol,
-            query: query as JsonValue,
+            query,
             search: parsed.search,
             username: parsed.username
           } satisfies JsonObject;
