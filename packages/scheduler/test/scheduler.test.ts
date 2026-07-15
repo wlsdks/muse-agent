@@ -386,6 +386,22 @@ describe("ScheduledMcpToolInvoker", () => {
 });
 
 describe("DynamicScheduler", () => {
+  it("rejects invalid distributed lock TTL buffers", () => {
+    for (const lockTtlBufferMs of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(
+        () =>
+          new DynamicScheduler({
+            dispatcher: new ScheduledJobDispatcher({
+              agentExecutor: { execute: async () => "done" },
+              mcpInvoker: createUnusedMcpInvoker()
+            }),
+            lockTtlBufferMs,
+            store: new InMemoryScheduledJobStore()
+          })
+      ).toThrow("lockTtlBufferMs must be a non-negative safe integer");
+    }
+  });
+
   it("creates, registers, triggers, records, and notifies successful jobs", async () => {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
     const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-1" });

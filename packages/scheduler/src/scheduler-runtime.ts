@@ -106,8 +106,11 @@ export class ScheduledJobDispatcher {
   constructor(options: ScheduledJobDispatcherOptions) {
     this.mcpInvoker = options.mcpInvoker;
     this.agentExecutor = options.agentExecutor;
-    this.defaultExecutionTimeoutMs = options.defaultExecutionTimeoutMs ?? defaultExecutionTimeoutMs;
-    this.retryDelayMs = options.retryDelayMs ?? defaultRetryDelayMs;
+    this.defaultExecutionTimeoutMs = requirePositiveSafeInteger(
+      options.defaultExecutionTimeoutMs ?? defaultExecutionTimeoutMs,
+      "defaultExecutionTimeoutMs"
+    );
+    this.retryDelayMs = requireNonNegativeSafeInteger(options.retryDelayMs ?? defaultRetryDelayMs, "retryDelayMs");
     this.sleep = options.sleep ?? delay;
   }
 
@@ -218,7 +221,10 @@ export class NodeCronScheduler implements CronScheduler {
   private readonly now: () => Date;
 
   constructor(options: NodeCronSchedulerOptions = {}) {
-    this.maxDelayMs = Math.max(1, options.maxDelayMs ?? 2_147_483_647);
+    this.maxDelayMs = Math.max(
+      1,
+      requireNonNegativeSafeInteger(options.maxDelayMs ?? 2_147_483_647, "maxDelayMs")
+    );
     this.now = options.now ?? (() => new Date());
   }
 
@@ -268,4 +274,18 @@ export class NodeCronScheduler implements CronScheduler {
       return undefined;
     }
   }
+}
+
+function requireNonNegativeSafeInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function requirePositiveSafeInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return value;
 }

@@ -56,7 +56,11 @@ export class DynamicScheduler {
     this.distributedLock = options.distributedLock ?? new NoOpDistributedSchedulerLock();
     this.cronScheduler = options.cronScheduler;
     this.now = options.now ?? (() => new Date());
-    this.lockTtlBufferMs = options.lockTtlBufferMs ?? defaultLockTtlBufferMs;
+    const lockTtlBufferMs = options.lockTtlBufferMs ?? defaultLockTtlBufferMs;
+    if (!Number.isSafeInteger(lockTtlBufferMs) || lockTtlBufferMs < 0) {
+      throw new RangeError("lockTtlBufferMs must be a non-negative safe integer");
+    }
+    this.lockTtlBufferMs = lockTtlBufferMs;
     this.isPaused = options.isPaused;
   }
 
