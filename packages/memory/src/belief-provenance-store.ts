@@ -657,6 +657,8 @@ function compareNewestFirst(a: BeliefProvenance, b: BeliefProvenance): number {
 }
 
 export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
+  private static readonly writeQueues = new Map<string, Promise<unknown>>();
+
   constructor(private readonly file: string = defaultBeliefProvenanceFile(), private readonly env: NodeJS.ProcessEnv = process.env) {}
 
   async record(entry: BeliefProvenance): Promise<void> {
@@ -665,15 +667,31 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
 
   async recordMany(entries: readonly BeliefProvenance[]): Promise<void> {
     if (entries.length === 0) return;
-    const existing = await readBeliefProvenance(this.file, this.env);
-    const next = [...existing, ...entries].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
-    await writeBeliefProvenance(this.file, next, this.env);
+    await this.serializeWrite(async () => {
+      const existing = await readBeliefProvenance(this.file, this.env);
+      const next = [...existing, ...entries].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
+      await writeBeliefProvenance(this.file, next, this.env);
+    });
   }
 
   async query(userId: string, key?: string): Promise<readonly BeliefProvenance[]> {
     const all = await readBeliefProvenance(this.file, this.env);
     const scoped = all.filter((e) => e.userId === userId && (key === undefined || e.key === key));
     return [...scoped].sort(compareNewestFirst);
+  }
+
+  private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const prior = FileBeliefProvenanceStore.writeQueues.get(this.file) ?? Promise.resolve();
+    const next = prior.catch(() => undefined).then(operation);
+    FileBeliefProvenanceStore.writeQueues.set(this.file, next);
+
+    try {
+      return await next;
+    } finally {
+      if (FileBeliefProvenanceStore.writeQueues.get(this.file) === next) {
+        FileBeliefProvenanceStore.writeQueues.delete(this.file);
+      }
+    }
   }
 }
 

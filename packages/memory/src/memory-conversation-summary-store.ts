@@ -145,6 +145,7 @@ export function defaultConversationSummaryFile(): string {
 }
 
 export class FileConversationSummaryStore implements ConversationSummaryStore {
+  private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
   private readonly now: () => Date;
   constructor(options: { readonly file?: string; readonly now?: () => Date } = {}) {
@@ -197,23 +198,27 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
   }
 
   async save(summary: ConversationSummary): Promise<ConversationSummary> {
-    const map = await this.readMap();
-    const existing = map.get(summary.sessionId);
-    const now = this.now();
-    const normalized = normalizeConversationSummary(summary, {
-      createdAt: existing?.createdAt ?? summary.createdAt ?? now,
-      updatedAt: summary.updatedAt ?? now
+    return this.serializeWrite(async () => {
+      const map = await this.readMap();
+      const existing = map.get(summary.sessionId);
+      const now = this.now();
+      const normalized = normalizeConversationSummary(summary, {
+        createdAt: existing?.createdAt ?? summary.createdAt ?? now,
+        updatedAt: summary.updatedAt ?? now
+      });
+      map.set(normalized.sessionId, normalized);
+      await this.writeMap(map);
+      return normalized;
     });
-    map.set(normalized.sessionId, normalized);
-    await this.writeMap(map);
-    return normalized;
   }
 
   async delete(sessionId: string): Promise<boolean> {
-    const map = await this.readMap();
-    if (!map.delete(sessionId)) return false;
-    await this.writeMap(map);
-    return true;
+    return this.serializeWrite(async () => {
+      const map = await this.readMap();
+      if (!map.delete(sessionId)) return false;
+      await this.writeMap(map);
+      return true;
+    });
   }
 
   async listAll(options: ConversationSummaryListOptions = {}): Promise<readonly ConversationSummary[]> {
@@ -221,6 +226,20 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     const all = [...(await this.readMap()).values()];
     const filtered = options.userId ? all.filter((entry) => entry.userId === options.userId) : all;
     return filtered.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, limit);
+  }
+
+  private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const prior = FileConversationSummaryStore.writeQueues.get(this.file) ?? Promise.resolve();
+    const next = prior.catch(() => undefined).then(operation);
+    FileConversationSummaryStore.writeQueues.set(this.file, next);
+
+    try {
+      return await next;
+    } finally {
+      if (FileConversationSummaryStore.writeQueues.get(this.file) === next) {
+        FileConversationSummaryStore.writeQueues.delete(this.file);
+      }
+    }
   }
 }
 

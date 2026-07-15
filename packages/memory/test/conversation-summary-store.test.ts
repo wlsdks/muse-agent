@@ -155,6 +155,18 @@ describe("FileConversationSummaryStore — cross-session persistence (the CLI de
     expect(await new FileConversationSummaryStore({ file: join(tmpdir(), `muse-absent-${Date.now().toString()}.json`) }).listAll()).toEqual([]);
   });
 
+  it("serializes concurrent saves across store instances without losing summaries", async () => {
+    const file = freshFile();
+    const sessionIds = Array.from({ length: 12 }, (_, index) => `session-${index.toString()}`);
+
+    await Promise.all(sessionIds.map((sessionId, index) =>
+      new FileConversationSummaryStore({ file, now: () => new Date(1_000 + index) }).save(summary(sessionId))
+    ));
+
+    const stored = await new FileConversationSummaryStore({ file }).listAll({ limit: 100 });
+    expect(stored.map((entry) => entry.sessionId).sort()).toEqual([...sessionIds].sort());
+  });
+
   afterAll(async () => {
     await Promise.all(dirs.map((d) => rm(d, { force: true, recursive: true })));
     dirs = [];

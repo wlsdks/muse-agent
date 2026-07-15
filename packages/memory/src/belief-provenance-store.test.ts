@@ -1,6 +1,10 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { beliefValueTimeline, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+import { beliefValueTimeline, FileBeliefProvenanceStore, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
 
 describe("beliefValueTimeline (the value-change path — deepest show-your-work)", () => {
   const tl = (over: Partial<BeliefProvenance>): BeliefProvenance => ({
@@ -142,5 +146,28 @@ describe("formatFirstLearned (honest attribution: how Muse learned it)", () => {
 
   it("attributes an AUTO-inferred fact to Muse's own inference", () => {
     expect(formatFirstLearned(fact("auto"))).toBe("home city: Busan (I noticed · 2026-06-20)");
+  });
+});
+
+describe("FileBeliefProvenanceStore", () => {
+  it("serializes concurrent batches for the same file without losing provenance", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-belief-provenance-"));
+    const file = join(dir, "beliefs.json");
+    const entries = Array.from({ length: 12 }, (_, index): BeliefProvenance => ({
+      key: `key_${index.toString()}`,
+      kind: "fact",
+      learnedAt: `2026-06-20T00:00:${index.toString().padStart(2, "0")}Z`,
+      userId: "u",
+      value: `value_${index.toString()}`
+    }));
+
+    try {
+      await Promise.all(entries.map((entry) => new FileBeliefProvenanceStore(file).recordMany([entry])));
+
+      const stored = await new FileBeliefProvenanceStore(file).query("u");
+      expect(stored.map((entry) => entry.key).sort()).toEqual(entries.map((entry) => entry.key).sort());
+    } finally {
+      await rm(dir, { force: true, recursive: true });
+    }
   });
 });
