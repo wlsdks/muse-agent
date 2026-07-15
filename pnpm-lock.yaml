@@ -113,16 +113,15 @@ importers:
       '@muse/stores':
         specifier: workspace:*
         version: link:../../packages/stores
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice
       fastify:
         specifier: ^5.9.0
         version: 5.9.0
-    devDependencies:
-      '@muse/tools':
-        specifier: workspace:*
-        version: link:../../packages/tools
 
   apps/cli:
     dependencies:
