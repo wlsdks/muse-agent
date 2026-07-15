@@ -24,6 +24,7 @@ import { asRecord, isRecord, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { formatProvidersList } from "./human-formatters.js";
+import { confirmBoolean } from "./confirm-boolean.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -260,7 +261,7 @@ export function registerMessagingCommands(
       // server-side via the runtime tool-approval gate.)
       if (options.local) {
         const registry = deps.registry ?? buildMessagingRegistry(env);
-        const gate: MessageApprovalGate = deps.approvalGate ?? ((draft) => {
+        const gate: MessageApprovalGate = deps.approvalGate ?? (async (draft) => {
           // Fail-closed when the confirm prompt can't be delivered: a non-TTY
           // (piped / scripted / CI) has no one to confirm, so refuse rather than
           // hang waiting on stdin or send unconfirmed (outbound-safety.md rule 2).
@@ -268,10 +269,8 @@ export function registerMessagingCommands(
             return { approved: false, reason: "no interactive terminal to confirm the send (run it in a terminal)" };
           }
           io.stdout(`\nSend via ${draft.providerId} → ${draft.destination}:\n\n${draft.text}\n\n`);
-          return confirm({ message: "Send this message?" }).then((answer) =>
-            isCancel(answer) || answer !== true
-              ? { approved: false, reason: "user did not confirm" }
-              : { approved: true });
+          const approved = await confirmBoolean(confirm, isCancel, "Send this message?");
+          return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
         });
         const outcome = await sendMessageWithApproval({
           actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),

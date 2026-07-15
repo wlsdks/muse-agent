@@ -13,6 +13,7 @@ import { performWebActionWithApproval, type WebActionApprovalGate } from "@muse/
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
+import { confirmBoolean } from "./confirm-boolean.js";
 import type { ProgramIO } from "./program.js";
 
 interface RunOptions {
@@ -44,12 +45,10 @@ export function registerWebActionCommands(program: Command, io: ProgramIO, deps:
         url: options.url ?? "",
         ...(options.body !== undefined ? { body: options.body } : {})
       };
-      const gate: WebActionApprovalGate = deps.approvalGate ?? ((action) => {
+      const gate: WebActionApprovalGate = deps.approvalGate ?? (async (action) => {
         io.stdout(`\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`);
-        return confirm({ message: "Perform this web action?" }).then((answer) =>
-          isCancel(answer) || answer !== true
-            ? { approved: false, reason: "user did not confirm" }
-            : { approved: true });
+        const approved = await confirmBoolean(confirm, isCancel, "Perform this web action?");
+        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
       });
 
       const outcome = await performWebActionWithApproval({

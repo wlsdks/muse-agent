@@ -12,6 +12,7 @@ import { confirm, isCancel } from "@clack/prompts";
 import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
+import { confirmBoolean } from "./confirm-boolean.js";
 import type { ProgramIO } from "./program.js";
 
 interface CallOptions {
@@ -105,12 +106,10 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
           return;
         }
       }
-      const gate: WebActionApprovalGate = deps.approvalGate ?? ((action) => {
+      const gate: WebActionApprovalGate = deps.approvalGate ?? (async (action) => {
         io.stdout(`\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`);
-        return confirm({ message: "Perform this smart-home action?" }).then((answer) =>
-          isCancel(answer) || answer !== true
-            ? { approved: false, reason: "user did not confirm" }
-            : { approved: true });
+        const approved = await confirmBoolean(confirm, isCancel, "Perform this smart-home action?");
+        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
       });
 
       const outcome = await performHomeActionWithApproval({

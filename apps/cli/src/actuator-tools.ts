@@ -65,6 +65,7 @@ import { confirm, isCancel } from "@clack/prompts";
 
 import { resolveBrowserMaxActions } from "./browser-action-budget-config.js";
 import type { ProgramIO } from "./program.js";
+import { confirmBoolean } from "./confirm-boolean.js";
 import { isGmailConfigured, resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 export interface ActuatorSummary {
@@ -414,7 +415,7 @@ export interface BrowserToolsDeps {
 export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
   const confirmAction =
     deps.confirmAction ??
-    ((message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true));
+    ((message: string) => confirmBoolean(confirm, isCancel, message));
   const controller = new PuppeteerBrowserController();
   // One-shot callers (muse ask) MUST disconnect after the run: the open CDP
   // socket pins the Node event loop, so without this the process never exits
@@ -459,7 +460,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const fetchImpl = deps.fetchImpl ?? io.fetch ?? globalThis.fetch;
   const confirmAction =
     deps.confirmAction ??
-    ((message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true));
+    ((message: string) => confirmBoolean(confirm, isCancel, message));
   const actionLogFile = resolveActionLogFile(env);
   const tools: MuseTool[] = [];
 
