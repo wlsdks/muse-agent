@@ -248,7 +248,14 @@ export class PuppeteerBrowserController implements BrowserController {
     };
     arm(this.page);
     const onTarget = (target: { page: () => Promise<Page | null> }): void => {
-      target.page().then((page) => arm(page ?? undefined)).catch(() => { /* target gone */ });
+      void (async () => {
+        try {
+          const page = await target.page();
+          arm(page ?? undefined);
+        } catch {
+          /* target gone */
+        }
+      })();
     };
     browser?.on("targetcreated", onTarget);
     try {

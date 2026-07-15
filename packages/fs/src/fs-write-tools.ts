@@ -116,6 +116,14 @@ function refusal(error: unknown, path: string): JsonObject {
   return { path, reason: error instanceof Error ? error.message : String(error), written: false };
 }
 
+async function getPathStat(safePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  try {
+    return await lstat(safePath);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Write `content` to an already-sandbox-approved path WITHOUT following a
  * symlink at the leaf. `O_NOFOLLOW` makes the kernel reject (ELOOP) a final
@@ -570,14 +578,14 @@ export function createFileMoveTool(options: FsWriteToolsOptions, policyPromise?:
         return { ...refusal(error, fromArg), moved: false };
       }
       try {
-        const src = await lstat(from).catch(() => undefined);
+        const src = await getPathStat(from);
         if (!src) {
           return { from, moved: false, reason: `source '${fromArg}' does not exist` };
         }
         if (src.isDirectory()) {
           return { from, moved: false, reason: `'${fromArg}' is a directory — file_move only moves single files` };
         }
-        const destExists = await lstat(to).then(() => true).catch(() => false);
+        const destExists = await getPathStat(to) !== undefined;
         if (destExists) {
           return { moved: false, reason: `destination '${toArg}' already exists — refusing to overwrite`, to };
         }

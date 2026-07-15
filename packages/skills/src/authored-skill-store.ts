@@ -383,7 +383,12 @@ export class AuthoredSkillStore {
     } catch {
       // slot free — proceed
     }
-    return fs.rename(src, dest).then(() => true).catch(() => false);
+    try {
+      await fs.rename(src, dest);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Pre-mutation snapshots, newest last — what `rollback()` can restore. */
@@ -527,7 +532,12 @@ export class AuthoredSkillStore {
     const base = folder.split(/[\\/]/u).pop() ?? "skill";
     const dest = join(this.dir, ".archive", base);
     await fs.mkdir(dirname(dest), { recursive: true });
-    return fs.rename(folder, dest).then(() => true).catch(() => false); // never delete
+    try {
+      await fs.rename(folder, dest);
+      return true;
+    } catch {
+      return false;
+    } // never delete
   }
 
   private async enforceCap(): Promise<void> {
