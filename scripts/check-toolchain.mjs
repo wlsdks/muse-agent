@@ -39,14 +39,14 @@ export const EXPECTED_BUILD_MAJOR = 7;
 export const EXPECTED_MODULE_MAJOR = 6;
 export const EXPECTED_TYPESCRIPT_PACKAGE_PREFIX = "npm:@typescript/typescript6";
 export const EXPECTED_NATIVE_PACKAGE_PREFIX = "npm:typescript";
+const ROOT_PACKAGE_URL = new URL("../package.json", import.meta.url);
 
 export function readRootScripts() {
-  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
-  return JSON.parse(raw).scripts ?? {};
+  return readRootPackage().scripts ?? {};
 }
 
-function readRootPackage() {
-  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+export function readRootPackage() {
+  const raw = readFileSync(ROOT_PACKAGE_URL, "utf8");
   return JSON.parse(raw);
 }
 

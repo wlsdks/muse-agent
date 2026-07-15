@@ -1,6 +1,5 @@
 // node --test coverage for the toolchain-guard helper.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -8,6 +7,7 @@ import {
   EXPECTED_MODULE_MAJOR,
   EXPECTED_NATIVE_PACKAGE_PREFIX,
   EXPECTED_TYPESCRIPT_PACKAGE_PREFIX,
+  readRootPackage,
   parseMajor,
   readRootScripts
 } from "./check-toolchain.mjs";
@@ -24,7 +24,7 @@ test("parseMajor yields NaN on garbage rather than a wrong number", () => {
 });
 
 test("check-toolchain policy requires TS7 split dependency selectors", () => {
-  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const packageJson = readRootPackage();
   const devDependencies = packageJson.devDependencies ?? {};
   const typescriptSelector = devDependencies.typescript;
   const nativeSelector = devDependencies["@typescript/native"];
