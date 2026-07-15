@@ -67,9 +67,9 @@ export function createSkillRuntime(env: MuseEnvironment): SkillRuntime {
       };
     }
   };
-  void skillRegistryPromise.then((registry) => {
-    skillRegistryCache = registry;
-  });
+  void (async () => {
+    skillRegistryCache = await skillRegistryPromise;
+  })();
 
   const skillTools = parseBoolean(env.MUSE_SKILLS_ENABLED, true)
     ? [
