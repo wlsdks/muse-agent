@@ -16,6 +16,7 @@ import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, 
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import { addToQuarantine, buildSwarmSkillDraft, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
+import { parseBooleanFromEnv } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";
 
@@ -24,13 +25,6 @@ import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 import { readRequestBody, waitForShutdownSignal } from "./async-promises.js";
 import { withBestEffort } from "./async-promises.js";
-
-const COUNCIL_TRUTHY_VALUES = ["true", "1", "yes", "on"] as const;
-const COUNCIL_TRUTHY_SET = new Set<string>(COUNCIL_TRUTHY_VALUES);
-
-function isCouncilTruthy(raw: string): raw is (typeof COUNCIL_TRUTHY_VALUES)[number] {
-  return COUNCIL_TRUTHY_SET.has(raw);
-}
 
 function normalizeA2ARequestHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string | undefined>> {
   const normalized: Record<string, string | undefined> = {};
@@ -229,7 +223,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       const config = await loadPeerConfig(peersFile());
       const pendingCount = listPending(await readQuarantine(quarantineFile())).length;
       io.stdout(`${renderSwarmStatus({
-        councilEnabled: isCouncilTruthy((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase()),
+        councilEnabled: parseBooleanFromEnv(env.MUSE_A2A_COUNCIL, false),
         councilGrounded: isCouncilGroundedMode(env),
         enabled: isA2AEnabled(env),
         pendingCount,
@@ -364,7 +358,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       // notes can't ground — an ignorant peer stays silent instead of injecting a
       // confident-but-ungrounded opinion (only the abstain/speak decision crosses
       // the wire; the corpus never does).
-      const councilOn = isCouncilTruthy((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase());
+      const councilOn = parseBooleanFromEnv(env.MUSE_A2A_COUNCIL, false);
       let councilReason: ((question: string) => Promise<string>) | undefined;
       if (councilOn) {
         const assembly = createMuseRuntimeAssembly();
