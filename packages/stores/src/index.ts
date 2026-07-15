@@ -5,6 +5,14 @@
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export {
+  readDaemonSettingsSync,
+  readQuietHoursSettingSync,
+  resolveDaemonSettingsFile,
+  writeDaemonSetting,
+  writeQuietHoursSetting
+} from "./daemon-settings-store.js";
+export type { DaemonSettings, PersistedQuietHours } from "./daemon-settings-store.js";
+export {
   CHAT_CONTEXT_TURN_LIMIT,
   defaultConversationsFile,
   FileConversationStore,

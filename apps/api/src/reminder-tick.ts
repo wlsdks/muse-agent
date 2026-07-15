@@ -16,7 +16,7 @@
  * upstream messenger or stalling firing forever.
  */
 
-import { isQuietHour, parseQuietHours, runDueReminders, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type QuietHourRange } from "@muse/proactivity";
+import { isQuietHour, parseQuietHours, resolveEffectiveQuietHours, resolveQuietHoursOption, runDueReminders, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type QuietHourRange, type QuietHoursOption } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 export interface ReminderTickOptions {
@@ -60,7 +60,7 @@ export interface ReminderTickOptions {
 // the API ticks share one window implementation; re-exported so the existing
 // `./reminder-tick.js` import sites (pattern-tick, proactive-tick,
 // situational-briefing-tick, web-watch-tick) keep working unchanged.
-export { isQuietHour, parseQuietHours, type QuietHourRange };
+export { isQuietHour, parseQuietHours, resolveEffectiveQuietHours, resolveQuietHoursOption, type QuietHourRange, type QuietHoursOption };
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 5_000;

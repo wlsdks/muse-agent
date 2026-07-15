@@ -37,8 +37,8 @@ import {
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
-import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks, recordProactiveHeartbeat } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -104,6 +104,36 @@ const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
  * source of truth, mirroring `apps/api/src/tick-daemons.ts`'s
  * `resolveProactiveTrustFile`.
  */
+/**
+ * Live quiet-hours resolver for `muse daemon`'s continuous process — mirrors
+ * `apps/api/src/tick-daemons.ts`'s `liveQuietHours`: per-loop env, then the
+ * shared base env, then the persisted setting (`@muse/stores`'s
+ * daemon-settings file, PATCHed from web Settings / set via `muse quiet`).
+ * Re-reads the persisted file on every call so a change takes effect on the
+ * daemon's very next tick, no restart. Not used by `makeRemindersTick` /
+ * `makeDailyBriefTick` — those stay exempt from quiet hours.
+ */
+export function liveQuietHours(
+  e: NodeJS.ProcessEnv,
+  io: ProgramIO,
+  perLoopVar: string | undefined,
+  baseVar: string | undefined
+): () => QuietHourRange | undefined {
+  const settingsFile = resolveDaemonSettingsFile(e);
+  let warned = false;
+  return () => resolveEffectiveQuietHours({
+    baseEnvRaw: baseVar,
+    onInvalidPersisted: (raw) => {
+      if (!warned) {
+        warned = true;
+        io.stderr(`quiet-hours: ignoring invalid persisted range "${raw}"\n`);
+      }
+    },
+    perLoopEnvRaw: perLoopVar,
+    persisted: readQuietHoursSettingSync(settingsFile)
+  });
+}
+
 export function resolveProactiveTrustFile(e: NodeJS.ProcessEnv): string {
   if (e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length) return e.MUSE_PROACTIVE_TRUST_FILE.trim();
   // HOME-first: os.homedir() ignores $HOME on win32 (USERPROFILE), breaking
@@ -555,13 +585,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       };
       // Quiet hours (do-not-disturb): suppress ambient/awareness chatter
       // during the window so the resident daemon doesn't ping at 3am. Only
-      // gates this sink (ambient/web-watch/home-watch) — user-scheduled
-      // reminders/follow-ups fire on their own path and are unaffected, so an
-      // urgent "pay rent today" reminder still comes through. Same window
-      // parser the API ticks use.
-      const quietHours = parseQuietHours(e.MUSE_PROACTIVE_QUIET_HOURS?.trim() || e.MUSE_REMINDER_QUIET_HOURS?.trim());
+      // gates this sink (ambient/web-watch/home-watch) plus the proactive/
+      // checkins/pattern ticks below — user-scheduled reminders/follow-ups
+      // fire on their own path and are unaffected, so an urgent "pay rent
+      // today" reminder still comes through. `liveQuietHours` re-reads the
+      // persisted setting (web Settings / `muse quiet`) fresh every tick —
+      // the SAME precedence + file `apps/api/src/tick-daemons.ts` consumes.
+      const quietHours = liveQuietHours(e, io, e.MUSE_PROACTIVE_QUIET_HOURS, e.MUSE_REMINDER_QUIET_HOURS);
       const noticeSink: ProactiveNoticeSink = gateProactiveNoticeSink(rawNoticeSink, {
-        ...(quietHours ? { quietHours } : {}),
+        quietHours,
         onSuppress: options.print
           ? (notice): void => io.stdout(`  🌙 quiet hours — held: ${notice.title}\n`)
           : undefined

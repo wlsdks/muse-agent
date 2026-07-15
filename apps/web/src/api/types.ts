@@ -431,6 +431,13 @@ export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
 }
 
+export interface QuietHoursSettingsResponse {
+  readonly enabled: boolean;
+  readonly range?: string;
+  readonly effectiveRange?: string;
+  readonly source: "env" | "persisted" | "none";
+}
+
 export interface OrchestrationEntry {
   readonly runId: string;
   readonly mode: string;

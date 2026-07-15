@@ -7,6 +7,7 @@ import { setSchedulerPaused } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { makeDailyBriefTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
 import type { JobExecutionStatus, ScheduledJob, ScheduledJobInput, ScheduledJobStore } from "@muse/scheduler";
@@ -544,5 +545,25 @@ describe("makeDailyBriefTick — muse setup briefing's fixed-time daily brief", 
     await tick();
     expect(messaging.sent).toHaveLength(1);
     expect(typeof messaging.sent[0]!.text).toBe("string");
+  });
+});
+
+describe("R3-4 AC3 exemption pin — the daily brief has no quiet-hours field at all", () => {
+  it("MakeDailyBriefTickDeps has no quietHours field (compile-time pin, checked by `tsc -b`)", () => {
+    // If this stops erroring, someone wired the persisted quiet-hours setting
+    // into the fixed-time daily brief — that breaks the EXEMPT invariant
+    // (a user-scheduled digest is never gated by ambient-chatter suppression).
+    const pin: MakeDailyBriefTickDeps = {
+      configFile: "x",
+      destination: "@me",
+      // @ts-expect-error — quietHours is not a valid MakeDailyBriefTickDeps field.
+      quietHours: { endHour: 8, startHour: 23 },
+      env: {} as NodeJS.ProcessEnv,
+      messagingRegistry: {} as never,
+      provider: "log",
+      sidecarFile: "x",
+      stdout: () => undefined
+    };
+    expect(pin).toBeDefined();
   });
 });

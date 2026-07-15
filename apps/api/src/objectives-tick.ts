@@ -15,7 +15,7 @@
 import { type StandingObjective } from "@muse/stores";
 import { runDueObjectives, type ObjectiveEvaluation } from "@muse/proactivity";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface ObjectivesTickOptions {
   readonly objectivesFile: string;
@@ -28,7 +28,7 @@ export interface ObjectivesTickOptions {
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   /** Parity with the sibling daemons; gates the whole tick. */
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   /** Injectable clock for tests; default `() => new Date()`. */
   readonly now?: () => Date;
 }
@@ -51,7 +51,8 @@ export function startObjectivesTick(options: ObjectivesTickOptions): ObjectivesT
     if (firing) {
       return;
     }
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

@@ -20,7 +20,7 @@
 import { runDigestFlushIfDue, type RunDigestFlushOutcome } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface DigestTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -41,7 +41,7 @@ export interface DigestTickOptions {
    * day — it waits for the next day's `digestHour` (documented in FEATURES.md;
    * still gated by the once-per-day sidecar, so it never double-sends).
    */
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   /** Injectable clock for tests; default `() => new Date()`. */
   readonly now?: () => Date;
 }
@@ -64,7 +64,8 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
     if (firing) {
       return;
     }
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

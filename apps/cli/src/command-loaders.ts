@@ -168,6 +168,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "quiet",
+    names: ["quiet"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-quiet.js");
+      m.registerQuietCommand(program, io);
+    },
+  },
+  {
     id: "skills",
     names: ["skills"],
     load: async (program, io, _deps) => {

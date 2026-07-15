@@ -37,6 +37,7 @@ import {
   deriveBriefingImminent,
   deriveCalendarBriefingImminent,
   isQuietHour,
+  resolveQuietHoursOption,
   runDueBackgroundExitNotices,
   runDueCheckins,
   runDueFollowups,
@@ -45,7 +46,7 @@ import {
   runDueReminders,
   type BriefingCalendarLister,
   type InterruptionBudgetWiring,
-  type QuietHourRange
+  type QuietHoursOption
 } from "@muse/proactivity";
 import {
   defaultExecutionTimeoutMs,
@@ -80,7 +81,7 @@ export interface MakeProactiveTickDeps {
   readonly leadMinutes: number;
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly provider: string;
-  readonly quietHours: QuietHourRange | undefined;
+  readonly quietHours: QuietHoursOption | undefined;
   readonly sidecarFile: string;
   readonly tasksFile: string;
   readonly trustLedgerFile: string;
@@ -97,6 +98,7 @@ export function makeProactiveTick(deps: MakeProactiveTickDeps): () => Promise<vo
   const { calendarRegistry, destination, historyFile, leadMinutes, messagingRegistry, provider, quietHours, sidecarFile, tasksFile, trustLedgerFile, dailyCap, stdout } = deps;
   const proactiveInvestigator = createIndexedProactiveInvestigator();
   return async (): Promise<void> => {
+    const activeQuietHours = resolveQuietHoursOption(quietHours);
     const summary = await runDueProactiveNotices({
       ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
       destination,
@@ -105,7 +107,7 @@ export function makeProactiveTick(deps: MakeProactiveTickDeps): () => Promise<vo
       leadMinutes,
       messagingRegistry,
       providerId: provider,
-      ...(quietHours ? { quietHours } : {}),
+      ...(activeQuietHours ? { quietHours: activeQuietHours } : {}),
       sidecarFile,
       tasksFile,
       trustLedgerFile,
@@ -428,20 +430,21 @@ export interface MakeCheckinsTickDeps {
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly provider: string;
   readonly messagingRegistry: MessagingProviderRegistry;
-  readonly quietHours: QuietHourRange | undefined;
+  readonly quietHours: QuietHoursOption | undefined;
   readonly stdout: (message: string) => void;
 }
 
 export function makeCheckinsTick(deps: MakeCheckinsTickDeps): () => Promise<void> {
   const { env: e, destination, interruptionBudget, provider, messagingRegistry, quietHours, stdout } = deps;
   return async (): Promise<void> => {
+    const activeQuietHours = resolveQuietHoursOption(quietHours);
     const summary = await runDueCheckins({
       destination,
       file: checkinsFile(e),
       interruptionBudget,
       providerId: provider,
       registry: messagingRegistry,
-      ...(quietHours ? { quietHours } : {})
+      ...(activeQuietHours ? { quietHours: activeQuietHours } : {})
     });
     const tag = `[${new Date().toISOString()}]`;
     stdout(`${tag} checkins: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
@@ -461,7 +464,7 @@ function renderPatternFacts(match: PatternMatch): string {
 
 export interface MakePatternTickDeps {
   readonly env: NodeJS.ProcessEnv;
-  readonly quietHours: QuietHourRange | undefined;
+  readonly quietHours: QuietHoursOption | undefined;
   readonly destination: string;
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly messagingRegistry: MessagingProviderRegistry;
@@ -473,7 +476,8 @@ export interface MakePatternTickDeps {
 export function makePatternTick(deps: MakePatternTickDeps): () => Promise<void> {
   const { env: e, quietHours, destination, interruptionBudget, messagingRegistry, provider, followupModel, stdout } = deps;
   return async (): Promise<void> => {
-    if (quietHours && isQuietHour(new Date().getHours(), quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(quietHours);
+    if (activeQuietHours && isQuietHour(new Date().getHours(), activeQuietHours)) {
       stdout(`[${new Date().toISOString()}] pattern: held (quiet hours)\n`);
       return;
     }

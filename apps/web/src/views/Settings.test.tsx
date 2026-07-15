@@ -1,50 +1,59 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { QuietHoursStatus } from "./Settings.js";
+import { QuietHoursControl } from "./Settings.js";
+import { createApiClient } from "../api/client.js";
 import { DICTIONARIES } from "../i18n/strings.js";
 import { I18nProvider } from "../i18n/index.js";
 
-import type { Translate } from "../i18n/index.js";
-
-const enT = ((key: keyof typeof DICTIONARIES.en, vars?: Record<string, string | number>) => {
-  const template = DICTIONARIES.en[key];
-  return vars ? template.replace(/\{(\w+)\}/gu, (match, name: string) => (name in vars ? String(vars[name]) : match)) : template;
-}) as unknown as Translate;
-
-function render(quietHours: string | undefined): string {
+// Statically rendered — effects don't run under renderToStaticMarkup, so
+// useQuery sits in its initial (loading, data undefined) state. The control
+// falls back to its defaults in that state (enabled=false, range placeholder),
+// which is exactly what a first-load-before-fetch-resolves view shows, so
+// asserting against it is asserting real markup, not a mirror copy.
+function render(): string {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createApiClient("http://127.0.0.1:3030", "");
   return renderToStaticMarkup(
-    <I18nProvider>
-      <QuietHoursStatus quietHours={quietHours} t={enT} />
-    </I18nProvider>
+    <QueryClientProvider client={qc}>
+      <I18nProvider>
+        <QuietHoursControl client={client} />
+      </I18nProvider>
+    </QueryClientProvider>
   );
 }
 
-describe("QuietHoursStatus — read-only status line (no persisted settings-store seam exists)", () => {
-  it("shows the raw env window when set", () => {
-    const html = render("22-7");
-    expect(html).toContain("22-7");
-    expect(html).toContain("MUSE_REMINDER_QUIET_HOURS");
+describe("QuietHoursControl — the R3-4 live control (R2-4's read-only card upgraded)", () => {
+  it("renders an editable range input with a bound label", () => {
+    const html = render();
+    expect(html).toMatch(/<input\b[^>]*\bid="quiet-hours-range"/u);
+    expect(html).toMatch(/<label\b[^>]*\bhtmlFor="quiet-hours-range"|for="quiet-hours-range"/u);
   });
 
-  it("shows the not-set copy (still naming the env var) when unset", () => {
-    const html = render(undefined);
+  it("renders an enable/disable toggle AND a save button — this is now a control, not a status line", () => {
+    const html = render();
+    const buttonCount = (html.match(/<button/gu) ?? []).length;
+    expect(buttonCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows the not-set copy before the fetch resolves", () => {
+    const html = render();
     expect(html).toContain(DICTIONARIES.en["settings.quietHoursNotSet"]);
-    expect(html).toContain("MUSE_REMINDER_QUIET_HOURS");
   });
 
-  it("never renders an input/button — this is read-only, there is no editor to accidentally lie about", () => {
-    const html = render("22-7");
-    expect(html).not.toContain("<input");
-    expect(html).not.toContain("<button");
-  });
-
-  it("EN and KO copy differ and both name the same env var", () => {
-    for (const key of ["settings.quietHours", "settings.sec.quietHours", "settings.quietHoursNotSet"] as const) {
+  it("EN and KO copy differ for every quiet-hours string key", () => {
+    for (const key of [
+      "settings.quietHours",
+      "settings.sec.quietHours",
+      "settings.quietHoursNotSet",
+      "settings.quietHoursRange",
+      "settings.quietHoursEnvWins",
+      "settings.quietHoursInvalid"
+    ] as const) {
       expect(DICTIONARIES.en[key]).toBeTruthy();
       expect(DICTIONARIES.ko[key]).toBeTruthy();
       expect(DICTIONARIES.en[key]).not.toBe(DICTIONARIES.ko[key]);
     }
-    expect(DICTIONARIES.ko["settings.quietHoursNotSet"]).toContain("MUSE_REMINDER_QUIET_HOURS");
   });
 });

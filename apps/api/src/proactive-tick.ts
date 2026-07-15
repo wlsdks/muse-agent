@@ -22,7 +22,7 @@ import { runDueProactiveNotices, type ProactiveActivitySource, type ProactiveAge
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface ProactiveTickOptions {
   readonly calendarRegistry?: CalendarProviderRegistry;
@@ -78,7 +78,7 @@ export interface ProactiveTickOptions {
    * `parseQuietHours(MUSE_PROACTIVE_QUIET_HOURS ?? MUSE_REMINDER_QUIET_HOURS)`
    * at the wiring layer.
    */
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   /**
    * Phase D broker. When provided alongside
    * `agentInitiatedNoticeUserId`, every delivered notice is also
@@ -123,7 +123,8 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
     if (firing) {
       return;
     }
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

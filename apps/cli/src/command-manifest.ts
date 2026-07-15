@@ -740,6 +740,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "quiet",
+    "description": "Show or set quiet hours (do-not-disturb window) for background daemons — reminders and the daily brief are never affected",
+    "argsTerm": "[range]",
+    "hasOptions": false,
+    "subcommands": []
+  },
+  {
     "name": "read",
     "description": "Read a local PDF or text file (.txt/.md/.log/.csv); optionally answer a question grounded in its text. Point at a DIRECTORY with --save-to-notes to bulk-ingest a whole folder of documents into your corpus.",
     "argsTerm": "<path>",

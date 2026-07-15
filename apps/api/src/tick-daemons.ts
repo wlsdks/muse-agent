@@ -26,6 +26,7 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
+import { readQuietHoursSettingSync, resolveDaemonSettingsFile } from "./daemon-settings-store.js";
 import {
   createFileBackedActivityTracker,
   createInMemoryActivityTracker,
@@ -38,7 +39,7 @@ import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import { isOnAcPower } from "./power-state.js";
 import { readTasks, readReminders, queryActionLog, resolveTasksDueLine, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, isOllamaLeaseHeldByOther, resolveOllamaLeaseFile, resolveLearnQueueFile, decayStalePlaybookRewards } from "@muse/stores";
-import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, MacOsActiveWindowSource, resolveDayShapeLine, parseAmbientNoticeRules, webWatchesFromConfig, type BriefingImminent } from "@muse/proactivity";
+import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, MacOsActiveWindowSource, resolveDayShapeLine, resolveEffectiveQuietHours, parseAmbientNoticeRules, webWatchesFromConfig, type BriefingImminent, type QuietHourRange } from "@muse/proactivity";
 import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, LocalDirNotesProvider, LocalFileTasksProvider, OpenMeteoWeatherProvider, homeWatchesFromConfig, parseHomeAlertChecks, resolveHomeAlertLine } from "@muse/domain-tools";
 import { startAmbientTick } from "./ambient-tick.js";
 import { startWebWatchTick } from "./web-watch-tick.js";
@@ -56,6 +57,38 @@ function stopOnClose(server: FastifyInstance, handle: { stop(): void }): void {
 
 function optionalNumber(raw: string | undefined): number | undefined {
   return raw ? Number(raw) : undefined;
+}
+
+/**
+ * Live quiet-hours resolver shared by every UNASKED-notice daemon starter
+ * below: per-loop env, then the shared base env, then the persisted setting
+ * (`@muse/stores`'s daemon-settings file, PATCHed from web Settings /
+ * `muse quiet`) — the SAME precedence + file the CLI daemon consumes via
+ * `@muse/proactivity`'s single `resolveEffectiveQuietHours`. Re-reads the
+ * persisted file on every call so a PATCH takes effect on the very next
+ * tick, no restart. `startReminderDaemonIfConfigured` deliberately does NOT
+ * call this — reminders (and the CLI's daily-brief) stay exempt from quiet
+ * hours, persisted or not.
+ */
+export function liveQuietHours(
+  env: NodeJS.ProcessEnv,
+  server: FastifyInstance,
+  perLoopVar: string | undefined,
+  baseVar: string | undefined
+): () => QuietHourRange | undefined {
+  const settingsFile = resolveDaemonSettingsFile(env);
+  let warned = false;
+  return () => resolveEffectiveQuietHours({
+    baseEnvRaw: baseVar,
+    onInvalidPersisted: (raw) => {
+      if (!warned) {
+        warned = true;
+        server.log.warn(`quiet-hours: ignoring invalid persisted range "${raw}"`);
+      }
+    },
+    perLoopEnvRaw: perLoopVar,
+    persisted: readQuietHoursSettingSync(settingsFile)
+  });
 }
 
 function resolveMessagingTarget(
@@ -131,8 +164,7 @@ export function startProactiveDaemonIfConfigured(
   const { providerId: proactiveProvider, destination: proactiveDestination, registry: proactiveRegistry } = target;
   const proactiveTickMsRaw = optionalNumber(env.MUSE_PROACTIVE_TICK_MS);
   const proactiveLeadRaw = optionalNumber(env.MUSE_PROACTIVE_LEAD_MINUTES);
-  const proactiveQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const proactiveQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const proactiveSidecarFile = resolveProactiveSidecarFile(env);
   const proactiveDailyCapRaw = env.MUSE_PROACTIVE_DAILY_CAP ? Number(env.MUSE_PROACTIVE_DAILY_CAP) : 0;
   const proactiveDailyCap = Number.isFinite(proactiveDailyCapRaw) && proactiveDailyCapRaw > 0
@@ -177,7 +209,7 @@ export function startProactiveDaemonIfConfigured(
     logger: (message) => server.log.info(message),
     messagingRegistry: proactiveRegistry,
     providerId: proactiveProvider,
-    ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
+    quietHours: proactiveQuietHours,
     ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
     sidecarFile: proactiveSidecarFile,
     trustLedgerFile: resolveProactiveTrustFile(env),
@@ -213,8 +245,7 @@ export function startDigestDaemonIfConfigured(
   }
   const tickMsRaw = env.MUSE_DIGEST_TICK_MS ? Number(env.MUSE_DIGEST_TICK_MS) : undefined;
   const digestHourRaw = env.MUSE_DIGEST_HOUR ? Number(env.MUSE_DIGEST_HOUR) : undefined;
-  const digestQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const digestQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const digestHandle = startDigestTick({
     destination: digestDestination,
     digestFile: resolveDigestQueueFile(env),
@@ -223,7 +254,7 @@ export function startDigestDaemonIfConfigured(
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
     providerId: digestProvider,
-    ...(digestQuietHours ? { quietHours: digestQuietHours } : {}),
+    quietHours: digestQuietHours,
     registry: options.messaging,
     sentFile: resolveDigestSentFile(env)
   });
@@ -244,8 +275,7 @@ export function startFollowupDaemonIfConfigured(
   const { providerId: followupProvider, destination: followupDestination, registry: followupRegistry } = target;
   const followupTickMsRaw = optionalNumber(env.MUSE_FOLLOWUP_TICK_MS);
   const followupMaxPerTickRaw = optionalNumber(env.MUSE_FOLLOWUP_MAX_PER_TICK);
-  const followupQuietHours = parseQuietHours(env.MUSE_FOLLOWUP_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const followupQuietHours = liveQuietHours(env, server, env.MUSE_FOLLOWUP_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const followupHandle = startFollowupTick({
     destination: followupDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -257,7 +287,7 @@ export function startFollowupDaemonIfConfigured(
     model: options.defaultModel,
     modelProvider: options.modelProvider,
     providerId: followupProvider,
-    ...(followupQuietHours ? { quietHours: followupQuietHours } : {}),
+    quietHours: followupQuietHours,
     registry: followupRegistry
   });
   stopOnClose(server, followupHandle);
@@ -300,8 +330,7 @@ export function startSituationalBriefingDaemonIfConfigured(
   const { providerId: briefingProvider, destination: briefingDestination, registry: briefingRegistry } = target;
   const tickMsRaw = optionalNumber(env.MUSE_BRIEFING_TICK_MS);
   const windowMsRaw = optionalNumber(env.MUSE_BRIEFING_WINDOW_MS);
-  const briefingQuietHours = parseQuietHours(env.MUSE_BRIEFING_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const briefingQuietHours = liveQuietHours(env, server, env.MUSE_BRIEFING_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const leadRaw = optionalNumber(env.MUSE_BRIEFING_LEAD_MINUTES);
   const tasksFile = options.tasksFile;
   const briefingCalendar = options.calendar;
@@ -403,7 +432,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     logger: (message) => server.log.info(message),
     objectivesFile: options.objectivesFile,
     providerId: briefingProvider,
-    ...(briefingQuietHours ? { quietHours: briefingQuietHours } : {}),
+    quietHours: briefingQuietHours,
     registry: briefingRegistry,
     sidecarFile: options.briefingSidecarFile,
     ...weatherOpt,
@@ -431,8 +460,7 @@ export function startObjectivesDaemonIfConfigured(
   const { providerId: objectivesProvider, destination: objectivesDestination, registry: objectivesRegistry } = target;
   const tickMsRaw = optionalNumber(env.MUSE_OBJECTIVES_TICK_MS);
   const maxPerTickRaw = optionalNumber(env.MUSE_OBJECTIVES_MAX_PER_TICK);
-  const objectivesQuietHours = parseQuietHours(env.MUSE_OBJECTIVES_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const objectivesQuietHours = liveQuietHours(env, server, env.MUSE_OBJECTIVES_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const objectivesActionLogFile = options.actionLogFile ?? resolveActionLogFile(env);
   const evaluate = createModelObjectiveEvaluator({
     evidenceDeps: {
@@ -465,7 +493,7 @@ export function startObjectivesDaemonIfConfigured(
     logger: (message) => server.log.info(message),
     ...(maxPerTickRaw !== undefined ? { maxPerTick: maxPerTickRaw } : {}),
     objectivesFile: options.objectivesFile,
-    ...(objectivesQuietHours ? { quietHours: objectivesQuietHours } : {})
+    quietHours: objectivesQuietHours
   });
   stopOnClose(server, objectivesHandle);
 }
@@ -485,8 +513,7 @@ export function startPatternDaemonIfConfigured(
   const cooldownMsRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS);
   const minConfidenceRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE);
   const maxPerTickRaw = optionalNumber(env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK);
-  const patternQuietHours = parseQuietHours(env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const patternQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const patternHandle = startPatternTick({
     destination: patternDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -500,7 +527,7 @@ export function startPatternDaemonIfConfigured(
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     patternsFiredFile: options.patternsFiredFile,
     providerId: patternProvider,
-    ...(patternQuietHours ? { quietHours: patternQuietHours } : {}),
+    quietHours: patternQuietHours,
     registry: patternRegistry
   });
   stopOnClose(server, patternHandle);
@@ -547,8 +574,7 @@ export function startConsolidateDaemonIfConfigured(
     || join(homedir(), ".muse", "skills", "authored");
   const idleMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_IDLE_MS);
   const tickMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_TICK_MS);
-  const consolidateQuietHours = parseQuietHours(env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS)
-    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const consolidateQuietHours = liveQuietHours(env, server, env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const consolidateModel = options.defaultModel;
   const consolidateProvider = options.modelProvider;
   // Deterministic curate cadence: auto-archive authored skills idle this many
@@ -590,7 +616,7 @@ export function startConsolidateDaemonIfConfigured(
     isForegroundBusy: () => isOllamaLeaseHeldByOther(resolveOllamaLeaseFile(env), process.pid, { nowMs: Date.now() }),
     ...(idleMsRaw !== undefined ? { idleThresholdMs: idleMsRaw } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-    ...(consolidateQuietHours ? { quietHours: consolidateQuietHours } : {})
+    quietHours: consolidateQuietHours
   });
   stopOnClose(server, consolidateHandle);
 }
@@ -629,7 +655,7 @@ export function startAmbientDaemonIfConfigured(
   }
   const { providerId, destination, registry } = target;
   const tickMsRaw = optionalNumber(env.MUSE_AMBIENT_TICK_MS);
-  const quietHours = parseQuietHours(env.MUSE_AMBIENT_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const quietHours = liveQuietHours(env, server, env.MUSE_AMBIENT_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
   const source = env.MUSE_AMBIENT_SOURCE?.trim() === "macos" && process.platform === "darwin"
@@ -647,7 +673,7 @@ export function startAmbientDaemonIfConfigured(
     ...(enrich ? { enrich } : {}),
     ...(knowledgeTrigger ? { knowledgeTrigger } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-    ...(quietHours ? { quietHours } : {})
+    quietHours
   });
   stopOnClose(server, handle);
 }
@@ -665,7 +691,7 @@ export function startWebWatchDaemonIfConfigured(
   }
   const { providerId, destination, registry } = target;
   const tickMsRaw = optionalNumber(env.MUSE_WEB_WATCH_TICK_MS);
-  const quietHours = parseQuietHours(env.MUSE_WEB_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const quietHours = liveQuietHours(env, server, env.MUSE_WEB_WATCH_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const handle = startWebWatchTick({
     destination,
     errorLogger: (message) => server.log.warn(message),
@@ -674,7 +700,7 @@ export function startWebWatchDaemonIfConfigured(
     registry,
     watches,
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-    ...(quietHours ? { quietHours } : {})
+    quietHours
   });
   stopOnClose(server, handle);
 }
@@ -703,7 +729,7 @@ export function startHomeWatchDaemonIfConfigured(
   }
   const { providerId, destination, registry } = target;
   const tickMsRaw = optionalNumber(env.MUSE_HOME_WATCH_TICK_MS);
-  const quietHours = parseQuietHours(env.MUSE_HOME_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const quietHours = liveQuietHours(env, server, env.MUSE_HOME_WATCH_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const handle = startWebWatchTick({
     destination,
     errorLogger: (message) => server.log.warn(message),
@@ -712,7 +738,7 @@ export function startHomeWatchDaemonIfConfigured(
     registry,
     watches,
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-    ...(quietHours ? { quietHours } : {})
+    quietHours
   });
   stopOnClose(server, handle);
 }
