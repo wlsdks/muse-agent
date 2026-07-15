@@ -62,6 +62,7 @@ import {
 } from "@muse/browser";
 import type { MuseTool } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { resolveBrowserMaxActions } from "./browser-action-budget-config.js";
 import type { ProgramIO } from "./program.js";
@@ -140,14 +141,12 @@ export function summarizeActuators(env: MuseEnvironment, io: ProgramIO): Actuato
  * env-gated posture of the email / smart-home actuators.
  */
 function macActuatorsEnabled(env: MuseEnvironment): boolean {
-  const value = env.MUSE_MACOS_ACTUATORS?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
+  return parseBooleanFromEnv(env.MUSE_MACOS_ACTUATORS, false);
 }
 
 /** The Windows-actuator opt-in — same dark-by-default posture as macOS. */
 function windowsActuatorsEnabled(env: MuseEnvironment): boolean {
-  const value = env.MUSE_WINDOWS_ACTUATORS?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
+  return parseBooleanFromEnv(env.MUSE_WINDOWS_ACTUATORS, false);
 }
 
 export function formatActuatorBanner(summary: ActuatorSummary): string {
