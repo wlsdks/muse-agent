@@ -15,4 +15,12 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     return computeContinuityEvaluation(await readAttunementState(gate.attunementFile));
   });
+
+  server.get<{ Params: { readonly runId: string } }>("/api/attunement/runs/:runId", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const delivery = (await readAttunementState(gate.attunementFile)).deliveries
+      .find((candidate) => candidate.runId === request.params.runId);
+    if (!delivery) return reply.code(404).send({ error: "continuity run not found" });
+    return delivery;
+  });
 }

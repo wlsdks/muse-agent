@@ -176,6 +176,7 @@ function isDelivery(value: unknown): value is ContinuityDelivery {
     || !isNonEmptyString(value.threadId)) {
     return false;
   }
+  if (value.runId !== undefined && !isNonEmptyString(value.runId)) return false;
   if (value.outcome === undefined) return true;
   return isRecord(value.outcome)
     && isOneOf(value.outcome.outcome, OUTCOMES)
@@ -529,6 +530,7 @@ export async function openContinuityDelivery(
       id: newId("delivery", options),
       openedAt: nowIso(options),
       policyVersion: thread.policy.version,
+      runId: newId("continuity-run", options),
       threadId: thread.id
     };
     return { changed: true, result: delivery, state: { ...state, deliveries: [...state.deliveries, delivery] } };

@@ -473,7 +473,7 @@ function formatEvidence(pack: ContinuityPack): string[] {
   });
 }
 
-export function formatPack(pack: ContinuityPack, deliveryId: string): string {
+export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string): string {
   const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack)];
   if (pack.previousOutcome) lines.push(`Previous pack: ${pack.previousOutcome}`);
   if (pack.policy.nextStep === "hidden") {
@@ -496,6 +496,7 @@ export function formatPack(pack: ContinuityPack, deliveryId: string): string {
     );
   }
   lines.push(`Delivery: ${deliveryId}`);
+  if (runId) lines.push(`Run: ${runId}`);
   lines.push(`Record feedback: muse thread outcome ${deliveryId} <used|adjusted|ignored|rejected>`);
   return `${lines.join("\n")}\n`;
 }
@@ -533,7 +534,7 @@ async function runContinue(io: ProgramIO, threadId: string | undefined, resolveE
     expectedPolicyVersion: pack.deliveryPolicyVersion,
     threadId: chosenId
   });
-  io.stdout(formatPack(pack, delivery.id));
+  io.stdout(formatPack(pack, delivery.id, delivery.runId));
 }
 
 async function commandAction(command: Command, io: ProgramIO, label: string, action: () => Promise<void>): Promise<void> {
