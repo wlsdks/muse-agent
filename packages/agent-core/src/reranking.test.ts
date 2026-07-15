@@ -43,6 +43,23 @@ describe("rerankTopK — rerank the head, leave the tail, fail-open on a provide
     expect((await rerankTopK(matches, "q", throwing)).map((x) => x.source)).toEqual(["a", "b"]);
   });
 
+  it("preserves existing fields while it reorders matches", async () => {
+    const matches = [
+      { ...m("a", 0.6), rerankScore: 0.6 },
+      { ...m("b", 0.5), rerankScore: 0.5 }
+    ];
+    const out = await rerankTopK(matches, "q", reranker([0.1, 0.9]), 2);
+    expect(out).toEqual([matches[1], matches[0]]);
+  });
+
+  it("does not call the reranker for an infinite top-K", async () => {
+    let called = false;
+    const spy: RerankProvider = { id: "spy", rerank: async () => { called = true; return [1, 0]; } };
+    const matches = [m("a", 0.6), m("b", 0.5)];
+    expect(await rerankTopK(matches, "q", spy, Number.POSITIVE_INFINITY)).toBe(matches);
+    expect(called).toBe(false);
+  });
+
   it("≤1 match → no rerank call (nothing to reorder)", async () => {
     let called = false;
     const spy: RerankProvider = { id: "spy", rerank: async () => { called = true; return [1]; } };

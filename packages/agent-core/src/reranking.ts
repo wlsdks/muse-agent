@@ -31,12 +31,11 @@ export function applyReranking<T extends { readonly score: number }>(
   matches: readonly T[],
   scores: readonly number[]
 ): readonly (T & { readonly rerankScore: number })[] {
-  if (scores.length !== matches.length) {
-    return matches.map((m) => ({ ...m, rerankScore: m.score }));
-  }
-  return matches
-    .map((m, i) => ({ ...m, rerankScore: Number.isFinite(scores[i]) ? (scores[i] as number) : m.score }))
-    .sort((a, b) => b.rerankScore - a.rerankScore);
+  return rankedIndexes(matches, scores).map((index) => {
+    const match = matches[index]!;
+    const score = scores[index];
+    return { ...match, rerankScore: typeof score === "number" && Number.isFinite(score) ? score : match.score };
+  });
 }
 
 /**
@@ -50,7 +49,7 @@ export async function rerankTopK<T extends { readonly score: number; readonly te
   reranker: RerankProvider,
   topK = 10
 ): Promise<readonly T[]> {
-  const head = matches.slice(0, Math.max(0, Math.trunc(topK)));
+  const head = matches.slice(0, normalizeTopK(topK));
   if (head.length <= 1) return matches;
   let scores: readonly number[];
   try {
@@ -58,6 +57,20 @@ export async function rerankTopK<T extends { readonly score: number; readonly te
   } catch {
     return matches;
   }
-  const reordered = applyReranking(head, scores).map(({ rerankScore: _drop, ...rest }) => rest as unknown as T);
-  return [...reordered, ...matches.slice(head.length)];
+  return [...rankedIndexes(head, scores).map((index) => head[index]!), ...matches.slice(head.length)];
+}
+
+function rankedIndexes<T extends { readonly score: number }>(matches: readonly T[], scores: readonly number[]): readonly number[] {
+  if (scores.length !== matches.length) {
+    return matches.map((_, index) => index);
+  }
+
+  return matches
+    .map((match, index) => ({ index, score: Number.isFinite(scores[index]) ? scores[index]! : match.score }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ index }) => index);
+}
+
+function normalizeTopK(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
