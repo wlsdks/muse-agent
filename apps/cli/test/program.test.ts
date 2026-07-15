@@ -6818,16 +6818,17 @@ describe("cli program", () => {
 
   it("isNotesIndexValid gates the on-disk schema version", async () => {
     const { isNotesIndexValid, NOTES_INDEX_SCHEMA_VERSION, isNotesIndexStale } = await import("../src/commands-notes-rag.js");
-    expect(NOTES_INDEX_SCHEMA_VERSION).toBe(1);
+    expect(NOTES_INDEX_SCHEMA_VERSION).toBe(2);
 
     // Valid shape.
     expect(isNotesIndexValid({ version: NOTES_INDEX_SCHEMA_VERSION })).toBe(true);
-    // Missing / wrong version → invalid.
+    // Missing / wrong version → invalid (incl. the pre-v2 on-disk format).
     expect(isNotesIndexValid(undefined)).toBe(false);
     expect(isNotesIndexValid({})).toBe(false);
     expect(isNotesIndexValid({ version: 0 })).toBe(false);
-    expect(isNotesIndexValid({ version: 2 })).toBe(false);
-    expect(isNotesIndexValid({ version: "1" })).toBe(false);
+    expect(isNotesIndexValid({ version: 1 })).toBe(false);
+    expect(isNotesIndexValid({ version: 3 })).toBe(false);
+    expect(isNotesIndexValid({ version: "2" })).toBe(false);
 
     // End-to-end: a v0 index on disk causes `isNotesIndexStale` to
     // return true so the next reindex rebuilds the file from scratch
