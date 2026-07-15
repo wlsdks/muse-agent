@@ -76,20 +76,21 @@ export function buildRuntimeSettingUpsertQuery(
   options: Required<KyselyRuntimeSettingsStoreOptions>
 ) {
   const row = createRuntimeSettingInsert(input, options);
+  // Match the in-memory store's patch semantics: an omitted optional field
+  // preserves its persisted value, while explicit null still clears it.
+  const updates = {
+    ...(input.category === undefined ? {} : { category: row.category }),
+    ...(input.description === undefined ? {} : { description: row.description }),
+    ...(input.type === undefined ? {} : { type: row.type }),
+    updated_at: row.updated_at,
+    ...(input.updatedBy === undefined ? {} : { updated_by: row.updated_by }),
+    value: row.value
+  };
 
   return db
     .insertInto("runtime_settings")
     .values(row)
-    .onConflict((oc) =>
-      oc.column("key").doUpdateSet({
-        category: row.category,
-        description: row.description,
-        type: row.type,
-        updated_at: row.updated_at,
-        updated_by: row.updated_by,
-        value: row.value
-      })
-    )
+    .onConflict((oc) => oc.column("key").doUpdateSet(updates))
     .returningAll();
 }
 

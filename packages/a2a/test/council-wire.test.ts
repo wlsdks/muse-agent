@@ -4,6 +4,7 @@ import {
   buildCouncilRequest,
   COUNCIL_METHOD,
   DEFAULT_COUNCIL_TIMEOUT_MS,
+  MAX_COUNCIL_QUESTION_CHARS,
   MAX_COUNCIL_REASONING_CHARS,
   parseCouncilRequest,
   parseCouncilResponse,
@@ -55,15 +56,17 @@ describe("parseCouncilRequest — extract a council request from a body", () => 
     expect(parseCouncilRequest({ method: COUNCIL_METHOD, params: { fromPeerId: 1, question: "q" } })).toBeNull();
     expect(parseCouncilRequest({ method: COUNCIL_METHOD, params: { fromPeerId: "a", question: 2 } })).toBeNull();
     expect(parseCouncilRequest({ method: COUNCIL_METHOD, params: { fromPeerId: "a", question: "   " } })).toBeNull();
+    expect(parseCouncilRequest({ method: COUNCIL_METHOD, params: { fromPeerId: "a", question: "x".repeat(MAX_COUNCIL_QUESTION_CHARS + 1) } })).toBeNull();
   });
 });
 
 describe("requestCouncilReasoning — the council initiator (outbound)", () => {
-  it("returns null WITHOUT a request when A2A is disabled or the question is blank", async () => {
+  it("returns null WITHOUT a request when A2A is disabled, blank, or over-long", async () => {
     const off = recordingFetch(() => json({}));
     expect(await requestCouncilReasoning({ env: {}, fetchImpl: off.fetchImpl, fromPeerId: "me", peer, question: "q" })).toBeNull();
     const blank = recordingFetch(() => json({}));
     expect(await requestCouncilReasoning({ env: ENV, fetchImpl: blank.fetchImpl, fromPeerId: "me", peer, question: "  " })).toBeNull();
+    expect(await requestCouncilReasoning({ env: ENV, fetchImpl: blank.fetchImpl, fromPeerId: "me", peer, question: "x".repeat(MAX_COUNCIL_QUESTION_CHARS + 1) })).toBeNull();
     expect(off.calls).toHaveLength(0);
     expect(blank.calls).toHaveLength(0);
   });

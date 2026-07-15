@@ -187,6 +187,28 @@ describe("KyselyRuntimeSettingsStore", () => {
     ]);
   });
 
+  it("preserves omitted metadata in a Kysely conflict update, matching the in-memory patch contract", () => {
+    const db = createPostgresBuilder();
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const compiled = buildRuntimeSettingUpsertQuery(
+      db,
+      { key: "guard.rateLimit", value: "30" },
+      { now: () => now }
+    ).compile();
+
+    expect(compiled.parameters).toEqual([
+      "general",
+      null,
+      "guard.rateLimit",
+      "string",
+      now,
+      null,
+      "30",
+      now,
+      "30"
+    ]);
+  });
+
   it("maps runtime setting rows and insert payloads without private material", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const insert = createRuntimeSettingInsert(
