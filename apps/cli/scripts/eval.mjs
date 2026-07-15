@@ -12,10 +12,11 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { parseBooleanFromEnv } from "@muse/shared";
 import { runNodeCommand } from "./run-node-command.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fast = process.env.MUSE_EVAL_FAST === "1";
+const fast = parseBooleanFromEnv(process.env.MUSE_EVAL_FAST, false);
 
 // name, script, args, tier. Reuses the existing single-purpose verifiers.
 const CHECKS = [

@@ -31,6 +31,7 @@ import { classifyActionRequest } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveAnswerTemperature, resolveNoteProvenanceFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import { releaseOllamaLease } from "@muse/stores";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
@@ -578,7 +579,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                     ],
                     // Observational confidence instrumentation (frontier F1): opt-in,
                     // never alters decoding; summarized onto the run-log trace below.
-                    ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
+                    ...(parseBooleanFromEnv(process.env.MUSE_LOGPROBS, false) ? { logprobs: true } : {}),
                     ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
                     model: args.model,
                     // Ctrl-C aborts the in-flight HTTP call itself (Ollama stops

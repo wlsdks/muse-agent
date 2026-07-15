@@ -15,7 +15,7 @@
  * expects — only the capabilities get rewritten to `localModelCapabilities`.
  */
 
-import { isRecord, truncateErrorBody, withBestEffort, type JsonObject } from "@muse/shared";
+import { isRecord, parseBooleanFromEnv, truncateErrorBody, withBestEffort, type JsonObject } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
@@ -396,7 +396,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     // Opt-in latency trace (MUSE_MODEL_TRACE=1): one line per chat call with a
     // sequence id + start/end + duration, so a turn's call pattern (how many,
     // sequential vs overlapping) is visible without a profiler.
-    const trace = process.env.MUSE_MODEL_TRACE === "1";
+    const trace = parseBooleanFromEnv(process.env.MUSE_MODEL_TRACE, false);
     let id = 0;
     let t0 = 0;
     if (trace) {

@@ -9,11 +9,12 @@
  * (for the set-level sufficiency advisory).
  */
 
+import { existsSync } from "node:fs";
 import { classifyRetrievalConfidence, resolveRecallConfidentAt, splitCompoundQuery } from "@muse/agent-core";
+import { parseBooleanFromEnv } from "@muse/shared";
 import { diversifyAskChunks, secondHopAugmentChunks, shouldSecondHop, type FileEntry, type IndexChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
 import { filterNotesByScope, relativizeNoteSource } from "./present.js";
-import { existsSync } from "node:fs";
 
 import { filterLiveNoteIndexFiles } from "./live-files.js";
 import { cosine } from "./notes-index.js";
@@ -119,7 +120,7 @@ export async function retrieveAndRankNotes(params: {
     // SAME in-memory chunks by cosine to the seed's embedding and APPEND the best
     // non-present chunk(s). CONFIDENCE-GATED (skipped when single-hop is confident);
     // MUSE_RECALL_SECOND_HOP=false overrides; the citation gate is the hard backstop.
-    const secondHopEnabled = process.env.MUSE_RECALL_SECOND_HOP !== "false";
+    const secondHopEnabled = parseBooleanFromEnv(process.env.MUSE_RECALL_SECOND_HOP, true);
     if (secondHopEnabled && shouldSecondHop(singleHopVerdict) && queryVec && scored.length > 0) {
       try {
         const additions = secondHopAugmentChunks(queryVec, cosine, allScored, scored.slice(0, 2), scored, 2);

@@ -20,6 +20,7 @@
 import { createMuseRuntimeAssembly, createOllamaEmbedder } from "@muse/autoconfigure";
 import { DEFAULT_EMBED_MODEL } from "../dist/embed-model-default.js";
 import { GROUNDING_EVAL_CORPUS, faithfulnessTripwireSubset } from "../dist/grounding-eval-corpus.js";
+import { parseBooleanFromEnv } from "@muse/shared";
 import {
   createQwenReverify,
   GROUNDING_THRESHOLDS,
@@ -66,7 +67,7 @@ const reverify = createQwenReverify(modelProvider, model);
 // Pre-push TRIPWIRE (precheck:grounding sets MUSE_FAITHFULNESS_TRIPWIRE): run the
 // fabrication-critical subset — ALL drift + refuse (faithfulness/abstain metrics
 // unchanged), answerable sampled (fewer slow reverify calls). Full corpus elsewhere.
-const tripwire = process.env.MUSE_FAITHFULNESS_TRIPWIRE === "1";
+const tripwire = parseBooleanFromEnv(process.env.MUSE_FAITHFULNESS_TRIPWIRE, false);
 const corpus = tripwire ? faithfulnessTripwireSubset(GROUNDING_EVAL_CORPUS) : GROUNDING_EVAL_CORPUS;
 const result = await runGroundingEval(corpus, { embed, reverify });
 const report = renderGroundingEvalReport(result, GROUNDING_THRESHOLDS);

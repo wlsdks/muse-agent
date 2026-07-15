@@ -9,6 +9,7 @@
 
 import type { Command } from "commander";
 
+import { parseBooleanFromEnv } from "@muse/shared";
 import type { ConfigCommandHelpers } from "./commands-config.js";
 import type { ProgramIO } from "./program.js";
 
@@ -55,7 +56,7 @@ export function planCloudSetup(providerId: string, env: NodeJS.ProcessEnv, model
   const defaultModel = modelOverride?.trim() ? `${provider.id}/${modelOverride.trim()}` : provider.defaultModel;
   const keyPresent = provider.keyEnvVars.some((k) => (env[k] ?? "").trim().length > 0);
   // Cloud egress is permitted unless local-only is explicitly forced on.
-  const localOnlyForced = (env.MUSE_LOCAL_ONLY ?? "").trim().toLowerCase() === "true";
+  const localOnlyForced = parseBooleanFromEnv(env.MUSE_LOCAL_ONLY, false);
   const localOnlyDisabled = !localOnlyForced;
   const requiredExports: string[] = [];
   if (localOnlyForced) requiredExports.push("unset MUSE_LOCAL_ONLY");

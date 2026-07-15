@@ -23,7 +23,7 @@
  * network transport is a separate package that routes through these gates.
  */
 
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { isRecord, parseBooleanFromEnv, redactSecretsInText } from "@muse/shared";
 
 /** The ONLY payload kinds allowed to cross the swarm — procedural know-how, never data. */
 export type A2APayloadKind = "skill" | "strategy" | "council-utterance";
@@ -77,8 +77,7 @@ export class A2ASafetyError extends Error {
 
 /** Fail-closed opt-in gate — the swarm is OFF unless explicitly enabled. */
 export function isA2AEnabled(env: { readonly MUSE_A2A_ENABLED?: string | undefined }): boolean {
-  const raw = env.MUSE_A2A_ENABLED?.trim().toLowerCase();
-  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+  return parseBooleanFromEnv(env.MUSE_A2A_ENABLED, false);
 }
 
 /**

@@ -10,6 +10,7 @@
 
 import { composeSurfacePrompt } from "@muse/prompts";
 import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
 import { formatCurrentContextLine } from "@muse/recall";
@@ -94,7 +95,7 @@ export function buildAskSystemPrompt(params: {
         // The reasoning-principles block is on by default; MUSE_ASK_REASONING_PRINCIPLES=0
         // disables it — the flag is the A/B seam for measuring whether the principles
         // actually improve answers.
-        ...(process.env.MUSE_ASK_REASONING_PRINCIPLES === "0" ? [] : REASONING_PRINCIPLE_LINES),
+        ...(parseBooleanFromEnv(process.env.MUSE_ASK_REASONING_PRINCIPLES, true) ? REASONING_PRINCIPLE_LINES : []),
         "",
         // Volatile lines live BELOW the stable instruction block so the long
         // static prefix stays byte-identical across turns — Ollama reuses the

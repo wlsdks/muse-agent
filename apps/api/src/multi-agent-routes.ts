@@ -20,7 +20,7 @@ import {
   type TierModels
 } from "@muse/multi-agent";
 import type { ModelMessage, ModelProvider } from "@muse/model";
-import type { JsonObject } from "@muse/shared";
+import { parseBooleanFromEnv, type JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 import { createAnswerVerifier, createWorkerSummarizer, createWorkerSynthesizer } from "./multi-agent-workers.js";
 import { isRecord, readQueryString, readRouteParam, toBody, toJsonObject } from "./compat-parsers.js";
@@ -703,7 +703,7 @@ export async function buildTieredOrchestration(
   // the fast model first and escalates to heavy only when its answer is
   // low-confidence — accuracy-positive (a weak fast answer is never kept) and
   // off by default, so the plan is unchanged unless MUSE_TIERED_CASCADE is set.
-  const cascade = process.env.MUSE_TIERED_CASCADE === "1" || process.env.MUSE_TIERED_CASCADE?.toLowerCase() === "true";
+  const cascade = parseBooleanFromEnv(process.env.MUSE_TIERED_CASCADE, false);
   return {
     collapsedToHeavy: plan.collapsedToHeavy,
     workers: specs.map((spec) =>

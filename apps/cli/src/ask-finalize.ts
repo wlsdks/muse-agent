@@ -13,6 +13,7 @@
 import { answerPromisesAction, assertiveUnsupportedFraction, decideRecallClarification, implicitSuccessReinforceDelta, isUnbackedActionClaim, lexicalOverlap, lexicalTokens, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, summarizeTokenConfidence, worstUnsupportedSentence } from "@muse/agent-core";
 import { answerIsRefusal, askOutcomeLabel, askWeaknessAxis, buildAskConnections, contestedOutcome, createStageTimer, formatGraphLinksSection, groundingConflictCue, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved, relativizeNoteSource, shouldWarmClose, sufficiencyAdvisory, type AskWeaknessAxis } from "@muse/recall";
 import { resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { isQuiet } from "./cli-context.js";
 import { crossLingualUnsupportedFraction } from "./ask-cross-lingual.js";
@@ -181,7 +182,7 @@ export async function finalizeAndRenderAsk(params: {
       // `grounded`/`success` to the top level, so error-analysis can grep real
       // labels off cli.local runs instead of an unlabeled corpus.
       askStages.mark("verdictMs");
-      if (process.env.MUSE_TIMINGS === "1" && !options.json) {
+      if (parseBooleanFromEnv(process.env.MUSE_TIMINGS, false) && !options.json) {
         const t = askStages.timings();
         io.stderr(`(timings: ${Object.entries(t).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(" · ")})\n`);
       }

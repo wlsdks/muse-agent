@@ -301,7 +301,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // the chat can surface it (the user sees it + can /forget). Opt out with
   // MUSE_USER_MEMORY_AUTO_EXTRACT=false.
   const autoMemoryEnabled = memoryStore !== undefined
-    && process.env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase() !== "false"
+    && parseBoolean(process.env.MUSE_USER_MEMORY_AUTO_EXTRACT, true)
     && "generate" in provider;
   const lastExtract = { current: undefined as number | undefined };
   const autoLearn = async (user: string, assistant: string): Promise<string | undefined> => {

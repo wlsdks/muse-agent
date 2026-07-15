@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { demoteStaleHits } from "@muse/recall";
-import { isRecord } from "@muse/shared";
+import { isRecord, parseBooleanFromEnv } from "@muse/shared";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -150,7 +150,7 @@ function hitsToMatches(hits: readonly RecallHit[]): KnowledgeMatch[] {
  * this is what lets it answer from a note the user just added.
  */
 export function chatAutoReindexEnabled(env: Record<string, string | undefined>): boolean {
-  return env.MUSE_CHAT_AUTO_REINDEX !== "0";
+  return parseBooleanFromEnv(env.MUSE_CHAT_AUTO_REINDEX, true);
 }
 
 /**
@@ -278,7 +278,7 @@ export async function retrieveChatGrounding(
   const trimmed = message.trim();
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
   const env = opts.env ?? (process.env);
-  if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
+  if (!parseBooleanFromEnv(env.MUSE_CHAT_GROUNDING, true)) return { block: "", matches: [] };
   const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`
   // already extends. The desktop companion only ever calls `chat`, so without

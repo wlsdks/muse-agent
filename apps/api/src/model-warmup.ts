@@ -1,4 +1,4 @@
-import { withBestEffort } from "@muse/shared";
+import { parseBooleanFromEnv, withBestEffort } from "@muse/shared";
 
 import type { ModelProvider } from "@muse/model";
 
@@ -25,7 +25,7 @@ export function warmUpModelIfConfigured(
   env: Record<string, string | undefined>,
   options: ModelWarmupOptions
 ): void {
-  const enabled = env.MUSE_WARMUP_MODEL === "1" || env.MUSE_WARMUP_MODEL?.toLowerCase() === "true";
+  const enabled = parseBooleanFromEnv(env.MUSE_WARMUP_MODEL, false);
   if (!enabled || !options.modelProvider || !options.defaultModel) {
     return;
   }

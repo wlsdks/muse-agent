@@ -1,5 +1,6 @@
 import { enforceAnswerCitations, independentWitnessCount, quorumVerdict, withUngroundableFallback, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches, corroborationReceiptLine, stripEchoedCiteAs, stripGroundingFences, type MemoryFact } from "@muse/recall";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { conversationMatches, resolveGroundingMinScore, shortCitationRef } from "./chat-grounding-evidence.js";
 import {
@@ -226,7 +227,7 @@ export function withGroundingReceipt(
   // corroborated. Opt-in (`MUSE_QUORUM_HEDGE=1`) and default-off, because most
   // personal facts legitimately live in one note — hedging every one would be
   // noise; this never refuses, it only labels confidence.
-  if (env.MUSE_QUORUM_HEDGE === "1" && quorumVerdict(independentWitnessCount(sources)) === "single") {
+  if (parseBooleanFromEnv(env.MUSE_QUORUM_HEDGE, false) && quorumVerdict(independentWitnessCount(sources)) === "single") {
     receipt += korean
       ? "\n(노트 한 곳에만 근거한 답이에요 — 최신인지 확인해 주세요.)"
       : "\n(Based on a single note — double-check it's current.)";
