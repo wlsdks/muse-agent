@@ -7,7 +7,7 @@
  */
 
 import type { MuseTool } from "@muse/tools";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { cosineSimilarity } from "./episodic-recall.js";
 import { type KnowledgeChunk, rankKnowledgeChunks } from "./knowledge-ranking.js";
@@ -35,7 +35,10 @@ export function createCachingEmbedder(
       return hit;
     }
     const pending = (async () => embed(text))();
-    pending.catch(() => cache.delete(text));
+    pending.catch((error: unknown) => {
+      cache.delete(text);
+      throw error;
+    });
     cache.set(text, pending);
     if (cache.size > maxEntries) {
       const oldest = cache.keys().next().value;
@@ -125,7 +128,7 @@ export async function detectRedundantPairs(
 
   let embeddings: Array<readonly number[] | null>;
   try {
-    embeddings = await Promise.all(texts.map((t) => embed(t).catch(() => null)));
+    embeddings = await Promise.all(texts.map((t) => withBestEffort(embed(t), null)));
   } catch {
     return [];
   }

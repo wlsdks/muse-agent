@@ -14,10 +14,13 @@ import type { Command } from "commander";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+
+
 import { readLastChatHistory } from "./chat-history.js";
 import { closestCommandName } from "./closest-command.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 const CHECKIN_STATUS_VALUES = ["scheduled", "fired", "all"] as const;
 
@@ -45,7 +48,7 @@ export async function scanSessionCheckins(
   } = {}
 ): Promise<readonly PersistedCheckin[]> {
   const readHistory = options.readHistory ?? readLastChatHistory;
-  const history = await readHistory().catch(() => []);
+  const history = await withBestEffort(readHistory(), []);
   const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
   // π-Bench (arXiv:2605.14678): drop a commitment the user already discharged
   // later in the conversation, so we don't schedule a check-in nagging about a
@@ -53,7 +56,7 @@ export async function scanSessionCheckins(
   const embed = options.embed ?? createGateEmbedder(process.env);
   const commitments = (await selectOpenCommitments(userTurns, embed)).map((c) => c.text);
   const file = options.file ?? checkinsFile();
-  let existing = await readCheckins(file).catch(() => []);
+  let existing = await withBestEffort(readCheckins(file), []);
   // Cross-session auto-discharge (π-Bench arXiv:2605.14678): if the user reports
   // doing a thing this session, cancel the STANDING scheduled check-in for it — the
   // in-session filter above only sees discharges within one conversation, but a
@@ -143,7 +146,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
         process.exitCode = 1;
         return;
       }
-      const all = await readCheckins(checkinsFile()).catch(() => []);
+      const all = await withBestEffort(readCheckins(checkinsFile()), []);
       // Soonest-due first (sibling parity with `followup list`) — insertion
       // order is meaningless to a user scanning what's coming up. ISO strings
       // sort chronologically.
@@ -173,7 +176,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
     .option("--json", "Print the raw payload")
     .action(async (id: string, options: { readonly json?: boolean }) => {
       const file = checkinsFile();
-      const all = await readCheckins(file).catch(() => []);
+      const all = await withBestEffort(readCheckins(file), []);
       const result = cancelCheckin(all, id);
       if (result.cancelled) {
         await writeCheckins(file, result.checkins);
@@ -207,7 +210,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
         return;
       }
       const file = checkinsFile();
-      const all = await readCheckins(file).catch(() => []);
+      const all = await withBestEffort(readCheckins(file), []);
       const result = snoozeCheckin(all, id, parsed);
       if (result.snoozed) {
         await writeCheckins(file, result.checkins);

@@ -12,7 +12,7 @@
  */
 
 import { canonicalizeLocalOnlyModelBaseUrl, isLocalOnlyEnabled, LocalOnlyViolationError } from "@muse/model";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 export { cosineSimilarity } from "@muse/agent-core";
 
@@ -81,7 +81,7 @@ export async function embed(text: string, model: string, options: EmbedOptions =
     throw cause;
   }
   if (!resp.ok) {
-    throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
+    throw new Error(`embeddings ${resp.status.toString()}: ${await withBestEffort(resp.text(), "")}`);
   }
   const body = await resp.json();
   // An empty or non-finite vector (wrong model, empty prompt on

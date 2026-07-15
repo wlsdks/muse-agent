@@ -12,6 +12,14 @@ export function sleep(milliseconds: number): Promise<void> {
   return promise;
 }
 
+export async function withBestEffort<T, F>(promise: Promise<T>, fallback: F): Promise<T | F> {
+  try {
+    return await promise;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function waitForShutdownSignal(signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"]): Promise<NodeJS.Signals> {
   const signal = await Promise.race(
     signals.map(async (signalName) => {

@@ -57,6 +57,7 @@ import {
 import { isNodeErrorCode, NODE_ERROR_CODES, redactSecretsInText, resolveHomeDir } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
+import { withBestEffort } from "./async-promises.js";
 
 const HISTORY_TURN_LIMIT = 12;
 // Turn counts above this many turns in the active conversation trigger an
@@ -158,7 +159,7 @@ async function migrateLegacyLastChatIfPresent(): Promise<string | undefined> {
   }
   const id = newConversationId();
   await conversationStore().appendTurns(id, legacyTurns, { origin: "cli", title: "imported from last-chat" });
-  await rename(lastChatHistoryPath(), `${lastChatHistoryPath()}.migrated`).catch(() => undefined);
+  await withBestEffort(rename(lastChatHistoryPath(), `${lastChatHistoryPath()}.migrated`), undefined);
   return id;
 }
 

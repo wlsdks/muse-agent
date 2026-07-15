@@ -31,6 +31,8 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { isRecord } from "@muse/shared";
 
+import { withBestEffort } from "./async-promises.js";
+
 interface PreviousSecretEntry {
   readonly secret: string;
   readonly rotatedAt: string;
@@ -145,5 +147,5 @@ export async function writeJwtRotationState(file: string, state: JwtRotationStat
   await fs.mkdir(dirname(file), { recursive: true });
   await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }

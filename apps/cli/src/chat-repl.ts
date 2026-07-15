@@ -20,6 +20,8 @@
 
 import type { Readable } from "node:stream";
 
+
+
 import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -42,6 +44,7 @@ import { closestCommandName } from "./closest-command.js";
 import { isTaskCompletionReport, matchCompletedTask } from "./task-completion.js";
 import { resolveChatFastPath } from "./chat-fast-path.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 // The deterministic fast-path renderers moved to a sibling module; re-export the
 // public ones so chat-repl's surface (and its tests) stay stable.
@@ -195,12 +198,15 @@ export function createTuiChatSubmitter(
     } catch (error) {
       // A FAILED chat run must still leave a `success:false` trace — error-analysis
       // fuel that previously vanished (the run-log was happy-path only).
-      await writeRunLog(io.workspaceDir ?? process.cwd(), {
-        message,
-        ...(options.model !== undefined ? { model: options.model } : {}),
-        response: { error: error instanceof Error ? error.message : String(error), success: false },
-        source
-      }).catch(() => undefined); // best-effort: a logging failure must not mask the original error
+      await withBestEffort(
+        writeRunLog(io.workspaceDir ?? process.cwd(), {
+          message,
+          ...(options.model !== undefined ? { model: options.model } : {}),
+          response: { error: error instanceof Error ? error.message : String(error), success: false },
+          source
+        }),
+        undefined
+      ); // best-effort: a logging failure must not mask the original error
       throw error;
     }
     const apiOptions = await readApiOptions(io, command, { includeStoredToken: false });
@@ -240,7 +246,7 @@ export async function recordChatTurnTrace(
   // Same two-detector refusal check the single-turn path uses (isChatAbstention
   // catches the gate's own phrasing; REFUSAL_RE catches the model's).
   const refusal = isChatAbstention(args.answer) || looksLikeRefusal(args.answer);
-  await write(args.workspaceDir ?? process.cwd(), {
+  await withBestEffort(write(args.workspaceDir ?? process.cwd(), {
     message: args.question,
     ...(args.model !== undefined ? { model: args.model } : {}),
     response: {
@@ -249,7 +255,7 @@ export async function recordChatTurnTrace(
       success: true
     },
     source: args.source
-  }).catch(() => undefined);
+  }), undefined);
 }
 
 export async function runLocalChat(
@@ -336,7 +342,7 @@ export async function runLocalChat(
   const userId = resolveDefaultUserKey({});
   const userMemoryStore = assembly.userMemoryStore;
   const userMemory = userMemoryStore
-    ? await Promise.resolve(userMemoryStore.findByUserId(userId)).catch(() => undefined)
+    ? await withBestEffort(userMemoryStore.findByUserId(userId), undefined)
     : undefined;
   // qwen3:8b free-associates remembered ENTITY facts into unrelated turns —
   // it volunteered the user's dog in a hydration answer and a "good morning"
@@ -379,7 +385,7 @@ export async function runLocalChat(
   // (also empty) must be allowed to run rather than skipped (no hole).
   if (userMemoryBlock.length > 0) metadata.personaPreinjected = true;
   const hasMetadata = Object.keys(metadata).length > 0;
-  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  const personaPreamble = (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained
   // retrieval query (one constrained inference, fail-open to the raw turn).
   // ONLY the retrieval query is rewritten — the model still answers the
@@ -550,7 +556,7 @@ export async function runLocalChat(
   let finalResponse = response;
   let finalResponseForHistory = responseForHistory;
   if (isTaskCompletionReport(message) && !toolsUsed.some((tool) => tool.includes("tasks.complete"))) {
-    const done = await autoCompleteReportedTask(message).catch(() => null);
+    const done = await withBestEffort(autoCompleteReportedTask(message), null);
     if (done) {
       toolsUsed = [...toolsUsed, "muse.tasks.complete"];
       // Real conversational content (a completion confirmation) — append to BOTH tracks.

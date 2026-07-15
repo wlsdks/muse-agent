@@ -9,6 +9,7 @@
 import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, findSupersededPreferenceId, inferPreferenceFromCorrection, selectDischargedCommitments, selectOpenCommitments, type Awaitable, type SessionTurnLine } from "@muse/agent-core";
 import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import type { UserModelSlot } from "@muse/memory";
+import { withBestEffort } from "@muse/shared";
 
 import { createGateEmbedder } from "./context-engineering-builders.js";
 
@@ -33,8 +34,8 @@ export async function scanCommitmentsFromTurns(
   const embedder = options.embed ?? createGateEmbedder(process.env);
   // π-Bench (arXiv:2605.14678): drop commitments the user already discharged
   // later in the conversation BEFORE near-duplicate collapse + scheduling.
-  const raw = await selectOpenCommitments(userTurns, embedder).catch(() => detectUserCommitments(userTurns));
-  let existing = await readCheckins(options.file).catch(() => []);
+  const raw = await withBestEffort(selectOpenCommitments(userTurns, embedder), detectUserCommitments(userTurns));
+  let existing = await withBestEffort(readCheckins(options.file), []);
   // Cross-session auto-discharge (π-Bench arXiv:2605.14678) — parity with the CLI
   // `scanSessionCheckins`: cancel a STANDING scheduled check-in the user reports done
   // this session (the in-session filter above only sees one conversation; a persisted
@@ -52,7 +53,7 @@ export async function scanCommitmentsFromTurns(
     }
   } catch { /* discharge is best-effort — a failure must not block scheduling */ }
   if (raw.length === 0) return [];
-  const collapsed = await collapseNearDuplicateCommitments(raw, embedder).catch(() => raw);
+  const collapsed = await withBestEffort(collapseNearDuplicateCommitments(raw, embedder), raw);
   const commitments = collapsed.map((c) => c.text);
   const fresh = scheduleCheckins(commitments, {
     existing,

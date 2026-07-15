@@ -25,7 +25,7 @@
  */
 
 import { composeSurfacePrompt, TAGLINE_PERSONA_TEXT } from "@muse/prompts";
-import { sleep } from "@muse/shared";
+import { sleep, withBestEffort } from "@muse/shared";
 
 export type TaglineLang = "ko" | "en";
 
@@ -304,7 +304,7 @@ export async function applyTaglineModel(
   let out: string | undefined;
   try {
     out = await Promise.race([
-      model({ prompt, system }).catch(() => undefined),
+withBestEffort(model({ prompt, system }), undefined),
       (async () => {
         await sleep(timeoutMs);
         return undefined;

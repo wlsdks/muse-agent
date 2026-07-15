@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import path from "node:path";
 
+
+
 import type { AgentRuntime } from "@muse/agent-core";
 import { Command, Option } from "commander";
 import {
@@ -18,6 +20,7 @@ import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import { cliContextFromGlobals, setCliContext } from "./cli-context.js";
 import { formatUnknownSubcommand } from "./unknown-subcommand.js";
+import { withBestEffort } from "./async-promises.js";
 import {
   activeConversationId,
   appendLastChatTurn,
@@ -350,7 +353,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // under --json so scripted callers never see stray non-JSON output.
       if (!options.json) {
         const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
-        await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
+        await withBestEffort(maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }), false);
       }
       if (options.resume) {
         const { resumeConversation } = await import("./chat-history.js");
@@ -427,7 +430,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // an empty (default-persona) value so the request is unchanged.
       const personaPreamble = options.local
         ? ""
-        : (await loadActivePersonaPreamble().catch(() => "")).trim();
+        : (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
 
       // Remote continuity (AC4): --continue or --resume (already applied to
       // the pointer above) sends the ACTIVE conversation id so the server

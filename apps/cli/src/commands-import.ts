@@ -17,11 +17,14 @@ import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+
+
 import type { Command } from "commander";
 
 import { decryptExportBuffer, isEncryptedExportBuffer } from "./export-crypto.js";
 import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 interface ImportOptions {
   readonly force?: boolean;
@@ -268,7 +271,7 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
         }
       } finally {
         if (tempPath) {
-          await unlink(tempPath).catch(() => undefined);
+          await withBestEffort(unlink(tempPath), undefined);
         }
       }
     });

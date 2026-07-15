@@ -11,7 +11,10 @@ import { resolveActionLogFile, resolveEpisodesFile, resolveRemindersFile, resolv
 import { readActionLog, readEpisodes, readReminders, readTasks } from "@muse/stores";
 import type { Command } from "commander";
 
+
+
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 type ActionLogEnvironment = NodeJS.ProcessEnv;
 
@@ -30,10 +33,10 @@ const parseMs = (iso: string | undefined): number => (iso ? Date.parse(iso) : Nu
  */
 export async function gatherActivityTimestamps(env: ActionLogEnvironment): Promise<number[]> {
   const [tasks, episodes, reminders, actions] = await Promise.all([
-    readTasks(resolveTasksFile(env)).catch(() => []),
-    readEpisodes(resolveEpisodesFile(env)).catch(() => []),
-    readReminders(resolveRemindersFile(env)).catch(() => []),
-    readActionLog(resolveActionLogFile(env), env).catch(() => [])
+    withBestEffort(readTasks(resolveTasksFile(env)), []),
+    withBestEffort(readEpisodes(resolveEpisodesFile(env)), []),
+    withBestEffort(readReminders(resolveRemindersFile(env)), []),
+    withBestEffort(readActionLog(resolveActionLogFile(env), env), [])
   ]);
   return [
     ...tasks.map((task) => parseMs(task.createdAt)),

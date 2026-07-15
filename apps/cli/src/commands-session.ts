@@ -15,11 +15,14 @@ import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+
+
 import { readSessionLock, writeSessionLock, type SessionLockPayload } from "@muse/proactivity";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 import { pathExists } from "./path-exists.js";
+import { withBestEffort } from "./async-promises.js";
 
 interface LockOptions {
   readonly hours?: string;
@@ -139,7 +142,7 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
       const file = defaultSessionLockFile();
       const had = existsSync(file);
       if (had) {
-        await unlink(file).catch(() => undefined);
+        await withBestEffort(unlink(file), undefined);
       }
       if (options.json) {
         io.stdout(`${JSON.stringify({ cleared: had }, null, 2)}\n`);

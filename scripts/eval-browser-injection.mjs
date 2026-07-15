@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { createBrowserOpenTool, createBrowserReadTool, PuppeteerBrowserController } from "../packages/browser/dist/index.js";
+import { runBestEffort } from "./best-effort.mjs";
 
 // Every visible-text injection vector the guard defends against, placed in
 // REAL rendered elements so it lands in both `document.body.innerText` (the
@@ -112,7 +113,7 @@ try {
   const readText = typeof read.text === "string" ? read.text : "";
   check("browser_read: also wrapped + defanged", readText.startsWith("<page>") && readText.endsWith("</page>") && !readText.includes("Ignore all previous instructions"));
 } finally {
-  if (controller) await controller.close().catch(() => {});
+  if (controller) await runBestEffort(() => controller.close(), "browser controller close");
   server.close();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {

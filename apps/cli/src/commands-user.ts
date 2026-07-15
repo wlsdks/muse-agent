@@ -12,8 +12,11 @@ import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigu
 import { FileUserMemoryStore, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
+
+
 import { readLastChatHistory, type LastChatLine } from "./chat-history.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 type InferModelProvider = Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
 
@@ -51,7 +54,7 @@ export async function inferSessionPreferences(
   } = {}
 ): Promise<InferSessionPreferencesResult> {
   const readHistory = options.readHistory ?? readLastChatHistory;
-  const lines = await readHistory().catch(() => []);
+  const lines = await withBestEffort(readHistory(), []);
   const exchanges = detectCorrections(lines);
   if (exchanges.length === 0) return { added: [], status: "no-corrections" };
 

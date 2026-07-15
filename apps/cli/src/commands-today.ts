@@ -36,6 +36,7 @@ import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import { isApiUnreachable } from "./program-helpers.js";
+import { withBestEffort } from "./async-promises.js";
 export { formatHeadlines, formatWeatherLine, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks } from "./today-stale-revisit.js";
@@ -429,7 +430,7 @@ async function renderBrief(
   // The morning brief should speak in the active persona's voice
   // (JARVIS / casual / …), same as `muse chat`. Empty (default
   // persona) → unchanged request.
-  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  const personaPreamble = (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
 
   if (local) {
     const userBody = `Briefing JSON:\n${JSON.stringify(modelBriefing, null, 2)}\n\nRender this as a short conversational morning brief.`;

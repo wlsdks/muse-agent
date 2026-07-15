@@ -22,6 +22,14 @@ async function newStore() {
   return { dir, file, store: new FileUserMemoryStore({ file, now: () => new Date("2026-05-12T10:00:00Z") }) };
 }
 
+async function bestEffortUnlink(pathname: string) {
+  try {
+    await unlink(pathname);
+  } catch {
+    // Best-effort cleanup for lock files that may already be removed by an external path.
+  }
+}
+
 describe("FileUserMemoryStore — live cross-process lock contention (fail-closed)", () => {
   it("throws 'locked by another write in progress' when a LIVE (fresh) lock never releases, and never touches the file", async () => {
     const { file, store } = await newStore();
@@ -38,7 +46,7 @@ describe("FileUserMemoryStore — live cross-process lock contention (fail-close
     expect(await readFile(file, "utf8")).toBe(before);
 
     await handle.close();
-    await unlink(lockPath).catch(() => undefined);
+    await bestEffortUnlink(lockPath);
 
     // the lock release lets the NEXT write through normally
     await store.upsertFact("stark", "city", "Seoul");

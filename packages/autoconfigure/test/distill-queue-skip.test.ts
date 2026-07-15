@@ -26,6 +26,14 @@ const enqueue = async (events: readonly { id: string; correction: string }[]) =>
 
 const distilled: string[] = [];
 
+const readTextOrDefault = async (path: string) => {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+
 const drain = (skipCorrection?: (correction: string) => boolean) =>
   distillQueuedCorrections({
     distill: async (exchange) => {
@@ -72,7 +80,7 @@ describe("learn-queue drain — the lessons taught where there is no session", (
   it("consumes a skipped event so it cannot jam the queue forever", async () => {
     await enqueue([{ correction: "표로 정리해줘", id: "e1" }]);
     await drain(() => true);
-    const remaining = await readFile(queueFile, "utf8").catch(() => "");
+    const remaining = await readTextOrDefault(queueFile);
     const stillPending = remaining
       .split("\n")
       .filter((line) => line.trim().length > 0)

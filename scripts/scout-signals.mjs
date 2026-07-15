@@ -8,6 +8,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { analyzeRunLogSignals } from "../apps/cli/dist/run-log-analysis.js";
+import { readTextOrDefault } from "./best-effort.mjs";
 
 const runsDir = process.argv[2] ?? path.join(process.cwd(), ".muse", "runs");
 
@@ -20,7 +21,7 @@ async function readEvents(dir) {
   }
   const events = [];
   for (const file of files) {
-    const raw = await readFile(path.join(dir, file), "utf8").catch(() => "");
+    const raw = await readTextOrDefault(() => readFile(path.join(dir, file), "utf8"));
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;

@@ -11,6 +11,8 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+
+
 import {
   resolveActionLogFile,
   resolveContactsFile,
@@ -23,6 +25,7 @@ import {
 } from "@muse/autoconfigure";
 import { isFileEncryptedAtRest } from "@muse/stores";
 import type { Command } from "commander";
+import { withBestEffort } from "./async-promises.js";
 
 import type { ProgramIO } from "./program.js";
 
@@ -85,7 +88,7 @@ function storeDefs(env: Env, runtime: PrivacyPostureRuntime = {}): readonly { na
 export async function collectPrivacyPosture(env: Env, runtime: PrivacyPostureRuntime = {}): Promise<PrivacyPosture> {
   const stores = await Promise.all(storeDefs(env, runtime).map(async (def) => {
     const exists = existsSync(def.path);
-    const encrypted = exists && def.encryptable ? await isFileEncryptedAtRest(def.path).catch(() => false) : false;
+    const encrypted = exists && def.encryptable ? await withBestEffort(isFileEncryptedAtRest(def.path), false) : false;
     return {
       encryptable: def.encryptable,
       encrypted,

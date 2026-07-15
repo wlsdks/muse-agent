@@ -14,14 +14,8 @@ import { homedir } from "node:os";
 import { dirname, join as pathJoin } from "node:path";
 
 import { isCancel, multiselect, password, text } from "@clack/prompts";
-import {
-  backupPlaintextCredentialsFile,
-  credentialEncryptionEnabled,
-  decodeMaybeEncryptedCredentialsJson,
-  encryptCredentialEnvelope,
-  isCredentialsFileEncryptedAtRest,
-  isRecord
-} from "@muse/shared";
+import { backupPlaintextCredentialsFile, credentialEncryptionEnabled, decodeMaybeEncryptedCredentialsJson, encryptCredentialEnvelope, isCredentialsFileEncryptedAtRest, isRecord } from "@muse/shared";
+import { withBestEffort } from "./async-promises.js";
 
 interface SetupModelIO {
   readonly stdout: (message: string) => void;
@@ -302,7 +296,7 @@ async function writePersisted(file: string, value: PersistedShape, env: NodeJS.P
   const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
   const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
   if (shouldEncrypt && !alreadyEncrypted) {
-    const existing = await fs.readFile(file, "utf8").catch(() => undefined);
+    const existing = await withBestEffort(fs.readFile(file, "utf8"), undefined);
     if (existing !== undefined) {
       await backupPlaintextCredentialsFile(file, existing);
     }
@@ -311,5 +305,5 @@ async function writePersisted(file: string, value: PersistedShape, env: NodeJS.P
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }

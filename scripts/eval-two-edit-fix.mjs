@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createRustRunnerTool } from "../packages/tools/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { readTextOrDefault, runBestEffort } from "./best-effort.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -90,7 +91,7 @@ let failures = 0;
 let dir;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+    if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "previous run directory cleanup");
     dir = await mkdtemp(join(tmpdir(), "muse-two-edit-fix-"));
     await mkdir(join(dir, "src"), { recursive: true });
     const testPath = join(dir, "test.mjs");
@@ -128,14 +129,14 @@ try {
     });
     const toolsUsed = result.toolsUsed ?? [];
     const testPasses = await runTest(testPath);
-    const noiseIntact = (await readFile(join(dir, "src", "noise.mjs"), "utf8").catch(() => "")) === NOISE;
+    const noiseIntact = (await readTextOrDefault(() => readFile(join(dir, "src", "noise.mjs"), "utf8")) === NOISE;
     // OUTCOME grade: the test passes ONLY if BOTH bugs were fixed (alpha→2, beta→20);
     // the noise file must be untouched. The harness verifies testPasses itself, so
     // the model self-running is reported (ran-test) but not gated (agent-testing.md).
     const ok = testPasses && noiseIntact;
     if (!ok) failures += 1;
-    const alphaNow = (await readFile(join(dir, "src", "alpha.mjs"), "utf8").catch(() => "")) !== ALPHA;
-    const betaNow = (await readFile(join(dir, "src", "beta.mjs"), "utf8").catch(() => "")) !== BETA;
+    const alphaNow = (await readTextOrDefault(() => readFile(join(dir, "src", "alpha.mjs"), "utf8")) !== ALPHA;
+    const betaNow = (await readTextOrDefault(() => readFile(join(dir, "src", "beta.mjs"), "utf8")) !== BETA;
     console.log(
       `run ${run.toString()}/${REPEAT.toString()}: ${ok ? "PASS" : "FAIL"}  ` +
       `test-passes=${testPasses.toString()} alpha-edited=${alphaNow.toString()} beta-edited=${betaNow.toString()} ` +
@@ -143,7 +144,7 @@ try {
     );
   }
 } finally {
-  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+  if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "temporary eval directory cleanup");
 }
 
 if (failures > 0) {

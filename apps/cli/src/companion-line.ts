@@ -56,6 +56,7 @@ import {
 import { isRecord, sleep } from "@muse/shared";
 import { isQuietHour, parseQuietHours, readCheckins, selectDueCheckins } from "@muse/proactivity";
 import type { Command } from "commander";
+import { withBestEffort } from "./async-promises.js";
 
 import { checkinsFile } from "./commands-checkins.js";
 import { collectNotesRecursive, readDueFollowups, readDueReminders, readLocalEvents } from "./today-local-sources.js";
@@ -567,7 +568,7 @@ export interface CompanionModelFns {
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
   return Promise.race([
-    p.catch(() => undefined),
+    withBestEffort(p, undefined),
     (async () => {
       await sleep(ms);
       return undefined;
@@ -654,7 +655,7 @@ export function registerCompanionLineCommand(program: Command, io: ProgramIO): v
 
       const [candidates, trust] = await Promise.all([
         gatherCompanionCandidates(env, now, lang, rotation),
-        readTrustLedger(trustFile(env)).catch(() => [])
+        withBestEffort(readTrustLedger(trustFile(env)), [])
       ]);
 
       const plan = selectCompanionLine({

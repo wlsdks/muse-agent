@@ -19,7 +19,7 @@
 
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText, withBestEffort } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
@@ -316,7 +316,7 @@ export async function runDueProactiveNotices(
   const heartbeatDir = resolveHeartbeatDir(options);
   const now = options.now ?? (() => new Date());
   if (heartbeatDir) {
-    await recordProactiveHeartbeat(heartbeatDir, "alive", now).catch(() => false);
+    await withBestEffort(recordProactiveHeartbeat(heartbeatDir, "alive", now), false);
   }
   const summary = await runProactiveTickLocked(options);
   // `fired` marks a CLEAN pass. The inner loop catches per-item delivery
@@ -327,7 +327,7 @@ export async function runDueProactiveNotices(
   // A lock-held tick also has zero errors, so it is marked `fired` too —
   // this daemon did nothing WRONG this tick, another daemon just owned it.
   if (heartbeatDir && summary.errors.length === 0) {
-    await recordProactiveHeartbeat(heartbeatDir, "fired", now).catch(() => false);
+    await withBestEffort(recordProactiveHeartbeat(heartbeatDir, "fired", now), false);
   }
   return summary;
 }
@@ -438,7 +438,7 @@ async function runDueProactiveNoticesUnderLock(
   // Trust instrumentation: learned avoidance + daily cap.
   // Fail-open — a corrupt/unreadable ledger never gags the daemon.
   const trustLedger = options.trustLedgerFile
-    ? await readTrustLedger(options.trustLedgerFile).catch(() => [])
+    ? await withBestEffort(readTrustLedger(options.trustLedgerFile), [])
     : [];
   const avoided = avoidedSourceKeys(trustLedger);
   const capEnabled = options.trustLedgerFile !== undefined
@@ -665,4 +665,3 @@ function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions
     : DEFAULT_ACTIVE_WINDOW_MS;
   return now.getTime() - lastMs <= window;
 }
-

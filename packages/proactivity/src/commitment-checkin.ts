@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { avoidedSourceKeys, readTrustLedger, withFileMutationQueue, withProcessLock } from "@muse/stores";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
@@ -421,7 +421,7 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
   let delivered = 0;
 
   const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
     : undefined;
 
   for (const checkin of due) {

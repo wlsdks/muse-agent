@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { isRecord } from "@muse/shared";
+import { withBestEffort } from "./async-promises.js";
 
 export interface PersonaTemplate {
   readonly id: string;
@@ -116,7 +117,7 @@ export async function writePersonaStore(file: string, store: PersonaStoreShape):
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**

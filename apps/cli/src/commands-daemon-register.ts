@@ -44,6 +44,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
+import { withBestEffort } from "./async-promises.js";
 
 // node:child_process has no /promises submodule (unlike fs/timers) — a
 // phantom import of it has now broken the build twice; the regression
@@ -1118,7 +1119,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
       const runTick = async (): Promise<void> => {
-        await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
+        await withBestEffort(recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop"), false);
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();

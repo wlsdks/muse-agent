@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createRustRunnerTool } from "../packages/tools/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { readTextOrDefault, runBestEffort } from "./best-effort.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -96,7 +97,7 @@ let failures = 0;
 let dir;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+    if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "previous run directory cleanup");
     dir = await mkdtemp(join(tmpdir(), "muse-reverify-fix-"));
     await mkdir(join(dir, "src"), { recursive: true });
     const testPath = join(dir, "test.mjs");
@@ -134,13 +135,13 @@ try {
     });
     const toolsUsed = result.toolsUsed ?? [];
     const testPasses = await runTest(testPath);
-    const noiseIntact = (await readFile(join(dir, "src", "noise.mjs"), "utf8").catch(() => "")) === NOISE;
+    const noiseIntact = (await readTextOrDefault(() => readFile(join(dir, "src", "noise.mjs"), "utf8")) === NOISE);
     // OUTCOME grade: the test passes ONLY if BOTH the reported AND the hidden bug
     // were fixed — which requires re-running after the first fix to surface the second.
     const ok = testPasses && noiseIntact;
     if (!ok) failures += 1;
-    const alphaFixed = (await readFile(join(dir, "src", "alpha.mjs"), "utf8").catch(() => "")) !== ALPHA;
-    const betaFixed = (await readFile(join(dir, "src", "beta.mjs"), "utf8").catch(() => "")) !== BETA;
+    const alphaFixed = (await readTextOrDefault(() => readFile(join(dir, "src", "alpha.mjs"), "utf8")) !== ALPHA);
+    const betaFixed = (await readTextOrDefault(() => readFile(join(dir, "src", "beta.mjs"), "utf8")) !== BETA);
     const runCount = toolsUsed.filter((t) => t === "run_command").length;
     console.log(
       `run ${run.toString()}/${REPEAT.toString()}: ${ok ? "PASS" : "FAIL"}  ` +
@@ -149,7 +150,7 @@ try {
     );
   }
 } finally {
-  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+  if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "temporary eval directory cleanup");
 }
 
 if (failures > 0) {

@@ -35,7 +35,8 @@ describe("playbook poisoning — untrusted content must not become a standing ru
     // it, and the support gate is a cosine gate, which measures topic, not agreement.
     // So the payload never reaches the model at all.
     let seen = "";
-    await distillStrategyFromCorrection(
+    await expect(
+      distillStrategyFromCorrection(
       {
         correction: "더 짧게, 불릿으로 해줘",
         priorAnswer: `요약: ... ${POISON}`,
@@ -51,7 +52,7 @@ describe("playbook poisoning — untrusted content must not become a standing ru
           }
         }) as never
       }
-    ).catch(() => undefined);
+    ).resolves.toBeTypeOf("string");
 
     expect(seen).not.toContain("OPENAI_API_KEY");
     expect(seen).not.toContain("Verification:");
@@ -63,7 +64,8 @@ describe("playbook poisoning — untrusted content must not become a standing ru
 
   it("still sends a TRUSTED prior answer — this gate must not blind the distiller", async () => {
     let seen = "";
-    await distillStrategyFromCorrection(
+    await expect(
+      distillStrategyFromCorrection(
       { correction: "더 짧게 요약해줘", priorAnswer: "월세는 90만원입니다.", request: "월세 얼마야?" },
       {
         model: "test",
@@ -74,7 +76,7 @@ describe("playbook poisoning — untrusted content must not become a standing ru
           }
         }) as never
       }
-    ).catch(() => undefined);
+    ).resolves.toBeTypeOf("string");
     expect(seen).toContain("90만원");
     expect(seen).not.toContain("withheld");
   });

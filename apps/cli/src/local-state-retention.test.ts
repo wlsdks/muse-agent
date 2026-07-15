@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_RETENTION_WINDOWS, maybeAutoPrune, pruneCheckpointsByAge, pruneRunsByAge } from "./local-state-retention.js";
+import { withBestEffort } from "./async-promises.js";
 
 const DAY_MS = 86_400_000;
 const runEvent = (recordedAt: string) => JSON.stringify({ message: "hi", recordedAt, response: {}, success: true });
@@ -30,7 +31,7 @@ describe("pruneRunsByAge — .muse/runs/*.jsonl", () => {
       const result = await pruneRunsByAge(dir, { ageDays: 90, now });
       expect(result).toEqual({ dropped: 1, droppedFiles: ["old.jsonl"], kept: 1 });
 
-      const remaining = await readFile(join(dir, "recent.jsonl"), "utf8").catch(() => undefined);
+      const remaining = await withBestEffort(readFile(join(dir, "recent.jsonl"), "utf8"), undefined);
       expect(remaining).toBeDefined();
       await expect(readFile(join(dir, "old.jsonl"), "utf8")).rejects.toThrow();
     } finally {

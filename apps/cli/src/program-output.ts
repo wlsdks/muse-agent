@@ -15,8 +15,11 @@
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+
+
 import { isRecord } from "./credential-store.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 export interface RunLogInput {
   readonly apiUrl?: string;
@@ -249,7 +252,7 @@ export async function pruneRunLogDir(runDir: string, maxFiles: number): Promise<
   }));
   withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
   const toPrune = withMtime.slice(Math.trunc(maxFiles));
-  await Promise.all(toPrune.map((entry) => rm(path.join(runDir, entry.name), { force: true }).catch(() => undefined)));
+  await Promise.all(toPrune.map((entry) => withBestEffort(rm(path.join(runDir, entry.name), { force: true }), undefined)));
   return toPrune.length;
 }
 

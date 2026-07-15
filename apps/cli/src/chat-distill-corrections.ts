@@ -42,6 +42,7 @@ import { adjustPlaybookReward, isLearningPaused, queryPlaybook, recordPlaybookSt
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 import { readSessionInjectedIds } from "./playbook-injections.js";
+import { withBestEffort } from "./async-promises.js";
 
 type ModelProviderLike = DistillStrategyOptions["modelProvider"];
 
@@ -307,10 +308,10 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
       // deterministic lookup at inject time, with zero model calls in the turn.
       // Fail-soft: a classifier error records no conflicts, never blocks the write.
       const conflictCandidates = existing.filter((entry) => isInjectableStrategy(entry) && !isStaleStrategy(entry, now().getTime()));
-      const conflictsWith = await findConflictingRuleIds(distilled.text, conflictCandidates, {
+      const conflictsWith = await withBestEffort(findConflictingRuleIds(distilled.text, conflictCandidates, {
         model: options.model,
         modelProvider: options.modelProvider
-      }).catch(() => []);
+      }), []);
       await recordPlaybookStrategy(playbookFile, {
         createdAt: now().toISOString(),
         id: idFactory(),

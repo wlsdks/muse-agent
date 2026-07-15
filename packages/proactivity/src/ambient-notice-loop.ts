@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { avoidedSourceKeys, readTrustLedger } from "@muse/stores";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
@@ -360,8 +360,8 @@ export function createAmbientNoticeRunner(options: {
       }
       // Read once per tick — a veto recorded mid-tick still waits for the
       // NEXT tick, matching the edge-trigger state's own tick granularity.
-      const avoidedSources = options.interruptionBudget?.trustLedgerFile
-        ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
         : undefined;
 
       let ruleDelivered = 0;

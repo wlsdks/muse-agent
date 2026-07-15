@@ -48,7 +48,7 @@ import {
 import { formatRelativeTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 import { readTrust } from "./commands-trust.js";
-import { sleep, waitForShutdownSignal } from "./async-promises.js";
+import { sleep, waitForShutdownSignal, withBestEffort } from "./async-promises.js";
 
 /**
  * `muse scheduler add` derives its stale threshold the same way — 3x the
@@ -385,7 +385,7 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   // <user> record (silent divergence when MUSE_PERSONA is set).
   const slot = env.MUSE_PERSONA?.trim() || undefined;
   const effectiveUserKey = slot ? `${userId}@${slot}` : userId;
-  const personaStore = await readPersonaStore(paths.personaFile).catch(() => undefined);
+  const personaStore = await withBestEffort(readPersonaStore(paths.personaFile), undefined);
   const activeTemplateId = personaStore?.activeId ?? "default";
   const activePreamble = personaStore ? resolveActivePersonaPreamble(personaStore) : "";
   const builtinDescription = BUILTIN_PERSONAS.find((p) => p.id === activeTemplateId)?.description;
@@ -393,17 +393,20 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   // Read through the store API (not a raw JSON parse) so status sees exactly
   // what ask/chat/recall see — including the encrypted-at-rest format and the
   // legacy "default"-bucket healing a raw read would miss.
-  const personaMemory = await new FileUserMemoryStore({ file: userMemoryFile, env: storeEnv })
-    .findByUserId(effectiveUserKey)
-    .catch(() => undefined);
+  const personaMemoryRequest = new FileUserMemoryStore({ file: userMemoryFile, env: storeEnv })
+    .findByUserId(effectiveUserKey);
+  const personaMemory = await withBestEffort(personaMemoryRequest, undefined);
   const persona = personaMemory
     ? { facts: personaMemory.facts, preferences: personaMemory.preferences, updatedAt: personaMemory.updatedAt.toISOString() }
     : undefined;
 
-  const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey, Date.now(), env).catch(() => undefined);
-  const recentlyForgottenLine = await readRecentlyForgottenLine(paths.beliefProvenanceFile).catch(() => undefined);
+  const recentlyLearnedLine = await withBestEffort(
+    readRecentlyLearnedLine(userMemoryFile, effectiveUserKey, Date.now(), env),
+    undefined
+  );
+  const recentlyForgottenLine = await withBestEffort(readRecentlyForgottenLine(paths.beliefProvenanceFile), undefined);
 
-  const trust = await runtime.readTrust(effectiveUserKey).catch(() => ({ blockedTools: [], trustedTools: [] }));
+  const trust = await withBestEffort(runtime.readTrust(effectiveUserKey), { blockedTools: [], trustedTools: [] });
   const routineHours = persona?.facts?.routine_active_hours;
   const routineDays = persona?.facts?.routine_active_days;
 
@@ -420,7 +423,7 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   const historyRows = readProactiveHistoryEntries(historyDoc);
   const lastNotice = historyRows[historyRows.length - 1];
 
-  const followups = await readFollowups(paths.followupsFile).catch(() => []);
+  const followups = await withBestEffort(readFollowups(paths.followupsFile), []);
   const followupsByStatus = summariseFollowupsRows(followups, userId);
 
   const episodesDoc = await safeReadJson(paths.episodesFile);
@@ -433,16 +436,16 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   // patterns-fired sidecar.
   const suggestions = suggestPatternHints(firedPatternRows, new Date());
 
-  const reminders = await readReminders(paths.remindersFile).catch(() => []);
+  const reminders = await withBestEffort(readReminders(paths.remindersFile), []);
   const remindersSummary = summariseRemindersRows(reminders, now);
 
-  const objectives = await readObjectives(paths.objectivesFile).catch(() => []);
+  const objectives = await withBestEffort(readObjectives(paths.objectivesFile), []);
   const objectivesSummary = summariseObjectivesRows(objectives, userId);
 
   // Do-Not-Disturb: the proactive loop skips firing while a session
   // lock is active, so the dashboard must surface it — else a user
   // who locked DND glances here, sees no notices, and is confused.
-  const sessionLockUntil = await readSessionLock(paths.sessionLockFile, new Date()).catch(() => undefined);
+  const sessionLockUntil = await withBestEffort(readSessionLock(paths.sessionLockFile, new Date()), undefined);
 
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);

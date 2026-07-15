@@ -28,6 +28,14 @@ const visit = (over: Partial<BrowsingVisit> = {}): BrowsingVisit => ({
   ...(over.embedding ? { embedding: over.embedding } : {})
 });
 
+const readTextOrDefault = async (path: string) => {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+
 describe("webkitTimeToIso — known answer", () => {
   it("converts WebKit-epoch µs to the correct ISO instant", () => {
     // 13390000000000000 µs since 1601 → hand-computed Unix instant.
@@ -139,7 +147,7 @@ describe("readBrowsingStore / writeBrowsingStore", () => {
     const store = await readBrowsingStore(file);
     expect(store.visits).toEqual([]);
     // The original content survives at a sibling .bak-* path.
-    const backup = (await readFile(file, "utf8").catch(() => "")) === "";
+    const backup = (await readTextOrDefault(file)) === "";
     expect(backup).toBe(true);
   });
 

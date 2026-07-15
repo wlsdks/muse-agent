@@ -26,6 +26,7 @@ import type { Command } from "commander";
 
 import { findJobsByIdPrefix } from "./commands-jobs.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 interface OpenOptions {
   readonly json?: boolean;
@@ -60,16 +61,16 @@ async function safeReadJson(path: string): Promise<unknown | undefined> {
 async function scanAll(prefix: string): Promise<readonly Hit[]> {
   const hits: Hit[] = [];
 
-  for (const r of await readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")).catch(() => [])) {
+  for (const r of await withBestEffort(readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")), [])) {
     if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: toRecord(r) });
   }
 
-  for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
+  for (const f of await withBestEffort(readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")), [])) {
     if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: toRecord(f) });
   }
 
   // Objectives (standing delegated-autonomy items — `obj_<uuid>`)
-  for (const o of await readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")).catch(() => [])) {
+  for (const o of await withBestEffort(readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")), [])) {
     if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: toRecord(o) });
   }
 
@@ -86,16 +87,16 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "pattern", id, record: p });
   }
 
-  for (const entry of await readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")).catch(() => [])) {
+  for (const entry of await withBestEffort(readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")), [])) {
     if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: toRecord(entry) });
   }
 
-  for (const t of await readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")).catch(() => [])) {
+  for (const t of await withBestEffort(readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")), [])) {
     if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: toRecord(t) });
   }
 
   // Jobs (background-task records — `muse job run` → ~/.muse/jobs/<id>.jsonl)
-  for (const j of await findJobsByIdPrefix(prefix).catch(() => [])) {
+  for (const j of await withBestEffort(findJobsByIdPrefix(prefix), [])) {
     hits.push({ kind: "job", id: j.id, record: j.record });
   }
 

@@ -27,6 +27,7 @@ import {
   PuppeteerBrowserController
 } from "../packages/browser/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { runBestEffort } from "./best-effort.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -126,7 +127,7 @@ try {
     if (!ok) console.log(`  answer: ${answer.slice(0, 240)}`);
   }
 } finally {
-  await controller.close().catch(() => {});
+  await runBestEffort(() => controller.close(), "browser controller close");
   server.close();
   // Chrome flushes its profile asynchronously after close — retry the sweep.
   for (let attempt = 0; attempt < 5; attempt += 1) {

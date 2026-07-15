@@ -15,7 +15,7 @@
  *
  * Behavior:
  *   - All three reads run in `Promise.all` with per-promise
- *     `.catch(() => undefined)` so a missing notesDir / unreachable
+ *     fail-open fallback (`undefined`) so a missing notesDir / unreachable
  *     calendar provider doesn't collapse the whole briefing.
  *   - Sections that aren't configured (e.g. tasksFile undefined)
  *     come back as `undefined`. The route still returns 200 so a
@@ -28,6 +28,8 @@
 
 import { promises as fs } from "node:fs";
 import { join, resolve as pathResolve } from "node:path";
+import { withBestEffort } from "@muse/shared";
+
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import { compareFollowupsByScheduledFor, compareRemindersByDueAt, readFollowups, readReminders, serializeFollowup, serializeReminder, type PersistedFollowup, type PersistedReminder } from "@muse/stores";
@@ -80,11 +82,11 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
     const horizon = new Date(now.getTime() + hours * 3_600_000);
 
     const [tasks, events, notes, reminders, followups] = await Promise.all([
-      readOpenTasks(gate.tasksFile).catch(() => undefined),
-      readUpcomingEvents(gate.calendar, now, horizon).catch(() => undefined),
-      readRecentNotes(gate.notesDir).catch(() => undefined),
-      readDueReminders(gate.remindersFile, now, horizon).catch(() => undefined),
-      readDueFollowups(gate.followupsFile, horizon).catch(() => undefined)
+withBestEffort(readOpenTasks(gate.tasksFile), undefined),
+withBestEffort(readUpcomingEvents(gate.calendar, now, horizon), undefined),
+withBestEffort(readRecentNotes(gate.notesDir), undefined),
+withBestEffort(readDueReminders(gate.remindersFile, now, horizon), undefined),
+withBestEffort(readDueFollowups(gate.followupsFile, horizon), undefined)
     ]);
 
     return {

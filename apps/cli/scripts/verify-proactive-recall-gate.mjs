@@ -28,6 +28,7 @@ import path from "node:path";
 
 import { createOllamaEmbedder } from "@muse/autoconfigure";
 import { createIndexedProactiveInvestigator } from "../dist/proactive-notes-recall.js";
+import { runBestEffort } from "../../scripts/best-effort.mjs";
 
 const embedModel = process.argv[2] ?? "nomic-embed-text";
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
@@ -100,6 +101,6 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-await rm(dir, { force: true, recursive: true }).catch(() => undefined);
+await runBestEffort(() => rm(dir, { force: true, recursive: true }), "proactive recall temporary index cleanup");
 console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${embedModel}` : `\n${failures}/${cases.length} FAILED on ${embedModel}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -33,6 +33,7 @@ import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveCheckpointsDir } from "@muse/autoconfigure";
 import { pruneActionLogByAge, pruneByAge, pruneLearnQueueByAge, resolveLearnQueueFile, type ActionLogPruneResult } from "@muse/stores";
 import { isRecord } from "@muse/shared";
+import { withBestEffort } from "./async-promises.js";
 
 export interface RetentionWindows {
   /** `.muse/runs/*.jsonl` — default 90 days (mirrors the checkpoints window; a trace's diagnostic value fades fast). */
@@ -116,11 +117,11 @@ export async function pruneRunsByAge(runsDir: string, options: { readonly ageDay
   }
   const withTimestamps = await Promise.all(names.map(async (name) => {
     const full = join(runsDir, name);
-    const mtimeMs = await stat(full).then((s) => s.mtimeMs).catch(() => now);
+    const mtimeMs = await withBestEffort(stat(full).then((s) => s.mtimeMs), now);
     return { name, ts: await runFileTimestampMs(full, mtimeMs) };
   }));
   const { kept, dropped } = pruneByAge(withTimestamps, { ageDays: options.ageDays, now, timestampOf: (e) => e.ts });
-  await Promise.all(dropped.map((e) => rm(join(runsDir, e.name), { force: true }).catch(() => undefined)));
+  await Promise.all(dropped.map((e) => withBestEffort(rm(join(runsDir, e.name), { force: true }), undefined)));
   return { dropped: dropped.length, droppedFiles: dropped.map((e) => e.name), kept: kept.length };
 }
 
@@ -134,11 +135,11 @@ export async function pruneCheckpointsByAge(checkpointsDir: string, options: { r
     return { dropped: 0, droppedFiles: [], kept: 0 };
   }
   const withTimestamps = await Promise.all(names.map(async (name) => {
-    const mtimeMs = await stat(join(checkpointsDir, name)).then((s) => s.mtimeMs).catch(() => now);
+    const mtimeMs = await withBestEffort(stat(join(checkpointsDir, name)).then((s) => s.mtimeMs), now);
     return { mtimeMs, name };
   }));
   const { kept, dropped } = pruneByAge(withTimestamps, { ageDays: options.ageDays, now, timestampOf: (e) => e.mtimeMs });
-  await Promise.all(dropped.map((e) => rm(join(checkpointsDir, e.name), { force: true }).catch(() => undefined)));
+  await Promise.all(dropped.map((e) => withBestEffort(rm(join(checkpointsDir, e.name), { force: true }), undefined)));
   return { dropped: dropped.length, droppedFiles: dropped.map((e) => e.name), kept: kept.length };
 }
 

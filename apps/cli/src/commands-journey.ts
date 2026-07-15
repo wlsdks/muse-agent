@@ -36,6 +36,7 @@ import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { withBestEffort } from "./async-promises.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
 const EMPTY_BELIEF_PROVENANCE: readonly BeliefProvenance[] = [];
@@ -50,13 +51,13 @@ function isJourneyStoreKind(value: string): value is JourneyStoreKind {
 
 async function loadFactRecords(userId: string): Promise<readonly JourneyFactRecord[]> {
   const store = new FileBeliefProvenanceStore(defaultBeliefProvenanceFile());
-  const records = await store.query(userId).catch(() => EMPTY_BELIEF_PROVENANCE);
+  const records = await withBestEffort(store.query(userId), EMPTY_BELIEF_PROVENANCE);
   return factRecordsFromProvenance(records);
 }
 
 async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
   const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(environment()) });
-  const skills = await store.listAuthored().catch(() => []);
+  const skills = await withBestEffort(store.listAuthored(), []);
   return skills.map((skill) => {
     const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata["muse"] : {};
     const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt : undefined;
@@ -71,7 +72,7 @@ async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
 }
 
 async function loadStrategyRecords(userId: string): Promise<readonly JourneyStrategyRecord[]> {
-  const entries = await queryPlaybook(resolvePlaybookFile(environment()), userId).catch(() => []);
+  const entries = await withBestEffort(queryPlaybook(resolvePlaybookFile(environment()), userId), []);
   return entries.map((entry) => ({
     createdAt: entry.createdAt,
     id: entry.id,

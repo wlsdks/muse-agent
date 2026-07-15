@@ -13,12 +13,15 @@ import { classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, clas
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { describeCapabilities } from "@muse/prompts";
 
+
+
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { formatContactDetails, formatNotesOverview, formatReminderList, formatTaskList } from "./chat-fast-path-format.js";
+import { withBestEffort } from "./async-promises.js";
 
 export interface ChatFastPathResult {
   readonly response: string;
@@ -56,7 +59,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     // sync context → the bundled desktop binary crashes at startup. Defer it.
     const { listNoteFiles, notesCorpusFileCount } = await import("./commands-ask.js");
     const notesDir = resolveNotesDir(process.env);
-    const total = await notesCorpusFileCount(notesDir).catch(() => 0);
+    const total = await withBestEffort(notesCorpusFileCount(notesDir), 0);
     if (total > 0) {
       return {
         response: formatNotesOverview(await listNoteFiles(notesDir), total, /[가-힣]/u.test(message)),
@@ -76,7 +79,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     const { readTasks, compareTasksByDueDate } = await import("@muse/stores");
     const { resolveTasksFile } = await import("@muse/autoconfigure");
     const tasksFile = resolveTasksFile(process.env);
-    const open = (await readTasks(tasksFile).catch(() => []))
+    const open = (await withBestEffort(readTasks(tasksFile), []))
       .filter((task) => task.status === "open")
       .sort(compareTasksByDueDate);
     return {
@@ -102,7 +105,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     const { readReminders } = await import("@muse/stores");
     const { resolveRemindersFile } = await import("@muse/autoconfigure");
     const remindersFile = resolveRemindersFile(process.env);
-    const pending = (await readReminders(remindersFile).catch(() => []))
+    const pending = (await withBestEffort(readReminders(remindersFile), []))
       .filter((reminder) => reminder.status === "pending")
       .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     return {
@@ -124,7 +127,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
   if (contactName) {
     const { queryContacts, resolveContact } = await import("@muse/stores");
     const { resolveContactsFile } = await import("@muse/autoconfigure");
-    const contacts = await queryContacts(resolveContactsFile(process.env)).catch(() => []);
+    const contacts = await withBestEffort(queryContacts(resolveContactsFile(process.env)), []);
     const resolution = resolveContact(contacts, contactName);
     const korean = /[가-힣]/u.test(message);
     if (resolution.status === "resolved") {

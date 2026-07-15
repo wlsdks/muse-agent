@@ -25,6 +25,7 @@ import { hasNodeErrorCodeIn, isNodeErrorCode, NODE_ERROR_CODES } from "@muse/sha
 import { isRecord, readStoredToken } from "./credential-store.js";
 import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 export interface ApiOptions {
   readonly baseUrl: string;
@@ -174,10 +175,10 @@ export async function writeConfigStore(io: ProgramIO, config: MuseCliConfig): Pr
     await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     await rename(tmp, filePath);
   } catch (error) {
-    await rm(tmp, { force: true }).catch(() => undefined);
+    await withBestEffort(rm(tmp, { force: true }), undefined);
     throw error;
   }
-  await chmod(filePath, 0o600).catch(() => undefined);
+  await withBestEffort(chmod(filePath, 0o600), undefined);
 }
 
 const SUPPORTED_CONFIG_KEYS = ["apiUrl", "defaultModel"] as const;

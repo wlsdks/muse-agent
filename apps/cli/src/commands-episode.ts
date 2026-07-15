@@ -20,6 +20,8 @@ import { resolveEpisodesFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { copyFile } from "node:fs/promises";
 import type { Command } from "commander";
 
+
+
 import { embed } from "./embed.js";
 import {
   buildEpisodeIndex,
@@ -30,6 +32,7 @@ import {
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { withBestEffort } from "./async-promises.js";
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -294,7 +297,7 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         return;
       }
       const drop = new Set(plan.map((pair) => pair.archived));
-      await copyFile(file, `${file}.bak`).catch(() => undefined);
+      await withBestEffort(copyFile(file, `${file}.bak`), undefined);
       await writeEpisodes(file, all.filter((entry) => !drop.has(entry.id)));
       io.stdout(`\nArchived ${drop.size.toString()} duplicate(s). Backup: ${file}.bak\n`);
     });

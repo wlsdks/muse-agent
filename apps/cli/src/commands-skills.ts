@@ -21,6 +21,7 @@ import type { Command } from "commander";
 import { authorSkillsFromSession } from "./chat-author-skills.js";
 import type { ProgramIO } from "./program.js";
 import { pathExists } from "./path-exists.js";
+import { withBestEffort } from "./async-promises.js";
 
 export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
@@ -70,7 +71,7 @@ Examples:
     .description("List installed skills")
     .action(async () => {
       const dir = resolveSkillsDir();
-      const loaded = await loadSkillsFromDirectory(dir, "user").catch(() => []);
+      const loaded = await withBestEffort(loadSkillsFromDirectory(dir, "user"), []);
       if (loaded.length === 0) {
         io.stdout(`No skills yet. Add one with \`muse skills add <name>\` (dir: ${dir}).\n`);
         return;
@@ -119,7 +120,7 @@ Examples:
     .action(async () => {
       const dir = resolveAuthoredSkillsDir();
       const store = new AuthoredSkillStore({ dir });
-      const authored = await store.listAuthored().catch(() => []);
+      const authored = await withBestEffort(store.listAuthored(), []);
       if (authored.length === 0) {
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
         return;
@@ -156,7 +157,7 @@ Examples:
       if (!Number.isInteger(amount) || amount <= 0) {
         throw new Error("skills reward <amount> must be a positive integer");
       }
-      const authored = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []);
+      const authored = await withBestEffort(new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored(), []);
       if (!authored.some((s) => s.name === name)) {
         io.stdout(`(no authored skill named "${name}" — see \`muse skills authored\`)\n`);
         return;

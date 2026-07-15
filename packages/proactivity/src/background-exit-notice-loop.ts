@@ -27,7 +27,7 @@
 import { promises as fs } from "node:fs";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText, withBestEffort } from "@muse/shared";
 import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
@@ -152,7 +152,7 @@ export async function runDueBackgroundExitNotices(
   let delivered = 0;
 
   const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
     : undefined;
 
   for (const record of pending) {

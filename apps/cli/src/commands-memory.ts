@@ -32,6 +32,7 @@ import { closestCommandName } from "./closest-command.js";
 import { formatMemoryShow } from "./human-formatters.js";
 import { isApiUnreachable, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 function envValue(key: string): string | undefined {
   const v = process.env[key]?.trim();
@@ -643,7 +644,7 @@ Examples:
         // Encrypt the belief-PROVENANCE (where each fact came from) alongside the facts
         // — they're one subsystem; protecting the values but leaking their sources/history
         // would be half a guarantee. Best-effort (a fresh setup may have no provenance yet).
-        await encryptFileAtRest(defaultBeliefProvenanceFile()).catch(() => undefined);
+        await withBestEffort(encryptFileAtRest(defaultBeliefProvenanceFile()), undefined);
         if (alreadyEncrypted) {
           io.stdout("Your user-memory is already encrypted at rest.\n");
           return;
@@ -664,7 +665,7 @@ Examples:
       const store = new FileUserMemoryStore();
       try {
         const { alreadyPlaintext } = await store.decryptAtRest();
-        await decryptFileAtRest(defaultBeliefProvenanceFile()).catch(() => undefined); // keep provenance in lock-step with the facts
+        await withBestEffort(decryptFileAtRest(defaultBeliefProvenanceFile()), undefined); // keep provenance in lock-step with the facts
         io.stdout(alreadyPlaintext ? "Your user-memory is already plaintext.\n" : "🔓 Rewrote your user-memory + its belief-provenance as plaintext.\n");
       } catch (cause) {
         io.stderr(`muse memory decrypt: ${cause instanceof Error ? cause.message : String(cause)}\n`);
@@ -712,7 +713,7 @@ export async function promoteRecalledMemories(options: {
   readonly maxPromoted?: number;
 }): Promise<PromoteMemoriesResult> {
   const nowMs = (options.now ? options.now() : new Date()).getTime();
-  const hits = await options.readHits().catch(() => []);
+  const hits = await withBestEffort(options.readHits(), []);
   const promotable = selectPromotableMemories(hits, {
     nowMs,
     useActrRanking: true,
@@ -722,7 +723,7 @@ export async function promoteRecalledMemories(options: {
 
   // Clear prior promoted facts so promotion is idempotent (today's top set
   // fully replaces yesterday's — a faded-out memory doesn't linger).
-  const current = await options.store.findByUserId(options.userId).catch(() => undefined);
+  const current = await withBestEffort(options.store.findByUserId(options.userId), undefined);
   for (const key of Object.keys(current?.facts ?? {})) {
     if (key.startsWith(PROMOTED_FACT_PREFIX)) {
       await options.store.forget(options.userId, key);

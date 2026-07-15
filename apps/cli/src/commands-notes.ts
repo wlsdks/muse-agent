@@ -29,6 +29,7 @@ import {
 import { auditNoteGraph, buildNoteLinkGraph, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 export interface NotesCommandHelpers {
   readonly apiRequest: (
@@ -637,7 +638,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       // counterpart of `rename`'s link-preservation). Best-effort, never blocks.
       let backlinks: readonly string[] = [];
       if (options.local) {
-        backlinks = await notesLinkingTo(resolveNotesDir(environment()), notePath).catch(() => []);
+        backlinks = await withBestEffort(notesLinkingTo(resolveNotesDir(environment()), notePath), []);
         payload = await callLocalTool("delete", { path: notePath });
       } else {
         payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE"));

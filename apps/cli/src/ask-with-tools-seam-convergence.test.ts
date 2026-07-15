@@ -31,6 +31,7 @@ import {
 } from "@muse/recall";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { withBestEffort } from "./async-promises.js";
 import { buildAskSystemPrompt } from "./ask-system-prompt.js";
 
 const EMBED_MODEL = "test-embedder";
@@ -108,10 +109,13 @@ async function oldWithToolsContextAndFraming(
   const notesFraming = notesGroundingFraming(scored, QUERY, retrieval.preGapScored.length > 0 ? retrieval.preGapScored : undefined, EMBED_MODEL);
   const noteContradictions = notesUnavailable || contextChunks.length < 2
     ? []
-    : await detectEvidenceContradictions(
-        contextChunks.map((r) => ({ score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
-        (t) => embedFn(t, EMBED_MODEL)
-      ).catch(() => []);
+    : await withBestEffort(
+        detectEvidenceContradictions(
+          contextChunks.map((r) => ({ score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
+          (t) => embedFn(t, EMBED_MODEL)
+        ),
+        []
+      );
   const contextBlock = notesUnavailable
     ? "(notes search unavailable this turn — answer from the other grounding sources)"
     : contextChunks.length === 0

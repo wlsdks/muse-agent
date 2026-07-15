@@ -16,7 +16,7 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, type JsonObject } from "@muse/shared";
+import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, type JsonObject, withBestEffort } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { checkEditIntegrity } from "./edit-integrity.js";
@@ -201,7 +201,7 @@ export function createFileWriteTool(options: FsWriteToolsOptions, policyPromise?
         return refusal(error, path);
       }
       try {
-        const info = await stat(safe).catch(() => undefined);
+    const info = await withBestEffort(stat(safe), undefined);
         if (info?.isDirectory()) {
           return { path: safe, reason: `'${path}' is a directory`, written: false };
         }

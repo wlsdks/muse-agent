@@ -11,6 +11,8 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { withBestEffort } from "@muse/shared";
+
 
 import type { UserMemoryStore } from "@muse/memory";
 import type { FastifyInstance } from "fastify";
@@ -95,7 +97,7 @@ export function registerIdentityTaglineRoutes(
     try {
       const userId = readQueryString(request, "userId") || options.defaultUserId || "me";
       const memory = options.userMemoryStore
-        ? await options.userMemoryStore.findByUserId(userId).catch(() => undefined)
+        ? await withBestEffort(options.userMemoryStore.findByUserId(userId), undefined)
         : undefined;
       const atoms = gatherIdentityFacts(memory);
 

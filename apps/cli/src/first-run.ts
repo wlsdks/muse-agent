@@ -55,6 +55,7 @@ import { MUSE_BIRD_ANSI } from "./muse-mascot.js";
 import { persistModelProviderKey } from "./setup-model.js";
 import { colorAllowed, colorize } from "./tty-color.js";
 import { probeOllamaModels } from "./ollama-probe.js";
+import { withBestEffort } from "./async-promises.js";
 
 /** Any of these in the env means a provider is already wired — skip first-run. */
 export const PROVIDER_KEY_ENV_VARS: readonly string[] = [
@@ -419,7 +420,7 @@ async function finishWithValue(
     prompts.step?.(FIRST_RUN_STEP_HEADERS.finish);
     skillsScaffolded = await applySmartDefaultsStep(deps);
     const identity: { readonly name?: string } = deps.readIdentity
-      ? await deps.readIdentity().catch(() => ({}))
+      ? await withBestEffort(deps.readIdentity(), {})
       : {};
     const fvCtx: FirstValueContext = {
       ...(identity.name ? { userName: identity.name } : {}),

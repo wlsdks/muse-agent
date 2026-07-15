@@ -15,7 +15,7 @@ import {
   newConversationId,
   recentChatTurns
 } from "@muse/stores";
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText, withBestEffort } from "@muse/shared";
 import type { AgentRunInput } from "@muse/agent-core";
 
 import type { ServerOptions } from "./server.js";
@@ -58,13 +58,13 @@ export async function resolveChatConversationPlan(
   const requestedId = requestedConversationId(body);
   const conversationId = requestedId ?? newConversationId();
   let priorMessages: AgentRunInput["messages"] = [];
-  if (requestedId) {
-    const conversation = await store.get(requestedId).catch(() => undefined);
-    priorMessages = recentChatTurns(conversation?.turns ?? [], CHAT_CONTEXT_TURN_LIMIT).map((turn) => ({
-      content: turn.content,
-      role: turn.role
-    }));
-  }
+    if (requestedId) {
+      const conversation = await withBestEffort(store.get(requestedId), undefined);
+      priorMessages = recentChatTurns(conversation?.turns ?? [], CHAT_CONTEXT_TURN_LIMIT).map((turn) => ({
+        content: turn.content,
+        role: turn.role
+      }));
+    }
   return {
     conversationId,
     persistTurn: async (answerText: string) => {

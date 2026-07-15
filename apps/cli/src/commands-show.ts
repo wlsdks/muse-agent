@@ -16,11 +16,13 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
+
+
 import type { Command } from "commander";
 
 import { looksLikeImage } from "./image-bytes.js";
 import type { ProgramIO } from "./program.js";
-import { waitForChildProcessResult } from "./async-promises.js";
+import { withBestEffort, waitForChildProcessResult } from "./async-promises.js";
 
 interface ShowOptions {
   readonly name?: string;
@@ -149,7 +151,7 @@ export function registerShowCommand(program: Command, io: ProgramIO): void {
         return;
       }
       // Fallback: hand the image to the OS viewer.
-      const exit = await externalOpen(filePath).catch(() => -1);
+      const exit = await withBestEffort(externalOpen(filePath), -1);
       if (exit !== 0) {
         io.stderr(`muse show: terminal lacks inline-image support and the native viewer (\`open\`/\`xdg-open\`) returned ${exit.toString()}. Re-run with --inline-only to force the escape sequence.\n`);
         process.exitCode = 1;

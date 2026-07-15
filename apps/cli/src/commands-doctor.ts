@@ -52,7 +52,7 @@ import { loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import { atRestDoctorCheck, collectPrivacyPosture } from "./commands-privacy.js";
-import { sleep, waitForShutdownSignal } from "./async-promises.js";
+import { sleep, waitForShutdownSignal, withBestEffort } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
 export interface DoctorCommandHelpers {
@@ -824,7 +824,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
     // "learning is on by the code's own default, and has never once run."
     enabled: parseBoolean(env.MUSE_SELFLEARN_ENABLED, true),
     installed: existsSync(resolveLaunchAgentFile(process.env)),
-    paused: await isLearningPaused(resolveLearningPauseFile(env)).catch(() => false),
+    paused: await withBestEffort(isLearningPaused(resolveLearningPauseFile(env)), false),
     queued
   }));
 

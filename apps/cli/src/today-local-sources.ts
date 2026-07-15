@@ -7,6 +7,8 @@
 import { promises as fs } from "node:fs";
 import { join, resolve as resolvePath, sep } from "node:path";
 
+
+
 import {
   resolveContactsFile,
   resolveFollowupsFile,
@@ -20,6 +22,7 @@ import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksBy
 
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatTodayBrief, type TodayBriefing } from "./today-format.js";
+import { withBestEffort } from "./async-promises.js";
 
 const MAX_RECENT_NOTES = 5;
 const MAX_NOTES_WALK_DEPTH = 8;
@@ -36,12 +39,12 @@ export async function composeLocalBriefing(lookaheadHours: number): Promise<Toda
   const horizon = new Date(now.getTime() + lookaheadHours * 3_600_000);
 
   const [tasks, events, notes, reminders, followups, birthdays] = await Promise.all([
-    readOpenTasks(tasksFile).catch(() => undefined),
-    readLocalEvents(calendarFile, now, horizon).catch(() => undefined),
-    readRecentNotes(notesDir).catch(() => undefined),
-    readDueReminders(remindersFile, horizon).catch(() => undefined),
-    readDueFollowups(followupsFile, horizon).catch(() => undefined),
-    readUpcomingBirthdays(contactsFile, now).catch(() => undefined)
+    withBestEffort(readOpenTasks(tasksFile), undefined),
+    withBestEffort(readLocalEvents(calendarFile, now, horizon), undefined),
+    withBestEffort(readRecentNotes(notesDir), undefined),
+    withBestEffort(readDueReminders(remindersFile, horizon), undefined),
+    withBestEffort(readDueFollowups(followupsFile, horizon), undefined),
+    withBestEffort(readUpcomingBirthdays(contactsFile, now), undefined)
   ]);
 
   return {

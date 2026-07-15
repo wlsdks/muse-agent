@@ -12,7 +12,10 @@ import { findAcrossDomains, resolveContactsFile, resolveLocalCalendarFile, resol
 import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import type { Command } from "commander";
 
+
+
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -55,10 +58,10 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
           to: new Date(now + 365 * 86_400_000)
         });
       const [tasks, reminders, contacts, events] = await Promise.all([
-        readTasks(resolveTasksFile(env)).catch(() => []),
-        readReminders(resolveRemindersFile(env)).catch(() => []),
-        queryContacts(resolveContactsFile(env)).catch(() => []),
-        readLocalEvents().catch(() => [])
+        withBestEffort(readTasks(resolveTasksFile(env)), []),
+        withBestEffort(readReminders(resolveRemindersFile(env)), []),
+        withBestEffort(queryContacts(resolveContactsFile(env)), []),
+        withBestEffort(readLocalEvents(), [])
       ]);
       const hits = findAcrossDomains({ contacts, events, reminders, tasks }, query);
       if (options.json) {

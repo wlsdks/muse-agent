@@ -25,7 +25,7 @@ import {
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 
 import { createGateEmbedder, createOllamaEmbedder } from "./embedder-base.js";
-import type { JsonObject } from "@muse/shared";
+import { withBestEffort, type JsonObject } from "@muse/shared";
 import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/stores";
 import { hashQuery, type ConversationSummaryStore, type TaskMemoryStore, type UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
@@ -250,11 +250,11 @@ export function buildEpisodicRecallProvider(
   const recallHitsFile = resolveRecallHitsFile(env);
   const fadedMemoriesFile = resolveFadedMemoriesFile(env);
   const provider = new StoreBackedEpisodicRecallProvider({
-    fadedKeys: () => readFadedMemoryKeys(fadedMemoriesFile).catch(() => new Set()),
+    fadedKeys: () => withBestEffort(readFadedMemoryKeys(fadedMemoriesFile), new Set()),
     maxFetched,
     minScore,
     recallStats: async () => {
-      const records = await readRecallHits(recallHitsFile).catch(() => []);
+      const records = await withBestEffort(readRecallHits(recallHitsFile), []);
       return new Map(records.map((record) => [record.key, { hits: record.hits, lastHitMs: record.lastHitMs }]));
     },
     store: summaryStore,
@@ -285,7 +285,7 @@ export function withRecallHitRecording(
         .filter((match) => typeof match.sessionId === "string" && match.sessionId.length > 0)
         .map((match) => ({ key: match.sessionId, queryHash, summary: match.narrative }));
       if (entries.length > 0) {
-        void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
+        void withBestEffort(recordRecallHits(hitsFile, entries, Date.now()), undefined);
       }
       return snapshot;
     }
@@ -308,7 +308,7 @@ export function recordFactRecallHits(hitsFile: string, memoryKeys: readonly stri
   if (uniqueKeys.length === 0) return;
   const queryHash = hashQuery(query);
   const entries = uniqueKeys.map((key) => ({ key, queryHash }));
-  void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
+  void withBestEffort(recordRecallHits(hitsFile, entries, Date.now()), undefined);
 }
 
 /**

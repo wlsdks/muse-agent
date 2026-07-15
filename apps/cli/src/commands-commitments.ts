@@ -7,6 +7,8 @@
 
 import { randomUUID } from "node:crypto";
 
+
+
 import { detectUserCommitments, type UserCommitment } from "@muse/agent-core";
 import { resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
@@ -14,6 +16,7 @@ import type { Command } from "commander";
 
 import { readLastChatHistory } from "./chat-history.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -69,7 +72,7 @@ export function registerCommitmentsCommands(program: Command, io: ProgramIO): vo
     .option("--json", "Print the raw payload instead of the formatted list")
     .action(async (options: { readonly limit?: string; readonly json?: boolean }) => {
       const limit = clampScanLimit(options.limit, 10, 50);
-      const history = await readLastChatHistory().catch(() => []);
+      const history = await withBestEffort(readLastChatHistory(), []);
       const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
       const found = detectUserCommitments(userTurns, { maxCommitments: limit });
       if (options.json) {
@@ -99,11 +102,11 @@ export function registerCommitmentsCommands(program: Command, io: ProgramIO): vo
       }
       // Re-detect with the cap so the index matches the `scan` numbering (its
       // order is deterministic, so the first N are identical to the default scan).
-      const history = await readLastChatHistory().catch(() => []);
+      const history = await withBestEffort(readLastChatHistory(), []);
       const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
       const found = detectUserCommitments(userTurns, { maxCommitments: 50 });
       const tasksFile = resolveTasksFile(environment());
-      const existing = await readTasks(tasksFile).catch(() => []);
+      const existing = await withBestEffort(readTasks(tasksFile), []);
       const openTitles = existing.filter((task) => task.status === "open").map((task) => task.title);
       const result = buildTaskFromCommitment(found, index, openTitles, () => `task_${randomUUID()}`, new Date());
       if ("error" in result) {

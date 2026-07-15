@@ -12,6 +12,9 @@
 import { Box, Static, Text, useApp, useCursor, useInput, useStdout } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { EventEmitter, once } from "node:events";
+import { withBestEffort } from "./async-promises.js";
+
+
 
 import { FRAMES, toAnsi } from "@muse/mascot";
 import { trimConversationMessages, type ConversationTrimOptions, type DroppedContextSummarizer } from "@muse/memory";
@@ -734,7 +737,7 @@ export function MuseChatApp(props: {
     const personaBase = props.personaPrompt();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
     const grounding: ChatGrounding = props.groundingFor
-      ? await props.groundingFor(message, historyRef.current).catch(() => ({ block: "", matches: [] }))
+      ? await withBestEffort(props.groundingFor(message, historyRef.current), { block: "", matches: [] })
       : { block: "", matches: [] };
 
     // Privacy-tiered routing: an attachment splices file contents / a photo
@@ -745,7 +748,7 @@ export function MuseChatApp(props: {
     let cloudResult: { readonly text: string; readonly marker: string } | undefined;
     if (cloudEligible) {
       setStreaming("☁️ …"); // the await below can take a couple seconds; a blank box reads as hung
-      cloudResult = await cloudTurn(message, personaBase ?? "", grounding.block).catch(() => undefined);
+      cloudResult = await withBestEffort(cloudTurn(message, personaBase ?? "", grounding.block), undefined);
     }
 
     let accumulated = "";
@@ -805,14 +808,14 @@ export function MuseChatApp(props: {
     // process (episode-laundering defense, EP-1b / MemoryGraft).
     let turnUntrusted = false;
     if (props.finalizeAnswer && !interruptRef.current && !accumulated.startsWith("⚠")) {
-      const finalized = await props.finalizeAnswer({
+      const finalized = await withBestEffort(props.finalizeAnswer({
         answer: accumulated,
         history: historyRef.current,
         matches: grounding.matches,
         question: message,
         toolsUsed: toolsRan,
         toolGroundingSources: toolGrounding
-      }).catch(() => undefined);
+      }), undefined);
       if (finalized) {
         if (finalized.display !== accumulated) {
           accumulated = finalized.display;
@@ -845,9 +848,12 @@ export function MuseChatApp(props: {
     if (!accumulated.startsWith("⚠") && accumulated !== "(interrupted)") lastAnswerRef.current = accumulated;
     props.onCommit(message, persisted, turnUntrusted);
     // Background auto-memory: surface anything Muse learned so the user sees it.
-    void props.autoLearn?.(message, persisted)
-      .then((summary) => { if (summary) setTurns((prev) => [...prev, { role: "system", text: summary }]); })
-      .catch(() => undefined);
+    void withBestEffort(
+      props.autoLearn?.(message, persisted) ?? Promise.resolve(undefined),
+      undefined
+    ).then((summary) => {
+      if (summary) setTurns((prev) => [...prev, { role: "system", text: summary }]);
+    });
   }, [app, props, activeAgent, currentModel, sessionTokens, toolsOn, requestApproval]);
 
   const slashMenu = matchSlashCommands(inputState.value, SLASH_COMMANDS);

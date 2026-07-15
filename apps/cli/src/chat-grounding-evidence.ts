@@ -6,6 +6,7 @@ import { isRecord } from "@muse/shared";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
+import { withBestEffort } from "./async-promises.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
 //
@@ -284,7 +285,7 @@ export async function retrieveChatGrounding(
   // this a note the user just added is unreachable until they remember to run
   // `muse notes reindex`. Fail-soft: search whatever index exists.
   if (chatAutoReindexEnabled(env)) {
-    await refreshStaleNotesIndexForChat(env, embedModel).catch(() => undefined);
+    await withBestEffort(refreshStaleNotesIndexForChat(env, embedModel), undefined);
   }
   try {
     const hits = await (opts.searchRecall ?? searchRecall)({

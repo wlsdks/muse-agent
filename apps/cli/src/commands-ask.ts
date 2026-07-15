@@ -24,6 +24,8 @@
 
 import { existsSync } from "node:fs";
 
+
+
 import { enforceAnswerCitations, withUngroundableFallback } from "@muse/agent-core";
 import { classifyActionRequest } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveAnswerTemperature, resolveNoteProvenanceFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -74,6 +76,7 @@ import { buildMusePersona } from "@muse/recall";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { listNoteFiles, notesCorpusFileCount, selectGraphConnections } from "./ask-corpus-helpers.js";
+import { withBestEffort } from "./async-promises.js";
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
@@ -133,7 +136,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // under --json so scripted callers never see stray non-JSON output.
       if (!options.json) {
         const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
-        await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
+        await withBestEffort(maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }), false);
       }
       const composedInput = await composeAskInput(queryParts, options, io);
       if (!composedInput.ok) {
@@ -240,7 +243,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         process.env.MUSE_MODEL = options.model;
         process.env.MUSE_MODEL_PROVIDER_ID = CODEX_PROVIDER_ID;
       } else if (options.model === undefined) {
-        const activation = await resolveCodexActivation().catch(() => undefined);
+        const activation = await withBestEffort(resolveCodexActivation(), undefined);
         if (activation?.active && activation.model) {
           applyCodexModelToEnv(process.env, activation.model);
         } else if (activation && !activation.active && activation.setupSteps) {
@@ -267,7 +270,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // masks the real error, and every failure path returns before the success
       // trace at the end of the run, so there's no double-write.
       const writeAskFailureLog = async (failure: string): Promise<void> => {
-        await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
+        await withBestEffort(writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
           query,
           model,
           timings: askStages.timings(),
@@ -276,7 +279,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           success: false,
           toolsUsed: [],
           errorMessage: failure
-        })).catch(() => undefined);
+        }))), undefined);
       };
       // Vision surface may run a dedicated model (MUSE_VISION_MODEL, else the
       // measured local vision default when the chat model IS the local default).
@@ -307,9 +310,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // ask-behavioural-rules.ts / behavioural-rule-budget.ts. Fail-soft: an
       // admission error (bad playbook file, etc.) falls back to buildMusePersona's
       // own uncapped default rather than blocking the answer.
-      const admittedRuleKeys = await computeRuleAdmission(userMemory, userKey, query)
-        .then((admission) => admission.admittedRuleKeys)
-        .catch(() => undefined);
+      const admittedRuleKeys = await withBestEffort(computeRuleAdmission(userMemory, userKey, query).then((admission) => admission.admittedRuleKeys), undefined);
       const personaPrompt = userMemory ? buildMusePersona(userMemory, userKey, { admittedRuleKeys }) : undefined;
       const { loadActivePersonaPreamble } = await import("./persona-store.js");
       const personaTemplatePreamble = await loadActivePersonaPreamble();

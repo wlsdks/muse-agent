@@ -12,6 +12,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+
+
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, latestOutput, planParallelSubtasks, reclaimStaleTasks, removeTask, resolveBoardMaxDepth, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
@@ -21,6 +23,7 @@ import type { Command } from "commander";
 import { budgetAndSpillOutputs, formatSpillNote } from "./board-synthesis-budget.js";
 import { firstNonEmpty } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -212,7 +215,7 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     .command("seed")
     .description("Seed the board from your ACTIVE standing objectives (skips objectives already on the board)")
     .action(async () => {
-      const objectives = await readObjectives(resolveObjectivesFile(environment())).catch(() => undefined);
+      const objectives = await withBestEffort(readObjectives(resolveObjectivesFile(environment())), undefined);
       if (objectives === undefined) {
         io.stdout("No new active objectives to seed (none active, or all already on the board).\n");
         return;
@@ -250,7 +253,7 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
           const r = await assembly.modelProvider.generate({ maxOutputTokens: 256, messages: [{ content: p, role: "user" }], model: assembly.defaultModel, temperature: 0 });
           return r.output ?? "";
         };
-        const parallel = await planParallelSubtasks(parent.title, { generate }).catch(() => undefined);
+        const parallel = await withBestEffort(planParallelSubtasks(parent.title, { generate }), undefined);
         if (parallel !== undefined && parallel.length >= 2) {
           subs = parallel.map((title) => ({ id: randomUUID(), title }));
           mode = "parallel";
