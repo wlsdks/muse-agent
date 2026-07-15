@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAgentRuntime } from "../src/index.js";
 import type { AgentRuntimeStreamEvent } from "../src/agent-runtime-types.js";
+import { readNotesOrAbsent, readNotesOrEmpty } from "./note-store-test-helpers.js";
 
 // Full agent-run e2e — the default (react) tool-loop through AgentRuntime.stream()
 // (backlog P2). The existing streaming react test asserts the happy-path event
@@ -27,9 +28,6 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-const readNotes = async (): Promise<readonly { text: string }[] | "absent"> =>
-  fs.readFile(noteFile, "utf8").then((raw) => JSON.parse(raw) as { text: string }[]).catch(() => "absent" as const);
-
 const saveNoteTool = (opts: { throws?: boolean; risk?: "read" | "write" | "execute" } = {}): MuseTool => ({
   definition: {
     description: "Persist a note to the user's store.",
@@ -39,7 +37,7 @@ const saveNoteTool = (opts: { throws?: boolean; risk?: "read" | "write" | "execu
   },
   execute: async (args) => {
     if (opts.throws) throw new Error("disk full");
-    const prior = await fs.readFile(noteFile, "utf8").then((r) => JSON.parse(r) as { text: string }[]).catch(() => []);
+    const prior = await readNotesOrEmpty(noteFile);
     prior.push({ text: String((args as { text: unknown }).text) });
     await fs.writeFile(noteFile, JSON.stringify(prior));
     return `saved: ${String((args as { text: unknown }).text)}`;
@@ -89,7 +87,7 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     expect(events.map((e) => e.type)).toEqual(["tool-call", "tool-result", "text-delta", "done"]);
     const doneEvent = events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>;
     expect(doneEvent.response.output).toBe("Saved your note.");
-    expect(await readNotes()).toEqual([{ text: "buy milk" }]); // terminal WORLD STATE
+    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "buy milk" }]); // terminal WORLD STATE
   });
 
   it("TOOL-ERROR RECOVERY: a throwing tool surfaces a tool-result, the run still completes, and nothing is mutated", async () => {
@@ -113,7 +111,7 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     const doneEvent = events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>;
     expect(doneEvent.type).toBe("done"); // run completed, did not crash
     expect(doneEvent.response.output).toBe("I couldn't save that — the disk is full.");
-    expect(await readNotes()).toBe("absent"); // failed tool left NO side effect
+    expect(await readNotesOrAbsent(noteFile)).toBe("absent"); // failed tool left NO side effect
   });
 
   it("GUARD-BLOCK MID-RUN: a toolApprovalGate denial inside the loop blocks the tool, surfaces a tool-result, and mutates nothing", async () => {
@@ -143,7 +141,7 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     const doneEvent = events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>;
     expect(doneEvent.type).toBe("done");
     expect(doneEvent.response.output).toBe("I can't do that without approval.");
-    expect(await readNotes()).toBe("absent"); // the gated tool NEVER ran — no side effect
+    expect(await readNotesOrAbsent(noteFile)).toBe("absent"); // the gated tool NEVER ran — no side effect
   });
 
   it("DEFAULT-DENY MID-STREAM: an exposed execute tool without a gate mutates nothing", async () => {
