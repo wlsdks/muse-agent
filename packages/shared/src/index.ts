@@ -395,6 +395,20 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+/** True only for JSON values that can round-trip without non-finite numbers. */
+export function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return true;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isRecord(value) && Object.values(value).every(isJsonValue);
+}
+
 /** Escape a string's regex metacharacters so it matches literally inside a `RegExp`. */
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

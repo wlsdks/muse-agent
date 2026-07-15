@@ -1,4 +1,4 @@
-import { errorMessage } from "@muse/shared";
+import { errorMessage, isJsonValue } from "@muse/shared";
 
 export type StructuredOutputFormat = "json" | "yaml";
 
@@ -28,8 +28,13 @@ function normalizeJsonOutput(content: string): StructuredOutputNormalizationResu
   // first-opener block would forfeit the valid JSON that follows.
   for (const candidate of jsonCandidates(stripped)) {
     try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (!isJsonValue(parsed)) {
+        lastError = "JSON contains non-finite numbers";
+        continue;
+      }
       return {
-        content: JSON.stringify(JSON.parse(candidate), null, 2),
+        content: JSON.stringify(parsed, null, 2),
         normalized: true
       };
     } catch (error) {

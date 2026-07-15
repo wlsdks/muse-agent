@@ -509,6 +509,10 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(schema, { meta: "" })).toEqual({ meta: "" });
     // A bare JSON scalar string is neither object nor array → untouched.
     expect(coerceToolArguments(schema, { meta: "5" })).toEqual({ meta: "5" });
+    // `JSON.parse("1e400")` produces Infinity, which is not a JsonValue and
+    // must never cross the tool boundary under a structured cast.
+    expect(coerceToolArguments(schema, { edits: "[1e400]" })).toEqual({ edits: "[1e400]" });
+    expect(coerceToolArguments(schema, { meta: '{"score":1e400}' })).toEqual({ meta: '{"score":1e400}' });
   });
 
   it("coerceEnumArguments repairs case/whitespace on enum+const args, leaves OOV/ambiguous/non-string untouched", () => {

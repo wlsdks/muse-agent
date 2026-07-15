@@ -5,12 +5,11 @@
  * specific wire transforms stay in their respective files.
  */
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isJsonValue, isRecord, parseJson, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { ModelCapabilities, ModelEvent, ModelResponse } from "./index.js";
 
-import { isRecord, parseJson } from "@muse/shared";
-export { isRecord, parseJson };
+export { isJsonValue, isRecord, parseJson };
 
 export function isJsonObject(value: unknown): value is JsonObject {
   if (!isRecord(value)) {
@@ -18,22 +17,6 @@ export function isJsonObject(value: unknown): value is JsonObject {
   }
 
   return Object.values(value).every(isJsonValue);
-}
-
-export function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "boolean" || typeof value === "string") {
-    return true;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 /**
