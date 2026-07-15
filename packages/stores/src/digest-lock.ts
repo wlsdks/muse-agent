@@ -49,7 +49,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { errorMessage } from "@muse/shared";
+import { errorMessage, isNodeError } from "@muse/shared";
 
 /** Default staleness window for `withProcessLock` — a lock older than this
  *  (no fresh holder) is treated as crashed and broken. */
@@ -85,7 +85,7 @@ async function probeLock(lockPath: string, staleMs: number): Promise<LockProbe> 
     // ONLY ENOENT means "vanished between EEXIST and stat" — any other stat
     // error says nothing about the holder, so treat it as live (never steal
     // a lock we can't actually confirm is gone).
-    return (cause as NodeJS.ErrnoException).code === "ENOENT" ? "vanished" : "live";
+    return isNodeError(cause) && cause.code === "ENOENT" ? "vanished" : "live";
   }
 }
 
@@ -138,7 +138,7 @@ async function tryAcquireOnce(lockPath: string, nonce: string): Promise<AcquireA
     await handle.writeFile(nonce, "utf8");
     return "acquired";
   } catch (cause) {
-    const code = (cause as NodeJS.ErrnoException).code;
+    const code = isNodeError(cause) ? cause.code : "";
     if (code === "EEXIST" || code === "EBUSY") {
       return "contended";
     }
