@@ -1,5 +1,5 @@
 import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
-import { sleep } from "@muse/shared";
+import { isRecord, parseJson, sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -246,7 +246,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
           await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : backoffMs);
           continue;
         }
-        const text = await response.text().catch(() => "");
+        const text = await withBestEffort(response.text(), "");
         throw new CalendarProviderError(
           this.id,
           `HTTP_${response.status}`,
@@ -263,9 +263,8 @@ export class GoogleCalendarProvider implements CalendarProvider {
       // text and turn a malformed body into the SAME typed CalendarProviderError
       // the non-2xx path raises, with the status + a body snippet for triage.
       const body = await response.text();
-      try {
-        return JSON.parse(body) as T;
-      } catch {
+      const parsed = parseJsonBody<T>(body);
+      if (parsed === undefined) {
         throw new CalendarProviderError(
           this.id,
           "MALFORMED_RESPONSE",
@@ -274,6 +273,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
           response.status
         );
       }
+      return parsed;
     }
   }
 
@@ -298,7 +298,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = await withBestEffort(response.text(), "");
       throw new CalendarProviderError(
         this.id,
         `OAUTH_${response.status}`,
@@ -308,17 +308,36 @@ export class GoogleCalendarProvider implements CalendarProvider {
       );
     }
 
-    const payload = await response.json() as { readonly access_token?: string; readonly expires_in?: number };
-    if (!payload.access_token) {
+    const payload = await response.json();
+    const accessToken = readStringField(payload, "access_token");
+    if (accessToken === undefined) {
       throw new CalendarProviderError(this.id, "OAUTH_INVALID_RESPONSE", "Google OAuth response missing access_token");
     }
 
+    const expiresIn = readNumberField(payload, "expires_in") ?? 3600;
+
     this.accessToken = {
-      expiresAt: now + (payload.expires_in ?? 3600) * 1000,
-      value: payload.access_token
+      expiresAt: now + expiresIn * 1000,
+      value: accessToken
     };
-    return payload.access_token;
+    return accessToken;
   }
+}
+
+function readNumberField(value: unknown, key: string): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+}
+
+function readStringField(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return typeof candidate === "string" ? candidate : undefined;
 }
 
 function parseGoogleTime(value: GoogleEventPayload["start"]): Date | undefined {
@@ -335,4 +354,9 @@ function parseGoogleTime(value: GoogleEventPayload["start"]): Date | undefined {
 
 function toIsoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function parseJsonBody<T>(body: string): T | undefined {
+  const parsed = parseJson(body);
+  return parsed === undefined ? undefined : parsed as T;
 }
