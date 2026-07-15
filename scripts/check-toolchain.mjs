@@ -94,7 +94,7 @@ export function parseMajor(version) {
   if (typeof version !== "string") {
     return Number.NaN;
   }
-  const match = /(\d+)\./u.exec(version.trim());
+  const match = /^(\d+)/u.exec(version.trim());
   return match ? Number(match[1]) : Number.NaN;
 }
 
@@ -103,6 +103,12 @@ export const EXPECTED_MODULE_MAJOR = 6;
 export const EXPECTED_TYPESCRIPT_PACKAGE_PREFIX = "npm:@typescript/typescript6";
 export const EXPECTED_NATIVE_PACKAGE_PREFIX = "npm:typescript";
 const ROOT_PACKAGE_URL = new URL("../package.json", import.meta.url);
+const TS_BINARY_PATH = "node_modules/.bin/tsc";
+
+export function readTscBinaryVersion() {
+  return execFileSync(TS_BINARY_PATH, ["--version"], { encoding: "utf8" })
+    .replace(/^Version\s*/iu, "");
+}
 
 export function readRootScripts() {
   return readRootPackage().scripts ?? {};
@@ -121,8 +127,7 @@ function main() {
   const tsDeclaration = devDependencies.typescript;
   const nativeTsDeclaration = devDependencies["@typescript/native"];
 
-  const binVersion = execFileSync("node_modules/.bin/tsc", ["--version"], { encoding: "utf8" })
-    .replace(/^Version\s*/iu, "");
+  const binVersion = readTscBinaryVersion();
 
   const scripts = readRootScripts();
   const problems = collectToolchainProblems({

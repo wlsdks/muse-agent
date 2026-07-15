@@ -19,6 +19,7 @@ test("parseMajor reads the major from tsc's version output and from a semver", (
   assert.equal(parseMajor("7.0.2"), 7);
   assert.equal(parseMajor("  6.0.3 "), 6);
   assert.equal(parseMajor("7.0.2-beta"), 7);
+  assert.equal(parseMajor("7"), 7);
 });
 
 test("parseMajor yields NaN on garbage rather than a wrong number", () => {
