@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer } from "@muse/domain-tools";
+import { isRecord } from "@muse/shared";
 import type { SpeechToTextProvider } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -19,6 +20,7 @@ import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { defaultBuildVoiceProviders, defaultShells, type ListenShells } from "./commands-listen.js";
+import { parseJsonWith } from "./json-parse.js";
 import type { ProgramIO } from "./program.js";
 import { captureVoiceText } from "./voice-capture.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -82,11 +84,45 @@ interface NotesIndexShape {
   readonly files: ReadonlyArray<{ readonly path: string; readonly chunks: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }> }>;
 }
 
+type NotesChunk = { readonly text: string; readonly embedding: readonly number[] };
+type NotesFile = { readonly path: string; readonly chunks: ReadonlyArray<NotesChunk> };
+
+function isNotesNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number");
+}
+
+function isNotesChunk(value: unknown): value is NotesChunk {
+  return (
+    isRecord(value) &&
+    typeof value.text === "string" &&
+    isNotesNumberArray(value.embedding)
+  );
+}
+
+function isNotesIndex(value: unknown): value is NotesIndexShape {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (typeof value.model !== "string" || !Array.isArray(value.files)) {
+    return false;
+  }
+  return value.files.every((file): file is NotesFile =>
+    isRecord(file) &&
+    typeof file.path === "string" &&
+    Array.isArray(file.chunks) &&
+    file.chunks.every(isNotesChunk)
+  );
+}
+
+function parseNotesIndex(raw: unknown): NotesIndexShape | undefined {
+  return isNotesIndex(raw) ? raw : undefined;
+}
+
 /** Rank the fresh capture against the on-disk notes + episode indices. */
 async function findConnections(captureText: string, embedModel: string): Promise<readonly RecallHit[]> {
   let notesIndex: NotesIndexShape | undefined;
   try {
-    notesIndex = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndexShape;
+    notesIndex = parseJsonWith(await readFile(notesIndexPath(), "utf8"), isNotesIndex);
   } catch {
     notesIndex = undefined;
   }

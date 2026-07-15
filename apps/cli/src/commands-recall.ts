@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
+import { isRecord } from "@muse/shared";
 
 import { depositCoRecall, readTrails, resolveTrailsFile, writeTrails } from "./recall-trail.js";
 import { resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
@@ -30,6 +31,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { embed, cosineSimilarity } from "./embed.js";
+import { parseJsonWith } from "./json-parse.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -64,10 +66,42 @@ interface NotesIndexShape {
   }>;
 }
 
+function isNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+function isNotesChunk(value: unknown): value is { readonly path: string; readonly chunks?: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[]; }> } {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    (value.chunks === undefined || (
+      Array.isArray(value.chunks) &&
+      value.chunks.every(
+        (chunk): chunk is { readonly text: string; readonly embedding: readonly number[] } =>
+          isRecord(chunk) &&
+          typeof chunk.text === "string" &&
+          isNumberArray(chunk.embedding)
+      )
+    ))
+  );
+}
+
+function isNotesIndexShape(value: unknown): value is NotesIndexShape {
+  return (
+    isRecord(value) &&
+    (value.version === undefined || typeof value.version === "number") &&
+    (value.model === undefined || typeof value.model === "string") &&
+    (
+      value.files === undefined ||
+      (Array.isArray(value.files) && value.files.every(isNotesChunk))
+    )
+  );
+}
+
 async function loadNotesIndex(file: string): Promise<NotesIndexShape | undefined> {
   try {
     const raw = await readFile(file, "utf8");
-    return JSON.parse(raw) as NotesIndexShape;
+    return parseJsonWith(raw, isNotesIndexShape);
   } catch {
     return undefined;
   }
