@@ -65,9 +65,35 @@ export function decodeGoogleAuthError(blob: string): { readonly code?: string; r
   }
 }
 
-export async function preflightGmailClient(
+export function validateGoogleOAuthClientIdInput(input: string | undefined): string | undefined {
+  const trimmed = (input ?? "").trim();
+  if (trimmed.length === 0) return "Client ID is required";
+  // Catches the most common paste mistakes BEFORE Google returns an
+  // opaque "invalid_client": truncated IDs, or an API key (AIza...)
+  // pasted where the OAuth client ID belongs.
+  if (!trimmed.endsWith(".apps.googleusercontent.com")) {
+    return "That doesn't look like an OAuth Client ID — it must end with .apps.googleusercontent.com (create one under APIs & Services → Credentials → OAuth client ID → Desktop app)";
+  }
+  return undefined;
+}
+
+export function googlePreflightGuidance(rerunCommand: string): string {
+  return `
+Google rejected this Client ID before showing any consent screen.
+Most common causes, in order:
+  - The ID was pasted incompletely (it must end with .apps.googleusercontent.com)
+  - The OAuth client was created in a DIFFERENT Google Cloud project
+  - The client was deleted, or hasn't been created yet
+Fix: open https://console.cloud.google.com/auth/clients (check the project
+selector at the top), create an "OAuth client ID" of type "Desktop app",
+and re-run \`${rerunCommand}\` with the new ID + secret.
+`;
+}
+
+export async function preflightGoogleOAuthClient(
   clientId: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  scope: string = GMAIL_SCOPES
 ): Promise<GmailClientPreflightResult> {
   // A test that forgets to inject fetch must never probe the real Google
   // endpoint (same hard boundary as the daemon's launchctl seam).
@@ -83,7 +109,7 @@ export async function preflightGmailClient(
       // before redirect_uri validation matters for Desktop clients.
       redirect_uri: "http://127.0.0.1:1/callback",
       response_type: "code",
-      scope: GMAIL_SCOPES
+      scope
     }).toString();
     const response = await fetchImpl(url.toString(), { redirect: "manual" });
     const location = response.headers.get("location") ?? "";

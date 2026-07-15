@@ -27,6 +27,8 @@ import { confirm, isCancel, multiselect, password, text } from "@clack/prompts";
 import { FileCalendarCredentialStore } from "@muse/calendar";
 import { isLocalOnlyEnabled } from "@muse/model";
 
+import { googlePreflightGuidance, preflightGoogleOAuthClient, validateGoogleOAuthClientIdInput } from "./gmail-oauth.js";
+
 interface SetupCalendarIO {
   readonly stdout: (message: string) => void;
   readonly stderr: (message: string) => void;
@@ -123,7 +125,11 @@ async function setupGoogle(store: FileCalendarCredentialStore, io: SetupCalendar
     `  URI matching the loopback address shown below.\n\n`
   );
 
-  const clientId = await text({ message: "Google OAuth Client ID:", placeholder: "xxx.apps.googleusercontent.com" });
+  const clientId = await text({
+    message: "Google OAuth Client ID:",
+    placeholder: "xxx.apps.googleusercontent.com",
+    validate: validateGoogleOAuthClientIdInput
+  });
   if (isCancel(clientId) || typeof clientId !== "string" || clientId.trim().length === 0) {
     return false;
   }
@@ -136,6 +142,10 @@ async function setupGoogle(store: FileCalendarCredentialStore, io: SetupCalendar
     placeholder: "primary"
   });
   if (isCancel(calendarId)) {
+    return false;
+  }
+
+  if (!(await preflightGoogleCalendarClient(clientId.trim(), io))) {
     return false;
   }
 
@@ -185,6 +195,23 @@ async function setupGoogle(store: FileCalendarCredentialStore, io: SetupCalendar
 
   io.stdout("✓ gcal — saved\n");
   return true;
+}
+
+/**
+ * Probes Google's authorization endpoint before any browser opens, so a
+ * dead/mistyped client ID is explained in the terminal instead of Google's
+ * opaque "401 invalid_client" page. Network failure skips the probe
+ * (advisory only) — it never blocks a working setup.
+ */
+export async function preflightGoogleCalendarClient(clientId: string, io: SetupCalendarIO): Promise<boolean> {
+  const preflight = await preflightGoogleOAuthClient(clientId, io.fetchImpl ?? fetch, googleScope);
+  if (preflight.ok) {
+    return true;
+  }
+  io.stderr(googlePreflightGuidance("muse setup calendar"));
+  const detail = [preflight.errorCode, preflight.message].filter(Boolean).join(": ");
+  io.stderr(`Google rejected the OAuth client before consent${detail ? ` (${detail})` : ""}.\n`);
+  return false;
 }
 
 async function setupCalDAV(store: FileCalendarCredentialStore, io: SetupCalendarIO): Promise<boolean> {

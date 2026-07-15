@@ -31,7 +31,7 @@ import { startOAuthCallbackServer, type OAuthCallbackServer } from "@muse/mcp";
 
 import { writeEmailImapCredential, writeGmailCredential, type GmailOAuthCredential, type ImapEmailCredential } from "./credential-store.js";
 import { generateOAuthState, generatePkcePair } from "./setup-calendar.js";
-import { exchangeGmailAuthorizationCode, GMAIL_AUTH_ENDPOINT, GMAIL_SCOPES, preflightGmailClient, type GmailClientPreflightResult, type GmailTokenExchangeResult } from "./gmail-oauth.js";
+import { exchangeGmailAuthorizationCode, GMAIL_AUTH_ENDPOINT, GMAIL_SCOPES, googlePreflightGuidance, preflightGoogleOAuthClient, validateGoogleOAuthClientIdInput, type GmailClientPreflightResult, type GmailTokenExchangeResult } from "./gmail-oauth.js";
 import type { ProgramIO } from "./program.js";
 
 const WALKTHROUGH = `
@@ -58,16 +58,7 @@ Gmail setup — one-time browser consent, then it refreshes itself forever.
 
 `;
 
-const PREFLIGHT_GUIDANCE = `
-Google rejected this Client ID before showing any consent screen.
-Most common causes, in order:
-  - The ID was pasted incompletely (it must end with .apps.googleusercontent.com)
-  - The OAuth client was created in a DIFFERENT Google Cloud project
-  - The client was deleted, or hasn't been created yet
-Fix: open https://console.cloud.google.com/auth/clients (check the project
-selector at the top), create an "OAuth client ID" of type "Desktop app",
-and re-run \`muse setup email\` with the new ID + secret.
-`;
+const PREFLIGHT_GUIDANCE = googlePreflightGuidance("muse setup email");
 
 export interface GmailOAuthLoopbackDeps {
   readonly stdout: (message: string) => void;
@@ -104,7 +95,7 @@ export async function runGmailOAuthLoopback(params: {
   const state = generateOAuthState();
   const pkce = generatePkcePair();
 
-  const preflight = await (params.preflightClient ?? preflightGmailClient)(
+  const preflight = await (params.preflightClient ?? preflightGoogleOAuthClient)(
     params.clientId,
     params.fetchImpl ?? globalThis.fetch
   );
@@ -183,17 +174,7 @@ async function defaultPromptClientId(): Promise<string | undefined> {
   const value = await text({
     message: "Google OAuth Client ID:",
     placeholder: "xxx.apps.googleusercontent.com",
-    validate: (input) => {
-      const trimmed = (input ?? "").trim();
-      if (trimmed.length === 0) return "Client ID is required";
-      // Catches the most common paste mistakes BEFORE Google returns an
-      // opaque "invalid_client": truncated IDs, or an API key (AIza...)
-      // pasted where the OAuth client ID belongs.
-      if (!trimmed.endsWith(".apps.googleusercontent.com")) {
-        return "That doesn't look like an OAuth Client ID — it must end with .apps.googleusercontent.com (create one under APIs & Services → Credentials → OAuth client ID → Desktop app)";
-      }
-      return undefined;
-    }
+    validate: validateGoogleOAuthClientIdInput
   });
   return isCancel(value) || typeof value !== "string" || value.trim().length === 0 ? undefined : value.trim();
 }
