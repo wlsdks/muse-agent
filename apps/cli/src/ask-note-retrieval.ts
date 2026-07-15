@@ -12,6 +12,7 @@ import {
 } from "@muse/recall";
 
 import { resolveDefaultModel } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 
 import { embed } from "./embed.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
@@ -63,8 +64,11 @@ async function ollamaRerank(query: string, candidateTexts: readonly string[], mo
   if (!res.ok) {
     return undefined;
   }
-  const json = await res.json() as { readonly response?: string };
-  return parseRerankReply(json.response ?? "");
+  const json = await res.json();
+  if (!isRecord(json) || typeof json.response !== "string") {
+    return undefined;
+  }
+  return parseRerankReply(json.response);
 }
 
 export async function retrieveAndRankNotes(

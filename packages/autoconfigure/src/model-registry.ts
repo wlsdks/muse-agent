@@ -69,16 +69,15 @@ export async function fetchInstalledOllamaModels(
     if (!response.ok) {
       return { error: `Ollama responded ${response.status.toString()} at ${baseUrl}`, ok: false };
     }
-    const body = (await response.json()) as {
-      readonly models?: readonly { readonly name?: unknown; readonly size?: unknown; readonly modified_at?: unknown }[];
-    };
-    const models = (body.models ?? [])
-      .filter((m): m is { readonly name: string; readonly size?: unknown; readonly modified_at?: unknown } =>
-        typeof m.name === "string" && m.name.length > 0)
-      .map((m) => ({
-        name: m.name,
-        ...(typeof m.size === "number" ? { sizeBytes: m.size } : {}),
-        ...(typeof m.modified_at === "string" ? { modifiedAt: m.modified_at } : {})
+    const body = await response.json();
+    const rawModels = isRecord(body) && Array.isArray(body.models) ? body.models : [];
+    const models = rawModels
+      .filter((item): item is { readonly name: string; readonly size?: unknown; readonly modified_at?: unknown } =>
+        isRecord(item) && typeof item.name === "string" && item.name.length > 0)
+      .map((item) => ({
+        name: item.name,
+        ...(typeof item.size === "number" ? { sizeBytes: item.size } : {}),
+        ...(typeof item.modified_at === "string" ? { modifiedAt: item.modified_at } : {})
       }));
     return { models, ok: true };
   } catch (error) {

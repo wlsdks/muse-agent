@@ -1,6 +1,7 @@
 // Health/spec/openapi + chat (incl. rate-limit) registrars — split out of server-routes.ts (domain cohesion).
 
 import { parseBoolean, resolveActionLogFile, resolvePendingApprovalsFile } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
@@ -103,7 +104,8 @@ export function registerChatRoutes(server: FastifyInstance, options: ServerOptio
   // no tool resolver on this path at all.
   server.post("/api/chat/approvals/:id/deny", async (request, reply) => {
     if (!enforce(request, reply)) return reply;
-    const id = (request.params as { id?: string }).id ?? "";
+    const params = isRecord(request.params) ? request.params : {};
+    const id = typeof params.id === "string" ? params.id : "";
     const requestUserId = getAuthIdentity(request)?.userId;
     const result = await denyChatApproval({
       actionLogFile: resolveActionLogFile(options.env ?? {}),

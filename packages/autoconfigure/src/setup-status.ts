@@ -620,8 +620,8 @@ function resolveDaemonConfigFilePath(env: Readonly<Record<string, string | undef
 async function readDailyBriefConfig(file: string): Promise<{ readonly enabled: boolean; readonly time?: string } | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { dailyBrief?: unknown };
-    if (isRecord(parsed.dailyBrief)) {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && isRecord(parsed.dailyBrief)) {
       const record = parsed.dailyBrief;
       const time = typeof record.time === "string" && record.time.trim().length > 0 ? record.time.trim() : undefined;
       return { enabled: record.enabled === true, ...(time ? { time } : {}) };
