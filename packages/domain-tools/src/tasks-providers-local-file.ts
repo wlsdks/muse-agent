@@ -38,6 +38,7 @@ import {
   type TasksProvider,
   type TasksProviderInfo
 } from "./tasks-providers.js";
+import { isRecord } from "@muse/shared";
 
 export interface LocalFileTasksProviderOptions {
   readonly file: string;
@@ -181,13 +182,13 @@ export class LocalFileTasksProvider implements TasksProvider {
     } catch {
       return [];
     }
-    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+    if (!parsed || !isRecord(parsed) || !Array.isArray(parsed.tasks)) {
       return [];
     }
     // Use Array#filter with a type predicate so TypeScript narrows the
     // result to PersistedTask[] without the verbose flatMap-with-empty-arr
     // workaround. Same idiom that `LocalDirNotesProvider.list` could use.
-    return (parsed as { tasks: unknown[] }).tasks.filter(isPersistedTask);
+    return parsed.tasks.filter(isPersistedTask);
   }
 
   private async writeTasks(tasks: readonly PersistedTask[]): Promise<void> {
@@ -217,10 +218,11 @@ export class LocalFileTasksProvider implements TasksProvider {
 }
 
 function isPersistedTask(value: unknown): value is PersistedTask {
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as PersistedTask).id === "string"
-    && typeof (value as PersistedTask).title === "string"
-    && typeof (value as PersistedTask).createdAt === "string"
-    && ((value as PersistedTask).status === "open" || (value as PersistedTask).status === "done");
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.id === "string"
+    && typeof value.title === "string"
+    && typeof value.createdAt === "string"
+    && (value.status === "open" || value.status === "done");
 }

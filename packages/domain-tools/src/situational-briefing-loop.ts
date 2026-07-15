@@ -15,6 +15,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { isRecord } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { readObjectives } from "@muse/stores";
@@ -97,7 +98,8 @@ export interface RunDueSituationalBriefingSummary {
 
 async function readLastFiredAt(file: string): Promise<number | undefined> {
   try {
-    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as { lastFiredAt?: unknown };
+    const raw = JSON.parse(await fs.readFile(file, "utf8"));
+    const parsed = isRecord(raw) ? raw : {};
     const ms = typeof parsed.lastFiredAt === "string" ? Date.parse(parsed.lastFiredAt) : Number.NaN;
     return Number.isFinite(ms) ? ms : undefined;
   } catch {

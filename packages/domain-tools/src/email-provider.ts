@@ -57,15 +57,17 @@ export interface EmailReader {
  * falls back to the snippet). Pure — no network.
  */
 export function extractPlainTextBody(payload: unknown): string {
-  if (!payload || typeof payload !== "object") {
+  if (!isRecord(payload)) {
     return "";
   }
-  const p = payload as { mimeType?: unknown; body?: { data?: unknown }; parts?: unknown };
-  if (p.mimeType === "text/plain" && typeof p.body?.data === "string") {
-    return Buffer.from(p.body.data, "base64url").toString("utf8");
+  if (payload.mimeType === "text/plain") {
+    const body = isRecord(payload.body) ? payload.body : {};
+    if (typeof body.data === "string") {
+      return Buffer.from(body.data, "base64url").toString("utf8");
+    }
   }
-  if (Array.isArray(p.parts)) {
-    for (const part of p.parts) {
+  if (Array.isArray(payload.parts)) {
+    for (const part of payload.parts) {
       const text = extractPlainTextBody(part);
       if (text.length > 0) {
         return text;
@@ -146,9 +148,15 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     // honouring Retry-After. A 5xx or a network reject is AMBIGUOUS (the message
     // may have been accepted) and is NEVER retried. (Mirrors the calendar
     // actuator's safe-write retry; reads use fetchWithRetry below.)
-    const retries = Number.isFinite(this.retryOptions.retries) ? Math.max(0, Math.trunc(this.retryOptions.retries as number)) : 2;
-    const baseDelayMs = Number.isFinite(this.retryOptions.baseDelayMs) ? Math.max(0, this.retryOptions.baseDelayMs as number) : 250;
-    const maxRetryAfterMs = Number.isFinite(this.retryOptions.maxRetryAfterMs) ? Math.max(0, this.retryOptions.maxRetryAfterMs as number) : 30_000;
+    const retries = typeof this.retryOptions.retries === "number" && Number.isFinite(this.retryOptions.retries)
+      ? Math.max(0, Math.trunc(this.retryOptions.retries))
+      : 2;
+    const baseDelayMs = typeof this.retryOptions.baseDelayMs === "number" && Number.isFinite(this.retryOptions.baseDelayMs)
+      ? Math.max(0, this.retryOptions.baseDelayMs)
+      : 250;
+    const maxRetryAfterMs = typeof this.retryOptions.maxRetryAfterMs === "number" && Number.isFinite(this.retryOptions.maxRetryAfterMs)
+      ? Math.max(0, this.retryOptions.maxRetryAfterMs)
+      : 30_000;
     const delay = this.retryOptions.sleep ?? sleep;
     for (let attempt = 0; ; attempt += 1) {
       // Resolved every attempt (not hoisted before the loop): a retried send

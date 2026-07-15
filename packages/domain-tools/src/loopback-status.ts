@@ -16,7 +16,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readFollowups } from "@muse/stores";
@@ -93,11 +93,6 @@ interface PersistedTask {
   readonly urgent?: boolean;
 }
 
-interface TrustEntry {
-  readonly trustedTools?: readonly string[];
-  readonly blockedTools?: readonly string[];
-}
-
 export function createStatusMcpServer(options: StatusMcpServerOptions = {}): LoopbackMcpServer {
   const userMemoryFile = options.userMemoryFile ?? homeMuse("user-memory.json");
   const tasksFile = options.tasksFile ?? homeMuse("tasks.json");
@@ -123,26 +118,20 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       "the user's current state — what they're working on, what's queued, what Muse just notified them about.",
     execute: async (args: Record<string, unknown>): Promise<JsonObject> => {
       const userId = typeof args["user_id"] === "string" && args["user_id"].length > 0
-        ? args["user_id"] as string
+        ? args["user_id"]
         : (process.env.MUSE_USER_ID?.trim() || process.env.USER?.trim() || "default");
 
-      const memoryDoc = await safeReadJson(userMemoryFile) as
-        | { users?: Record<string, unknown> }
-        | undefined;
-      const persona = (memoryDoc?.users?.[userId] ?? undefined) as
-        | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
-        | undefined;
-      const factCount = persona?.facts ? Object.keys(persona.facts).length : 0;
-      const preferenceCount = persona?.preferences ? Object.keys(persona.preferences).length : 0;
-      const vetoCount = persona?.preferences
-        ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
-        : 0;
-      const goalCount = persona?.preferences
-        ? Object.keys(persona.preferences).filter((k) => k.startsWith("goal:")).length
-        : 0;
+      const memoryDoc = await safeReadJson(userMemoryFile);
+      const users = isRecord(memoryDoc) && isRecord(memoryDoc.users) ? memoryDoc.users : {};
+      const persona = isRecord(users[userId]) ? users[userId] : undefined;
+      const facts = isRecord(persona?.facts) ? persona.facts : {};
+      const preferences = isRecord(persona?.preferences) ? persona.preferences : {};
+      const factCount = Object.keys(facts).length;
+      const preferenceCount = Object.keys(preferences).length;
+      const vetoCount = Object.keys(preferences).filter((k) => k.startsWith("veto:")).length;
+      const goalCount = Object.keys(preferences).filter((k) => k.startsWith("goal:")).length;
 
-      const tasksDoc = await safeReadJson(tasksFile) as { tasks?: readonly PersistedTask[] } | undefined;
-      const allTasks = tasksDoc?.tasks ?? [];
+      const allTasks = parsePersistedTasks(await safeReadJson(tasksFile));
       const now = Date.now();
       const due24h = allTasks.filter((task) => {
         if (task.status !== "open" || !task.dueAt) return false;
@@ -155,10 +144,11 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
 
       const logBytes = await fileSize(logFile);
 
-      const trustDoc = await safeReadJson(trustFile) as
-        | { users?: Record<string, TrustEntry> }
-        | undefined;
-      const trust = trustDoc?.users?.[userId];
+      const trustDoc = await safeReadJson(trustFile);
+      const trustedUsers = isRecord(trustDoc) && isRecord(trustDoc.users) ? trustDoc.users : {};
+      const trust = isRecord(trustedUsers[userId]) ? trustedUsers[userId] : undefined;
+      const trustedTools = readStringArray(trust?.trustedTools);
+      const blockedTools = readStringArray(trust?.blockedTools);
 
       // Dashboard summarizers — same shape `muse status` CLI uses,
       // shared via `personal-status-summary.ts`. Each load is
@@ -179,9 +169,9 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       // whether to surface something) must see it. Active → `until`
       // string; expired/missing/corrupt → undefined.
       const sessionLockUntil = await readSessionLock(sessionLockFile, new Date(now)).catch(() => undefined);
-      const episodesRows = (episodesDoc as { episodes?: readonly unknown[] } | undefined)?.episodes ?? [];
+      const episodesRows = readArrayField(episodesDoc, "episodes");
       const episodesSummary = summariseEpisodesRows(episodesRows, userId);
-      const patternsRows = (patternsDoc as { fired?: readonly unknown[] } | undefined)?.fired ?? [];
+      const patternsRows = readArrayField(patternsDoc, "fired");
       const patternsSummary = summarisePatternsFiredRows(patternsRows);
 
       const snapshot: JsonObject = {
@@ -253,9 +243,9 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           total_open: allTasks.filter((task) => task.status === "open").length
         },
         trust: {
-          blocked_count: trust?.blockedTools?.length ?? 0,
-          trusted_count: trust?.trustedTools?.length ?? 0,
-          trusted_sample: (trust?.trustedTools ?? []).slice(0, 3)
+          blocked_count: blockedTools.length,
+          trusted_count: trustedTools.length,
+          trusted_sample: trustedTools.slice(0, 3)
         }
       };
       return snapshot;
@@ -313,4 +303,33 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
     name: "muse.status",
     tools: [snapshotTool, notesIndexTool]
   };
+}
+
+function parsePersistedTasks(value: unknown): readonly PersistedTask[] {
+  if (!isRecord(value) || !Array.isArray(value.tasks)) {
+    return [];
+  }
+  return value.tasks.filter(isPersistedTask);
+}
+
+function readArrayField(value: unknown, key: string): readonly unknown[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+  const field = value[key];
+  return Array.isArray(field) ? field : [];
+}
+
+function readStringArray(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function isPersistedTask(value: unknown): value is PersistedTask {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.id === "string"
+    && typeof value.title === "string"
+    && typeof value.createdAt === "string"
+    && (value.status === "open" || value.status === "done");
 }

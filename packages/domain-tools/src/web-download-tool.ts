@@ -15,6 +15,7 @@ import { basename, join, resolve as pathResolve } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
+import { isRecord } from "@muse/shared";
 
 import { fetchPublicHttpWithRedirects } from "./public-http-redirect.js";
 import type { HostLookup } from "./web-url-guard.js";
@@ -65,7 +66,8 @@ export async function writeNonClobbering(dir: string, name: string, bytes: Buffe
       await writeFile(path, bytes, { flag: "wx" });
       return { name: candidate, path };
     } catch (cause) {
-      if ((cause as { code?: string }).code === "EEXIST") continue; // taken — try the next dedupe suffix
+      const code = isRecord(cause) ? readErrorCode(cause) : undefined;
+      if (code === "EEXIST") continue; // taken — try the next dedupe suffix
       throw cause;
     }
   }
@@ -164,4 +166,9 @@ export function createWebDownloadTool(deps: WebDownloadToolDeps): MuseTool {
       return { bytes: bytes.byteLength, name: saved.name, path: saved.path, saved: true };
     }
   };
+}
+
+function readErrorCode(error: Record<string, unknown>): string | undefined {
+  const value = error["code"];
+  return typeof value === "string" ? value : undefined;
 }

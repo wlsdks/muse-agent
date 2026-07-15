@@ -9,6 +9,7 @@
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import { resolveRelativeTimePhrase, startOfLocalDay } from "@muse/mcp-shared";
+import { isRecord } from "@muse/shared";
 
 export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
 
@@ -172,8 +173,10 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     if (!response.ok) {
       throw new Error(`geocoding failed (${response.status.toString()})`);
     }
-    const body = await response.json() as { results?: Array<Record<string, unknown>> };
-    const first = body.results?.[0];
+    const raw = await response.json();
+    const body = isRecord(raw) ? raw : {};
+    const results = Array.isArray(body.results) ? body.results : [];
+    const first = isRecord(results[0]) ? results[0] : undefined;
     const latitude = numberOrUndefined(first?.latitude);
     const longitude = numberOrUndefined(first?.longitude);
     if (!first || latitude === undefined || longitude === undefined) {
@@ -200,8 +203,9 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     if (!response.ok) {
       throw new Error(`forecast failed (${response.status.toString()})`);
     }
-    const body = await response.json() as { current?: Record<string, unknown> };
-    const current = body.current ?? {};
+    const raw = await response.json();
+    const body = isRecord(raw) ? raw : {};
+    const current = isRecord(body.current) ? body.current : {};
     const code = numberOrUndefined(current.weather_code) ?? 0;
     return {
       apparentC: numberOrUndefined(current.apparent_temperature),
@@ -217,8 +221,12 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
 
   async rainOutlook(location: GeocodedLocation, options: RainOutlookOptions = {}): Promise<RainOutlook | undefined> {
     const now = (options.now ?? (() => new Date()))();
-    const withinHours = Number.isFinite(options.withinHours) ? Math.max(1, options.withinHours as number) : 12;
-    const minProb = Number.isFinite(options.minProbabilityPct) ? (options.minProbabilityPct as number) : 50;
+    const withinHours = typeof options.withinHours === "number" && Number.isFinite(options.withinHours)
+      ? Math.max(1, options.withinHours)
+      : 12;
+    const minProb = typeof options.minProbabilityPct === "number" && Number.isFinite(options.minProbabilityPct)
+      ? options.minProbabilityPct
+      : 50;
     const params = new URLSearchParams({
       forecast_days: "2",
       hourly: "precipitation_probability,weather_code",
@@ -230,10 +238,12 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     if (!response.ok) {
       throw new Error(`forecast failed (${response.status.toString()})`);
     }
-    const body = await response.json() as { hourly?: { time?: unknown[]; precipitation_probability?: unknown[]; weather_code?: unknown[] } };
-    const times = body.hourly?.time ?? [];
-    const probs = body.hourly?.precipitation_probability ?? [];
-    const codes = body.hourly?.weather_code ?? [];
+    const raw = await response.json();
+    const body = isRecord(raw) ? raw : {};
+    const hourly = isRecord(body.hourly) ? body.hourly : {};
+    const times = Array.isArray(hourly.time) ? hourly.time : [];
+    const probs = Array.isArray(hourly.precipitation_probability) ? hourly.precipitation_probability : [];
+    const codes = Array.isArray(hourly.weather_code) ? hourly.weather_code : [];
     const horizon = now.getTime() + withinHours * 3_600_000;
     for (let i = 0; i < times.length; i += 1) {
       const time = times[i];
@@ -254,7 +264,9 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
   }
 
   async dailyForecast(location: GeocodedLocation, options: { readonly days?: number } = {}): Promise<DailyForecast[]> {
-    const days = Number.isFinite(options.days) ? Math.max(1, Math.min(16, Math.trunc(options.days as number))) : 7;
+    const days = typeof options.days === "number" && Number.isFinite(options.days)
+      ? Math.max(1, Math.min(16, Math.trunc(options.days)))
+      : 7;
     const params = new URLSearchParams({
       daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
       forecast_days: days.toString(),
@@ -266,14 +278,13 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     if (!response.ok) {
       throw new Error(`forecast failed (${response.status.toString()})`);
     }
-    const body = await response.json() as {
-      daily?: { time?: unknown[]; weather_code?: unknown[]; temperature_2m_max?: unknown[]; temperature_2m_min?: unknown[]; precipitation_probability_max?: unknown[] };
-    };
-    const times = body.daily?.time ?? [];
-    const codes = body.daily?.weather_code ?? [];
-    const maxes = body.daily?.temperature_2m_max ?? [];
-    const mins = body.daily?.temperature_2m_min ?? [];
-    const probs = body.daily?.precipitation_probability_max ?? [];
+    const raw = await response.json();
+    const daily = isRecord(raw) && isRecord(raw.daily) ? raw.daily : {};
+    const times = Array.isArray(daily.time) ? daily.time : [];
+    const codes = Array.isArray(daily.weather_code) ? daily.weather_code : [];
+    const maxes = Array.isArray(daily.temperature_2m_max) ? daily.temperature_2m_max : [];
+    const mins = Array.isArray(daily.temperature_2m_min) ? daily.temperature_2m_min : [];
+    const probs = Array.isArray(daily.precipitation_probability_max) ? daily.precipitation_probability_max : [];
     const out: DailyForecast[] = [];
     for (let i = 0; i < times.length; i += 1) {
       const dateIso = times[i];
