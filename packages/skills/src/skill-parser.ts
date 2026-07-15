@@ -20,7 +20,13 @@ import { dirname } from "node:path";
 
 import { isRecord } from "@muse/shared";
 
-import type { Skill, SkillFrontmatter, SkillSource } from "./skill-contract.js";
+import type {
+  Skill,
+  SkillFrontmatter,
+  SkillInstallStep,
+  SkillRequires,
+  SkillSource
+} from "./skill-contract.js";
 
 export class SkillParseError extends Error {
   constructor(message: string, readonly filePath?: string) {
@@ -182,13 +188,106 @@ export function parseSkillFrontmatter(frontmatter: string): SkillFrontmatter {
   const requires = safeJsonObject(requiresJson);
   const install = safeJsonArray(installJson);
   const fromMetadata = extractRequiresInstall(metadata);
-  const mergedRequires = (requires ?? fromMetadata.requires) as SkillFrontmatter["requires"];
-  const mergedInstall = (install ?? fromMetadata.install) as SkillFrontmatter["install"];
+  const mergedRequires = parseRequires(requires) ?? parseRequires(fromMetadata.requires);
+  const mergedInstall = parseInstallSteps(install) ?? parseInstallSteps(fromMetadata.install);
   return {
     ...out,
     ...(mergedRequires ? { requires: mergedRequires } : {}),
     ...(mergedInstall ? { install: mergedInstall } : {})
   };
+}
+
+function parseRequires(value: unknown): SkillRequires | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const bins = parseStringList(value["bins"]);
+  const anyBins = parseStringList(value["anyBins"]);
+  const config = parseStringList(value["config"]);
+
+  if (bins === undefined && anyBins === undefined && config === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(bins ? { bins } : {}),
+    ...(anyBins ? { anyBins } : {}),
+    ...(config ? { config } : {})
+  };
+}
+
+function parseInstallSteps(value: unknown): readonly SkillInstallStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const steps: SkillInstallStep[] = [];
+  for (const item of value) {
+    const step = parseInstallStep(item);
+    if (!step) {
+      return undefined;
+    }
+    steps.push(step);
+  }
+  return steps;
+}
+
+function parseInstallStep(value: unknown): SkillInstallStep | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const id = parseRequiredString(value["id"]);
+  const kind = parseRequiredString(value["kind"]);
+  const label = parseRequiredString(value["label"]);
+  if (!id || !kind || !label) {
+    return undefined;
+  }
+
+  const bins = parseStringList(value["bins"]);
+  const formula = parseOptionalString(value["formula"]);
+  const pkg = parseOptionalString(value["package"]);
+
+  return {
+    id,
+    kind,
+    label,
+    ...(formula !== undefined ? { formula } : {}),
+    ...(pkg !== undefined ? { package: pkg } : {}),
+    ...(bins !== undefined ? { bins } : {})
+  };
+}
+
+function parseStringList(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const parsed: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      return undefined;
+    }
+    const trimmed = item.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+    parsed.push(trimmed);
+  }
+  return parsed;
+}
+
+function parseRequiredString(value: unknown): string | undefined {
+  const parsed = parseOptionalString(value);
+  return parsed;
+}
+
+function parseOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const parsed = value.trim();
+  return parsed.length === 0 ? undefined : parsed;
 }
 
 function extractRequiresInstall(

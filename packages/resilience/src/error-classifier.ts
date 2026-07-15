@@ -164,6 +164,7 @@ function extractRetryAfterMs(error: unknown, message: string): number | null {
 
 function readHeader(error: unknown, name: string): string | null {
   if (!isRecord(error)) return null;
+  const lowerName = name.toLowerCase();
   for (const holder of [error, error.response]) {
     if (!isRecord(holder)) continue;
     const headers = holder.headers;
@@ -176,9 +177,13 @@ function readHeader(error: unknown, name: string): string | null {
     }
 
     if (isRecord(headers)) {
-      for (const key of [name, name.toLowerCase()]) {
-        const value = (headers as Record<string, unknown>)[key];
-        if (typeof value === "string" || typeof value === "number") return String(value);
+      for (const [headerName, headerValue] of Object.entries(headers)) {
+        if (headerName !== name && headerName !== lowerName) {
+          continue;
+        }
+        if (typeof headerValue === "string" || typeof headerValue === "number") {
+          return String(headerValue);
+        }
       }
     }
   }
