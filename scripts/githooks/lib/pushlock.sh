@@ -8,6 +8,17 @@
 #
 # Sourced form (used by scripts/githooks/pre-push):
 #   source .../lib/pushlock.sh
+#   lockpath="$(pushlock_repo_target)" || exit 1   # one lock path shared by
+#                                                   # EVERY worktree of this
+#                                                   # repo (see pushlock_repo_target
+#                                                   # below) — a per-worktree
+#                                                   # path would let two
+#                                                   # worktrees' hooks race
+#                                                   # each other (observed
+#                                                   # live: a push from
+#                                                   # worktree A landed
+#                                                   # mid-hook of a push
+#                                                   # from worktree B).
 #   pushlock_acquire "$lockpath" || exit 1   # blocks until acquired/timeout;
 #                                             # installs an EXIT trap that
 #                                             # releases the lock.
@@ -21,6 +32,33 @@
 set -uo pipefail
 
 MUSE_PREPUSH_LOCK_TIMEOUT="${MUSE_PREPUSH_LOCK_TIMEOUT:-600}"
+
+# The ABSOLUTE git-common-dir shared by every worktree of the current repo.
+# `--path-format=absolute` (git >= 2.31) returns an absolute path directly;
+# older git's --git-common-dir can return a path relative to $PWD, so that
+# path is resolved to absolute via cd+pwd as a fallback. Deriving this in
+# ONE place (not duplicated per-caller) is what closes the "lock resolved
+# to two different paths in two worktrees" bug class.
+pushlock_common_dir() {
+  local out
+  if out="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [ -n "$out" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  out="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  [ -n "$out" ] || return 1
+  (cd "$out" 2>/dev/null && pwd) || return 1
+}
+
+# The push-window lock path every worktree of this repo must contend on.
+# Lives in the shared git-common-dir (not a per-worktree path) so a push
+# from worktree A and a push from worktree B always serialize against the
+# SAME lock, never two independent ones.
+pushlock_repo_target() {
+  local common_dir
+  common_dir="$(pushlock_common_dir)" || return 1
+  printf '%s/muse-push.lockdir\n' "$common_dir"
+}
 
 pushlock_acquire() {
   local target="$1"

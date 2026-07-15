@@ -1,30 +1,26 @@
 # Muse
 
 **Product goal: Muse learns how one user lives and works, and gets better at when and how to help.**
-Attunement is the product north star: personal thread → Continuity Pack → outcome
-→ adaptation. Optional Observe may later improve timing through rhythm and friction
-evidence. The complete loop is ROADMAP, not a shipped claim. Current memory, pattern,
-proactivity, browser, trace, and checkpoint features are substrates; never relabel
-them as end-to-end Attunement.
-The first vertical is Personal Continuity: a user-chosen unfinished life or work thread,
-initially backed by Muse-local artifacts and optional browser history. Work Resumption is
-one specialized mode, not the product boundary.
+Attunement is the product north star: personal thread → Continuity Pack → outcome → adaptation.
+Optional Observe may later improve timing through rhythm and friction evidence. The complete loop
+is ROADMAP, not a shipped claim — memory, pattern, proactivity, browser, trace, and checkpoint
+features are substrates; never relabel them as end-to-end Attunement. The first vertical is
+Personal Continuity: a user-chosen unfinished life or work thread, initially backed by Muse-local
+artifacts and optional browser history. Work Resumption is one specialized mode, not the product
+boundary.
 
-Provider/MCP-neutrality, local-first ownership, deterministic grounding, correction,
-and draft-first action are the TRUST FLOOR. Muse can use cloud or local models;
-`MUSE_LOCAL_ONLY=true` explicitly refuses cloud egress in code. Supported grounded
-personal-data paths must cite their sources, lower weak matches, and drop invalid
-citations. Do not claim universal citation coverage or fabrication=0: fast uncited chat
-still has a documented gap. Keep the existing per-surface grounding ratchets intact.
-Observe must be visible, pausable, inspectable, forgettable, and must not persist raw
-keystrokes or continuous screen capture by default. Never make a cloud vendor the
-runtime owner or hard-wire a vendor SDK into core code. Product contract:
-[`docs/strategy/attunement.md`](docs/strategy/attunement.md).
+Provider/MCP-neutrality, local-first ownership, deterministic grounding, correction, and
+draft-first action are the TRUST FLOOR. Muse can use cloud or local models; `MUSE_LOCAL_ONLY=true`
+explicitly refuses cloud egress in code. Supported grounded personal-data paths must cite their
+sources, lower weak matches, and drop invalid citations — do not claim universal citation coverage
+or fabrication=0, fast uncited chat still has a documented gap. Keep the existing per-surface
+grounding ratchets intact. Observe must be visible, pausable, inspectable, forgettable, and must
+not persist raw keystrokes or continuous screen capture by default. Never make a cloud vendor the
+runtime owner or hard-wire a vendor SDK into core code. Product contract: [`docs/strategy/attunement.md`](docs/strategy/attunement.md).
 
-This file is the **contract** every Claude Code agent reads first.
-Keep it under 100 lines. Anything longer goes in `.claude/rules/*.md`.
-When the user corrects a recurring mistake, end the iteration by
-adding the rule there — this file should shrink, not grow.
+This file is the **contract** every Claude Code agent reads first — keep it under 100 lines.
+Anything longer goes in `.claude/rules/*.md`. When the user corrects a recurring mistake, end the
+iteration by adding the rule there — this file should shrink, not grow.
 
 ## Dev cycle (inner loop)
 
@@ -50,16 +46,14 @@ pnpm lint                              # 0 errors / 0 warnings required
 
 These commands are the ground truth. If any fails, stop and triage.
 
-For TypeScript/toolchain work, follow
-[`docs/development/typescript-7.md`](docs/development/typescript-7.md): normal builds
-use TS7, while the `typescript` dependency intentionally remains the TS6 compiler-API
-compatibility alias for tooling. Do not mask migration diagnostics with compiler-option
-relaxations.
+For TypeScript/toolchain work, follow [`docs/development/typescript-7.md`](docs/development/typescript-7.md):
+normal builds use TS7, while the `typescript` dependency intentionally remains the TS6
+compiler-API compatibility alias for tooling. Do not mask migration diagnostics with
+compiler-option relaxations.
 
-**To decide what to work on next, run the `improve-muse` skill** — it finds the
-work (regression → backlog → gap-scout) and ends with a ranked recommendation;
-"nothing to do" is a forbidden output. Building the picked slice follows
-[`harness/host/dev-loop.md`](harness/host/dev-loop.md) §3.
+**To decide what to work on next, run the `improve-muse` skill** — it finds the work
+(regression → backlog → gap-scout) and ends with a ranked recommendation; "nothing to do"
+is a forbidden output. Building the picked slice follows [`harness/host/dev-loop.md`](harness/host/dev-loop.md) §3.
 
 ## Non-negotiables
 
@@ -97,12 +91,9 @@ For depth, read the matching file under `.claude/rules/`:
 
 ## Cross-session memory
 
-Auto-memory persists at
-`~/.claude/projects/-Users-jinan-side-project-Muse/memory/MEMORY.md` —
-a one-line index pointing to user / feedback / project / reference
-notes built up over iterations. Read `MEMORY.md` first; it tells you
-which detail files (`feedback_loop_behavior.md`,
+Auto-memory persists at `~/.claude/projects/-Users-jinan-side-project-Muse/memory/MEMORY.md` — a
+one-line index pointing to user / feedback / project / reference notes built up over iterations.
+Read `MEMORY.md` first; it tells you which detail files (`feedback_loop_behavior.md`,
 `project_muse_identity.md`, …) are relevant.
 
-For broader product context, see [`AGENTS.md`](AGENTS.md) and
-[`CHANGELOG.md`](CHANGELOG.md).
+For broader product context, see [`AGENTS.md`](AGENTS.md) and [`CHANGELOG.md`](CHANGELOG.md).

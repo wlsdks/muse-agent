@@ -4,7 +4,7 @@
 // touches a real push or real git config.
 
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +17,31 @@ const pushlockScript = path.join(here, "githooks", "lib", "pushlock.sh");
 function tempPath(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   return path.join(dir, "lock");
+}
+
+function makeRepoWithTwoWorktrees() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "muse-pushlock-worktrees-"));
+  const mainDir = path.join(root, "main");
+  fs.mkdirSync(mainDir);
+  execFileSync("git", ["init", "--quiet"], { cwd: mainDir });
+  execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: mainDir });
+  execFileSync("git", ["config", "user.name", "Muse Test"], { cwd: mainDir });
+  execFileSync("git", ["commit", "--quiet", "--allow-empty", "-m", "init"], { cwd: mainDir });
+  const wtA = path.join(root, "wtA");
+  const wtB = path.join(root, "wtB");
+  execFileSync("git", ["worktree", "add", "--quiet", wtA, "-b", "wtA"], { cwd: mainDir });
+  execFileSync("git", ["worktree", "add", "--quiet", wtB, "-b", "wtB"], { cwd: mainDir });
+  return { root, mainDir, wtA, wtB };
+}
+
+function resolvedTargetFrom(cwd) {
+  const result = spawnSync(
+    "bash",
+    ["-c", `source "${pushlockScript.replace(/"/gu, '\\"')}" && pushlock_repo_target`],
+    { cwd, encoding: "utf8" }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
 }
 
 function runPushlock(lockPath, holdSeconds, logFile, env = {}) {
@@ -110,6 +135,46 @@ test("acquiring the lock times out and exits nonzero when it cannot be obtained 
   assert.notEqual(code, 0);
   assert.match(stderr, /BLOCKED/u);
   assert.equal(fs.readFileSync(logFile, "utf8"), "");
+});
+
+test("pushlock_repo_target resolves to the SAME lock path from every worktree of a repo", () => {
+  const { root, wtA, wtB } = makeRepoWithTwoWorktrees();
+  try {
+    const targetFromA = resolvedTargetFrom(wtA);
+    const targetFromB = resolvedTargetFrom(wtB);
+    assert.ok(targetFromA.length > 0, "worktree A must resolve a non-empty lock target");
+    assert.equal(targetFromA, targetFromB, "both worktrees of the same repo must derive the identical shared lock path");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("regression: a push from worktree A and a push from worktree B contend on the SAME lock — never two independent ones", async () => {
+  const { root, wtA, wtB } = makeRepoWithTwoWorktrees();
+  try {
+    const target = resolvedTargetFrom(wtA);
+    const logFile = tempPath("muse-pushlock-worktree-log-") + ".log";
+    fs.writeFileSync(logFile, "");
+
+    const a = spawn("bash", [pushlockScript, target, "0.4", logFile], { cwd: wtA });
+    const b = spawn("bash", [pushlockScript, target, "0.4", logFile], { cwd: wtB });
+    const [codeA, codeB] = await Promise.all([waitForExit(a), waitForExit(b)]);
+
+    assert.equal(codeA, 0);
+    assert.equal(codeB, 0);
+    const lines = fs.readFileSync(logFile, "utf8").trim().split("\n");
+    assert.equal(lines.length, 4);
+    // Same failure shape as the single-worktree serialize test: the bug this
+    // regression test is for is "start,start,end,end" — worktree A's push
+    // landing mid-hook of worktree B's push because each resolved its OWN
+    // lock path instead of the shared one.
+    assert.match(lines[0], /^start:/u);
+    assert.match(lines[1], /^end:/u);
+    assert.match(lines[2], /^start:/u);
+    assert.match(lines[3], /^end:/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("pushlock.sh is executable and shellcheck-clean where shellcheck is available", () => {

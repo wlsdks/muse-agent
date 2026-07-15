@@ -1,73 +1,99 @@
 # Agent-level testing — evaluating the AGENT, not just the code
 
-Unit tests prove a function is correct. They do **not** prove the
-*agent* is good: that the local model picks the right tool in one
-shot, fills its arguments correctly, abstains when it should, reaches
-the real goal state, and does so *reliably* across a stochastic model.
-That is a different discipline — **evaluation (evals)** — and it is a
-first-class gate here, not an afterthought.
+Unit tests prove a function is correct; they do **not** prove the *agent*
+is good — that the model picks the right tool in one shot, abstains when
+it should, and reaches the real goal state *reliably*. That is
+**evaluation (evals)** — ship it with every agent-facing capability. Full
+history/evidence/sources: [Appendix](#appendix-sources--rationale).
 
-This file is the contract for HOW we test Muse as an agent — the durable
-*method* that converged across the 2024–2026 public literature and how it maps
-onto Muse. When you ship an agent-facing capability, you ship its eval.
-
-**The three principles, if you read nothing else:**
-
-1. **Error-analysis FIRST, imagination never.** Read real traces, let the
-   failures you actually see define the cases. Evals GROW from misses.
-2. **Deterministic code is the GATE; the LLM-judge is a DEBUGGER.** Code-based
-   scorers decide pass/fail on the safety-load path; the judge only grades
-   qualities code can't, and never gates a safety claim alone.
-3. **Grade OUTCOMES, `pass^k`, all-pass.** Score terminal state, not the path;
-   prove reliability by repeating (all k pass), not one green run.
+**Three principles, if you read nothing else:** (1) **Error-analysis
+FIRST, imagination never** — evals GROW from real misses. (2)
+**Deterministic code is the GATE; the LLM-judge is a DEBUGGER** — code
+decides pass/fail on the safety-load path, the judge never gates a
+safety claim alone. (3) **Grade OUTCOMES, `pass^k`, all-pass** — score
+terminal state not the path; reliability is every repeat passing.
 
 ## The non-negotiables (every agent capability)
 
-1. **An agent capability ships with an agent-level check, not just a
-   unit test.** A tool whose handler is unit-tested but that the model
-   never SELECTS is not delivered (`tool-calling.md`). The proof is a
-   live round-trip on the local model (gemma4:12b default), not `tsc`.
-2. **Grade the OUTCOME / terminal state, not the exact path.** A
-   capable agent reaches a goal by several valid tool routes; asserting
-   one exact trajectory is brittle and wrong. Assert the resulting
-   world state — the note got written, the task got added, the approval
-   got recorded — plus the final answer. (τ-bench/AppWorld/SWE-bench all
-   score final state; Anthropic & OpenAI both say "grade outcomes, not
-   paths.") Trajectory order is asserted only where a step genuinely
-   *depends* on a prior one.
-3. **No partial side-effects.** A failed or invalid agent action
-   mutates **nothing** (τ-bench property), and a write never damages
-   *unrelated* state (AppWorld "collateral damage"). Test the deny /
-   invalid-arg / tool-failure path asserts an unchanged store — doubly
-   so for Muse's calendar / reminder / memory / contacts writes.
-4. **Reliability is `pass^k`, not one green run.** A stochastic agent
-   proved by a single pass is not proved. Run a grounding- or
-   safety-critical case k times and require **all k** to pass — this is
-   `pass^k` (τ-bench), and `runEvalSuite`'s `MUSE_EVAL_REPEAT` already
-   implements it (a single failing run fails the case). Pre-verify a new
-   live eval case **STABLE 3/3** before landing it. Do NOT report
-   `pass@k` ("succeeded at least once") as reliability — that is the
-   optimistic upper bound, the opposite of what a user feels.
-5. **Security/safety is tested as CODE, never as a passing model
-   prompt.** A must-refuse battery proves the model refuses, but the
-   real guard is the deterministic gate (injection patterns, approval
-   gate). Where the model's own refusal is language-asymmetric (a KO
-   credential-exfil ask the EN form refuses but the KO form does not —
-   an observed, recorded finding) the deterministic guard is the
-   protection, and IT is what gets the regression test.
+1. **Agent-level check, not just a unit test.** A tool the model never
+   SELECTS is not delivered — prove it live (`smoke:live`), not `tsc`.
+2. **Grade the terminal state, not the exact path.** Assert the resulting
+   world state + final answer; pin trajectory order only where a step
+   genuinely depends on a prior one.
+3. **No partial side-effects.** A failed/invalid action mutates
+   **nothing**, and a write never damages *unrelated* state — the
+   deny/invalid-arg/tool-failure test path asserts an unchanged store.
+4. **Reliability is `pass^k`, not one green run.** Run a grounding- or
+   safety-critical case k times, require **all k** to pass
+   (`MUSE_EVAL_REPEAT`); pre-verify a new live case STABLE 3/3. Never
+   report `pass@k` ("at least once") as reliability.
+5. **Security/safety is CODE, never a passing prompt.** A must-refuse battery
+   proves the model refuses; the deterministic gate (injection patterns,
+   approval gate) is the real protection — doubly so where refusal is
+   language-asymmetric (an observed KO/EN gap) — and gets the regression test.
+6. **Tool-calling and multi-agent hand-offs get their own asserts** —
+   run `pnpm eval:tools` after touching any tool schema/description
+   (selection is the binding constraint on an 8B model); validate every
+   multi-agent hand-off against a typed schema and assert bounded,
+   verification-backed termination. Full breakdown: Appendix.
 
-## The layered stack (each layer proves a different thing, cheapest grader that fits)
-
-Evals stack by CONCERN; each layer has the grader that fits it, and a
-lower layer green does not imply a higher one.
+## The layered method (cheapest grader first)
 
 | Layer | Proves | Grader |
 |---|---|---|
 | Unit | a function is correct | `vitest` (deterministic) |
-| Tool-calling | the model SELECTS + fills the right tool in one shot | `eval:tools` scorers (deterministic) + `smoke:live` |
-| Task-completion | the terminal world state is reached, no collateral damage | terminal-state/trajectory tests (deterministic) |
-| Multi-agent seams | hand-offs validate, loop terminates, failure surfaces | schema parse + bounded-step asserts (deterministic) |
-| Production / dogfooding | it holds on REAL traces, not fixtures | human trace-reading → new golden cases |
+| Tool-calling | model SELECTS + fills the right tool in one shot | `eval:tools` (deterministic) + `smoke:live` |
+| Task-completion | terminal world state reached, no collateral damage | terminal-state/trajectory tests (deterministic) |
+| Multi-agent seams | hand-offs validate, loop terminates, failures surface | schema parse + bounded-step asserts |
+| Production | holds on REAL traces, not fixtures | human trace-reading → new golden cases |
+
+(1) **deterministic scorers** — selected? args present? terminal state
+matches? (`toolScorers` in `eval-harness.mjs`, every case). (2)
+**LLM-as-judge only for what code can't grade** — binary PASS/FAIL at
+T=0 (`llmJudge`); a 1–5 rubric is an anti-pattern. (3) **Human
+trace-reading, regularly** — catches a broken eval before a scorer does.
+
+**maker ≠ judge.** One local model means the judge IS the maker, so a
+safety claim is never gated by the judge alone. Compensating controls:
+deterministic graders own the safety verdict; `eval:judge` meta-evaluates
+the judge first; verdicts are binary and must NAME a concrete violation
+("seems off" is not grounds to reject); periodic fault-injection drills
+prove the judge still rejects bad work. Evidence: Appendix.
+
+**Reliability discipline:** `MUSE_EVAL_REPEAT` (k=3 CI, k≥5 grounding/
+safety-critical), strict all-pass; T=0 is a cheap gate, not a statistical
+guarantee. `eval:agent`/`eval:self-improving` CI-gate the live batteries;
+`self-eval` fails closed on regression. Error-analysis is FIRST — read
+20–50 real traces before writing a scorer (Muse's "production" is n=1 dogfooding).
+
+## Where each gate lives (Muse mapping)
+
+| Concern | Muse gate |
+|---|---|
+| Tool selection + args + irrelevance | `pnpm eval:tools` (`eval:tools:nl`) |
+| Terminal-state / trajectory (deterministic) | `*-terminal-state.test.ts`, `*-trajectory.test.ts` (agent-core) |
+| Plan quality (valid∧complete∧ordered∧efficient) | `pnpm eval:plan-quality` |
+| LLM-judge + its meta-eval | `pnpm eval:judge` |
+| Must-refuse + over-refusal controls | `pnpm eval:adversarial` |
+| Memory/playbook promotion (report-only) | `pnpm eval:shadow-trial` |
+| Self-improving LLM paths (one gate) | `pnpm eval:self-improving` |
+| All harness batteries as one CI gate | `pnpm eval:agent` |
+| Real-LLM request/response round-trip | `pnpm smoke:live` |
+| Regression scoreboard | `pnpm self-eval` |
+
+**Anti-patterns (reject on sight):** skip-as-pass; vacuous stub (confirm
+with MUTATION-RED); floor instead of ratchet (fail close on a DROP, not
+just clearing a floor); counting code artifacts as agent signal;
+`pass@k` reported as reliability; trajectory pinning over terminal-state
+grading; same-family judge over-trust. Full rationale: Appendix below.
+
+---
+## Appendix: sources & rationale
+
+### The layered stack and method, in full
+
+Evals stack by CONCERN; each layer has the grader that fits it, and a
+lower layer green does not imply a higher one.
 
 **Deterministic code is the GATE; the LLM-judge is a DEBUGGER.** Every
 safety-load verdict is decided by code (tool selected? arg present?
@@ -75,37 +101,20 @@ terminal state? injection pattern? approval recorded?). The judge is
 reached for ONLY where code cannot grade (refusal, on-topic, citation
 quality) and never stands alone on a safety claim.
 
-## The layered method (cheapest grader first)
-
 Converged 2026 practice (Inspect AI, Braintrust, promptfoo, DeepEval,
 Hamel Husain): **deterministic code-based scorers first; an LLM judge
 ONLY for qualities code cannot grade.**
 
-1. **Deterministic scorers** — tool selected? required args present?
-   arg value echoes the prompt literal? terminal state matches?
-   `toolScorers` (`selected`/`argsPresent`/`argMatches`/`noTool`) in
-   `eval-harness.mjs`. Fast, exact, no model — run these on every case.
-2. **LLM-as-judge** — only for open-ended quality (refusal, on-topic,
-   coherence, citation quality). **Binary PASS/FAIL, temperature 0**,
-   not a 1–5 scale (Hamel Husain; Anthropic's multi-agent team
-   independently found a single binary call most human-aligned). Muse's
-   `llmJudge` is exactly this. A 1–5 rubric averaged into a number is an
-   anti-pattern — delete it on sight.
-3. **Human trace-reading** — read real transcripts regularly. Every
-   practitioner (Anthropic, Hamel Husain, Eugene Yan) calls this the
-   skill that stops you trusting a broken eval. The probe-the-real-path
-   habit in the ops loop *is* this layer.
+### maker ≠ judge, in full — Muse's honest constraint
 
-**maker ≠ judge — and Muse's honest constraint.** The field says use a
-*stronger, different* model as judge so maker/judge errors don't
-correlate. Muse runs ONE local model, so the judge IS the maker — a
-same-family judge over-trusts its own output. Because we cannot escape
-that with a stronger model, FOUR compensating controls carry the load,
-and a safety claim is never gated by the judge alone:
+The field says use a *stronger, different* model as judge so maker/judge
+errors don't correlate. Muse runs ONE local model, so the judge IS the
+maker — a same-family judge over-trusts its own output. Because we
+cannot escape that with a stronger model, FOUR compensating controls
+carry the load, and a safety claim is never gated by the judge alone:
 
 1. **Deterministic graders carry the safety load.** The judge never
-   decides a safety/security verdict; code does (see the gate-vs-debugger
-   split above).
+   decides a safety/security verdict; code does.
 2. **Meta-eval the judge before trusting it** — `eval:judge` proves the
    judge is reliable on clear-cut cases (incl. the grounding pair: an
    honest "I'm not sure" vs a confident invention) before any battery
@@ -118,7 +127,7 @@ and a safety claim is never gated by the judge alone:
    rubber-stamping, since a static checklist is bypassed by an adaptive
    change.
 
-## Tool-calling (the binding constraint on an 8B model)
+### Tool-calling (the binding constraint on an 8B model), in full
 
 Three layers, in priority order (BFCL methodology):
 
@@ -138,10 +147,10 @@ Three layers, in priority order (BFCL methodology):
 Run `pnpm eval:tools` (and `MUSE_EVAL_REPEAT=3`) after touching any tool
 name / description / schema, the projection layer, or the Ollama adapter.
 
-## Multi-agent & sub-agent / orchestration
+### Multi-agent & sub-agent / orchestration, in full
 
 When work crosses an agent boundary — the council & reflection
-surfaces, the harness planner→worker→evaluator roles, any Workflow
+surfaces, the harness worker→evaluator roles, any Workflow
 fan-out — single-agent evals miss the failure that actually bites.
 Multi-agent systems fail mostly through **coordination**, not raw
 capability (MAST, arXiv 2503.13657 — 14 failure modes; the top three
@@ -168,7 +177,7 @@ termination*). So assert at the seam:
 - **Reasoning–action alignment.** When the agent states a plan, assert
   the action it then takes matches the plan it just stated.
 
-## Reliability & non-determinism
+### Reliability & non-determinism — in full
 
 - **Repeat, don't trust one run.** `MUSE_EVAL_REPEAT` (k=3 for CI gates,
   k≥5 for grounding/safety-critical) with strict all-pass = `pass^k`.
@@ -188,22 +197,7 @@ termination*). So assert at the seam:
   dogfooding** — the owner's own transcript review IS the trace-reading
   layer, so treat every dogfood miss as a production incident to codify.
 
-## Where each gate lives (Muse mapping)
-
-| Concern | Muse gate |
-|---|---|
-| Tool selection + args + irrelevance | `pnpm eval:tools` (`eval:tools:nl`) |
-| Terminal-state / trajectory (deterministic) | `*-terminal-state.test.ts`, `*-trajectory.test.ts` (agent-core) |
-| Plan quality (valid∧complete∧ordered∧efficient) | `pnpm eval:plan-quality` |
-| LLM-judge + its meta-eval | `pnpm eval:judge` |
-| Must-refuse + over-refusal controls | `pnpm eval:adversarial` |
-| Memory/playbook promotion (report-only) | `pnpm eval:shadow-trial` |
-| Self-improving LLM paths (one gate) | `pnpm eval:self-improving` |
-| All harness batteries as one CI gate | `pnpm eval:agent` |
-| Real-LLM request/response round-trip | `pnpm smoke:live` |
-| Regression scoreboard | `pnpm self-eval` |
-
-## Anti-patterns (named — reject on sight)
+### Anti-patterns, in full (named — reject on sight)
 
 - **Skip-as-pass.** A battery that SKIPS (Ollama unreachable, fixture
   missing) is not a pass — exit 0 on skip is fine, but the skip must not
@@ -225,23 +219,7 @@ termination*). So assert at the seam:
   stand un-meta-eval'd, or gating a safety claim on it — see the four
   compensating controls above.
 
-## Sources (verified primary)
-
-- τ-bench / pass^k — [arXiv 2406.12045](https://arxiv.org/abs/2406.12045)
-- Berkeley Function-Calling Leaderboard (AST vs executable, IrrelAcc) — [gorilla.cs.berkeley.edu](https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html) · [ICML 2025](https://proceedings.mlr.press/v267/patil25a.html)
-- MAST — why multi-agent systems fail (14 modes) — [arXiv 2503.13657](https://arxiv.org/abs/2503.13657)
-- Anthropic — [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) · [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) · [Building effective agents](https://www.anthropic.com/news/building-effective-agents)
-- OpenAI — [Evaluate agent workflows](https://developers.openai.com/api/docs/guides/agent-evals) · [Practical guide to building agents](https://openai.com/business/guides-and-resources/a-practical-guide-to-building-ai-agents/)
-- Google ADK eval criteria (trajectory match modes, rubric, user-simulator) — [adk.dev/evaluate/criteria](https://adk.dev/evaluate/criteria/)
-- LangSmith / agentevals (trajectory match: strict/unordered/subset/superset) — [docs](https://docs.langchain.com/langsmith/trajectory-evals) · [github](https://github.com/langchain-ai/agentevals)
-- Hamel Husain — [Your AI product needs evals](https://hamel.dev/blog/posts/evals/) · [LLM-as-a-judge](https://hamel.dev/blog/posts/llm-judge/)
-- Eugene Yan — [LLM-evaluators](https://eugeneyan.com/writing/llm-evaluators/)
-- G-Eval — [arXiv 2303.16634](https://arxiv.org/abs/2303.16634) · LLM-as-a-judge survey (biases) — [arXiv 2411.15594](https://arxiv.org/abs/2411.15594) · Agent-as-a-Judge — [arXiv 2410.10934](https://arxiv.org/abs/2410.10934)
-- Outcome-state benchmarks — AppWorld [2407.18901](https://arxiv.org/abs/2407.18901) · SWE-bench [2310.06770](https://arxiv.org/abs/2310.06770) · GAIA [2311.12983](https://arxiv.org/abs/2311.12983)
-- Inspect AI (UK AISI; dataset/solver/scorer) — [inspect.aisi.org.uk](https://inspect.aisi.org.uk/) · promptfoo agent red-team — [promptfoo.dev](https://www.promptfoo.dev/docs/red-team/agents/)
-- Local-model tool-calling eval (qwen3:8b ≈ 0.93 F1) — [Docker](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
-
-## Reflection-schedule guard (policy, pinned by `scripts/reflection-guard.test.mjs`)
+### Reflection-schedule guard, in full (policy, pinned by `scripts/reflection-guard.test.mjs`)
 
 Self-reflection helps ONLY with an external verifier: a bare "think again"
 pass repeats the original failure **85.36%** of the time on open-ended tasks
@@ -273,3 +251,19 @@ A judge fails in BOTH directions, so a one-sided guard is incomplete:
 
 These map to the loop-creator contract's gating verifier (`loop-engineering.md`
 §3-1, §1.5-3, §4.5-5) — the same calibration applies to any autonomous retry.
+
+### Sources (verified primary)
+
+- τ-bench / pass^k — [arXiv 2406.12045](https://arxiv.org/abs/2406.12045)
+- Berkeley Function-Calling Leaderboard (AST vs executable, IrrelAcc) — [gorilla.cs.berkeley.edu](https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html) · [ICML 2025](https://proceedings.mlr.press/v267/patil25a.html)
+- MAST — why multi-agent systems fail (14 modes) — [arXiv 2503.13657](https://arxiv.org/abs/2503.13657)
+- Anthropic — [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) · [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) · [Building effective agents](https://www.anthropic.com/news/building-effective-agents)
+- OpenAI — [Evaluate agent workflows](https://developers.openai.com/api/docs/guides/agent-evals) · [Practical guide to building agents](https://openai.com/business/guides-and-resources/a-practical-guide-to-building-ai-agents/)
+- Google ADK eval criteria (trajectory match modes, rubric, user-simulator) — [adk.dev/evaluate/criteria](https://adk.dev/evaluate/criteria/)
+- LangSmith / agentevals (trajectory match: strict/unordered/subset/superset) — [docs](https://docs.langchain.com/langsmith/trajectory-evals) · [github](https://github.com/langchain-ai/agentevals)
+- Hamel Husain — [Your AI product needs evals](https://hamel.dev/blog/posts/evals/) · [LLM-as-a-judge](https://hamel.dev/blog/posts/llm-judge/)
+- Eugene Yan — [LLM-evaluators](https://eugeneyan.com/writing/llm-evaluators/)
+- G-Eval — [arXiv 2303.16634](https://arxiv.org/abs/2303.16634) · LLM-as-a-judge survey (biases) — [arXiv 2411.15594](https://arxiv.org/abs/2411.15594) · Agent-as-a-Judge — [arXiv 2410.10934](https://arxiv.org/abs/2410.10934)
+- Outcome-state benchmarks — AppWorld [2407.18901](https://arxiv.org/abs/2407.18901) · SWE-bench [2310.06770](https://arxiv.org/abs/2310.06770) · GAIA [2311.12983](https://arxiv.org/abs/2311.12983)
+- Inspect AI (UK AISI; dataset/solver/scorer) — [inspect.aisi.org.uk](https://inspect.aisi.org.uk/) · promptfoo agent red-team — [promptfoo.dev](https://www.promptfoo.dev/docs/red-team/agents/)
+- Local-model tool-calling eval (qwen3:8b ≈ 0.93 F1) — [Docker](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)

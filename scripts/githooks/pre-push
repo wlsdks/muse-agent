@@ -4,23 +4,29 @@
 # .git/hooks). Three stages, in order:
 #
 #   1. push-window lock (scripts/githooks/lib/pushlock.sh) — serializes the
-#      whole hook run across same-machine agents. All worktrees of this repo
-#      share one .git (git-common-dir), so the lock lives there and
-#      serializes across worktrees too. This is what closes the "concurrent
-#      pushes race the 1-2min gate window" failure class: only one agent's
-#      checks (and its immediately-following `git push`) run at a time,
-#      instead of several agents passing their own stale-branch checks
-#      simultaneously and then colliding on push.
+#      whole hook run across same-machine agents. pushlock_repo_target()
+#      derives the lock path from the repo's git-common-dir (shared by every
+#      worktree), so a push from worktree A and a push from worktree B
+#      always contend on the SAME lock instead of each resolving its own
+#      per-worktree path. This is what closes the "concurrent pushes race
+#      the 1-2min gate window" failure class: only one agent's checks (and
+#      its immediately-following `git push`) run at a time, instead of
+#      several agents passing their own stale-branch checks simultaneously
+#      and then colliding on push.
 #   2. fail-CLOSED compile gate — `pnpm -s typecheck:fast` (the tsc -b
 #      project-reference graph) plus a direct `tsc --noEmit` for apps/web
 #      (intentionally OUTSIDE that reference graph — see
 #      .claude/rules/architecture.md). Unlike the old hook, a push whose
 #      code doesn't compile — or whose environment can't even resolve pnpm
 #      — is BLOCKED, never silently skipped.
-#   3. fail-OPEN grounding tripwire — unchanged from the original
-#      .git/hooks/pre-push: `pnpm -s precheck:grounding`. Skips itself when
-#      pnpm/Ollama aren't reachable so it never hard-blocks a model-less
-#      box; MUSE_SKIP_PREPUSH=1 skips ONLY this stage.
+#   3. fail-OPEN grounding tripwire, now PATH-SCOPED: `pnpm -s
+#      precheck:grounding` only runs when the pushed commits actually touch
+#      a grounding-relevant path (see GROUNDING_PATH_PATTERNS below) — the
+#      3 live-LLM batteries it runs take minutes, so paying that cost on
+#      every push (a docs fix, an unrelated package) was pure overhead. Also
+#      skips itself when pnpm/Ollama aren't reachable so it never
+#      hard-blocks a model-less box; MUSE_SKIP_PREPUSH=1 still skips ONLY
+#      this stage regardless of path-scoping.
 #
 # Escape hatches (documented, greppable — prefer these to --no-verify):
 #   MUSE_SKIP_PREPUSH=1     — skip stage 3 (grounding) only. Stages 1-2 still run.
@@ -29,9 +35,16 @@
 #                             that can let broken code reach origin/main.
 set -uo pipefail
 
+# Captured FIRST, before anything else in this script could touch stdin:
+# git's pre-push hook receives the ref updates being pushed as lines on
+# stdin ("<local ref> <local sha1> <remote ref> <remote sha1>"), one per
+# updated ref, and closes stdin after writing them. Stage 3 below uses this
+# to scope the grounding tripwire to pushes that actually touch a
+# grounding-relevant path.
+push_refs_stdin="$(cat)"
+
 hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git rev-parse --show-toplevel)"
-git_common_dir="$(cd "$(git rev-parse --git-common-dir)" && pwd)"
 
 if [ "${MUSE_SKIP_PREPUSH_ALL:-0}" = "1" ]; then
   echo "pre-push: *** ALL stages skipped (MUSE_SKIP_PREPUSH_ALL=1) *** — lock, compile gate, and grounding tripwire did NOT run. Emergency-only; unset this before your next push." >&2
@@ -40,7 +53,11 @@ fi
 
 # shellcheck source=lib/pushlock.sh
 source "$hook_dir/lib/pushlock.sh"
-pushlock_acquire "$git_common_dir/muse-pre-push.lock" || exit 1
+lockpath="$(pushlock_repo_target)" || {
+  echo "pre-push: BLOCKED — could not resolve the shared push-lock path (git rev-parse --git-common-dir failed)" >&2
+  exit 1
+}
+pushlock_acquire "$lockpath" || exit 1
 
 # Git GUI / IDE clients spawn hooks with a minimal PATH where a version-manager
 # (corepack/nvm/volta) pnpm is absent. Resolve it from common install dirs.
@@ -87,5 +104,82 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 0
 fi
 
-pnpm -s precheck:grounding
-exit $?
+# WHY these paths: precheck:grounding (scripts/precheck-grounding.mjs) runs 3
+# live-LLM batteries — apps/cli/scripts/verify-faithfulness-rate.mjs,
+# verify-recall-citation-gate.mjs, verify-rubric-reverify.mjs — each of which
+# wires the runtime through @muse/autoconfigure's createMuseRuntimeAssembly
+# and exercises agent-core/recall/prompts/model end-to-end via the CLI's
+# ask/chat/grounding surfaces. So a change is grounding-relevant if it
+# touches: the packages those batteries construct their runtime from
+# (agent-core, recall, prompts, model, autoconfigure); the CLI source they
+# drive (apps/cli/src/*ask*, *chat*, *ground*, *embed* — embedding model
+# choice feeds retrieval/grounding directly); the battery scripts themselves
+# (apps/cli/scripts/verify-*.mjs — editing the gate must re-run the gate);
+# or the top-level eval/precheck scripts (scripts/eval-*, scripts/precheck-grounding*).
+GROUNDING_PATH_PATTERNS=(
+  "packages/agent-core/*"
+  "packages/recall/*"
+  "packages/prompts/*"
+  "packages/model/*"
+  "packages/autoconfigure/*"
+  "apps/cli/src/*ask*"
+  "apps/cli/src/*chat*"
+  "apps/cli/src/*ground*"
+  "apps/cli/src/*embed*"
+  "apps/cli/scripts/verify-*.mjs"
+  "scripts/eval-*"
+  "scripts/precheck-grounding*"
+)
+
+file_matches_grounding_path() {
+  local file="$1" pattern
+  for pattern in "${GROUNDING_PATH_PATTERNS[@]}"; do
+    case "$file" in
+      $pattern) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# Union of changed files across every ref this push updates. New/unborn refs
+# (remote sha all-zero — a new branch) diff against the empty tree so every
+# file in the pushed history counts, since there is no real base to diff
+# against. If stdin had no parsable ref lines at all (hook invoked directly,
+# not through a real `git push`), fail toward RUNNING the tripwire rather
+# than silently skipping it.
+pushed_diff_touches_grounding_path() {
+  local zero="0000000000000000000000000000000000000000"
+  local empty_tree="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+  local local_ref local_sha remote_ref remote_sha
+  local saw_ref=0 matched=1
+
+  while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "$local_ref" ] && continue
+    saw_ref=1
+    [ -z "$local_sha" ] || [ "$local_sha" = "$zero" ] && continue # deleting a ref — nothing pushed
+
+    local base="$remote_sha"
+    [ -z "$base" ] || [ "$base" = "$zero" ] && base="$empty_tree"
+
+    local file
+    while IFS= read -r file; do
+      [ -z "$file" ] && continue
+      if file_matches_grounding_path "$file"; then
+        matched=0
+      fi
+    done < <(git diff --name-only "$base..$local_sha" 2>/dev/null)
+  done <<< "$push_refs_stdin"
+
+  if [ "$saw_ref" -eq 0 ]; then
+    return 0
+  fi
+  return "$matched"
+}
+
+if pushed_diff_touches_grounding_path; then
+  pnpm -s precheck:grounding
+  exit $?
+fi
+
+echo "pre-push: grounding tripwire skipped (no grounding-path changes in this push)" >&2
+exit 0

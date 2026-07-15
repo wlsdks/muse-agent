@@ -35,7 +35,7 @@ function makePnpmShim(logFile, exitCode) {
   return shimDir;
 }
 
-function runHook(repoDir, { pathDirs, env = {} }) {
+function runHook(repoDir, { pathDirs, env = {}, input }) {
   return spawnSync("bash", [prePushScript], {
     cwd: repoDir,
     env: {
@@ -43,8 +43,22 @@ function runHook(repoDir, { pathDirs, env = {} }) {
       HOME: env.HOME ?? fs.mkdtempSync(path.join(os.tmpdir(), "muse-prepush-home-")),
       ...env
     },
+    input,
     encoding: "utf8"
   });
+}
+
+function writeAndCommit(repoDir, relPath, contents, message) {
+  const full = path.join(repoDir, relPath);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, contents);
+  execFileSync("git", ["add", relPath], { cwd: repoDir });
+  execFileSync("git", ["commit", "--quiet", "-m", message], { cwd: repoDir });
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf8" }).trim();
+}
+
+function refUpdateStdin(localSha, remoteSha) {
+  return `refs/heads/main ${localSha} refs/heads/main ${remoteSha}\n`;
 }
 
 test("fail-CLOSED: pnpm missing from PATH blocks the push (never silently skips)", () => {
@@ -100,6 +114,71 @@ test("a failing compile-gate stage blocks before the grounding stage ever runs",
   assert.match(result.stderr, /BLOCKED.*typecheck:fast/su);
   const calls = fs.readFileSync(logFile, "utf8").trim().split("\n");
   assert.equal(calls.length, 1, "only the first failing stage should have invoked pnpm");
+});
+
+test("grounding tripwire is SKIPPED when the pushed diff touches no grounding-relevant path", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  const localSha = writeAndCommit(repoDir, "docs/notes.md", "unrelated docs change\n", "docs change");
+
+  const logFile = path.join(repoDir, "pnpm.log");
+  const shimDir = makePnpmShim(logFile, 0);
+
+  const result = runHook(repoDir, {
+    pathDirs: [shimDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = fs.readFileSync(logFile, "utf8").trim().split("\n");
+  assert.ok(!calls.some((c) => c.includes("precheck:grounding")), "grounding tripwire must NOT run for a docs-only push");
+  assert.match(result.stderr, /grounding tripwire skipped \(no grounding-path changes in this push\)/u);
+});
+
+test("grounding tripwire RUNS when the pushed diff touches a grounding-relevant path", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  const localSha = writeAndCommit(
+    repoDir,
+    "packages/agent-core/src/whatever.ts",
+    "export const x = 1;\n",
+    "agent-core change"
+  );
+
+  const logFile = path.join(repoDir, "pnpm.log");
+  const shimDir = makePnpmShim(logFile, 0);
+
+  const result = runHook(repoDir, {
+    pathDirs: [shimDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = fs.readFileSync(logFile, "utf8").trim().split("\n");
+  assert.ok(calls.some((c) => c.includes("precheck:grounding")), "grounding tripwire must run for an agent-core push");
+});
+
+test("grounding tripwire RUNS when a NEW ref (remote sha all-zero) is pushed with a grounding-relevant file", () => {
+  const repoDir = makeTempRepo();
+  const localSha = writeAndCommit(
+    repoDir,
+    "packages/recall/src/whatever.ts",
+    "export const x = 1;\n",
+    "recall change"
+  );
+  const zero = "0".repeat(40);
+
+  const logFile = path.join(repoDir, "pnpm.log");
+  const shimDir = makePnpmShim(logFile, 0);
+
+  const result = runHook(repoDir, {
+    pathDirs: [shimDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, zero)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const calls = fs.readFileSync(logFile, "utf8").trim().split("\n");
+  assert.ok(calls.some((c) => c.includes("precheck:grounding")), "a brand-new ref push must diff against the empty tree and still catch a grounding-relevant file");
 });
 
 test("MUSE_SKIP_PREPUSH_ALL=1 skips every stage — no pnpm invocation at all", () => {
