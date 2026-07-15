@@ -9,4 +9,10 @@ describe("createMuseRuntimeAssembly — weather tool reachability", () => {
     expect(tool).toBeDefined();
     expect(tool!.definition.risk).toBe("read");
   });
+
+  it("does not expose weather when local-only forbids public location egress", () => {
+    const assembly = createMuseRuntimeAssembly({ env: { MUSE_LOCAL_ONLY: "true" } });
+
+    expect(assembly.toolRegistry.get("weather")).toBeUndefined();
+  });
 });

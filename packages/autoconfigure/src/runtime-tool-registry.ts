@@ -285,7 +285,12 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => historySearchTools,
     () => homeReadTools,
     () => emailReadTools,
-    () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
+    // Open-Meteo geocoding and forecast lookup send the requested location to
+    // a public service. Local-only must remove that egress path before a model
+    // can invoke it; world_time remains because it is pure local Intl logic.
+    () => !localOnly
+      ? [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})]
+      : [],
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
