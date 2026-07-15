@@ -1,4 +1,4 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, buildContinuityPack, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, linkArtifact, openContinuityDelivery, OUTCOMES, readAttunementState, recordContinuityOutcome, resetThreadPolicy, THREAD_KINDS, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, buildContinuityPack, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openContinuityDelivery, OUTCOMES, pauseTimingSession, readAttunementState, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
 import type { ContinuityOutcome } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
@@ -14,6 +14,78 @@ interface AttunementRoutesGate {
 
 /** Read-only evaluation: it never resolves sources or opens a Continuity delivery. */
 export function registerAttunementRoutes(server: FastifyInstance, gate: AttunementRoutesGate): void {
+  const timingFile = `${gate.attunementFile}.timing.json`;
+  const assertKnownThread = async (threadId: string): Promise<void> => {
+    const state = await readAttunementState(gate.attunementFile);
+    if (!state.threads.some((thread) => thread.id === threadId)) throw new Error(`no personal thread with id '${threadId}'`);
+  };
+
+  server.post<{ Body: { readonly consentVersion?: unknown; readonly threadId?: unknown } }>("/api/attunement/timing/sessions", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const { consentVersion, threadId } = request.body ?? {};
+    if (typeof threadId !== "string" || threadId.trim().length === 0) return reply.code(400).send({ errorMessage: "timing thread id must be a non-empty string" });
+    if (typeof consentVersion !== "number" || !Number.isSafeInteger(consentVersion) || consentVersion < 1) {
+      return reply.code(400).send({ errorMessage: "timing consent version must be a positive safe integer" });
+    }
+    return startTimingSession(timingFile, { consentVersion, threadId }, assertKnownThread);
+  });
+
+  server.get<{ Params: { readonly sessionId: string } }>("/api/attunement/timing/sessions/:sessionId", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    return inspectTimingSession(await readTimingState(timingFile), request.params.sessionId);
+  });
+
+  server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/timing/sessions/:sessionId/pause", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    return pauseTimingSession(timingFile, request.params.sessionId);
+  });
+
+  server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/timing/sessions/:sessionId/resume", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    return resumeTimingSession(timingFile, request.params.sessionId);
+  });
+
+  server.delete<{ Params: { readonly sessionId: string } }>("/api/attunement/timing/sessions/:sessionId", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    return forgetTimingSession(timingFile, request.params.sessionId);
+  });
+
+  server.post<{ Params: { readonly sessionId: string }; Body: { readonly appCategory?: unknown; readonly durationMs?: unknown; readonly endedAt?: unknown; readonly startedAt?: unknown } }>("/api/attunement/timing/sessions/:sessionId/observations", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    if (Object.keys(request.body ?? {}).some((key) => !["appCategory", "durationMs", "endedAt", "startedAt"].includes(key))) {
+      return reply.code(400).send({ errorMessage: "timing observations accept category, duration, and timestamps only; raw desktop content is not accepted" });
+    }
+    const { appCategory, durationMs, endedAt, startedAt } = request.body ?? {};
+    if (typeof appCategory !== "string" || !TIMING_APP_CATEGORIES.includes(appCategory as (typeof TIMING_APP_CATEGORIES)[number])) {
+      return reply.code(400).send({ errorMessage: "timing observation app category is invalid" });
+    }
+    if (typeof durationMs !== "number" || !Number.isSafeInteger(durationMs) || durationMs <= 0 || typeof startedAt !== "string" || typeof endedAt !== "string") {
+      return reply.code(400).send({ errorMessage: "timing observation requires a category, positive duration, and ISO timestamps" });
+    }
+    return recordTimingObservation(timingFile, request.params.sessionId, { appCategory: appCategory as (typeof TIMING_APP_CATEGORIES)[number], durationMs, endedAt, startedAt });
+  });
+
+  server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/timing/sessions/:sessionId/evaluate", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const candidate = await evaluateTimingSession(timingFile, request.params.sessionId);
+    if (candidate.decision !== "offer") return { candidate };
+    const timing = inspectTimingSession(await readTimingState(timingFile), request.params.sessionId);
+    const state = await readAttunementState(gate.attunementFile);
+    return {
+      candidate,
+      pack: await buildContinuityPack(state, timing.session.threadId, createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }))
+    };
+  });
+
+  server.post<{ Params: { readonly candidateId: string }; Body: { readonly outcome?: unknown } }>("/api/attunement/timing/candidates/:candidateId/feedback", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const outcome = request.body?.outcome;
+    if (typeof outcome !== "string" || !OUTCOMES.includes(outcome as ContinuityOutcome)) {
+      return reply.code(400).send({ errorMessage: "timing feedback outcome must be used, adjusted, ignored, or rejected" });
+    }
+    return recordTimingFeedback(timingFile, request.params.candidateId, outcome as ContinuityOutcome);
+  });
+
   server.get("/api/attunement/evaluation", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     return computeContinuityEvaluation(await readAttunementState(gate.attunementFile));

@@ -664,6 +664,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "timing",
+    names: ["timing"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-timing.js");
+      m.registerTimingCommands(program, io);
+    },
+  },
+  {
     id: "objectives",
     names: ["objectives"],
     load: async (program, io, _deps) => {
