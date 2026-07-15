@@ -320,7 +320,7 @@ function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): 
     if (rejected * 100 > 30 * firstDeliveries.length) reasons.push("rejection rate exceeds the 30% kill criterion");
   }
   return {
-    totalDeliveries: state.deliveries.length,
+    totalDeliveries: deliveries.length,
     withOutcome,
     outcomes,
     firstPacks: { considered: firstDeliveries.length, rejected, used },
@@ -365,6 +365,33 @@ export function formatContinuityStats(stats: ContinuityStats): string {
     ...formatKindStats("life", stats.byKind.life),
     ...formatKindStats("work", stats.byKind.work)
   ];
+  return `${lines.join("\n")}\n`;
+}
+
+async function formatThreadReview(state: AttunementState, resolveExactArtifact: ExactArtifactResolver): Promise<string> {
+  if (state.threads.length === 0) {
+    return "No personal threads yet. Start one with `muse thread start <title> --kind <life|work>`.\n";
+  }
+
+  const lines = ["Personal Continuity review:"];
+  for (const thread of state.threads) {
+    const pack = await buildContinuityPack(state, thread.id, resolveExactArtifact);
+    const availableEvidence = pack.evidence.filter((entry) => entry.status === "available").length;
+    const latestFeedback = state.deliveries
+      .filter((delivery) => delivery.threadId === thread.id && delivery.outcome)
+      .sort((left, right) => right.outcome!.recordedAt.localeCompare(left.outcome!.recordedAt))[0]?.outcome?.outcome;
+    const evidence = pack.evidence.length === 0
+      ? "evidence: none linked"
+      : `evidence: ${availableEvidence.toString()}/${pack.evidence.length.toString()} available`;
+    const nextStep = pack.policy.nextStep === "hidden"
+      ? "next step: hidden by previous feedback"
+      : pack.nextStep
+        ? `next step: ${pack.nextStep.title} [${pack.nextStep.artifactId}]`
+        : "next step: none set";
+
+    lines.push(`  ${thread.id}  [${thread.kind}]  ${thread.title}`);
+    lines.push(`    ${evidence}; ${nextStep}${latestFeedback ? `; latest feedback: ${latestFeedback}` : ""}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -549,6 +576,16 @@ Examples:
       await commandAction(command, io, "thread stats", async () => {
         const stats = computeContinuityStats(await readAttunementState(attunementFile()));
         io.stdout(options.json ? `${JSON.stringify(stats, null, 2)}\n` : formatContinuityStats(stats));
+      });
+    });
+
+  thread
+    .command("review")
+    .description("Review explicitly chosen threads and their currently available resume context")
+    .action(async (_options: unknown, command: Command) => {
+      await commandAction(command, io, "thread review", async () => {
+        const state = await readAttunementState(attunementFile());
+        io.stdout(await formatThreadReview(state, resolveExactArtifact));
       });
     });
 
