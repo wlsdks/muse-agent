@@ -21,6 +21,7 @@ import type { Command } from "commander";
 
 import { buildContactNetwork, formatContactNetwork } from "./contact-network.js";
 import type { ProgramIO } from "./program.js";
+import { withBestEffort } from "./async-promises.js";
 
 function environment(): MuseEnvironment {
   return process.env;
@@ -34,10 +35,14 @@ function contactsFile(): string {
 async function readNoteBodies(dir: string): Promise<string[]> {
   const { LocalDirNotesProvider } = await import("@muse/domain-tools");
   const provider = new LocalDirNotesProvider({ notesDir: dir });
+  const entries = await provider.list();
+  const loaded = await Promise.all(entries.map((entry) => withBestEffort(provider.read(entry.id), undefined)));
+
   const bodies: string[] = [];
-  for (const entry of await provider.list()) {
-    const read = await provider.read(entry.id);
-    if (read?.body) bodies.push(read.body);
+  for (const read of loaded) {
+    if (read?.body) {
+      bodies.push(read.body);
+    }
   }
   return bodies;
 }

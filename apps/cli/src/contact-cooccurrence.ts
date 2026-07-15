@@ -27,6 +27,18 @@ export interface ContactSurface {
   readonly forms: readonly string[];
 }
 
+type MentionRule = readonly [form: string, contactId: string];
+
+function buildMentionIndex(surfaces: readonly ContactSurface[]): readonly MentionRule[] {
+  const index: MentionRule[] = [];
+  for (const surface of surfaces) {
+    for (const form of surface.forms) {
+      index.push([form, surface.id]);
+    }
+  }
+  return index;
+}
+
 /**
  * The surface forms each contact may appear as in note text: their full name,
  * every alias, and their distinctive first name (>= 3 chars). A form shared by
@@ -39,8 +51,19 @@ export function buildSurfaceForms(contacts: readonly CooccurrenceContact[]): Con
   const add = (id: string, form: string): void => {
     const norm = normalizePadded(form);
     if (norm.trim().length === 0) return;
-    (raw.get(id) ?? raw.set(id, new Set()).get(id)!).add(norm);
-    (owners.get(norm) ?? owners.set(norm, new Set()).get(norm)!).add(id);
+    const rawSet = raw.get(id) ?? (() => {
+      const created = new Set<string>();
+      raw.set(id, created);
+      return created;
+    })();
+    const ownerSet = owners.get(norm) ?? (() => {
+      const created = new Set<string>();
+      owners.set(norm, created);
+      return created;
+    })();
+
+    rawSet.add(norm);
+    ownerSet.add(id);
   };
   for (const contact of contacts) {
     add(contact.id, contact.name);
@@ -58,10 +81,19 @@ export function buildSurfaceForms(contacts: readonly CooccurrenceContact[]): Con
 
 /** The set of contact ids named in one note body. */
 export function mentionedContactIds(noteBody: string, surfaces: readonly ContactSurface[]): Set<string> {
+  return mentionedContactIdsByIndex(noteBody, buildMentionIndex(surfaces));
+}
+
+function mentionedContactIdsByIndex(noteBody: string, mentionIndex: readonly MentionRule[]): Set<string> {
+  if (mentionIndex.length === 0) {
+    return new Set<string>();
+  }
   const haystack = normalizePadded(noteBody);
   const ids = new Set<string>();
-  for (const surface of surfaces) {
-    if (surface.forms.some((form) => haystack.includes(form))) ids.add(surface.id);
+  for (const [form, id] of mentionIndex) {
+    if (haystack.includes(form)) {
+      ids.add(id);
+    }
   }
   return ids;
 }
@@ -145,7 +177,8 @@ export function relatedByCooccurrence(args: {
   readonly limit?: number;
 }): RelatedContact[] {
   const surfaces = buildSurfaceForms(args.contacts);
-  const mentionSets = args.noteBodies.map((body) => mentionedContactIds(body, surfaces));
+  const mentionIndex = buildMentionIndex(surfaces);
+  const mentionSets = args.noteBodies.map((body) => mentionedContactIdsByIndex(body, mentionIndex));
   const stats = computeCooccurrence(mentionSets);
   return relatedContactsByPmi(stats, args.targetId, { limit: args.limit, minShared: args.minShared });
 }
