@@ -16,7 +16,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { isRecord, type JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject, withBestEffort } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readFollowups } from "@muse/stores";
@@ -139,7 +139,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
         return Number.isFinite(due) && due >= now && due <= now + 86_400_000;
       });
 
-      const history = await readProactiveHistory(historyFile, 1).catch(() => []);
+      const history = await withBestEffort(readProactiveHistory(historyFile, 1), []);
       const lastNotice = history[history.length - 1];
 
       const logBytes = await fileSize(logFile);
@@ -155,12 +155,12 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       // fail-soft (missing file → empty rows → empty summary)
       // because a fresh install hasn't written any of these yet.
       const [reminders, followups, objectives, episodesDoc, patternsDoc] = await Promise.all([
-        readReminders(remindersFile).catch(() => []),
-        readFollowups(followupsFile).catch(() => []),
-        readObjectives(objectivesFile).catch(() => []),
-        safeReadJson(episodesFile).catch(() => undefined),
-        safeReadJson(patternsFiredFile).catch(() => undefined)
-      ]);
+        withBestEffort(readReminders(remindersFile), []),
+        withBestEffort(readFollowups(followupsFile), []),
+        withBestEffort(readObjectives(objectivesFile), []),
+      withBestEffort(safeReadJson(episodesFile), undefined),
+      withBestEffort(safeReadJson(patternsFiredFile), undefined)
+    ]);
       const remindersSummary = summariseRemindersRows(reminders, now);
       const followupsSummary = summariseFollowupsRows(followups, userId);
       const objectivesSummary = summariseObjectivesRows(objectives, userId);
@@ -168,7 +168,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       // lock holds, so an agent reasoning about the user's state (or
       // whether to surface something) must see it. Active → `until`
       // string; expired/missing/corrupt → undefined.
-      const sessionLockUntil = await readSessionLock(sessionLockFile, new Date(now)).catch(() => undefined);
+      const sessionLockUntil = await withBestEffort(readSessionLock(sessionLockFile, new Date(now)), undefined);
       const episodesRows = readArrayField(episodesDoc, "episodes");
       const episodesSummary = summariseEpisodesRows(episodesRows, userId);
       const patternsRows = readArrayField(patternsDoc, "fired");

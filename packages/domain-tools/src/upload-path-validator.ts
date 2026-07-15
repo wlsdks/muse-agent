@@ -16,6 +16,8 @@ import { realpath as nodeRealpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve as pathResolve, sep as pathSep } from "node:path";
 
+import { withBestEffort } from "@muse/shared";
+
 export type PathValidationResult =
   | { readonly allowed: true; readonly resolvedPath: string }
   | { readonly allowed: false; readonly reason: string };
@@ -60,7 +62,7 @@ export function createAllowlistPathValidator(options: AllowlistPathValidatorOpti
     } catch {
       return { allowed: false, reason: `'${raw}' could not be resolved on disk` };
     }
-    const realRoots = await Promise.all(roots.map((root) => realpathOf(root).catch(() => root)));
+    const realRoots = await Promise.all(roots.map((root) => withBestEffort(realpathOf(root), root)));
     if (!realRoots.some((root) => within(realTarget, root))) {
       return { allowed: false, reason: `'${raw}' resolves through a link to outside the readable folders` };
     }

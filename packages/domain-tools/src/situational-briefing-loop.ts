@@ -15,7 +15,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { readObjectives } from "@muse/stores";
@@ -118,7 +118,7 @@ async function writeLastFiredAt(file: string, iso: string): Promise<void> {
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 async function resolveInboxLine(

@@ -23,9 +23,8 @@
 
 import { promises as fs } from "node:fs";
 
-import { readFollowups, type PersistedFollowup } from "@muse/stores";
-import { readProactiveHistory } from "@muse/stores";
-import { readReminderHistory } from "@muse/stores";
+import { readFollowups, type PersistedFollowup, readProactiveHistory, readReminderHistory } from "@muse/stores";
+import { withBestEffort } from "@muse/shared";
 
 export type ActivityKind = "reminder" | "proactive" | "followup" | "pattern" | "episode";
 
@@ -76,7 +75,7 @@ async function safeReadJson(path: string): Promise<unknown | undefined> {
 
 async function readReminderActivity(file: string | undefined): Promise<readonly ActivityEntry[]> {
   if (!file) return [];
-  const rows = await readReminderHistory(file).catch(() => undefined);
+  const rows = await withBestEffort(readReminderHistory(file), undefined);
   if (rows === undefined) return [];
   return rows.map((row): ActivityEntry => ({
     destination: row.destination,
@@ -91,7 +90,7 @@ async function readReminderActivity(file: string | undefined): Promise<readonly 
 
 async function readProactiveActivity(file: string | undefined): Promise<readonly ActivityEntry[]> {
   if (!file) return [];
-  const rows = await readProactiveHistory(file).catch(() => undefined);
+  const rows = await withBestEffort(readProactiveHistory(file), undefined);
   if (rows === undefined) return [];
   return rows.map((row): ActivityEntry => ({
     destination: row.destination,
@@ -106,7 +105,7 @@ async function readProactiveActivity(file: string | undefined): Promise<readonly
 
 async function readFollowupActivity(file: string | undefined): Promise<readonly ActivityEntry[]> {
   if (!file) return [];
-  const rows = await readFollowups(file).catch(() => undefined);
+  const rows = await withBestEffort(readFollowups(file), undefined);
   if (rows === undefined) return [];
   return rows
     .filter((row): row is PersistedFollowup & { firedAt: string } => row.status === "fired" && typeof row.firedAt === "string")

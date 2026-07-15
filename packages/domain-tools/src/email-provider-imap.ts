@@ -21,7 +21,7 @@ import { ImapFlow, type FetchMessageObject, type FetchOptions, type FetchQueryOb
 import { createTransport } from "nodemailer";
 
 import type { EmailMessage, EmailProvider, EmailReader, EmailSearcher, EmailSender, EmailSummary } from "./email-provider.js";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 const GMAIL_IMAP_HOST = "imap.gmail.com";
 const GMAIL_IMAP_PORT = 993;
@@ -314,7 +314,7 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
         const mailbox = await client.mailboxOpen("INBOX", { readOnly: true });
         return await fn(client, mailbox);
       } finally {
-        await client.logout().catch(() => undefined);
+        await withBestEffort(client.logout(), undefined);
       }
     };
     try {

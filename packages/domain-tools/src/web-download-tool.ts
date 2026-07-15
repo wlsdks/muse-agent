@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES } from "@muse/shared";
+import { hasNodeErrorCodeIn, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { fetchPublicHttpWithRedirects } from "./public-http-redirect.js";
@@ -145,7 +145,7 @@ export function createWebDownloadTool(deps: WebDownloadToolDeps): MuseTool {
             if (done) break;
             total += value.byteLength;
             if (total > maxBytes) {
-              await reader.cancel().catch(() => undefined);
+              await withBestEffort(reader.cancel(), undefined);
               return tooLarge(total);
             }
             chunks.push(Buffer.from(value));
