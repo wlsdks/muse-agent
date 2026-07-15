@@ -28,6 +28,16 @@ const TMP_PREFIX = ".tmp-";
 export const DEFAULT_MAX_BYTES_PER_SNAPSHOT = 10 * 1024 * 1024;
 export const DEFAULT_MAX_CHECKPOINTS = 200;
 
+/**
+ * The manifest format version this build writes and fully understands. A
+ * manifest with no `version` field predates R3-5 and is treated as `1` (every
+ * checkpoint ever written stays restorable). A manifest with a version
+ * GREATER than this constant was written by a newer Muse — its shape may
+ * carry fields this build doesn't know how to restore safely, so callers
+ * must refuse to restore it (fail-closed) rather than guess.
+ */
+export const CURRENT_CHECKPOINT_VERSION = 1;
+
 export type CheckpointAction = "write" | "edit" | "multi_edit" | "delete" | "move";
 
 export interface CheckpointManifest {
@@ -44,6 +54,8 @@ export interface CheckpointManifest {
   readonly truncated?: true;
   /** `action: "move"` only — the pre-move source path, so rollback can rename back instead of losing the file. */
   readonly fromPath?: string;
+  /** Manifest format version. Absent on-disk reads as `1` — see `CURRENT_CHECKPOINT_VERSION`. */
+  readonly version: number;
 }
 
 export interface CheckpointRecord extends CheckpointManifest {
@@ -100,6 +112,11 @@ function newCheckpointId(): string {
 
 const CHECKPOINT_ACTIONS: ReadonlySet<string> = new Set(["write", "edit", "multi_edit", "delete", "move"]);
 
+/** A pre-R3-5 manifest has no `version` field at all — that (and any malformed value) reads as `1`, the format every existing on-disk checkpoint was written in. */
+function reviveVersion(raw: unknown): number {
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 1 ? raw : 1;
+}
+
 function reviveManifest(raw: unknown): CheckpointManifest | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const r = raw as Record<string, unknown>;
@@ -118,6 +135,7 @@ function reviveManifest(raw: unknown): CheckpointManifest | undefined {
     id: r.id,
     path: r.path,
     summary: r.summary,
+    version: reviveVersion(r.version),
     ...(r.truncated === true ? { truncated: true as const } : {}),
     ...(typeof r.fromPath === "string" ? { fromPath: r.fromPath } : {})
   };
@@ -169,6 +187,7 @@ export class FileCheckpointStore implements CheckpointStore {
       id,
       path: input.path,
       summary: input.summary,
+      version: CURRENT_CHECKPOINT_VERSION,
       ...(truncated ? { truncated: true as const } : {}),
       ...(input.fromPath ? { fromPath: input.fromPath } : {})
     };
@@ -323,6 +342,7 @@ export function createInMemoryCheckpointStore(): CheckpointStore {
         id,
         path: input.path,
         summary: input.summary,
+        version: CURRENT_CHECKPOINT_VERSION,
         ...(existedBefore ? { content: originalBuffer } : {}),
         ...(input.fromPath ? { fromPath: input.fromPath } : {})
       });

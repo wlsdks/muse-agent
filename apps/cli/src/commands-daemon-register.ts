@@ -342,6 +342,98 @@ function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): s
   return "";
 }
 
+/**
+ * The core of `muse daemon --install`: write + load a macOS LaunchAgent, or
+ * register a Windows scheduled task, through the SAME injected runner seams
+ * `registerDaemonCommands` uses (never real launchctl/schtasks under vitest —
+ * `defaultRunLaunchctl`/`defaultSchtasksRun` already guarantee that). Split
+ * out so `muse onboard`'s background-daemon offer can drive the identical
+ * install path without duplicating the launchd/schtasks logic. Returns
+ * `{ok:false}` (never throws) on every failure branch, incl. an unsupported
+ * platform — the caller decides what a failure means for it (exit code vs.
+ * a fail-soft manual-command hint).
+ */
+export async function installDaemonAutostart(
+  io: ProgramIO,
+  e: NodeJS.ProcessEnv,
+  helpers: Pick<DaemonHelpers, "platform" | "runLaunchctl" | "schtasksRun"> = {}
+): Promise<{ readonly ok: boolean }> {
+  const plat = helpers.platform ?? process.platform;
+  // argv[1] is the muse CLI entry at runtime; node + that path
+  // gives launchd/schtasks an absolute, login-shell-independent command.
+  const cliEntry = process.argv[1] ?? "muse";
+  if (plat === "win32") {
+    const run = helpers.schtasksRun ?? defaultSchtasksRun;
+    const result = await run(buildSchtasksCreateArgs({
+      programArguments: [process.execPath, cliEntry, "daemon"],
+      taskName: SCHTASKS_TASK_NAME
+    }));
+    if (result.exitCode === 0) {
+      io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  muse daemon --uninstall\n`);
+      return { ok: true };
+    }
+    io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
+    return { ok: false };
+  }
+  if (plat !== "darwin") {
+    io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
+    return { ok: false };
+  }
+  const plistFile = resolveLaunchAgentFile(e);
+  const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
+  const logDir = join(home, ".muse", "logs");
+  const plist = buildLaunchAgentPlist({
+    label: LAUNCH_AGENT_LABEL,
+    programArguments: [process.execPath, cliEntry, "daemon"],
+    stderrPath: join(logDir, "daemon.err.log"),
+    stdoutPath: join(logDir, "daemon.out.log")
+  });
+
+  const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+
+  // Unload any stale definition FIRST. `load -w` is NOT reliably
+  // idempotent for an already-loaded label — some launchd versions
+  // return non-zero AND don't re-read the plist, so a bare load after
+  // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
+  // leave launchd running the OLD programArguments until logout. A
+  // failed unload here (nothing was loaded yet) is expected and fine.
+  await runLaunchctl(["unload", "-w", plistFile]);
+
+  mkdirSync(dirname(plistFile), { recursive: true });
+  writeFileSync(plistFile, plist, "utf8");
+
+  const loadResult = await runLaunchctl(["load", "-w", plistFile]);
+  // The source of truth for success is the verifying `list` call, not
+  // `load`'s own exit code — and `list` exiting 0 only proves the label
+  // is REGISTERED, not that it is actually running. Parse its dump for
+  // a PID (running now) vs a non-zero LastExitStatus with no PID
+  // (registered but crash-looping) so neither is reported as healthy.
+  const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+  const registered = listResult.code === 0;
+  const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
+
+  if (registered && pid !== undefined) {
+    const loadReportedNonZero = loadResult.code !== 0;
+    io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
+    return { ok: true };
+  }
+
+  if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
+    return { ok: false };
+  }
+
+  if (registered) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
+    return { ok: false };
+  }
+
+  // launchctl failed AND the agent does not show up as registered —
+  // never claim success on a plist that isn't actually loaded.
+  io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
+  return { ok: false };
+}
+
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
   const env = () => helpers.env?.() ?? process.env;
   const makeMessaging = helpers.buildMessagingRegistry ?? ((e: NodeJS.ProcessEnv) => buildMessagingRegistry(e));
@@ -394,84 +486,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       }
 
       if (options.install) {
-        const plat = helpers.platform ?? process.platform;
-        // argv[1] is the muse CLI entry at runtime; node + that path
-        // gives launchd/schtasks an absolute, login-shell-independent command.
-        const cliEntry = process.argv[1] ?? "muse";
-        if (plat === "win32") {
-          const run = helpers.schtasksRun ?? defaultSchtasksRun;
-          const result = await run(buildSchtasksCreateArgs({
-            programArguments: [process.execPath, cliEntry, "daemon"],
-            taskName: SCHTASKS_TASK_NAME
-          }));
-          if (result.exitCode === 0) {
-            io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  muse daemon --uninstall\n`);
-          } else {
-            io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
-            process.exitCode = 1;
-          }
-          return;
-        }
-        if (plat !== "darwin") {
-          io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
-          process.exitCode = 1;
-          return;
-        }
-        const plistFile = resolveLaunchAgentFile(e);
-        const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
-        const logDir = join(home, ".muse", "logs");
-        const plist = buildLaunchAgentPlist({
-          label: LAUNCH_AGENT_LABEL,
-          programArguments: [process.execPath, cliEntry, "daemon"],
-          stderrPath: join(logDir, "daemon.err.log"),
-          stdoutPath: join(logDir, "daemon.out.log")
+        const result = await installDaemonAutostart(io, e, {
+          ...(helpers.platform ? { platform: helpers.platform } : {}),
+          ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
+          ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
         });
-
-        const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
-
-        // Unload any stale definition FIRST. `load -w` is NOT reliably
-        // idempotent for an already-loaded label — some launchd versions
-        // return non-zero AND don't re-read the plist, so a bare load after
-        // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
-        // leave launchd running the OLD programArguments until logout. A
-        // failed unload here (nothing was loaded yet) is expected and fine.
-        await runLaunchctl(["unload", "-w", plistFile]);
-
-        mkdirSync(dirname(plistFile), { recursive: true });
-        writeFileSync(plistFile, plist, "utf8");
-
-        const loadResult = await runLaunchctl(["load", "-w", plistFile]);
-        // The source of truth for success is the verifying `list` call, not
-        // `load`'s own exit code — and `list` exiting 0 only proves the label
-        // is REGISTERED, not that it is actually running. Parse its dump for
-        // a PID (running now) vs a non-zero LastExitStatus with no PID
-        // (registered but crash-looping) so neither is reported as healthy.
-        const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
-        const registered = listResult.code === 0;
-        const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
-
-        if (registered && pid !== undefined) {
-          const loadReportedNonZero = loadResult.code !== 0;
-          io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
-          return;
-        }
-
-        if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
-          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
-          process.exitCode = 1;
-          return;
-        }
-
-        if (registered) {
-          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
-          process.exitCode = 1;
-          return;
-        }
-
-        // launchctl failed AND the agent does not show up as registered —
-        // never claim success on a plist that isn't actually loaded.
-        io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
-        process.exitCode = 1;
+        if (!result.ok) process.exitCode = 1;
         return;
       }
 

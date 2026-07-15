@@ -87,4 +87,123 @@ describe("muse onboard — closing hints (R2-3)", () => {
     expect(text).toContain("muse rollback");
     expect(text).toContain("undoable");
   });
+
+  it("without an injected confirm, a real (non-TTY) test run never calls the daemon install seams and prints the manual hint", async () => {
+    const out: string[] = [];
+    const io: ProgramIO = {
+      fetch: (() => Promise.reject(new Error("no network in test"))) as typeof globalThis.fetch,
+      stderr: () => undefined,
+      stdout: (s) => out.push(s)
+    };
+    const program = new Command();
+    // No `confirm` helper injected: under vitest stdin/stdout are not a TTY,
+    // so the real gate takes the safe default (no install) — this must
+    // never call the real launchctl/schtasks default (which throws under
+    // vitest) even though `platform: "darwin"` makes the offer eligible.
+    registerOnboardCommand(program, io, { platform: "darwin" });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("muse daemon --install");
+  });
+});
+
+describe("muse onboard — background-daemon offer (R3-5)", () => {
+  function runIo(): { io: ProgramIO; out: string[] } {
+    const out: string[] = [];
+    const io: ProgramIO = {
+      fetch: (() => Promise.reject(new Error("no network in test"))) as typeof globalThis.fetch,
+      stderr: () => undefined,
+      stdout: (s) => out.push(s)
+    };
+    return { io, out };
+  }
+
+  it("on darwin, a 'yes' answer runs the SAME install path muse daemon --install uses, through the injected launchctl seam", async () => {
+    const { io, out } = runIo();
+    const calls: string[][] = [];
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => true,
+      platform: "darwin",
+      runLaunchctl: async (args) => {
+        calls.push([...args]);
+        // `list <label>` — launchd's real dump format (see commands-daemon-launchagent.ts's `parseLaunchctlListInfo`).
+        if (args[0] === "list") return { code: 0, stdout: '{\n\t"PID" = 4242;\n\t"LastExitStatus" = 0;\n};\n', stderr: "" };
+        return { code: 0, stdout: "", stderr: "" };
+      }
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(calls.some((c) => c[0] === "load")).toBe(true);
+    expect(out.join("")).toContain("loaded via launchctl and RUNNING");
+  });
+
+  it("on win32, a 'yes' answer registers via the injected schtasks seam", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => true,
+      platform: "win32",
+      schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: "" })
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("registered as scheduled task");
+  });
+
+  it("a 'no' answer prints the manual hint and never touches the install seams", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => false,
+      platform: "darwin",
+      runLaunchctl: () => { throw new Error("must not be called on a 'no' answer"); }
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("muse daemon --install");
+  });
+
+  it("on an unsupported platform (linux), the manual hint prints and the confirm prompt is never asked", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    let confirmed = false;
+    registerOnboardCommand(program, io, {
+      confirm: async () => { confirmed = true; return true; },
+      platform: "linux"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(confirmed).toBe(false);
+    expect(out.join("")).toContain("muse daemon --install");
+  });
+
+  it("an install failure falls back to the manual hint — onboard still succeeds (no throw)", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => true,
+      platform: "darwin",
+      runLaunchctl: async (args) => (args[0] === "list" ? { code: 1, stdout: "", stderr: "" } : { code: 1, stdout: "", stderr: "boom" })
+    });
+    // Never throws — a failed install is fail-soft, not a crashed onboard run.
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("muse daemon --install");
+  });
+
+  it("an install seam that THROWS is fail-soft — onboard still succeeds and prints the manual hint", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => true,
+      platform: "darwin",
+      runLaunchctl: async () => { throw new Error("launchctl not found"); }
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("muse daemon --install");
+  });
+
+  it("--json skips the interactive offer entirely (no confirm call, no install-seam call)", async () => {
+    const { io } = runIo();
+    const program = new Command();
+    let confirmed = false;
+    registerOnboardCommand(program, io, { confirm: async () => { confirmed = true; return true; }, platform: "darwin" });
+    await program.parseAsync(["node", "muse", "onboard", "--json"]);
+    expect(confirmed).toBe(false);
+  });
 });

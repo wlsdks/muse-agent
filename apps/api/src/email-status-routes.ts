@@ -9,6 +9,17 @@
  * echoes a token/secret/client id/app password — only a boolean + method
  * label. A decryption failure or absent file degrades to
  * `configured: false` (both readers are fail-soft), never a 500.
+ *
+ * `method` mirrors `resolveGmailProvider`'s (apps/cli/src/resolve-gmail-
+ * provider.ts) REAL precedence, not just "does an oauth record exist": a
+ * marked-invalid OAuth record (`refreshTokenInvalid`, set when a refresh hit
+ * `invalid_grant` — see gmail-oauth.ts) is unusable, so the resolver falls
+ * through to the App Password record when one is stored, exactly like
+ * `hasStoredGmailCredentialSync` already does for `muse setup`'s status row.
+ * Reporting `method:"oauth"` here regardless would be a display lie — the
+ * resolver isn't actually using it. `needsReauth:true` surfaces whenever the
+ * stored OAuth record is invalid, whether or not IMAP is there to fall back
+ * to, so the UI can prompt reauth even on the imap-fallback path.
  */
 
 import { readEmailImapCredential, readGmailCredential, type CredentialStoreIO } from "@muse/stores";
@@ -35,6 +46,8 @@ export interface EmailStatusResponse {
   readonly configured: boolean;
   readonly method: "oauth" | "imap" | "env" | null;
   readonly hasRefreshToken?: boolean;
+  /** `true` when a stored OAuth record exists but is marked invalid (revoked/expired refresh token) — reauth via `muse setup email` clears it. */
+  readonly needsReauth?: boolean;
 }
 
 export function registerEmailStatusRoutes(server: FastifyInstance, gate: EmailStatusGate): void {
@@ -54,7 +67,8 @@ export function registerEmailStatusRoutes(server: FastifyInstance, gate: EmailSt
     // the MUSE_GMAIL_TOKEN check above.
     const io: CredentialStoreIO = { configDir: gate.credentialsDir, credentialKey: env.MUSE_CREDENTIAL_KEY };
     const credential = await readGmailCredential(io);
-    if (credential) {
+    const oauthUsable = credential !== undefined && !credential.refreshTokenInvalid;
+    if (oauthUsable) {
       const response: EmailStatusResponse = {
         configured: true,
         hasRefreshToken: Boolean(credential.refreshToken),
@@ -62,12 +76,23 @@ export function registerEmailStatusRoutes(server: FastifyInstance, gate: EmailSt
       };
       return response;
     }
+    // Oauth is either absent or marked invalid — mirror the resolver's real
+    // fall-through to the App Password record before reporting anything.
     const imapCredential = await readEmailImapCredential(io);
+    const needsReauth = credential?.refreshTokenInvalid === true;
     if (imapCredential) {
-      const response: EmailStatusResponse = { configured: true, method: "imap" };
+      const response: EmailStatusResponse = {
+        configured: true,
+        method: "imap",
+        ...(needsReauth ? { needsReauth: true } : {})
+      };
       return response;
     }
-    const response: EmailStatusResponse = { configured: false, method: null };
+    const response: EmailStatusResponse = {
+      configured: false,
+      method: null,
+      ...(needsReauth ? { needsReauth: true } : {})
+    };
     return response;
   });
 }

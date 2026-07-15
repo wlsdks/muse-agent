@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createInMemoryCheckpointStore, defaultCheckpointsDir, defaultMaxCheckpoints, FileCheckpointStore } from "./fs-checkpoints.js";
+import { CURRENT_CHECKPOINT_VERSION, createInMemoryCheckpointStore, defaultCheckpointsDir, defaultMaxCheckpoints, FileCheckpointStore } from "./fs-checkpoints.js";
 
 describe("defaultCheckpointsDir / defaultMaxCheckpoints", () => {
   it("uses MUSE_CHECKPOINTS_DIR when set", () => {
@@ -175,6 +175,97 @@ describe("FileCheckpointStore", () => {
 
     const listed = await store.list();
     expect(listed.map((m) => m.id)).toEqual([goodId]);
+  });
+});
+
+describe("manifest version (R3-5)", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-checkpoints-version-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { force: true, recursive: true });
+  });
+
+  it("record() writes the CURRENT_CHECKPOINT_VERSION onto every new manifest", async () => {
+    const store = new FileCheckpointStore({ dir });
+    const id = await store.record({ action: "write", originalContent: "hi", path: "/abs/x.md", summary: "x" });
+    const [listed] = await store.list();
+    expect(listed?.version).toBe(CURRENT_CHECKPOINT_VERSION);
+    const got = await store.get(id);
+    expect(got?.version).toBe(CURRENT_CHECKPOINT_VERSION);
+  });
+
+  it("a PRE-R3-5 on-disk manifest with no version field is read as version 1 and stays fully restorable (compat)", async () => {
+    // Hand-crafted fixture mirroring exactly what a pre-R3-5 build wrote:
+    // no `version` key at all.
+    const id = "ckpt_prer3s5000001";
+    const ckptDir = join(dir, id);
+    await mkdir(ckptDir, { recursive: true });
+    await writeFile(join(ckptDir, "manifest.json"), JSON.stringify({
+      action: "write",
+      at: "2026-01-01T00:00:00.000Z",
+      bytes: 5,
+      existedBefore: true,
+      id,
+      path: "/abs/legacy.md",
+      summary: "legacy write"
+    }), "utf8");
+    await writeFile(join(ckptDir, "content"), "hello", "utf8");
+
+    const store = new FileCheckpointStore({ dir });
+    const [listed] = await store.list();
+    expect(listed?.id).toBe(id);
+    expect(listed?.version).toBe(1);
+    const got = await store.get(id);
+    expect(got?.version).toBe(1);
+    expect(got?.content?.toString("utf8")).toBe("hello");
+  });
+
+  it("a malformed version value (non-integer/string) also defaults to 1, not a crash or quarantine", async () => {
+    const id = "ckpt_badversion00001";
+    const ckptDir = join(dir, id);
+    await mkdir(ckptDir, { recursive: true });
+    await writeFile(join(ckptDir, "manifest.json"), JSON.stringify({
+      action: "write",
+      at: "2026-01-01T00:00:00.000Z",
+      bytes: 0,
+      existedBefore: false,
+      id,
+      path: "/abs/weird.md",
+      summary: "weird",
+      version: "not-a-number"
+    }), "utf8");
+
+    const store = new FileCheckpointStore({ dir });
+    const listed = await store.list();
+    expect(listed.map((m) => m.id)).toEqual([id]);
+    expect(listed[0]?.version).toBe(1);
+  });
+
+  it("a FUTURE-version manifest is still returned by list()/get() (store stays honest — CLI-level display/restore does the version gating)", async () => {
+    const id = "ckpt_future000000001";
+    const ckptDir = join(dir, id);
+    await mkdir(ckptDir, { recursive: true });
+    await writeFile(join(ckptDir, "manifest.json"), JSON.stringify({
+      action: "write",
+      at: "2026-01-01T00:00:00.000Z",
+      bytes: 0,
+      existedBefore: false,
+      id,
+      path: "/abs/future.md",
+      summary: "written by a newer Muse",
+      version: CURRENT_CHECKPOINT_VERSION + 1
+    }), "utf8");
+
+    const store = new FileCheckpointStore({ dir });
+    const listed = await store.list();
+    expect(listed.map((m) => m.id)).toEqual([id]);
+    expect(listed[0]?.version).toBe(CURRENT_CHECKPOINT_VERSION + 1);
+    const got = await store.get(id);
+    expect(got?.version).toBe(CURRENT_CHECKPOINT_VERSION + 1);
   });
 });
 

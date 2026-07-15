@@ -20,6 +20,7 @@ function manifest(over: Partial<CheckpointManifest> = {}): CheckpointManifest {
     id: "ckpt_deadbeef0001",
     path: "/abs/notes.md",
     summary: "Apply 1 edit to notes.md",
+    version: 1,
     ...over
   };
 }
@@ -41,6 +42,20 @@ describe("formatCheckpointList", () => {
   it("flags a truncated (too-large) checkpoint", () => {
     const text = formatCheckpointList([manifest({ truncated: true })], NOW);
     expect(text).toContain("too large to restore");
+  });
+
+  it("skips a FUTURE-version checkpoint from the itemized rows and folds it into one warning line (R3-5)", () => {
+    const text = formatCheckpointList([manifest({ id: "ckpt_current0001" }), manifest({ id: "ckpt_future00001", version: 2 })], NOW);
+    expect(text).toContain("[ckpt_current0001]");
+    expect(text).not.toContain("ckpt_future00001");
+    expect(text).toContain("1 checkpoint(s) skipped");
+    expect(text).toContain("newer version of Muse");
+  });
+
+  it("an ALL-future-version list still shows the skip warning instead of an empty/blank list", () => {
+    const text = formatCheckpointList([manifest({ version: 2 })], NOW);
+    expect(text).toContain("1 checkpoint(s) skipped");
+    expect(text).not.toContain("No checkpoints yet");
   });
 });
 
@@ -155,6 +170,30 @@ describe("muse rollback <id> — safety gates", () => {
     const id = await store.record({ action: "write", originalContent: "way too big", path: "/abs/big.md", summary: "Overwrite big.md" });
     const r = await run(dir, [id, "--yes"]);
     expect(r.error).toMatch(/too large to snapshot/u);
+  });
+
+  it("a FUTURE-version checkpoint refuses restore fail-closed with a clear message, nothing touched (R3-5)", async () => {
+    const dir = checkpointsDir();
+    const target = targetFile();
+    await writeFile(target, "current on disk", "utf8");
+    const id = "ckpt_future0000001";
+    const ckptDir = join(dir, id);
+    await mkdir(ckptDir, { recursive: true });
+    await writeFile(join(ckptDir, "manifest.json"), JSON.stringify({
+      action: "edit",
+      at: "2026-07-15T00:00:00.000Z",
+      bytes: 5,
+      existedBefore: true,
+      id,
+      path: target,
+      summary: "written by a newer Muse",
+      version: 2
+    }), "utf8");
+    await writeFile(join(ckptDir, "content"), "older", "utf8");
+
+    const r = await run(dir, [id, "--yes"]);
+    expect(r.error).toMatch(/newer version of Muse/u);
+    expect(await readFile(target, "utf8")).toBe("current on disk"); // untouched
   });
 });
 

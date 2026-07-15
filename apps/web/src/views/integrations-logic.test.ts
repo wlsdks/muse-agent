@@ -76,6 +76,16 @@ describe("emailStatusView", () => {
   it("undefined (query still loading/errored) degrades to not-configured, never throws", () => {
     expect(emailStatusView(undefined)).toEqual({ messageKey: "int.email.notConfigured", tone: "neutral" });
   });
+
+  it("R3-5: needsReauth wins even when the server fell back to a working IMAP connection — never a plain green 'connected'", () => {
+    const status: EmailStatusResponse = { configured: true, method: "imap", needsReauth: true };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.needsReauth", tone: "warn" });
+  });
+
+  it("R3-5: needsReauth with no fallback (not configured at all) still surfaces the reauth hint, not a bare 'not connected'", () => {
+    const status: EmailStatusResponse = { configured: false, method: null, needsReauth: true };
+    expect(emailStatusView(status)).toEqual({ messageKey: "int.email.needsReauth", tone: "warn" });
+  });
 });
 
 describe("schedulerDeliveryValue", () => {

@@ -98,6 +98,33 @@ describe("GET /api/email/status", () => {
     expect(response.json()).toMatchObject({ configured: true, method: "oauth" });
   });
 
+  it("R3-5: an INVALID OAuth record falls through to the App Password credential — 'imap' + needsReauth:true, never a lying 'oauth'", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-email-status-"));
+    await writeCredentialsFixture(dir, {
+      emailImap: { appPassword: "pw", email: "user@gmail.com" },
+      gmail: { clientId: "c", clientSecret: "s", refreshToken: "r", refreshTokenInvalid: true },
+      tokens: {}
+    });
+    const server = Fastify({ logger: false });
+    registerEmailStatusRoutes(server, { credentialsDir: dir, env: { MUSE_CREDENTIAL_KEY: CREDENTIAL_KEY } });
+    const response = await server.inject({ method: "GET", url: "/api/email/status" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ configured: true, method: "imap", needsReauth: true });
+  });
+
+  it("R3-5: an INVALID OAuth record with NO App Password fallback reports configured:false + needsReauth:true (not a lying 'oauth')", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-email-status-"));
+    await writeCredentialsFixture(dir, {
+      gmail: { clientId: "c", clientSecret: "s", refreshToken: "r", refreshTokenInvalid: true },
+      tokens: {}
+    });
+    const server = Fastify({ logger: false });
+    registerEmailStatusRoutes(server, { credentialsDir: dir, env: { MUSE_CREDENTIAL_KEY: CREDENTIAL_KEY } });
+    const response = await server.inject({ method: "GET", url: "/api/email/status" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ configured: false, method: null, needsReauth: true });
+  });
+
   it("env token takes priority over a stored OAuth credential when both are present", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-email-status-"));
     await writeCredentialsFixture(dir, {

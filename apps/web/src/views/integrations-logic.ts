@@ -37,11 +37,19 @@ export function requiresHomeserver(providerId: string): boolean {
 
 export interface EmailStatusView {
   readonly tone: "ok" | "warn" | "neutral";
-  readonly messageKey: "int.email.connectedOauth" | "int.email.connectedImap" | "int.email.connectedEnv" | "int.email.notConfigured";
+  readonly messageKey: "int.email.connectedOauth" | "int.email.connectedImap" | "int.email.connectedEnv" | "int.email.notConfigured" | "int.email.needsReauth";
 }
 
-/** Card copy for the email status card — pure so the four states stay unit-testable. */
+/** Card copy for the email status card — pure so every state stays unit-testable. */
 export function emailStatusView(status: EmailStatusResponse | undefined): EmailStatusView {
+  // `needsReauth` wins over the method the server fell back to — an IMAP
+  // fallback still WORKS, but the honest state is "your Gmail OAuth needs
+  // reauth", not a plain green "connected via IMAP" that hides it. Checked
+  // first regardless of `method` (R3-5: the OAuth-invalid + no-IMAP case
+  // reports `configured:false` + `needsReauth:true`, same message).
+  if (status?.needsReauth) {
+    return { messageKey: "int.email.needsReauth", tone: "warn" };
+  }
   if (status?.configured && status.method === "oauth") {
     return { messageKey: "int.email.connectedOauth", tone: "ok" };
   }

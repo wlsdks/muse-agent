@@ -406,6 +406,8 @@ export interface EmailStatusResponse {
   readonly configured: boolean;
   readonly method: "oauth" | "imap" | "env" | null;
   readonly hasRefreshToken?: boolean;
+  /** `true` when a stored OAuth record exists but is marked invalid (revoked/expired refresh token) — `muse setup email` reauth clears it. */
+  readonly needsReauth?: boolean;
 }
 interface InboundMessage {
   readonly id?: string;
