@@ -26,6 +26,12 @@ import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 import { withBestEffort } from "./async-promises.js";
 
+const MUSE_PREFIX = ".muse/";
+
+function museEntryRelative(entry: string): string {
+  return entry.startsWith(MUSE_PREFIX) ? entry.slice(MUSE_PREFIX.length) : entry;
+}
+
 interface ImportOptions {
   readonly force?: boolean;
   readonly dryRun?: boolean;
@@ -84,7 +90,7 @@ async function decryptToTempIfNeeded(bundlePath: string, decryptOptIn: boolean):
  * Exported for direct test coverage.
  */
 export function isSafeMuseEntry(entry: string): boolean {
-  if (!entry.startsWith(".muse/") || entry.endsWith("/")) {
+  if (!entry.startsWith(MUSE_PREFIX) || entry.endsWith("/")) {
     return false;
   }
   if (entry.includes("\\")) {
@@ -152,7 +158,7 @@ export async function findImportCollisions(
     if (!statResult || !statResult.isFile()) {
       return undefined;
     }
-    return entry.replace(/^\.muse\//, "");
+    return museEntryRelative(entry);
   });
   const collisions = await Promise.all(checks);
   return collisions.filter((entry): entry is string => typeof entry === "string");
@@ -241,7 +247,7 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
           io.stdout(`Plan for ${bundlePath} → ${home}:\n`);
           const collisionSet = new Set(collisions);
           for (const entry of entries) {
-            const rel = entry.replace(/^\.muse\//, "");
+            const rel = museEntryRelative(entry);
             const willOverwrite = collisionSet.has(rel);
             io.stdout(`  ${willOverwrite ? "OVERWRITE" : "create   "} ~/.muse/${rel}\n`);
           }
