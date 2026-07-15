@@ -6,7 +6,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import process from "node:process";
 
 const ROOT_PATH = "tsconfig.base.json";
 const DEFAULT_TARGET = /tsconfig\.base\.json$/u;
@@ -120,9 +119,7 @@ export function collectAllTsconfigProblems() {
 
 function main() {
   const flatProblems = collectAllTsconfigProblems();
-  const flattenedEntries = Object.entries(flatProblems).flatMap(([configPath, issues]) =>
-    issues.map((issue) => `${configPath}: ${issue}`)
-  );
+  const flattenedEntries = formatTsconfigProblems(flatProblems);
 
   if (flattenedEntries.length > 0) {
     console.error("✗ tsconfig alignment guard failed:");
@@ -142,8 +139,16 @@ export {
   findBaseConflictKeys,
   findMissingBaseTypes,
   collectTsconfigProblems,
-  collectAllTsconfigProblems
+  collectAllTsconfigProblems,
+  formatTsconfigProblems
 };
+
+export function formatTsconfigProblems(problemByConfig) {
+  const entries = Object.entries(problemByConfig).sort(([left], [right]) => left.localeCompare(right, "en", { sensitivity: "base" }));
+  return entries.flatMap(([configPath, issues]) =>
+    issues.map((issue) => `${configPath}: ${issue}`)
+  );
+}
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main();

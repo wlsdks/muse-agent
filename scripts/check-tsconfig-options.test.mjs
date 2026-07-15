@@ -9,6 +9,7 @@ import {
   findBaseConflictKeys,
   findDisallowedCompilerOptions,
   findMissingBaseTypes,
+  formatTsconfigProblems,
   isBaseAligned
 } from "./check-tsconfig-options.mjs";
 
@@ -48,6 +49,42 @@ test("collectTsconfigProblems emits focused issues for unsupported shapes", () =
   );
   assert.equal(problemsWithUnexpected.length, 1);
   assert.equal(problemsWithUnexpected[0].includes("unexpected compilerOptions overrides"), true);
+});
+
+test("collectTsconfigProblems returns empty for a strict-base-compatible minimal config", () => {
+  const problems = collectTsconfigProblems({ extends: "../../tsconfig.base.json" }, {});
+  assert.equal(problems.length, 0);
+});
+
+test("formatTsconfigProblems keeps issue shape and ordering stable", () => {
+  const raw = {
+    "apps/cli/tsconfig.json": [
+      "missing/invalid extends -> tsconfig.base.json",
+      "unexpected compilerOptions overrides -> customOption",
+    ],
+    "packages/agent-core/tsconfig.json": [
+      "types override dropped base entries -> dom",
+    ],
+  };
+  const lines = formatTsconfigProblems(raw);
+  assert.deepEqual(lines, [
+    "apps/cli/tsconfig.json: missing/invalid extends -> tsconfig.base.json",
+    "apps/cli/tsconfig.json: unexpected compilerOptions overrides -> customOption",
+    "packages/agent-core/tsconfig.json: types override dropped base entries -> dom",
+  ]);
+});
+
+test("formatTsconfigProblems sorts entries by config path deterministically", () => {
+  const raw = {
+    "packages/agent-core/tsconfig.json": ["z conflict", "a conflict"],
+    "apps/cli/tsconfig.json": ["b conflict"],
+  };
+  const lines = formatTsconfigProblems(raw);
+  assert.deepEqual(lines, [
+    "apps/cli/tsconfig.json: b conflict",
+    "packages/agent-core/tsconfig.json: z conflict",
+    "packages/agent-core/tsconfig.json: a conflict",
+  ]);
 });
 
 test("collectTsconfigProblems emits layered checks for base conflict and type inheritance", () => {
