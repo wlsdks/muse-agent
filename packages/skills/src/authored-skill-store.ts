@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { FileSystemSkillLoader } from "./skill-loader.js";
 import { parseSkillFile } from "./skill-parser.js";
@@ -76,7 +76,7 @@ async function writeFileAtomic(filePath: string, text: string): Promise<void> {
     await handle.close();
   }
   await fs.rename(tmp, filePath);
-  await fs.chmod(filePath, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(filePath, 0o600), undefined);
 }
 
 /**
@@ -128,7 +128,7 @@ export class AuthoredSkillStore {
         { name: match.name, description: draft.description, body: draft.body },
         this.now().toISOString()
       );
-      const existing = await fs.readFile(match.sourceInfo.filePath, "utf8").catch(() => "");
+    const existing = await withBestEffort(fs.readFile(match.sourceInfo.filePath, "utf8"), "");
       if (stripTimestamps(existing) === stripTimestamps(text)) {
         return { action: "skip", skill: match };
       }
@@ -365,7 +365,7 @@ export class AuthoredSkillStore {
 
   /** Archived skill folder names (under `.archive/`) — what `restore` can revive. */
   async listArchived(): Promise<readonly string[]> {
-    return fs.readdir(join(this.dir, ".archive")).catch(() => [] as string[]);
+    return withBestEffort(fs.readdir(join(this.dir, ".archive")), [] as string[]);
   }
 
   /**
@@ -393,10 +393,10 @@ export class AuthoredSkillStore {
 
   /** Pre-mutation snapshots, newest last — what `rollback()` can restore. */
   async listSnapshots(): Promise<readonly SkillSnapshot[]> {
-    const files = await fs.readdir(this.snapshotsDir()).catch(() => [] as string[]);
+    const files = await withBestEffort(fs.readdir(this.snapshotsDir()), [] as string[]);
     const out: SkillSnapshot[] = [];
     for (const file of files.filter((f) => f.endsWith(".json")).sort()) {
-      const raw = await fs.readFile(join(this.snapshotsDir(), file), "utf8").catch(() => undefined);
+    const raw = await withBestEffort(fs.readFile(join(this.snapshotsDir(), file), "utf8"), undefined);
       if (raw === undefined) continue;
       try {
         out.push(JSON.parse(raw) as SkillSnapshot);
@@ -455,7 +455,7 @@ export class AuthoredSkillStore {
     if (skills.length === 0) return undefined;
     const entries: SkillSnapshotEntry[] = [];
     for (const skill of skills) {
-      const content = await fs.readFile(skill.sourceInfo.filePath, "utf8").catch(() => "");
+      const content = await withBestEffort(fs.readFile(skill.sourceInfo.filePath, "utf8"), "");
       entries.push({
         content,
         contentHash: createHash("sha256").update(content).digest("hex"),
@@ -471,13 +471,13 @@ export class AuthoredSkillStore {
   }
 
   private async pruneSnapshots(): Promise<void> {
-    const files = (await fs.readdir(this.snapshotsDir()).catch(() => [] as string[]))
+    const files = (await withBestEffort(fs.readdir(this.snapshotsDir()), [] as string[]))
       .filter((f) => f.endsWith(".json"))
       .sort();
     const excess = files.length - this.snapshotRingSize;
     if (excess <= 0) return;
     for (const file of files.slice(0, excess)) {
-      await fs.unlink(join(this.snapshotsDir(), file)).catch(() => undefined);
+      await withBestEffort(fs.unlink(join(this.snapshotsDir(), file)), undefined);
     }
   }
 
@@ -493,16 +493,16 @@ export class AuthoredSkillStore {
     const liveFile = join(liveDir, "SKILL.md");
     const archiveDir = join(this.dir, ".archive", entry.slug);
 
-    const currentContent = await fs.readFile(liveFile, "utf8").catch(() => undefined);
+    const currentContent = await withBestEffort(fs.readFile(liveFile, "utf8"), undefined);
     let conflict = false;
     if (currentContent !== undefined && currentContent !== entry.content) {
       const preserveDir = join(this.dir, ".archive", `${entry.slug}-postsnapshot-${this.now().getTime().toString()}`);
-      await fs.rename(liveDir, preserveDir).catch(() => undefined);
+      await withBestEffort(fs.rename(liveDir, preserveDir), undefined);
       conflict = true;
     } else if (currentContent === undefined) {
       // Not live — if curate/consolidate archived it, reclaim the folder so
       // rollback doesn't leave an orphaned duplicate under .archive.
-      await fs.rename(archiveDir, liveDir).catch(() => undefined);
+      await withBestEffort(fs.rename(archiveDir, liveDir), undefined);
     }
     await writeFileAtomic(liveFile, entry.content);
     return conflict;
