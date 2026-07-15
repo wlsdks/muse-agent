@@ -37,6 +37,57 @@ const TIME_RANGE_FORMS = [
   "year", "365d"
 ] as const;
 
+interface SearchResultPayload {
+  readonly backend?: unknown;
+  readonly total?: unknown;
+  readonly results?: unknown;
+  readonly error?: unknown;
+}
+
+interface SearchResultRow {
+  readonly title?: string;
+  readonly url?: string;
+  readonly snippet?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseSearchRows(raw: unknown): readonly SearchResultRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item): readonly SearchResultRow[] => {
+    if (!isRecord(item)) return [];
+    return [{
+      title: typeof item.title === "string" ? item.title : undefined,
+      url: typeof item.url === "string" ? item.url : undefined,
+      snippet: typeof item.snippet === "string" ? item.snippet : undefined
+    }];
+  });
+}
+
+function parseSearchPayload(raw: unknown): SearchResultPayload & { readonly rows: readonly SearchResultRow[]; readonly totalCount: number; } {
+  if (!isRecord(raw)) {
+    return {
+      backend: undefined,
+      total: 0,
+      results: [],
+      error: undefined,
+      rows: [],
+      totalCount: 0
+    };
+  }
+  const candidateTotal = raw.total ?? 0;
+  return {
+    backend: raw.backend,
+    total: candidateTotal,
+    results: raw.results,
+    error: raw.error,
+    rows: parseSearchRows(raw.results),
+    totalCount: Number(candidateTotal)
+  };
+}
+
 // Re-exported so existing call-sites + tests that imported it from
 // here keep working. The canonical home is `@muse/shared`.
 export { stripUntrustedTerminalChars };
@@ -124,16 +175,17 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
         ...(options.time && options.time.trim().length > 0 ? { time_range: options.time.trim() } : {})
       });
       const searchLatencyMs = Date.now() - searchStartedAt;
-      const errMsg = (result as { error?: unknown }).error;
+      const parsed = parseSearchPayload(result);
+      const errMsg = parsed.error;
       if (typeof errMsg === "string") {
         io.stderr(`(search failed: ${errMsg})\n`);
         process.exitCode = 1;
         return;
       }
 
-      const backend = String((result as { backend?: unknown }).backend ?? "?");
-      const total = Number((result as { total?: unknown }).total ?? 0);
-      const rows = ((result as { results?: unknown }).results ?? []) as Array<{ title?: string; url?: string; snippet?: string }>;
+      const backend = String(parsed.backend ?? "?");
+      const total = parsed.totalCount;
+      const rows = parsed.rows;
 
       // --to-notes: persist results as a markdown note. Runs before
       // stdout rendering so a single command can both save AND
