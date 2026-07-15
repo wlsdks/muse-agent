@@ -244,7 +244,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
               {experiment.isPending ? t("pl.experiment.running") : t("pl.experiment.run")}
             </Button>
           </div>
-          {experiment.error && (
+          {experimentError !== null && (
             <div className="banner err" style={{ marginTop: 8 }}>
               {experimentError.includes("503")
                 ? t("pl.experiment.unavailable")
