@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isTscFastProfilingEnabled, parseRunTscFastArgs } from "./run-tsc-fast.mjs";
+import { isTscFastProfilingEnabled, parseSlowMsThreshold, parseRunTscFastArgs } from "./run-tsc-fast.mjs";
 
 test("parseRunTscFastArgs accepts build and typecheck", () => {
   const parsedBuild = parseRunTscFastArgs(["build"]);
@@ -41,4 +41,14 @@ test("isTscFastProfilingEnabled parses environment values", () => {
   assert.equal(isTscFastProfilingEnabled("YES"), true);
   assert.equal(isTscFastProfilingEnabled(" off "), false);
   assert.equal(isTscFastProfilingEnabled("on"), true);
+});
+
+test("parseSlowMsThreshold enforces positive integer thresholds", () => {
+  assert.equal(parseSlowMsThreshold(undefined), 0);
+  assert.equal(parseSlowMsThreshold(""), 0);
+  assert.equal(parseSlowMsThreshold("0"), 0);
+  assert.equal(parseSlowMsThreshold("-20"), 0);
+  assert.equal(parseSlowMsThreshold("4500"), 4500);
+  assert.equal(parseSlowMsThreshold("  7000ms"), 0);
+  assert.equal(parseSlowMsThreshold("  7001 "), 7001);
 });

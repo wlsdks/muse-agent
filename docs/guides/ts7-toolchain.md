@@ -52,6 +52,21 @@ The output prints one line when enabled:
 tsc-fast profile: mode=build threadMode=parallel elapsedMs=1234
 ```
 
+You can also set a performance threshold to surface regressions:
+
+```bash
+TS7_TSC_FAST_SLOW_MS=15000 pnpm run typecheck:ts7-fast
+```
+
+If a run exceeds the threshold, it prints:
+
+```text
+tsc-fast perf alert: elapsedMs=15234 exceeded threshold 15000ms
+```
+
+`TS7_TSC_FAST_SLOW_MS` still prints the same profile line, so you can combine it with
+`TS7_TSC_FAST_PROFILE=1` if you want explicit on/off toggles during investigation.
+
 ## Gate checks
 
 Use:
