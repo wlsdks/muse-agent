@@ -4,7 +4,7 @@ export interface IndexChunk {
   readonly file: string;
   readonly chunkIndex: number;
   readonly text: string;
-  readonly embedding: number[];
+  readonly embedding: number[] | Float32Array;
 }
 
 export interface FileEntry {
@@ -105,8 +105,8 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
  * Pure + exported for direct unit coverage.
  */
 export function secondHopAugmentChunks(
-  queryVec: readonly number[],
-  cosine: (a: readonly number[], b: readonly number[]) => number,
+  queryVec: ArrayLike<number>,
+  cosine: (a: ArrayLike<number>, b: ArrayLike<number>) => number,
   allScored: readonly ScoredChunk[],
   seeds: readonly ScoredChunk[],
   present: readonly ScoredChunk[],
@@ -165,13 +165,13 @@ export function secondHopAugmentChunks(
  */
 export function dedupNearDuplicateChunks(
   chunks: readonly ScoredChunk[],
-  cosine: (a: readonly number[], b: readonly number[]) => number,
+  cosine: (a: ArrayLike<number>, b: ArrayLike<number>) => number,
   threshold = 0.985
 ): ScoredChunk[] {
   if (chunks.length <= 1) return [...chunks];
-  const isZeroOrEmpty = (v: readonly number[]): boolean =>
-    v.length === 0 || v.every((x) => x === 0);
-  const comparable = (a: readonly number[], b: readonly number[]): boolean =>
+  const isZeroOrEmpty = (v: number[] | Float32Array): boolean =>
+    v.length === 0 || v.every((x: number) => x === 0);
+  const comparable = (a: number[] | Float32Array, b: number[] | Float32Array): boolean =>
     a.length > 0 && a.length === b.length && !isZeroOrEmpty(a) && !isZeroOrEmpty(b);
   const kept: ScoredChunk[] = [];
   for (const candidate of chunks) {

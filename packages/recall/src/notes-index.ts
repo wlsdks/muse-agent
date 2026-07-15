@@ -64,7 +64,12 @@ interface FileEntry {
  * carrying stale (incompatible) entries forward. Exported for
  * direct unit-test coverage + future bumpers.
  */
-export const NOTES_INDEX_SCHEMA_VERSION = 1;
+export const NOTES_INDEX_SCHEMA_VERSION = 2;
+
+/** The Float32 binary sidecar holding every chunk embedding in traversal order — JSON stores metadata only. */
+export function embeddingsSidecarPath(indexPath: string): string {
+  return `${indexPath.replace(/\.json$/u, "")}.embeddings.bin`;
+}
 
 interface NotesIndex {
   readonly version: typeof NOTES_INDEX_SCHEMA_VERSION;
@@ -106,7 +111,7 @@ export async function walkMarkdown(dir: string): Promise<readonly { path: string
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function cosine(a: readonly number[], b: readonly number[]): number {
+export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   if (a.length !== b.length) return 0;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i += 1) {
@@ -202,11 +207,63 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   // file up first (see store-version-backup.ts): reindexNotes writes
   // back on the next run, so an undiscarded mismatch would otherwise
   // be silently overwritten with zero trace.
+  if ((candidate as { version?: unknown }).version === 1) {
+    // v1 stored embeddings inline in the JSON — migrate losslessly (no
+    // re-embedding): the same vectors are rewritten into the v2 sidecar.
+    const v1 = candidate as unknown as NotesIndex;
+    if (Array.isArray(v1.files)) {
+      const migrated: NotesIndex = { builtAtIso: v1.builtAtIso, files: v1.files, model: v1.model, version: NOTES_INDEX_SCHEMA_VERSION };
+      await saveIndex(path, migrated);
+      return loadIndex(path);
+    }
+  }
   if (!isNotesIndexValid(candidate)) {
     await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
-  return candidate as NotesIndex;
+  const inlineFiles = (candidate as NotesIndex).files;
+  if (!Array.isArray(inlineFiles)) {
+    return candidate as NotesIndex;
+  }
+  // Self-heal: a v2 JSON still carrying inline embedding arrays (hand-written
+  // index, test fixture, or interrupted save) is accepted and rewritten into
+  // the sidecar layout instead of being discarded.
+  const firstChunk = inlineFiles.flatMap((file) => file.chunks)[0];
+  if (firstChunk && Array.isArray((firstChunk as { embedding?: unknown }).embedding)) {
+    // Reload from the healed sidecar so EVERY load returns the same
+    // representation (Float32Array views) — a first-load/second-load
+    // representation split breaks byte-identical parity guarantees.
+    const healed: NotesIndex = { builtAtIso: (candidate as NotesIndex).builtAtIso, files: inlineFiles, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION };
+    await saveIndex(path, healed);
+    return loadIndex(path);
+  }
+  if (inlineFiles.length === 0 || inlineFiles.every((file) => file.chunks.length === 0)) {
+    return candidate as NotesIndex;
+  }
+  const meta = candidate as unknown as { readonly embeddingDim?: number; readonly embeddingCount?: number; readonly files?: readonly { readonly path: string; readonly mtimeMs?: number; readonly chunks: readonly { readonly file: string; readonly chunkIndex: number; readonly text: string }[] }[] };
+  const dim = meta.embeddingDim ?? 0;
+  const count = meta.embeddingCount ?? 0;
+  let bin: Buffer;
+  try {
+    bin = await readFile(embeddingsSidecarPath(path));
+  } catch {
+    return undefined;
+  }
+  if (dim <= 0 || !Array.isArray(meta.files) || bin.byteLength !== count * dim * 4) {
+    await backupVersionMismatchedStore(path, candidate.version);
+    return undefined;
+  }
+  const all = new Float32Array(bin.buffer, bin.byteOffset, count * dim);
+  let at = 0;
+  const files = meta.files.map((file) => ({
+    ...file,
+    chunks: file.chunks.map((chunk: { readonly file: string; readonly chunkIndex: number; readonly text: string }) => {
+      const embedding = all.subarray(at * dim, (at + 1) * dim);
+      at += 1;
+      return { ...chunk, embedding };
+    })
+  }));
+  return { builtAtIso: (candidate as NotesIndex).builtAtIso, files, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION } as NotesIndex;
 }
 
 /**
@@ -221,10 +278,36 @@ export function isNotesIndexValid(candidate: { readonly version?: unknown } | nu
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {
-  // Atomic (tmp + fsync + rename): the notes index is the grounding wedge's corpus
-  // backbone — a crash mid-write of a raw writeFile would leave a truncated/partial
-  // JSON that fails to parse, silently zeroing every cited recall until a reindex.
-  await atomicWriteFile(path, `${JSON.stringify(index, null, 2)}\n`);
+  // v2 layout: embeddings live in a Float32 binary sidecar, JSON keeps metadata.
+  // JSON-encoded float arrays cost ~19 bytes per number — measured 464MB /
+  // 659ms parse / 2.9GB RSS at 10k notes, vs 92MB / ~ms / ~10% RSS as float32.
+  // Write order matters: sidecar first, JSON last — the JSON is the commit
+  // point, and a crash between the two leaves a v2 JSON whose byte-length
+  // check fails on load (treated as stale, reindexed) rather than silently
+  // mismatched vectors. Both writes are atomic (tmp + fsync + rename).
+  let dim = 0;
+  let count = 0;
+  for (const file of index.files) {
+    for (const chunk of file.chunks) {
+      if (dim === 0) dim = chunk.embedding.length;
+      count += 1;
+    }
+  }
+  const bin = new Float32Array(count * dim);
+  let at = 0;
+  const metaFiles = index.files.map((file) => ({
+    ...file,
+    chunks: file.chunks.map((chunk) => {
+      if (chunk.embedding.length === dim) {
+        bin.set(chunk.embedding, at * dim);
+      }
+      at += 1;
+      const { embedding: _embedding, ...rest } = chunk;
+      return rest;
+    })
+  }));
+  await atomicWriteFile(embeddingsSidecarPath(path), new Uint8Array(bin.buffer, 0, count * dim * 4));
+  await atomicWriteFile(path, `${JSON.stringify({ ...index, embeddingCount: count, embeddingDim: dim, files: metaFiles }, null, 2)}\n`);
 }
 
 /**

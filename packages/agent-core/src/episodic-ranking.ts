@@ -16,7 +16,7 @@ import { comparableScript } from "./script-family.js";
  * direction → no similarity), so a degenerate embedding can never
  * score above the recall threshold.
  */
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
   if (a.length === 0 || a.length !== b.length) {
     return 0;
   }

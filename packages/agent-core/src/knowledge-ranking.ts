@@ -85,7 +85,7 @@ export interface RankKnowledgeOptions {
  * distinct relevant one surfaces. Deterministic, no deps.
  */
 export function selectByMmr(
-  candidates: ReadonlyArray<{ readonly key: string; readonly relevance: number; readonly embedding: readonly number[] }>,
+  candidates: ReadonlyArray<{ readonly key: string; readonly relevance: number; readonly embedding: ArrayLike<number> }>,
   lambda: number,
   topK: number
 ): string[] {
@@ -248,7 +248,7 @@ export async function rankKnowledgeChunks(
     return eligible.slice(0, topK).map(toMatch);
   }
 
-  const scored: Array<{ readonly match: KnowledgeMatch; readonly embedding: readonly number[] }> = [];
+  const scored: Array<{ readonly match: KnowledgeMatch; readonly embedding: ArrayLike<number> }> = [];
   for (const chunk of chunks) {
     const embedding = await options.embed(chunk.embedText ?? chunk.text);
     const score = cosineSimilarity(queryVec, embedding);
