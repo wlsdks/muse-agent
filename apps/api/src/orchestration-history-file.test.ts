@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,10 +47,28 @@ describe("FileOrchestrationHistoryStore", () => {
     const file = join(dir, "corrupt.json");
     const good = new FileOrchestrationHistoryStore(file);
     good.record(entry("run-x"));
-    const { writeFileSync } = require("node:fs") as typeof import("node:fs");
     writeFileSync(file, "{not json", "utf8");
     const reborn = new FileOrchestrationHistoryStore(file);
     expect(reborn.list()).toHaveLength(0);
+  });
+
+  it("skips structurally invalid persisted entries before they reach API consumers", () => {
+    const file = join(dir, "invalid-entry.json");
+    new FileOrchestrationHistoryStore(file).record(entry("seed"));
+    writeFileSync(
+      file,
+      JSON.stringify({
+        entries: [
+          entry("valid-run"),
+          { ...entry("invalid-run"), conversation: [{ content: "hi", sourceAgentId: "a", timestamp: "not-a-date" }] },
+          { ...entry("invalid-metrics"), durationMs: "1200" }
+        ]
+      }),
+      "utf8"
+    );
+
+    const reborn = new FileOrchestrationHistoryStore(file);
+    expect(reborn.list().map((item) => item.runId)).toEqual(["valid-run"]);
   });
 
   it("clear() empties disk too", () => {
