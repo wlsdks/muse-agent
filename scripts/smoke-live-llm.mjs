@@ -107,27 +107,25 @@ function skip(reason) {
   throw new SmokeSkip(reason);
 }
 
-function record(name, fn) {
+async function record(name, fn) {
   // Each check is a real (slow) local-LLM round-trip; stream the result the
   // moment it resolves so the operator sees progress instead of a multi-minute
   // silence that reads as a hang (and so a bounded run captures partial work).
-  return Promise.resolve()
-    .then(fn)
-    .then(() => {
-      checks.push({ name, status: "ok" });
-      console.log(`PASS  ${name}`);
-    })
-    .catch((error) => {
-      if (error instanceof SmokeSkip) {
-        checks.push({ name, reason: error.message, status: "skip" });
-        console.log(`SKIP  ${name}: ${error.message}`);
-        return;
-      }
-      failures += 1;
-      const message = error instanceof Error ? error.message : String(error);
-      checks.push({ error: message, name, status: "fail" });
-      console.error(`FAIL  ${name}: ${message}`);
-    });
+  try {
+    await fn();
+    checks.push({ name, status: "ok" });
+    console.log(`PASS  ${name}`);
+  } catch (error) {
+    if (error instanceof SmokeSkip) {
+      checks.push({ name, reason: error.message, status: "skip" });
+      console.log(`SKIP  ${name}: ${error.message}`);
+      return;
+    }
+    failures += 1;
+    const message = error instanceof Error ? error.message : String(error);
+    checks.push({ error: message, name, status: "fail" });
+    console.error(`FAIL  ${name}: ${message}`);
+  }
 }
 
 async function chatJson(message, runId) {
