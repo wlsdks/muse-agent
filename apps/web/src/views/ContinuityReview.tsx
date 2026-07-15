@@ -255,7 +255,9 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                   <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
                     <span className="row-meta">{t("continuity.recordOutcome")}</span>
                     {OUTCOMES.map((value) => (
-                      <Button key={value} disabled={outcome.isPending} size="sm" variant="ghost" onClick={() => outcome.mutate({ deliveryId: delivery.id, value })}>
+                      <Button key={value} disabled={outcome.isPending} size="sm" variant="ghost" onClick={() => {
+                        if (window.confirm(t("continuity.outcomeConfirm", { outcome: value }))) outcome.mutate({ deliveryId: delivery.id, value });
+                      }}>
                         {value}
                       </Button>
                     ))}
