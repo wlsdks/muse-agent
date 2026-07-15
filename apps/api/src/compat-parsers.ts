@@ -10,6 +10,7 @@ import type { JsonObject } from "@muse/shared";
 import type { FastifyRequest } from "fastify";
 
 import { isJsonValue, isRecord } from "./server-input-utils.js";
+import { parseBoolean } from "./env-parsers.js";
 
 export type CompatBody = Record<string, unknown>;
 
@@ -88,11 +89,7 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
     return value;
   }
 
-  if (typeof value === "string") {
-    return value === "true" || value === "1";
-  }
-
-  return fallback;
+  return typeof value === "string" ? parseBoolean(value, fallback) : fallback;
 }
 
 export function readQueryString(request: FastifyRequest, key: string): string | undefined {
@@ -121,12 +118,7 @@ export function readQueryInteger(request: FastifyRequest, key: string, fallback:
 
 export function readQueryBoolean(request: FastifyRequest, key: string, fallback: boolean): boolean {
   const raw = readQueryString(request, key);
-
-  if (raw === undefined) {
-    return fallback;
-  }
-
-  return raw === "true" || raw === "1";
+  return raw === undefined ? fallback : parseBoolean(raw, fallback);
 }
 
 export type AuthAwareRequest = FastifyRequest & { auth?: { userId?: string } };
