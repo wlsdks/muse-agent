@@ -13,6 +13,7 @@ import { CalendarView } from "../views/Calendar.js";
 import { ContinuityReviewView } from "../views/ContinuityReview.js";
 import { AutonomyView } from "../views/Autonomy.js";
 import { ChatView } from "../views/Chat.js";
+import { ChatsView } from "../views/Chats.js";
 import { DashboardView } from "../views/Dashboard.js";
 import { MemoryView } from "../views/Memory.js";
 import { IntegrationsView } from "../views/Integrations.js";
@@ -43,6 +44,7 @@ const queryClient = new QueryClient({
 type ViewId =
   | "today"
   | "chat"
+  | "chats"
   | "tasks"
   | "board"
   | "agents"
@@ -77,6 +79,7 @@ interface NavEntry {
 export const NAV: readonly NavEntry[] = [
   { Component: TodayView, group: "group.workspace", icon: Icon.home, id: "today", key: "t", labelKey: "nav.today" },
   { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", key: "c", labelKey: "nav.chat" },
+  { Component: ChatsView, group: "group.workspace", icon: Icon.clock, id: "chats", key: "h", labelKey: "nav.chats" },
   { Component: TasksView, group: "group.workspace", icon: Icon.task, id: "tasks", key: "k", labelKey: "nav.tasks" },
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", key: "b", labelKey: "nav.board" },
   { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", key: "x", labelKey: "nav.agents" },

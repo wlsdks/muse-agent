@@ -33,6 +33,26 @@ export interface ChatResponse {
   readonly conversationId?: string;
 }
 
+export interface ConversationSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly origin: string;
+  readonly turnCount: number;
+}
+export interface ConversationsListResponse {
+  readonly conversations: readonly ConversationSummary[];
+}
+export interface ConversationTurnRow {
+  readonly role: "user" | "assistant" | "system";
+  readonly content: string;
+  readonly at?: string;
+}
+export interface ConversationDetail extends ConversationSummary {
+  readonly turns: readonly ConversationTurnRow[];
+}
+
 export interface TaskRow {
   readonly id: string;
   readonly title: string;

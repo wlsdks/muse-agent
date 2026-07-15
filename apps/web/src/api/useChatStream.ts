@@ -89,6 +89,22 @@ function loadConversationId(): string | undefined {
   }
 }
 
+/**
+ * Seeds the conversation id `useChatStream` reads on its next mount — the
+ * Chats panel's "continue this chat" action calls this, then navigates to
+ * the Chat view, so the very next `send()` threads onto the SAME store
+ * conversation instead of starting a fresh one. Exported (not internal to
+ * the hook) because the seeding happens from a sibling view, before the
+ * hook has even mounted.
+ */
+export function setStoredConversationId(id: string): void {
+  try {
+    window.localStorage.setItem(CONVERSATION_ID_KEY, id);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** The `/api/chat/stream` request body — carries the stored conversationId
  *  (round-tripped from a prior `done`/`grounding` frame) so the server
  *  continues the same conversation; omitted entirely on a fresh chat. */
