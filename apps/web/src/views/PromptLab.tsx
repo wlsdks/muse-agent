@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { errorMessage } from "@muse/shared";
 
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -166,7 +167,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
               {save.isSuccess && !save.data.sanitized && <Badge tone="ok">{t("pl.editor.saved")}</Badge>}
               {save.isSuccess && save.data.sanitized && <Badge tone="warn">{t("pl.editor.sanitized")}</Badge>}
             </div>
-            {save.error && <div className="banner err" style={{ marginTop: 8 }}>{(save.error as Error).message}</div>}
+            {save.error && <div className="banner err" style={{ marginTop: 8 }}>{errorMessage(save.error, "Failed to save persona.")}</div>}
           </AsyncBlock>
         </Card>
       </div>
@@ -244,7 +245,9 @@ export function PromptLab({ client }: { client: ApiClient }) {
           </div>
           {experiment.error && (
             <div className="banner err" style={{ marginTop: 8 }}>
-              {(experiment.error as Error).message.includes("503") ? t("pl.experiment.unavailable") : (experiment.error as Error).message}
+              {errorMessage(experiment.error, "Experiment failed.").includes("503")
+                ? t("pl.experiment.unavailable")
+                : errorMessage(experiment.error, "Experiment failed.")}
             </div>
           )}
           {experiment.data && (

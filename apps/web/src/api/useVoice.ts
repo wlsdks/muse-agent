@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { errorMessage } from "@muse/shared";
 
 interface SttResponse {
   readonly text?: string;
@@ -80,7 +81,7 @@ export function useVoice(baseUrl: string, token: string) {
             onTranscript(body.text.trim());
           }
         } catch (cause) {
-          setError(cause instanceof Error ? cause.message : "Transcription failed.");
+          setError(errorMessage(cause, "Transcription failed."));
         } finally {
           setTranscribing(false);
         }
@@ -120,7 +121,7 @@ export function useVoice(baseUrl: string, token: string) {
         await audio.play();
       } catch (cause) {
         setSpeaking(false);
-        setError(cause instanceof Error ? cause.message : "Playback failed.");
+        setError(errorMessage(cause, "Playback failed."));
       }
     },
     [authHeaders, baseUrl]

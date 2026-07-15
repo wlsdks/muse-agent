@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { errorMessage } from "@muse/shared";
 
 import { AsyncBlock, Badge, Button, Card, Icon, Tooltip } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -373,8 +374,8 @@ function ProviderCard({
           </Tooltip>
         </div>
 
-        {connect.error && <div className="banner err">{(connect.error as Error).message}</div>}
-        {disconnect.error && <div className="banner err">{(disconnect.error as Error).message}</div>}
+        {connect.error && <div className="banner err">{errorMessage(connect.error, "Unable to connect provider.")}</div>}
+        {disconnect.error && <div className="banner err">{errorMessage(disconnect.error, "Unable to disconnect provider.")}</div>}
 
         {provider.configured && provider.registered && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -386,7 +387,7 @@ function ProviderCard({
             {testSend.data && <Badge tone="ok">{t("int.testSent", { destination: testSend.data.destination })}</Badge>}
           </div>
         )}
-        {testSend.error && <div className="banner err">{(testSend.error as Error).message}</div>}
+        {testSend.error && <div className="banner err">{errorMessage(testSend.error, "Test send failed.")}</div>}
 
         {provider.configured && (
           <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -417,7 +418,7 @@ function ProviderCard({
           </div>
         )}
         {pairingReset && !provider.pairedOwner && <div className="banner">{t("int.pairing.resetDone")}</div>}
-        {resetPairing.error && <div className="banner err">{(resetPairing.error as Error).message}</div>}
+        {resetPairing.error && <div className="banner err">{errorMessage(resetPairing.error, "Unable to reset pairing.")}</div>}
         {provider.configured && (
           <div>
             {canDisconnect(provider) ? (
