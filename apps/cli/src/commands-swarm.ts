@@ -377,25 +377,24 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         ...(councilReason ? { councilReason } : {})
       });
       const server = createServer((req, res) => {
-        void readSwarmBody(req)
-          .then((body) =>
-            handler({
+        void (async (): Promise<void> => {
+          try {
+            const body = await readSwarmBody(req);
+            const r = await handler({
               body,
               headers: normalizeA2ARequestHeaders(req.headers),
               method: req.method ?? "GET",
               path: req.url ?? "/"
-            })
-          )
-          .then((r) => {
+            });
             res.writeHead(r.status, { "content-type": r.contentType });
             res.end(r.body);
-          })
-          .catch(() => {
+          } catch {
             if (!res.headersSent) {
               res.writeHead(413, { "content-type": "text/plain" });
             }
             res.end("payload too large");
-          });
+          }
+        })();
       });
       server.listen(port, options.host, () => {
         io.stdout(
