@@ -14,6 +14,7 @@ import type { MuseTool } from "@muse/tools";
 
 import type { AskOptions } from "./ask-command-options.js";
 import type { ProgramIO } from "./program.js";
+import { confirmBoolean } from "./confirm-boolean.js";
 
 export type ScreenVisionHolder = {
   current?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
@@ -140,8 +141,8 @@ export async function buildAskToolWiring(params: {
       checkEditIntegrity: true,
       checkpointStore: new FileCheckpointStore({ dir: defaultCheckpointsDir(process.env) }),
       approvalGate: actuatorMod.buildFsWriteApprovalGate({
-        confirmAction: (message: string) => confirmThen(message, fsConfirm, fsIsCancel),
-        io,
+      confirmAction: (message: string) => confirmBoolean(fsConfirm, fsIsCancel, message),
+      io,
         stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env) })
       })
     });
@@ -163,18 +164,10 @@ export async function buildAskToolWiring(params: {
     const actuatorMod = await import("./actuator-tools.js");
     const { confirm, isCancel } = await import("@clack/prompts");
     messagingApprovalGate = actuatorMod.buildMessagingApprovalGate({
-      confirmAction: (message: string) => confirmThen(message, confirm, isCancel),
+      confirmAction: (message: string) => confirmBoolean(confirm, isCancel, message),
       io
     });
   }
 
   return { browserControllerToRelease, extraTools, messagingApprovalGate, screenVision, useActuators };
-}
-
-type ConfirmFunction = (input: { readonly message: string }) => Promise<unknown>;
-type CancelPredicate = (value: unknown) => boolean;
-
-async function confirmThen(message: string, confirm: ConfirmFunction, isCancel: CancelPredicate): Promise<boolean> {
-  const answer = await confirm({ message });
-  return !isCancel(answer) && answer === true;
 }
