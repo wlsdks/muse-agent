@@ -7,6 +7,19 @@ export interface ChatApprovalExecuteResult {
   readonly body: Record<string, unknown>;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (typeof key === "string") {
+        record[key] = nestedValue;
+      }
+    }
+    return record;
+  }
+  return undefined;
+}
+
 /**
  * A tool result that reports its own failure — an object carrying a non-empty
  * `error` string, or an explicit `ok:false` / `success:false`. Such a result
@@ -14,10 +27,10 @@ export interface ChatApprovalExecuteResult {
  * retry the same approval later.
  */
 function isErrorShaped(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const record = toRecord(value);
+  if (!record) {
     return false;
   }
-  const record = value as Record<string, unknown>;
   if (typeof record["error"] === "string" && record["error"].length > 0) {
     return true;
   }

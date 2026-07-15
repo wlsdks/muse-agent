@@ -67,13 +67,22 @@ export interface TrustScore {
 const MAX_LEDGER_ENTRIES = 2_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") record[key] = nestedValue;
+  }
+  return record;
+}
+
 export function sourceKey(kind: string, id: string): string {
   return `${kind}:${id}`;
 }
 
 function isTrustLedgerEntry(value: unknown): value is TrustLedgerEntry {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Record<string, unknown>;
+  const entry = toRecord(value);
+  if (!entry) return false;
   return (
     typeof entry.sourceKey === "string"
     && typeof entry.kind === "string"
@@ -98,10 +107,11 @@ export async function readTrustLedger(file: string): Promise<readonly TrustLedge
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { surfaced?: unknown }).surfaced)) {
+  const parsedRecord = toRecord(parsed);
+  if (!parsedRecord || !Array.isArray(parsedRecord.surfaced)) {
     return [];
   }
-  return (parsed as { surfaced: unknown[] }).surfaced.flatMap((entry): readonly TrustLedgerEntry[] =>
+  return (parsedRecord.surfaced as unknown[]).flatMap((entry): readonly TrustLedgerEntry[] =>
     isTrustLedgerEntry(entry) ? [entry] : []
   );
 }
