@@ -40,7 +40,7 @@ export function bootFailureHint(output) {
 }
 
 export function findFreePort() {
-  const { promise, resolve, reject } = Promise.withResolvers<number>();
+  const { promise, resolve, reject } = Promise.withResolvers();
   const srv = net.createServer();
   srv.once("error", reject);
   srv.listen(0, "127.0.0.1", () => {

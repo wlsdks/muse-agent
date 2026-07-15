@@ -22,7 +22,7 @@ const parsedRepeat = Number(process.env.MUSE_EVAL_REPEAT ?? 3);
 const REPEAT = Number.isFinite(parsedRepeat) && parsedRepeat >= 1 ? Math.floor(parsedRepeat) : 3;
 
 const instructionInput = { messages: [{ content: "Plan a 30-minute morning run for tomorrow.", role: "user" }], model: MODEL };
-const neverResolve = <T>() => Promise.withResolvers<T>().promise;
+const neverResolve = () => Promise.withResolvers().promise;
 
 function ruleWorker(id, handler) {
   return new RuleBasedAgentWorker(id, `${id} worker`, ["plan"], handler);

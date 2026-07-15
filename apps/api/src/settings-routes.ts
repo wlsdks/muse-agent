@@ -1,6 +1,7 @@
 import { parseBoolean } from "@muse/autoconfigure";
+import { parseQuietHours } from "@muse/proactivity";
 
-import { readDaemonSettingsSync, writeDaemonSetting, type DaemonSettings } from "./daemon-settings-store.js";
+import { readDaemonSettingsSync, readQuietHoursSettingSync, writeDaemonSetting, writeQuietHoursSetting, type DaemonSettings } from "./daemon-settings-store.js";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -62,6 +63,36 @@ export function shapeDaemonFlags(
   };
 }
 
+export interface QuietHoursSettingsResponse {
+  /** The PERSISTED enable flag (independent of any env var currently winning). */
+  readonly enabled: boolean;
+  /** The PERSISTED range string, raw (may be an invalid/empty range the user hasn't fixed yet). */
+  readonly range: string | undefined;
+  /** The range actually in force right now, "HH:MM-HH:MM" — undefined when nothing applies. */
+  readonly effectiveRange: string | undefined;
+  /** Where `effectiveRange` came from — `env` wins over the persisted setting (see `resolveEffectiveQuietHours`). */
+  readonly source: "env" | "persisted" | "none";
+}
+
+/**
+ * `MUSE_REMINDER_QUIET_HOURS` is the one global env var this SETTINGS surface
+ * reflects (per-loop overrides like `MUSE_AMBIENT_QUIET_HOURS` are real but
+ * out of scope for a single global toggle — R3-4 "out of scope"). Mirrors
+ * `resolveEffectiveQuietHours`'s precedence (env, then persisted) without
+ * importing the tick-daemons resolver closures, which this route has no use for.
+ */
+export function shapeQuietHoursSettings(env: NodeJS.ProcessEnv, settingsFile: string | undefined): QuietHoursSettingsResponse {
+  const envRaw = env.MUSE_REMINDER_QUIET_HOURS?.trim();
+  const persisted = settingsFile ? readQuietHoursSettingSync(settingsFile) : undefined;
+  if (envRaw && parseQuietHours(envRaw)) {
+    return { effectiveRange: envRaw, enabled: persisted?.enabled ?? false, range: persisted?.range, source: "env" };
+  }
+  if (persisted?.enabled && parseQuietHours(persisted.range)) {
+    return { effectiveRange: persisted.range, enabled: true, range: persisted.range, source: "persisted" };
+  }
+  return { effectiveRange: undefined, enabled: persisted?.enabled ?? false, range: persisted?.range, source: "none" };
+}
+
 export interface SettingsRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly daemonStatus?: DaemonStatusSource;
@@ -103,6 +134,32 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       await writeDaemonSetting(settingsFile, key, body.enabled);
       const appliedLive = gate.applyDaemonToggle?.(key, body.enabled) ?? false;
       return { appliedLive, enabled: body.enabled, key };
+    });
+  }
+
+  server.get("/api/settings/quiet-hours", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return reply;
+    }
+    return shapeQuietHoursSettings(process.env, gate.daemonSettingsFile);
+  });
+
+  if (gate.daemonSettingsFile) {
+    const settingsFile = gate.daemonSettingsFile;
+    server.patch("/api/settings/quiet-hours", async (request, reply) => {
+      if (!authed(request, reply)) {
+        return reply;
+      }
+      const body = (request.body ?? {}) as { enabled?: boolean; range?: string };
+      if (typeof body.enabled !== "boolean") {
+        return reply.status(400).send({ reason: "enabled must be a boolean" });
+      }
+      const range = typeof body.range === "string" ? body.range.trim() : "";
+      if (!parseQuietHours(range)) {
+        return reply.status(400).send({ reason: `invalid quiet-hours range "${range}" — expected "HH:MM-HH:MM"` });
+      }
+      await writeQuietHoursSetting(settingsFile, { enabled: body.enabled, range });
+      return shapeQuietHoursSettings(process.env, settingsFile);
     });
   }
 }

@@ -8,6 +8,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-07-15
+
+The wiring release: email that actually connects, a daemon you can finally
+see, and the hidden half of Muse made discoverable — plus the first Personal
+Continuity path in the CLI.
+
 ### Added
 
 - **첫 Personal Continuity 경로가 이제 로컬 CLI에서 동작합니다.** `muse thread start`로 life/work
@@ -15,6 +21,65 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   다시 엽니다. `used|adjusted|ignored|rejected` 결과는 한 번만 기록되며, 다음 pack의 표시 방식만
   바꿉니다. 모델 호출, 자동 주제 추측, Observe, 외부 행동은 이 첫 slice에 없습니다. 데이터는
   `~/.muse/attunement.json`에 owner-only 원자 저장되고 reset/undo와 inspect가 가능합니다.
+  Continuity threads can also link external GitHub issues/PRs through MCP.
+- **Email connects in two minutes — or forever.** A new App Password path
+  (IMAP/SMTP) needs no Google Cloud project at all; the Gmail OAuth path now
+  refreshes tokens indefinitely instead of dying after an hour; and a
+  preflight probe explains a dead or mistyped OAuth client **in the terminal,
+  before a browser ever opens** — in both `muse setup email` and
+  `muse setup calendar` — with a current step-by-step console walkthrough.
+  Onboarding reports email status honestly, and the web Integrations page
+  shows a Gmail status card.
+- **The daemon is now visible, installable, and honest.** `muse daemon
+  --install` actually installs the LaunchAgent and onboarding offers
+  always-on once; `muse status` shows the heartbeat; adding a reminder or
+  scheduled job warns when the daemon isn't alive to fire it; quiet hours are
+  a real setting (web toggle + `muse quiet`); `muse setup briefing` delivers
+  a deterministic morning brief; recurring agent prompts run in the daemon
+  and deliver to your channel; and `muse playbook drain` processes queued
+  corrections on demand, with a notice when they're piling up unlearned.
+- **`muse features`** lists the capabilities that ship OFF by default —
+  episodic memory, ambient perception, knowledge search, Apple Notes/Reminders
+  mirrors, MCP presets, chat write tools — each with what it unlocks and the
+  exact way to enable it.
+- **Draft-first writes from chat (opt-in)** — `/api/chat` can propose
+  note/task/calendar/reminder writes that wait for your explicit approve
+  **or deny** in the web UI; nothing executes without confirmation. The
+  Activity feed now renders real entries with a kind filter, so daemon
+  insights (patterns, episodes, follow-ups) are finally visible.
+- **One conversation everywhere.** Web, Telegram, and the remote CLI share
+  addressable conversations (`muse chats`, `/sessions`, `//resume`);
+  Telegram/Matrix get deterministic `/new` `/status` `/model` `/help` plus
+  autocomplete; past conversations are searchable through history search.
+- **Own your runtime:** `muse remote` serves the web UI to your phone
+  (tailnet-only), `muse update` upgrades safely or not at all, every agent
+  file write is undoable via checkpoints + `muse rollback`, `muse model` /
+  `/model` switch the default model against installed ones, and `PERSONA.md`
+  edits hot-apply.
+- **`muse learned`** is the one place to audit everything Muse has learned
+  about you — and veto-undo any of it.
+- **MCP grows up:** OAuth 2.1 login for remote servers (`muse mcp login`),
+  a one-click Atlassian (Jira/Confluence) preset.
+- **Security hardening:** a URL leaving the box must be quoted from the user,
+  never composed by the model; channel replies suppress link previews to
+  close the passive-fetch exfiltration class; scoped consents can be
+  time-bound and fail closed on expiry; local-only mode now also contains
+  Gmail, Home Assistant, and remote personal integrations.
+
+### Fixed
+
+- A 60-second throttle was silently discarding most of what you told Muse;
+  teaching is now captured across surfaces, and a write-time guard stops a
+  web page from teaching Muse a rule.
+- `muse doctor` no longer reports a learning loop that has never run as
+  healthy, and no longer misreads the MCP config schema.
+- Remote MCP servers: configured auth headers were silently dropped from the
+  wire — remote MCP auth works now.
+- The Continuity Pack names the real next-step gap instead of a false
+  "no task linked".
+- Various stability and reliability fixes: OAuth callback timer leak,
+  NUL-byte key hygiene, self-eval ratchet integrity (a deleted gate is a
+  regression, not a score-launder).
 
 ### Changed
 
@@ -30,6 +95,9 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   `MUSE_RUNNER_ENABLED` and `MUSE_RUNNER_PATH` values are inert compatibility settings;
   they no longer enable model-callable `run_command`. Move coding or general command
   execution to a dedicated coding tool outside Muse Work.
+- Internal modernization: the TypeScript 7 (Go) toolchain with a repo-wide
+  async/timeout cleanup wave, a shared vitest config (512 compiled tests no
+  longer run twice), and a TS6/7 split gate on every PR.
 
 ## [0.2.41] - 2026-07-13
 

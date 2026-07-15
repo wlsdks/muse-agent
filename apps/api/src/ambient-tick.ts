@@ -13,7 +13,7 @@ import { sendWithRetry } from "@muse/mcp-shared";
 import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignalSource, type InterruptionBudgetWiring, type KnowledgeAmbientTrigger, type ProactiveNoticeSink } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface AmbientTickOptions {
   readonly source: AmbientSignalSource;
@@ -22,7 +22,7 @@ export interface AmbientTickOptions {
   readonly providerId: string;
   readonly destination: string;
   readonly intervalMs?: number;
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   /** Optional knowledge enricher: a firing notice gains a related-knowledge line. */
   readonly enrich?: (query: string) => Promise<string | undefined> | string | undefined;
   /** Optional SB-3 knowledge trigger: the active window title alone edge-fires a recall notice with no rule. */
@@ -70,7 +70,8 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
     // Skip the whole tick during quiet hours WITHOUT advancing the
     // runner's edge state, so a context still active when quiet hours
     // end fires once then (a rising edge), not silently swallowed.
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

@@ -18,7 +18,7 @@ import { type BriefingImminent } from "@muse/proactivity";
 import { runDueSituationalBriefing, type EmailProvider, type WeatherProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface SituationalBriefingTickOptions {
   readonly objectivesFile: string;
@@ -58,7 +58,7 @@ export interface SituationalBriefingTickOptions {
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   readonly now?: () => Date;
 }
 
@@ -82,7 +82,8 @@ export function startSituationalBriefingTick(
     if (firing) {
       return;
     }
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

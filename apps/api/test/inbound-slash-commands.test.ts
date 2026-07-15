@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -128,8 +128,8 @@ describe("handleInboundSlashCommand — /help and unknown commands", () => {
   });
 });
 
-describe("handleInboundSlashCommand — /model", () => {
-  it("shows the resolved default model id and notes switching isn't supported yet", async () => {
+describe("handleInboundSlashCommand — /model (bare, show-only)", () => {
+  it("shows the resolved default model id and how to switch", async () => {
     const reply = await handleInboundSlashCommand({
       model: "gemma4:12b",
       pendingApprovalsFile: tmpFile("pending.json"),
@@ -138,7 +138,128 @@ describe("handleInboundSlashCommand — /model", () => {
       text: "/model"
     });
     expect(reply).toContain("gemma4:12b");
-    expect(reply?.toLowerCase()).toContain("not yet");
+    expect(reply).toContain("/model <name>");
+  });
+});
+
+// R3-3: `/model <name>` switches the default model, validated against what
+// Ollama actually has installed — the SAME implementation `muse model use`
+// (apps/cli) calls, through `@muse/autoconfigure`'s model-registry. Every
+// fetch below is INJECTED (house rule: a vitest run never touches the
+// network) and every write goes through an isolated tmp `configFilePath`.
+describe("handleInboundSlashCommand — /model <name> (R3-3 switch)", () => {
+  function tmpConfigFile(): string {
+    return join(mkdtempSync(join(tmpdir(), "muse-slash-model-")), "config.json");
+  }
+
+  function fakeTagsFetch(names: readonly string[]): typeof globalThis.fetch {
+    return (async () => new Response(JSON.stringify({ models: names.map((name) => ({ name })) }), { status: 200 })) as unknown as typeof globalThis.fetch;
+  }
+
+  function unreachableFetch(): typeof globalThis.fetch {
+    return (async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof globalThis.fetch;
+  }
+
+  function neverCalledFetch(): typeof globalThis.fetch {
+    return (async () => { throw new Error("fetch must not be called on this path"); }) as unknown as typeof globalThis.fetch;
+  }
+
+  it("an installed model → confirms old → new and writes the config file", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: {},
+      fetchImpl: fakeTagsFetch(["gemma4:12b", "qwen3:8b"]),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "42",
+      text: "/model qwen3:8b"
+    });
+    expect(reply).toContain("gemma4:12b → ollama/qwen3:8b");
+    const written = JSON.parse(readFileSync(configFilePath, "utf8")) as { defaultModel?: string };
+    expect(written.defaultModel).toBe("ollama/qwen3:8b");
+  });
+
+  it("strips the Telegram @botname suffix on /model AND still parses the trailing model argument", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: {},
+      fetchImpl: fakeTagsFetch(["qwen3:8b"]),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "-100999",
+      text: "/model@jinan_muse_bot qwen3:8b"
+    });
+    expect(reply).toContain("→ ollama/qwen3:8b");
+  });
+
+  it("Ollama unreachable → no config write, actionable reply", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: {},
+      fetchImpl: unreachableFetch(),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "42",
+      text: "/model qwen3:8b"
+    });
+    expect(reply?.toLowerCase()).toContain("not reachable");
+    expect(existsSync(configFilePath)).toBe(false);
+  });
+
+  it("unknown/misspelled model → no config write, close-miss suggestion, capped installed list", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: {},
+      fetchImpl: fakeTagsFetch(["gemma4:12b"]),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "42",
+      text: "/model gemma4:12"
+    });
+    expect(reply).toContain("Did you mean 'gemma4:12b'?");
+    expect(existsSync(configFilePath)).toBe(false);
+  });
+
+  it("MUSE_LOCAL_ONLY + a cloud model spec → refused BEFORE any network call, no config write", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: { MUSE_LOCAL_ONLY: "true" },
+      fetchImpl: neverCalledFetch(),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "42",
+      text: "/model gemini/gemini-2.0-flash"
+    });
+    expect(reply).toContain("Refused");
+    expect(reply).toContain("MUSE_LOCAL_ONLY");
+    expect(existsSync(configFilePath)).toBe(false);
+  });
+
+  it("an active MUSE_MODEL env override → the switch still writes config, reply says the env var currently wins", async () => {
+    const configFilePath = tmpConfigFile();
+    const reply = await handleInboundSlashCommand({
+      configFilePath,
+      env: { MUSE_MODEL: "ollama/gemma4:12b" },
+      fetchImpl: fakeTagsFetch(["qwen3:8b"]),
+      model: "gemma4:12b",
+      pendingApprovalsFile: tmpFile("pending.json"),
+      providerId: "telegram",
+      source: "42",
+      text: "/model qwen3:8b"
+    });
+    expect(reply).toContain("MUSE_MODEL=ollama/gemma4:12b is set");
+    const written = JSON.parse(readFileSync(configFilePath, "utf8")) as { defaultModel?: string };
+    expect(written.defaultModel).toBe("ollama/qwen3:8b");
   });
 });
 

@@ -20,7 +20,7 @@
 import { runDueFollowups, type InterruptionBudgetWiring, type ProactiveModelProviderLike } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface FollowupTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -39,7 +39,7 @@ export interface FollowupTickOptions {
    * `parseQuietHours(MUSE_FOLLOWUP_QUIET_HOURS ?? MUSE_REMINDER_QUIET_HOURS)`
    * at the wiring layer.
    */
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   /** Injectable clock for tests; default `() => new Date()`. */
   readonly now?: () => Date;
   /** Opt-in interruption budget — forwarded verbatim to `runDueFollowups`. */
@@ -64,7 +64,8 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
     if (firing) {
       return;
     }
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

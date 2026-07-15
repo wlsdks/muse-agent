@@ -163,8 +163,12 @@ export function museQuickstartHelp(): string {
     "  muse remember \"...\"    teach Muse a fact or preference about you",
     "  muse status           see what Muse knows + your privacy posture",
     "",
+    "Daily use:",
+    "  muse today                                  morning briefing — tasks, calendar, notes",
+    "  muse chats                                  list + resume past conversations",
+    "  muse scheduler add \"...\" --every \"daily 9am\"  a recurring prompt, no cron syntax",
     "Muse runs on a LOCAL model by default; cloud egress is refused unless you opt out.",
-    "Run `muse <command> --help` for any command's options."
+    "Run `muse update` to pull the latest Muse; `muse <command> --help` for any command's options."
   ].join("\n");
 }
 

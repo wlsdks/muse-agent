@@ -198,6 +198,11 @@ interface HistoryEntry {
   readonly model?: string;
   readonly status?: string;
   readonly startedAt?: string;
+  /** `/api/history`'s real unified-feed shape (reminder/proactive/followup/pattern/episode). */
+  readonly id?: string;
+  readonly kind?: string;
+  readonly summary?: string;
+  readonly whenIso?: string;
 }
 export interface HistoryResponse {
   readonly entries?: readonly HistoryEntry[];
@@ -404,8 +409,10 @@ export interface MessagingConnectResponse {
 }
 export interface EmailStatusResponse {
   readonly configured: boolean;
-  readonly method: "oauth" | "env" | null;
+  readonly method: "oauth" | "imap" | "env" | null;
   readonly hasRefreshToken?: boolean;
+  /** `true` when a stored OAuth record exists but is marked invalid (revoked/expired refresh token) — `muse setup email` reauth clears it. */
+  readonly needsReauth?: boolean;
 }
 interface InboundMessage {
   readonly id?: string;
@@ -429,6 +436,13 @@ interface DaemonFlagView {
 }
 export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
+}
+
+export interface QuietHoursSettingsResponse {
+  readonly enabled: boolean;
+  readonly range?: string;
+  readonly effectiveRange?: string;
+  readonly source: "env" | "persisted" | "none";
 }
 
 export interface OrchestrationEntry {

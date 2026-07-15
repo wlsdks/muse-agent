@@ -37,8 +37,8 @@ import {
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
-import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readReminders, readTasks, recordProactiveHeartbeat } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -80,6 +80,7 @@ import {
   makeBackgroundExitNoticeTick,
   makeBriefingTick,
   makeCheckinsTick,
+  makeDailyBriefTick,
   makeFollowupTick,
   makePatternTick,
   makeProactiveTick,
@@ -103,6 +104,36 @@ const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
  * source of truth, mirroring `apps/api/src/tick-daemons.ts`'s
  * `resolveProactiveTrustFile`.
  */
+/**
+ * Live quiet-hours resolver for `muse daemon`'s continuous process — mirrors
+ * `apps/api/src/tick-daemons.ts`'s `liveQuietHours`: per-loop env, then the
+ * shared base env, then the persisted setting (`@muse/stores`'s
+ * daemon-settings file, PATCHed from web Settings / set via `muse quiet`).
+ * Re-reads the persisted file on every call so a change takes effect on the
+ * daemon's very next tick, no restart. Not used by `makeRemindersTick` /
+ * `makeDailyBriefTick` — those stay exempt from quiet hours.
+ */
+export function liveQuietHours(
+  e: NodeJS.ProcessEnv,
+  io: ProgramIO,
+  perLoopVar: string | undefined,
+  baseVar: string | undefined
+): () => QuietHourRange | undefined {
+  const settingsFile = resolveDaemonSettingsFile(e);
+  let warned = false;
+  return () => resolveEffectiveQuietHours({
+    baseEnvRaw: baseVar,
+    onInvalidPersisted: (raw) => {
+      if (!warned) {
+        warned = true;
+        io.stderr(`quiet-hours: ignoring invalid persisted range "${raw}"\n`);
+      }
+    },
+    perLoopEnvRaw: perLoopVar,
+    persisted: readQuietHoursSettingSync(settingsFile)
+  });
+}
+
 export function resolveProactiveTrustFile(e: NodeJS.ProcessEnv): string {
   if (e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length) return e.MUSE_PROACTIVE_TRUST_FILE.trim();
   // HOME-first: os.homedir() ignores $HOME on win32 (USERPROFILE), breaking
@@ -311,6 +342,98 @@ function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): s
   return "";
 }
 
+/**
+ * The core of `muse daemon --install`: write + load a macOS LaunchAgent, or
+ * register a Windows scheduled task, through the SAME injected runner seams
+ * `registerDaemonCommands` uses (never real launchctl/schtasks under vitest —
+ * `defaultRunLaunchctl`/`defaultSchtasksRun` already guarantee that). Split
+ * out so `muse onboard`'s background-daemon offer can drive the identical
+ * install path without duplicating the launchd/schtasks logic. Returns
+ * `{ok:false}` (never throws) on every failure branch, incl. an unsupported
+ * platform — the caller decides what a failure means for it (exit code vs.
+ * a fail-soft manual-command hint).
+ */
+export async function installDaemonAutostart(
+  io: ProgramIO,
+  e: NodeJS.ProcessEnv,
+  helpers: Pick<DaemonHelpers, "platform" | "runLaunchctl" | "schtasksRun"> = {}
+): Promise<{ readonly ok: boolean }> {
+  const plat = helpers.platform ?? process.platform;
+  // argv[1] is the muse CLI entry at runtime; node + that path
+  // gives launchd/schtasks an absolute, login-shell-independent command.
+  const cliEntry = process.argv[1] ?? "muse";
+  if (plat === "win32") {
+    const run = helpers.schtasksRun ?? defaultSchtasksRun;
+    const result = await run(buildSchtasksCreateArgs({
+      programArguments: [process.execPath, cliEntry, "daemon"],
+      taskName: SCHTASKS_TASK_NAME
+    }));
+    if (result.exitCode === 0) {
+      io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  muse daemon --uninstall\n`);
+      return { ok: true };
+    }
+    io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
+    return { ok: false };
+  }
+  if (plat !== "darwin") {
+    io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
+    return { ok: false };
+  }
+  const plistFile = resolveLaunchAgentFile(e);
+  const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
+  const logDir = join(home, ".muse", "logs");
+  const plist = buildLaunchAgentPlist({
+    label: LAUNCH_AGENT_LABEL,
+    programArguments: [process.execPath, cliEntry, "daemon"],
+    stderrPath: join(logDir, "daemon.err.log"),
+    stdoutPath: join(logDir, "daemon.out.log")
+  });
+
+  const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+
+  // Unload any stale definition FIRST. `load -w` is NOT reliably
+  // idempotent for an already-loaded label — some launchd versions
+  // return non-zero AND don't re-read the plist, so a bare load after
+  // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
+  // leave launchd running the OLD programArguments until logout. A
+  // failed unload here (nothing was loaded yet) is expected and fine.
+  await runLaunchctl(["unload", "-w", plistFile]);
+
+  mkdirSync(dirname(plistFile), { recursive: true });
+  writeFileSync(plistFile, plist, "utf8");
+
+  const loadResult = await runLaunchctl(["load", "-w", plistFile]);
+  // The source of truth for success is the verifying `list` call, not
+  // `load`'s own exit code — and `list` exiting 0 only proves the label
+  // is REGISTERED, not that it is actually running. Parse its dump for
+  // a PID (running now) vs a non-zero LastExitStatus with no PID
+  // (registered but crash-looping) so neither is reported as healthy.
+  const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+  const registered = listResult.code === 0;
+  const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
+
+  if (registered && pid !== undefined) {
+    const loadReportedNonZero = loadResult.code !== 0;
+    io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
+    return { ok: true };
+  }
+
+  if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
+    return { ok: false };
+  }
+
+  if (registered) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
+    return { ok: false };
+  }
+
+  // launchctl failed AND the agent does not show up as registered —
+  // never claim success on a plist that isn't actually loaded.
+  io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
+  return { ok: false };
+}
+
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
   const env = () => helpers.env?.() ?? process.env;
   const makeMessaging = helpers.buildMessagingRegistry ?? ((e: NodeJS.ProcessEnv) => buildMessagingRegistry(e));
@@ -355,90 +478,20 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const destination = (options.destination ?? e.MUSE_PROACTIVE_DESTINATION ?? fileConfig.destination ?? "@me").trim();
 
       if (options.init) {
-        writeDaemonConfig(configFile, { destination, provider });
+        // Preserve any `dailyBrief` block `muse setup briefing` already wrote —
+        // this write must not silently disable the daily brief.
+        writeDaemonConfig(configFile, { destination, provider, ...(fileConfig.dailyBrief ? { dailyBrief: fileConfig.dailyBrief } : {}) });
         io.stdout(`muse daemon config written to ${configFile}\n  provider=${provider}, destination=${destination}\n`);
         return;
       }
 
       if (options.install) {
-        const plat = helpers.platform ?? process.platform;
-        // argv[1] is the muse CLI entry at runtime; node + that path
-        // gives launchd/schtasks an absolute, login-shell-independent command.
-        const cliEntry = process.argv[1] ?? "muse";
-        if (plat === "win32") {
-          const run = helpers.schtasksRun ?? defaultSchtasksRun;
-          const result = await run(buildSchtasksCreateArgs({
-            programArguments: [process.execPath, cliEntry, "daemon"],
-            taskName: SCHTASKS_TASK_NAME
-          }));
-          if (result.exitCode === 0) {
-            io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  muse daemon --uninstall\n`);
-          } else {
-            io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
-            process.exitCode = 1;
-          }
-          return;
-        }
-        if (plat !== "darwin") {
-          io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
-          process.exitCode = 1;
-          return;
-        }
-        const plistFile = resolveLaunchAgentFile(e);
-        const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
-        const logDir = join(home, ".muse", "logs");
-        const plist = buildLaunchAgentPlist({
-          label: LAUNCH_AGENT_LABEL,
-          programArguments: [process.execPath, cliEntry, "daemon"],
-          stderrPath: join(logDir, "daemon.err.log"),
-          stdoutPath: join(logDir, "daemon.out.log")
+        const result = await installDaemonAutostart(io, e, {
+          ...(helpers.platform ? { platform: helpers.platform } : {}),
+          ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
+          ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
         });
-
-        const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
-
-        // Unload any stale definition FIRST. `load -w` is NOT reliably
-        // idempotent for an already-loaded label — some launchd versions
-        // return non-zero AND don't re-read the plist, so a bare load after
-        // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
-        // leave launchd running the OLD programArguments until logout. A
-        // failed unload here (nothing was loaded yet) is expected and fine.
-        await runLaunchctl(["unload", "-w", plistFile]);
-
-        mkdirSync(dirname(plistFile), { recursive: true });
-        writeFileSync(plistFile, plist, "utf8");
-
-        const loadResult = await runLaunchctl(["load", "-w", plistFile]);
-        // The source of truth for success is the verifying `list` call, not
-        // `load`'s own exit code — and `list` exiting 0 only proves the label
-        // is REGISTERED, not that it is actually running. Parse its dump for
-        // a PID (running now) vs a non-zero LastExitStatus with no PID
-        // (registered but crash-looping) so neither is reported as healthy.
-        const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
-        const registered = listResult.code === 0;
-        const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
-
-        if (registered && pid !== undefined) {
-          const loadReportedNonZero = loadResult.code !== 0;
-          io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
-          return;
-        }
-
-        if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
-          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
-          process.exitCode = 1;
-          return;
-        }
-
-        if (registered) {
-          io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
-          process.exitCode = 1;
-          return;
-        }
-
-        // launchctl failed AND the agent does not show up as registered —
-        // never claim success on a plist that isn't actually loaded.
-        io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
-        process.exitCode = 1;
+        if (!result.ok) process.exitCode = 1;
         return;
       }
 
@@ -491,7 +544,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const baseMessagingRegistry = makeMessaging(e);
+      // A daemon config that resolved to `macos-notification` (onboard's
+      // native-notification offer, `--provider`, or env) is useless unless
+      // the provider's own opt-in flag is also set — so overlay it to
+      // 'true' when the user hasn't voiced an opinion. An EXPLICIT 'false'
+      // wins (fail-close on a deliberate opt-out): the registry build then
+      // skips the provider and the existing unknown-provider error fires.
+      const messagingEnv = provider === "macos-notification" && e.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED === undefined
+        ? { ...e, MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED: "true" }
+        : e;
+      const baseMessagingRegistry = makeMessaging(messagingEnv);
       if (!baseMessagingRegistry.has(provider)) {
         const known = baseMessagingRegistry.list().map((p) => p.id);
         const suggestion = closestCommandName(provider, known);
@@ -552,13 +614,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       };
       // Quiet hours (do-not-disturb): suppress ambient/awareness chatter
       // during the window so the resident daemon doesn't ping at 3am. Only
-      // gates this sink (ambient/web-watch/home-watch) — user-scheduled
-      // reminders/follow-ups fire on their own path and are unaffected, so an
-      // urgent "pay rent today" reminder still comes through. Same window
-      // parser the API ticks use.
-      const quietHours = parseQuietHours(e.MUSE_PROACTIVE_QUIET_HOURS?.trim() || e.MUSE_REMINDER_QUIET_HOURS?.trim());
+      // gates this sink (ambient/web-watch/home-watch) plus the proactive/
+      // checkins/pattern ticks below — user-scheduled reminders/follow-ups
+      // fire on their own path and are unaffected, so an urgent "pay rent
+      // today" reminder still comes through. `liveQuietHours` re-reads the
+      // persisted setting (web Settings / `muse quiet`) fresh every tick —
+      // the SAME precedence + file `apps/api/src/tick-daemons.ts` consumes.
+      const quietHours = liveQuietHours(e, io, e.MUSE_PROACTIVE_QUIET_HOURS, e.MUSE_REMINDER_QUIET_HOURS);
       const noticeSink: ProactiveNoticeSink = gateProactiveNoticeSink(rawNoticeSink, {
-        ...(quietHours ? { quietHours } : {}),
+        quietHours,
         onSuppress: options.print
           ? (notice): void => io.stdout(`  🌙 quiet hours — held: ${notice.title}\n`)
           : undefined
@@ -703,6 +767,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             : "disabled (set MUSE_HOME_WATCH_CONFIG + HA creds)"}\n`);
         io.stdout(`  objectives: ${objectivesEvaluate && objectivesActuator ? "enabled" : "disabled (no model resolved)"}\n`);
         io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : "disabled (set MUSE_BRIEFING_ENABLED)"}\n`);
+        io.stdout(`  daily-brief: ${fileConfig.dailyBrief?.enabled ? `enabled (daily, at ${fileConfig.dailyBrief.time} local)` : "disabled (run `muse setup briefing`)"}\n`);
         io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : "disabled (set MUSE_SELFLEARN_ENABLED + a model)"}\n`);
         io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : "disabled (set MUSE_RECAP_ENABLED)"}\n`);
         io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : "disabled (set MUSE_DIGEST_ENABLED=false to keep off)"}\n`);
@@ -768,6 +833,22 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         messagingRegistry,
         provider,
         remindersFile,
+        stdout: io.stdout
+      });
+
+      // `muse setup briefing` — a fixed-time daily brief (config read LIVE
+      // from `configFile` each tick, so a wizard re-run takes effect without
+      // a daemon restart). Sidecar mirrors the recap tick's dedupe file.
+      const dailyBriefSidecar = e.MUSE_DAILY_BRIEF_SIDECAR_FILE?.trim()?.length
+        ? e.MUSE_DAILY_BRIEF_SIDECAR_FILE.trim()
+        : join(homedir(), ".muse", "daily-brief-fired.json");
+      const dailyBriefTick = makeDailyBriefTick({
+        configFile,
+        destination,
+        env: e,
+        messagingRegistry,
+        provider,
+        sidecarFile: dailyBriefSidecar,
         stdout: io.stdout
       });
 
@@ -1068,6 +1149,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();
+        await dailyBriefTick();
         await schedulerTick();
         await followupTick();
         await checkinsTick();

@@ -259,7 +259,7 @@ describe("createGmailTokenSource", () => {
   });
 });
 
-describe("preflightGmailClient — catches Google's invalid_client before any browser opens", () => {
+describe("preflightGoogleOAuthClient — catches Google's invalid_client before any browser opens", () => {
   const realAuthErrorBlob = "Cg5pbnZhbGlkX2NsaWVudBIfVGhlIE9BdXRoIGNsaWVudCB3YXMgbm90IGZvdW5kLiCRAw";
 
   it("decodes Google's real authError blob into code + message", async () => {
@@ -270,7 +270,7 @@ describe("preflightGmailClient — catches Google's invalid_client before any br
   });
 
   it("returns ok:false with the decoded error when Google 302s to the oauth error page", async () => {
-    const { preflightGmailClient } = await import("./gmail-oauth.js");
+    const { preflightGoogleOAuthClient } = await import("./gmail-oauth.js");
     const fetchImpl = (async (input: unknown) => {
       expect(String(input)).toContain("client_id=bad.apps.googleusercontent.com");
       return {
@@ -280,30 +280,110 @@ describe("preflightGmailClient — catches Google's invalid_client before any br
         status: 302
       } as unknown as Response;
     }) as unknown as typeof fetch;
-    const result = await preflightGmailClient("bad.apps.googleusercontent.com", fetchImpl);
+    const result = await preflightGoogleOAuthClient("bad.apps.googleusercontent.com", fetchImpl);
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe("invalid_client");
     expect(result.message).toBe("The OAuth client was not found.");
   });
 
   it("returns ok:true when Google 302s into the normal sign-in flow", async () => {
-    const { preflightGmailClient } = await import("./gmail-oauth.js");
+    const { preflightGoogleOAuthClient } = await import("./gmail-oauth.js");
     const fetchImpl = (async () => ({
       headers: new Headers({ location: "https://accounts.google.com/v3/signin/identifier?opparams=x" }),
       status: 302
     } as unknown as Response)) as unknown as typeof fetch;
-    const result = await preflightGmailClient("good.apps.googleusercontent.com", fetchImpl);
+    const result = await preflightGoogleOAuthClient("good.apps.googleusercontent.com", fetchImpl);
     expect(result.ok).toBe(true);
     expect(result.skipped).toBeUndefined();
   });
 
   it("fails open (ok:true, skipped) when the probe itself cannot run", async () => {
-    const { preflightGmailClient } = await import("./gmail-oauth.js");
+    const { preflightGoogleOAuthClient } = await import("./gmail-oauth.js");
     const fetchImpl = (async () => {
       throw new Error("offline");
     }) as unknown as typeof fetch;
-    const result = await preflightGmailClient("any.apps.googleusercontent.com", fetchImpl);
+    const result = await preflightGoogleOAuthClient("any.apps.googleusercontent.com", fetchImpl);
     expect(result.ok).toBe(true);
     expect(result.skipped).toBe(true);
+  });
+});
+
+describe("validateGoogleOAuthClientIdInput — shared prompt validation for every Google OAuth wizard (email + calendar)", () => {
+  it("rejects an empty input", async () => {
+    const { validateGoogleOAuthClientIdInput } = await import("./gmail-oauth.js");
+    expect(validateGoogleOAuthClientIdInput("")).toBe("Client ID is required");
+    expect(validateGoogleOAuthClientIdInput(undefined)).toBe("Client ID is required");
+  });
+
+  it("rejects a value without the .apps.googleusercontent.com suffix — the truncated-paste / API-key mistake", async () => {
+    const { validateGoogleOAuthClientIdInput } = await import("./gmail-oauth.js");
+    expect(validateGoogleOAuthClientIdInput("AIzaSyFakeApiKey")).toContain(".apps.googleusercontent.com");
+  });
+
+  it("accepts a well-formed client ID (whitespace tolerated)", async () => {
+    const { validateGoogleOAuthClientIdInput } = await import("./gmail-oauth.js");
+    expect(validateGoogleOAuthClientIdInput(" 123-abc.apps.googleusercontent.com ")).toBeUndefined();
+  });
+});
+
+describe("googlePreflightGuidance — the terminal explanation names the wizard to re-run", () => {
+  it("embeds the given rerun command", async () => {
+    const { googlePreflightGuidance } = await import("./gmail-oauth.js");
+    expect(googlePreflightGuidance("muse setup calendar")).toContain("`muse setup calendar`");
+    expect(googlePreflightGuidance("muse setup email")).toContain("`muse setup email`");
+  });
+});
+
+describe("preflightGoogleOAuthClient — scope parameter", () => {
+  it("probes with the caller-provided scope so non-Gmail wizards preflight their own scope", async () => {
+    const { preflightGoogleOAuthClient } = await import("./gmail-oauth.js");
+    let probedUrl = "";
+    const fetchImpl = (async (input: unknown) => {
+      probedUrl = String(input);
+      return {
+        headers: new Headers({ location: "https://accounts.google.com/v3/signin/identifier" }),
+        status: 302
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    await preflightGoogleOAuthClient("x.apps.googleusercontent.com", fetchImpl, "https://www.googleapis.com/auth/calendar");
+    expect(probedUrl).toContain(encodeURIComponent("https://www.googleapis.com/auth/calendar"));
+  });
+});
+
+describe("parseGoogleClientSecretJson — the downloaded client_secret_*.json replaces hand-pasting", () => {
+  it("accepts a Desktop-app JSON (\"installed\" section)", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    const result = parseGoogleClientSecretJson(JSON.stringify({
+      installed: { client_id: "x.apps.googleusercontent.com", client_secret: "GOCSPX-abc", redirect_uris: ["http://localhost"] }
+    }));
+    expect(result).toEqual({ credentials: { clientId: "x.apps.googleusercontent.com", clientSecret: "GOCSPX-abc" }, ok: true });
+  });
+
+  it("names the wrong-client-type mistake: a \"web\" JSON is rejected with the Desktop-app fix", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    const result = parseGoogleClientSecretJson(JSON.stringify({ web: { client_id: "x.apps.googleusercontent.com", client_secret: "s" } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Desktop app");
+  });
+
+  it("rejects non-JSON and JSON without an installed section", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    expect(parseGoogleClientSecretJson("not json").ok).toBe(false);
+    expect(parseGoogleClientSecretJson("{}").ok).toBe(false);
+  });
+
+  it("rejects a malformed client_id or empty secret inside the JSON", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    expect(parseGoogleClientSecretJson(JSON.stringify({ installed: { client_id: "truncated", client_secret: "s" } })).ok).toBe(false);
+    expect(parseGoogleClientSecretJson(JSON.stringify({ installed: { client_id: "x.apps.googleusercontent.com", client_secret: "" } })).ok).toBe(false);
+  });
+});
+
+describe("looksLikeClientSecretJsonInput — routing wizard input", () => {
+  it("classifies pasted JSON, a .json path, and a bare client ID", async () => {
+    const { looksLikeClientSecretJsonInput } = await import("./gmail-oauth.js");
+    expect(looksLikeClientSecretJsonInput('{"installed":{}}')).toBe("content");
+    expect(looksLikeClientSecretJsonInput("~/Downloads/client_secret_x.json")).toBe("path");
+    expect(looksLikeClientSecretJsonInput("x.apps.googleusercontent.com")).toBeUndefined();
   });
 });

@@ -23,11 +23,46 @@ describe("muse playbook command registration", () => {
     expect(distill?.description()).toContain("last chat session");
   });
 
-  it("keeps add/list/remove/reward/undo/pause/resume alongside distill", () => {
+  it("keeps add/list/remove/reward/undo/pause/resume/drain alongside distill", () => {
     const program = new Command();
     registerPlaybookCommands(program, noopIo);
-    for (const name of ["add", "list", "remove", "reward", "undo", "pause", "resume", "distill"]) {
+    for (const name of ["add", "list", "remove", "reward", "undo", "pause", "resume", "distill", "drain"]) {
       expect(findSub(program, ["playbook", name])).toBeDefined();
+    }
+  });
+});
+
+describe("muse playbook drain — no model provider prints the same setup guidance as `distill`", () => {
+  it("prints 'run `muse setup` or set MUSE_MODEL' and never touches the learn queue", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { enqueueLearnEvent, readPendingLearnEvents } = await import("@muse/stores");
+    const dir = await mkdtemp(join(tmpdir(), "muse-drain-nomodel-"));
+    const queueFile = join(dir, "learn-queue.jsonl");
+    await enqueueLearnEvent(queueFile, {
+      correction: "no, bullets not prose", enqueuedAtMs: 1, id: "a", priorAnswer: "prose", userId: "u1"
+    });
+    const prevQueue = process.env.MUSE_LEARN_QUEUE_FILE;
+    const prevProviderId = process.env.MUSE_MODEL_PROVIDER_ID;
+    const prevBaseUrl = process.env.MUSE_MODEL_BASE_URL;
+    process.env.MUSE_LEARN_QUEUE_FILE = queueFile;
+    // Forces `createModelProvider` to resolve to `undefined`: an unregistered
+    // provider id with no base URL falls through every adapter branch.
+    process.env.MUSE_MODEL_PROVIDER_ID = "nonexistent-provider";
+    delete process.env.MUSE_MODEL_BASE_URL;
+    try {
+      const out: string[] = [];
+      const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
+      const program = new Command();
+      registerPlaybookCommands(program, io);
+      await program.parseAsync(["node", "x", "playbook", "drain"], { from: "node" });
+      expect(out.join("")).toContain("run `muse setup` or set MUSE_MODEL");
+      expect(await readPendingLearnEvents(queueFile)).toHaveLength(1); // untouched
+    } finally {
+      if (prevQueue === undefined) delete process.env.MUSE_LEARN_QUEUE_FILE; else process.env.MUSE_LEARN_QUEUE_FILE = prevQueue;
+      if (prevProviderId === undefined) delete process.env.MUSE_MODEL_PROVIDER_ID; else process.env.MUSE_MODEL_PROVIDER_ID = prevProviderId;
+      if (prevBaseUrl === undefined) delete process.env.MUSE_MODEL_BASE_URL; else process.env.MUSE_MODEL_BASE_URL = prevBaseUrl;
     }
   });
 });

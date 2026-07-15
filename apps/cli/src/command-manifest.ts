@@ -351,6 +351,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": []
   },
   {
+    "name": "features",
+    "description": "Discover hidden capabilities that ship OFF by default, with the exact env var to enable each",
+    "argsTerm": "",
+    "hasOptions": true,
+    "subcommands": []
+  },
+  {
     "name": "feeds",
     "description": "RSS/Atom feed ingest for ambient world-state",
     "argsTerm": "",
@@ -555,6 +562,16 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "model",
+    "description": "Show/switch Muse's default model among installed Ollama models (offline catalog across all providers: `muse models`)",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "list",
+      "use"
+    ]
+  },
+  {
     "name": "models",
     "description": "List the models Muse can use + their capabilities (vision/tools/local). Filter: --vision/--tools/--local/--provider",
     "argsTerm": "",
@@ -682,6 +699,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "consolidate",
       "decrypt",
       "distill",
+      "drain",
       "encrypt",
       "encryption-status",
       "list",
@@ -728,6 +746,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "decline",
       "list"
     ]
+  },
+  {
+    "name": "quiet",
+    "description": "Show or set quiet hours (do-not-disturb window) for background daemons — reminders and the daily brief are never affected",
+    "argsTerm": "[range]",
+    "hasOptions": false,
+    "subcommands": []
   },
   {
     "name": "read",
@@ -883,6 +908,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [
+      "briefing",
       "calendar",
       "cloud",
       "data",

@@ -12,7 +12,7 @@ import { sendWithRetry } from "@muse/mcp-shared";
 import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface WebWatchTickOptions {
   readonly watches: readonly WebWatch[];
@@ -20,7 +20,7 @@ export interface WebWatchTickOptions {
   readonly providerId: string;
   readonly destination: string;
   readonly intervalMs?: number;
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   readonly now?: () => Date;
@@ -51,7 +51,8 @@ export function startWebWatchTick(options: WebWatchTickOptions): WebWatchTickHan
 
   const tickOnce = async (): Promise<void> => {
     if (firing) return;
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
       return;
     }
     firing = true;

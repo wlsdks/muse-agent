@@ -610,6 +610,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const bootDaemonSettings = readDaemonSettingsSync(daemonSettingsFile);
   const pollEnabled = bootDaemonSettings.MUSE_TELEGRAM_POLL_ENABLED
     ?? isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
+  // Registered at most once per boot, regardless of how many times the
+  // ingest starter itself re-runs (reconnect, daemon toggle) — Telegram's
+  // setMyCommands is idempotent, but repeating it on every toggle would
+  // still be a needless network round-trip.
+  let telegramCommandsRegistered = false;
   if (options.telegramInboxFile && options.messaging) {
     const telegramInboxFile = options.telegramInboxFile;
     const messaging = options.messaging;
@@ -627,6 +632,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       const telegram = messaging.require("telegram");
       if (!(telegram instanceof TelegramProvider)) {
         return;
+      }
+      if (!telegramCommandsRegistered) {
+        telegramCommandsRegistered = true;
+        // Fail-soft: a slash-command list is a UI nicety, never a reason
+        // to abort the channel starting up. No retry — the next boot (or
+        // daemon toggle) tries again.
+        void telegram.registerCommands().catch((error: unknown) => {
+          server.log.warn(`telegram setMyCommands failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
       const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
         ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)

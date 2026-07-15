@@ -121,4 +121,35 @@ describe("buildHistoryRecords — all three advertised sources are really search
     expect(records.every((r) => r.source === "episodes")).toBe(true);
     expect(records).toHaveLength(1);
   });
+
+  it("returns a real CONVERSATION as a citable, resumable hit end-to-end through the tool (R3-1)", async () => {
+    const telegramChat = {
+      createdAt: "2026-07-10T09:00:00.000Z",
+      id: "telegram:9012",
+      origin: "telegram",
+      title: "Link share",
+      turns: [{ content: "지난주에 텔레그램에서 보내준 컨퍼런스 등록 링크가 뭐였지?", role: "user" as const }],
+      updatedAt: "2026-07-10T09:00:00.000Z"
+    };
+    const tool = createHistorySearchTool({
+      records: () =>
+        buildHistoryRecords({
+          readEpisodes: () => episodes,
+          userId: USER,
+          listConversations: () => [{
+            createdAt: telegramChat.createdAt,
+            id: telegramChat.id,
+            origin: telegramChat.origin,
+            title: telegramChat.title,
+            turnCount: telegramChat.turns.length,
+            updatedAt: telegramChat.updatedAt
+          }],
+          getConversation: (id) => (id === telegramChat.id ? telegramChat : undefined)
+        })
+    });
+    const out = await tool.execute({ query: "컨퍼런스 등록 링크" }, ctx);
+    const text = typeof out === "string" ? out : JSON.stringify(out);
+    expect(text).toContain("[conversations:telegram:9012]");
+    expect(text).toContain("muse chats resume telegram:9012");
+  });
 });

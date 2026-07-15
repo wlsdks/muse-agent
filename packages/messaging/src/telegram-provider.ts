@@ -48,6 +48,21 @@ export interface TelegramProviderOptions {
 
 const DEFAULT_BASE_URL = "https://api.telegram.org";
 
+/**
+ * The autocomplete list registered via `setMyCommands`. Kept in lock-step
+ * with `handleInboundSlashCommand` (apps/api/src/inbound-slash-commands.ts)
+ * — that is the single source of truth for what each command DOES; this
+ * is only what Telegram's client shows before the user sends anything.
+ * Telegram descriptions are single-language (1-256 chars); the bilingual
+ * detail lives in `/help`'s reply once the command actually runs.
+ */
+export const TELEGRAM_BOT_COMMANDS: readonly { readonly command: string; readonly description: string }[] = [
+  { command: "new", description: "Start a fresh conversation, clearing this chat's history" },
+  { command: "status", description: "Show the current model, pending approvals, and turn count" },
+  { command: "model", description: "Show the current default model" },
+  { command: "help", description: "List available commands" }
+];
+
 interface TelegramSendResponse {
   readonly ok: boolean;
   readonly description?: string;
@@ -243,6 +258,33 @@ export class TelegramProvider implements MessagingProvider {
         this.id,
         "UPSTREAM_FAILED",
         `Telegram setMessageReaction failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
+        response.status
+      );
+    }
+  }
+
+  /**
+   * Registers the slash-command autocomplete list Telegram's client UI
+   * shows when a user types "/" (Bot API `setMyCommands`). Mirrors the
+   * commands `handleInboundSlashCommand`
+   * (apps/api/src/inbound-slash-commands.ts) actually handles — update
+   * both together. Overwrites the whole list each call, so it is safe
+   * to invoke more than once (the caller still runs it at most once per
+   * boot to avoid a needless network round-trip).
+   */
+  async registerCommands(): Promise<void> {
+    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/setMyCommands`, {
+      body: JSON.stringify({ commands: TELEGRAM_BOT_COMMANDS }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }, this.timeoutMs);
+    const text = await response.text();
+    const parsed = tryParseJson<TelegramSendResponse>(text);
+    if (!response.ok || !parsed?.ok) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `Telegram setMyCommands failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }

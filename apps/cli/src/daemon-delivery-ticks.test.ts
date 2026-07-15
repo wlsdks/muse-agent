@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -6,7 +6,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { setSchedulerPaused } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import { makeDailyBriefTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
 import type { JobExecutionStatus, ScheduledJob, ScheduledJobInput, ScheduledJobStore } from "@muse/scheduler";
@@ -273,5 +274,296 @@ describe("makeSchedulerTick", () => {
 
     expect(runJobCalls).toBe(1);
     expect(store.updateCalls.some((c) => c.status === "skipped" && (c.result ?? "").includes("previous run still in progress"))).toBe(true);
+  });
+});
+
+describe("makeDailyBriefTick — muse setup briefing's fixed-time daily brief", () => {
+  function tmpFiles(): { readonly configFile: string; readonly sidecarFile: string } {
+    const dir = mkdtempSync(join(tmpdir(), "muse-daily-brief-tick-"));
+    return { configFile: join(dir, "daemon.json"), sidecarFile: join(dir, "daily-brief-fired.json") };
+  }
+
+  function writeConfig(file: string, dailyBrief: { enabled: boolean; time: string } | undefined): void {
+    writeFileSync(file, JSON.stringify({ dailyBrief, destination: "@me", provider: "log" }), "utf8");
+  }
+
+  function fakeMessaging(fail = false) {
+    const sent: Array<{ providerId: string; destination: string; text: string }> = [];
+    return {
+      sent,
+      send: async (providerId: string, message: { destination: string; text: string }) => {
+        if (fail) throw new Error("send failed (simulated)");
+        sent.push({ destination: message.destination, providerId, text: message.text });
+        return { providerId, status: "sent" as const };
+      }
+    };
+  }
+
+  it("disabled config → cheap no-op: no compose call, no send, no sidecar write", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: false, time: "08:30" });
+    const messaging = fakeMessaging();
+    let composed = false;
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => { composed = true; return "brief text"; },
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(composed).toBe(false);
+    expect(messaging.sent).toHaveLength(0);
+    expect(() => readFileSync(sidecarFile, "utf8")).toThrow();
+  });
+
+  it("no config file at all (fresh install) → no-op", async () => {
+    const { configFile, sidecarFile } = tmpFiles(); // configFile never written
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(0);
+  });
+
+  it("enabled + past the target time + never fired → delivers and marks the sidecar", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "your deterministic brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toEqual([{ destination: "@me", providerId: "log", text: "your deterministic brief" }]);
+    expect(JSON.parse(readFileSync(sidecarFile, "utf8"))).toEqual({ lastFired: new Date("2026-06-04T09:00:00").toISOString() });
+  });
+
+  it("before the target time → does not fire", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T08:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(0);
+  });
+
+  it("two tick runs the same day after the sidecar mark → sends exactly once (restart-safe)", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    const messaging = fakeMessaging();
+    const makeTick = () => makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await makeTick()(); // first tick (simulates the daemon restarting and creating a fresh tick closure)
+    await makeTick()(); // second tick, same day
+    expect(messaging.sent).toHaveLength(1);
+  });
+
+  it("marked fired yesterday → fires again today (crosses midnight correctly)", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    writeFileSync(sidecarFile, JSON.stringify({ lastFired: "2026-06-03T08:31:00.000Z" }), "utf8");
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(1);
+  });
+
+  it("a daemon that was off past the target time fires on its NEXT tick, same day, never back-fills a missed day", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    // Last fired two days ago — the daemon was off yesterday and today
+    // until just now. It must fire ONCE (today), not once per missed day.
+    writeFileSync(sidecarFile, JSON.stringify({ lastFired: "2026-06-02T08:31:00.000Z" }), "utf8");
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T14:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(1);
+    await tick(); // a second tick moments later must not re-fire
+    expect(messaging.sent).toHaveLength(1);
+  });
+
+  it("send failure is fail-soft: no sidecar write, so the NEXT tick retries (never marked sent without delivery)", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    const failing = fakeMessaging(true);
+    const stdoutLines: string[] = [];
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: failing as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: (m) => stdoutLines.push(m)
+    });
+    await tick();
+    expect(() => readFileSync(sidecarFile, "utf8")).toThrow();
+    expect(stdoutLines.join("")).toMatch(/send failed/);
+
+    // The daemon stays up — a retry on the next tick, now with a working
+    // provider, succeeds and marks the sidecar.
+    const working = fakeMessaging(false);
+    const retryTick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: working as never,
+      now: () => new Date("2026-06-04T09:05:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await retryTick();
+    expect(working.sent).toHaveLength(1);
+  });
+
+  it("an invalid time in the config is a safe no-op (never throws, never sends)", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "25:00" });
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await expect(tick()).resolves.toBeUndefined();
+    expect(messaging.sent).toHaveLength(0);
+  });
+
+  it("the config is read LIVE every tick — a mid-run enable takes effect without a restart", async () => {
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: false, time: "08:30" });
+    const messaging = fakeMessaging();
+    const tick = makeDailyBriefTick({
+      composeBrief: async () => "brief",
+      configFile,
+      destination: "@me",
+      env: {},
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(0);
+
+    // Simulates `muse setup briefing` enabling it while the daemon keeps running.
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    await tick();
+    expect(messaging.sent).toHaveLength(1);
+  });
+
+  it("the default composer has NO model provider in its dependency shape — deterministic, no LLM in the loop", async () => {
+    // Real default composer (buildLocalTodayText), no `composeBrief` override:
+    // it must succeed from on-disk sources alone, with zero model config.
+    const { configFile, sidecarFile } = tmpFiles();
+    writeConfig(configFile, { enabled: true, time: "08:30" });
+    const messaging = fakeMessaging();
+    const dir = mkdtempSync(join(tmpdir(), "muse-daily-brief-sources-"));
+    const tick = makeDailyBriefTick({
+      configFile,
+      destination: "@me",
+      env: {
+        MUSE_NOTES_DIR: join(dir, "notes"),
+        MUSE_TASKS_FILE: join(dir, "tasks.json")
+        // deliberately no MUSE_MODEL / provider keys of any kind
+      } as NodeJS.ProcessEnv,
+      messagingRegistry: messaging as never,
+      now: () => new Date("2026-06-04T09:00:00"),
+      provider: "log",
+      sidecarFile,
+      stdout: () => undefined
+    });
+    await tick();
+    expect(messaging.sent).toHaveLength(1);
+    expect(typeof messaging.sent[0]!.text).toBe("string");
+  });
+});
+
+describe("R3-4 AC3 exemption pin — the daily brief has no quiet-hours field at all", () => {
+  it("MakeDailyBriefTickDeps has no quietHours field (compile-time pin, checked by `tsc -b`)", () => {
+    // If this stops erroring, someone wired the persisted quiet-hours setting
+    // into the fixed-time daily brief — that breaks the EXEMPT invariant
+    // (a user-scheduled digest is never gated by ambient-chatter suppression).
+    const pin: MakeDailyBriefTickDeps = {
+      configFile: "x",
+      destination: "@me",
+      // @ts-expect-error — quietHours is not a valid MakeDailyBriefTickDeps field.
+      quietHours: { endHour: 8, startHour: 23 },
+      env: {} as NodeJS.ProcessEnv,
+      messagingRegistry: {} as never,
+      provider: "log",
+      sidecarFile: "x",
+      stdout: () => undefined
+    };
+    expect(pin).toBeDefined();
   });
 });

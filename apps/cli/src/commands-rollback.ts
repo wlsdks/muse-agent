@@ -20,7 +20,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { Command } from "commander";
-import { defaultCheckpointsDir, FileCheckpointStore, type CheckpointManifest } from "@muse/fs";
+import { CURRENT_CHECKPOINT_VERSION, defaultCheckpointsDir, FileCheckpointStore, type CheckpointManifest } from "@muse/fs";
 
 import { formatRelativeTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
@@ -63,11 +63,24 @@ export function formatCheckpointList(manifests: readonly CheckpointManifest[], n
   if (manifests.length === 0) {
     return "No checkpoints yet — every agent file write is snapshotted the first time it happens.\n";
   }
-  const lines = manifests.map((m, index) => {
+  // A checkpoint written by a NEWER Muse (version > this build's ceiling)
+  // is skipped from the itemized rows — nothing here can render or restore
+  // it — and folded into one fail-soft warning line instead of silently
+  // vanishing (still id-addressable: `resolveCheckpointRef` sees the full
+  // list, so `muse rollback <id>` on it hits the fail-closed restore refusal).
+  const displayable = manifests.filter((m) => m.version <= CURRENT_CHECKPOINT_VERSION);
+  const skipped = manifests.length - displayable.length;
+  if (displayable.length === 0) {
+    return `⚠ ${skipped.toString()} checkpoint(s) skipped — written by a newer version of Muse (checkpoint format newer than v${CURRENT_CHECKPOINT_VERSION.toString()}). Upgrade Muse to view/restore them.\n`;
+  }
+  const lines = displayable.map((m, index) => {
     const truncatedNote = m.truncated ? " [too large to restore]" : "";
     return `${(index + 1).toString()}. [${m.id}] ${m.action} ${m.path} — ${m.summary}${truncatedNote}, ${formatRelativeTime(m.at, now)}`;
   });
-  return `${lines.join("\n")}\n`;
+  const warning = skipped > 0
+    ? `\n⚠ ${skipped.toString()} checkpoint(s) skipped — written by a newer version of Muse (checkpoint format newer than v${CURRENT_CHECKPOINT_VERSION.toString()}). Upgrade Muse to view/restore them.`
+    : "";
+  return `${lines.join("\n")}${warning}\n`;
 }
 
 /**
@@ -115,6 +128,9 @@ export function registerRollbackCommand(program: Command, io: ProgramIO): void {
         throw new Error(`Ambiguous checkpoint id "${id}" — matches ${resolution.candidates.length.toString()}: ${previews}`);
       }
       const manifest = resolution.manifest;
+      if (manifest.version > CURRENT_CHECKPOINT_VERSION) {
+        throw new Error(`Checkpoint [${manifest.id}] was written by a newer version of Muse (checkpoint format v${manifest.version.toString()}; this Muse supports up to v${CURRENT_CHECKPOINT_VERSION.toString()}) — refusing to restore it. Upgrade Muse and try again.`);
+      }
       if (manifest.truncated) {
         throw new Error(`Checkpoint [${manifest.id}] for '${manifest.path}' was too large to snapshot (over the per-file cap) — rollback is not possible for it.`);
       }

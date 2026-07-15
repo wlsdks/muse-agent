@@ -198,6 +198,8 @@ function baseSnap(): SetupStatusSnapshot {
       credentials: { file: "/c/credentials.json", status: "info" },
       local: { file: "/c/calendar.json", status: "info" }
     },
+    dailyBrief: { enabled: false, nextStep: "muse setup briefing", status: "info" },
+    email: { source: "none", status: "info" },
     localOnly: { detail: "off (no cloud credentials configured)", enabled: false, status: "ok" },
     webEgress: { detail: "on", enabled: true, status: "ok" },
     mcp: { externalServerCount: 0, file: "/c/mcp.json", status: "info" },
@@ -206,6 +208,7 @@ function baseSnap(): SetupStatusSnapshot {
     notes: { dir: "/c/notes", status: "info" },
     proactive: { agentTurn: false, enabled: false, leadMinutes: 10, sidecarFile: "/c/p.json", status: "info", tickMs: 60000 },
     reminder: { agentTurn: false, enabled: false, status: "info", tickMs: 60000 },
+    remote: { status: "info", tailscaleFound: false },
     tasks: { file: "/c/tasks.json", status: "info" },
     userMemory: { autoExtract: true, status: "ok" },
     voice: { source: "none", sttBackend: "none", status: "info", ttsBackend: "none" },
@@ -239,6 +242,66 @@ describe("formatSetupStatusLines — an `ok` section's advisory nextStep is stil
     const out = formatSetupStatusLines(snap).join("\n");
     expect(out).toContain("voice — stt=openai-whisper, tts=openai-tts");
     expect(out).not.toContain("MUSE_PIPER_VOICE");
+  });
+});
+
+describe("formatSetupStatusLines — email/remote rows (R2-3)", () => {
+  it("oauth-connected email renders auto-refresh, no next-step arrow", () => {
+    const snap: SetupStatusSnapshot = { ...baseSnap(), email: { source: "oauth", status: "ok" } };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("email — connected (oauth, auto-refresh)");
+  });
+
+  it("env-token email names the hourly-expiry caveat", () => {
+    const snap: SetupStatusSnapshot = { ...baseSnap(), email: { source: "env", status: "ok" } };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("email — via MUSE_GMAIL_TOKEN (hourly expiry)");
+  });
+
+  it("not-set-up email points at `muse setup email`", () => {
+    const snap: SetupStatusSnapshot = {
+      ...baseSnap(),
+      email: { nextStep: "muse setup email", source: "none", status: "info" }
+    };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("email — not set up");
+    expect(out).toContain("→ muse setup email");
+  });
+
+  it("tailscale found points at `muse remote enable`", () => {
+    const snap: SetupStatusSnapshot = {
+      ...baseSnap(),
+      remote: { nextStep: "muse remote enable", status: "ok", tailscaleFound: true }
+    };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("remote — tailscale found");
+    expect(out).toContain("→ muse remote enable");
+  });
+
+  it("tailscale not found points at the remote-access guide", () => {
+    const snap: SetupStatusSnapshot = {
+      ...baseSnap(),
+      remote: { nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false }
+    };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("remote — not found");
+    expect(out).toContain("→ docs/guides/remote-access.md");
+  });
+});
+
+describe("formatSetupStatusLines — daily brief row (R2-3 pattern, muse setup briefing)", () => {
+  it("not set up points at `muse setup briefing`", () => {
+    const snap: SetupStatusSnapshot = { ...baseSnap() };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("daily brief — not set up");
+    expect(out).toContain("→ muse setup briefing");
+  });
+
+  it("enabled renders its configured time, no next-step arrow", () => {
+    const snap: SetupStatusSnapshot = { ...baseSnap(), dailyBrief: { enabled: true, status: "ok", time: "07:15" } };
+    const out = formatSetupStatusLines(snap).join("\n");
+    expect(out).toContain("daily brief — enabled, 07:15 local");
+    expect(out).not.toContain("→ muse setup briefing");
   });
 });
 

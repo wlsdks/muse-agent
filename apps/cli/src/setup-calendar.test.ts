@@ -48,3 +48,50 @@ describe("generatePkcePair — RFC 7636 Proof Key for Code Exchange so an attack
     expect(challenges.size).toBe(50);
   });
 });
+
+describe("preflightGoogleCalendarClient — a dead client ID is explained in the terminal BEFORE any browser opens (the same 401 invalid_client class the email wizard already guards)", () => {
+  const realAuthErrorBlob = "Cg5pbnZhbGlkX2NsaWVudBIfVGhlIE9BdXRoIGNsaWVudCB3YXMgbm90IGZvdW5kLiCRAw";
+
+  const makeIo = (fetchImpl: typeof fetch) => {
+    const errors: string[] = [];
+    const outs: string[] = [];
+    return {
+      errors,
+      io: {
+        fetchImpl,
+        stderr: (m: string) => { errors.push(m); },
+        stdout: (m: string) => { outs.push(m); }
+      },
+      outs
+    };
+  };
+
+  it("returns false and prints the calendar-wizard guidance when Google rejects the client before consent", async () => {
+    const { preflightGoogleCalendarClient } = await import("./setup-calendar.js");
+    const fetchImpl = (async () => ({
+      headers: new Headers({
+        location: `https://accounts.google.com/signin/oauth/error?authError=${realAuthErrorBlob}&flowName=GeneralOAuthFlow`
+      }),
+      status: 302
+    } as unknown as Response)) as unknown as typeof fetch;
+    const { errors, io } = makeIo(fetchImpl);
+
+    await expect(preflightGoogleCalendarClient("dead.apps.googleusercontent.com", io)).resolves.toBe(false);
+    const all = errors.join("");
+    expect(all).toContain("`muse setup calendar`");
+    expect(all).toContain("invalid_client");
+  });
+
+  it("returns true and prints nothing when the client is accepted", async () => {
+    const { preflightGoogleCalendarClient } = await import("./setup-calendar.js");
+    const fetchImpl = (async () => ({
+      headers: new Headers({ location: "https://accounts.google.com/v3/signin/identifier" }),
+      status: 302
+    } as unknown as Response)) as unknown as typeof fetch;
+    const { errors, io, outs } = makeIo(fetchImpl);
+
+    await expect(preflightGoogleCalendarClient("live.apps.googleusercontent.com", io)).resolves.toBe(true);
+    expect(errors).toEqual([]);
+    expect(outs).toEqual([]);
+  });
+});

@@ -16,6 +16,7 @@ import type { Command } from "commander";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";
 import { consolidatePlaybook } from "./playbook-consolidate.js";
+import { runLearnQueueDrain } from "./playbook-drain.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
@@ -273,6 +274,24 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         return;
       }
       io.stdout(`(nothing learned: ${result.reason})\n`);
+    });
+
+  playbook
+    .command("drain")
+    .description("Distill EVERY pending queued correction right now — the manual, explicit catch-up for `muse daemon`'s one-per-tick idle learner")
+    .action(async () => {
+      const assembly = createMuseRuntimeAssembly();
+      const model = assembly.defaultModel;
+      if (!assembly.modelProvider || !model) {
+        io.stdout("drain needs a model provider — run `muse setup` or set MUSE_MODEL\n");
+        return;
+      }
+      await runLearnQueueDrain({
+        env: process.env,
+        model,
+        modelProvider: assembly.modelProvider as Parameters<typeof runLearnQueueDrain>[0]["modelProvider"],
+        stdout: (line) => io.stdout(line)
+      });
     });
 
   playbook

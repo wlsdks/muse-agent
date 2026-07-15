@@ -65,9 +65,86 @@ export function decodeGoogleAuthError(blob: string): { readonly code?: string; r
   }
 }
 
-export async function preflightGmailClient(
+export function validateGoogleOAuthClientIdInput(input: string | undefined): string | undefined {
+  const trimmed = (input ?? "").trim();
+  if (trimmed.length === 0) return "Client ID is required";
+  // Catches the most common paste mistakes BEFORE Google returns an
+  // opaque "invalid_client": truncated IDs, or an API key (AIza...)
+  // pasted where the OAuth client ID belongs.
+  if (!trimmed.endsWith(".apps.googleusercontent.com")) {
+    return "That doesn't look like an OAuth Client ID — it must end with .apps.googleusercontent.com (create one under APIs & Services → Credentials → OAuth client ID → Desktop app)";
+  }
+  return undefined;
+}
+
+export interface GoogleOAuthClientCredentials {
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
+
+export type GoogleClientSecretParse =
+  | { readonly ok: true; readonly credentials: GoogleOAuthClientCredentials }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Parses the `client_secret_*.json` Google offers for download when a client
+ * is created. Accepting the file kills the two dominant invalid_client causes
+ * at once: a hand-paste that mangles the ID/secret, and pairing a client ID
+ * with the secret of a DIFFERENT client. A "web" section means the user
+ * created the wrong client type — Muse's loopback flow needs "Desktop app".
+ */
+export function parseGoogleClientSecretJson(content: string): GoogleClientSecretParse {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return { error: "that isn't valid JSON — download the client_secret_*.json from the client's creation dialog and try again", ok: false };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return { error: "unexpected JSON shape — expected the downloaded client_secret_*.json object", ok: false };
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.web !== undefined) {
+    return { error: "this client was created as a \"Web application\" — Muse needs Application type \"Desktop app\". Create a new OAuth client with the right type and download its JSON.", ok: false };
+  }
+  const installed = record.installed;
+  if (installed === null || typeof installed !== "object") {
+    return { error: "no \"installed\" section found — is this the client_secret JSON of a Desktop-app OAuth client?", ok: false };
+  }
+  const fields = installed as Record<string, unknown>;
+  const clientId = fields.client_id;
+  const clientSecret = fields.client_secret;
+  if (typeof clientId !== "string" || !clientId.endsWith(".apps.googleusercontent.com") || typeof clientSecret !== "string" || clientSecret.length === 0) {
+    return { error: "client_id / client_secret are missing or malformed in the JSON", ok: false };
+  }
+  return { credentials: { clientId, clientSecret }, ok: true };
+}
+
+/** Distinguishes wizard input: pasted JSON content, a *.json file path, or (undefined) a bare client ID. */
+export function looksLikeClientSecretJsonInput(raw: string): "content" | "path" | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) return "content";
+  if (/\.json$/iu.test(trimmed)) return "path";
+  return undefined;
+}
+
+export function googlePreflightGuidance(rerunCommand: string): string {
+  return `
+Google rejected this Client ID before showing any consent screen.
+Most common causes, in order:
+  - The ID was pasted incompletely (it must end with .apps.googleusercontent.com)
+  - The OAuth client was created in a DIFFERENT Google Cloud project
+  - The client was deleted, or hasn't been created yet
+Fix: open https://console.cloud.google.com/auth/clients (check the project
+selector at the top), create an "OAuth client ID" of type "Desktop app",
+and re-run \`${rerunCommand}\` with the new ID + secret.
+`;
+}
+
+export async function preflightGoogleOAuthClient(
   clientId: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  scope: string = GMAIL_SCOPES
 ): Promise<GmailClientPreflightResult> {
   // A test that forgets to inject fetch must never probe the real Google
   // endpoint (same hard boundary as the daemon's launchctl seam).
@@ -83,7 +160,7 @@ export async function preflightGmailClient(
       // before redirect_uri validation matters for Desktop clients.
       redirect_uri: "http://127.0.0.1:1/callback",
       response_type: "code",
-      scope: GMAIL_SCOPES
+      scope
     }).toString();
     const response = await fetchImpl(url.toString(), { redirect: "manual" });
     const location = response.headers.get("location") ?? "";
@@ -207,7 +284,7 @@ export async function refreshGmailAccessToken(params: {
   if (!response.ok) {
     const errorCode = parseOAuthErrorCode(await response.text().catch(() => ""));
     if (errorCode === "invalid_grant") {
-      throw new GmailOAuthInvalidGrantError("Gmail refresh token is invalid or revoked — run `muse setup email` again.");
+      throw new GmailOAuthInvalidGrantError("Gmail refresh token is invalid or revoked — run `muse setup email` again. If this happens every ~7 days, your Google app is still in \"Testing\": publish it to Production at https://console.cloud.google.com/auth/audience (personal use needs no review).");
     }
     throw new Error(`Gmail token refresh failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
@@ -256,7 +333,7 @@ async function resolveStoredAccessToken(deps: GmailTokenSourceDeps): Promise<str
     throw new GmailNotConfiguredError("No Gmail account connected — run `muse setup email`.");
   }
   if (credential.refreshTokenInvalid) {
-    throw new GmailOAuthInvalidGrantError("Gmail refresh token was revoked or expired — run `muse setup email` again.");
+    throw new GmailOAuthInvalidGrantError("Gmail refresh token was revoked or expired — run `muse setup email` again. If this happens every ~7 days, your Google app is still in \"Testing\": publish it to Production at https://console.cloud.google.com/auth/audience (personal use needs no review).");
   }
   if (credential.accessToken && credential.accessTokenExpiresAt !== undefined && credential.accessTokenExpiresAt > now() + 60_000) {
     return credential.accessToken;

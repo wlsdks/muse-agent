@@ -141,7 +141,7 @@ describe("PendingApprovals — draft-first write-approval cards", () => {
   it("renders the drafted content, tool, and an accessible approve group", () => {
     const html = renderToStaticMarkup(
       <I18nProvider>
-        <PendingApprovals approvals={[APPROVAL]} approving={[]} onApprove={() => {}} t={identityT} />
+        <PendingApprovals approvals={[APPROVAL]} approving={[]} onApprove={() => {}} onDeny={() => {}} t={identityT} />
       </I18nProvider>
     );
     expect(html).toContain('role="group"');
@@ -150,19 +150,36 @@ describe("PendingApprovals — draft-first write-approval cards", () => {
     expect(html).toContain("running 10 min late");
   });
 
+  it("renders one Approve and one Deny button per card", () => {
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: [], onApprove: () => {}, onDeny: () => {}, t: identityT });
+    const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
+    expect(clickable).toHaveLength(2);
+  });
+
   it("the approve button calls onApprove with that approval's id", () => {
     const onApprove = vi.fn();
-    const tree = PendingApprovals({ approvals: [APPROVAL], approving: [], onApprove, t: identityT });
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: [], onApprove, onDeny: () => {}, t: identityT });
     const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
-    expect(clickable).toHaveLength(1);
     (clickable[0]!.props as { onClick: () => void }).onClick();
     expect(onApprove).toHaveBeenCalledWith("a1");
   });
 
-  it("disables the button for an approval whose confirm is in flight", () => {
-    const tree = PendingApprovals({ approvals: [APPROVAL], approving: ["a1"], onApprove: () => {}, t: identityT });
+  it("the deny button calls onDeny with that approval's id", () => {
+    const onDeny = vi.fn();
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: [], onApprove: () => {}, onDeny, t: identityT });
     const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
-    expect((clickable[0]!.props as { disabled?: boolean }).disabled).toBe(true);
+    expect(clickable).toHaveLength(2);
+    (clickable[1]!.props as { onClick: () => void }).onClick();
+    expect(onDeny).toHaveBeenCalledWith("a1");
+  });
+
+  it("disables both buttons for an approval whose confirm is in flight", () => {
+    const tree = PendingApprovals({ approvals: [APPROVAL], approving: ["a1"], onApprove: () => {}, onDeny: () => {}, t: identityT });
+    const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
+    expect(clickable).toHaveLength(2);
+    for (const button of clickable) {
+      expect((button.props as { disabled?: boolean }).disabled).toBe(true);
+    }
   });
 
   it("surfaces a confirm error near the buttons without dropping the approval", () => {
@@ -172,6 +189,7 @@ describe("PendingApprovals — draft-first write-approval cards", () => {
           approvals={[APPROVAL]}
           approving={[]}
           onApprove={() => {}}
+          onDeny={() => {}}
           errorText="404: unknown or expired approval"
           t={identityT}
         />

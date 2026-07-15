@@ -44,7 +44,7 @@ describe("runPowerShellWith", () => {
     expect(spawnedBin).toBe("powershell.exe");
     expect(spawnedArgs).toEqual(["-NoProfile", "-NonInteractive", "-Command", "-"]);
     expect(child.stdin.written.join("")).toBe("Get-Date");
-    expect(result).toEqual({ exitCode: 0, stderr: "", stdout: "ok\n", timedOut: false });
+    expect(result).toEqual({ exitCode: 0, signal: null, stderr: "", stdout: "ok\n", timedOut: false });
   });
 
   it("SIGKILLs a wedged powershell and resolves timedOut", async () => {

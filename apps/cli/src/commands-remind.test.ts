@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readReminders, writeReminders, type PersistedReminder } from "@muse/stores";
+import { readReminders, recordProactiveHeartbeat, writeReminders, type PersistedReminder } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -16,7 +16,8 @@ interface ApiCall {
 
 async function runRemind(
   args: string[],
-  apiRequestOverride?: RemindCommandHelpers["apiRequest"]
+  apiRequestOverride?: RemindCommandHelpers["apiRequest"],
+  helperOverrides: Partial<Pick<RemindCommandHelpers, "heartbeatDir" | "now">> = {}
 ): Promise<{
   readonly error?: string;
   readonly apiCalls: readonly ApiCall[];
@@ -32,7 +33,8 @@ async function runRemind(
       apiCalls.push({ body, method, path });
       return { dueAt: String(body?.dueAt ?? ""), id: "rem_remote", text: String(body?.text ?? "") };
     }),
-    writeOutput: (wio, value) => wio.stdout(`${JSON.stringify(value)}\n`)
+    writeOutput: (wio, value) => wio.stdout(`${JSON.stringify(value)}\n`),
+    ...helperOverrides
   };
   let error: string | undefined;
   try {
@@ -148,6 +150,68 @@ describe("muse remind — API-unreachable falls back to the local store (local-f
     const r = await runRemind(["clear", id], unreachable);
     expect(r.error).toBeUndefined();
     expect(await readReminders(f)).toHaveLength(0);
+  });
+});
+
+describe("muse remind add — daemon liveness notice (local path only)", () => {
+  const prevEnv = process.env.MUSE_REMINDERS_FILE;
+  let remindersFile: string;
+  let heartbeatDir: string;
+  beforeEach(() => {
+    remindersFile = join(mkdtempSync(join(tmpdir(), "muse-rem-live-")), "reminders.json");
+    heartbeatDir = mkdtempSync(join(tmpdir(), "muse-rem-hb-"));
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_REMINDERS_FILE;
+    else process.env.MUSE_REMINDERS_FILE = prevEnv;
+  });
+
+  it("stale/absent heartbeat prints the bilingual fail-loud liveness warning naming `muse daemon`", async () => {
+    const r = await runRemind(
+      ["--local", "2099-01-01T09:00:00Z", "water", "the", "plants"],
+      undefined,
+      { heartbeatDir }
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).toContain("WARNING: this reminder will NOT fire until `muse daemon` is running");
+    expect(r.stdout).toContain("muse daemon --install");
+    expect(r.stdout).toContain("경고");
+    expect(r.stdout).toContain("리마인더");
+  });
+
+  it("fresh heartbeat prints the one-line 'Daemon alive' notice", async () => {
+    await recordProactiveHeartbeat(heartbeatDir, "daemon-loop", () => new Date());
+    const r = await runRemind(
+      ["--local", "2099-01-01T09:00:00Z", "water", "the", "plants"],
+      undefined,
+      { heartbeatDir, now: () => new Date() }
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).toContain("Daemon alive — next tick within");
+    expect(r.stdout).not.toContain("WARNING");
+  });
+
+  it("--json suppresses the liveness notice (stdout stays machine-parseable)", async () => {
+    const r = await runRemind(
+      ["--local", "2099-01-01T09:00:00Z", "water", "the", "plants", "--json"],
+      undefined,
+      { heartbeatDir }
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).not.toContain("WARNING");
+    expect(r.stdout).not.toContain("Daemon alive");
+  });
+
+  it("the API-created path prints NO liveness notice (no local-heartbeat claim about a remote server)", async () => {
+    const r = await runRemind(
+      ["2099-01-01T09:00:00Z", "water", "the", "plants"],
+      undefined,
+      { heartbeatDir }
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).not.toContain("WARNING");
+    expect(r.stdout).not.toContain("Daemon alive");
   });
 });
 

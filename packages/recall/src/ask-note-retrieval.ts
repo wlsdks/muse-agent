@@ -46,8 +46,14 @@ export async function retrieveAndRankNotes(params: {
   readonly onStderr: (text: string) => void;
   /** Embed via the caller's resolved endpoint (the CLI binds the models.json merge). */
   readonly embedFn: (text: string, model: string) => Promise<number[]>;
+  /**
+   * Optional listwise reranker over the candidate window (the CLI binds a
+   * local-LLM picker behind MUSE_RECALL_RERANK). Receives the query + candidate
+   * texts, returns candidate indices best-first — or undefined to fail open.
+   */
+  readonly rerankFn?: (query: string, candidateTexts: readonly string[]) => Promise<readonly number[] | undefined>;
 }): Promise<NoteRetrievalResult> {
-  const { query, embedModel, indexFiles, notesDir, topK, scope, json, onStderr, embedFn } = params;
+  const { query, embedModel, indexFiles, notesDir, topK, scope, json, onStderr, embedFn, rerankFn } = params;
 
   let scored: ScoredChunk[] = [];
   let preGapScored: ScoredChunk[] = [];
@@ -86,31 +92,66 @@ export async function retrieveAndRankNotes(params: {
       subqueryEmbeddings = [];
       splitClauses = [];
     }
-    // Hybrid (cosine + lexical + per-clause RRF) MMR selection.
-    scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
+    // Hybrid (cosine + lexical + per-clause RRF) MMR selection. With a reranker
+    // bound, MMR gathers a wider window and a local LLM picks which chunks make
+    // the prompt — cosine ranking is fooled by lexical-overlap distractors
+    // (measured 2026-07-15: cosine top-1 3/8 vs LLM-reranked 8/8 at ~200-540ms).
+    if (rerankFn) {
+      const window = diversifyAskChunks(allScored, topK + 4, undefined, query, subqueryEmbeddings);
+      scored = window.slice(0, topK);
+      if (window.length > topK) {
+        try {
+          const order = await rerankFn(query, window.map((s) => s.chunk.text));
+          const valid = [...new Set((order ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < window.length))];
+          if (valid.length > 0) {
+            const chosen = valid.slice(0, topK).map((i) => window[i]!);
+            for (const s of window) {
+              if (chosen.length >= topK) break;
+              if (!chosen.includes(s)) chosen.push(s);
+            }
+            scored = chosen;
+          }
+        } catch {
+          // reranker is best-effort — a dead model never fails the ask
+        }
+      }
+    } else {
+      scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
+    }
     // Graph-augmented recall (HippoRAG / GraphRAG): pull in chunks from notes 1-hop
     // LINKED from the CONFIDENT matches. Fabrication-SAFE: only the user's own real
     // notes, fires ONLY from a confident seed, the linked chunk keeps its real cosine.
+    const confidentAt = resolveRecallConfidentAt(process.env, embedModel);
     const singleHopVerdict = classifyRetrievalConfidence(
       scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text })),
-      { confidentAt: resolveRecallConfidentAt(process.env, embedModel) }
+      { confidentAt }
     );
+    const graphHopEnabled = process.env.MUSE_RECALL_GRAPH_HOP !== "false";
     try {
       const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
-      if (singleHopVerdict === "confident") {
+      // From a CONFIDENT seed any linked neighbor may ride along; from an
+      // AMBIGUOUS seed the graph hop is exactly the independent signal the
+      // failed cosine ranking needs, but only a neighbor clearing the floor
+      // is promoted. Floor = bar − 0.2 (min 0.2): measured 2026-07-15 on
+      // nomic-v2-moe, same-topic neighbors sit at 0.35-0.42 vs ≤0.21 for
+      // off-topic, so bar 0.45 → floor 0.25 splits the two populations.
+      const ambiguousFloor = Math.max(0.2, confidentAt - 0.2);
+      if (graphHopEnabled && (singleHopVerdict === "confident" || singleHopVerdict === "ambiguous")) {
         const noteBodies = scopedNoteFiles
           .map((f) => ({ body: f.chunks.map((c) => c.text).join("\n"), id: relativizeNoteSource(f.path, notesDir) }));
         const seen = new Set(seedMatches.map((m) => m.source));
-        for (const ref of linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 2 })) {
-          if (seen.has(ref)) continue;
-          const best = allScored
+        // Gather wide (both link directions), then promote by REAL query cosine
+        // — document order of a hub note's links is not a relevance signal.
+        const promoted = linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 8 })
+          .filter((ref) => !seen.has(ref))
+          .map((ref) => allScored
             .filter((s) => relativizeNoteSource(s.file, notesDir) === ref)
-            .sort((a, b) => b.score - a.score)[0];
-          if (best && !scored.includes(best)) {
-            scored = [...scored, best];
-            seen.add(ref);
-          }
-        }
+            .sort((a, b) => b.score - a.score)[0])
+          .filter((best): best is NonNullable<typeof best> => best !== undefined && !scored.includes(best))
+          .filter((best) => singleHopVerdict === "confident" || best.score >= ambiguousFloor)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 2);
+        scored = [...scored, ...promoted];
       }
     } catch {
       // graph expansion is best-effort — a malformed graph never fails the ask

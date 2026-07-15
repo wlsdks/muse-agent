@@ -779,7 +779,7 @@ async function pickProvider() {
 }
 
 async function findFreePort() {
-  const { promise, reject, resolve } = Promise.withResolvers<number>();
+  const { promise, reject, resolve } = Promise.withResolvers();
   const server = net.createServer();
   server.unref();
   server.once("error", reject);
@@ -814,7 +814,7 @@ async function waitForHealth(url, deadlineMs) {
 }
 
 async function waitForExit(child, timeoutMs) {
-  const { promise, resolve } = Promise.withResolvers<void>();
+  const { promise, resolve } = Promise.withResolvers();
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
     resolve();

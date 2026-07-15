@@ -43,7 +43,7 @@ export interface AtomicWriteOptions {
  * directory, then `rename` over the target. The randomUUID tmp suffix makes
  * concurrent writers collision-free (no ENOENT rename crash).
  */
-export async function atomicWriteFile(file: string, contents: string, options: AtomicWriteOptions = {}): Promise<void> {
+export async function atomicWriteFile(file: string, contents: string | Uint8Array, options: AtomicWriteOptions = {}): Promise<void> {
   const mode = options.mode ?? 0o600;
   const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });

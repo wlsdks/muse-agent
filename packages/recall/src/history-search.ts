@@ -10,7 +10,7 @@ import { sliceUtf16Safe, truncateUtf16Safe } from "@muse/shared";
  */
 export interface HistoryRecord {
   readonly ref: string;
-  readonly source: "notes" | "episodes" | "memory";
+  readonly source: "notes" | "episodes" | "memory" | "conversations";
   readonly text: string;
   readonly timestampMs?: number;
   /** Optional precomputed embedding for the record's text — enables hybrid fusion. */

@@ -30,7 +30,7 @@ import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW,
 import { FileUserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
-import { isQuietHour, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHourRange } from "@muse/proactivity";
+import { isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
 
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -376,7 +376,7 @@ export interface MakeDigestFlushTickDeps {
   readonly provider: string;
   readonly destination: string;
   readonly digestEnabled: boolean;
-  readonly quietHours: QuietHourRange | undefined;
+  readonly quietHours: QuietHoursOption | undefined;
   readonly digestQueueFile: string;
   readonly digestHourRaw: number | undefined;
   readonly digestSentFile: string;
@@ -394,7 +394,8 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): () => Promis
   const { stdout, messagingRegistry, provider, destination, digestEnabled, quietHours, digestQueueFile, digestHourRaw, digestSentFile } = deps;
   return async (): Promise<void> => {
     if (!digestEnabled) return;
-    if (quietHours && isQuietHour(new Date().getHours(), quietHours)) return;
+    const activeQuietHours = resolveQuietHoursOption(quietHours);
+    if (activeQuietHours && isQuietHour(new Date().getHours(), activeQuietHours)) return;
     try {
       const summary = await runDigestFlushIfDue({
         destination,

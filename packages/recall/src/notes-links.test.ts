@@ -205,3 +205,119 @@ describe("linkExpandRefs — graph-augmented recall for muse ask", () => {
     expect(linkExpandRefs({ noteBodies: bodies, seedRefs: ["apollo.md"], cap: 0 })).toEqual([]);
   });
 });
+
+describe("noteLinkKey — NFC normalization (Korean notes on macOS)", () => {
+  it("matches an NFD-decomposed filename (macOS) against an NFC-typed [[link]]", () => {
+    const nfdId = `${"노트".normalize("NFD")}.md`;
+    expect(nfdId).not.toBe("노트.md");
+    expect(noteLinkKey(nfdId)).toBe("노트");
+  });
+
+  it("resolves an NFC [[한글]] target to the NFD-named note in the graph", () => {
+    const nfdId = `${"한글메모".normalize("NFD")}.md`;
+    const graph = buildNoteLinkGraph([
+      { body: "본문", id: nfdId },
+      { body: "관련: [[한글메모]]", id: "seed.md" }
+    ]);
+    expect(linkedFromResults(["seed.md"], graph, 5)).toEqual([nfdId]);
+  });
+});
+
+describe("linkedFromResults — backlink direction (opt-in)", () => {
+  const graph = buildNoteLinkGraph([
+    { body: "topic body, no outbound links", id: "topic.md" },
+    { body: "details citing [[topic]]", id: "detail.md" },
+    { body: "more on [[topic]] here", id: "detail2.md" }
+  ]);
+
+  it("default stays outbound-only — the CLI links view is unchanged", () => {
+    expect(linkedFromResults(["topic.md"], graph, 5)).toEqual([]);
+  });
+
+  it("includeBacklinks surfaces the notes that cite the seed", () => {
+    expect(linkedFromResults(["topic.md"], graph, 5, { includeBacklinks: true })).toEqual(["detail.md", "detail2.md"]);
+  });
+
+  it("cap still binds across both directions", () => {
+    expect(linkedFromResults(["topic.md"], graph, 1, { includeBacklinks: true })).toEqual(["detail.md"]);
+  });
+
+  it("linkExpandRefs walks both directions", () => {
+    const refs = linkExpandRefs({
+      noteBodies: [
+        { body: "seed links [[fwd]]", id: "seed.md" },
+        { body: "forward target", id: "fwd.md" },
+        { body: "cites [[seed]]", id: "back.md" }
+      ],
+      seedRefs: ["seed.md"]
+    });
+    expect(refs).toEqual(["fwd.md", "back.md"]);
+  });
+});
+
+describe("buildNoteLinkGraph — title-mention edges for linkless notes (opt-in)", () => {
+  const notes = [
+    { body: "meeting summary: discussed the muse-roadmap milestones today", id: "clip-2026-07-14.md" },
+    { body: "the roadmap body itself", id: "muse-roadmap.md" },
+    { body: "totally unrelated grocery list", id: "groceries.md" }
+  ];
+
+  it("default graph stays wikilink-only", () => {
+    const graph = buildNoteLinkGraph(notes);
+    expect(graph.outbound.get("clip-2026-07-14.md")).toEqual([]);
+  });
+
+  it("a plain-text mention of another note's title becomes an edge (both directions queryable)", () => {
+    const graph = buildNoteLinkGraph(notes, { includeTitleMentions: true });
+    expect(graph.outbound.get("clip-2026-07-14.md")).toEqual(["muse-roadmap.md"]);
+    expect(linkedFromResults(["clip-2026-07-14.md"], graph, 5)).toEqual(["muse-roadmap.md"]);
+    expect(linkedFromResults(["muse-roadmap.md"], graph, 5, { includeBacklinks: true })).toEqual(["clip-2026-07-14.md"]);
+  });
+
+  it("short titles and hub titles (mentioned by >30% of notes) are skipped", () => {
+    const short = buildNoteLinkGraph([
+      { body: "call abc tomorrow", id: "abc.md" },
+      { body: "abc mentioned here too", id: "other.md" }
+    ], { includeTitleMentions: true });
+    expect(short.outbound.get("other.md")).toEqual([]);
+
+    const hubby = Array.from({ length: 10 }, (_, i) => ({ body: "see project-alpha for details", id: `note-${i}.md` }));
+    const hub = buildNoteLinkGraph([...hubby, { body: "the hub", id: "project-alpha.md" }], { includeTitleMentions: true });
+    expect(hub.outbound.get("note-0.md")).toEqual([]);
+  });
+
+  it("Korean titles work at 3+ chars with NFC bodies", () => {
+    const graph = buildNoteLinkGraph([
+      { body: "오늘 회의에서 로드맵정리 문서를 검토함", id: "clip.md" },
+      { body: "본문", id: `${"로드맵정리".normalize("NFD")}.md` }
+    ], { includeTitleMentions: true });
+    expect(linkedFromResults(["clip.md"], graph, 5)).toEqual([`${"로드맵정리".normalize("NFD")}.md`]);
+  });
+});
+
+describe("linkExpandRefs — content-fingerprint graph cache", () => {
+  it("a LENGTH-PRESERVING body edit still invalidates the cached graph (no stale edges)", () => {
+    const before = [
+      { body: "seed links [[fwd]]", id: "seed.md" },
+      { body: "forward target", id: "fwd.md" }
+    ];
+    expect(linkExpandRefs({ noteBodies: before, seedRefs: ["seed.md"] })).toEqual(["fwd.md"]);
+
+    const after = [
+      { body: "seed links [[gwd]]", id: "seed.md" },
+      { body: "forward target", id: "fwd.md" }
+    ];
+    expect(after[0]!.body.length).toBe(before[0]!.body.length);
+    expect(linkExpandRefs({ noteBodies: after, seedRefs: ["seed.md"] })).toEqual([]);
+  });
+
+  it("repeat calls with identical content stay correct (cache hit path)", () => {
+    const notes = [
+      { body: "cites [[target]]", id: "src.md" },
+      { body: "the target", id: "target.md" }
+    ];
+    expect(linkExpandRefs({ noteBodies: notes, seedRefs: ["src.md"] })).toEqual(["target.md"]);
+    expect(linkExpandRefs({ noteBodies: notes, seedRefs: ["src.md"] })).toEqual(["target.md"]);
+    expect(linkExpandRefs({ noteBodies: notes, seedRefs: ["target.md"], cap: 5 })).toEqual(["src.md"]);
+  });
+});

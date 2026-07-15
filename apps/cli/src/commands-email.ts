@@ -11,13 +11,13 @@ import { join } from "node:path";
 import { resolveActionLogFile, resolveContactsFile, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { queryContacts } from "@muse/stores";
-import { extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender, type GmailEmailProvider } from "@muse/domain-tools";
+import { extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
 import { syncEmailsToNotes } from "./email-sync.js";
 import type { ProgramIO } from "./program.js";
-import { resolveGmailProvider } from "./resolve-gmail-provider.js";
+import { resolveGmailProvider, type ResolvedEmailProvider } from "./resolve-gmail-provider.js";
 
 interface SendOptions {
   readonly to?: string;
@@ -252,7 +252,7 @@ function buildGmailReader(io: ProgramIO, env: MuseEnvironment): EmailProvider | 
   return resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
 }
 
-function buildGmailProvider(io: ProgramIO, env: MuseEnvironment): GmailEmailProvider | undefined {
+function buildGmailProvider(io: ProgramIO, env: MuseEnvironment): ResolvedEmailProvider | undefined {
   return resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
 }
 

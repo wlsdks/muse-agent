@@ -26,11 +26,13 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     const m2 = await import("./commands-setup-cloud.js");
     const m3 = await import("./commands-setup-voice.js");
     const m4 = await import("./commands-setup-data.js");
+    const m5 = await import("./commands-setup-briefing.js");
     m0.registerSetupCommands(program, io);
     m1.registerSetupLocalCommand(program, io, _deps as never);
     m2.registerSetupCloudCommand(program, io, _deps as never);
     m3.registerSetupVoiceCommand(program, io);
     m4.registerSetupDataCommand(program, io);
+    m5.registerSetupBriefingCommand(program, io, _deps as never);
     const { registerSetupStartSubcommand } = await import("./commands-setup-start.js");
     registerSetupStartSubcommand(program, io, _deps);
     },
@@ -118,6 +120,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "model",
+    names: ["model"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-model.js");
+    m.registerModelCommand(program, io);
+    },
+  },
+  {
     id: "board",
     names: ["board"],
     load: async (program, io, _deps) => {
@@ -155,6 +165,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     load: async (program, io, _deps) => {
       const m = await import("./commands-daemon.js");
     m.registerDaemonCommands(program, io);
+    },
+  },
+  {
+    id: "quiet",
+    names: ["quiet"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-quiet.js");
+      m.registerQuietCommand(program, io);
     },
   },
   {
@@ -843,6 +861,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     load: async (program, io, _deps) => {
       const m = await import("./commands-remote.js");
       m.registerRemoteCommand(program, io, _deps as never);
+    },
+  },
+  {
+    id: "features",
+    names: ["features"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-features.js");
+      m.registerFeaturesCommand(program, io);
     },
   },
 ];

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { GmailEmailProvider } from "./email-provider.js";
+import { ImapSmtpEmailProvider, type SmtpClientFactory, type SmtpTransport } from "./email-provider-imap.js";
 import { composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import { readActionLog } from "@muse/stores";
 import type { Contact } from "@muse/stores";
@@ -206,6 +207,48 @@ describe("replyEmailWithApproval — outbound-safety contract (reply to a receiv
     const outcome = await replyEmailWithApproval(replyOpts({ approvalGate: gate, sender, to: "not-an-address" }));
     expect(outcome).toMatchObject({ reason: "no-identifier", sent: false });
     expect(gateCalls).toBe(0); // never even drafted/prompted
+    expect(sends).toHaveLength(0);
+  });
+});
+
+// Same fake-SMTP shape as email-provider-imap.test.ts — a fresh describe
+// here because THIS file's job is proving the outbound-safety GATE is
+// transport-agnostic: swapping GmailEmailProvider for ImapSmtpEmailProvider
+// (E2) must not open a new, less-gated send surface.
+function fakeSmtpProvider(): { readonly sender: ImapSmtpEmailProvider; readonly sends: { readonly to: string; readonly subject: string }[] } {
+  const sends: { to: string; subject: string }[] = [];
+  const transport: SmtpTransport = {
+    close: () => undefined,
+    sendMail: async (opts) => {
+      sends.push({ subject: opts.subject, to: opts.to });
+      return { messageId: "imap-sent-1" };
+    }
+  };
+  const smtpClientFactory: SmtpClientFactory = () => transport;
+  return { sender: new ImapSmtpEmailProvider({ appPassword: "pw", email: "user@gmail.com" }, { smtpClientFactory }), sends };
+}
+
+describe("sendEmailWithApproval — the SAME draft-first gate governs the App Password (IMAP/SMTP) provider (E2: no new autonomous send surface)", () => {
+  it("CONFIRM: the SMTP send fires exactly once with the drafted content", async () => {
+    const { sender, sends } = fakeSmtpProvider();
+    const outcome = await sendEmailWithApproval(baseOpts({ approvalGate: approve, sender }));
+    expect(outcome).toEqual({ messageId: "imap-sent-1", sent: true, to: "alice@example.com" });
+    expect(sends).toEqual([{ subject: "Q3 plan", to: "alice@example.com" }]);
+  });
+
+  it("DENY: no SMTP send fires, refusal is logged — same fail-closed gate as Gmail", async () => {
+    const { sender, sends } = fakeSmtpProvider();
+    const opts = baseOpts({ approvalGate: deny, sender });
+    const outcome = await sendEmailWithApproval(opts);
+    expect(outcome).toMatchObject({ reason: "denied", sent: false });
+    expect(sends).toHaveLength(0);
+    expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "refused" });
+  });
+
+  it("AMBIGUOUS recipient: still resolved by the SAME contacts graph, no send, before the transport is ever touched", async () => {
+    const { sender, sends } = fakeSmtpProvider();
+    const outcome = await sendEmailWithApproval(baseOpts({ approvalGate: approve, recipientQuery: "Bob", sender }));
+    expect(outcome.sent).toBe(false);
     expect(sends).toHaveLength(0);
   });
 });

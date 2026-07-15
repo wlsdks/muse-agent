@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ChatRateLimiter } from "../src/chat-rate-limiter.js";
 import { buildServer } from "../src/server.js";
@@ -133,6 +137,42 @@ describe("POST /api/chat per-IP rate limit", () => {
     // gets a different bucket than the IP 10.0.0.1.
     expect(clientKeyFromRequest({ auth: { userId: "10.0.0.1" } }))
       .not.toBe(clientKeyFromRequest({ ip: "10.0.0.1" }));
+  });
+
+  describe("POST /api/chat/approvals/:id/deny runs through the same limiter as approve", () => {
+    let dir: string;
+
+    beforeEach(async () => {
+      dir = await mkdtemp(join(tmpdir(), "muse-chat-deny-rate-"));
+    });
+
+    afterEach(async () => {
+      await rm(dir, { force: true, recursive: true });
+    });
+
+    it("429 + Retry-After once the shared bucket is exhausted, for both approve and deny", async () => {
+      const limiter = new ChatRateLimiter({ capacity: 1, windowMs: 60_000 });
+      const server = buildServer({
+        chatRateLimiter: limiter,
+        env: {
+          MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+          MUSE_PENDING_APPROVALS_FILE: join(dir, "pending-approvals.json")
+        },
+        logger: false
+      });
+
+      // Burns the single shared token on the approve route.
+      const approve = await server.inject({ method: "POST", url: "/api/chat/approvals/x1/approve" });
+      expect(approve.statusCode).not.toBe(429);
+
+      // Deny hits the SAME limiter bucket and is now blocked.
+      const deny = await server.inject({ method: "POST", url: "/api/chat/approvals/x1/deny" });
+      expect(deny.statusCode).toBe(429);
+      expect(deny.headers["retry-after"]).toBeDefined();
+      const body = deny.json() as { error?: string; retryAfterSeconds?: number };
+      expect(body.error).toMatch(/rate limit exceeded/u);
+      expect(body.retryAfterSeconds).toBeGreaterThan(0);
+    });
   });
 
   it("two authenticated users sharing one IP get independent buckets", () => {

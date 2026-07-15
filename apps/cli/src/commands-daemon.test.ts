@@ -960,6 +960,90 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   });
 });
 
+describe("muse daemon — macos-notification env overlay (onboard's config must actually boot)", () => {
+  async function runDaemonCapturingEnv(
+    args: string[],
+    env: NodeJS.ProcessEnv,
+    registry: MessagingProviderRegistry
+  ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number | undefined; readonly capturedEnv: NodeJS.ProcessEnv | undefined }> {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const prevExit = process.exitCode;
+    let exitCode: number | undefined;
+    try {
+      const program = new Command();
+      program.exitOverride();
+      registerDaemonCommands(program, io, {
+        buildMessagingRegistry: (e: NodeJS.ProcessEnv) => { capturedEnv = e; return registry; },
+        env: () => env,
+        resolveFollowupModel: async () => undefined
+      });
+      await program.parseAsync(["node", "muse", "daemon", ...args]);
+      exitCode = process.exitCode === undefined ? undefined : Number(process.exitCode);
+    } catch (cause) {
+      exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
+    } finally {
+      process.exitCode = prevExit;
+    }
+    return { capturedEnv, exitCode, stderr: stderr.join(""), stdout: stdout.join("") };
+  }
+
+  it("resolved provider macos-notification with the enable flag UNSET overlays it to 'true' before building the registry", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "t", displayName: "T", id: "macos-notification" }),
+      id: "macos-notification",
+      send: async () => ({ destination: "@me", messageId: "m1", providerId: "macos-notification" })
+    }]);
+
+    const res = await runDaemonCapturingEnv(
+      ["--once", "--provider", "macos-notification", "--destination", "@me"],
+      env,
+      registry
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.capturedEnv?.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED).toBe("true");
+  });
+
+  it("an explicit 'false' is NEVER overlaid — no overlay, and the fail-loud unknown-provider path still fires", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED: "false" };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    // A registry that mirrors the REAL builder's opt-out contract: no
+    // macos-notification entry when the flag isn't 'true'.
+    const registry = new MessagingProviderRegistry([]);
+
+    const res = await runDaemonCapturingEnv(
+      ["--once", "--provider", "macos-notification", "--destination", "@me"],
+      env,
+      registry
+    );
+
+    expect(res.capturedEnv?.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED).toBe("false");
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("is not registered");
+  });
+
+  it("a non-macos-notification provider is never overlaid", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemonCapturingEnv(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      env,
+      registry
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.capturedEnv?.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED).toBeUndefined();
+  });
+});
+
 describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
   it("--once records a fresh daemon-loop heartbeat mark, distinct from proactive's own alive/fired", async () => {
     const env = tmpEnv();

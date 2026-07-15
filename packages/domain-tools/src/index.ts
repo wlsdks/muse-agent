@@ -9,6 +9,8 @@ export type { CalendarConflict, ConflictEventLike } from "./calendar-conflicts.j
 export { createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createUpcomingBirthdaysTool } from "./contacts-tool.js";
 export { extractEmailAddress, extractPlainTextBody, GmailAuthError, GmailEmailProvider, summarizeInbox, unreadBriefingLine } from "./email-provider.js";
 export type { EmailMessage, EmailProvider, EmailReader, EmailSearcher, EmailSender, EmailSummary } from "./email-provider.js";
+export { ImapSmtpAuthError, ImapSmtpEmailProvider, ImapSmtpNetworkError } from "./email-provider-imap.js";
+export type { ImapClientFactory, ImapMailboxClient, ImapSmtpEmailProviderConfig, ImapSmtpEmailProviderDeps, SmtpClientFactory, SmtpTransport } from "./email-provider-imap.js";
 export { composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval } from "./email-send.js";
 export type { EmailApprovalGate } from "./email-send.js";
 export { createEmailForwardTool, createEmailReadMessageTool, createEmailReadTool, createEmailReplyTool, createEmailSearchTool, createEmailSendTool } from "./email-tool.js";

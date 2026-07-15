@@ -11,10 +11,18 @@
 
 import { levenshteinDistance } from "@muse/shared";
 
-/** A note's link key for resolution: basename without extension, lowercased. */
+import { TitleMentionMatcher } from "./title-mention-matcher.js";
+
+/**
+ * A note's link key for resolution: basename without extension, NFC-normalized,
+ * lowercased. NFC matters: macOS filesystems hand back NFD-decomposed Korean
+ * filenames while `[[한글]]` targets typed in a body are NFC — without
+ * normalization the two never match and Korean-named notes silently drop out
+ * of the link graph.
+ */
 export function noteLinkKey(id: string): string {
   const base = id.split(/[\\/]/u).pop() ?? id;
-  return base.replace(/\.(md|markdown|txt)$/iu, "").trim().toLowerCase();
+  return base.replace(/\.(md|markdown|txt)$/iu, "").trim().normalize("NFC").toLowerCase();
 }
 
 export interface LinkFix {
@@ -135,17 +143,34 @@ export interface NoteLinkGraph {
   readonly keyToId: ReadonlyMap<string, string>;
 }
 
-export function buildNoteLinkGraph(notes: readonly { readonly id: string; readonly body: string }[]): NoteLinkGraph {
-  const outbound = new Map<string, readonly string[]>();
+export function buildNoteLinkGraph(
+  notes: readonly { readonly id: string; readonly body: string }[],
+  options?: { readonly includeTitleMentions?: boolean }
+): NoteLinkGraph {
+  const outbound = new Map<string, string[]>();
   const backlinks = new Map<string, string[]>();
   const keyToId = new Map<string, string>();
   for (const note of notes) {
     keyToId.set(noteLinkKey(note.id), note.id);
   }
+  const addEdge = (fromId: string, target: string): void => {
+    const links = outbound.get(fromId) ?? [];
+    const key = noteLinkKey(target);
+    if (!links.some((existing) => noteLinkKey(existing) === key)) {
+      links.push(target);
+    }
+    outbound.set(fromId, links);
+    const arr = backlinks.get(key) ?? [];
+    if (!arr.includes(fromId)) {
+      arr.push(fromId);
+    }
+    backlinks.set(key, arr);
+  };
   for (const note of notes) {
-    const links = extractWikiLinks(note.body);
-    outbound.set(note.id, links);
-    for (const target of links) {
+    outbound.set(note.id, [...extractWikiLinks(note.body)]);
+  }
+  for (const note of notes) {
+    for (const target of outbound.get(note.id) ?? []) {
       const key = noteLinkKey(target);
       const arr = backlinks.get(key) ?? [];
       if (!arr.includes(note.id)) {
@@ -154,7 +179,55 @@ export function buildNoteLinkGraph(notes: readonly { readonly id: string; readon
       backlinks.set(key, arr);
     }
   }
+  if (options?.includeTitleMentions) {
+    addTitleMentionEdges(notes, keyToId, addEdge);
+  }
   return { backlinks, keyToId, outbound };
+}
+
+/**
+ * Implicit edges for the notes that carry NO [[wikilinks]] — machine-created
+ * notes (browsing ingestion, mirrors) never link by hand, so without this the
+ * graph covers only hand-written notes (KET-RAG's deterministic bipartite
+ * idea, minus the LLM). A note that MENTIONS another note's title in plain
+ * text gets an edge to it. Guards against noise: short/generic titles are
+ * skipped (min 3 chars for CJK-bearing titles, 5 otherwise) and a title
+ * mentioned by more than 30% of notes is treated as generic, not a link.
+ */
+function addTitleMentionEdges(
+  notes: readonly { readonly id: string; readonly body: string }[],
+  keyToId: ReadonlyMap<string, string>,
+  addEdge: (fromId: string, target: string) => void
+): void {
+  const hubCap = Math.max(2, Math.ceil(notes.length * 0.3));
+  const eligible: { readonly key: string; readonly targetId: string }[] = [];
+  for (const [key, targetId] of keyToId) {
+    const minLength = /[ᄀ-ᇿ㄰-㆏가-힯぀-ヿ一-鿿]/u.test(key) ? 3 : 5;
+    if (key.length >= minLength) {
+      eligible.push({ key, targetId });
+    }
+  }
+  if (eligible.length === 0) {
+    return;
+  }
+  const matcher = new TitleMentionMatcher(eligible.map((entry) => entry.key));
+  const mentionersByPattern: string[][] = eligible.map(() => []);
+  for (const note of notes) {
+    for (const index of matcher.match(note.body.normalize("NFC").toLowerCase())) {
+      if (note.id !== eligible[index]!.targetId) {
+        mentionersByPattern[index]!.push(note.id);
+      }
+    }
+  }
+  eligible.forEach((entry, index) => {
+    const mentioners = mentionersByPattern[index]!;
+    if (mentioners.length === 0 || mentioners.length > hubCap) {
+      return;
+    }
+    for (const mentioner of mentioners) {
+      addEdge(mentioner, entry.targetId);
+    }
+  });
 }
 
 export interface NoteLinkView {
@@ -180,7 +253,12 @@ export function noteLinkView(graph: NoteLinkGraph, noteId: string): NoteLinkView
  * matched to graph nodes by link key (basename stem). Unresolved targets
  * are skipped; capped at `limit`.
  */
-export function linkedFromResults(resultRefs: readonly string[], graph: NoteLinkGraph, limit: number): string[] {
+export function linkedFromResults(
+  resultRefs: readonly string[],
+  graph: NoteLinkGraph,
+  limit: number,
+  options?: { readonly includeBacklinks?: boolean }
+): string[] {
   const cap = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 0;
   if (cap === 0) {
     return [];
@@ -188,24 +266,32 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
   const resultKeys = new Set(resultRefs.map((ref) => noteLinkKey(ref)));
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const ref of resultRefs) {
-    const nodeId = graph.keyToId.get(noteLinkKey(ref));
-    if (!nodeId) {
-      continue;
-    }
-    for (const target of graph.outbound.get(nodeId) ?? []) {
-      const resolvedId = graph.keyToId.get(noteLinkKey(target));
-      if (!resolvedId) {
-        continue;
-      }
-      const key = noteLinkKey(resolvedId);
-      if (resultKeys.has(key) || seen.has(key)) {
-        continue;
-      }
+  const pushHitsCap = (id: string): boolean => {
+    const key = noteLinkKey(id);
+    if (!resultKeys.has(key) && !seen.has(key)) {
       seen.add(key);
-      out.push(resolvedId);
-      if (out.length >= cap) {
-        return out;
+      out.push(id);
+    }
+    return out.length >= cap;
+  };
+  for (const ref of resultRefs) {
+    const refKey = noteLinkKey(ref);
+    const nodeId = graph.keyToId.get(refKey);
+    if (nodeId) {
+      for (const target of graph.outbound.get(nodeId) ?? []) {
+        const resolvedId = graph.keyToId.get(noteLinkKey(target));
+        if (resolvedId && pushHitsCap(resolvedId)) {
+          return out;
+        }
+      }
+    }
+    if (options?.includeBacklinks) {
+      // Backlinks are usually the HIGHER-value direction in a Zettelkasten:
+      // answer-bearing notes link TO the topic note the query matched.
+      for (const sourceId of graph.backlinks.get(refKey) ?? []) {
+        if (pushHitsCap(sourceId)) {
+          return out;
+        }
       }
     }
   }
@@ -215,11 +301,30 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
 /**
  * Graph-augmented recall for `muse ask`: build the link graph from the SAME index
  * note bodies the ask ranks (so note ids == the ask's relativized sources, exact
- * match), then return the note ids 1-hop LINKED from the confident `seedRefs`,
- * deduped, excluding the seeds, capped — the answer-bearing note the question
- * links to but whose own text didn't match the query (GraphRAG / HippoRAG). Pure:
- * the caller promotes each ref's best ranked chunk into the grounding evidence.
+ * match), then return the note ids 1-hop from the confident `seedRefs` in BOTH
+ * directions — notes the seed links to AND notes that link to the seed —
+ * deduped, excluding the seeds, capped. The answer-bearing note is often the
+ * one that cites the topic note the query matched (GraphRAG / HippoRAG). Pure:
+ * the caller ranks candidates by their real query cosine and promotes the best.
  */
+/** FNV-1a over ids + bodies: a full-content fingerprint costs ~10ms at 5M chars, vs a graph rebuild in the hundreds of ms — cheap enough to run per ask, strong enough that an edit (even length-preserving) invalidates. */
+function corpusFingerprint(notes: readonly { readonly id: string; readonly body: string }[]): number {
+  let hash = 0x811c9dc5;
+  const mix = (text: string): void => {
+    for (let i = 0; i < text.length; i += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+    }
+  };
+  for (const note of notes) {
+    mix(note.id);
+    hash = Math.imul(hash ^ note.body.length, 0x01000193);
+    mix(note.body);
+  }
+  return hash >>> 0;
+}
+
+let cachedExpandGraph: { readonly fingerprint: number; readonly noteCount: number; readonly graph: NoteLinkGraph } | undefined;
+
 export function linkExpandRefs(args: {
   readonly seedRefs: readonly string[];
   readonly noteBodies: readonly { readonly id: string; readonly body: string }[];
@@ -229,7 +334,11 @@ export function linkExpandRefs(args: {
   if (cap <= 0 || args.seedRefs.length === 0) {
     return [];
   }
-  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies), cap);
+  const fingerprint = corpusFingerprint(args.noteBodies);
+  if (!cachedExpandGraph || cachedExpandGraph.fingerprint !== fingerprint || cachedExpandGraph.noteCount !== args.noteBodies.length) {
+    cachedExpandGraph = { fingerprint, graph: buildNoteLinkGraph(args.noteBodies, { includeTitleMentions: true }), noteCount: args.noteBodies.length };
+  }
+  return linkedFromResults(args.seedRefs, cachedExpandGraph.graph, cap, { includeBacklinks: true });
 }
 
 export interface NoteGraphAudit {

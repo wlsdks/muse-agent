@@ -1,12 +1,17 @@
 /**
- * `muse doctor`'s Gmail auth check: is SOMETHING configured, and — for the
- * refreshing OAuth path (`muse setup email`) — does a live refresh actually
- * still work? A raw MUSE_GMAIL_TOKEN has no refresh mechanism to probe, so
- * that branch only reports it's in use. Read-only: never persists a
- * refreshed token or an invalid_grant marker here — that mutation belongs
- * to the runtime token source (gmail-oauth.ts), not to a diagnostic.
+ * `muse doctor`'s email auth check: is SOMETHING configured, and does a
+ * live probe actually still work? Two configured shapes get a real probe:
+ * the refreshing OAuth path (`muse setup email`'s choice 2) refreshes its
+ * access token; the App Password path (choice 1, recommended) does a real
+ * IMAP login + mailbox open. A raw MUSE_GMAIL_TOKEN has no refresh
+ * mechanism to probe, so that branch only reports it's in use. Read-only:
+ * never persists a refreshed token / invalid_grant marker / anything for
+ * IMAP here — mutation belongs to the runtime token source
+ * (gmail-oauth.ts), not to a diagnostic.
  */
-import { readGmailCredential } from "./credential-store.js";
+import { ImapSmtpAuthError, ImapSmtpEmailProvider, type ImapSmtpEmailProviderConfig } from "@muse/domain-tools";
+
+import { readEmailImapCredential, readGmailCredential } from "./credential-store.js";
 import { GmailOAuthInvalidGrantError, GmailOAuthRetryableError, refreshGmailAccessToken } from "./gmail-oauth.js";
 import type { ProgramIO } from "./program.js";
 
@@ -16,22 +21,41 @@ export interface EmailAuthCheckResult {
   readonly detail: string;
 }
 
-// Gmail reads/sends your OWN data — it is not an LLM call, so MUSE_LOCAL_ONLY
+// Email reads/sends your OWN data — it is not an LLM call, so MUSE_LOCAL_ONLY
 // (which governs cloud-model egress) never blocks it. Surfaced here, on the
 // "configured" branches, so the posture is visible without a second command.
-const LOCAL_ONLY_NOTE = "not affected by MUSE_LOCAL_ONLY — Gmail is your own data plane, not LLM egress";
+const LOCAL_ONLY_NOTE = "not affected by MUSE_LOCAL_ONLY — email is your own data plane, not LLM egress";
+
+export type VerifyImapConnection = (config: ImapSmtpEmailProviderConfig) => Promise<{ readonly messageCount: number }>;
+
+async function defaultVerifyImapConnection(config: ImapSmtpEmailProviderConfig): Promise<{ readonly messageCount: number }> {
+  return new ImapSmtpEmailProvider(config).verifyConnection();
+}
 
 export async function emailAuthCheck(
   io: ProgramIO,
   env: Record<string, string | undefined>,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  verifyImapConnection: VerifyImapConnection = defaultVerifyImapConnection
 ): Promise<EmailAuthCheckResult> {
   const name = "email-auth" as const;
   const envToken = env.MUSE_GMAIL_TOKEN?.trim();
   const credential = await readGmailCredential(io);
+  const imapCredential = credential ? undefined : await readEmailImapCredential(io);
 
-  if (!envToken && !credential) {
+  if (!envToken && !credential && !imapCredential) {
     return { detail: "not connected (opt-in) — run `muse setup email` or set MUSE_GMAIL_TOKEN", name, status: "ok" };
+  }
+  if (imapCredential) {
+    try {
+      const { messageCount } = await verifyImapConnection(imapCredential);
+      return { detail: `connected via app password (IMAP), login verified — inbox has ${messageCount.toString()} message${messageCount === 1 ? "" : "s"} — ${LOCAL_ONLY_NOTE}`, name, status: "ok" };
+    } catch (cause) {
+      if (cause instanceof ImapSmtpAuthError) {
+        return { detail: "connected but the IMAP login failed — the app password may be wrong or revoked; run `muse setup email` again", name, status: "fail" };
+      }
+      return { detail: `connected but couldn't verify the IMAP login right now: ${cause instanceof Error ? cause.message : String(cause)}`, name, status: "warn" };
+    }
   }
   if (!credential) {
     return { detail: `using MUSE_GMAIL_TOKEN (raw token, no refresh — expires hourly; \`muse setup email\` is the durable path) — ${LOCAL_ONLY_NOTE}`, name, status: "ok" };

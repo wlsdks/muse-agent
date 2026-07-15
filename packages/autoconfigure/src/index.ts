@@ -57,6 +57,7 @@ export {
   resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
+  resolveMuseCliConfigFilePath,
   resolveOAuthStoreDir,
   resolveNotesDir,
   resolveNotesIndexFile,
@@ -113,6 +114,20 @@ export {
 export type { ExternalMcpEntryDiagnosis, ExternalMcpEntryStatus } from "./external-mcp-config.js";
 
 export { buildRuntimeToolRegistry, type RuntimeToolRegistryDeps } from "./runtime-tool-registry.js";
+
+export {
+  activeModelEnvOverride,
+  fetchInstalledOllamaModels,
+  readMuseCliConfigFile,
+  resolveModelSwitchTarget,
+  resolveOllamaBaseUrl,
+  writeMuseCliDefaultModel,
+  type InstalledOllamaModel,
+  type ModelEnvOverride,
+  type ModelSwitchResolution,
+  type MuseCliDefaultModelConfig,
+  type OllamaModelsResult
+} from "./model-registry.js";
 export {
   createBudgetedLlmDetector,
   createReviewCommitmentsArm,

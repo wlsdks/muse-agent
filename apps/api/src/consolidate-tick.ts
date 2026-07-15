@@ -18,7 +18,7 @@ import { AuthoredSkillStore } from "@muse/skills";
 import { isOsIdleEnough } from "./os-idle.js";
 import { isPowerOkForLlm } from "./power-state.js";
 import { clearCluster, DEFAULT_COOLDOWN_THRESHOLD, recordClusterReject, shouldSkipCluster } from "./reject-ledger.js";
-import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
 export interface ConsolidateMergeOutcome {
   readonly umbrella: string;
@@ -109,7 +109,7 @@ export interface ConsolidateTickOptions {
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
-  readonly quietHours?: QuietHourRange;
+  readonly quietHours?: QuietHoursOption;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   /** Injectable clock for tests. */
@@ -207,7 +207,8 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
   const tickOnce = async (): Promise<void> => {
     if (firing) return;
     const at = now();
-    if (options.quietHours && isQuietHour(at.getHours(), options.quietHours)) return;
+    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+    if (activeQuietHours && isQuietHour(at.getHours(), activeQuietHours)) return;
     if (!isIdleForConsolidate(at.getTime(), options.lastActivityMs(), idleThresholdMs)) return;
     firing = true;
     try {

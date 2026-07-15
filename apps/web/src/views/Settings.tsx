@@ -8,7 +8,7 @@ import { normalizeApiBaseUrl } from "../lib/apiUrl.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { StringKey } from "../i18n/strings.js";
-import type { ContactsResponse, DaemonFlagsResponse, ModelsResponse } from "../api/types.js";
+import type { ContactsResponse, DaemonFlagsResponse, ModelsResponse, QuietHoursSettingsResponse } from "../api/types.js";
 import { summarizeFlags } from "./settings-flags.js";
 
 interface SetupSection {
@@ -151,6 +151,8 @@ export function SettingsView({
 
       <DaemonsSection client={client} />
 
+      <QuietHoursControl client={client} />
+
       <div style={{ marginTop: 16 }}>
         <ContactsSection client={client} />
       </div>
@@ -194,6 +196,107 @@ export function SettingsView({
         {t("settings.credit")}
       </p>
     </div>
+  );
+}
+
+/**
+ * Client-side plausibility check only — mirrors `@muse/proactivity`'s
+ * `parseQuietHours` shape (`H[:MM]-H[:MM]`, hour 0-23, minute 0-59, start !=
+ * end) for immediate input feedback. The server's PATCH re-validates with
+ * the real parser and is the actual authority; `apps/web` is intentionally
+ * outside the `@muse/*` build-reference graph (architecture.md) so this
+ * can't import that parser directly.
+ */
+const QUIET_HOURS_RANGE_RE = /^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/;
+function isPlausibleQuietHoursRange(raw: string): boolean {
+  const match = raw.trim().match(QUIET_HOURS_RANGE_RE);
+  if (!match) return false;
+  const startHour = Number(match[1]);
+  const startMinute = match[2] ? Number(match[2]) : 0;
+  const endHour = Number(match[3]);
+  const endMinute = match[4] ? Number(match[4]) : 0;
+  if (startHour > 23 || endHour > 23 || startMinute > 59 || endMinute > 59) return false;
+  return startHour !== endHour;
+}
+
+/**
+ * The R2-4 read-only status line's live control: enable + a range input,
+ * PATCHed through `/api/settings/quiet-hours` (same seam shape as the
+ * daemon-flags PATCH above). When an env var currently wins, the save still
+ * writes the persisted setting (so it's ready the moment the env var is
+ * unset) but the banner says so honestly instead of hiding the no-op.
+ */
+export function QuietHoursControl({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const [pendingRange, setPendingRange] = useState<string | null>(null);
+
+  const quietHours = useQuery({
+    queryFn: () => client.get<QuietHoursSettingsResponse>("/api/settings/quiet-hours"),
+    queryKey: ["quiet-hours", client.baseUrl]
+  });
+  const data = quietHours.data;
+  const enabled = pendingEnabled ?? data?.enabled ?? false;
+  const range = pendingRange ?? data?.range ?? "23:00-08:00";
+  const rangeValid = isPlausibleQuietHoursRange(range);
+
+  const save = useMutation({
+    mutationFn: (input: { enabled: boolean; range: string }) =>
+      client.patch<QuietHoursSettingsResponse>("/api/settings/quiet-hours", input),
+    onSuccess: () => {
+      setPendingEnabled(null);
+      setPendingRange(null);
+      void queryClient.invalidateQueries({ queryKey: ["quiet-hours", client.baseUrl] });
+    }
+  });
+
+  return (
+    <Section title={t("settings.quietHours")} explain={t("settings.sec.quietHours")}>
+      {data?.source === "env" && (
+        <p className="subtle" style={{ fontSize: 12, marginBottom: 8 }}>
+          {t("settings.quietHoursEnvWins")}
+        </p>
+      )}
+      <div className="row" style={{ alignItems: "flex-end", borderBottom: "none" }}>
+        <div className="row-main">
+          <div className="row-title mono">
+            {data?.effectiveRange ? t("settings.quietHoursValue", { window: data.effectiveRange }) : t("settings.quietHoursNotSet")}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label className="field-label" htmlFor="quiet-hours-range">{t("settings.quietHoursRange")}</label>
+            <input
+              id="quiet-hours-range"
+              className="input"
+              style={{ maxWidth: 160 }}
+              value={range}
+              onChange={(e) => setPendingRange(e.target.value)}
+              placeholder="23:00-08:00"
+              aria-invalid={!rangeValid}
+            />
+          </div>
+        </div>
+        <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+          <Badge tone={enabled ? "ok" : "neutral"}>{enabled ? t("settings.on") : t("settings.off")}</Badge>
+          <Button variant="ghost" size="sm" onClick={() => setPendingEnabled(!enabled)}>
+            {enabled ? t("int.daemon.turnOff") : t("int.daemon.turnOn")}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={save.isPending || !rangeValid}
+            onClick={() => save.mutate({ enabled, range: range.trim() })}
+          >
+            {t("common.save")}
+          </Button>
+        </div>
+      </div>
+      {!rangeValid && (
+        <p className="subtle" style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>
+          {t("settings.quietHoursInvalid")}
+        </p>
+      )}
+    </Section>
   );
 }
 

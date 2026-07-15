@@ -97,9 +97,9 @@ export function summarizeActuators(env: MuseEnvironment, io: ProgramIO): Actuato
   } else if (isGmailConfigured(io, env)) {
     armed.push("email_send", "email_reply", "email_forward");
   } else {
-    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_send" });
-    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_reply" });
-    unavailable.push({ hint: "run `muse setup email` or set MUSE_GMAIL_TOKEN", name: "email_forward" });
+    unavailable.push({ hint: "run `muse setup email` (App Password or Google OAuth) or set MUSE_GMAIL_TOKEN", name: "email_send" });
+    unavailable.push({ hint: "run `muse setup email` (App Password or Google OAuth) or set MUSE_GMAIL_TOKEN", name: "email_reply" });
+    unavailable.push({ hint: "run `muse setup email` (App Password or Google OAuth) or set MUSE_GMAIL_TOKEN", name: "email_forward" });
   }
 
   if (homeAssistant.status === "configured") {

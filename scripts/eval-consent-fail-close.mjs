@@ -101,7 +101,7 @@ try {
     let calls = 0;
     const hangingFetch = (_url, init) => {
       calls += 1;
-      const { promise, reject } = Promise.withResolvers<Response>();
+      const { promise, reject } = Promise.withResolvers();
       init?.signal?.addEventListener("abort", () => {
         reject(new Error("aborted"));
       }, { once: true });

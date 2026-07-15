@@ -98,6 +98,15 @@ describe("createHistorySearchTool — agent-callable history search (Gap1-S2)", 
     const text = typeof out === "string" ? out : JSON.stringify(out);
     expect(text).not.toContain("ep-1");
   });
+
+  it("labels a conversations-source hit with its resumable ref (R3-1: actionable citation)", async () => {
+    const corpus = [rec("telegram:1234", "We discussed the VPN MTU fix over Telegram.", "conversations")];
+    const tool = createHistorySearchTool({ records: () => corpus });
+    const out = await tool.execute({ query: "vpn mtu" }, ctx);
+    const text = typeof out === "string" ? out : JSON.stringify(out);
+    expect(text).toContain("[conversations:telegram:1234]");
+    expect(text).toContain("muse chats resume telegram:1234");
+  });
 });
 
 describe("createHistorySearchTool — hybrid (lexical + embedding-cosine) when embed is injected (A2)", () => {

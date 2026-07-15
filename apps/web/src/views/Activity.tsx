@@ -1,7 +1,9 @@
+import { useState } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Card, Icon } from "../components/ui.js";
-import { useI18n, type Translate } from "../i18n/index.js";
+import { useI18n, type StringKey, type Translate } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { HistoryResponse, ProactiveHistoryResponse } from "../api/types.js";
@@ -26,11 +28,35 @@ function statusLabel(status: string, t: Translate): string {
   }
 }
 
+export const ACTIVITY_FILTER_KINDS = ["reminder", "proactive", "followup", "pattern", "episode"] as const;
+export type ActivityFilterKind = (typeof ACTIVITY_FILTER_KINDS)[number];
+
+const KIND_LABEL_KEYS: Record<ActivityFilterKind, StringKey> = {
+  episode: "activity.kind.episode",
+  followup: "activity.kind.followup",
+  pattern: "activity.kind.pattern",
+  proactive: "activity.kind.proactive",
+  reminder: "activity.kind.reminder"
+};
+
+function kindLabel(kind: string, t: Translate): string {
+  return kind in KIND_LABEL_KEYS ? t(KIND_LABEL_KEYS[kind as ActivityFilterKind]) : kind;
+}
+
+/** `GET /api/history` URL for a filter selection — "all" omits the `kind`
+ * param entirely (server default: every source); any other value is the
+ * validated `ActivityKind` literal, URL-encoded. Pure so it's unit-testable
+ * without a query-client render. */
+export function historyQueryPath(kind: string): string {
+  return kind === "all" ? "/api/history?limit=25" : `/api/history?limit=25&kind=${encodeURIComponent(kind)}`;
+}
+
 export function ActivityView({ client }: { client: ApiClient }) {
   const { locale, t } = useI18n();
+  const [kind, setKind] = useState<string>("all");
   const history = useQuery({
-    queryFn: () => client.get<HistoryResponse>("/api/history?limit=25"),
-    queryKey: ["history", client.baseUrl]
+    queryFn: () => client.get<HistoryResponse>(historyQueryPath(kind)),
+    queryKey: ["history", client.baseUrl, kind]
   });
   const proactive = useQuery({
     queryFn: () => client.get<ProactiveHistoryResponse>("/api/proactive/history?limit=15"),
@@ -47,14 +73,35 @@ export function ActivityView({ client }: { client: ApiClient }) {
 
       <div style={{ marginTop: 16 }}>
         <Card title={t("activity.recentRuns")} count={runs.length}>
+          <div className="segmented" role="group" aria-label={t("activity.filter.label")} style={{ marginBottom: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`chip${kind === "all" ? " chip-active" : ""}`}
+              aria-pressed={kind === "all"}
+              onClick={() => setKind("all")}
+            >
+              {t("activity.filter.all")}
+            </button>
+            {ACTIVITY_FILTER_KINDS.map((k) => (
+              <button
+                type="button"
+                key={k}
+                className={`chip${kind === k ? " chip-active" : ""}`}
+                aria-pressed={kind === k}
+                onClick={() => setKind(k)}
+              >
+                {kindLabel(k, t)}
+              </button>
+            ))}
+          </div>
           <AsyncBlock loading={history.isLoading} error={history.error} empty={runs.length === 0} emptyLabel={t("act.runsEmpty")} emptyHint={t("act.runsEmptyHint")} emptyIcon={<Icon.activity />}>
             {runs.map((r, i) => (
-              <div className="row" key={r.runId ?? i}>
+              <div className="row" key={r.id ?? r.runId ?? i}>
                 <div className="row-main">
-                  <div className="row-title">{r.inputPreview ?? r.outputPreview ?? r.runId ?? "run"}</div>
+                  <div className="row-title">{r.summary ?? r.inputPreview ?? r.outputPreview ?? r.runId ?? "run"}</div>
                   <div className="row-meta">
-                    {r.model ?? "—"}
-                    {r.startedAt ? ` · ${new Date(r.startedAt).toLocaleString(locale)}` : ""}
+                    {r.kind ? kindLabel(r.kind, t) : (r.model ?? "—")}
+                    {r.whenIso || r.startedAt ? ` · ${new Date(r.whenIso ?? r.startedAt ?? "").toLocaleString(locale)}` : ""}
                   </div>
                 </div>
                 {r.status && <Badge tone={statusTone(r.status)}>{statusLabel(r.status, t)}</Badge>}

@@ -15,6 +15,9 @@ import { join } from "node:path";
 import { LOCAL_FIRST_DEFAULT_MODEL, resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { isNoInput } from "./cli-context.js";
+import { installDaemonAutostart, type DaemonHelpers } from "./commands-daemon.js";
+import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { probeOllamaModels } from "./ollama-probe.js";
@@ -176,7 +179,122 @@ async function safeCount(read: () => Promise<number>): Promise<number> {
   }
 }
 
-export function registerOnboardCommand(program: Command, io: ProgramIO): void {
+export interface OnboardHelpers {
+  /**
+   * Test seam — bypasses the real TTY/`--no-input` gate and `@clack/prompts`
+   * entirely; a test injects the answer directly. Absent → the real
+   * interactive confirm (skipped, safe-default `false`, on any non-TTY or
+   * `--no-input` run — the background daemon offer never hangs a piped
+   * onboard).
+   */
+  readonly confirm?: (message: string) => Promise<boolean>;
+  /** Test seam — platform override for the install path (mirrors `DaemonHelpers.platform`). */
+  readonly platform?: NodeJS.Platform;
+  readonly runLaunchctl?: DaemonHelpers["runLaunchctl"];
+  readonly schtasksRun?: DaemonHelpers["schtasksRun"];
+  /**
+   * Test seam — bypasses the real TTY/`--no-input` gate for the native
+   * macOS-notification offer; a test injects the answer directly. Absent →
+   * the real interactive confirm (skipped, safe-default `false`, on any
+   * non-TTY or `--no-input` run).
+   */
+  readonly confirmNotifications?: (message: string) => Promise<boolean>;
+}
+
+const BACKGROUND_INSTALL_HINT = "Keep Muse running in the background any time — reminders, briefings, and schedules keep firing even with the terminal closed:\n   $ muse daemon --install\n";
+
+/**
+ * A state-changing action (installs a persistent LaunchAgent/scheduled
+ * task) — unlike `muse setup data`'s opt-in steps, the visible prompt
+ * defaults to YES (this is the offer's whole point), but a non-interactive
+ * run (`--no-input`, no TTY, or piped) NEVER installs unattended: it
+ * returns `false` and the caller falls back to the manual-command hint,
+ * exactly `cli-context.ts`'s "safe non-interactive default" contract.
+ */
+async function defaultConfirmBackgroundDaemon(message: string): Promise<boolean> {
+  if (isNoInput() || !process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const { confirm, isCancel } = await import("@clack/prompts");
+  const answer = await confirm({ initialValue: true, message });
+  return isCancel(answer) ? false : answer === true;
+}
+
+/**
+ * The closing background-daemon offer — asked only on a platform
+ * `muse daemon --install` actually supports (darwin/win32); every other
+ * platform (or a "no"/cancelled answer) prints the manual command instead.
+ * Fail-soft throughout: an install failure (or a thrown error from the
+ * injected runner seams) never fails `muse onboard` itself, it just falls
+ * back to the same manual hint.
+ */
+async function offerBackgroundDaemon(io: ProgramIO, helpers: OnboardHelpers): Promise<void> {
+  const plat = helpers.platform ?? process.platform;
+  if (plat !== "darwin" && plat !== "win32") {
+    io.stdout(`\n${BACKGROUND_INSTALL_HINT}`);
+    return;
+  }
+  const wantsBackground = await (helpers.confirm ?? defaultConfirmBackgroundDaemon)(
+    "Keep Muse running in the background (reminders, briefings, schedules)? 백그라운드 상시 실행할까요?"
+  );
+  if (!wantsBackground) {
+    io.stdout(`\n${BACKGROUND_INSTALL_HINT}`);
+    return;
+  }
+  try {
+    const result = await installDaemonAutostart(io, process.env, {
+      platform: plat,
+      ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
+      ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
+    });
+    if (!result.ok) io.stdout(`\n${BACKGROUND_INSTALL_HINT}`);
+  } catch {
+    io.stdout(`\n${BACKGROUND_INSTALL_HINT}`);
+  }
+}
+
+const NOTIFICATIONS_LOG_HINT = "Proactive notices go to ~/.muse/notifications.log by default — `muse daemon --provider macos-notification` switches to native popups any time.\n";
+
+async function defaultConfirmNotifications(message: string): Promise<boolean> {
+  if (isNoInput() || !process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const { confirm, isCancel } = await import("@clack/prompts");
+  const answer = await confirm({ initialValue: false, message });
+  return isCancel(answer) ? false : answer === true;
+}
+
+/**
+ * A macOS-only offer, asked after the background-daemon offer: switch
+ * proactive notices from the always-on log file to a native macOS popup.
+ * Every other platform (or a "no"/cancelled answer) gets the one-line
+ * pointer to the log file instead. Fail-soft: a config-write failure
+ * never fails `muse onboard` — it just falls back to the same hint.
+ */
+async function offerNativeNotifications(io: ProgramIO, helpers: OnboardHelpers): Promise<void> {
+  const plat = helpers.platform ?? process.platform;
+  if (plat !== "darwin") {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+    return;
+  }
+  const wantsNotifications = await (helpers.confirmNotifications ?? defaultConfirmNotifications)(
+    "Use native macOS notification popups for Muse's proactive notices? 네이티브 macOS 알림을 사용할까요?"
+  );
+  if (!wantsNotifications) {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+    return;
+  }
+  try {
+    const configFile = resolveDaemonConfigFile(process.env);
+    const existing = readDaemonConfig(configFile);
+    writeDaemonConfig(configFile, {
+      ...existing,
+      destination: existing.destination ?? "@me",
+      provider: "macos-notification"
+    });
+    io.stdout("Native notifications enabled — `muse daemon` will pop up macOS notifications for proactive notices.\n");
+  } catch {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+  }
+}
+
+export function registerOnboardCommand(program: Command, io: ProgramIO, helpers: OnboardHelpers = {}): void {
   program
     .command("onboard")
     .description("Guided setup: the single next step to your first private, cited answer")
@@ -199,5 +317,9 @@ export function registerOnboardCommand(program: Command, io: ProgramIO): void {
         io.stdout(`\n💡 ${report.dataHint.detail}\n   $ ${report.dataHint.command}\n`);
       }
       io.stdout("\nVerify your setup any time (models, local-only posture, index):\n   $ muse doctor --local\n");
+      io.stdout("\nSchedule a recurring prompt: `muse scheduler add \"...\" --every \"daily 9am\"`\n");
+      io.stdout("Every agent file write is undoable — `muse rollback`.\n");
+      await offerBackgroundDaemon(io, helpers);
+      await offerNativeNotifications(io, helpers);
     });
 }

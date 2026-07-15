@@ -247,7 +247,7 @@ export async function selectBehaviouralRules(
       if (!other) {
         continue; // the conflicting rule isn't part of this turn's candidate set
       }
-      const pairKey = rule.key < otherKey ? `${rule.key} ${otherKey}` : `${otherKey} ${rule.key}`;
+      const pairKey = rule.key < otherKey ? `${rule.key}\u0000${otherKey}` : `${otherKey}\u0000${rule.key}`;
       if (seenPairs.has(pairKey)) {
         continue;
       }

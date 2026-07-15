@@ -87,15 +87,17 @@ describe("searchHistory — deterministic lexical history search (Gap1-S1)", () 
     expect(searchHistory("   ", [rec("s1", "anything")])).toHaveLength(0);
   });
 
-  it("preserves the per-record source label on each hit", () => {
+  it("preserves the per-record source label on each hit, including conversations", () => {
     const corpus = [
       rec("n1", "the vpn mtu note content", "notes"),
-      rec("e1", "the vpn session episode content", "episodes")
+      rec("e1", "the vpn session episode content", "episodes"),
+      rec("c1", "the vpn mtu conversation turn content", "conversations")
     ];
     const hits = searchHistory("vpn mtu", corpus);
     const bySource = new Map(hits.map((h) => [h.ref, h.source]));
     expect(bySource.get("n1")).toBe("notes");
     expect(bySource.get("e1")).toBe("episodes");
+    expect(bySource.get("c1")).toBe("conversations");
   });
 });
 

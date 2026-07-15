@@ -63,12 +63,14 @@ export function PendingApprovals({
   approvals,
   approving,
   onApprove,
+  onDeny,
   errorText,
   t
 }: {
   approvals: readonly PendingApproval[];
   approving: readonly string[];
   onApprove: (id: string) => void;
+  onDeny: (id: string) => void;
   errorText?: string | null;
   t: Translate;
 }) {
@@ -95,6 +97,15 @@ export function PendingApprovals({
               >
                 {inFlight ? <span className="spinner" /> : null}
                 {t("chat.approval.approve")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={inFlight}
+                onClick={() => onDeny(a.id)}
+                ariaLabel={t("chat.approval.denyAria", { tool: a.tool })}
+              >
+                {t("chat.approval.deny")}
               </Button>
             </div>
           </div>
@@ -134,7 +145,7 @@ export function ChatEmptyState({
 export function ChatView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const token = readToken();
-  const { activeTool, approve, approving, error, pending, reset, send, thinking, turns } = useChatStream(
+  const { activeTool, approve, approving, deny, error, pending, reset, send, thinking, turns } = useChatStream(
     client.baseUrl,
     token
   );
@@ -250,6 +261,7 @@ export function ChatView({ client }: { client: ApiClient }) {
                     approvals={turn.pendingApprovals ?? []}
                     approving={approving}
                     onApprove={(id) => void approve(id)}
+                    onDeny={(id) => void deny(id)}
                     errorText={error}
                     t={t}
                   />

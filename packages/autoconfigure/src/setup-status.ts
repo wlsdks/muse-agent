@@ -10,11 +10,12 @@
  * without re-implementing the per-file scans.
  */
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { join as pathJoin } from "node:path";
+import { delimiter as pathDelimiter, join as pathJoin } from "node:path";
 
 import { isRecord } from "@muse/shared";
+import { hasStoredEmailImapCredentialSync, hasStoredGmailCredentialSync } from "@muse/stores";
 
 import { parseBoolean, parseBooleanTriState, parseInteger } from "./env-parsers.js";
 import {
@@ -271,6 +272,18 @@ export interface SetupStatusSnapshot {
     readonly nextStep?: string;
   };
   readonly messaging: { readonly status: "ok" | "info"; readonly providers: readonly string[]; readonly nextStep?: string };
+  readonly email: {
+    readonly status: "ok" | "info";
+    /** `oauth`/`imap` = the encrypted `muse setup email` record (Google OAuth / App Password); `env` = MUSE_GMAIL_TOKEN; `none` = not configured. */
+    readonly source: "oauth" | "imap" | "env" | "none";
+    readonly nextStep?: string;
+  };
+  readonly remote: {
+    readonly status: "ok" | "info";
+    /** `tailscale` binary detected on PATH or the macOS App-Store bundle — fs/env only, never exec'd here. */
+    readonly tailscaleFound: boolean;
+    readonly nextStep?: string;
+  };
   readonly webSearch: { readonly status: "ok" | "info"; readonly enabled: boolean; readonly maxUses: number; readonly source: "default" | "env" };
   readonly userMemory: {
     readonly status: "ok" | "info";
@@ -305,6 +318,14 @@ export interface SetupStatusSnapshot {
     /** Phase D — when `true`, fired reminders run through agent synthesis. */
     readonly agentTurn: boolean;
     readonly quietHours?: string;
+    readonly nextStep?: string;
+  };
+  /** `muse setup briefing`'s fixed-time daily brief (R2-3 status-row pattern). */
+  readonly dailyBrief: {
+    readonly status: "ok" | "info";
+    readonly enabled: boolean;
+    /** Local "HH:MM" when enabled. */
+    readonly time?: string;
     readonly nextStep?: string;
   };
   readonly actuators: ActuatorReadinessSnapshot;
@@ -518,6 +539,102 @@ export function resolveVoiceStatus(
 }
 
 /**
+ * Resolve the `email` row for `muse setup` / `--json`. `hasStoredOAuthCredential`
+ * / `hasStoredImapCredential` are computed by the caller so this stays pure and
+ * directly testable — the store read itself is skipped entirely under
+ * local-only (never even opened, matching the calendar/messaging
+ * credential-file rule elsewhere in this module) rather than probed and
+ * then discarded here.
+ */
+export function resolveEmailSetupStatus(
+  env: Readonly<Record<string, string | undefined>>,
+  hasStoredOAuthCredential: boolean,
+  hasStoredImapCredential = false
+): SetupStatusSnapshot["email"] {
+  if (hasStoredOAuthCredential) {
+    return { source: "oauth", status: "ok" };
+  }
+  if (hasStoredImapCredential) {
+    return { source: "imap", status: "ok" };
+  }
+  if (env.MUSE_GMAIL_TOKEN?.trim()) {
+    return { source: "env", status: "ok" };
+  }
+  return { nextStep: "muse setup email", source: "none", status: "info" };
+}
+
+/** App-Store variant of the macOS Tailscale client bundles the CLI here (mirrors apps/cli/src/commands-remote.ts). */
+const TAILSCALE_MACOS_APP_BUNDLE_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+
+/**
+ * fs/env-ONLY tailscale presence check for the `muse setup` remote row — no
+ * exec, unlike `resolveTailscaleBinary` (apps/cli/src/commands-remote.ts),
+ * which shells out to `tailscale version` to confirm a working install. A
+ * status survey must not spawn a process just to render one row; PATH
+ * scanning + the known macOS app-bundle path are enough to say "found".
+ */
+export function detectTailscaleBinaryPresent(
+  env: Readonly<Record<string, string | undefined>>,
+  options: { readonly exists?: (path: string) => boolean; readonly osPlatform?: NodeJS.Platform } = {}
+): boolean {
+  const exists = options.exists ?? existsSync;
+  const osPlatform = options.osPlatform ?? process.platform;
+  if (osPlatform === "darwin" && exists(TAILSCALE_MACOS_APP_BUNDLE_CLI)) {
+    return true;
+  }
+  const pathValue = env.PATH?.trim() || process.env.PATH || "";
+  const binaryName = osPlatform === "win32" ? "tailscale.exe" : "tailscale";
+  return pathValue
+    .split(pathDelimiter)
+    .filter((dir) => dir.length > 0)
+    .some((dir) => exists(pathJoin(dir, binaryName)));
+}
+
+/** Resolve the `remote` row for `muse setup` / `--json` from a fs/env-only tailscale presence check. */
+export function resolveRemoteSetupStatus(tailscaleFound: boolean): SetupStatusSnapshot["remote"] {
+  return tailscaleFound
+    ? { nextStep: "muse remote enable", status: "ok", tailscaleFound: true }
+    : { nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false };
+}
+
+/**
+ * The daemon-config file `muse setup briefing` / `muse daemon --init` write
+ * (apps/cli's `resolveDaemonConfigFile`). autoconfigure can't import from
+ * apps/cli (dependency direction), so this small path-join is duplicated —
+ * same precedent as `readConfigDefaultModel`'s CLI-config path below.
+ */
+function resolveDaemonConfigFilePath(env: Readonly<Record<string, string | undefined>>): string {
+  const explicit = env.MUSE_DAEMON_CONFIG_FILE?.trim();
+  if (explicit && explicit.length > 0) return explicit;
+  const home = env.HOME?.trim() || homedir();
+  return pathJoin(home, ".config", "muse", "daemon.json");
+}
+
+/** Read only the `dailyBrief` block from the daemon config file — tolerant, never throws. */
+async function readDailyBriefConfig(file: string): Promise<{ readonly enabled: boolean; readonly time?: string } | undefined> {
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw) as { dailyBrief?: unknown };
+    if (isRecord(parsed.dailyBrief)) {
+      const record = parsed.dailyBrief;
+      const time = typeof record.time === "string" && record.time.trim().length > 0 ? record.time.trim() : undefined;
+      return { enabled: record.enabled === true, ...(time ? { time } : {}) };
+    }
+  } catch {
+    // missing / malformed → not configured
+  }
+  return undefined;
+}
+
+/** Resolve the `dailyBrief` row for `muse setup` / `--json` from the daemon config file. */
+export function resolveDailyBriefSetupStatus(config: { readonly enabled: boolean; readonly time?: string } | undefined): SetupStatusSnapshot["dailyBrief"] {
+  if (config?.enabled) {
+    return { enabled: true, status: "ok", ...(config.time ? { time: config.time } : {}) };
+  }
+  return { enabled: false, nextStep: "muse setup briefing", status: "info" };
+}
+
+/**
  * Read the persisted `defaultModel` from the CLI config store
  * (`~/.config/muse/config.json`) — the value `muse setup local` / the
  * first-run wizard write. Setup status credits it exactly like the CLI
@@ -653,6 +770,19 @@ export async function collectSetupStatusJson(options: {
   const messagingFile = integrationEnv?.messaging.credentialsFile ?? resolveMessagingCredentialsFile(env);
   const messagingHits = await readMessagingProviderState(messagingFile, env, integrationEnv);
 
+  // The encrypted Gmail OAuth / App Password records can hold a live
+  // refresh token / password. Under local-only, status must not open
+  // either just to render a row — same rule as the calendar/messaging
+  // credential files above.
+  const emailCredentialIo = { configDir: pathJoin(home, ".config", "muse"), credentialKey: env.MUSE_CREDENTIAL_KEY };
+  const hasStoredGmailCredential = integrationLocalOnly ? false : hasStoredGmailCredentialSync(emailCredentialIo);
+  const hasStoredImapCredential = integrationLocalOnly ? false : hasStoredEmailImapCredentialSync(emailCredentialIo);
+  const emailStatus = integrationLocalOnly
+    ? { nextStep: "Gmail email/inbox is disabled while MUSE_LOCAL_ONLY=true", source: "none" as const, status: "info" as const }
+    : resolveEmailSetupStatus(env, hasStoredGmailCredential, hasStoredImapCredential);
+  const remoteStatus = resolveRemoteSetupStatus(detectTailscaleBinaryPresent(env));
+  const dailyBriefStatus = resolveDailyBriefSetupStatus(await readDailyBriefConfig(resolveDaemonConfigFilePath(env)));
+
   // User-memory auto-extract (default-on as of the recent flip).
   const autoExtractEnv = env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase();
   const autoExtractEnabled = autoExtractEnv === undefined
@@ -732,6 +862,9 @@ export async function collectSetupStatusJson(options: {
         ? { nextStep: "Run `muse setup messaging` for Telegram / Discord / Slack / LINE tokens" }
         : {})
     },
+    email: emailStatus,
+    remote: remoteStatus,
+    dailyBrief: dailyBriefStatus,
     mcp: {
       externalServerCount: mcpCount,
       file: mcpFile,

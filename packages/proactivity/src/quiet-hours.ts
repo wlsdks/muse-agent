@@ -6,11 +6,26 @@
  * style urgent reminder is unaffected.
  */
 
+import type { PersistedQuietHours } from "@muse/stores";
+
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
 export interface QuietHourRange {
   readonly startHour: number;
   readonly endHour: number;
+}
+
+/**
+ * A tick's quiet-hours option: either a fixed range (the pre-R3-4 shape,
+ * still valid for a caller that resolves once) or a zero-arg resolver
+ * called FRESH on every tick — the seam that lets a persisted setting
+ * (PATCHed from web Settings / `muse quiet`) take effect on the daemon's
+ * very next tick with no restart.
+ */
+export type QuietHoursOption = QuietHourRange | (() => QuietHourRange | undefined);
+
+export function resolveQuietHoursOption(option: QuietHoursOption | undefined): QuietHourRange | undefined {
+  return typeof option === "function" ? option() : option;
 }
 
 /**
@@ -63,23 +78,50 @@ export function isQuietHour(currentHour: number, range: QuietHourRange): boolean
 export function gateProactiveNoticeSink(
   sink: ProactiveNoticeSink,
   options: {
-    readonly quietHours?: QuietHourRange;
+    readonly quietHours?: QuietHoursOption;
     readonly now?: () => Date;
     readonly onSuppress?: (notice: { readonly text: string; readonly title: string; readonly kind: string }) => void;
   }
 ): ProactiveNoticeSink {
-  if (!options.quietHours) return sink;
-  const quietHours = options.quietHours;
+  if (options.quietHours === undefined) return sink;
+  const quietHoursOption = options.quietHours;
   const now = options.now ?? ((): Date => new Date());
   return {
     deliver: async (notice) => {
-      if (isQuietHour(now().getHours(), quietHours)) {
+      const quietHours = resolveQuietHoursOption(quietHoursOption);
+      if (quietHours && isQuietHour(now().getHours(), quietHours)) {
         options.onSuppress?.(notice);
         return;
       }
       await sink.deliver(notice);
     }
   };
+}
+
+/**
+ * Precedence resolver used by BOTH the API tick daemons and the CLI daemon
+ * (the "one implementation" R3-4 requires): per-loop env var wins, then the
+ * shared base env var (`MUSE_REMINDER_QUIET_HOURS`), then the persisted
+ * setting (web Settings / `muse quiet`) when it is `enabled`. An invalid
+ * persisted range is ignored fail-soft — it never throws and never disables
+ * a tick, it just falls through to "no quiet hours" (`onInvalidPersisted`
+ * lets the caller log it once instead of every tick).
+ */
+export function resolveEffectiveQuietHours(input: {
+  readonly perLoopEnvRaw?: string;
+  readonly baseEnvRaw?: string;
+  readonly persisted?: PersistedQuietHours | undefined;
+  readonly onInvalidPersisted?: (raw: string) => void;
+}): QuietHourRange | undefined {
+  const perLoop = parseQuietHours(input.perLoopEnvRaw);
+  if (perLoop) return perLoop;
+  const base = parseQuietHours(input.baseEnvRaw);
+  if (base) return base;
+  if (!input.persisted?.enabled) return undefined;
+  const persistedRange = parseQuietHours(input.persisted.range);
+  if (persistedRange) return persistedRange;
+  input.onInvalidPersisted?.(input.persisted.range);
+  return undefined;
 }
 
 /**

@@ -5,6 +5,14 @@
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export {
+  readDaemonSettingsSync,
+  readQuietHoursSettingSync,
+  resolveDaemonSettingsFile,
+  writeDaemonSetting,
+  writeQuietHoursSetting
+} from "./daemon-settings-store.js";
+export type { DaemonSettings, PersistedQuietHours } from "./daemon-settings-store.js";
+export {
   CHAT_CONTEXT_TURN_LIMIT,
   defaultConversationsFile,
   FileConversationStore,
@@ -27,15 +35,20 @@ export { withFileLock } from "./encrypted-file.js";
 export {
   credentialPath,
   defaultCredentialPath,
+  deleteEmailImapCredential,
   deleteGmailCredential,
   deleteStoredToken,
+  hasStoredEmailImapCredentialSync,
   hasStoredGmailCredentialSync,
+  readEmailImapCredential,
+  readEmailImapCredentialSync,
   readGmailCredential,
   readStoredToken,
+  writeEmailImapCredential,
   writeGmailCredential,
   writeStoredToken
 } from "./encrypted-credentials.js";
-export type { CredentialStoreIO, GmailOAuthCredential } from "./encrypted-credentials.js";
+export type { CredentialStoreIO, GmailOAuthCredential, ImapEmailCredential } from "./encrypted-credentials.js";
 export { quarantineCorruptStore } from "./store-quarantine.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";

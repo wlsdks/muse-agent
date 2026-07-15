@@ -329,6 +329,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // persisting a slash-originated turn, so these stay control-plane only.
     const slashReply = await handleInboundSlashCommand({
       conversationStore,
+      env,
       model,
       pendingApprovalsFile: resolvePendingApprovalsFile(env),
       providerId,
