@@ -74,6 +74,9 @@ function main() {
   if (scripts.typecheck !== "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck") {
     problems.push("typecheck must run `typecheck:ts7-fast` and web typecheck");
   }
+  if (scripts["typecheck:fast"] !== "node scripts/run-tsc-fast.mjs typecheck") {
+    problems.push("typecheck:fast must call run-tsc-fast with `typecheck` mode");
+  }
   if (scripts["typecheck:ts7-fast"] !== "node scripts/run-tsc-fast.mjs typecheck") {
     problems.push("typecheck:ts7-fast must call run-tsc-fast with `typecheck` mode");
   }
