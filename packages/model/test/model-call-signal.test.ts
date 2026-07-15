@@ -18,6 +18,8 @@ describe("resolveModelCallTimeoutMs", () => {
     expect(resolveModelCallTimeoutMs({ MUSE_MODEL_TIMEOUT_MS: "1500" } as NodeJS.ProcessEnv)).toBe(1500);
     expect(resolveModelCallTimeoutMs({ MUSE_MODEL_TIMEOUT_MS: "0" } as NodeJS.ProcessEnv)).toBeUndefined();
     expect(resolveModelCallTimeoutMs({ MUSE_MODEL_TIMEOUT_MS: "5m" } as NodeJS.ProcessEnv)).toBe(DEFAULT_MODEL_CALL_TIMEOUT_MS);
+    expect(resolveModelCallTimeoutMs({ MUSE_MODEL_TIMEOUT_MS: "999999999999999999999" } as NodeJS.ProcessEnv)).toBe(DEFAULT_MODEL_CALL_TIMEOUT_MS);
+    expect(resolveModelCallTimeoutMs({ MUSE_MODEL_TIMEOUT_MS: "2147483648" } as NodeJS.ProcessEnv)).toBe(DEFAULT_MODEL_CALL_TIMEOUT_MS);
   });
 });
 

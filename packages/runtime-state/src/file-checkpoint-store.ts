@@ -69,9 +69,9 @@ export class FileCheckpointStore implements CheckpointStore {
 
   constructor(dir: string, options: FileCheckpointStoreOptions = {}) {
     this.#dir = dir;
-    this.#maxPerRun = options.maxCheckpointsPerRun ?? DEFAULT_MAX_PER_RUN;
-    this.#maxRuns = options.maxRuns ?? DEFAULT_MAX_RUNS;
-    this.#pruneInterval = Math.max(1, options.pruneIntervalSaves ?? 25);
+    this.#maxPerRun = requirePositiveSafeInteger(options.maxCheckpointsPerRun, DEFAULT_MAX_PER_RUN, "maxCheckpointsPerRun");
+    this.#maxRuns = requirePositiveSafeInteger(options.maxRuns, DEFAULT_MAX_RUNS, "maxRuns");
+    this.#pruneInterval = requirePositiveSafeInteger(options.pruneIntervalSaves, 25, "pruneIntervalSaves");
     this.#idFactory = options.idFactory ?? (() => createRunId("checkpoint"));
   }
 
@@ -197,4 +197,12 @@ export class FileCheckpointStore implements CheckpointStore {
   async deleteByRunId(runId: string): Promise<void> {
     await rm(join(this.#dir, runFileName(runId)), { force: true }).catch(() => undefined);
   }
+}
+
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return resolved;
 }

@@ -63,4 +63,26 @@ describe("FileTaskMemoryStore — cross-session task persistence (CLI default-st
     // unwritten file ⇒ undefined, no throw
     expect(await new FileTaskMemoryStore({ file: join(tmpdir(), `muse-absent-task-${Date.now().toString()}.json`) }).findById("x")).toBeUndefined();
   });
+
+  it("serializes concurrent read-modify-write saves from separate instances on the same file", async () => {
+    const file = freshFile();
+    const now = new Date();
+    const first: TaskState = {
+      taskId: "concurrent-first", sessionId: "concurrent-1", goal: "keep the first update", status: "active",
+      plan: [], createdAt: now, updatedAt: now
+    };
+    const second: TaskState = {
+      taskId: "concurrent-second", sessionId: "concurrent-2", goal: "keep the second update", status: "active",
+      plan: [], createdAt: now, updatedAt: now
+    };
+
+    await Promise.all([
+      new FileTaskMemoryStore({ file }).save(first),
+      new FileTaskMemoryStore({ file }).save(second)
+    ]);
+
+    const reader = new FileTaskMemoryStore({ file });
+    await expect(reader.findById(first.taskId)).resolves.toMatchObject({ goal: first.goal });
+    await expect(reader.findById(second.taskId)).resolves.toMatchObject({ goal: second.goal });
+  });
 });

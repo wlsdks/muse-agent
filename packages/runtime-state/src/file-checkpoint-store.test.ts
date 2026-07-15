@@ -15,6 +15,21 @@ function tmpDir(): string {
 }
 
 describe("FileCheckpointStore — durable local checkpoints so a crashed run can resume", () => {
+  it("rejects invalid retention options instead of silently losing or retaining checkpoints", () => {
+    const dir = tmpDir();
+    try {
+      for (const options of [
+        { maxCheckpointsPerRun: 0 },
+        { maxRuns: Number.POSITIVE_INFINITY },
+        { pruneIntervalSaves: -1 }
+      ]) {
+        expect(() => new FileCheckpointStore(join(dir, "c"), options)).toThrow(RangeError);
+      }
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("persists checkpoints and a FRESH store recovers them (the cross-process resume guarantee)", async () => {
     const dir = tmpDir();
     try {

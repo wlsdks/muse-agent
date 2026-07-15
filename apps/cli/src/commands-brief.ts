@@ -55,6 +55,7 @@ import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolveTodayWeatherLine } from "./commands-today.js";
 import type { Command } from "commander";
 import { sleep, waitForChildProcessResult } from "./async-promises.js";
+import { readNonEmptyEnv } from "./env.js";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import { checkinsFile } from "./commands-checkins.js";
@@ -87,13 +88,8 @@ export function resolveUserName(facts: Readonly<Record<string, string>> | undefi
   return found && found.length > 0 ? found : undefined;
 }
 
-function envValue(key: string): string | undefined {
-  const v = process.env[key]?.trim();
-  return v && v.length > 0 ? v : undefined;
-}
-
 function defaultUserKey(user?: string, persona?: string): string {
-  const base = user ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+  const base = user ?? readNonEmptyEnv(process.env, "MUSE_USER_ID") ?? readNonEmptyEnv(process.env, "USER") ?? "default";
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
 }
@@ -576,4 +572,3 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
-

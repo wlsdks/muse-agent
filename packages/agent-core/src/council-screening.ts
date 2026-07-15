@@ -375,16 +375,6 @@ export async function screenUnfaithfulContributors(
 }
 
 /**
- * Retained for back-compat with callers that pin the dissent bar explicitly. The
- * dissent check now runs on QUESTION-relevance (see selectDissentingExclusions),
- * which has its own calibrated floor (QUESTION_RELEVANCE_FLOOR) — this constant is
- * no longer read by the default path. Its old meaning (dissent ⟺ cosine to the
- * answer BELOW 0.35) was inverted: a genuine dissent scores 0.667 against the
- * answer, an unrelated peer 0.051.
- */
-export const COUNCIL_DISSENT_COSINE_FLOOR = QUESTION_RELEVANCE_FLOOR;
-
-/**
  * Dissent-surfacing advisory ("Hear Both Sides", arXiv:2603.20640 — retain
  * minority/diverse perspectives instead of letting the majority silently bury
  * them). The outlier screen quarantines a low-support peer as a

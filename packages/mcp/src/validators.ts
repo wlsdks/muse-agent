@@ -26,6 +26,8 @@ import type {
   McpServerValidationOptions
 } from "./index.js";
 
+const UNSAFE_MCP_SERVER_NAME_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
+
 export function validateMcpServer(
   server: McpServer,
   policy: McpSecurityPolicy,
@@ -36,6 +38,10 @@ export function validateMcpServer(
 } {
   if (server.name.trim().length === 0) {
     return { reason: "MCP server name is required", valid: false };
+  }
+
+  if (UNSAFE_MCP_SERVER_NAME_CHARACTER.test(server.name)) {
+    return { reason: "MCP server name contains unsafe control characters", valid: false };
   }
 
   if (server.transportType === "stdio") {

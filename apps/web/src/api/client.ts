@@ -48,13 +48,13 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-// Prefer the server's actionable error body (`errorMessage` / `message`)
+// Prefer the server's actionable error body (`errorMessage` / `message` / `error`)
 // over the bare status, which under HTTP/2 is often just a code.
 async function errorDetail(response: Response): Promise<string> {
   const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
   try {
-    const body = (await response.json()) as { errorMessage?: unknown; message?: unknown };
-    const candidate = [body.errorMessage, body.message].find(
+    const body = (await response.json()) as { error?: unknown; errorMessage?: unknown; message?: unknown };
+    const candidate = [body.errorMessage, body.message, body.error].find(
       (value): value is string => typeof value === "string" && value.trim().length > 0
     );
     return candidate ? `${status}: ${candidate}` : status;

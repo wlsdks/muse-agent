@@ -26,6 +26,9 @@
       "path": "../../packages/auth"
     },
     {
+      "path": "../../packages/attunement"
+    },
+    {
       "path": "../../packages/autoconfigure"
     },
     {
@@ -87,6 +90,9 @@
     },
     {
       "path": "../../packages/stores"
+    },
+    {
+      "path": "../../packages/tools"
     },
     {
       "path": "../../packages/voice"

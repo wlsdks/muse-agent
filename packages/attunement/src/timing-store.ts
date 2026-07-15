@@ -10,9 +10,10 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+import { atomicWriteFile } from "@muse/stores";
 
 import { AttunementStoreError } from "./attunement-store.js";
+import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import type { ContinuityOutcome } from "./types.js";
 
 export const TIMING_APP_CATEGORIES = ["communication", "planning", "research", "writing", "building", "other"] as const;
@@ -117,8 +118,6 @@ const EMPTY_STATE: TimingState = {
   schemaVersion: 1,
   sessions: []
 };
-
-type Mutation<T> = { readonly changed: boolean; readonly result: T; readonly state: TimingState };
 
 export function emptyTimingState(): TimingState {
   return EMPTY_STATE;
@@ -356,13 +355,17 @@ async function updateSession(
   });
 }
 
-async function mutateTimingState<T>(file: string, options: TimingStoreOptions, fn: (state: TimingState) => Mutation<T>): Promise<T> {
-  return withFileMutationQueue(file, () => withFileLock(file, async () => {
-    const state = await readTimingState(file);
-    const mutation = fn(state);
-    if (mutation.changed) await atomicWriteFile(file, `${JSON.stringify(mutation.state, null, 2)}\n`);
-    return mutation.result;
-  }));
+async function mutateTimingState<T>(
+  file: string,
+  options: TimingStoreOptions,
+  fn: (state: TimingState) => FileStateMutation<TimingState, T>
+): Promise<T> {
+  void options;
+  return mutateFileState(file, readTimingState, writeTimingState, fn);
+}
+
+async function writeTimingState(file: string, state: TimingState): Promise<void> {
+  await atomicWriteFile(file, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function parseTimingState(value: unknown): TimingState {

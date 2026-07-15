@@ -3,7 +3,7 @@
  * "repair" half of tool-calling for a small local model. Split out of index.ts.
  */
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { isJsonValue, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 
 export interface ToolArgumentValidation {
   readonly ok: boolean;
@@ -73,10 +73,8 @@ function coerceStructured(value: JsonValue, declared: string): JsonValue | undef
   } catch {
     return undefined;
   }
-  if (declared === "array") {
-    return Array.isArray(parsed) ? (parsed as JsonValue) : undefined;
-  }
-  return isRecord(parsed) ? (parsed as JsonValue) : undefined;
+  const matchesDeclaredShape = declared === "array" ? Array.isArray(parsed) : isRecord(parsed);
+  return matchesDeclaredShape && isJsonValue(parsed) ? parsed : undefined;
 }
 
 function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined {

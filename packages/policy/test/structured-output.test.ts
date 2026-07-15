@@ -101,6 +101,17 @@ describe("normalizeStructuredOutput", () => {
     expect(result.error).toBeTruthy();
   });
 
+  it("rejects syntactically valid JSON that parses to a non-finite number", () => {
+    const content = '{"score":1e400}';
+    const result = normalizeStructuredOutput(content, "json");
+
+    expect(result).toEqual({
+      content,
+      error: "JSON contains non-finite numbers",
+      normalized: false
+    });
+  });
+
   it("strips YAML fences without reinterpreting content", () => {
     const result = normalizeStructuredOutput("```yaml\nok: true\n```", "yaml");
 

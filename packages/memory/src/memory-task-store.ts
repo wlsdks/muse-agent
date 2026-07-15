@@ -286,6 +286,7 @@ async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promi
  * `FileConversationSummaryStore`.
  */
 export class FileTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenance {
+  private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
   private readonly options: { readonly maxTasks?: number; readonly retentionMs?: number };
   constructor(options: { readonly file?: string; readonly maxTasks?: number; readonly retentionMs?: number } = {}) {
@@ -305,43 +306,50 @@ export class FileTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenan
   }
 
   async save(state: TaskState): Promise<void> {
-    const mem = await this.hydrate();
-    mem.save(state);
-    await writeTaskStates(this.file, mem.entries());
+    await this.mutate((mem) => mem.save(state));
   }
 
   async findById(taskId: string): Promise<TaskState | undefined> {
-    const mem = await this.hydrate();
-    const found = mem.findById(taskId); // may clear an expired task as a side effect
-    await writeTaskStates(this.file, mem.entries());
-    return found;
+    return this.mutate((mem) => mem.findById(taskId)); // may clear an expired task as a side effect
   }
 
   async findActiveBySession(sessionId: string, userId?: string): Promise<TaskState | undefined> {
-    const mem = await this.hydrate();
-    const found = mem.findActiveBySession(sessionId, userId);
-    await writeTaskStates(this.file, mem.entries());
-    return found;
+    return this.mutate((mem) => mem.findActiveBySession(sessionId, userId));
   }
 
   async clear(taskId: string): Promise<void> {
-    const mem = await this.hydrate();
-    mem.clear(taskId);
-    await writeTaskStates(this.file, mem.entries());
+    await this.mutate((mem) => mem.clear(taskId));
   }
 
   async purgeExpired(now?: Date): Promise<number> {
-    const mem = await this.hydrate();
-    const purged = now ? mem.purgeExpired(now) : mem.purgeExpired();
-    await writeTaskStates(this.file, mem.entries());
-    return purged;
+    return this.mutate((mem) => now ? mem.purgeExpired(now) : mem.purgeExpired());
   }
 
   async purgeTerminalOlderThan(cutoff: Date): Promise<number> {
-    const mem = await this.hydrate();
-    const purged = mem.purgeTerminalOlderThan(cutoff);
-    await writeTaskStates(this.file, mem.entries());
-    return purged;
+    return this.mutate((mem) => mem.purgeTerminalOlderThan(cutoff));
+  }
+
+  private async mutate<T>(operation: (memory: InMemoryTaskMemoryStore) => T | Promise<T>): Promise<T> {
+    return this.serializeWrite(async () => {
+      const memory = await this.hydrate();
+      const result = await operation(memory);
+      await writeTaskStates(this.file, memory.entries());
+      return result;
+    });
+  }
+
+  private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const prior = FileTaskMemoryStore.writeQueues.get(this.file) ?? Promise.resolve();
+    const next = prior.catch(() => undefined).then(operation);
+    FileTaskMemoryStore.writeQueues.set(this.file, next);
+
+    try {
+      return await next;
+    } finally {
+      if (FileTaskMemoryStore.writeQueues.get(this.file) === next) {
+        FileTaskMemoryStore.writeQueues.delete(this.file);
+      }
+    }
   }
 }
 

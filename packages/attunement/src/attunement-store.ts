@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+import { atomicWriteFile } from "@muse/stores";
 import { isRecord, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
@@ -90,12 +91,6 @@ export interface ThreadInspection {
   readonly resetReceipts: readonly PolicyResetReceipt[];
   readonly thread: PersonalThread;
   readonly undoResetReceipts: readonly UndoResetReceipt[];
-}
-
-interface Mutation<T> {
-  readonly changed: boolean;
-  readonly result: T;
-  readonly state: AttunementState;
 }
 
 const EMPTY_STATE: AttunementState = {
@@ -383,14 +378,9 @@ function validateStateRelations(state: AttunementState): void {
 
 async function mutate<T>(
   file: string,
-  fn: (state: AttunementState) => Mutation<T> | Promise<Mutation<T>>
+  fn: (state: AttunementState) => FileStateMutation<AttunementState, T> | Promise<FileStateMutation<AttunementState, T>>
 ): Promise<T> {
-  return withFileMutationQueue(file, () => withFileLock(file, async () => {
-    const state = await readAttunementState(file);
-    const mutation = await fn(state);
-    if (mutation.changed) await writeAttunementState(file, mutation.state);
-    return mutation.result;
-  }));
+  return mutateFileState(file, readAttunementState, writeAttunementState, fn);
 }
 
 export function emptyAttunementState(): AttunementState {

@@ -127,6 +127,7 @@ export async function fetchOrThrowAsProviderError(
  * local generation is never killed; `MUSE_MODEL_TIMEOUT_MS=0` disables.
  */
 export const DEFAULT_MODEL_CALL_TIMEOUT_MS = 300_000;
+const MAX_MODEL_CALL_TIMEOUT_MS = 2_147_483_647;
 
 export function resolveModelCallTimeoutMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
   const raw = env.MUSE_MODEL_TIMEOUT_MS?.trim();
@@ -134,6 +135,9 @@ export function resolveModelCallTimeoutMs(env: NodeJS.ProcessEnv = process.env):
     return DEFAULT_MODEL_CALL_TIMEOUT_MS;
   }
   const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_MODEL_CALL_TIMEOUT_MS) {
+    return DEFAULT_MODEL_CALL_TIMEOUT_MS;
+  }
   return parsed === 0 ? undefined : parsed;
 }
 

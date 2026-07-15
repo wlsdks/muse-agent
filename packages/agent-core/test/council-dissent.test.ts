@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  COUNCIL_DISSENT_COSINE_FLOOR,
+  QUESTION_RELEVANCE_FLOOR,
   selectDissentingExclusions,
   synthesizeCouncilAnswer,
   type CouncilAnswer,
@@ -80,9 +80,9 @@ describe("selectDissentingExclusions (Hear Both Sides arXiv:2603.20640)", () => 
     expect(await selectDissentingExclusions(answerWith([{ peerId: "carol", reason: "consensus-outlier" }]), utterances, throwing, { question: QUESTION })).toEqual([]);
   });
 
-  it("exports a sane dissent floor", () => {
-    expect(COUNCIL_DISSENT_COSINE_FLOOR).toBeGreaterThan(0);
-    expect(COUNCIL_DISSENT_COSINE_FLOOR).toBeLessThan(1);
+  it("exports a sane question relevance floor", () => {
+    expect(QUESTION_RELEVANCE_FLOOR).toBeGreaterThan(0);
+    expect(QUESTION_RELEVANCE_FLOOR).toBeLessThan(1);
   });
 });
 

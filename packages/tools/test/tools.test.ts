@@ -509,6 +509,10 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(schema, { meta: "" })).toEqual({ meta: "" });
     // A bare JSON scalar string is neither object nor array → untouched.
     expect(coerceToolArguments(schema, { meta: "5" })).toEqual({ meta: "5" });
+    // `JSON.parse("1e400")` produces Infinity, which is not a JsonValue and
+    // must never cross the tool boundary under a structured cast.
+    expect(coerceToolArguments(schema, { edits: "[1e400]" })).toEqual({ edits: "[1e400]" });
+    expect(coerceToolArguments(schema, { meta: '{"score":1e400}' })).toEqual({ meta: '{"score":1e400}' });
   });
 
   it("coerceEnumArguments repairs case/whitespace on enum+const args, leaves OOV/ambiguous/non-string untouched", () => {
@@ -988,6 +992,20 @@ describe("Rust runner tool", () => {
     };
     // The cap shortened stdout, so the model must be told its output is partial.
     expect(result.stdout).toBe("0123");
+    expect(result.truncated).toBe(true);
+  });
+
+  it("caps fallback output by UTF-8 bytes without splitting a character", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: "가나다", timedOut: false, truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node", maxOutputBytes: 4 }, { runId: "run-utf8" }) as {
+      stdout: string; truncated: boolean;
+    };
+    expect(result.stdout).toBe("가");
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(4);
     expect(result.truncated).toBe(true);
   });
 
