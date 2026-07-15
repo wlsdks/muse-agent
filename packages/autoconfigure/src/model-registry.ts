@@ -215,7 +215,7 @@ export interface MuseCliDefaultModelConfig {
 }
 
 function isNodeErrnoException(value: unknown): value is NodeJS.ErrnoException {
-  return value instanceof Error && "code" in value;
+  return value !== null && typeof value === "object" && "code" in value && typeof (value as { code?: unknown }).code === "string";
 }
 
 /**

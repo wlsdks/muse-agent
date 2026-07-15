@@ -29,6 +29,9 @@ const GMAIL_SMTP_HOST = "smtp.gmail.com";
 const GMAIL_SMTP_PORT = 465;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SNIPPET_MAX_CHARS = 200;
+function hasErrorMessage(value: unknown): value is { message: string } {
+  return value !== null && typeof value === "object" && typeof (value as { message?: unknown }).message === "string";
+}
 
 export interface ImapSmtpEmailProviderConfig {
   readonly email: string;
@@ -154,7 +157,7 @@ function redact(message: string, appPassword: string): string {
 }
 
 function isAuthFailure(cause: unknown): boolean {
-  if (!(cause instanceof Error)) return false;
+  if (!hasErrorMessage(cause)) return false;
   if ((cause as { readonly authenticationFailed?: boolean }).authenticationFailed === true) return true;
   if ((cause as { readonly code?: string }).code === "EAUTH") return true;
   return /invalid credentials|authentication failed|auth\w*\s*fail/iu.test(cause.message);
@@ -162,7 +165,7 @@ function isAuthFailure(cause: unknown): boolean {
 
 /** The server's rejection text (responseText, falling back to the raw message), redacted + capped — the shared basis for both `serverRejectionDetail`'s English wrapper and the structured code classification below. */
 function trimmedServerText(cause: unknown, appPassword: string): string {
-  if (!(cause instanceof Error)) return "";
+  if (!hasErrorMessage(cause)) return "";
   const responseText = (cause as { readonly responseText?: unknown }).responseText;
   const raw = typeof responseText === "string" && responseText.trim().length > 0 ? responseText : cause.message;
   return redact(raw, appPassword).replace(/\s+/gu, " ").trim().slice(0, 200);
