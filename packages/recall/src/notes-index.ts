@@ -8,7 +8,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { errorMessage } from "@muse/shared";
 
-import { atomicWriteFile } from "@muse/stores";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 import { homedir } from "node:os";
 import { basename as pathBasename, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 
@@ -208,7 +208,7 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   // file up first (see store-version-backup.ts): reindexNotes writes
   // back on the next run, so an undiscarded mismatch would otherwise
   // be silently overwritten with zero trace.
-  if ((candidate as { version?: unknown }).version === 1) {
+  if ((candidate as { version?: unknown }).version === 1 && isV1NotesIndex(candidate)) {
     // v1 stored embeddings inline in the JSON — migrate losslessly (no
     // re-embedding): the same vectors are rewritten into the v2 sidecar.
     const v1 = candidate as unknown as NotesIndex;
@@ -250,7 +250,17 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   } catch {
     return undefined;
   }
-  if (dim <= 0 || !Array.isArray(meta.files) || bin.byteLength !== count * dim * 4) {
+  const chunkCount = meta.files?.reduce((total, file) => total + file.chunks.length, 0) ?? 0;
+  const expectedBytes = count * dim * Float32Array.BYTES_PER_ELEMENT;
+  if (
+    !Number.isSafeInteger(dim)
+    || dim <= 0
+    || !Number.isSafeInteger(count)
+    || count !== chunkCount
+    || !Number.isSafeInteger(expectedBytes)
+    || !Array.isArray(meta.files)
+    || bin.byteLength !== expectedBytes
+  ) {
     await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
@@ -273,9 +283,13 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
  * predicate (no risk of the loader accepting a shape the
  * stale-check rejects).
  */
-export function isNotesIndexValid(candidate: { readonly version?: unknown } | null | undefined): boolean {
-  if (!candidate || typeof candidate !== "object") return false;
-  return (candidate as { version?: unknown }).version === NOTES_INDEX_SCHEMA_VERSION;
+export function isNotesIndexValid(candidate: unknown): boolean {
+  return isRecord(candidate)
+    && candidate.version === NOTES_INDEX_SCHEMA_VERSION
+    && typeof candidate.model === "string"
+    && typeof candidate.builtAtIso === "string"
+    && Array.isArray(candidate.files)
+    && candidate.files.every((file) => isPersistedIndexFile(file));
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {
@@ -286,29 +300,68 @@ async function saveIndex(path: string, index: NotesIndex): Promise<void> {
   // point, and a crash between the two leaves a v2 JSON whose byte-length
   // check fails on load (treated as stale, reindexed) rather than silently
   // mismatched vectors. Both writes are atomic (tmp + fsync + rename).
-  let dim = 0;
-  let count = 0;
-  for (const file of index.files) {
-    for (const chunk of file.chunks) {
-      if (dim === 0) dim = chunk.embedding.length;
-      count += 1;
-    }
-  }
-  const bin = new Float32Array(count * dim);
-  let at = 0;
-  const metaFiles = index.files.map((file) => ({
-    ...file,
-    chunks: file.chunks.map((chunk) => {
-      if (chunk.embedding.length === dim) {
-        bin.set(chunk.embedding, at * dim);
+  await withFileMutationQueue(path, () => withFileLock(path, async () => {
+    let dim = 0;
+    let count = 0;
+    for (const file of index.files) {
+      for (const chunk of file.chunks) {
+        if (dim === 0) dim = chunk.embedding.length;
+        count += 1;
       }
-      at += 1;
-      const { embedding: _embedding, ...rest } = chunk;
-      return rest;
-    })
+    }
+    const bin = new Float32Array(count * dim);
+    let at = 0;
+    const metaFiles = index.files.map((file) => ({
+      ...file,
+      chunks: file.chunks.map((chunk) => {
+        if (chunk.embedding.length === dim) {
+          bin.set(chunk.embedding, at * dim);
+        }
+        at += 1;
+        const { embedding: _embedding, ...rest } = chunk;
+        return rest;
+      })
+    }));
+    await atomicWriteFile(embeddingsSidecarPath(path), new Uint8Array(bin.buffer, 0, count * dim * Float32Array.BYTES_PER_ELEMENT));
+    await atomicWriteFile(path, `${JSON.stringify({ ...index, embeddingCount: count, embeddingDim: dim, files: metaFiles }, null, 2)}\n`);
   }));
-  await atomicWriteFile(embeddingsSidecarPath(path), new Uint8Array(bin.buffer, 0, count * dim * 4));
-  await atomicWriteFile(path, `${JSON.stringify({ ...index, embeddingCount: count, embeddingDim: dim, files: metaFiles }, null, 2)}\n`);
+}
+
+function isV1NotesIndex(value: unknown): value is NotesIndex {
+  return isRecord(value)
+    && value.version === 1
+    && typeof value.model === "string"
+    && typeof value.builtAtIso === "string"
+    && Array.isArray(value.files)
+    && value.files.every((file) => isPersistedIndexFile(file, true));
+}
+
+function isPersistedIndexFile(value: unknown, requireEmbedding = false): boolean {
+  return isRecord(value)
+    && typeof value.path === "string"
+    && typeof value.mtimeMs === "number"
+    && Number.isFinite(value.mtimeMs)
+    && Array.isArray(value.chunks)
+    && value.chunks.every((chunk) => isPersistedIndexChunk(chunk, requireEmbedding));
+}
+
+function isPersistedIndexChunk(value: unknown, requireEmbedding: boolean): boolean {
+  if (!isRecord(value)
+    || typeof value.file !== "string"
+    || typeof value.chunkIndex !== "number"
+    || !Number.isSafeInteger(value.chunkIndex)
+    || value.chunkIndex < 0
+    || typeof value.text !== "string") {
+    return false;
+  }
+  if (value.embedding === undefined) {
+    return !requireEmbedding;
+  }
+  return Array.isArray(value.embedding) && value.embedding.every((number) => typeof number === "number" && Number.isFinite(number));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }
 
 /**

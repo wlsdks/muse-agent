@@ -63,4 +63,19 @@ describe("notes-index v2 — binary embedding sidecar", () => {
     await rm(embeddingsSidecarPath(indexPath));
     expect(await loadIndex(indexPath)).toBeUndefined();
   });
+
+  it("rejects a sidecar whose declared vector count does not match metadata chunks", async () => {
+    const indexPath = join(dir, "notes-index.json");
+    await writeFile(indexPath, JSON.stringify(v1Index()));
+    await loadIndex(indexPath);
+    const metadata = JSON.parse(await readFile(indexPath, "utf8")) as { embeddingCount: number };
+    await writeFile(indexPath, JSON.stringify({ ...metadata, ...JSON.parse(await readFile(indexPath, "utf8")), embeddingCount: metadata.embeddingCount + 1 }));
+    expect(await loadIndex(indexPath)).toBeUndefined();
+  });
+
+  it("treats malformed index metadata as stale instead of throwing from the loader", async () => {
+    const indexPath = join(dir, "notes-index.json");
+    await writeFile(indexPath, JSON.stringify({ builtAtIso: "now", files: [{ chunks: null, mtimeMs: 1, path: "a.md" }], model: "m", version: NOTES_INDEX_SCHEMA_VERSION }));
+    await expect(loadIndex(indexPath)).resolves.toBeUndefined();
+  });
 });
