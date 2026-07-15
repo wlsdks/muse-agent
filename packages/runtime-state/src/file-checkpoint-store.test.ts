@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { withFileLock } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -59,6 +60,31 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
+  });
+
+  it("waits for an external process lock before appending a checkpoint", async () => {
+    const dir = tmpDir();
+    const checkpointsDir = join(dir, "c");
+    const runId = "locked-run";
+    const acquired = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const heldLock = withFileLock(join(checkpointsDir, `${runId}.json`), async () => {
+      acquired.resolve();
+      await release.promise;
+    });
+    await acquired.promise;
+
+    let settled = false;
+    const pendingSave = new FileCheckpointStore(checkpointsDir).save({ runId, state: state("start"), step: 0 }).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(settled).toBe(false);
+
+    release.resolve();
+    await Promise.all([heldLock, pendingSave]);
+    expect(await new FileCheckpointStore(checkpointsDir).findByRunId(runId)).toHaveLength(1);
+    rmSync(dir, { force: true, recursive: true });
   });
 
   it("deleteByRunId clears a completed run's checkpoints", async () => {

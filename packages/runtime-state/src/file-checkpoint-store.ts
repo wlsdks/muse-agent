@@ -5,14 +5,14 @@
  * run's checkpoints to `<dir>/<runId>.json` so a mid-run crash + restart can replay
  * from the last step (the langgraph "save graph state at each step, resume" gap).
  *
- * Single-user + sequential, so a plain read-modify-write per save is safe. Tolerant:
- * a missing / corrupt file reads as no checkpoints (never throws into the agent loop).
+ * Each run file is serialized in-process and across processes. Tolerant: a missing
+ * / corrupt file reads as no checkpoints (never throws into the agent loop).
  */
 
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId, withFileLock, withFileMutationQueue, type JsonObject } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
@@ -177,29 +177,31 @@ export class FileCheckpointStore implements CheckpointStore {
       state: input.state,
       step: input.step
     };
-    const existing = [...await this.findByRunId(input.runId)];
-    const at = existing.findIndex((c) => c.step === checkpoint.step);
-    if (at >= 0) existing[at] = checkpoint;
-    else existing.push(checkpoint);
-    existing.sort(byStep);
-    const capped = existing.slice(-this.#maxPerRun);
-    if (!this.#ensuredDir) {
-      await mkdir(this.#dir, { recursive: true });
-      this.#ensuredDir = true;
-    }
-    // Atomic write: a crash mid-write must not corrupt the file and lose ALL prior
-    // good checkpoints for this run — exactly when fault-tolerance matters. Write a
-    // temp file then rename (atomic on POSIX); the reader never sees a partial file.
     const target = join(this.#dir, runFileName(input.runId));
-    const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
-    await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
-    await rename(tmp, target);
-    await this.#pruneOldRuns();
-    return checkpoint;
+    return withFileMutationQueue(target, () => withFileLock(target, async () => {
+      const existing = [...await this.findByRunId(input.runId)];
+      const at = existing.findIndex((candidate) => candidate.step === checkpoint.step);
+      if (at >= 0) existing[at] = checkpoint;
+      else existing.push(checkpoint);
+      existing.sort(byStep);
+      const capped = existing.slice(-this.#maxPerRun);
+      if (!this.#ensuredDir) {
+        await mkdir(this.#dir, { recursive: true });
+        this.#ensuredDir = true;
+      }
+      const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
+      await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
+      await rename(tmp, target);
+      await this.#pruneOldRuns();
+      return checkpoint;
+    }));
   }
 
   async deleteByRunId(runId: string): Promise<void> {
-    await rm(join(this.#dir, runFileName(runId)), { force: true }).catch(() => undefined);
+    const target = join(this.#dir, runFileName(runId));
+    await withFileMutationQueue(target, () => withFileLock(target, async () => {
+      await rm(target, { force: true }).catch(() => undefined);
+    }));
   }
 }
 
