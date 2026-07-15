@@ -116,13 +116,23 @@ export class MacOsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultOsascriptRun(osascriptPath: string, script: string, timeoutMs: number): Promise<string | undefined> {
-  return execFile(osascriptPath, ["-e", script], { timeout: timeoutMs, encoding: "utf8" })
-    .then(({ stdout }) => stdout)
-    .catch(() => undefined);
+  return (async (): Promise<string | undefined> => {
+    try {
+      const { stdout } = await execFile(osascriptPath, ["-e", script], { timeout: timeoutMs, encoding: "utf8" });
+      return stdout;
+    } catch {
+      return undefined;
+    }
+  })();
 }
 
 function defaultPbpasteRun(pbpastePath: string, timeoutMs: number): Promise<string | undefined> {
-  return execFile(pbpastePath, [], { timeout: timeoutMs, encoding: "utf8" })
-    .then(({ stdout }) => stdout)
-    .catch(() => undefined);
+  return (async (): Promise<string | undefined> => {
+    try {
+      const { stdout } = await execFile(pbpastePath, [], { timeout: timeoutMs, encoding: "utf8" });
+      return stdout;
+    } catch {
+      return undefined;
+    }
+  })();
 }

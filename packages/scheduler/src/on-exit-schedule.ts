@@ -174,9 +174,10 @@ export class OnExitWatcher {
       status
     });
 
-    const onExitPromise = child.waitForExit().then(({ exitCode, signal }) =>
-      toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal)
-    );
+    const onExitPromise = (async (): Promise<OnExitWatchOutcome> => {
+      const { exitCode, signal } = await child.waitForExit();
+      return toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal);
+    })();
 
     const pollMs = trigger.pollMs;
     const onPollPromise = pollMs

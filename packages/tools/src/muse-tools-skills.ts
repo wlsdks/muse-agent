@@ -275,7 +275,8 @@ function runChild(
   args: readonly string[],
   options: RunChildOptions
 ): Promise<RunChildResult> {
-  return runCommandWithTimeout({
+  return (async (): Promise<RunChildResult> => {
+    const result = await runCommandWithTimeout({
     command: bin,
     args: [...args],
     stdin: options.stdin,
@@ -285,13 +286,15 @@ function runChild(
     maxStderrBytes: MAX_STREAM_BYTES,
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.env ? { env: options.env } : {})
-  }).then((result) => ({
-    exitCode: result.exitCode,
-    signal: result.signal,
-    stderr: decodeCapped(result.stderr),
-    stdout: decodeCapped(result.stdout),
-    timedOut: result.timedOut
-  }));
+    });
+    return {
+      exitCode: result.exitCode,
+      signal: result.signal,
+      stderr: decodeCapped(result.stderr),
+      stdout: decodeCapped(result.stdout),
+      timedOut: result.timedOut
+    };
+  })();
 }
 
 function decodeCapped(value: string): string {

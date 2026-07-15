@@ -104,23 +104,21 @@ function defaultSmtpClientFactory(config: { readonly host: string; readonly port
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  const { promise: bounded, resolve, reject } = Promise.withResolvers<T>();
-  const timer = setTimeout(() => {
-    reject(new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`));
-  }, timeoutMs);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
-  promise.then(
-    (value) => {
-      clearTimeout(timer);
-      resolve(value);
-    },
-    (cause: unknown) => {
-      clearTimeout(timer);
-      reject(cause);
+  const timeout = new Promise<never>((_, reject) => {
+    const timeoutError = new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`);
+    timeoutHandle = setTimeout(() => {
+      reject(timeoutError);
+    }, timeoutMs);
+    timeoutHandle.unref?.();
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
     }
-  );
-
-  return bounded;
+  });
 }
 
 function redact(message: string, appPassword: string): string {
