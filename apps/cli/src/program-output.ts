@@ -133,10 +133,9 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
  * and `undefined` when there's no usable string (caller skips the write). Pure.
  */
 export function chatTurnPersistText(body: unknown): string | undefined {
-  if (!body || typeof body !== "object") return undefined;
-  const rec = body as Record<string, unknown>;
-  if (typeof rec["responseForHistory"] === "string") return rec["responseForHistory"];
-  if (typeof rec["response"] === "string") return rec["response"];
+  if (!isRecord(body)) return undefined;
+  if (typeof body.responseForHistory === "string") return body.responseForHistory;
+  if (typeof body.response === "string") return body.response;
   return undefined;
 }
 

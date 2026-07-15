@@ -544,13 +544,16 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         await writeTasks(file, next);
         return serializeTask(cleared);
       };
-      const editApi = async (): Promise<Record<string, unknown>> => (await helpers.apiRequest(
-        io,
-        command,
-        `/api/tasks/${encodeURIComponent(id)}`,
-        updates,
-        "PATCH"
-      )) as Record<string, unknown>;
+      const editApi = async (): Promise<Record<string, unknown>> => {
+        const apiResult = await helpers.apiRequest(
+          io,
+          command,
+          `/api/tasks/${encodeURIComponent(id)}`,
+          updates,
+          "PATCH"
+        );
+        return isRecord(apiResult) ? apiResult : {};
+      };
       const updated = await taskLocalFallback(io, Boolean(options.local), editLocal, editApi);
       if (options.json) {
         helpers.writeOutput(io, updated);

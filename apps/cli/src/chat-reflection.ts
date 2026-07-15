@@ -22,7 +22,7 @@ import {
 } from "@muse/agent-core";
 import { extractJsonObject } from "@muse/memory";
 import { composeSurfacePrompt } from "@muse/prompts";
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { isRecord, stripUntrustedTerminalChars } from "@muse/shared";
 
 import { recurringEpisodeThreads, type RecurringThread } from "./chat-ink-core.js";
 
@@ -116,7 +116,8 @@ export async function synthesizeReflection(opts: {
       temperature: 0
     });
     if (!response.output) return "";
-    const payload = extractJsonObject(response.output) as Record<string, unknown> | undefined;
+    const rawPayload = extractJsonObject(response.output);
+    const payload = isRecord(rawPayload) ? rawPayload : undefined;
     const raw = payload && typeof payload.insight === "string" ? payload.insight : "";
     const insight = stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim().slice(0, 240);
     if (insight.length === 0 || !opts.reverify) return insight;

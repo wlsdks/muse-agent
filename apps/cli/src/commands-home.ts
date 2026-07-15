@@ -9,6 +9,7 @@
 import { resolveActionLogFile, resolveHomeAssistantEnvironment, type MuseEnvironment } from "@muse/autoconfigure";
 import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -93,7 +94,11 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
       let data: Record<string, unknown> | undefined;
       if (options.data) {
         try {
-          data = JSON.parse(options.data) as Record<string, unknown>;
+          const parsed = JSON.parse(options.data);
+          data = isRecord(parsed) ? parsed : undefined;
+          if (data === undefined) {
+            throw new Error("muse home: --data must be a JSON object");
+          }
         } catch {
           io.stderr("muse home: --data must be valid JSON\n");
           process.exitCode = 1;

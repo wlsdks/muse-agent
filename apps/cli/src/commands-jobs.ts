@@ -221,7 +221,11 @@ export async function findJobsByIdPrefix(
   for (const id of listKnownJobIds()) {
     if (!id.startsWith(prefix)) continue;
     const summary = jobSummary(await readJobLines(jobPath(id)));
-    out.push({ id, record: { ...summary } as Record<string, unknown> });
+    const record: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(summary)) {
+      record[key] = value;
+    }
+    out.push({ id, record });
   }
   return out;
 }

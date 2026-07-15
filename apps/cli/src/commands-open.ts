@@ -102,7 +102,11 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
 }
 
 function toRecord<T extends object>(value: T): Record<string, unknown> {
-  return { ...value } as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    out[key] = item;
+  }
+  return out;
 }
 
 export function registerOpenCommand(program: Command, io: ProgramIO): void {
