@@ -20,6 +20,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import type { PersistedEpisode } from "@muse/stores";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
@@ -89,16 +90,16 @@ function isValidEpisodeIndexEntry(raw: unknown): raw is EpisodeIndexEntry {
   if (typeof e.startedAt !== "string") return false;
   if (typeof e.endedAt !== "string") return false;
   if (!Array.isArray(e.embedding)) return false;
-  if (e.importance !== undefined && typeof e.importance !== "number") return false;
+  if (e.importance !== undefined && (!Number.isSafeInteger(e.importance) || e.importance < 1 || e.importance > 10)) return false;
   return e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
 export async function saveEpisodeIndex(file: string, index: EpisodeIndex): Promise<void> {
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(index, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
+    await fs.mkdir(dirname(file), { recursive: true });
+    await atomicWriteFile(file, `${JSON.stringify(index, null, 2)}\n`);
+    await fs.chmod(file, 0o600).catch(() => undefined);
+  }));
 }
 
 /**

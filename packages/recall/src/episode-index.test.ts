@@ -158,6 +158,7 @@ describe("loadEpisodeIndex — per-entry validation drops corrupt episode rows s
         { ...base, id: "obj-embed", embedding: { length: 3 } },
         { ...base, id: "nan-embed", embedding: [0.1, Number.NaN, 0.3] },
         { ...base, id: "inf-embed", embedding: [Number.POSITIVE_INFINITY] },
+        { ...base, id: "bad-importance", embedding: goodEmbedding, importance: 11 },
         { ...base, id: "missing-embed" }
       ]
     });
