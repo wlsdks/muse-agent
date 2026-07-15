@@ -16,7 +16,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readFollowups } from "@muse/stores";
@@ -74,7 +74,7 @@ function homeMuse(name: string): string {
 async function safeReadJson(path: string): Promise<unknown | undefined> {
   try {
     const raw = await readFile(path, "utf8");
-    return JSON.parse(raw) as unknown;
+    return JSON.parse(raw);
   } catch { return undefined; }
 }
 
@@ -189,7 +189,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           last_ended_at: episodesSummary.lastEndedAt ?? null,
           last_summary: episodesSummary.lastSummary ?? null,
           total: episodesSummary.total
-        } as JsonValue,
+        },
         followups: {
           cancelled: followupsSummary.cancelled,
           fired: followupsSummary.fired,
@@ -197,7 +197,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           next_scheduled_summary: followupsSummary.nextScheduledSummary ?? null,
           scheduled: followupsSummary.scheduled,
           total: followupsSummary.total
-        } as JsonValue,
+        },
         objectives: {
           active: objectivesSummary.active,
           cancelled: objectivesSummary.cancelled,
@@ -205,15 +205,15 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           escalated: objectivesSummary.escalated,
           escalated_sample: objectivesSummary.escalatedSample ?? null,
           total: objectivesSummary.total
-        } as JsonValue,
+        },
         session: {
           dnd: sessionLockUntil !== undefined,
           until: sessionLockUntil ?? null
-        } as JsonValue,
+        },
         patterns: {
           last_fired_at: patternsSummary.lastFiredAtIso ?? null,
           total: patternsSummary.total
-        } as JsonValue,
+        },
         reminders: {
           fired: remindersSummary.fired,
           next_due_at: remindersSummary.nextDueAt ?? null,
@@ -221,7 +221,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           overdue: remindersSummary.overdue,
           pending: remindersSummary.pending,
           total: remindersSummary.total
-        } as JsonValue,
+        },
         log: {
           bytes: logBytes ?? null,
           file: logFile
@@ -233,8 +233,8 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           status: lastNotice.status,
           text: lastNotice.text,
           title: lastNotice.title
-        } as JsonValue) : null,
-        model: (options.model?.trim() || process.env.MUSE_MODEL?.trim() || null) as JsonValue,
+        }) : null,
+        model: options.model?.trim() || process.env.MUSE_MODEL?.trim() || null,
         persona: {
           fact_count: factCount,
           goal_count: goalCount,
@@ -242,21 +242,21 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           updated_at: persona?.updatedAt ?? null,
           user_id: userId,
           veto_count: vetoCount
-        } as JsonValue,
+        },
         tasks: {
           due_next_24h: due24h.slice(0, 5).map((task) => ({
             due_at: task.dueAt ?? null,
             id: task.id ?? null,
             title: task.title ?? null,
             urgent: task.urgent === true
-          })) as JsonValue,
+          })),
           total_open: allTasks.filter((task) => task.status === "open").length
-        } as JsonValue,
+        },
         trust: {
           blocked_count: trust?.blockedTools?.length ?? 0,
           trusted_count: trust?.trustedTools?.length ?? 0,
-          trusted_sample: (trust?.trustedTools ?? []).slice(0, 3) as JsonValue
-        } as JsonValue
+          trusted_sample: (trust?.trustedTools ?? []).slice(0, 3)
+        }
       };
       return snapshot;
     },
@@ -293,7 +293,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
         );
         return {
           dir,
-          files: files as JsonValue,
+          files,
           total: files.length
         };
       } catch (cause) {

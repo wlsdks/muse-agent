@@ -8,7 +8,7 @@ import {
 import { resolve as nodePathResolve, sep as nodePathSep } from "node:path";
 import type { Buffer } from "node:buffer";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -185,7 +185,7 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
             const truncated = dirents.length > maxListEntries;
             const limited = truncated ? dirents.slice(0, maxListEntries) : dirents;
             return {
-              entries: limited.map((entry) => ({ kind: entryKind(entry), name: entry.name })) as JsonValue,
+              entries: limited.map((entry) => ({ kind: entryKind(entry), name: entry.name })),
               total: dirents.length,
               truncated
             } satisfies JsonObject;

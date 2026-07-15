@@ -18,7 +18,7 @@ export function parseJudgeStringArray(raw: string): readonly string[] {
   }
   if (!body) return [];
   let parsed: unknown;
-  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
+  try { parsed = JSON.parse(body); } catch { return []; }
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
 }

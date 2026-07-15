@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 import { hasNestedUnboundedQuantifier } from "@muse/tools";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -131,8 +131,8 @@ export function createRegexMcpServer(): LoopbackMcpServer {
             matches: matches.map((entry) => ({
               index: entry.index,
               value: entry.value,
-              ...(entry.groups ? { groups: entry.groups as JsonValue } : {})
-            })) as JsonValue,
+              ...(entry.groups ? { groups: [...entry.groups] } : {})
+            })),
             truncated
           } satisfies JsonObject;
         },

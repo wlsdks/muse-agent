@@ -78,11 +78,12 @@ export function createJsonMcpServer(): LoopbackMcpServer {
           } else {
             target = valueArg;
           }
+          const root = toJsonValue(target);
           const segments = parseJsonPath(path);
           if (!segments) {
             return { error: "path is malformed" };
           }
-          let cursor: unknown = target;
+          let cursor: JsonValue = root;
           for (const segment of segments) {
             if (segment.kind === "key") {
               // Object.hasOwn, NOT `key in cursor`: `in` walks the prototype chain, so a
@@ -99,7 +100,7 @@ export function createJsonMcpServer(): LoopbackMcpServer {
               return { found: false, value: null } satisfies JsonObject;
             }
           }
-          return { found: true, value: cursor as JsonValue } satisfies JsonObject;
+          return { found: true, value: cursor } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,
@@ -123,7 +124,9 @@ export function createJsonMcpServer(): LoopbackMcpServer {
           if (overrides === undefined) {
             return { error: "overrides is required" };
           }
-          return { merged: deepMerge(base, overrides) as JsonValue } satisfies JsonObject;
+          const baseValue = toJsonValue(base);
+          const overridesValue = toJsonValue(overrides);
+          return { merged: deepMerge(baseValue, overridesValue) } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,
@@ -183,17 +186,43 @@ function parseJsonPath(path: string): readonly JsonPathSegment[] | undefined {
   return segments;
 }
 
-function deepMerge(base: unknown, overrides: unknown): unknown {
-  if (overrides === null || overrides === undefined) {
-    return overrides ?? base;
+function toJsonValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
   }
-  if (typeof overrides !== "object" || Array.isArray(overrides)) {
+  if (value === undefined || typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(toJsonValue);
+  }
+  if (typeof value === "object") {
+    const out: JsonObject = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = toJsonValue(nested);
+    }
+    return out;
+  }
+  return String(value);
+}
+
+function deepMerge(base: JsonValue, overrides: JsonValue): JsonValue {
+  if (overrides === null) {
     return overrides;
   }
-  if (!base || typeof base !== "object" || Array.isArray(base)) {
+  if (!isJsonObject(overrides) || Array.isArray(overrides)) {
     return overrides;
   }
-  const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  if (!isJsonObject(base)) {
+    return overrides;
+  }
+  if (Array.isArray(base)) {
+    return overrides;
+  }
+  const result: JsonObject = { ...base };
   for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
     if (key === "__proto__") {
       // Model args arrive via JSON.parse, which makes "__proto__" an OWN data key.
@@ -204,12 +233,16 @@ function deepMerge(base: unknown, overrides: unknown): unknown {
       Object.defineProperty(result, key, {
         configurable: true,
         enumerable: true,
-        value: deepMerge(existing, value),
+        value: deepMerge(toJsonValue(existing), toJsonValue(value)),
         writable: true
       });
       continue;
     }
-    result[key] = deepMerge(result[key], value);
+    result[key] = deepMerge(result[key], toJsonValue(value));
   }
   return result;
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && typeof value === "object";
 }

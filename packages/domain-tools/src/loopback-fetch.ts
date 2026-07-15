@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -202,7 +202,7 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
             const result = await fetchWithOptionalBody(decision.url, { headers: requestHeaders, method: "GET" }, true);
             return {
               body: result.body ?? "",
-              headers: headersToObject(result.headers) as JsonValue,
+              headers: headersToObject(result.headers),
               status: result.status,
               truncated: result.truncated
             } satisfies JsonObject;
@@ -245,7 +245,7 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
           try {
             const result = await fetchWithOptionalBody(decision.url, { method: "HEAD" }, false);
             return {
-              headers: headersToObject(result.headers) as JsonValue,
+              headers: headersToObject(result.headers),
               status: result.status
             } satisfies JsonObject;
           } catch (error) {

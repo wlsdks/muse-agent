@@ -1,7 +1,7 @@
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import { formatDueLocal, isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "@muse/mcp-shared";
 import { errorMessage } from "@muse/mcp";
-import type { JsonObject, JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 /**
  * Non-tool-definition calendar logic lifted out of `loopback-calendar.ts` —
@@ -61,7 +61,7 @@ export async function resolveEventForAction(
   registry: CalendarProviderRegistry,
   ref: string,
   providerId: string | undefined
-): Promise<{ readonly event: EventRefLike } | { readonly error: string; readonly candidates?: JsonValue }> {
+): Promise<{ readonly event: EventRefLike } | { readonly error: string; readonly candidates?: readonly JsonObject[] }> {
   const from = new Date(Date.now() - 30 * 86_400_000);
   const to = new Date(Date.now() + 365 * 86_400_000);
   let events;
@@ -73,7 +73,11 @@ export async function resolveEventForAction(
   const resolution = resolveEventByRef(events, ref);
   if (resolution.status === "ambiguous") {
     return {
-      candidates: resolution.candidates.map((event) => ({ id: event.id, startsAtLocal: eventLocal(event.startsAt, false), title: event.title })) as JsonValue,
+      candidates: resolution.candidates.map((event) => ({
+        id: event.id,
+        startsAtLocal: eventLocal(event.startsAt, false),
+        title: event.title
+      })),
       error: `"${ref}" matches multiple events — say which one`
     };
   }
@@ -104,7 +108,7 @@ export function serializeEvent(event: CalendarEvent): JsonObject {
     title: event.title,
     ...(event.location ? { location: event.location } : {}),
     ...(event.notes ? { notes: event.notes } : {}),
-    ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] as JsonValue } : {}),
+    ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] } : {}),
     ...(event.url ? { url: event.url } : {})
   };
 }
