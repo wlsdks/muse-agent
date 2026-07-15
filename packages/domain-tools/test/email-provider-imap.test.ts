@@ -355,3 +355,63 @@ describe("ImapSmtpEmailProvider — Gmail defaults", () => {
     expect(captured[0]?.host).toBe("imap.naver.com");
   });
 });
+
+describe("auth-failure diagnostics (live-found: crash + hidden server detail)", () => {
+  function authRejectingClient(errorProps: Record<string, unknown>) {
+    const events: Record<string, (e: unknown) => void> = {};
+    let closed = false;
+    const client = {
+      close: () => { closed = true; },
+      connect: async () => {
+        const err = Object.assign(new Error(String(errorProps.message ?? "auth failed")), errorProps);
+        throw err;
+      },
+      fetch: async function* () { yield undefined as never; },
+      fetchOne: async () => false as const,
+      logout: async () => undefined,
+      mailboxOpen: async () => ({ exists: 0 } as never),
+      on: (event: string, listener: (e: unknown) => void) => { events[event] = listener; },
+      search: async () => false as const
+    };
+    return {
+      client,
+      emit: (e: unknown) => events["error"]?.(e),
+      hasErrorListener: () => typeof events["error"] === "function",
+      wasClosed: () => closed
+    };
+  }
+
+  it("surfaces the server's rejection line (redacted) in the auth error", async () => {
+    const { client } = authRejectingClient({ authenticationFailed: true, responseText: "Invalid credentials secretpass99 (Failure)" });
+    const provider = new ImapSmtpEmailProvider(
+      { appPassword: "secretpass99", email: "a@gmail.com" },
+      { imapClientFactory: () => client }
+    );
+    const error = await provider.verifyConnection().then(() => undefined, (e: unknown) => e as Error);
+    expect(error?.message).toContain('Server said: "Invalid credentials');
+    expect(error?.message).not.toContain("secretpass99");
+  });
+
+  it("names the DisplayUnlock flow when Google blocks with a web-login demand", async () => {
+    const { client } = authRejectingClient({ authenticationFailed: true, responseText: "[ALERT] Please log in via your web browser" });
+    const provider = new ImapSmtpEmailProvider(
+      { appPassword: "pw", email: "a@gmail.com" },
+      { imapClientFactory: () => client }
+    );
+    const error = await provider.verifyConnection().then(() => undefined, (e: unknown) => e as Error);
+    expect(error?.message).toContain("DisplayUnlockCaptcha");
+    expect(error?.message).toContain("not a wrong password");
+  });
+
+  it("registers the error-event swallower and closes the client on a failed connect (post-rejection socket timeout must not crash)", async () => {
+    const { client, emit, hasErrorListener, wasClosed } = authRejectingClient({ authenticationFailed: true });
+    const provider = new ImapSmtpEmailProvider(
+      { appPassword: "pw", email: "a@gmail.com" },
+      { imapClientFactory: () => client }
+    );
+    await provider.verifyConnection().catch(() => undefined);
+    expect(hasErrorListener()).toBe(true);
+    expect(wasClosed()).toBe(true);
+    expect(() => { emit(new Error("Socket timeout")); }).not.toThrow();
+  });
+});

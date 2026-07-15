@@ -46,6 +46,10 @@ export interface ImapMailboxClient {
   search(query: SearchObject, options?: { readonly uid?: boolean }): Promise<number[] | false>;
   fetch(range: SequenceString | number[] | SearchObject, query: FetchQueryObject, options?: FetchOptions): AsyncIterable<FetchMessageObject>;
   fetchOne(seq: SequenceString, query: FetchQueryObject, options?: FetchOptions): Promise<FetchMessageObject | false>;
+  /** ImapFlow is an EventEmitter; without an 'error' listener a post-rejection socket timeout crashes the whole process (observed live against Gmail). Optional so contract fakes stay minimal. */
+  on?(event: "error", listener: (error: unknown) => void): unknown;
+  /** Hard teardown for the connect-failed path where logout() never runs. Optional for fakes. */
+  close?(): void;
 }
 
 export type ImapClientFactory = (config: { readonly host: string; readonly port: number; readonly user: string; readonly pass: string }) => ImapMailboxClient;
@@ -131,11 +135,32 @@ function isAuthFailure(cause: unknown): boolean {
   return /invalid credentials|authentication failed|auth\w*\s*fail/iu.test(cause.message);
 }
 
+/**
+ * The server's own rejection line distinguishes causes our generic advice
+ * can't: "Invalid credentials" (wrong/other-account app password) vs
+ * "Please log in via your web browser" (Google security block that an app
+ * password cannot pass — needs the DisplayUnlock flow). Redacted, capped.
+ */
+function serverRejectionDetail(cause: unknown, appPassword: string): string {
+  if (!(cause instanceof Error)) return "";
+  const responseText = (cause as { readonly responseText?: unknown }).responseText;
+  const raw = typeof responseText === "string" && responseText.trim().length > 0 ? responseText : cause.message;
+  const trimmed = redact(raw, appPassword).replace(/\s+/gu, " ").trim().slice(0, 200);
+  return trimmed.length > 0 ? ` Server said: "${trimmed}".` : "";
+}
+
+function webLoginBlockHint(detail: string): string {
+  return /web browser|web login/iu.test(detail)
+    ? " Google is blocking this sign-in (not a wrong password) — open https://accounts.google.com/DisplayUnlockCaptcha, click Continue, then retry within a few minutes."
+    : "";
+}
+
 function classifyImapError(cause: unknown, email: string, appPassword: string): Error {
   if (cause instanceof ImapSmtpNetworkError || cause instanceof ImapSmtpAuthError) return cause;
   if (isAuthFailure(cause)) {
+    const detail = serverRejectionDetail(cause, appPassword);
     return new ImapSmtpAuthError(
-      `IMAP login rejected for ${email} — check the 16-character app password (Google shows it with spaces; they must be stripped) at https://myaccount.google.com/apppasswords, and confirm 2-Step Verification is on for this account.`
+      `IMAP login rejected for ${email} — check the 16-character app password (Google shows it with spaces; they must be stripped) at https://myaccount.google.com/apppasswords, confirm 2-Step Verification is on for THIS account, and make sure the app password was created on the same account.${detail}${webLoginBlockHint(detail)}`
     );
   }
   const detail = cause instanceof Error ? cause.message : String(cause);
@@ -267,6 +292,11 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
   private async withMailbox<T>(fn: (client: ImapMailboxClient, mailbox: MailboxObject) => Promise<T>): Promise<T> {
     const factory = this.deps.imapClientFactory ?? defaultImapClientFactory;
     const client = factory({ host: this.imapHost, pass: this.config.appPassword, port: this.imapPort, user: this.config.email });
+    // A rejected login leaves ImapFlow's socket alive; its later "Socket
+    // timeout" fires as an unhandled 'error' EVENT and kills the process
+    // (observed live against imap.gmail.com). Swallow — the promise chain
+    // already carries the real failure.
+    client.on?.("error", () => undefined);
     const run = async (): Promise<T> => {
       await client.connect();
       try {
@@ -279,6 +309,9 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
     try {
       return await withTimeout(run(), this.timeoutMs, "IMAP operation");
     } catch (cause) {
+      try {
+        client.close?.();
+      } catch { /* teardown is best-effort; the classified error below is the signal */ }
       throw classifyImapError(cause, this.config.email, this.config.appPassword);
     }
   }
