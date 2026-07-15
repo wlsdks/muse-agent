@@ -21,7 +21,11 @@ const DEFAULT_MAX_RUNS = 500;
 
 /** Filesystem-safe filename for a runId (no path traversal, no separators). */
 function runFileName(runId: string): string {
-  return `${runId.replace(/[^A-Za-z0-9._-]/gu, "_").slice(0, 200)}.json`;
+  return `${fileSafeSegment(runId)}.json`;
+}
+
+function fileSafeSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/gu, "_").slice(0, 200);
 }
 
 function serialize(checkpoint: ExecutionCheckpoint): JsonObject {
@@ -187,7 +191,7 @@ export class FileCheckpointStore implements CheckpointStore {
     // good checkpoints for this run — exactly when fault-tolerance matters. Write a
     // temp file then rename (atomic on POSIX); the reader never sees a partial file.
     const target = join(this.#dir, runFileName(input.runId));
-    const tmp = `${target}.${checkpoint.id}.tmp`;
+    const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
     await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
     await rename(tmp, target);
     await this.#pruneOldRuns();

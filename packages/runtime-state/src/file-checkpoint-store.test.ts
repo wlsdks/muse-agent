@@ -159,4 +159,18 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
       rmSync(dir, { force: true, recursive: true });
     }
   });
+
+  it("sanitizes a caller-provided checkpoint id before using it in the atomic temporary path", async () => {
+    const dir = tmpDir();
+    try {
+      const store = new FileCheckpointStore(join(dir, "c"));
+      await store.save({ id: "../../outside", runId: "r", state: state("start"), step: 0 });
+
+      expect(await store.findByRunId("r")).toEqual([
+        expect.objectContaining({ id: "../../outside", step: 0 })
+      ]);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
 });

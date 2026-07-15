@@ -131,14 +131,34 @@ export function createSessionTagRecord(
   input: CreateSessionTagInput,
   options: Required<SessionTagStoreOptions>
 ): SessionTag {
+  const comment = input.comment?.trim();
+
   return {
-    ...(input.comment ? { comment: input.comment } : {}),
-    createdAt: input.createdAt ?? options.now(),
-    createdBy: input.createdBy,
-    id: input.id ?? options.idFactory(),
-    label: input.label.trim(),
-    sessionId: input.sessionId
+    ...(comment ? { comment } : {}),
+    createdAt: resolveCreatedAt(input.createdAt, options.now),
+    createdBy: requireNonBlankString(input.createdBy, "createdBy"),
+    id: requireNonBlankString(input.id ?? options.idFactory(), "id"),
+    label: requireNonBlankString(input.label, "label"),
+    sessionId: requireNonBlankString(input.sessionId, "sessionId")
   };
+}
+
+function requireNonBlankString(value: string, name: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new TypeError(`Session tag ${name} must not be blank`);
+  }
+
+  return normalized;
+}
+
+function resolveCreatedAt(value: number | undefined, now: () => number): number {
+  const timestamp = value ?? now();
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError("Session tag createdAt must be a non-negative safe integer");
+  }
+
+  return timestamp;
 }
 
 export function createSessionTagInsert(
@@ -171,4 +191,3 @@ export function mapSessionTagRow(row: SessionTagRow): SessionTag {
 function compareSessionTags(left: SessionTag, right: SessionTag): number {
   return left.createdAt - right.createdAt || left.id.localeCompare(right.id);
 }
-

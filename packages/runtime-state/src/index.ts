@@ -84,9 +84,16 @@ export class InMemoryCheckpointStore implements CheckpointStore {
   private readonly checkpointsByRunId = new Map<string, ExecutionCheckpoint[]>();
 
   constructor(options: InMemoryCheckpointStoreOptions = {}) {
-    this.maxCheckpointsPerRun =
-      options.maxCheckpointsPerRun ?? InMemoryCheckpointStore.defaultMaxCheckpointsPerRun;
-    this.maxRuns = options.maxRuns ?? InMemoryCheckpointStore.defaultMaxRuns;
+    this.maxCheckpointsPerRun = requirePositiveSafeInteger(
+      options.maxCheckpointsPerRun,
+      InMemoryCheckpointStore.defaultMaxCheckpointsPerRun,
+      "maxCheckpointsPerRun"
+    );
+    this.maxRuns = requirePositiveSafeInteger(
+      options.maxRuns,
+      InMemoryCheckpointStore.defaultMaxRuns,
+      "maxRuns"
+    );
     this.idFactory = options.idFactory ?? (() => createRunId("checkpoint"));
   }
 
@@ -152,7 +159,11 @@ export class InMemoryHookTraceStore implements HookTraceStore {
   private readonly traces: HookTrace[] = [];
 
   constructor(options: InMemoryHookTraceStoreOptions = {}) {
-    this.maxTraces = options.maxTraces ?? InMemoryHookTraceStore.defaultMaxTraces;
+    this.maxTraces = requirePositiveSafeInteger(
+      options.maxTraces,
+      InMemoryHookTraceStore.defaultMaxTraces,
+      "maxTraces"
+    );
     this.idFactory = options.idFactory ?? (() => createRunId("hook_trace"));
     this.now = options.now ?? (() => new Date());
   }
@@ -198,6 +209,15 @@ function compareCheckpoints(left: ExecutionCheckpoint, right: ExecutionCheckpoin
 
 function compareHookTraces(left: HookTrace, right: HookTrace): number {
   return left.startedAt.getTime() - right.startedAt.getTime() || left.createdAt.getTime() - right.createdAt.getTime();
+}
+
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
 }
 
 export { KyselyCheckpointStore, KyselyHookTraceStore } from "./kysely-stores.js";
