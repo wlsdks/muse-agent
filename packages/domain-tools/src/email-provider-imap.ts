@@ -357,7 +357,7 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
 
   /** The wizard's immediate-verification step: a real IMAP login + INBOX open, reporting the message count on success. Reuses `withMailbox` so a bad app password / network failure comes back through the same typed, redacted errors as every other call. */
   async verifyConnection(): Promise<{ readonly messageCount: number }> {
-    return this.withMailbox((_client, mailbox) => Promise.resolve({ messageCount: mailbox.exists }));
+    return this.withMailbox(async (_client, mailbox) => ({ messageCount: mailbox.exists }));
   }
 
   async listRecent(limit: number): Promise<readonly EmailSummary[]> {
