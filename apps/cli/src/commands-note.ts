@@ -164,9 +164,9 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
         process.exitCode = 1;
         return;
       }
-      const result = (await append.execute({ content: `${line}\n`, path } as Parameters<typeof append.execute>[0])) as Record<string, unknown>;
-      if (typeof result.error === "string") {
-        io.stderr(`muse note: ${result.error}\n`);
+      const result = await append.execute({ content: `${line}\n`, path });
+      if (result && typeof result === "object" && !Array.isArray(result) && typeof result["error"] === "string") {
+        io.stderr(`muse note: ${String(result["error"])}\n`);
         process.exitCode = 1;
         return;
       }

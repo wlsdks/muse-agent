@@ -50,7 +50,11 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     }
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+    for (const [key, entryValue] of Object.entries(value)) {
+      if (typeof key === "string") output[key] = entryValue;
+    }
+    return output;
   }
   return undefined;
 }

@@ -22,6 +22,19 @@ export interface MetricsCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const result: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (typeof key === "string") {
+        result[key] = nestedValue;
+      }
+    }
+    return result;
+  }
+  return undefined;
+}
+
 export function registerMetricsCommands(program: Command, io: ProgramIO, helpers: MetricsCommandHelpers): void {
   const metrics = program.command("metrics").description("Observability surfaces (SLO + drift + budget + token cost)");
 
@@ -51,7 +64,10 @@ export function formatMetricsSnapshot(snapshot: unknown): string {
   if (!snapshot || typeof snapshot !== "object") {
     return "(empty snapshot — observability is not configured on this server)\n";
   }
-  const s = snapshot as Record<string, unknown>;
+  const s = toRecord(snapshot);
+  if (!s) {
+    return "(empty snapshot — observability is not configured on this server)\n";
+  }
   const lines: string[] = [];
   lines.push("Muse metrics:");
   lines.push("");
@@ -116,9 +132,7 @@ export function formatMetricsSnapshot(snapshot: unknown): string {
 
 function readSection(source: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const value = source[key];
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
+  if (value && typeof value === "object" && !Array.isArray(value)) return toRecord(value);
   return undefined;
 }
 

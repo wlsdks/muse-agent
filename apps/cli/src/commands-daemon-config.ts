@@ -15,6 +15,10 @@ export interface DaemonConfig {
   readonly dailyBrief?: DailyBriefConfig;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export function resolveDaemonConfigFile(env: NodeJS.ProcessEnv): string {
   const explicit = env.MUSE_DAEMON_CONFIG_FILE?.trim();
   if (explicit && explicit.length > 0) return explicit;
@@ -32,15 +36,18 @@ export function readDaemonConfig(file: string): DaemonConfig {
     return {};
   }
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+<<<<<<< HEAD
+    const parsed = JSON.parse(raw);
     const config: { provider?: string; destination?: string; dailyBrief?: DailyBriefConfig } = {};
-    if (typeof parsed.provider === "string") config.provider = parsed.provider;
-    if (typeof parsed.destination === "string") config.destination = parsed.destination;
-    const db = parsed.dailyBrief;
-    if (db && typeof db === "object") {
-      const record = db as Record<string, unknown>;
-      if (typeof record.time === "string" && record.time.trim().length > 0) {
-        config.dailyBrief = { enabled: record.enabled === true, time: record.time.trim() };
+    if (isRecord(parsed)) {
+      if (typeof parsed.provider === "string") config.provider = parsed.provider;
+      if (typeof parsed.destination === "string") config.destination = parsed.destination;
+      const dailyBrief = parsed.dailyBrief;
+      if (isRecord(dailyBrief) && typeof dailyBrief.time === "string" && dailyBrief.time.trim().length > 0) {
+        config.dailyBrief = {
+          enabled: dailyBrief.enabled === true,
+          time: dailyBrief.time.trim()
+        };
       }
     }
     return config;

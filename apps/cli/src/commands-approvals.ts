@@ -62,15 +62,23 @@ export async function approvePendingApproval(opts: {
   if (!tool) {
     return { status: "no-tool", tool: entry.tool };
   }
-  const result = (await tool.execute(entry.arguments as JsonObject, { runId: `approve-${entry.id}` })) as Record<string, unknown>;
-  const ran = result["sent"] === true || result["performed"] === true;
+  const result = await tool.execute(entry.arguments as JsonObject, { runId: `approve-${entry.id}` });
+  const resultRecord: Record<string, unknown> = {};
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    for (const [key, value] of Object.entries(result)) {
+      if (typeof key === "string") {
+        resultRecord[key] = value;
+      }
+    }
+  }
+  const ran = resultRecord["sent"] === true || resultRecord["performed"] === true;
   if (ran) {
     // Replay-guard: only a successful run clears the pending entry; a
     // declined confirm leaves it so the user can approve later.
     await clearPendingApproval(opts.pendingFile, entry.id, opts.now);
     return { status: "ran", tool: entry.tool };
   }
-  return { status: "declined", tool: entry.tool, ...(typeof result["reason"] === "string" ? { detail: result["reason"] } : {}) };
+  return { status: "declined", tool: entry.tool, ...(typeof resultRecord["reason"] === "string" ? { detail: resultRecord["reason"] } : {}) };
 }
 
 function pendingFile(): string {

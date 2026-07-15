@@ -445,12 +445,20 @@ async function renderBrief(
   if (personaPreamble.length > 0) {
     body.systemPrompt = personaPreamble;
   }
-  const response = (await helpers.apiRequest(io, command, "/api/chat", body)) as Record<string, unknown>;
-  const content = typeof response.content === "string" ? response.content : "";
+  const response = await helpers.apiRequest(io, command, "/api/chat", body);
+  const responseRecord: Record<string, unknown> = {};
+  if (response && typeof response === "object" && !Array.isArray(response)) {
+    for (const [key, value] of Object.entries(response)) {
+      if (typeof key === "string") {
+        responseRecord[key] = value;
+      }
+    }
+  }
+  const content = typeof responseRecord.content === "string" ? responseRecord.content : "";
   if (!content) {
     throw new Error(
       `today --brief got an empty response from the model${
-        typeof response.errorMessage === "string" ? ` (${response.errorMessage})` : ""
+        typeof responseRecord.errorMessage === "string" ? ` (${responseRecord.errorMessage})` : ""
       }`
     );
   }
