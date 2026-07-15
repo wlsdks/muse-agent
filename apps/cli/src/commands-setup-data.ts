@@ -25,6 +25,7 @@ import {
   syncBrowsingHistory
 } from "@muse/recall";
 import type { Command } from "commander";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { isNoInput } from "./cli-context.js";
 import { importAppleContacts } from "./commands-contacts.js";
@@ -134,7 +135,7 @@ export const DATA_STEPS: readonly DataStep[] = [
 ];
 
 function isSwitchEnabled(env: NodeJS.ProcessEnv, envVar: string): boolean {
-  return (env[envVar] ?? "").trim().toLowerCase() === "true";
+  return parseBooleanFromEnv(env[envVar], false);
 }
 
 /** Whether the caller passed any per-flag opt-in (scripted, non-interactive path). */
