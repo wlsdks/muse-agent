@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseRunTscFastArgs } from "./run-tsc-fast.mjs";
+import { isTscFastProfilingEnabled, parseRunTscFastArgs } from "./run-tsc-fast.mjs";
 
 test("parseRunTscFastArgs accepts build and typecheck", () => {
   const parsedBuild = parseRunTscFastArgs(["build"]);
@@ -30,4 +30,15 @@ test("parseRunTscFastArgs rejects unsupported flags", () => {
   const parsedUnknownFlag = parseRunTscFastArgs(["build", "--bad"]);
   assert.equal(parsedUnknownFlag.isValid, false);
   assert.equal(parsedUnknownFlag.reason, "unsupported flag(s): --bad");
+});
+
+test("isTscFastProfilingEnabled parses environment values", () => {
+  assert.equal(isTscFastProfilingEnabled(undefined), false);
+  assert.equal(isTscFastProfilingEnabled(""), false);
+  assert.equal(isTscFastProfilingEnabled("0"), false);
+  assert.equal(isTscFastProfilingEnabled("1"), true);
+  assert.equal(isTscFastProfilingEnabled("true"), true);
+  assert.equal(isTscFastProfilingEnabled("YES"), true);
+  assert.equal(isTscFastProfilingEnabled(" off "), false);
+  assert.equal(isTscFastProfilingEnabled("on"), true);
 });

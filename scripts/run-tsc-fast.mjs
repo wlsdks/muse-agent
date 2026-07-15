@@ -8,6 +8,15 @@ import process from "node:process";
 import { getTscFastArgs, SUPPORTED_TS7_MODES } from "./tsc-fast-flags.mjs";
 
 const USAGE = "usage: node scripts/run-tsc-fast.mjs <build|typecheck> [--single-threaded]";
+const PROFILE_ENV = "TS7_TSC_FAST_PROFILE";
+const PROFILE_ALIASES = new Set(["1", "true", "yes", "on"]);
+
+export function isTscFastProfilingEnabled(rawValue = process.env[PROFILE_ENV]) {
+  if (rawValue === undefined) {
+    return false;
+  }
+  return PROFILE_ALIASES.has(String(rawValue).trim().toLowerCase());
+}
 
 export function parseRunTscFastArgs(cliArgs) {
   const [mode, ...flags] = cliArgs;
@@ -42,6 +51,7 @@ function usage() {
 }
 
 function main() {
+  const isEntrypoint = fileURLToPath(import.meta.url) === process.argv[1];
   const [, , ...cliArgs] = process.argv;
   const parsed = parseRunTscFastArgs(cliArgs);
   if (!parsed.isValid) {
@@ -53,9 +63,15 @@ function main() {
 
   const { mode, singleThreaded } = parsed;
   const args = getTscFastArgs(mode, { singleThreaded });
+  const startedAt = performance.now();
   const result = spawnSync("node_modules/.bin/tsc", args, {
     stdio: "inherit",
   });
+  const elapsedMs = Math.round(performance.now() - startedAt);
+  if (isTscFastProfilingEnabled()) {
+    const profileMessage = `tsc-fast profile: mode=${mode} threadMode=${singleThreaded ? "single-threaded" : "parallel"} elapsedMs=${elapsedMs}`;
+    console.log(profileMessage);
+  }
 
   if (result.error) {
     console.error("✗ tsc-fast runner failed:", result.error.message);
@@ -71,7 +87,7 @@ function main() {
     process.exit(result.status);
   }
 
-  if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  if (isEntrypoint) {
     console.log(`✓ tsc-fast: completed ${mode} with ${singleThreaded ? "single-threaded" : "parallel"} flags`);
   }
 }

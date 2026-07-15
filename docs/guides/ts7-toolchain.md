@@ -40,6 +40,18 @@ Example:
 TS7_PARALLELISM=4 pnpm run build:ts7-fast
 ```
 
+You can enable lightweight profiling logs for the runner:
+
+```bash
+TS7_TSC_FAST_PROFILE=1 pnpm run build:ts7-fast
+```
+
+The output prints one line when enabled:
+
+```text
+tsc-fast profile: mode=build threadMode=parallel elapsedMs=1234
+```
+
 ## Gate checks
 
 Use:
