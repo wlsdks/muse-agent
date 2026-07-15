@@ -5,6 +5,8 @@
  * judgment — so "unsure" always resolves to `"personal"` / `"local"`.
  */
 
+import { parseBooleanFromEnv } from "@muse/shared";
+
 export type PrivacyClassification = "personal" | "context-free";
 
 export interface PrivacyRequestInput {
@@ -165,17 +167,8 @@ export function classifyRequestPrivacy(input: PrivacyRequestInput): PrivacyClass
   return explainRequestPrivacy(input).classification;
 }
 
-const TRUTHY_ENV_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
-
 function parseEnvBoolean(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    return fallback;
-  }
-  return TRUTHY_ENV_VALUES.has(normalized);
+  return parseBooleanFromEnv(value, fallback);
 }
 
 export interface PrivacyRoutedModelArgs {
