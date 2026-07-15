@@ -6,11 +6,20 @@ import { readTaskById, readTasks } from "@muse/stores";
 import { AttunementStoreError } from "./attunement-store.js";
 
 import type { ArtifactLinkValidator } from "./attunement-store.js";
-import type { ExactArtifactResolver, ResolvedArtifact } from "./types.js";
+import type { ExactArtifactResolver } from "./types.js";
 
 export interface LocalArtifactValidatorOptions {
   readonly notesDir: string;
   readonly tasksFile: string;
+}
+
+export interface CanonicalLocalNote {
+  readonly artifactId: string;
+  readonly artifactType: "note";
+  readonly providerId: "local";
+  readonly summary?: string;
+  readonly title: string;
+  readonly updatedAt: string;
 }
 
 function assertNoDotDotPath(value: string): void {
@@ -26,7 +35,7 @@ function containedRelative(root: string, target: string): string | undefined {
 }
 
 /** Exact local-note reader with realpath containment on every call. */
-export async function readCanonicalLocalNote(notesDir: string, rawId: string): Promise<ResolvedArtifact | undefined> {
+export async function readCanonicalLocalNote(notesDir: string, rawId: string): Promise<CanonicalLocalNote | undefined> {
   const id = rawId.trim();
   if (id.length === 0 || isAbsolute(id)) throw new AttunementStoreError("note id must be a relative vault path");
   assertNoDotDotPath(id);
