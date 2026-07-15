@@ -7,6 +7,7 @@ import { readReminders, recordProactiveHeartbeat, writeReminders, type Persisted
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { resetCliLanguageCache } from "./cli-i18n.js";
 import { filterRemindersBySearch, formatReminderList, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
 
 interface ApiCall {
@@ -480,5 +481,30 @@ describe("formatReminderList — empty state points at how to add one (E4b audit
     const out = formatReminderList({ status: "pending", total: 0, reminders: [] });
     expect(out).toContain("Reminders (pending): (none)");
     expect(out).toContain("muse remind add");
+  });
+});
+
+describe("muse remind list — MUSE_LANG=ko actually renders Korean (E4b fix round 2: the entry point must resolve language before formatting)", () => {
+  const prevLang = process.env.MUSE_LANG;
+  const prevRemFile = process.env.MUSE_REMINDERS_FILE;
+  beforeEach(() => {
+    // resolveCliLanguage caches its FIRST resolution for the life of the
+    // module — an earlier `list` call elsewhere in this file (no MUSE_LANG
+    // set) already cached "en", which would silently win over this test's
+    // env var without an explicit reset.
+    resetCliLanguageCache();
+    process.env.MUSE_LANG = "ko";
+    process.env.MUSE_REMINDERS_FILE = join(mkdtempSync(join(tmpdir(), "muse-rem-ko-")), "reminders.json");
+  });
+  afterEach(() => {
+    if (prevLang === undefined) delete process.env.MUSE_LANG; else process.env.MUSE_LANG = prevLang;
+    if (prevRemFile === undefined) delete process.env.MUSE_REMINDERS_FILE; else process.env.MUSE_REMINDERS_FILE = prevRemFile;
+    resetCliLanguageCache();
+  });
+
+  it("`muse remind list --local` with an empty store renders the Korean empty-state line, not English", async () => {
+    const r = await runRemind(["list", "--local"]);
+    expect(r.stdout).toContain("리마인더 (pending): (없음)");
+    expect(r.stdout).not.toContain("Reminders (pending): (none)");
   });
 });

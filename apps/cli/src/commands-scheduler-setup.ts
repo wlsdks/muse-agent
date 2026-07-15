@@ -124,18 +124,19 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
     .command("add")
     .description("Create a recurring scheduled agent prompt — local file store, no API server required")
     .argument("<prompt...>", `What Muse should do each time this fires, e.g. "오늘 일정 요약해서 보내줘"`)
-    .requiredOption("--every <cadence>", `Recurrence. Accepted forms: ${CADENCE_ACCEPTED_FORMS.join("; ")}`)
+    .option("--every <cadence>", `Recurrence. Accepted forms: ${CADENCE_ACCEPTED_FORMS.join("; ")}`)
     .option("--name <name>", "Job name (default: derived from the prompt)")
     .option("--deliver <provider:destination>", `Delivery override, e.g. "telegram:12345" (default: the running \`muse daemon\`'s own provider/destination)`)
     .option("--model <model>", "Agent model override (default: the daemon's default model)")
     .option("--disabled", "Create disabled — won't fire until re-enabled")
     .action(async (
       promptParts: readonly string[],
-      options: { readonly every: string; readonly name?: string; readonly deliver?: string; readonly model?: string; readonly disabled?: boolean }
+      options: { readonly every?: string; readonly name?: string; readonly deliver?: string; readonly model?: string; readonly disabled?: boolean }
     ) => {
       const prompt = promptParts.join(" ").trim();
-      if (prompt.length === 0) {
-        io.stderr(`usage: muse scheduler add "<prompt>" --every "<cadence>"\n`);
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
+      if (prompt.length === 0 || !options.every || options.every.trim().length === 0) {
+        io.stderr(`${t("scheduler.add.usage")}\n`);
         process.exitCode = 1;
         return;
       }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ImapSmtpAuthError } from "@muse/domain-tools";
 
 import { setCliLanguage } from "./cli-i18n.js";
-import { formatEmailAuthGuidance } from "./email-auth-guidance.js";
+import { formatEmailAuthGuidance, noGmailAccessMessage } from "./email-auth-guidance.js";
 
 describe("formatEmailAuthGuidance — AC3: code-driven, localized, never the raw English on ko", () => {
   afterEach(() => {
@@ -67,5 +67,27 @@ describe("formatEmailAuthGuidance — AC3: code-driven, localized, never the raw
 
   it("a non-Error cause stringifies rather than throwing", () => {
     expect(formatEmailAuthGuidance("boom")).toBe("boom");
+  });
+});
+
+describe("noGmailAccessMessage — shared 'Gmail not connected at all' hint (E4b audit #10/#14)", () => {
+  afterEach(() => {
+    setCliLanguage("en");
+  });
+
+  it("names the calling command and points at `muse setup email` / MUSE_GMAIL_TOKEN, without the raw scope jargon", () => {
+    setCliLanguage("en");
+    const rendered = noGmailAccessMessage("inbox");
+    expect(rendered).toContain("muse inbox:");
+    expect(rendered).toContain("muse setup email");
+    expect(rendered).toContain("MUSE_GMAIL_TOKEN");
+    expect(rendered).not.toContain("scope)");
+  });
+
+  it("renders in Korean and still names the calling command", () => {
+    setCliLanguage("ko");
+    const rendered = noGmailAccessMessage("email sync");
+    expect(rendered).toContain("muse email sync:");
+    expect(rendered).toContain("muse setup email");
   });
 });

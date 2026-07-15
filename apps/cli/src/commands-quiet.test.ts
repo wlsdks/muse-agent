@@ -25,7 +25,7 @@ afterEach(() => {
 async function runQuiet(args: readonly string[], env: NodeJS.ProcessEnv = baseEnv): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
-  const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
+  const io = { configDir: dir, stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
   const prevExit = process.exitCode;
   process.exitCode = 0;
   const program = new Command();
@@ -38,9 +38,10 @@ async function runQuiet(args: readonly string[], env: NodeJS.ProcessEnv = baseEn
 }
 
 describe("muse quiet — show", () => {
-  it("nothing set → not set", async () => {
+  it("nothing set → not set, with how to set it (E4b audit)", async () => {
     const { stdout } = await runQuiet([]);
     expect(stdout).toContain("not set");
+    expect(stdout).toContain("muse quiet 22:00-07:00");
   });
 
   it("MUSE_REMINDER_QUIET_HOURS set → reports the env source", async () => {

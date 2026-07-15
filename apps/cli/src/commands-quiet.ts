@@ -18,6 +18,8 @@ import type { Command } from "commander";
 import { parseQuietHours } from "@muse/proactivity";
 import { readQuietHoursSettingSync, resolveDaemonSettingsFile, writeQuietHoursSetting } from "@muse/stores";
 
+import { resolveCliLanguage, t } from "./cli-i18n.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
 export interface QuietCommandHelpers {
@@ -52,6 +54,7 @@ export function registerQuietCommand(program: Command, io: ProgramIO, helpers: Q
       const settingsFile = resolveDaemonSettingsFile(e);
 
       if (range === undefined) {
+        await resolveCliLanguage(e, () => readConfigStore(io));
         const effective = describeEffective(e, settingsFile);
         const persisted = readQuietHoursSettingSync(settingsFile);
         if (effective.source === "env") {
@@ -59,7 +62,7 @@ export function registerQuietCommand(program: Command, io: ProgramIO, helpers: Q
         } else if (effective.source === "persisted") {
           io.stdout(`quiet hours: ${effective.text} (persisted, enabled)\n`);
         } else {
-          io.stdout(`quiet hours: not set\n`);
+          io.stdout(`${t("quiet.notSet")}\n`);
         }
         if (persisted && effective.source !== "persisted") {
           io.stdout(`  persisted setting: ${persisted.range} (${persisted.enabled ? "enabled" : "disabled"})\n`);

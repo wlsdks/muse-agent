@@ -24,6 +24,8 @@ import { analyzeTaskFlow, formatTaskFlow } from "./task-flow.js";
 import { formatTaskQueue, rankTasksByUrgency } from "./task-priority.js";
 
 import { closestCommandName } from "./closest-command.js";
+import { resolveCliLanguage } from "./cli-i18n.js";
+import { readConfigStore } from "./program-config.js";
 import {
   formatLocalDateTime,
   formatProvidersList,
@@ -107,6 +109,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, result);
         return;
       }
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       const providers = (result as { providers?: Parameters<typeof formatProvidersList>[1] })?.providers ?? [];
       io.stdout(formatProvidersList("Tasks providers", providers));
     });
@@ -177,6 +180,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "open" list.
       assertTaskStatusInput(options.status);
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       type TaskListPayload = { status: string; tasks: readonly Record<string, unknown>[]; total: number };
       const readLocalTasks = async (): Promise<TaskListPayload> => {
         const file = localTasksFile();

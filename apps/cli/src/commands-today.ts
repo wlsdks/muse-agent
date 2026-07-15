@@ -35,9 +35,11 @@ import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidate
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
+import { resolveCliLanguage } from "./cli-i18n.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import { withBestEffort } from "@muse/shared";
 import { parseJsonWith } from "./json-parse.js";
+import { readConfigStore } from "./program-config.js";
 export { formatHeadlines, formatWeatherLine, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks } from "./today-stale-revisit.js";
@@ -387,6 +389,7 @@ Examples:
         return;
       }
 
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}${revisitSection}${staleTasksSection}${focusSection}${episodeRevisitLine}`);
     });
 }

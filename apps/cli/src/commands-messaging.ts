@@ -23,7 +23,9 @@ import { sendMessageWithApproval, type MessageApprovalGate } from "@muse/domain-
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
+import { resolveCliLanguage } from "./cli-i18n.js";
 import { formatProvidersList } from "./human-formatters.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -96,6 +98,7 @@ export function registerMessagingCommands(
         helpers.writeOutput(io, { providers });
         return;
       }
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       io.stdout(formatProvidersList("Messaging providers", providers));
     });
 

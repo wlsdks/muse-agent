@@ -134,6 +134,7 @@ describe("muse scheduler add — daemon liveness warning (R2-1)", () => {
   afterEach(() => {
     if (prevJobsFile === undefined) delete process.env.MUSE_SCHEDULED_JOBS_FILE;
     else process.env.MUSE_SCHEDULED_JOBS_FILE = prevJobsFile;
+    resetCliLanguageCache();
   });
 
   async function runAdd(
@@ -143,7 +144,7 @@ describe("muse scheduler add — daemon liveness warning (R2-1)", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-sched-add-"));
     process.env.MUSE_SCHEDULED_JOBS_FILE = join(dir, "scheduled-jobs.json");
     const stdout: string[] = [];
-    const io = { stderr: () => {}, stdout: (s: string) => stdout.push(s) } as unknown as ProgramIO;
+    const io = { configDir: dir, stderr: () => {}, stdout: (s: string) => stdout.push(s) } as unknown as ProgramIO;
     const helpers: SchedulerSetupHelpers = {
       apiRequest: async () => ({}),
       writeOutput: () => {},
@@ -191,6 +192,32 @@ describe("muse scheduler add — daemon liveness warning (R2-1)", () => {
     expect(out).toContain("Scheduled 'say hi'");
     expect(out).not.toContain("WARNING");
     expect(out).not.toContain("Daemon alive");
+  });
+});
+
+describe("muse scheduler add — missing --every gets usage + the flagship example, not a bare commander error (E4b audit)", () => {
+  const prevJobsFile = process.env.MUSE_SCHEDULED_JOBS_FILE;
+  afterEach(() => {
+    if (prevJobsFile === undefined) delete process.env.MUSE_SCHEDULED_JOBS_FILE;
+    else process.env.MUSE_SCHEDULED_JOBS_FILE = prevJobsFile;
+    resetCliLanguageCache();
+  });
+
+  it("no --every at all → usage line + flagship example on stderr, exitCode 1, nothing saved", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-sched-add-noevery-"));
+    process.env.MUSE_SCHEDULED_JOBS_FILE = join(dir, "scheduled-jobs.json");
+    const stderrLines: string[] = [];
+    const io = { configDir: dir, stderr: (s: string) => stderrLines.push(s), stdout: () => {} } as unknown as ProgramIO;
+    const helpers: SchedulerSetupHelpers = { apiRequest: async () => ({}), writeOutput: () => {} };
+    const program = new Command();
+    program.exitOverride();
+    registerSchedulerCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "scheduler", "add", "say hi"], { from: "node" });
+    const out = stderrLines.join("");
+    expect(out).toContain(`usage: muse scheduler add "<prompt>" --every "<cadence>"`);
+    expect(out).toContain(`muse scheduler add "오늘 일정 요약해서 보내줘" --every "daily 9am"`);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
   });
 });
 

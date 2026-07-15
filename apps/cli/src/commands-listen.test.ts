@@ -169,6 +169,24 @@ describe("muse listen (push-to-talk) — a failed transcribe ends cleanly, not a
   });
 });
 
+describe("muse listen — missing voice providers points at `muse setup voice`, not a stale 'rebuild' hint (E4b audit)", () => {
+  it("names `muse setup voice` and drops 'and rebuild'", async () => {
+    const stderrChunks: string[] = [];
+    const io = { stderr: (m: string) => stderrChunks.push(m), stdout: () => {} };
+    const helpers: ListenHelpers = {
+      apiRequest: async () => ({ content: "unused" }),
+      buildVoiceProviders: () => ({ stt: undefined, tts: undefined })
+    };
+    const program = new Command();
+    program.exitOverride();
+    registerListenCommand(program, io, helpers);
+    await expect(program.parseAsync(["node", "muse", "listen"])).rejects.toThrow();
+    const out = stderrChunks.join("");
+    expect(out).toContain("muse setup voice");
+    expect(out).not.toContain("rebuild");
+  });
+});
+
 describe("muse listen --wake — a transient STT failure on the follow-up prompt resumes the session, never breaks it", () => {
   it("routes the follow-up transcription through safeTranscribe (an STT 5xx resumes listening, not crash)", async () => {
     const WAV = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);

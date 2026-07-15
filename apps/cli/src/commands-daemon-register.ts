@@ -56,6 +56,8 @@ import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./
 import { dirname, join } from "node:path";
 
 import { closestCommandName } from "./closest-command.js";
+import { resolveCliLanguage, t } from "./cli-i18n.js";
+import { readConfigStore } from "./program-config.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
 import { DEFAULT_REFLECTION_INTERVAL_MS } from "./commands-reflections.js";
 import {
@@ -754,32 +756,34 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         : undefined;
 
       if (options.status) {
+        await resolveCliLanguage(e, () => readConfigStore(io));
         io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}):\n`);
         io.stdout(`  proactive:  enabled\n`);
         io.stdout(`  reminders:  enabled\n`);
         io.stdout(`  scheduler:  enabled (recurring \`muse scheduler add\` jobs; \`muse scheduler pause\` suspends)\n`);
         io.stdout(`  followup:   ${followupModel ? "enabled" : "disabled (no model resolved)"}\n`);
-        io.stdout(`  ambient:    ${ambientRunner ? "enabled" : "disabled (set MUSE_AMBIENT_RULES)"}\n`);
-        io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : "disabled (set MUSE_WEB_WATCH_CONFIG)"}\n`);
-        io.stdout(`  home-watch: ${homeWatchRunner
-          ? "enabled"
-          : homeAssistant.status === "blocked"
-            ? `disabled (${homeAssistant.reason})`
-            : "disabled (set MUSE_HOME_WATCH_CONFIG + HA creds)"}\n`);
         io.stdout(`  objectives: ${objectivesEvaluate && objectivesActuator ? "enabled" : "disabled (no model resolved)"}\n`);
-        io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : "disabled (set MUSE_BRIEFING_ENABLED)"}\n`);
         io.stdout(`  daily-brief: ${fileConfig.dailyBrief?.enabled ? `enabled (daily, at ${fileConfig.dailyBrief.time} local)` : "disabled (run `muse setup briefing`)"}\n`);
-        io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : "disabled (set MUSE_SELFLEARN_ENABLED + a model)"}\n`);
-        io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : "disabled (set MUSE_RECAP_ENABLED)"}\n`);
-        io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : "disabled (set MUSE_DIGEST_ENABLED=false to keep off)"}\n`);
         io.stdout(`  email-sync: ${localOnly
           ? "disabled (MUSE_LOCAL_ONLY=true; Gmail standard paths are closed)"
           : parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && isGmailConfigured(io, e)
             ? "enabled (recent emails → recall)"
             : "disabled (set MUSE_EMAIL_SYNC_ENABLED, then `muse setup email` or MUSE_GMAIL_TOKEN)"}\n`);
-        io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
-        io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : "disabled (set MUSE_CONFLICT_WATCH_ENABLED)"}\n`);
-        io.stdout(`  browsing:   ${parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false) ? `enabled (Chrome history → recall every ${(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ?? "60").toString()} min)` : "disabled (set MUSE_BROWSING_AUTO_SYNC)"}\n`);
+        io.stdout(`\n${t("daemon.status.featuresHeader")}\n`);
+        io.stdout(`  ambient:    ${ambientRunner ? "enabled" : `disabled — ${t("daemon.status.ambient.disabled")}`}\n`);
+        io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : `disabled — ${t("daemon.status.webWatch.disabled")}`}\n`);
+        io.stdout(`  home-watch: ${homeWatchRunner
+          ? "enabled"
+          : homeAssistant.status === "blocked"
+            ? `disabled (${homeAssistant.reason})`
+            : `disabled — ${t("daemon.status.homeWatch.disabled")}`}\n`);
+        io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : `disabled — ${t("daemon.status.briefing.disabled")}`}\n`);
+        io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : `disabled — ${t("daemon.status.selfLearn.disabled")}`}\n`);
+        io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : `disabled — ${t("daemon.status.recap.disabled")}`}\n`);
+        io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : `disabled — ${t("daemon.status.digest.disabled")}`}\n`);
+        io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : `disabled — ${t("daemon.status.msgPoll.disabled")}`}\n`);
+        io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : `disabled — ${t("daemon.status.conflicts.disabled")}`}\n`);
+        io.stdout(`  browsing:   ${parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false) ? `enabled (Chrome history → recall every ${(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ?? "60").toString()} min)` : `disabled — ${t("daemon.status.browsing.disabled")}`}\n`);
         // The resolved source paths — the first thing to check when a
         // tick "isn't firing": is it reading the file you think it is?
         io.stdout(`sources:\n`);

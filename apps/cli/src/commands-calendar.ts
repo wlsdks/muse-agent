@@ -51,9 +51,11 @@ export {
   recurrenceRuleFor,
   resolveEventIdMatch
 } from "./calendar-helpers.js";
+import { resolveCliLanguage } from "./cli-i18n.js";
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
 import { parseIcsEvents } from "./ics-parser.js";
 import { withApiLocalFallback } from "./program-helpers.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
 export interface CalendarCommandHelpers {
@@ -103,6 +105,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         helpers.writeOutput(io, payload);
         return;
       }
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       const providers = (payload as { providers?: Parameters<typeof formatProvidersList>[1] }).providers ?? [];
       io.stdout(formatProvidersList("Calendar providers", providers));
     });

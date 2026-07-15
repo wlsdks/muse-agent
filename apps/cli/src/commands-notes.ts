@@ -26,7 +26,9 @@ import {
   formatProvidersList
 } from "./human-formatters.js";
 import { auditNoteGraph, buildNoteLinkGraph, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
+import { resolveCliLanguage } from "./cli-i18n.js";
 import { isApiUnreachable } from "./program-helpers.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
 export interface NotesCommandHelpers {
@@ -279,6 +281,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, result);
         return;
       }
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       const providers = (result as { providers?: Parameters<typeof formatProvidersList>[1] })?.providers ?? [];
       io.stdout(formatProvidersList("Notes providers", providers));
     });

@@ -43,3 +43,13 @@ export function formatEmailAuthGuidance(cause: unknown, email?: string): string 
   return lines.join(" ");
 }
 
+/**
+ * The "Gmail isn't connected at all" hint (as opposed to `formatEmailAuthGuidance`'s
+ * "connected but the login was rejected"). Shared by `muse inbox` and `muse email
+ * sync` (E4b audit #10/#14) — was hand-duplicated with a `(gmail.readonly scope)`
+ * suffix that's implementation jargon a user can't act on; dropped in favor of
+ * naming the fix.
+ */
+export function noGmailAccessMessage(command: string): string {
+  return t("email.notConfigured", { command });
+}

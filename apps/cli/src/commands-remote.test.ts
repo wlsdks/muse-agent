@@ -477,4 +477,15 @@ describe("runRemoteDisableCommand", () => {
     expect(calls).toHaveLength(1);
     expect(messages.join("")).toMatch(/isn't installed/u);
   });
+
+  it("not installed → also carries the install URL, for consistency with `muse remote enable` (E4b audit #25)", async () => {
+    const { run } = makeRun(() => {
+      throw new Error("spawn tailscale ENOENT");
+    });
+    const messages: string[] = [];
+    await runRemoteDisableCommand(
+      baseDisableDeps(run, { exists: () => false, osPlatform: "darwin", stdout: (m) => messages.push(m) })
+    );
+    expect(messages.join("")).toContain("https://tailscale.com/download/mac");
+  });
 });

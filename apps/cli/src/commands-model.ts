@@ -26,7 +26,8 @@ import {
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { Command } from "commander";
 
-import { configPath } from "./program-config.js";
+import { resolveCliLanguage, t } from "./cli-i18n.js";
+import { configPath, readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
 function formatBytes(bytes: number | undefined): string {
@@ -182,8 +183,14 @@ export function registerModelCommand(program: Command, io: ProgramIO): void {
   model
     .command("use")
     .description("Switch Muse's default model — validated against installed Ollama models (fails closed if not installed / Ollama unreachable)")
-    .argument("<name>", "Ollama tag to switch to, e.g. gemma4:12b or ollama/gemma4:12b")
-    .action(async (name: string) => {
+    .argument("[name]", "Ollama tag to switch to, e.g. gemma4:12b or ollama/gemma4:12b")
+    .action(async (name: string | undefined) => {
+      if (name === undefined || name.trim().length === 0) {
+        await resolveCliLanguage(process.env, () => readConfigStore(io));
+        io.stderr(`${t("model.use.usage")}\n`);
+        process.exitCode = 1;
+        return;
+      }
       await runModelUse(io, name);
     });
 }

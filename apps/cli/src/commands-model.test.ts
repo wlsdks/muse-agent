@@ -4,10 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { Command } from "commander";
+
 import {
   formatInstalledModels,
   formatSwitchConfirmation,
   formatSwitchFailure,
+  registerModelCommand,
   resolveCurrentDefaultModel,
   runModelList,
   runModelUse,
@@ -219,5 +222,18 @@ describe("runModelUse — AC3 safety invariants", () => {
     expect(process.exitCode).toBeUndefined();
     const written = JSON.parse(readFileSync(h.configFile, "utf8")) as { defaultModel?: string };
     expect(written.defaultModel).toBe("ollama/qwen3:8b");
+  });
+});
+
+describe("muse model use — missing <name> gets usage guidance, not a bare commander error (E4b audit)", () => {
+  it("`muse model use` with no name points at `muse model list` first", async () => {
+    const h = harness();
+    const program = new Command();
+    program.exitOverride();
+    registerModelCommand(program, h.io);
+    await program.parseAsync(["node", "muse", "model", "use"], { from: "node" });
+    expect(h.stderr.join("")).toContain("usage: muse model use <name>");
+    expect(h.stderr.join("")).toContain("muse model list");
+    expect(process.exitCode).toBe(1);
   });
 });

@@ -16,7 +16,7 @@ import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { resolveCliLanguage } from "./cli-i18n.js";
-import { formatEmailAuthGuidance } from "./email-auth-guidance.js";
+import { formatEmailAuthGuidance, noGmailAccessMessage } from "./email-auth-guidance.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
@@ -120,7 +120,7 @@ export function registerInboxCommand(
       if (!email) {
         const resolved = resolveGmailProvider({ env, fetchImpl: io.fetch ?? globalThis.fetch, io });
         if (!resolved) {
-          io.stderr("muse inbox: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.readonly scope).\n");
+          io.stderr(`${noGmailAccessMessage("inbox")}\n`);
           process.exitCode = 1;
           return;
         }

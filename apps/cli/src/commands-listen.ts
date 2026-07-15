@@ -29,6 +29,8 @@ import {
 import type { Command } from "commander";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
+import { resolveCliLanguage, t } from "./cli-i18n.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 import { parseAudioFormat, playInvocationWithWatchdog, resolveAudioPlayerInvocation, synthesizeAndPlay } from "./voice-playback.js";
 import { waitForChildProcessResult } from "./async-promises.js";
@@ -93,7 +95,8 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
       const shells = helpers.shells ?? defaultShells();
       const providers = (helpers.buildVoiceProviders ?? defaultBuildVoiceProviders)();
       if (!providers.stt || !providers.tts) {
-        io.stderr("voice providers are not configured. Set OPENAI_API_KEY (or MUSE_VOICE_OPENAI_API_KEY) and rebuild.\n");
+        await resolveCliLanguage(process.env, () => readConfigStore(io));
+        io.stderr(`${t("listen.notConfigured")}\n`);
         command.error("Missing voice providers", { exitCode: 1 });
         return;
       }

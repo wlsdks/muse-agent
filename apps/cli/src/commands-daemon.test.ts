@@ -51,7 +51,11 @@ async function runDaemon(
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
-  const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
+  // configDir isolates language resolution (--status now resolves the CLI
+  // language via cli-i18n) from the REAL ~/.config/muse/config.json — a
+  // dev box with `language: "ko"` there would otherwise cache Korean for
+  // the rest of the process and break every English assertion below.
+  const io = { configDir: mkdtempSync(join(tmpdir(), "muse-daemon-cfg-")), stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
   const prevExit = process.exitCode;
   let exitCode: number | undefined;
   try {
@@ -461,6 +465,18 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toContain("web-watch:  disabled");
     expect(res.stdout).toContain("objectives: disabled");
     expect(sent).toHaveLength(0);
+  });
+
+  it("--status groups the optional-feature lines under a header and states what each feature DOES, not just the raw env var (E4b audit #3/#9)", async () => {
+    const env = tmpEnv();
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).toContain("features you can turn on:");
+    expect(res.stdout).toContain("ambient:    disabled — ambient rules watch background context and file continuous notices — set MUSE_AMBIENT_RULES to a rules file to turn it on");
+    expect(res.stdout).toContain("web-watch:  disabled — web-watch checks configured pages for changes and notifies you — set MUSE_WEB_WATCH_CONFIG to turn it on");
+    expect(res.stdout).toContain("digest:     enabled");
   });
 
   it("--status reports launchd autostart state (installed vs not)", async () => {
@@ -1883,7 +1899,7 @@ describe("muse daemon — conflict-watch tick proactively warns of upcoming doub
     });
     expect(on.stdout).toContain("conflicts:  enabled");
     const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
-    expect(off.stdout).toContain("conflicts:  disabled (set MUSE_CONFLICT_WATCH_ENABLED)");
+    expect(off.stdout).toContain("conflicts:  disabled — conflict-watch warns you ahead of upcoming double-bookings — set MUSE_CONFLICT_WATCH_ENABLED to turn it on");
   });
 });
 
@@ -1980,7 +1996,7 @@ describe("muse daemon — opt-in browsing auto-sync tick", () => {
     });
     expect(on.stdout).toContain("browsing:   enabled");
     const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
-    expect(off.stdout).toContain("browsing:   disabled (set MUSE_BROWSING_AUTO_SYNC)");
+    expect(off.stdout).toContain("browsing:   disabled — browsing-sync pulls your Chrome history into recall so Muse can reference pages you've viewed — set MUSE_BROWSING_AUTO_SYNC to turn it on");
   });
 });
 

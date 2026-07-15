@@ -9,6 +9,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import { createProgram, defaultConfigPath, uniqueCommandPrefix } from "../src/program.js";
+import { resetCliLanguageCache } from "../src/cli-i18n.js";
 import { registerListenCommand, type ListenShells } from "../src/commands-listen.js";
 import { formatNoticeStamp } from "../src/commands-agent-notices.js";
 import { formatLocalDateTime } from "../src/human-formatters.js";
@@ -952,8 +953,43 @@ describe("cli program", () => {
 
     const combined = output.join("");
     expect(combined).toContain("Tasks: (not configured)");
-    expect(combined).toContain("Upcoming: (calendar not configured)");
-    expect(combined).toContain("Recent notes: (notes dir not configured)");
+    expect(combined).toContain("Upcoming: (calendar not configured — run `muse setup calendar`)");
+    expect(combined).toContain("Recent notes: (notes dir not configured — save your first one with `muse notes save --local <path> \"<text>\"`)");
+  });
+
+  it("today: MUSE_LANG=ko actually renders Korean (E4b fix round 2: `today`'s entry point must resolve language before formatting)", async () => {
+    const prevLang = process.env.MUSE_LANG;
+    // resolveCliLanguage caches its FIRST resolution for the life of the
+    // module — the preceding `today` test (no MUSE_LANG set) already
+    // cached "en", which would silently win over this test's env var
+    // without an explicit reset.
+    resetCliLanguageCache();
+    process.env.MUSE_LANG = "ko";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({
+        ...io,
+        fetch: async () => new Response(JSON.stringify({
+          generatedAt: "2026-05-10T08:00:00Z",
+          lookaheadHours: 24
+          // tasks / events / notes all undefined — server says nothing's configured
+        }))
+      });
+
+      await program.parseAsync(
+        ["node", "muse", "--api-url", "http://api.test", "today"],
+        { from: "node" }
+      );
+
+      const combined = output.join("");
+      expect(combined).toContain("다가오는 일정: (캘린더가 설정되지 않음 — `muse setup calendar` 실행)");
+      expect(combined).toContain("최근 노트: (노트 폴더가 설정되지 않음");
+      expect(combined).not.toContain("Upcoming: (calendar not configured");
+      expect(combined).not.toContain("Recent notes: (notes dir not configured");
+    } finally {
+      if (prevLang === undefined) delete process.env.MUSE_LANG; else process.env.MUSE_LANG = prevLang;
+      resetCliLanguageCache();
+    }
   });
 
   it("notes list / read / search / save / append hit the /api/notes routes", async () => {

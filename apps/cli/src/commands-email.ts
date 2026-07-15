@@ -16,7 +16,7 @@ import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
 import { resolveCliLanguage } from "./cli-i18n.js";
-import { formatEmailAuthGuidance } from "./email-auth-guidance.js";
+import { formatEmailAuthGuidance, noGmailAccessMessage } from "./email-auth-guidance.js";
 import { syncEmailsToNotes } from "./email-sync.js";
 import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
@@ -227,7 +227,8 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       if (rejectWhenLocalOnly("sync")) return;
       const provider = deps.emailSource ?? buildGmailReader(io, env);
       if (!provider) {
-        io.stderr("muse email sync: run `muse setup email` or set MUSE_GMAIL_TOKEN (gmail.readonly scope).\n");
+        await resolveCliLanguage(env, () => readConfigStore(io));
+        io.stderr(`${noGmailAccessMessage("email sync")}\n`);
         process.exitCode = 1;
         return;
       }

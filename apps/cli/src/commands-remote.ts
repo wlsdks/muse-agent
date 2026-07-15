@@ -32,6 +32,7 @@ import type { Command } from "commander";
 
 import { runCommandWithTimeout } from "@muse/shared";
 
+import { t } from "./cli-i18n.js";
 import { readApiOptions } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 
@@ -385,7 +386,7 @@ export async function runRemoteDisableCommand(deps: RemoteCommandDeps): Promise<
 
   const binary = await resolveTailscaleBinary({ cwd, exists: deps.exists, osPlatform, run });
   if (!binary) {
-    stdout("tailscale isn't installed — nothing to turn off.\n");
+    stdout(`${t("remote.disable.notInstalled", { url: installUrlForPlatform(osPlatform) })}\n`);
     return 0;
   }
 

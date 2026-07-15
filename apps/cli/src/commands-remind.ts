@@ -26,10 +26,11 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { t } from "./cli-i18n.js";
+import { resolveCliLanguage, t } from "./cli-i18n.js";
 import { formatDaemonLivenessNotice, SCHEDULER_ADD_DAEMON_STALE_MS } from "./commands-scheduler-setup.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
+import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 import { waitForShutdownSignal } from "./async-promises.js";
 
@@ -237,6 +238,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "pending" list.
       assertReminderStatusInput(options.status);
+      await resolveCliLanguage(process.env, () => readConfigStore(io));
       type ReminderListPayload = { reminders: ReadonlyArray<Record<string, unknown>>; status: string; total: number };
       const readLocalReminders = async (): Promise<ReminderListPayload> => {
         const file = localRemindersFile();

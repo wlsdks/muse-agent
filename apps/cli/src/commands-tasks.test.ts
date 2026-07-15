@@ -5,8 +5,9 @@ import { errorMessage } from "@muse/shared";
 
 import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import { Command } from "commander";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { resetCliLanguageCache } from "./cli-i18n.js";
 import { filterTasksByDue, filterTasksBySearch, filterTasksByTag, formatOpenLoops, parseDueWindow, registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
 
 describe("filterTasksByTag — keep only tasks carrying a tag (case-insensitive)", () => {
@@ -416,3 +417,47 @@ describe("muse tasks add --due — past-due heads-up (sibling parity with `remin
   });
 });
 
+describe("muse tasks list — MUSE_LANG=ko actually renders Korean (E4b fix round 2: the entry point must resolve language before formatting)", () => {
+  const prevLang = process.env.MUSE_LANG;
+  const prevTasksFile = process.env.MUSE_TASKS_FILE;
+  beforeEach(() => {
+    // resolveCliLanguage caches its FIRST resolution for the life of the
+    // module — earlier `list` calls elsewhere in this file (no MUSE_LANG
+    // set) already cached "en", which would silently win over this test's
+    // env var without an explicit reset.
+    resetCliLanguageCache();
+    process.env.MUSE_LANG = "ko";
+    process.env.MUSE_TASKS_FILE = join(mkdtempSync(join(tmpdir(), "muse-tasks-ko-")), "tasks.json");
+  });
+  afterEach(() => {
+    if (prevLang === undefined) delete process.env.MUSE_LANG; else process.env.MUSE_LANG = prevLang;
+    if (prevTasksFile === undefined) delete process.env.MUSE_TASKS_FILE; else process.env.MUSE_TASKS_FILE = prevTasksFile;
+    resetCliLanguageCache();
+  });
+
+  it("`muse tasks list --local` with an empty store renders the Korean empty-state line, not English", async () => {
+    const out: string[] = [];
+    const io = { stderr: () => {}, stdout: (m: string) => out.push(m) };
+    const helpers: TasksCommandHelpers = { apiRequest: async () => { throw new Error("must not be called"); }, writeOutput: () => {} };
+    const program = new Command();
+    program.exitOverride();
+    registerTasksCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "tasks", "list", "--local"]);
+    const rendered = out.join("");
+    expect(rendered).toContain("할 일 (open): (없음)");
+    expect(rendered).not.toContain("Tasks (open): (none)");
+  });
+
+  it("`muse tasks providers` renders the Korean empty-state line, not English", async () => {
+    const out: string[] = [];
+    const io = { stderr: () => {}, stdout: (m: string) => out.push(m) };
+    const helpers: TasksCommandHelpers = { apiRequest: async () => ({ providers: [] }), writeOutput: () => {} };
+    const program = new Command();
+    program.exitOverride();
+    registerTasksCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "tasks", "providers"]);
+    const rendered = out.join("");
+    expect(rendered).toContain("설정된 것 없음");
+    expect(rendered).not.toContain("none configured");
+  });
+});
