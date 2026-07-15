@@ -37,15 +37,27 @@ export function parseMajor(version) {
 
 export const EXPECTED_BUILD_MAJOR = 7;
 export const EXPECTED_MODULE_MAJOR = 6;
+export const EXPECTED_TYPESCRIPT_PACKAGE_PREFIX = "npm:@typescript/typescript6";
+export const EXPECTED_NATIVE_PACKAGE_PREFIX = "npm:typescript";
 
 export function readRootScripts() {
   const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
   return JSON.parse(raw).scripts ?? {};
 }
 
+function readRootPackage() {
+  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  return JSON.parse(raw);
+}
+
 function main() {
   const require = createRequire(import.meta.url);
   const moduleVersion = require("typescript").version;
+  const packageJson = readRootPackage();
+  const devDependencies = packageJson.devDependencies ?? {};
+  const tsDeclaration = devDependencies.typescript;
+  const nativeTsDeclaration = devDependencies["@typescript/native"];
+
   const binVersion = execFileSync("node_modules/.bin/tsc", ["--version"], { encoding: "utf8" })
     .replace(/^Version\s*/iu, "");
 
@@ -58,6 +70,16 @@ function main() {
   if (parseMajor(moduleVersion) !== EXPECTED_MODULE_MAJOR) {
     problems.push(
       `the \`typescript\` MODULE is v${moduleVersion} — typescript-eslint and knip import it and crash on ${EXPECTED_BUILD_MAJOR}.0, which ships no compiler API (it lands in 7.1). Keep it at ${EXPECTED_MODULE_MAJOR}.`
+    );
+  }
+  if (typeof tsDeclaration !== "string" || !tsDeclaration.startsWith(EXPECTED_TYPESCRIPT_PACKAGE_PREFIX)) {
+    problems.push(
+      `expected devDependency \`typescript\` to stay on ${EXPECTED_TYPESCRIPT_PACKAGE_PREFIX} for TS7 toolchain split (got ${String(tsDeclaration)})`
+    );
+  }
+  if (typeof nativeTsDeclaration !== "string" || !nativeTsDeclaration.startsWith(EXPECTED_NATIVE_PACKAGE_PREFIX)) {
+    problems.push(
+      `expected devDependency \`@typescript/native\` to stay on ${EXPECTED_NATIVE_PACKAGE_PREFIX} for TS7 native compiler`
     );
   }
 
