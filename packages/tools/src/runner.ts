@@ -90,15 +90,15 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
       const response = await invoke(request);
 
       const cap = request.maxOutputBytes;
-      const cappedStdout = cap !== undefined ? response.stdout.slice(0, cap) : response.stdout;
-      const cappedStderr = cap !== undefined ? response.stderr.slice(0, cap) : response.stderr;
+      const cappedStdout = cap !== undefined ? truncateUtf8(response.stdout, cap) : response.stdout;
+      const cappedStderr = cap !== undefined ? truncateUtf8(response.stderr, cap) : response.stderr;
       // A model-supplied cap that actually shortened either stream MUST flip
       // `truncated` — otherwise the model reads partial output as if it were the
       // whole thing and concludes wrongly (e.g. "tests passed" off a cut log).
       // OR with the runner's own flag; never flip a genuine `true` back to false.
       // Computed on the CAPPED-but-UNREDACTED strings — redaction changes length
       // (a secret collapses to `[redacted-...]`), which would corrupt this compare.
-      const capTruncated = cappedStdout.length < response.stdout.length || cappedStderr.length < response.stderr.length;
+      const capTruncated = cappedStdout !== response.stdout || cappedStderr !== response.stderr;
 
       // Subprocess output is untrusted and can echo a secret (an env dump, a
       // config print, a leaked credential in a log line) — mask before it
@@ -116,6 +116,49 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
       };
     }
   };
+}
+
+/**
+ * Truncate a string to a UTF-8 byte budget without producing a replacement
+ * character from a partial multibyte sequence. The Rust runner already uses
+ * byte caps; this protects injected and fallback runner implementations too.
+ */
+function truncateUtf8(value: string, maxBytes: number): string {
+  const bytes = Buffer.from(value);
+  if (bytes.byteLength <= maxBytes) {
+    return value;
+  }
+
+  let end = maxBytes;
+  let continuationStart = end;
+  while (continuationStart > 0 && isUtf8ContinuationByte(bytes[continuationStart - 1]!)) {
+    continuationStart--;
+  }
+
+  if (continuationStart === end) {
+    if (utf8SequenceLength(bytes[end - 1]!) > 1) {
+      end--;
+    }
+  } else {
+    const leadIndex = continuationStart - 1;
+    if (leadIndex < 0 || utf8SequenceLength(bytes[leadIndex]!) !== end - leadIndex) {
+      end = Math.max(0, leadIndex);
+    }
+  }
+
+  return bytes.subarray(0, end).toString("utf8");
+}
+
+function isUtf8ContinuationByte(value: number): boolean {
+  return (value & 0b1100_0000) === 0b1000_0000;
+}
+
+function utf8SequenceLength(leadByte: number): number {
+  if ((leadByte & 0b1000_0000) === 0) return 1;
+  if ((leadByte & 0b1110_0000) === 0b1100_0000) return 2;
+  if ((leadByte & 0b1111_0000) === 0b1110_0000) return 3;
+  if ((leadByte & 0b1111_1000) === 0b1111_0000) return 4;
+  return 1;
 }
 
 const RUNNER_WATCHDOG_GRACE_MS = 5_000;

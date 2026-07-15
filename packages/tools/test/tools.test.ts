@@ -995,6 +995,20 @@ describe("Rust runner tool", () => {
     expect(result.truncated).toBe(true);
   });
 
+  it("caps fallback output by UTF-8 bytes without splitting a character", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: "가나다", timedOut: false, truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node", maxOutputBytes: 4 }, { runId: "run-utf8" }) as {
+      stdout: string; truncated: boolean;
+    };
+    expect(result.stdout).toBe("가");
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(4);
+    expect(result.truncated).toBe(true);
+  });
+
   it("leaves `truncated` false when the cap is larger than the output (no spurious flag)", async () => {
     const tool = createRustRunnerTool({
       invokeRunner: async () => ({
