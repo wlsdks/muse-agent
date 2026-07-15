@@ -8,7 +8,7 @@ import type {
   CalendarRange,
   CredentialRequirement
 } from "./types.js";
-import { runCommandWithTimeout } from "@muse/shared";
+import { parseBooleanFromEnv, runCommandWithTimeout } from "@muse/shared";
 
 export interface MacOsCalendarProviderOptions {
   readonly calendarName?: string;
@@ -245,7 +245,9 @@ function parseListOutput(output: string, providerId: string): readonly CalendarE
       return [{
         // AppleScript renders `allday event of evt` as "true"/"false";
         // a missing 6th field (legacy output) reads as not-all-day.
-        allDay: allDayRaw?.trim() === "true",
+        // Parse with the shared env-style boolean helper so parsing behavior
+        // stays aligned across providers.
+        allDay: parseBooleanFromEnv(allDayRaw, false),
         endsAt,
         id,
         providerId,

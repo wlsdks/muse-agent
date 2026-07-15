@@ -1,4 +1,4 @@
-import { createStringSetGuard } from "@muse/shared";
+import { createStringSetGuard, parseBooleanFromEnv } from "@muse/shared";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -235,7 +235,7 @@ function parseReadOutput(app: MacReadApp, stdout: string): JsonObject {
     case "volume": {
       const [vol = "0", muted = "false"] = raw.split("\t");
       const outputVolume = Number.parseInt(vol, 10);
-      return { app, muted: muted.trim() === "true", outputVolume: Number.isFinite(outputVolume) ? outputVolume : 0 };
+      return { app, muted: parseBooleanFromEnv(muted, false), outputVolume: Number.isFinite(outputVolume) ? outputVolume : 0 };
     }
     case "reminders": {
       const items: JsonValue[] = raw
