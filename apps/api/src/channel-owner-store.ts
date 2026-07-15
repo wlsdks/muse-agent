@@ -1,9 +1,10 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { randomInt, timingSafeEqual } from "node:crypto";
 
 import { isRecord, parseJson } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 /**
  * Per-provider channel pairing: adoption as owner requires a one-time
@@ -48,36 +49,29 @@ export async function readChannelOwner(file: string, providerId: string): Promis
  * Record `source` as the provider's owner IF none exists yet; returns
  * the effective owner either way. Callers gate entry to this (a valid
  * one-time pairing code, verified via `verifyPairingCodeAttempt` below)
- * — there is no re-read-after-write here, so this alone is only safe
- * under single-process sequential inbound processing, not as a
- * standalone race guard.
+ * — the ownership decision and write run under the shared cross-process
+ * mutation lock, so two daemon instances cannot adopt different first chats.
  */
 export async function adoptChannelOwner(file: string, providerId: string, source: string): Promise<string> {
-  const owners = await readAll(file);
-  const existing = owners[providerId];
-  if (existing) {
-    return existing;
-  }
-  const next: PersistedShape = { owners: { ...owners, [providerId]: source }, version: 1 };
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  return source;
+  return mutateChannelOwners(file, async (owners) => {
+    const existing = owners[providerId];
+    if (existing) {
+      return existing;
+    }
+    await writeChannelOwners(file, { ...owners, [providerId]: source });
+    return source;
+  });
 }
 
 /** Clear the provider's owner so pairing can happen again with a fresh code. */
 export async function removeChannelOwner(file: string, providerId: string): Promise<void> {
-  const owners = await readAll(file);
-  if (!(providerId in owners)) {
-    return;
-  }
-  const { [providerId]: _dropped, ...rest } = owners;
-  const next: PersistedShape = { owners: rest, version: 1 };
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await mutateChannelOwners(file, async (owners) => {
+    if (!(providerId in owners)) {
+      return;
+    }
+    const { [providerId]: _dropped, ...rest } = owners;
+    await writeChannelOwners(file, rest);
+  });
 }
 
 /** Parse `provider:source` pairs from MUSE_CHANNEL_ALLOWED_CHATS ("telegram:123,matrix:!r:hs"). */
@@ -113,6 +107,18 @@ async function readAll(file: string): Promise<Readonly<Record<string, string>>> 
     }
   }
   return output;
+}
+
+async function writeChannelOwners(file: string, owners: Readonly<Record<string, string>>): Promise<void> {
+  const next: PersistedShape = { owners, version: 1 };
+  await atomicWriteFile(file, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+async function mutateChannelOwners<T>(
+  file: string,
+  mutation: (owners: Readonly<Record<string, string>>) => Promise<T>
+): Promise<T> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => mutation(await readAll(file))));
 }
 
 /**
@@ -171,24 +177,26 @@ export function extractPairingCodeCandidate(text: string): string | undefined {
  * never resets an in-progress code's attempt counter.
  */
 export async function getOrCreatePairingCode(file: string, providerId: string, now: Date): Promise<string> {
-  const codes = await readAllPairingCodes(file);
-  const existing = codes[providerId];
-  if (existing) {
-    return existing.code;
-  }
-  const entry: PairingCodeEntry = { attempts: 0, code: generatePairingCode(), createdAt: now.toISOString() };
-  await writePairingCodes(file, { ...codes, [providerId]: entry });
-  return entry.code;
+  return mutatePairingCodes(file, async (codes) => {
+    const existing = codes[providerId];
+    if (existing) {
+      return existing.code;
+    }
+    const entry: PairingCodeEntry = { attempts: 0, code: generatePairingCode(), createdAt: now.toISOString() };
+    await writePairingCodes(file, { ...codes, [providerId]: entry });
+    return entry.code;
+  });
 }
 
 /** Drop the provider's pairing code (e.g. alongside an owner reset) so the next read mints a fresh one. */
 export async function removePairingCode(file: string, providerId: string): Promise<void> {
-  const codes = await readAllPairingCodes(file);
-  if (!(providerId in codes)) {
-    return;
-  }
-  const { [providerId]: _dropped, ...rest } = codes;
-  await writePairingCodes(file, rest);
+  await mutatePairingCodes(file, async (codes) => {
+    if (!(providerId in codes)) {
+      return;
+    }
+    const { [providerId]: _dropped, ...rest } = codes;
+    await writePairingCodes(file, rest);
+  });
 }
 
 /**
@@ -205,25 +213,28 @@ export async function verifyPairingCodeAttempt(
   providerId: string,
   candidate: string
 ): Promise<PairingCodeVerdict> {
-  const codes = await readAllPairingCodes(file);
-  const entry = codes[providerId];
-  if (!entry) {
-    return "no_code";
-  }
-  const expected = Buffer.from(entry.code, "utf8");
-  const actual = Buffer.from(candidate, "utf8");
-  const matched = expected.length === actual.length && timingSafeEqual(expected, actual);
-  if (matched) {
-    await removePairingCode(file, providerId);
-    return "matched";
-  }
-  const attempts = entry.attempts + 1;
-  if (attempts >= PAIRING_CODE_MAX_ATTEMPTS) {
-    await removePairingCode(file, providerId);
+  return mutatePairingCodes(file, async (codes) => {
+    const entry = codes[providerId];
+    if (!entry) {
+      return "no_code";
+    }
+    const expected = Buffer.from(entry.code, "utf8");
+    const actual = Buffer.from(candidate, "utf8");
+    const matched = expected.length === actual.length && timingSafeEqual(expected, actual);
+    if (matched) {
+      const { [providerId]: _dropped, ...rest } = codes;
+      await writePairingCodes(file, rest);
+      return "matched";
+    }
+    const attempts = entry.attempts + 1;
+    if (attempts >= PAIRING_CODE_MAX_ATTEMPTS) {
+      const { [providerId]: _dropped, ...rest } = codes;
+      await writePairingCodes(file, rest);
+      return "wrong";
+    }
+    await writePairingCodes(file, { ...codes, [providerId]: { ...entry, attempts } });
     return "wrong";
-  }
-  await writePairingCodes(file, { ...codes, [providerId]: { ...entry, attempts } });
-  return "wrong";
+  });
 }
 
 async function readAllPairingCodes(file: string): Promise<Readonly<Record<string, PairingCodeEntry>>> {
@@ -252,13 +263,26 @@ function isPairingCodeEntry(value: unknown): value is PairingCodeEntry {
   if (!isRecord(value)) {
     return false;
   }
-  return typeof value.code === "string" && typeof value.attempts === "number" && typeof value.createdAt === "string";
+  const code = value.code;
+  const attempts = value.attempts;
+  const createdAt = value.createdAt;
+  return typeof code === "string"
+    && /^\d{6}$/u.test(code)
+    && typeof attempts === "number"
+    && Number.isSafeInteger(attempts)
+    && attempts >= 0
+    && attempts < PAIRING_CODE_MAX_ATTEMPTS
+    && typeof createdAt === "string";
 }
 
 async function writePairingCodes(file: string, codes: Readonly<Record<string, PairingCodeEntry>>): Promise<void> {
   const next: PairingCodesShape = { codes, version: 1 };
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+async function mutatePairingCodes<T>(
+  file: string,
+  mutation: (codes: Readonly<Record<string, PairingCodeEntry>>) => Promise<T>
+): Promise<T> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => mutation(await readAllPairingCodes(file))));
 }
