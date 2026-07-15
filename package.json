@@ -104,8 +104,9 @@
     "eval:channel-rhythm": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/api build && node scripts/eval-channel-rhythm.mjs",
     "check:env": "node scripts/env-inventory.mjs --check",
     "docs:env": "node scripts/env-inventory.mjs --write",
+    "check:ts7": "node scripts/check-toolchain.mjs",
     "check:tsconfig": "node scripts/check-tsconfig-options.mjs",
-    "check:toolchain": "node scripts/check-toolchain.mjs && pnpm run check:tsconfig"
+    "check:toolchain": "pnpm run check:ts7 && pnpm run check:tsconfig"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
