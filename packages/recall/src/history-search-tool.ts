@@ -99,6 +99,12 @@ export function createHistorySearchTool(options: HistorySearchToolOptions): Muse
 }
 
 function renderHit(hit: HistorySearchHit): string {
+  // A conversation hit's ref is a real `muse chats resume` id — point that out so
+  // the citation is actionable, not just a label (unlike the other three sources,
+  // which have no equivalent "reopen this" command).
+  if (hit.source === "conversations") {
+    return `[conversations:${hit.ref}] (resume with \`muse chats resume ${hit.ref}\`) ${hit.snippet}`;
+  }
   return `[${hit.source}:${hit.ref}] ${hit.snippet}`;
 }
 

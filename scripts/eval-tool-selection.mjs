@@ -1104,6 +1104,7 @@ async function buildHistorySearchScenario() {
       { prompt: "Find that earlier conversation where I mentioned the ramen place.", expectTool: "history_search", requireArgs: ["query"], note: "EN 'find that earlier conversation' → history_search" },
       { prompt: "예전에 분기 보고서 얘기했던 대화 좀 찾아줘.", expectTool: "history_search", requireArgs: ["query"], note: "KO 'find the past conversation about the quarterly report' → history_search (user's language)" },
       { prompt: "When did we last talk about the database migration plan?", expectTool: "history_search", requireArgs: ["query"], note: "EN 'when did we last talk about X' → history_search" },
+      { prompt: "지난주에 텔레그램에서 말했던 그 링크 뭐였지?", expectTool: "history_search", requireArgs: ["query"], note: "KO 'what was that link I mentioned on Telegram last week' → history_search (R3-1: a CONVERSATION-sourced query, not just an episode summary)" },
       // confusable neighbours
       { prompt: "What does my note say about the office Wi-Fi password?", expectTool: "knowledge_search", requireArgs: ["query"], note: "EN written NOTE lookup → knowledge_search (NOT history_search — a note, not a conversation)" },
       { prompt: "Search the web for the latest Node.js LTS version.", expectTool: "muse.search.search", requireArgs: ["query"], note: "EN public-web fact → web search (NOT history_search)" },

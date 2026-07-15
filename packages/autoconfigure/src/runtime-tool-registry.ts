@@ -12,7 +12,7 @@ import { createCachingEmbedder } from "@muse/agent-core";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "@muse/recall";
-import { addContact, defaultBackgroundProcessesFile, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
+import { addContact, defaultBackgroundProcessesFile, defaultConversationsFile, FileConversationStore, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
 import { collectDatedNotes, createBackgroundListTool, createBrowsingSearchTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, isHomeAssistantLocalOnlyEffective, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
@@ -183,6 +183,11 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     }
     const userId = resolveDefaultUserId(env);
     const historyNotesProvider = notesRegistry?.primary();
+    // The SAME shared conversation store `muse chats` / the CLI / the API read —
+    // so a Telegram (or web, or CLI) conversation is findable by topic, not just
+    // by its episode summary. Conversations are cross-surface BY DESIGN (S3b), so
+    // this is the same exposure `muse chats list` already gives the user.
+    const conversationStore = new FileConversationStore({ file: defaultConversationsFile(env) });
     // OPT-IN hybrid (lexical BM25 + embedding-cosine RRF): off by default because
     // it embeds the query AND every history record per call (local Ollama cost),
     // like knowledge_search. When on, the SAME embedder feeds the tool's query
@@ -199,6 +204,8 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
           ...(historyNotesProvider ? { notesProvider: historyNotesProvider } : {}),
           userMemoryStore,
           userId,
+          listConversations: () => conversationStore.list(),
+          getConversation: (id) => conversationStore.get(id),
           ...(historyEmbedder ? { embed: historyEmbedder } : {})
         }),
       ...(historyEmbedder ? { embed: historyEmbedder } : {})

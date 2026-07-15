@@ -1,6 +1,7 @@
 import type { HistoryRecord } from "@muse/recall";
 import type { NotesProvider } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
+import { CHAT_CONTEXT_TURN_LIMIT, recentChatTurns, type Conversation, type ConversationSummary } from "@muse/stores";
 
 export interface EpisodeRecord {
   readonly id: string;
@@ -20,6 +21,15 @@ export interface HistoryRecordsProviderDeps {
   /** Truncate each note body to bound CPU/snippet cost. Default 4000. */
   readonly maxNoteChars?: number;
   /**
+   * Conversation summaries (CLI/web/Telegram alike — the shared conversation
+   * store), newest-first. Paired with {@link listConversations}'s sibling
+   * {@link getConversation}; either absent ⇒ no conversation records (mirrors
+   * `notesProvider`'s absent-means-unconfigured contract).
+   */
+  readonly listConversations?: () => Promise<readonly ConversationSummary[]> | readonly ConversationSummary[];
+  /** The full turn history for one conversation id, when configured. */
+  readonly getConversation?: (id: string) => Promise<Conversation | undefined> | Conversation | undefined;
+  /**
    * OPT-IN record embedder (same model/space as the tool's query embed). When
    * present, each record's text is embedded so `history_search` can fuse lexical
    * BM25 with embedding-cosine (a paraphrase is found, not just a term match).
@@ -34,6 +44,16 @@ export interface HistoryRecordsProviderDeps {
 const DEFAULT_MAX_NOTE_CHARS = 4000;
 
 /**
+ * Cap on how many of the user's MOST RECENT conversations become searchable
+ * records. Unlike episodes/notes/memory (one read call each), a conversation
+ * record needs a `get()` per conversation on top of the `list()` — an
+ * unbounded history would mean hydrating every conversation's full turn
+ * array on every `history_search` call. 50 comfortably covers "recent"
+ * without that cost; older threads stay findable via episode summaries.
+ */
+const DEFAULT_MAX_CONVERSATIONS = 50;
+
+/**
  * Resolve the user's OWN searchable past into flat {@link HistoryRecord}s across
  * ALL three advertised sources — chat episodes, notes, and remembered facts —
  * each carrying its correct `source` label so a hit cites the real surface.
@@ -46,12 +66,13 @@ const DEFAULT_MAX_NOTE_CHARS = 4000;
  * history is searchable without a restart.
  */
 export async function buildHistoryRecords(deps: HistoryRecordsProviderDeps): Promise<readonly HistoryRecord[]> {
-  const [episodes, notes, memory] = await Promise.all([
+  const [episodes, notes, memory, conversations] = await Promise.all([
     resolveEpisodeRecords(deps),
     resolveNoteRecords(deps),
-    resolveMemoryRecords(deps)
+    resolveMemoryRecords(deps),
+    resolveConversationRecords(deps)
   ]);
-  const records = [...episodes, ...notes, ...memory];
+  const records = [...episodes, ...notes, ...memory, ...conversations];
   return deps.embed ? attachEmbeddings(records, deps.embed) : records;
 }
 
@@ -160,4 +181,71 @@ function toMemoryRecord(kind: "fact" | "preference", key: string, value: string)
     source: "memory",
     text: `${key}: ${value}`
   };
+}
+
+/**
+ * Resolve the user's own CONVERSATIONS (CLI/web/Telegram alike — the shared
+ * conversation store, see conversation-store.ts) into one {@link HistoryRecord}
+ * PER CONVERSATION, so "what did I say in Telegram last week" is answerable by
+ * `history_search`, not just by episode summaries. This is the same exposure
+ * `muse chats` already gives the user (S3b made conversations cross-surface BY
+ * DESIGN) — the memory-BUCKET scoping (`inbound-agent-run` `runUserId`) is
+ * untouched here.
+ *
+ * `ref` is the conversation id itself (a real `muse chats resume <id>`
+ * target); `text` is the title plus its last few turns so a search can match
+ * on either. Fail-soft on both the list and any per-conversation get (mirrors
+ * `resolveEpisodeRecords`): a broken store yields no conversation records and
+ * never blocks the other sources.
+ */
+async function resolveConversationRecords(deps: HistoryRecordsProviderDeps): Promise<readonly HistoryRecord[]> {
+  const listConversations = deps.listConversations;
+  const getConversation = deps.getConversation;
+  if (!listConversations || !getConversation) {
+    return [];
+  }
+  const maxChars = deps.maxNoteChars ?? DEFAULT_MAX_NOTE_CHARS;
+  let summaries: readonly ConversationSummary[];
+  try {
+    summaries = await listConversations();
+  } catch {
+    return [];
+  }
+  // `list()` is already newest-first, but the deps are an injected test seam —
+  // sort defensively rather than trust caller order for the recency cap.
+  const recent = [...summaries]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, DEFAULT_MAX_CONVERSATIONS);
+  const records = await Promise.all(
+    recent.map(async (summary): Promise<HistoryRecord | undefined> => {
+      let conversation: Conversation | undefined;
+      try {
+        conversation = await getConversation(summary.id);
+      } catch {
+        return undefined;
+      }
+      if (!conversation) {
+        return undefined;
+      }
+      // Same read-side turn window every chat-history reader shares
+      // (`CHAT_CONTEXT_TURN_LIMIT`) — a searchable record covers exactly the
+      // span `muse chats resume` would show, capped further by `maxChars` so
+      // a 200-turn conversation still yields a bounded record.
+      const turns = recentChatTurns(conversation.turns, CHAT_CONTEXT_TURN_LIMIT);
+      const turnLines = turns.map((turn) => `${turn.role}: ${turn.content}`).join("\n");
+      const title = summary.title.trim();
+      const text = (turnLines.length > 0 ? `${title}\n\n${turnLines}` : title).slice(0, maxChars);
+      if (text.length === 0) {
+        return undefined;
+      }
+      const updatedMs = Date.parse(summary.updatedAt);
+      return {
+        ref: summary.id,
+        source: "conversations" as const,
+        text,
+        ...(Number.isFinite(updatedMs) ? { timestampMs: updatedMs } : {})
+      };
+    })
+  );
+  return records.filter((record): record is HistoryRecord => record !== undefined);
 }
