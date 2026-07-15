@@ -92,6 +92,7 @@ import { notesIndexPath, prepareAskContext } from "./ask-context-setup.js";
 import {
   createTrustedAskToolRun
 } from "./trusted-local-cli-authority.js";
+import { buildLearnQueuePendingNotice } from "./learn-queue-notice.js";
 
 /**
  * Drain the chat-only fast-path model stream. A provider `error`
@@ -761,5 +762,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         toolsUsed,
         upcomingEvents
       });
+
+      // Fail-soft, silent unless there is something actionable: a queued
+      // correction that nothing is draining. Never on the citation-critical
+      // stdout path — this is a stderr-only nudge toward `muse playbook
+      // drain` / `muse daemon --install`.
+      const learnQueueNotice = await buildLearnQueuePendingNotice(process.env).catch(() => undefined);
+      if (learnQueueNotice) {
+        io.stderr(learnQueueNotice);
+      }
     });
 }

@@ -1,7 +1,12 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { computeOnboarding, registerOnboardCommand, type OnboardingState } from "./commands-onboard.js";
+import { readDaemonConfig, writeDaemonConfig } from "./commands-daemon-config.js";
 import type { ProgramIO } from "./program.js";
 
 const base: OnboardingState = {
@@ -205,5 +210,112 @@ describe("muse onboard — background-daemon offer (R3-5)", () => {
     registerOnboardCommand(program, io, { confirm: async () => { confirmed = true; return true; }, platform: "darwin" });
     await program.parseAsync(["node", "muse", "onboard", "--json"]);
     expect(confirmed).toBe(false);
+  });
+});
+
+describe("muse onboard — native macOS notification offer", () => {
+  function runIo(): { io: ProgramIO; out: string[] } {
+    const out: string[] = [];
+    const io: ProgramIO = {
+      fetch: (() => Promise.reject(new Error("no network in test"))) as typeof globalThis.fetch,
+      stderr: () => undefined,
+      stdout: (s) => out.push(s)
+    };
+    return { io, out };
+  }
+
+  const prevConfigFile = process.env.MUSE_DAEMON_CONFIG_FILE;
+  let configFile: string;
+  beforeEach(() => {
+    configFile = join(mkdtempSync(join(tmpdir(), "muse-onboard-notif-")), "daemon.json");
+    process.env.MUSE_DAEMON_CONFIG_FILE = configFile;
+  });
+  afterEach(() => {
+    if (prevConfigFile === undefined) delete process.env.MUSE_DAEMON_CONFIG_FILE;
+    else process.env.MUSE_DAEMON_CONFIG_FILE = prevConfigFile;
+  });
+
+  it("darwin + accept writes the daemon config with provider macos-notification and destination '@me'", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => false, // decline the background-daemon offer first
+      confirmNotifications: async () => true,
+      platform: "darwin"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("Native notifications enabled");
+    const config = readDaemonConfig(configFile);
+    expect(config).toMatchObject({ destination: "@me", provider: "macos-notification" });
+  });
+
+  it("darwin + accept preserves an EXISTING destination and dailyBrief block", async () => {
+    writeDaemonConfig(configFile, { dailyBrief: { enabled: true, time: "08:30" }, destination: "telegram:12345", provider: "log" });
+    const { io } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => false,
+      confirmNotifications: async () => true,
+      platform: "darwin"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    const config = readDaemonConfig(configFile);
+    expect(config).toMatchObject({
+      dailyBrief: { enabled: true, time: "08:30" },
+      destination: "telegram:12345",
+      provider: "macos-notification"
+    });
+  });
+
+  it("darwin + decline writes NO config and prints the notifications.log pointer", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, {
+      confirm: async () => false,
+      confirmNotifications: async () => false,
+      platform: "darwin"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("notifications.log");
+    expect(readDaemonConfig(configFile)).toEqual({});
+  });
+
+  it("non-darwin never asks and writes no config, prints the notifications.log pointer", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    let asked = false;
+    registerOnboardCommand(program, io, {
+      confirm: async () => false,
+      confirmNotifications: async () => { asked = true; return true; },
+      platform: "linux"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(asked).toBe(false);
+    expect(out.join("")).toContain("notifications.log");
+    expect(readDaemonConfig(configFile)).toEqual({});
+  });
+
+  it("without an injected confirmNotifications, a non-TTY test run declines safely (no config write)", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    registerOnboardCommand(program, io, { confirm: async () => false, platform: "darwin" });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("notifications.log");
+    expect(readDaemonConfig(configFile)).toEqual({});
+  });
+
+  it("a config-write failure fails soft — onboard still succeeds (no throw)", async () => {
+    const { io, out } = runIo();
+    const program = new Command();
+    // Point at an unwritable location — a directory path used as the config file.
+    const badDir = mkdtempSync(join(tmpdir(), "muse-onboard-baddir-"));
+    process.env.MUSE_DAEMON_CONFIG_FILE = badDir; // writeFileSync(dir, …) throws EISDIR
+    registerOnboardCommand(program, io, {
+      confirm: async () => false,
+      confirmNotifications: async () => true,
+      platform: "darwin"
+    });
+    await program.parseAsync(["node", "muse", "onboard"]);
+    expect(out.join("")).toContain("notifications.log");
   });
 });

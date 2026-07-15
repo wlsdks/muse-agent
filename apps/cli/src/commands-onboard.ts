@@ -17,6 +17,7 @@ import type { Command } from "commander";
 
 import { isNoInput } from "./cli-context.js";
 import { installDaemonAutostart, type DaemonHelpers } from "./commands-daemon.js";
+import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { probeOllamaModels } from "./ollama-probe.js";
@@ -191,6 +192,13 @@ export interface OnboardHelpers {
   readonly platform?: NodeJS.Platform;
   readonly runLaunchctl?: DaemonHelpers["runLaunchctl"];
   readonly schtasksRun?: DaemonHelpers["schtasksRun"];
+  /**
+   * Test seam — bypasses the real TTY/`--no-input` gate for the native
+   * macOS-notification offer; a test injects the answer directly. Absent →
+   * the real interactive confirm (skipped, safe-default `false`, on any
+   * non-TTY or `--no-input` run).
+   */
+  readonly confirmNotifications?: (message: string) => Promise<boolean>;
 }
 
 const BACKGROUND_INSTALL_HINT = "Keep Muse running in the background any time — reminders, briefings, and schedules keep firing even with the terminal closed:\n   $ muse daemon --install\n";
@@ -243,6 +251,49 @@ async function offerBackgroundDaemon(io: ProgramIO, helpers: OnboardHelpers): Pr
   }
 }
 
+const NOTIFICATIONS_LOG_HINT = "Proactive notices go to ~/.muse/notifications.log by default — `muse daemon --provider macos-notification` switches to native popups any time.\n";
+
+async function defaultConfirmNotifications(message: string): Promise<boolean> {
+  if (isNoInput() || !process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const { confirm, isCancel } = await import("@clack/prompts");
+  const answer = await confirm({ initialValue: false, message });
+  return isCancel(answer) ? false : answer === true;
+}
+
+/**
+ * A macOS-only offer, asked after the background-daemon offer: switch
+ * proactive notices from the always-on log file to a native macOS popup.
+ * Every other platform (or a "no"/cancelled answer) gets the one-line
+ * pointer to the log file instead. Fail-soft: a config-write failure
+ * never fails `muse onboard` — it just falls back to the same hint.
+ */
+async function offerNativeNotifications(io: ProgramIO, helpers: OnboardHelpers): Promise<void> {
+  const plat = helpers.platform ?? process.platform;
+  if (plat !== "darwin") {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+    return;
+  }
+  const wantsNotifications = await (helpers.confirmNotifications ?? defaultConfirmNotifications)(
+    "Use native macOS notification popups for Muse's proactive notices? 네이티브 macOS 알림을 사용할까요?"
+  );
+  if (!wantsNotifications) {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+    return;
+  }
+  try {
+    const configFile = resolveDaemonConfigFile(process.env);
+    const existing = readDaemonConfig(configFile);
+    writeDaemonConfig(configFile, {
+      ...existing,
+      destination: existing.destination ?? "@me",
+      provider: "macos-notification"
+    });
+    io.stdout("Native notifications enabled — `muse daemon` will pop up macOS notifications for proactive notices.\n");
+  } catch {
+    io.stdout(NOTIFICATIONS_LOG_HINT);
+  }
+}
+
 export function registerOnboardCommand(program: Command, io: ProgramIO, helpers: OnboardHelpers = {}): void {
   program
     .command("onboard")
@@ -269,5 +320,6 @@ export function registerOnboardCommand(program: Command, io: ProgramIO, helpers:
       io.stdout("\nSchedule a recurring prompt: `muse scheduler add \"...\" --every \"daily 9am\"`\n");
       io.stdout("Every agent file write is undoable — `muse rollback`.\n");
       await offerBackgroundDaemon(io, helpers);
+      await offerNativeNotifications(io, helpers);
     });
 }

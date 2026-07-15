@@ -544,7 +544,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const baseMessagingRegistry = makeMessaging(e);
+      // A daemon config that resolved to `macos-notification` (onboard's
+      // native-notification offer, `--provider`, or env) is useless unless
+      // the provider's own opt-in flag is also set — so overlay it to
+      // 'true' when the user hasn't voiced an opinion. An EXPLICIT 'false'
+      // wins (fail-close on a deliberate opt-out): the registry build then
+      // skips the provider and the existing unknown-provider error fires.
+      const messagingEnv = provider === "macos-notification" && e.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED === undefined
+        ? { ...e, MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED: "true" }
+        : e;
+      const baseMessagingRegistry = makeMessaging(messagingEnv);
       if (!baseMessagingRegistry.has(provider)) {
         const known = baseMessagingRegistry.list().map((p) => p.id);
         const suggestion = closestCommandName(provider, known);

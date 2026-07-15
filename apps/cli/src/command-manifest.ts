@@ -692,6 +692,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "consolidate",
       "decrypt",
       "distill",
+      "drain",
       "encrypt",
       "encryption-status",
       "list",

@@ -39,6 +39,13 @@ import type { ProgramIO } from "./program.js";
  */
 export const SCHEDULER_ADD_DAEMON_STALE_MS = 3 * DEFAULT_DAEMON_INTERVAL_MS;
 
+export interface DaemonLivenessSubject {
+  readonly en: string;
+  readonly ko: string;
+}
+
+const DEFAULT_LIVENESS_SUBJECT: DaemonLivenessSubject = { en: "job", ko: "작업" };
+
 /**
  * Fail-LOUD (not fail-close): the job is already saved by the time this
  * runs, so a stale/absent daemon can't be allowed to silently ship a job
@@ -47,7 +54,10 @@ export const SCHEDULER_ADD_DAEMON_STALE_MS = 3 * DEFAULT_DAEMON_INTERVAL_MS;
  * product's dual-language convention for anything the user reads once and
  * needs to act on immediately.
  */
-export function formatDaemonLivenessNotice(verdict: DaemonLoopHeartbeatVerdict): string {
+export function formatDaemonLivenessNotice(
+  verdict: DaemonLoopHeartbeatVerdict,
+  subject: DaemonLivenessSubject = DEFAULT_LIVENESS_SUBJECT
+): string {
   if (verdict.status === "alive") {
     return `Daemon alive — next tick within ~${Math.round(DEFAULT_DAEMON_INTERVAL_MS / 1000).toString()}s.\n`;
   }
@@ -56,12 +66,12 @@ export function formatDaemonLivenessNotice(verdict: DaemonLoopHeartbeatVerdict):
     : "the daemon has never run on this box";
   return [
     "",
-    "⚠️  WARNING: this job will NOT fire until `muse daemon` is running.",
+    `⚠️  WARNING: this ${subject.en} will NOT fire until \`muse daemon\` is running.`,
     `   (${reason})`,
     "   Run in the foreground now:   muse daemon",
     "   Or install it to always run: muse daemon --install",
     "",
-    "⚠️  경고: `muse daemon`이 실행 중이어야 이 작업이 실행됩니다. 지금은 실행되지 않습니다.",
+    `⚠️  경고: \`muse daemon\`이 실행 중이어야 이 ${subject.ko}이(가) 실행됩니다. 지금은 실행되지 않습니다.`,
     `   (${verdict.status === "stale" ? `최근 ${Math.round(SCHEDULER_ADD_DAEMON_STALE_MS / 60_000).toString()}분간 데몬 신호 없음` : "이 기기에서 데몬이 실행된 적이 없습니다"})`,
     "   포그라운드로 지금 실행:      muse daemon",
     "   상시 실행으로 설치:          muse daemon --install",

@@ -18,13 +18,14 @@
 import { randomUUID } from "node:crypto";
 
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
-import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
+import { formatDaemonLivenessNotice, SCHEDULER_ADD_DAEMON_STALE_MS } from "./commands-scheduler-setup.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
@@ -57,6 +58,10 @@ export interface RemindCommandHelpers {
     method?: "GET" | "POST" | "PUT" | "DELETE"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
+  /** Test seam — override the heartbeat dir instead of `defaultProactiveHeartbeatDir(process.env)`. */
+  readonly heartbeatDir?: string;
+  /** Test seam — injectable clock for the `remind add` liveness check. */
+  readonly now?: () => Date;
 }
 
 interface SharedOptions {
@@ -152,7 +157,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         );
       }
 
+      let ranLocal = false;
       const addLocal = async (): Promise<Record<string, unknown>> => {
+        ranLocal = true;
         const created: PersistedReminder = {
           createdAt: new Date().toISOString(),
           dueAt: resolvedDueAt,
@@ -199,6 +206,18 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       const viaSuffix = via ? ` → ${via.providerId}:${via.destination}` : "";
       const repeatSuffix = recurrence ? ` (repeats ${recurrence})` : "";
       io.stdout(`Added [${id.slice(0, 12)}] ${text} — due ${shortDateTime(dueAt)}${repeatSuffix}${viaSuffix}\n`);
+      // Fail-LOUD, not fail-close: the reminder is already saved above, so a
+      // stale/absent daemon must be surfaced loudly rather than let the user
+      // believe it will fire. Mirrors `scheduler add`'s liveness check.
+      // LOCAL write only — a reminder created via the API path is served by
+      // that remote server's own tick, not this box's local heartbeat.
+      if (ranLocal) {
+        const heartbeatDir = helpers.heartbeatDir ?? defaultProactiveHeartbeatDir(process.env);
+        const now = helpers.now ?? (() => new Date());
+        const heartbeat = await readProactiveHeartbeat(heartbeatDir);
+        const verdict = classifyDaemonLoopHeartbeat(heartbeat, { nowMs: now().getTime(), staleMs: SCHEDULER_ADD_DAEMON_STALE_MS });
+        io.stdout(formatDaemonLivenessNotice(verdict, { en: "reminder", ko: "리마인더" }));
+      }
     });
 
   remind
