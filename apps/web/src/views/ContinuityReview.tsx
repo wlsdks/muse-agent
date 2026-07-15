@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -78,6 +79,8 @@ function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evalu
 export function ContinuityReviewView({ client }: { readonly client: ApiClient }) {
   const { locale, t } = useI18n();
   const queryClient = useQueryClient();
+  const [newThreadKind, setNewThreadKind] = useState<Kind | undefined>();
+  const [newThreadTitle, setNewThreadTitle] = useState("");
   const review = useQuery({
     queryFn: () => client.get<ReviewResponse>("/api/attunement/review"),
     queryKey: ["attunement-review", client.baseUrl]
@@ -86,6 +89,15 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
     mutationFn: ({ deliveryId, value }: { readonly deliveryId: string; readonly value: Outcome }) =>
       client.post(`/api/attunement/deliveries/${encodeURIComponent(deliveryId)}/outcome`, { outcome: value }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] })
+  });
+  const thread = useMutation({
+    mutationFn: ({ kind, title }: { readonly kind: Kind; readonly title: string }) =>
+      client.post("/api/attunement/threads", { kind, title }),
+    onSuccess: () => {
+      setNewThreadKind(undefined);
+      setNewThreadTitle("");
+      return queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] });
+    }
   });
   const data = review.data;
 
@@ -104,6 +116,24 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
             </div>
 
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.threads")}</h2>
+            <Card>
+              <form onSubmit={(event) => {
+                event.preventDefault();
+                if (newThreadKind) thread.mutate({ kind: newThreadKind, title: newThreadTitle.trim() });
+              }}>
+                <div className="row-title">{t("continuity.newThread")}</div>
+                <p className="muted" style={{ margin: "4px 0 12px", fontSize: 13 }}>{t("continuity.newThreadHint")}</p>
+                <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <input className="input" value={newThreadTitle} onChange={(event) => setNewThreadTitle(event.target.value)} placeholder={t("continuity.threadTitle")} />
+                  {(["life", "work"] as const).map((kind) => (
+                    <Button aria-pressed={newThreadKind === kind} key={kind} size="sm" type="button" variant={newThreadKind === kind ? "secondary" : "ghost"} onClick={() => setNewThreadKind(kind)}>
+                      {kindLabel(kind)}
+                    </Button>
+                  ))}
+                  <Button disabled={!newThreadKind || newThreadTitle.trim().length === 0 || thread.isPending} size="sm" type="submit">{t("continuity.createThread")}</Button>
+                </div>
+              </form>
+            </Card>
             {data.threads.length === 0 ? (
               <p className="muted" style={{ marginTop: 8 }}>{t("continuity.threadsEmpty")}</p>
             ) : (
@@ -152,6 +182,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               </Card>
             ))}
             {outcome.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.outcomeError")}</p> : null}
+            {thread.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.threadError")}</p> : null}
           </>
         ) : null}
       </AsyncBlock>
