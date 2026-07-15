@@ -47,7 +47,12 @@ export function homeWatchesFromConfig(raw: string, connection: HomeWatchConnecti
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
-    const e = entry as Record<string, unknown>;
+    const e: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(entry)) {
+      if (typeof key === "string") {
+        e[key] = value;
+      }
+    }
     if (typeof e.id !== "string" || e.id.length === 0 || typeof e.entityId !== "string" || e.entityId.length === 0) {
       continue;
     }

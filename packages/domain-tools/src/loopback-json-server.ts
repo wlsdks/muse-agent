@@ -89,8 +89,8 @@ export function createJsonMcpServer(): LoopbackMcpServer {
               // Object.hasOwn, NOT `key in cursor`: `in` walks the prototype chain, so a
               // path of `constructor` / `__proto__` / `toString` resolved to an inherited
               // value (a function / Object.prototype) and leaked it into the tool result.
-              if (cursor && typeof cursor === "object" && !Array.isArray(cursor) && Object.hasOwn(cursor as Record<string, unknown>, segment.key)) {
-                cursor = (cursor as Record<string, unknown>)[segment.key];
+              if (cursor && isJsonObject(cursor) && Object.hasOwn(cursor, segment.key)) {
+                cursor = cursor[segment.key];
               } else {
                 return { found: false, value: null } satisfies JsonObject;
               }
@@ -201,7 +201,10 @@ function toJsonValue(value: unknown): JsonValue {
   }
   if (typeof value === "object") {
     const out: JsonObject = {};
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (!isJsonObject(value)) {
+      return null;
+    }
+    for (const [key, nested] of Object.entries(value)) {
       out[key] = toJsonValue(nested);
     }
     return out;
@@ -223,7 +226,7 @@ function deepMerge(base: JsonValue, overrides: JsonValue): JsonValue {
     return overrides;
   }
   const result: JsonObject = { ...base };
-  for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(overrides)) {
     if (key === "__proto__") {
       // Model args arrive via JSON.parse, which makes "__proto__" an OWN data key.
       // A plain `result["__proto__"] = …` would hit the Object.prototype setter and

@@ -161,6 +161,15 @@ export function createContextReferenceMcpServer(
   };
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (typeof key === "string") record[key] = entryValue;
+  }
+  return record;
+}
+
 function sanitizeJsonValue(value: unknown): JsonValue {
   if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return value;
@@ -176,7 +185,11 @@ function sanitizeJsonValue(value: unknown): JsonValue {
   }
   if (typeof value === "object") {
     const out: JsonObject = {};
-    for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+    const record = toRecord(value);
+    if (!record) {
+      return null;
+    }
+    for (const [key, entryValue] of Object.entries(record)) {
       out[key] = sanitizeJsonValue(entryValue);
     }
     return out;
