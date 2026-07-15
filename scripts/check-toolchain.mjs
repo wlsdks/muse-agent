@@ -30,6 +30,16 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
 
+const EXPECTED_ROOT_SCRIPTS = {
+  build: "pnpm run build:ts7-fast",
+  typecheck: "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck",
+  "build:ts7-fast": getTscFastCommand("build"),
+  "build:ts7-single-thread": getTscFastCommand("build", { singleThreaded: true }),
+  "typecheck:fast": getTscFastCommand("typecheck"),
+  "typecheck:ts7-fast": getTscFastCommand("typecheck"),
+  check: "pnpm run check:toolchain && pnpm build && pnpm test",
+};
+
 export function parseMajor(version) {
   const match = /(\d+)\./u.exec(version.trim());
   return match ? Number(match[1]) : Number.NaN;
@@ -84,23 +94,11 @@ function main() {
   }
 
   const scripts = readRootScripts();
-  if (scripts.build !== "pnpm run build:ts7-fast") {
-    problems.push("root build script must use `pnpm run build:ts7-fast`");
-  }
-  if (scripts["build:ts7-fast"] !== getTscFastCommand("build")) {
-    problems.push("build:ts7-fast must call run-tsc-fast with `build` mode");
-  }
-  if (scripts["build:ts7-single-thread"] !== getTscFastCommand("build", { singleThreaded: true })) {
-    problems.push("build:ts7-single-thread must call run-tsc-fast with `build --single-threaded`");
-  }
-  if (scripts.typecheck !== "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck") {
-    problems.push("typecheck must run `typecheck:ts7-fast` and web typecheck");
-  }
-  if (scripts["typecheck:fast"] !== getTscFastCommand("typecheck")) {
-    problems.push("typecheck:fast must call run-tsc-fast with `typecheck` mode");
-  }
-  if (scripts["typecheck:ts7-fast"] !== getTscFastCommand("typecheck")) {
-    problems.push("typecheck:ts7-fast must call run-tsc-fast with `typecheck` mode");
+  for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
+    const actualValue = scripts[name];
+    if (actualValue !== expectedValue) {
+      problems.push(`root script ${name} must be exactly ${JSON.stringify(expectedValue)} (got ${JSON.stringify(actualValue)})`);
+    }
   }
 
   const buildArgs = getTscFastArgs("build");

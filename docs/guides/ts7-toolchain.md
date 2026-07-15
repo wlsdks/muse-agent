@@ -47,6 +47,7 @@ Use:
 pnpm run check:ts7
 pnpm run check:tsconfig
 pnpm run check:toolchain   # aliases check:ts7 + check:tsconfig
+pnpm run check             # check:toolchain then build + test
 ```
 
 The checks validate:

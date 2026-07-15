@@ -22,7 +22,7 @@
     "build": "pnpm run build:ts7-fast",
     "build:ts7-fast": "node scripts/run-tsc-fast.mjs build && pnpm --filter @muse/web build",
     "build:ts7-single-thread": "node scripts/run-tsc-fast.mjs build --single-threaded",
-    "check": "pnpm build && pnpm test",
+    "check": "pnpm run check:toolchain && pnpm build && pnpm test",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
     "lint:comments": "node scripts/check-comment-markers.mjs",
     "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
