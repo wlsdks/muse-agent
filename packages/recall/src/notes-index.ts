@@ -209,64 +209,85 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   // file up first (see store-version-backup.ts): reindexNotes writes
   // back on the next run, so an undiscarded mismatch would otherwise
   // be silently overwritten with zero trace.
-  if ((candidate as { version?: unknown }).version === 1) {
+  if (candidate.version === 1) {
     // v1 stored embeddings inline in the JSON — migrate losslessly (no
     // re-embedding): the same vectors are rewritten into the v2 sidecar.
-    const v1 = candidate as unknown as NotesIndex;
-    if (Array.isArray(v1.files)) {
-      const migrated: NotesIndex = { builtAtIso: v1.builtAtIso, files: v1.files, model: v1.model, version: NOTES_INDEX_SCHEMA_VERSION };
+    const legacyFiles = parseInlineNotesEntries(candidate.files);
+    if (typeof candidate.model === "string" && typeof candidate.builtAtIso === "string" && legacyFiles) {
+      const migrated: NotesIndex = {
+        builtAtIso: candidate.builtAtIso,
+        files: legacyFiles,
+        model: candidate.model,
+        version: NOTES_INDEX_SCHEMA_VERSION
+      };
       await saveIndex(path, migrated);
       return loadIndex(path);
     }
+    await backupVersionMismatchedStore(path, candidate.version);
+    return undefined;
   }
   if (!isNotesIndexValid(candidate)) {
     await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
-
-  const inlineFiles = (candidate as NotesIndex).files;
-  if (!Array.isArray(inlineFiles)) {
-    return candidate as NotesIndex;
-  }
-  // Self-heal: a v2 JSON still carrying inline embedding arrays (hand-written
-  // index, test fixture, or interrupted save) is accepted and rewritten into
-  // the sidecar layout instead of being discarded.
-  const firstChunk = inlineFiles.flatMap((file) => file.chunks)[0];
-  if (firstChunk && Array.isArray((firstChunk as { embedding?: unknown }).embedding)) {
-    // Reload from the healed sidecar so EVERY load returns the same
-    // representation (Float32Array views) — a first-load/second-load
-    // representation split breaks byte-identical parity guarantees.
-    const healed: NotesIndex = { builtAtIso: (candidate as NotesIndex).builtAtIso, files: inlineFiles, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION };
+  const header = candidate;
+  const inlineFiles = parseInlineNotesEntries(candidate.files);
+  if (inlineFiles) {
+    if (inlineFiles.length === 0 || inlineFiles.every((file) => file.chunks.length === 0)) {
+      return {
+        builtAtIso: header.builtAtIso,
+        files: inlineFiles,
+        model: header.model,
+        version: NOTES_INDEX_SCHEMA_VERSION
+      };
+    }
+    const healed: NotesIndex = {
+      builtAtIso: header.builtAtIso,
+      files: inlineFiles,
+      model: header.model,
+      version: NOTES_INDEX_SCHEMA_VERSION
+    };
     await saveIndex(path, healed);
     return loadIndex(path);
   }
-  if (inlineFiles.length === 0 || inlineFiles.every((file) => file.chunks.length === 0)) {
-    return candidate as NotesIndex;
+
+  const dim = typeof candidate.embeddingDim === "number" && Number.isFinite(candidate.embeddingDim)
+    ? candidate.embeddingDim
+    : 0;
+  const count = typeof candidate.embeddingCount === "number" && Number.isFinite(candidate.embeddingCount)
+    ? candidate.embeddingCount
+    : 0;
+  const sidecarFiles = parseSidecarNotesEntries(candidate.files);
+  if (!sidecarFiles) {
+    await backupVersionMismatchedStore(path, candidate.version);
+    return undefined;
   }
-  const meta = candidate as unknown as { readonly embeddingDim?: number; readonly embeddingCount?: number; readonly files?: readonly { readonly path: string; readonly mtimeMs?: number; readonly chunks: readonly { readonly file: string; readonly chunkIndex: number; readonly text: string }[] }[] };
-  const dim = meta.embeddingDim ?? 0;
-  const count = meta.embeddingCount ?? 0;
   let bin: Buffer;
   try {
     bin = await readFile(embeddingsSidecarPath(path));
   } catch {
     return undefined;
   }
-  if (dim <= 0 || !Array.isArray(meta.files) || bin.byteLength !== count * dim * 4) {
+  if (dim <= 0 || !Array.isArray(sidecarFiles) || bin.byteLength !== count * dim * 4) {
     await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
   const all = new Float32Array(bin.buffer, bin.byteOffset, count * dim);
   let at = 0;
-  const files = meta.files.map((file) => ({
+  const files = sidecarFiles.map((file) => ({
     ...file,
-    chunks: file.chunks.map((chunk: { readonly file: string; readonly chunkIndex: number; readonly text: string }) => {
-      const embedding = all.subarray(at * dim, (at + 1) * dim);
+    chunks: file.chunks.map((chunk) => {
+      const embedding = Array.from(all.subarray(at * dim, (at + 1) * dim));
       at += 1;
       return { ...chunk, embedding };
     })
   }));
-  return { builtAtIso: (candidate as NotesIndex).builtAtIso, files, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION } as NotesIndex;
+  return {
+    builtAtIso: header.builtAtIso,
+    files,
+    model: header.model,
+    version: NOTES_INDEX_SCHEMA_VERSION
+  };
 }
 
 /**
@@ -276,24 +297,77 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
  * stale-check rejects).
  */
 export function isNotesIndexValid(candidate: { readonly version?: unknown } | null | undefined): boolean {
-  return isRecord(candidate) && candidate.version === NOTES_INDEX_SCHEMA_VERSION;
+  return isRecord(candidate)
+    && candidate.version === NOTES_INDEX_SCHEMA_VERSION
+    && typeof candidate.model === "string"
+    && typeof candidate.builtAtIso === "string"
+    && Array.isArray(candidate.files);
 }
 
-function isFileEntry(candidate: unknown): candidate is FileEntry {
-  if (!isRecord(candidate)) return false;
-  if (typeof candidate.path !== "string" || candidate.path.trim().length === 0) return false;
-  if (typeof candidate.mtimeMs !== "number" || !Number.isFinite(candidate.mtimeMs)) return false;
-  if (!Array.isArray(candidate.chunks)) return false;
-  return candidate.chunks.every(isIndexChunk);
+type InlineIndexChunk = {
+  readonly file: string;
+  readonly chunkIndex: number;
+  readonly text: string;
+  readonly embedding: readonly number[];
+};
+
+type SidecarIndexChunk = {
+  readonly file: string;
+  readonly chunkIndex: number;
+  readonly text: string;
+};
+
+function parseInlineNotesEntries(raw: unknown): readonly FileEntry[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const entries: FileEntry[] = [];
+  for (const item of raw) {
+    if (!isRecord(item) || typeof item.path !== "string" || typeof item.mtimeMs !== "number" || !Number.isFinite(item.mtimeMs) || !Array.isArray(item.chunks)) {
+      return undefined;
+    }
+    const chunks: IndexChunk[] = [];
+    for (const rawChunk of item.chunks) {
+      if (!isRecord(rawChunk) || typeof rawChunk.file !== "string" || typeof rawChunk.chunkIndex !== "number" || !Number.isFinite(rawChunk.chunkIndex) || typeof rawChunk.text !== "string" || !Array.isArray(rawChunk.embedding)) {
+        return undefined;
+      }
+      const values = rawChunk.embedding;
+      if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) return undefined;
+      chunks.push({
+        chunkIndex: rawChunk.chunkIndex,
+        embedding: values,
+        file: rawChunk.file,
+        text: rawChunk.text
+      });
+    }
+    entries.push({ chunks, mtimeMs: item.mtimeMs, path: item.path });
+  }
+  return entries;
 }
 
-function isIndexChunk(candidate: unknown): candidate is IndexChunk {
-  if (!isRecord(candidate)) return false;
-  if (typeof candidate.file !== "string" || candidate.file.trim().length === 0) return false;
-  if (typeof candidate.chunkIndex !== "number" || !Number.isFinite(candidate.chunkIndex)) return false;
-  if (typeof candidate.text !== "string" || candidate.text.length === 0) return false;
-  if (!Array.isArray(candidate.embedding)) return false;
-  return candidate.embedding.every((value) => typeof value === "number" && Number.isFinite(value));
+function parseSidecarNotesEntries(raw: unknown): readonly Omit<FileEntry, "chunks">[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const entries: Array<Omit<FileEntry, "chunks"> & { readonly chunks: readonly SidecarIndexChunk[] }> = [];
+  for (const item of raw) {
+    if (!isRecord(item) || typeof item.path !== "string" || typeof item.mtimeMs !== "number" || !Number.isFinite(item.mtimeMs) || !Array.isArray(item.chunks)) {
+      return undefined;
+    }
+    const chunks: SidecarIndexChunk[] = [];
+    for (const rawChunk of item.chunks) {
+      if (!isRecord(rawChunk) || typeof rawChunk.file !== "string" || typeof rawChunk.chunkIndex !== "number" || !Number.isFinite(rawChunk.chunkIndex) || typeof rawChunk.text !== "string") {
+        return undefined;
+      }
+      chunks.push({
+        chunkIndex: rawChunk.chunkIndex,
+        file: rawChunk.file,
+        text: rawChunk.text
+      });
+    }
+    entries.push({ chunks, mtimeMs: item.mtimeMs, path: item.path });
+  }
+  return entries;
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {
