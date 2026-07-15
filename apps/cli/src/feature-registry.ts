@@ -17,7 +17,7 @@
 
 import { parseBoolean } from "@muse/autoconfigure";
 
-export type FeatureSurface = "chat" | "memory" | "recall" | "tools" | "daemon" | "mcp" | "macos";
+export type FeatureSurface = "chat" | "memory" | "tools" | "daemon" | "mcp" | "macos";
 
 export interface FeatureEntry {
   readonly id: string;
@@ -30,15 +30,6 @@ export interface FeatureEntry {
 }
 
 export const FEATURE_REGISTRY: readonly FeatureEntry[] = [
-  {
-    enableHint: "export MUSE_RECALL_RERANK=qwen3:8b",
-    envVar: "MUSE_RECALL_RERANK",
-    id: "recall-rerank",
-    prerequisites: ["the named Ollama model must be pulled locally", "adds ~200-600ms per notes-grounded ask (measured warm)"],
-    surface: "recall",
-    title: "Local-LLM recall reranker",
-    unlocks: "A local model picks which retrieved note chunks actually answer the question, instead of trusting cosine similarity alone — fixes the lexical-overlap distractor class (measured: top-1 3/8 → 8/8)."
-  },
   {
     enableHint: "export MUSE_CHAT_WRITE_ENABLED=true",
     envVar: "MUSE_CHAT_WRITE_ENABLED",

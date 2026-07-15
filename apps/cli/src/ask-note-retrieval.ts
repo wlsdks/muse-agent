@@ -11,6 +11,8 @@ import {
   type NoteRetrievalResult
 } from "@muse/recall";
 
+import { resolveDefaultModel } from "@muse/autoconfigure";
+
 import { embed } from "./embed.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 
@@ -18,13 +20,25 @@ export type { NoteRetrievalResult } from "@muse/recall";
 
 type CoreParams = Parameters<typeof retrieveAndRankNotesCore>[0];
 
-/** The model named by MUSE_RECALL_RERANK, or undefined when reranking is off ("", "false", "0", and the bare "true" placeholder all mean off). */
+/**
+ * The Ollama model reranking runs on. DEFAULT ON for local-model users:
+ * with MUSE_RECALL_RERANK unset (or "true"), the ask's own local default
+ * model reranks — it is about to be loaded for the answer anyway, so the
+ * cost is ~350-600ms warm and zero extra memory (pass^3-verified 8/8 on
+ * the distractor golden set, 2026-07-15). A cloud default model disables
+ * reranking (the reranker only speaks local Ollama — never egress).
+ * MUSE_RECALL_RERANK=false opts out; a model name overrides the choice.
+ */
 export function resolveRerankModel(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const raw = (env.MUSE_RECALL_RERANK ?? "").trim();
-  if (raw.length === 0 || raw === "false" || raw === "0" || raw === "true") {
+  if (raw === "false" || raw === "0") {
     return undefined;
   }
-  return raw;
+  if (raw.length > 0 && raw !== "true") {
+    return raw;
+  }
+  const defaultModel = resolveDefaultModel(env);
+  return defaultModel?.startsWith("ollama/") ? defaultModel.slice("ollama/".length) : undefined;
 }
 
 /** Extracts the best-first candidate indices from a reranker reply ("2, 4, 1" / "[2]" → zero-based). Undefined when no number survives. */
