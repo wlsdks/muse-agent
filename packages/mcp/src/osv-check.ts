@@ -28,6 +28,8 @@
 
 import type { JsonObject } from "@muse/shared";
 
+import { isRecord, type JsonObject } from "@muse/shared";
+
 import type { McpServerAuditTarget } from "./server-audit.js";
 
 export type OsvEcosystem = "npm" | "PyPI";
@@ -100,16 +102,16 @@ export async function checkPackageForMalwareAdvisory(
 }
 
 function extractMalwareAdvisories(data: unknown): readonly MalwareAdvisory[] {
-  if (!data || typeof data !== "object") return [];
-  const vulns = (data as { vulns?: unknown }).vulns;
-  if (!Array.isArray(vulns)) return [];
+  if (!isRecord(data) || !Array.isArray(data.vulns)) {
+    return [];
+  }
 
   const advisories: MalwareAdvisory[] = [];
-  for (const entry of vulns) {
-    if (!entry || typeof entry !== "object") continue;
-    const id = (entry as { id?: unknown }).id;
-    if (typeof id !== "string" || !id.startsWith("MAL-")) continue;
-    const summary = (entry as { summary?: unknown }).summary;
+  for (const entry of data.vulns) {
+    if (!isRecord(entry)) continue;
+    const id = typeof entry.id === "string" ? entry.id : "";
+    if (!id.startsWith("MAL-")) continue;
+    const summary = typeof entry.summary === "string" ? entry.summary : undefined;
     advisories.push({ id, ...(typeof summary === "string" ? { summary } : {}) });
   }
   return advisories;

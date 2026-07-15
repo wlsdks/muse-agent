@@ -723,8 +723,9 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
             status: "fail"
           });
         } else {
-          const body = await r.json() as { results?: unknown };
-          if (!Array.isArray(body.results)) {
+          const body = await r.json();
+          const results = isRecord(body) ? body.results : undefined;
+          if (!Array.isArray(results)) {
             checks.push({
               detail: `${base} returned non-array results — settings.yml may be misconfigured`,
               name: "searxng",
@@ -732,7 +733,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
             });
           } else {
             checks.push({
-              detail: `${base} — JSON format enabled, ${body.results.length.toString()} probe result(s)`,
+              detail: `${base} — JSON format enabled, ${results.length.toString()} probe result(s)`,
               name: "searxng",
               status: "ok"
             });
@@ -763,12 +764,15 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
     // were two smoke fixtures and one user holding a single fact planted by a test.
     // A green tick on an empty user model is the most expensive lie this command can
     // tell, because it is the one that stops anybody looking.
-    const parsed = JSON.parse(raw) as {
-      users?: Record<string, { facts?: Record<string, unknown>; preferences?: Record<string, unknown> }>;
-    };
-    const rows = Object.values(parsed.users ?? {});
+    const parsed = JSON.parse(raw);
+    const users = isRecord(parsed) && isRecord(parsed.users) ? parsed.users : {};
+    const rows = Object.values(users);
     const learned = rows.reduce(
-      (total, row) => total + Object.keys(row.facts ?? {}).length + Object.keys(row.preferences ?? {}).length,
+      (total, row) => {
+        const userFacts = isRecord(row) && isRecord(row.facts) ? row.facts : {};
+        const userPreferences = isRecord(row) && isRecord(row.preferences) ? row.preferences : {};
+        return total + Object.keys(userFacts).length + Object.keys(userPreferences).length;
+      },
       0
     );
     checks.push({
@@ -787,8 +791,9 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   const tasks_path = join(muse_home, "tasks.json");
   try {
     const raw = await fs.readFile(tasks_path, "utf8");
-    const parsed = JSON.parse(raw) as { tasks?: unknown[] };
-    const total = Array.isArray(parsed.tasks) ? parsed.tasks.length : 0;
+    const parsed = JSON.parse(raw);
+    const tasks = isRecord(parsed) && Array.isArray(parsed.tasks) ? parsed.tasks : [];
+    const total = tasks.length;
     checks.push({ detail: `${total.toString()} task(s) total`, name: "tasks store", status: "ok" });
   } catch {
     checks.push({ detail: "no tasks.json yet (will be created on first add)", name: "tasks store", status: "ok" });

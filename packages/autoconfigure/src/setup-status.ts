@@ -649,8 +649,8 @@ export function resolveDailyBriefSetupStatus(config: { readonly enabled: boolean
 export async function readConfigDefaultModel(file: string): Promise<string | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { defaultModel?: unknown };
-    if (parsed && typeof parsed === "object" && typeof parsed.defaultModel === "string") {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && typeof parsed.defaultModel === "string") {
       const trimmed = parsed.defaultModel.trim();
       return trimmed.length > 0 ? trimmed : undefined;
     }
@@ -943,8 +943,8 @@ export async function readModelKeyState(file: string, env: MuseEnvironment): Pro
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && isRecord(parsed.providers)) {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -989,8 +989,8 @@ export async function readMessagingProviderState(
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(credentialsFile, "utf8");
-    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && isRecord(parsed.providers)) {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -1020,8 +1020,8 @@ export async function readMessagingProviderState(
 export async function readMcpEntryCount(file: string): Promise<number> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.mcpServers && typeof parsed.mcpServers === "object") {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && isRecord(parsed.mcpServers)) {
       return Object.keys(parsed.mcpServers).length;
     }
   } catch {
@@ -1062,8 +1062,8 @@ export async function countNotes(dir: string): Promise<number | undefined> {
 export async function readTaskCount(file: string): Promise<number | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { tasks?: unknown };
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tasks)) {
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && Array.isArray(parsed.tasks)) {
       return parsed.tasks.length;
     }
     return 0;

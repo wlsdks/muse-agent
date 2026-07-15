@@ -4,7 +4,7 @@
  * span filter) so trace inspection is reachable from the terminal.
  */
 
-import { sleep } from "@muse/shared";
+import { isRecord, sleep } from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -118,8 +118,8 @@ export function extractTraceTailEvents(payload: unknown): readonly Record<string
     return payload.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object");
   }
   if (payload && typeof payload === "object") {
-    const candidate = (payload as { events?: unknown; spans?: unknown }).events
-      ?? (payload as { events?: unknown; spans?: unknown }).spans;
+    const payloadRecord = isRecord(payload) ? payload : undefined;
+    const candidate = payloadRecord?.events ?? payloadRecord?.spans;
     if (Array.isArray(candidate)) {
       return candidate.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object");
     }

@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 
 import { AsyncAuth, Auth, DefaultAuthProvider, InMemoryUserStore, JwtTokenProvider, KyselyAuthProvider, KyselyUserStore, type MuseAuth } from "@muse/auth";
+import { isRecord } from "@muse/shared";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
@@ -49,18 +50,16 @@ function loadJwtRotationStateSync(env: MuseEnvironment): AutoconfigureJwtRotatio
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as { current?: unknown; previous?: unknown };
-  if (typeof candidate.current !== "string" || candidate.current.length < 32) return undefined;
-  const previousRaw = Array.isArray(candidate.previous) ? candidate.previous : [];
+  if (!isRecord(parsed)) return undefined;
+  if (typeof parsed.current !== "string" || parsed.current.length < 32) return undefined;
+  const previousRaw = Array.isArray(parsed.previous) ? parsed.previous : [];
   const previous: AutoconfigureJwtRotationState["previous"] = previousRaw.flatMap((entry: unknown) => {
-    if (!entry || typeof entry !== "object") return [];
-    const e = entry as { secret?: unknown; validUntil?: unknown };
-    if (typeof e.secret !== "string" || e.secret.length < 32) return [];
-    if (typeof e.validUntil !== "string") return [];
-    return [{ secret: e.secret, validUntil: e.validUntil }];
+    if (!isRecord(entry)) return [];
+    if (typeof entry.secret !== "string" || entry.secret.length < 32) return [];
+    if (typeof entry.validUntil !== "string") return [];
+    return [{ secret: entry.secret, validUntil: entry.validUntil }];
   });
-  return { current: candidate.current, previous };
+  return { current: parsed.current, previous };
 }
 
 export function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | undefined): MuseAuth | undefined {

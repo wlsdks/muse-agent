@@ -7,6 +7,7 @@
  */
 
 import { truncateErrorBody } from "@muse/shared";
+import { readWebSearchPolicy } from "./web-search-policy.js";
 
 import { fetchOrThrowAsProviderError, ModelProviderError, isRetryableHttpStatus, modelCallSignal } from "./provider-base.js";
 import { parseJson } from "./provider-shared.js";
@@ -64,8 +65,7 @@ export class GeminiProvider implements ModelProvider {
       url.searchParams.set("key", this.apiKey);
     }
 
-    const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
-      ?? { enabled: false, maxUses: 5 };
+    const policy = readWebSearchPolicy(request.metadata?.webSearchPolicy);
 
     const signal = modelCallSignal(request.signal);
     const response = await fetchOrThrowAsProviderError(this.fetchImpl, this.id, this.baseUrl, "Gemini", url.toString(), {

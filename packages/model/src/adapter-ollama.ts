@@ -404,7 +404,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       id = ++OllamaProvider.traceSeq;
       t0 = Date.now();
       let model = "";
-      try { model = (JSON.parse(String(init.body)) as { model?: string }).model ?? ""; } catch { /* ignore */ }
+      const body = parseJson(String(init.body));
+      if (isRecord(body) && typeof body.model === "string") {
+        model = body.model;
+      }
       process.stderr.write(`[modeltrace] #${id.toString()} START t=${new Date(t0).toISOString()} model=${model}\n`);
     }
     try {

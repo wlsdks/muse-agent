@@ -10,6 +10,7 @@
  */
 
 import { createCachingEmbedder, normalizeForRecall } from "@muse/agent-core";
+import { isRecord } from "@muse/shared";
 import { canonicalizeLocalOnlyModelBaseUrl, isLocalOnlyEnabled } from "@muse/model";
 
 export function resolveEmbedderBase(env: Readonly<Record<string, string | undefined>>): string {
@@ -47,8 +48,8 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
     if (!resp.ok) {
       throw new Error(`embeddings ${resp.status.toString()}`);
     }
-    const body = (await resp.json()) as { embedding?: unknown };
-    if (!Array.isArray(body.embedding)) {
+    const body = await resp.json();
+    if (!isRecord(body) || !Array.isArray(body.embedding)) {
       throw new Error("embedding response missing 'embedding'");
     }
     return body.embedding as number[];

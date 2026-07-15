@@ -293,8 +293,11 @@ export class FileCheckpointStore implements CheckpointStore {
       dirs.map(async (d) => {
         try {
           const raw = await readFile(join(this.dir, d.name, MANIFEST_FILE), "utf8");
-          const parsed = JSON.parse(raw) as { at?: unknown };
-          return { at: typeof parsed.at === "string" ? parsed.at : "", name: d.name };
+          const parsed = JSON.parse(raw);
+          if (!isRecord(parsed) || typeof parsed.at !== "string") {
+            return { at: "", name: d.name };
+          }
+          return { at: parsed.at, name: d.name };
         } catch {
           return { at: "", name: d.name }; // unreadable sorts oldest — evicted first, which is fine
         }

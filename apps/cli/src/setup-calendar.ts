@@ -23,6 +23,7 @@ import { join as pathJoin } from "node:path";
 import { URL, URLSearchParams } from "node:url";
 import { on, once } from "node:events";
 
+import { isRecord } from "@muse/shared";
 import { confirm, isCancel, multiselect, password, text } from "@clack/prompts";
 import { FileCalendarCredentialStore } from "@muse/calendar";
 import { isLocalOnlyEnabled } from "@muse/model";
@@ -180,8 +181,8 @@ async function setupGoogle(store: FileCalendarCredentialStore, io: SetupCalendar
     return false;
   }
 
-  const payload = await tokenResponse.json() as { readonly refresh_token?: string };
-  if (!payload.refresh_token) {
+  const payload = await tokenResponse.json();
+  if (!isRecord(payload) || typeof payload.refresh_token !== "string" || payload.refresh_token.length === 0) {
     io.stderr("Google response missing refresh_token. Make sure the OAuth consent screen requests offline access.\n");
     return false;
   }

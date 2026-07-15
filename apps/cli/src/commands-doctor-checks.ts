@@ -3,6 +3,7 @@ import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_
 import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -535,16 +536,14 @@ export function readMuseSpeedEnv(env: Record<string, string | undefined>): MuseS
  */
 export function parseNotesIndexEmbedModel(rawJson: string | undefined): string | undefined {
   if (rawJson === undefined) return undefined;
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(rawJson);
+    const parsed = JSON.parse(rawJson);
+    const candidate = isRecord(parsed) && typeof parsed.model === "string" ? parsed.model : undefined;
+    if (candidate && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
   } catch {
     return DEFAULT_EMBED_MODEL;
-  }
-  if (!parsed || typeof parsed !== "object") return DEFAULT_EMBED_MODEL;
-  const candidate = (parsed as { model?: unknown }).model;
-  if (typeof candidate === "string" && candidate.trim().length > 0) {
-    return candidate.trim();
   }
   return DEFAULT_EMBED_MODEL;
 }
@@ -904,11 +903,10 @@ export async function probeOllamaPromptCache(options: {
         signal: AbortSignal.timeout(timeoutMs)
       });
       if (!res.ok) return undefined;
-      const body = (await res.json()) as { prompt_eval_duration?: number; prompt_eval_count?: number };
-      return {
-        ms: Math.round((body.prompt_eval_duration ?? 0) / 1e6),
-        tokens: body.prompt_eval_count ?? 0
-      };
+      const body = await res.json();
+      const promptEvalDuration = isRecord(body) && typeof body.prompt_eval_duration === "number" ? body.prompt_eval_duration : 0;
+      const promptEvalCount = isRecord(body) && typeof body.prompt_eval_count === "number" ? body.prompt_eval_count : 0;
+      return { ms: Math.round(promptEvalDuration / 1e6), tokens: promptEvalCount };
     } catch {
       return undefined;
     }

@@ -173,13 +173,14 @@ Examples:
           // explicitly on stderr so the user knows what's
           // happening, but never fail the command.
           if (isApiUnreachable(cause)) {
-            // Only warn when the user EXPLICITLY pointed Muse at an API
-            // (--api-url / MUSE_API_URL). The default is local-first with no
-            // daemon, so "API not reachable" on every plain `muse today` reads
-            // as broken to the CLI-only user the product targets — silently use
-            // the on-disk briefing instead.
-            const globals = command.optsWithGlobals() as { readonly apiUrl?: string };
-            if (apiWasExplicitlyConfigured(globals.apiUrl, process.env.MUSE_API_URL)) {
+              // Only warn when the user EXPLICITLY pointed Muse at an API
+              // (--api-url / MUSE_API_URL). The default is local-first with no
+              // daemon, so "API not reachable" on every plain `muse today` reads
+              // as broken to the CLI-only user the product targets — silently use
+              // the on-disk briefing instead.
+            const globals = command.optsWithGlobals<{ readonly apiUrl?: string }>();
+            const configuredApiUrl = typeof globals.apiUrl === "string" && globals.apiUrl.trim().length > 0 ? globals.apiUrl : undefined;
+            if (apiWasExplicitlyConfigured(configuredApiUrl, process.env.MUSE_API_URL)) {
               io.stderr("muse: API not reachable — falling back to local briefing.\n");
             }
             briefing = await composeLocalBriefing(lookaheadHours);

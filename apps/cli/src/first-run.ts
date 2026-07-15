@@ -27,6 +27,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 
 import { CLOUD_PROVIDERS, planCloudSetup } from "./commands-setup-cloud.js";
 import { runDataSetupInFlagMode, type DataSetupFlags, type DataSetupResult } from "./commands-setup-data.js";
@@ -578,13 +579,16 @@ async function readKnownUserName(env: NodeJS.ProcessEnv): Promise<{ name?: strin
   try {
     const userId = (env.MUSE_USER_ID ?? env.USER ?? "default").trim() || "default";
     const file = env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
-    const raw = JSON.parse(await readFile(file, "utf8")) as {
-      users?: Record<string, { facts?: Record<string, string> }>;
-    };
-    const facts = raw.users?.[userId]?.facts ?? {};
+    const raw = JSON.parse(await readFile(file, "utf8"));
+    const users = isRecord(raw) ? raw.users : undefined;
+    const user = isRecord(users) ? users[userId] : undefined;
+    const facts = isRecord(user) ? user.facts : undefined;
+    const factsRecord = isRecord(facts) ? facts : {};
     for (const key of NAME_FACT_KEYS) {
-      const value = (facts[key] ?? "").trim();
-      if (value.length > 0) return { name: value };
+      const value = factsRecord[key];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return { name: value.trim() };
+      }
     }
   } catch {
     // no name available

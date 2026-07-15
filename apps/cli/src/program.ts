@@ -624,7 +624,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
           shouldRunFirstRunSetup
         } = await import("./first-run.js");
         let cliConfig = await readConfigStore(io);
-        const noSetupFlag = (program.opts() as { setup?: boolean }).setup === false;
+        const noSetupFlag = program.getOptionValue("setup") === false;
         const home = io.configDir ? path.dirname(configPath(io)) : homedir();
         if (shouldRunFirstRunSetup({
           configuredModel: cliConfig.defaultModel,
@@ -830,15 +830,14 @@ function attachDefaultSubcommandGuard(
   groupName: string,
   knownSubs: readonly string[]
 ): void {
-  const defaultName = (group as { _defaultCommandName?: string })._defaultCommandName;
-  if (!defaultName) return;
+  const defaultName = typeof Reflect.get(group, "_defaultCommandName") === "string" ? Reflect.get(group, "_defaultCommandName") : undefined;
+  if (typeof defaultName !== "string") return;
   const defaultCommand = group.commands.find((command) => command.name() === defaultName);
   if (!defaultCommand) return;
+  const registeredArguments = Reflect.get(defaultCommand, "registeredArguments");
+  const fallbackArgs = Reflect.get(defaultCommand, "_args");
   const declaredArgs =
-    (defaultCommand as { registeredArguments?: readonly unknown[]; _args?: readonly unknown[] })
-      .registeredArguments ??
-    (defaultCommand as { _args?: readonly unknown[] })._args ??
-    [];
+    (Array.isArray(registeredArguments) ? registeredArguments : Array.isArray(fallbackArgs) ? fallbackArgs : []);
   if (declaredArgs.length > 0) return;
   const knownSet = new Set(knownSubs);
   defaultCommand.hook("preAction", (_thisCommand, actionCommand) => {

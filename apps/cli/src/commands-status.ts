@@ -34,6 +34,7 @@ import {
 import { readSessionLock } from "@muse/proactivity";
 import { summariseEpisodesRows, summariseFollowupsRows, summariseObjectivesRows, summarisePatternsFiredRows, summariseRemindersRows } from "@muse/domain-tools";
 import { isGoalKey, isVetoKey } from "@muse/recall";
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { DEFAULT_DAEMON_INTERVAL_MS } from "./commands-daemon-loop.js";
@@ -218,10 +219,8 @@ function defaultUserId(runtime: StatusRuntime): string {
 export async function readRagStatus(
   path: string
 ): Promise<{ readonly indexed: boolean; readonly embedModel?: string; readonly files?: number }> {
-  const parsed = await safeReadJson(path) as
-    | { model?: unknown; files?: unknown }
-    | undefined;
-  if (!parsed || typeof parsed !== "object") {
+  const parsed = await safeReadJson(path);
+  if (!isRecord(parsed)) {
     return { indexed: false };
   }
   const files = Array.isArray(parsed.files) ? parsed.files.length : 0;
@@ -247,11 +246,21 @@ interface TokenCostTodayShape {
  * crashing. Exported for direct test coverage.
  */
 export async function readTokenCostToday(path: string): Promise<{ readonly available: boolean } & TokenCostTodayShape> {
-  const parsed = await safeReadJson(path) as TokenCostTodayShape | undefined;
-  if (!parsed || typeof parsed !== "object") {
+  const parsed = await safeReadJson(path);
+  if (!isRecord(parsed)) {
     return { available: false };
   }
-  return { available: true, ...parsed };
+  return {
+    available: true,
+    totalUsd: normalizeNumberOrUndefined(parsed.totalUsd),
+    totalTokens: normalizeNumberOrUndefined(parsed.totalTokens),
+    runs: normalizeNumberOrUndefined(parsed.runs),
+    asOfIso: typeof parsed.asOfIso === "string" && parsed.asOfIso.trim().length > 0 ? parsed.asOfIso : undefined
+  };
+}
+
+function normalizeNumberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /**
@@ -382,8 +391,8 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
   const routineHours = persona?.facts?.routine_active_hours;
   const routineDays = persona?.facts?.routine_active_days;
 
-  const tasksDoc = await safeReadJson(tasksFile) as { tasks?: readonly PersistedTask[] } | undefined;
-  const allTasks = tasksDoc?.tasks ?? [];
+  const tasksDoc = await safeReadJson(tasksFile);
+  const allTasks = readPersistedTasks(tasksDoc);
   const now = Date.now();
   const due24h = allTasks.filter((task) => {
     if (task.status !== "open" || !task.dueAt) return false;
@@ -391,20 +400,22 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
     return Number.isFinite(due) && due >= now && due <= now + 24 * 60 * 60 * 1000;
   });
 
-  const historyDoc = await safeReadJson(historyFile) as { entries?: readonly ProactiveHistoryEntry[] } | undefined;
-  const lastNotice = historyDoc?.entries?.[historyDoc.entries.length - 1];
+  const historyDoc = await safeReadJson(historyFile);
+  const historyRows = readProactiveHistoryEntries(historyDoc);
+  const lastNotice = historyRows[historyRows.length - 1];
 
   const followups = await readFollowups(paths.followupsFile).catch(() => []);
   const followupsByStatus = summariseFollowupsRows(followups, userId);
 
-  const episodesDoc = await safeReadJson(paths.episodesFile) as { episodes?: readonly unknown[] } | undefined;
-  const episodesSummary = summariseEpisodesRows(episodesDoc?.episodes ?? [], userId);
+  const episodesDoc = await safeReadJson(paths.episodesFile);
+  const episodesSummary = summariseEpisodesRows(readUnknownArray(episodesDoc), userId);
 
-  const patternsFiredDoc = await safeReadJson(paths.patternsFiredFile) as { fired?: readonly unknown[] } | undefined;
-  const patternsSummary = summarisePatternsFiredRows(patternsFiredDoc?.fired ?? []);
+  const patternsFiredDoc = await safeReadJson(paths.patternsFiredFile);
+  const firedPatternRows = readUnknownArray(patternsFiredDoc);
+  const patternsSummary = summarisePatternsFiredRows(firedPatternRows);
   // 1-3 "you usually do X around now" hints from the
   // patterns-fired sidecar.
-  const suggestions = suggestPatternHints(patternsFiredDoc?.fired ?? [], new Date());
+  const suggestions = suggestPatternHints(firedPatternRows, new Date());
 
   const reminders = await readReminders(paths.remindersFile).catch(() => []);
   const remindersSummary = summariseRemindersRows(reminders, now);
@@ -578,15 +589,13 @@ export function suggestPatternHints(
 
   const buckets = new Map<string, number[]>();
   for (const raw of fired) {
-    if (!raw || typeof raw !== "object") continue;
-    const entry = raw as { patternId?: unknown; firedAtIso?: unknown };
-    if (typeof entry.patternId !== "string" || typeof entry.firedAtIso !== "string") continue;
-    const t = Date.parse(entry.firedAtIso);
+    if (!isPatternFiredEntry(raw)) continue;
+    const t = Date.parse(raw.firedAtIso);
     if (!Number.isFinite(t)) continue;
     const hour = new Date(t).getUTCHours();
-    const prior = buckets.get(entry.patternId) ?? [];
+    const prior = buckets.get(raw.patternId) ?? [];
     prior.push(hour);
-    buckets.set(entry.patternId, prior);
+    buckets.set(raw.patternId, prior);
   }
 
   const candidates: PatternSuggestion[] = [];
@@ -604,6 +613,52 @@ export function suggestPatternHints(
   // Most-fired first (more evidence = higher confidence).
   return candidates.sort((a, b) => b.firings - a.firings || a.patternId.localeCompare(b.patternId)).slice(0, maxHints);
 }
+
+function isPersistedTask(value: unknown): value is PersistedTask {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.title === "string"
+    && typeof value.status === "string"
+    && (value.dueAt === undefined || typeof value.dueAt === "string")
+    && (value.urgent === undefined || typeof value.urgent === "boolean");
+}
+
+function readPersistedTasks(value: unknown): readonly PersistedTask[] {
+  if (!isRecord(value) || !Array.isArray(value.tasks)) {
+    return [];
+  }
+  return value.tasks.filter(isPersistedTask);
+}
+
+function isProactiveHistoryEntry(value: unknown): value is ProactiveHistoryEntry {
+  return isRecord(value)
+    && (value.firedAtIso === undefined || typeof value.firedAtIso === "string")
+    && (value.status === undefined || typeof value.status === "string")
+    && (value.kind === undefined || typeof value.kind === "string")
+    && (value.providerId === undefined || typeof value.providerId === "string")
+    && (value.text === undefined || typeof value.text === "string");
+}
+
+function readProactiveHistoryEntries(value: unknown): readonly ProactiveHistoryEntry[] {
+  if (!isRecord(value) || !Array.isArray(value.entries)) {
+    return [];
+  }
+  return value.entries.filter(isProactiveHistoryEntry);
+}
+
+interface PatternFiredEntry {
+  readonly patternId: string;
+  readonly firedAtIso: string;
+}
+
+function isPatternFiredEntry(value: unknown): value is PatternFiredEntry {
+  return isRecord(value) && typeof value.patternId === "string" && value.patternId.trim().length > 0 && typeof value.firedAtIso === "string";
+}
+
+function readUnknownArray(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 
 /**
  * `{ model, modelInferredFrom }` — what model the runtime will

@@ -19,6 +19,7 @@ import { dirname } from "node:path";
 import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
 import { buildGroundingReverify } from "@muse/agent-core";
 import { runDueProactiveNotices, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type ProactiveModelProviderLike } from "@muse/proactivity";
+import { isRecord } from "@muse/shared";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
@@ -252,9 +253,10 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
   const readFromDisk = (): number | undefined => {
     try {
       const raw = readFileSync(options.file, "utf8");
-      const parsed = JSON.parse(raw) as { readonly lastActivityMs?: unknown };
-      if (typeof parsed.lastActivityMs === "number" && Number.isFinite(parsed.lastActivityMs)) {
-        return parsed.lastActivityMs;
+      const parsed = JSON.parse(raw);
+      const lastActivityMs = isRecord(parsed) ? parsed.lastActivityMs : undefined;
+      if (typeof lastActivityMs === "number" && Number.isFinite(lastActivityMs)) {
+        return lastActivityMs;
       }
     } catch {
       // Missing / malformed file — treat as "never recorded".

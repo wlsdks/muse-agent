@@ -52,7 +52,7 @@ export interface OnExitTrigger {
 
 export function validateOnExitTrigger(trigger: OnExitTrigger): void {
   if (trigger.kind !== "on-exit") {
-    throw new SchedulerValidationError(`Expected an on-exit trigger, got kind '${String((trigger as { kind?: unknown }).kind)}'`);
+    throw new SchedulerValidationError(`Expected an on-exit trigger, got kind '${String(trigger.kind)}'`);
   }
 
   if (!trigger.command?.trim()) {

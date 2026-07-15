@@ -12,15 +12,20 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveContactsFile, resolveEpisodesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 import { readContacts, readEpisodes, readReminders, readTasks } from "@muse/stores";
 
 /** Whether the persistent user-memory file holds any fact/preference for `userId`. */
 async function userMemoryHasFacts(userId: string, env: MuseEnvironment): Promise<boolean> {
   try {
     const file = env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
-    const raw = JSON.parse(await readFile(file, "utf8")) as { users?: Record<string, { facts?: Record<string, string>; preferences?: Record<string, string> }> };
-    const persona = raw.users?.[userId];
-    return Boolean(persona && (Object.keys(persona.facts ?? {}).length > 0 || Object.keys(persona.preferences ?? {}).length > 0));
+    const raw = JSON.parse(await readFile(file, "utf8"));
+    const users = isRecord(raw.users) ? raw.users : undefined;
+    if (!users) return false;
+    const persona = isRecord(users[userId]) ? users[userId] : undefined;
+    const facts = isRecord(persona?.facts) ? persona.facts : undefined;
+    const preferences = isRecord(persona?.preferences) ? persona.preferences : undefined;
+    return Boolean((facts && Object.keys(facts).length > 0) || (preferences && Object.keys(preferences).length > 0));
   } catch {
     return false;
   }

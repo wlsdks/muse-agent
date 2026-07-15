@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { readFollowups, readObjectives, readProactiveHistory, readReminders, readTasks } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { findJobsByIdPrefix } from "./commands-jobs.js";
@@ -72,16 +73,16 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
     if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: toRecord(o) });
   }
 
-  const episodesDoc = await safeReadJson(envOr("MUSE_EPISODES_FILE", "episodes.json")) as { episodes?: readonly Record<string, unknown>[] } | undefined;
-  for (const e of episodesDoc?.episodes ?? []) {
-    const id = e["id"];
+  const episodeRows = await readRecordArray(envOr("MUSE_EPISODES_FILE", "episodes.json"), "episodes");
+  for (const e of episodeRows) {
+    const id = readString(e, "id");
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "episode", id, record: e });
   }
 
   // Patterns fired (sidecar)
-  const patternsDoc = await safeReadJson(envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json")) as { fired?: readonly Record<string, unknown>[] } | undefined;
-  for (const p of patternsDoc?.fired ?? []) {
-    const id = p["patternId"];
+  const firedPatterns = await readRecordArray(envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"), "fired");
+  for (const p of firedPatterns) {
+    const id = readString(p, "patternId");
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "pattern", id, record: p });
   }
 
@@ -99,6 +100,18 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   }
 
   return hits;
+}
+
+async function readRecordArray(path: string, key: string): Promise<readonly Record<string, unknown>[]> {
+  const doc = await safeReadJson(path);
+  if (!isRecord(doc)) return [];
+  const raw = doc[key];
+  return Array.isArray(raw) ? raw.filter(isRecord) : [];
+}
+
+function readString(value: Record<string, unknown>, key: string): string | undefined {
+  const candidate = value[key];
+  return typeof candidate === "string" ? candidate : undefined;
 }
 
 function toRecord<T extends object>(value: T): Record<string, unknown> {

@@ -238,7 +238,7 @@ export async function gatherNoteFamilyActivity(
   const events: NoteActivityEvent[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || entry.name.startsWith(".")) continue;
-    const parent = (entry as { parentPath?: string; path?: string }).parentPath ?? (entry as { path?: string }).path ?? notesDir;
+    const parent = readDirentParentPath(entry) ?? notesDir;
     const full = join(parent, entry.name);
     const segments = relative(notesDir, full).split(sep);
     const familyName = segments.length > 1 ? segments[0]! : "general";
@@ -249,6 +249,16 @@ export async function gatherNoteFamilyActivity(
     } catch { /* skip an unreadable file */ }
   }
   return events;
+}
+
+function readDirentParentPath(entry: Dirent): string | undefined {
+  const raw = entry as Record<string, unknown>;
+  const parentPath = raw.parentPath;
+  if (typeof parentPath === "string" && parentPath.length > 0) {
+    return parentPath;
+  }
+  const fallbackPath = raw.path;
+  return typeof fallbackPath === "string" && fallbackPath.length > 0 ? fallbackPath : undefined;
 }
 
 /**

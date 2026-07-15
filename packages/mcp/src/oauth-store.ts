@@ -27,7 +27,8 @@ import {
   credentialEncryptionEnabled,
   decodeMaybeEncryptedCredentialsJson,
   encryptCredentialEnvelope,
-  isCredentialsFileEncryptedAtRest
+  isCredentialsFileEncryptedAtRest,
+  isRecord
 } from "@muse/shared";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
@@ -87,11 +88,10 @@ export async function loadOAuthRecord(
   // never swallow a live token as "corruption".
   parsed = decodeMaybeEncryptedCredentialsJson(parsed, env);
 
-  const shape = parsed as Partial<PersistedShape>;
-  if (!shape || typeof shape !== "object" || !shape.oauth || typeof shape.oauth !== "object") {
+  if (!isRecord(parsed) || !parsed.oauth || !isRecord(parsed.oauth)) {
     return {};
   }
-  return { ...shape.oauth };
+  return { ...parsed.oauth };
 }
 
 export async function loadTokens(
@@ -175,11 +175,14 @@ export async function clearOAuth(
   await mutate(dir, serverId, env, (record) => {
     const next = { ...record };
     if (scope === "tokens") {
-      delete (next as { tokens?: OAuthTokens }).tokens;
+      const { tokens: _tokens, ...rest } = next;
+      return rest;
     } else if (scope === "client") {
-      delete (next as { clientInformation?: OAuthClientInformationFull }).clientInformation;
+      const { clientInformation: _clientInformation, ...rest } = next;
+      return rest;
     } else if (scope === "verifier") {
-      delete (next as { codeVerifier?: string }).codeVerifier;
+      const { codeVerifier: _codeVerifier, ...rest } = next;
+      return rest;
     }
     return next;
   });
@@ -220,5 +223,8 @@ async function writeRecord(
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+  if (!isRecord(error)) {
+    return false;
+  }
+  return error.code === "ENOENT";
 }

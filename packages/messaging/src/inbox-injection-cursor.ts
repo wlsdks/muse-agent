@@ -63,13 +63,12 @@ function parseSourceCursor(value: unknown): SourceCursor | undefined {
   if (typeof value === "string") {
     return value.trim().length > 0 ? { ids: [], iso: value } : undefined;
   }
-  if (value && typeof value === "object") {
-    const obj = value as { iso?: unknown; ids?: unknown };
-    if (typeof obj.iso === "string" && obj.iso.trim().length > 0) {
-      const ids = Array.isArray(obj.ids)
-        ? obj.ids.filter((id): id is string => typeof id === "string")
+  if (isRecord(value)) {
+    if (typeof value.iso === "string" && value.iso.trim().length > 0) {
+      const ids = Array.isArray(value.ids)
+        ? value.ids.filter((id): id is string => typeof id === "string")
         : [];
-      return { ids, iso: obj.iso };
+      return { ids, iso: value.iso };
     }
   }
   return undefined;

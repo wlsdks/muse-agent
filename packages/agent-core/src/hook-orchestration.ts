@@ -15,6 +15,7 @@ import type { ToolExecutionResult } from "@muse/tools";
 import type { Awaitable } from "@muse/cache";
 import type { HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import type { AgentRunContext, HookStage } from "./types.js";
+import { isRecord } from "@muse/shared";
 import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 /** Mirror of the runtime's pluggable hook registry surface. */
@@ -65,6 +66,43 @@ type InvokeHookValue<Name extends keyof HookStage> =
   Name extends "afterComplete" ? ModelResponse :
   Name extends "onError" ? unknown :
   never;
+
+type InvokeHookAfterToolValue = Extract<InvokeHookValue<"afterTool">, unknown>;
+
+const isToolExecutionResult = (value: unknown): value is ToolExecutionResult =>
+  isRecord(value)
+  && typeof value.id === "string"
+  && value.id.length > 0
+  && typeof value.name === "string"
+  && value.name.length > 0
+  && typeof value.status === "string"
+  && typeof value.output === "string"
+  && (value.error === undefined || typeof value.error === "string")
+  && (value.sanitized === undefined || isRecord(value.sanitized));
+
+const isModelToolCall = (value: unknown): value is ModelToolCall =>
+  isRecord(value)
+  && typeof value.id === "string"
+  && value.id.length > 0
+  && typeof value.name === "string"
+  && value.name.length > 0
+  && isRecord(value.arguments);
+
+const isModelResponse = (value: unknown): value is ModelResponse =>
+  isRecord(value)
+  && typeof value.id === "string"
+  && value.id.length > 0
+  && typeof value.model === "string"
+  && typeof value.output === "string"
+  && (value.citations === undefined || Array.isArray(value.citations))
+  && (value.toolCalls === undefined || Array.isArray(value.toolCalls))
+  && (value.usage === undefined || isRecord(value.usage))
+  && (value.reasoning === undefined || typeof value.reasoning === "string");
+
+const isHookAfterToolValue = (value: unknown): value is InvokeHookAfterToolValue =>
+  isRecord(value)
+  && isToolExecutionResult(value.result)
+  && isModelToolCall(value.toolCall);
 
 /**
  * Fires the named lifecycle on every registered HookStage. Static `hooks` and
@@ -140,16 +178,24 @@ export function hookInvocation(
   }
 
   if (name === "beforeTool" && beforeTool) {
-    return () => beforeTool(context, value as ModelToolCall);
+    if (!isModelToolCall(value)) {
+      return undefined;
+    }
+    return () => beforeTool(context, value);
   }
 
   if (name === "afterTool" && afterTool) {
-    const toolValue = value as { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall };
-    return () => afterTool(context, toolValue.toolCall, toolValue.result);
+    if (!isHookAfterToolValue(value)) {
+      return undefined;
+    }
+    return () => afterTool(context, value.toolCall, value.result);
   }
 
   if (name === "afterComplete" && afterComplete) {
-    return () => afterComplete(context, value as ModelResponse);
+    if (!isModelResponse(value)) {
+      return undefined;
+    }
+    return () => afterComplete(context, value);
   }
 
   if (name === "onError" && onError) {

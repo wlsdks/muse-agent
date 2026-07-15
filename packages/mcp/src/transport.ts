@@ -480,8 +480,8 @@ async function closeQuietly(client: Client): Promise<void> {
  * non-status sentinel never poses as a retry classification.
  */
 function mcpConnectErrorStatus(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null) return undefined;
-  const code = (error as { code?: unknown }).code;
+  if (!isRecord(error) || !("code" in error)) return undefined;
+  const code = error.code;
   if (typeof code !== "number" || !Number.isFinite(code) || code < 100 || code > 599) {
     return undefined;
   }

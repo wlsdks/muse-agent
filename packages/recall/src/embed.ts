@@ -12,6 +12,7 @@
  */
 
 import { canonicalizeLocalOnlyModelBaseUrl, isLocalOnlyEnabled, LocalOnlyViolationError } from "@muse/model";
+import { isRecord } from "@muse/shared";
 
 export { cosineSimilarity } from "@muse/agent-core";
 
@@ -97,12 +98,11 @@ type EmbeddingResponse = {
 };
 
 function hasValidEmbedding(body: unknown): body is EmbeddingResponse {
-  if (body === null || typeof body !== "object") {
+  if (!isRecord(body)) {
     return false;
   }
-  const candidate = body as { embedding?: unknown };
-  if (!Array.isArray(candidate.embedding) || candidate.embedding.length === 0) {
+  if (!Array.isArray(body.embedding) || body.embedding.length === 0) {
     return false;
   }
-  return candidate.embedding.every((value) => typeof value === "number" && Number.isFinite(value));
+  return body.embedding.every((value) => typeof value === "number" && Number.isFinite(value));
 }

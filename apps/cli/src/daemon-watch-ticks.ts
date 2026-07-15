@@ -27,6 +27,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { runDueObjectives, type AmbientNoticeRunner, type EvidenceRecord, type ObjectiveEvaluation, type WebWatchRunner } from "@muse/proactivity";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
 import type { StandingObjective } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 
 import { defaultEmbedModel } from "./council-corpus.js";
 import { syncEmailsToNotes } from "./email-sync.js";
@@ -161,8 +162,11 @@ export function makeConflictWatchTick(deps: MakeConflictWatchTickDeps): () => Pr
       if (notices.length === 0) return;
       let firedKeys: string[] = [];
       try {
-        const parsed = JSON.parse(readFileSync(sidecarFile, "utf8")) as { keys?: unknown };
-        if (Array.isArray(parsed.keys)) firedKeys = parsed.keys.filter((k): k is string => typeof k === "string");
+        const parsed = JSON.parse(readFileSync(sidecarFile, "utf8"));
+        const keys = isRecord(parsed) ? parsed.keys : undefined;
+        if (Array.isArray(keys)) {
+          firedKeys = keys.filter((k): k is string => typeof k === "string");
+        }
       } catch { /* no sidecar yet ⇒ nothing fired */ }
       const fresh = notices.filter((n) => !firedKeys.includes(n.key));
       if (fresh.length === 0) return;

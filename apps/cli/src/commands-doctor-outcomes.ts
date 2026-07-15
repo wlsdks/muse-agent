@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
+import { isRecord } from "@muse/shared";
 import { analyzeRunOutcomes, type RunOutcomeEntry, type RunOutcomeSummary } from "@muse/proactivity";
 
 import type { ProgramIO } from "./program.js";
@@ -47,10 +48,10 @@ async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOutcomeEn
       if (line.trim().length === 0) continue;
       try {
         const parsed: unknown = JSON.parse(line);
-        if (parsed && typeof parsed === "object") {
-          const record = parsed as { grounded?: unknown; message?: unknown };
-          if (typeof record.message === "string") {
-            entries.push({ grounded: typeof record.grounded === "string" ? record.grounded : null, message: record.message });
+        if (isRecord(parsed)) {
+          const message = typeof parsed.message === "string" ? parsed.message : undefined;
+          if (typeof message === "string") {
+            entries.push({ grounded: typeof parsed.grounded === "string" ? parsed.grounded : null, message });
           }
         }
       } catch {

@@ -181,8 +181,19 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  type ProviderMessage = {
+    readonly role: ChatTurnMessage["role"];
+    readonly content: string;
+    readonly attachments?: { readonly mimeType: string; readonly dataBase64: string }[];
+  };
+  const toProviderMessages = (messages: readonly ChatTurnMessage[]): readonly ProviderMessage[] =>
+    messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      ...(message.attachments ? { attachments: [...message.attachments] } : {})
+    }));
   const stream = (messages: readonly ChatTurnMessage[], useModel: string): ChatStream =>
-    provider.stream({ messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[], model: useModel });
+    provider.stream({ messages: toProviderMessages(messages), model: useModel });
 
   // Privacy-tiered routing parity with `runLocalChat`: the routing decision +
   // cloud leg live in `createChatCloudTurn` (chat-repl.ts) — MuseChatApp calls
@@ -209,7 +220,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   ): ChatStream => {
     if (!agentRuntime) return stream(messages, useModel);
     const events = agentRuntime.stream({
-      messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[],
+      messages: toProviderMessages(messages),
       // `localMode` exposes execute-risk tools (email/web/home actuators, shell)
       // to the chat model; the fail-closed gate below is what keeps them safe —
       // every write/execute call must be confirmed by the user with its content

@@ -32,6 +32,7 @@ import { dirname, join } from "node:path";
 import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveCheckpointsDir } from "@muse/autoconfigure";
 import { pruneActionLogByAge, pruneByAge, pruneLearnQueueByAge, resolveLearnQueueFile, type ActionLogPruneResult } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 
 export interface RetentionWindows {
   /** `.muse/runs/*.jsonl` — default 90 days (mirrors the checkpoints window; a trace's diagnostic value fades fast). */
@@ -89,13 +90,13 @@ export interface FilePruneResult {
 
 /** Parse the last event's `recordedAt` out of a run-log JSONL file (mirrors `readLocalRuns`'s "last event wins" contract). Falls back to the file's mtime when the content is missing/unparseable so a legacy or partially-written trace still ages out. */
 async function runFileTimestampMs(path: string, fallbackMtimeMs: number): Promise<number> {
-  try {
-    const raw = await readFile(path, "utf8");
-    const lines = raw.trim().split("\n").filter((l) => l.trim().length > 0);
-    const last = lines[lines.length - 1];
-    if (last) {
-      const event = JSON.parse(last) as { recordedAt?: unknown };
-      const ms = typeof event.recordedAt === "string" ? Date.parse(event.recordedAt) : NaN;
+    try {
+      const raw = await readFile(path, "utf8");
+      const lines = raw.trim().split("\n").filter((l) => l.trim().length > 0);
+      const last = lines[lines.length - 1];
+      if (last) {
+      const event = JSON.parse(last);
+      const ms = isRecord(event) && typeof event.recordedAt === "string" ? Date.parse(event.recordedAt) : NaN;
       if (Number.isFinite(ms)) return ms;
     }
   } catch {

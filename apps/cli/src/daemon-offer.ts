@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 
 import { parseBoolean } from "@muse/autoconfigure";
 import { classifyProactiveHeartbeat, defaultProactiveHeartbeatDir, readProactiveHeartbeat } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 
 import { resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
 
@@ -44,7 +45,8 @@ function hasAlreadyOffered(file: string): boolean {
     return false;
   }
   try {
-    return (JSON.parse(raw) as { offered?: unknown }).offered === true;
+    const parsed = JSON.parse(raw);
+    return isRecord(parsed) && parsed.offered === true;
   } catch {
     return false;
   }

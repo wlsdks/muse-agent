@@ -113,7 +113,7 @@ export async function readApiOptions(
   command: Command,
   readOptions: ReadApiOptionsOptions = {}
 ): Promise<ApiOptions> {
-  const globalOptions = command.optsWithGlobals() as { readonly apiUrl?: string; readonly token?: string };
+  const globalOptions = command.optsWithGlobals<{ readonly apiUrl?: string; readonly token?: string }>();
   const config = await readConfigStore(io);
   const baseUrl = firstNonEmpty(globalOptions.apiUrl, process.env.MUSE_API_URL, config.apiUrl) ?? "http://127.0.0.1:3030";
   const explicitToken = firstNonEmpty(globalOptions.token, process.env.MUSE_API_TOKEN);

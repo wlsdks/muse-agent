@@ -14,6 +14,7 @@ import {
 } from "@muse/agent-core";
 import { formatLocalDay as formatFollowupLlmBudgetDay, incrementFollowupLlmBudget, isFollowupLlmBudgetExhausted, readFollowupLlmBudget } from "@muse/stores";
 import type { UserMemoryStore } from "@muse/memory";
+import type { UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import { AuthoredSkillStore } from "@muse/skills";
 
@@ -147,7 +148,10 @@ export function createReviewPreferencesArm(
       // Feature-detect the typed-slot remover (the file store has it; the abstract
       // UserMemoryStore interface doesn't declare it — same pattern as the optional
       // upsertUserModelSlot).
-      const removeSlot = (userMemoryStore as { removeUserModelSlot?: (userId: string, id: string) => unknown }).removeUserModelSlot;
+      const removeSlotRaw = (userMemoryStore as Record<string, unknown>).removeUserModelSlot;
+      const removeSlot = typeof removeSlotRaw === "function"
+        ? (removeSlotRaw as (userId: string, id: string) => unknown).bind(userMemoryStore)
+        : undefined;
       await inferPreferencesFromTurns(turns, {
         model: defaultModel,
         modelProvider,

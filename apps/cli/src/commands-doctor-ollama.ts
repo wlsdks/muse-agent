@@ -1,3 +1,5 @@
+import { isRecord } from "@muse/shared";
+
 /**
  * Ollama `/api/tags` model-entry shape + tag-matching utilities for `muse doctor`.
  * Split out of commands-doctor.ts; pure (no IO), so directly testable.
@@ -16,11 +18,9 @@ export interface OllamaTagsEntry {
 }
 
 export function isOllamaTagsEntry(value: unknown): value is OllamaTagsEntry {
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as { name?: unknown }).name === "string"
-    && ((value as { size?: unknown }).size === undefined
-      || typeof (value as { size?: unknown }).size === "number");
+  return isRecord(value)
+    && typeof value.name === "string"
+    && (value.size === undefined || typeof value.size === "number");
 }
 
 /**

@@ -251,9 +251,8 @@ export function fromGeminiResponse(providerId: string, model: string, payload: u
   });
 
   // groundingMetadata lives on the candidate, not the top-level payload.
-  const groundingChunks = (
-    candidate as { groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> } } | undefined
-  )?.groundingMetadata?.groundingChunks ?? [];
+  const groundingMetadata = isRecord(candidate?.groundingMetadata) ? candidate.groundingMetadata : undefined;
+  const groundingChunks = Array.isArray(groundingMetadata?.groundingChunks) ? groundingMetadata.groundingChunks : [];
   const citations: WebSearchCitation[] = [];
   for (const chunk of groundingChunks) {
     if (isJsonObject(chunk) && isRecord(chunk.web) && chunk.web.uri && chunk.web.title) {

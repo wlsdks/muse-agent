@@ -127,9 +127,9 @@ export async function* forwardRecordingInjections<T extends { readonly type: str
   events: AsyncIterable<T>,
   record: (ids: readonly string[]) => void
 ): AsyncIterable<T> {
-  for await (const event of events) {
-    if (event.type === "done") {
-      const ids = (event as { readonly playbookInjectedIds?: unknown }).playbookInjectedIds;
+    for await (const event of events) {
+      if (event.type === "done") {
+        const ids = isRecord(event) ? event.playbookInjectedIds : undefined;
       if (Array.isArray(ids)) {
         const cleaned = ids.filter((id): id is string => typeof id === "string" && id.length > 0);
         if (cleaned.length > 0) {

@@ -414,7 +414,7 @@ export async function maybeCompactLastChatHistory(
 }
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {
-  return isRecord(value) && typeof (value as { code?: unknown }).code === "string";
+  return isRecord(value) && typeof value.code === "string";
 }
 
 export function capContentForSummary(value: string, cap: number): string {

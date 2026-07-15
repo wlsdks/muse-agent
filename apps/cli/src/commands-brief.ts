@@ -38,6 +38,7 @@ import {
 import type { CalendarEvent } from "@muse/calendar";
 import { formatBirthdayBriefLine, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, type PersistedReminder } from "@muse/stores";
 import { readCheckins, selectDueCheckins, type PersistedCheckin } from "@muse/proactivity";
+import { isRecord } from "@muse/shared";
 import { detectCalendarConflicts } from "@muse/domain-tools";
 import { projectRecentlyLearned } from "@muse/memory";
 import { composeSurfacePrompt } from "@muse/prompts";
@@ -176,11 +177,26 @@ async function loadTasks(): Promise<readonly PersistedTask[]> {
   const file = resolveTasksFile(environment());
   try {
     const raw = await readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { tasks?: readonly PersistedTask[] };
-    return parsed.tasks ?? [];
+    const parsed = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+      return [];
+    }
+    const tasks = parsed.tasks;
+    return Array.isArray(tasks) ? tasks.filter(isPersistedTask) : [];
   } catch {
     return [];
   }
+}
+
+function isPersistedTask(value: unknown): value is PersistedTask {
+  return (
+    isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.title === "string"
+    && typeof value.status === "string"
+    && (value.dueAt === undefined || typeof value.dueAt === "string")
+    && (value.urgent === undefined || typeof value.urgent === "boolean")
+  );
 }
 
 /**

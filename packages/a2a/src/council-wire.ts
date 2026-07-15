@@ -17,6 +17,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { isA2AEnabled } from "@muse/agent-core";
+import { isRecord } from "@muse/shared";
 
 import type { A2APeer } from "./peer-registry.js";
 import type { A2AEnv } from "./transport.js";
@@ -62,9 +63,13 @@ export function buildCouncilRequest(fromPeerId: string, question: string, rpcId:
 /** Pull a council request out of a parsed body, or null if it isn't one. */
 export function parseCouncilRequest(body: unknown): { readonly fromPeerId: string; readonly question: string } | null {
   if (!body || typeof body !== "object") return null;
-  const b = body as { method?: unknown; params?: { fromPeerId?: unknown; question?: unknown } };
-  if (b.method !== COUNCIL_METHOD || !b.params) return null;
-  const { fromPeerId, question } = b.params;
+  const bodyRecord = isRecord(body) ? body : {};
+  const method = typeof bodyRecord.method === "string" ? bodyRecord.method : undefined;
+  if (method !== COUNCIL_METHOD) return null;
+  const params = isRecord(bodyRecord.params) ? bodyRecord.params : undefined;
+  if (!params) return null;
+  const fromPeerId = params.fromPeerId;
+  const question = params.question;
   if (typeof fromPeerId !== "string" || typeof question !== "string" || question.trim().length === 0) return null;
   return { fromPeerId, question };
 }
@@ -88,11 +93,13 @@ export const MAX_COUNCIL_REASONING_CHARS = 4000;
  */
 export function parseCouncilResponse(body: unknown): CouncilResponse | null {
   if (!body || typeof body !== "object") return null;
-  const b = body as { kind?: unknown; fromPeerId?: unknown; reasoning?: unknown };
-  if (b.kind !== "council-reasoning") return null;
-  if (typeof b.reasoning !== "string" || b.reasoning.trim().length === 0) return null;
-  const reasoning = b.reasoning.length > MAX_COUNCIL_REASONING_CHARS ? b.reasoning.slice(0, MAX_COUNCIL_REASONING_CHARS) : b.reasoning;
-  const fromPeerId = typeof b.fromPeerId === "string" ? b.fromPeerId : "";
+  const bodyRecord = isRecord(body) ? body : {};
+  const kind = bodyRecord.kind;
+  if (kind !== "council-reasoning") return null;
+  const reasoningValue = bodyRecord.reasoning;
+  if (typeof reasoningValue !== "string" || reasoningValue.trim().length === 0) return null;
+  const reasoning = reasoningValue.length > MAX_COUNCIL_REASONING_CHARS ? reasoningValue.slice(0, MAX_COUNCIL_REASONING_CHARS) : reasoningValue;
+  const fromPeerId = typeof bodyRecord.fromPeerId === "string" ? bodyRecord.fromPeerId : "";
   return { kind: "council-reasoning", fromPeerId, reasoning };
 }
 

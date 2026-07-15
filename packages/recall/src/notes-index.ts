@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { basename as pathBasename, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 
 import { annotateNoteChunks } from "@muse/agent-core";
+import { isRecord } from "@muse/shared";
 
 import { parsePdfBuffer } from "./document-reader.js";
 import { embed } from "./embed.js";
@@ -201,7 +202,8 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
     return undefined;
   }
   if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<NotesIndex>;
+  if (!isRecord(parsed)) return undefined;
+  const candidate = parsed;
   // Version mismatch → discard so reindex rebuilds clean rather
   // than carrying incompatible entries forward — but back the prior
   // file up first (see store-version-backup.ts): reindexNotes writes
@@ -221,6 +223,7 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
     await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
+
   const inlineFiles = (candidate as NotesIndex).files;
   if (!Array.isArray(inlineFiles)) {
     return candidate as NotesIndex;
@@ -273,8 +276,24 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
  * stale-check rejects).
  */
 export function isNotesIndexValid(candidate: { readonly version?: unknown } | null | undefined): boolean {
-  if (!candidate || typeof candidate !== "object") return false;
-  return (candidate as { version?: unknown }).version === NOTES_INDEX_SCHEMA_VERSION;
+  return isRecord(candidate) && candidate.version === NOTES_INDEX_SCHEMA_VERSION;
+}
+
+function isFileEntry(candidate: unknown): candidate is FileEntry {
+  if (!isRecord(candidate)) return false;
+  if (typeof candidate.path !== "string" || candidate.path.trim().length === 0) return false;
+  if (typeof candidate.mtimeMs !== "number" || !Number.isFinite(candidate.mtimeMs)) return false;
+  if (!Array.isArray(candidate.chunks)) return false;
+  return candidate.chunks.every(isIndexChunk);
+}
+
+function isIndexChunk(candidate: unknown): candidate is IndexChunk {
+  if (!isRecord(candidate)) return false;
+  if (typeof candidate.file !== "string" || candidate.file.trim().length === 0) return false;
+  if (typeof candidate.chunkIndex !== "number" || !Number.isFinite(candidate.chunkIndex)) return false;
+  if (typeof candidate.text !== "string" || candidate.text.length === 0) return false;
+  if (!Array.isArray(candidate.embedding)) return false;
+  return candidate.embedding.every((value) => typeof value === "number" && Number.isFinite(value));
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {

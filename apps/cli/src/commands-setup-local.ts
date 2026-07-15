@@ -20,6 +20,7 @@ import { totalmem } from "node:os";
 
 import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
 import type { Command } from "commander";
+import { isRecord } from "@muse/shared";
 
 import type { ConfigCommandHelpers } from "./commands-config.js";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -123,12 +124,20 @@ interface OllamaTag {
   readonly size?: number;
 }
 
+function isOllamaTag(value: unknown): value is OllamaTag {
+  if (!isRecord(value)) return false;
+  if (typeof value.name !== "string" || value.name.trim().length === 0) return false;
+  if (value.size === undefined) return true;
+  return typeof value.size === "number" && Number.isFinite(value.size);
+}
+
 async function fetchOllamaTags(baseUrl: string): Promise<readonly OllamaTag[] | undefined> {
   try {
     const resp = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
     if (!resp.ok) return undefined;
-    const body = (await resp.json()) as { models?: readonly OllamaTag[] };
-    return body.models ?? [];
+    const body = await resp.json();
+    const models = isRecord(body) && Array.isArray(body.models) ? body.models : [];
+    return models.filter(isOllamaTag);
   } catch {
     return undefined;
   }

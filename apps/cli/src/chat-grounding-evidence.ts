@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { demoteStaleHits } from "@muse/recall";
+import { isRecord } from "@muse/shared";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -176,7 +177,12 @@ export function notesIndexNeedsModelMigration(existingModel: string | undefined,
 
 async function defaultReadIndexModel(indexPath: string): Promise<string | undefined> {
   try {
-    return (JSON.parse(await readFile(indexPath, "utf8")) as { model?: string }).model;
+    const parsed = JSON.parse(await readFile(indexPath, "utf8"));
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+    const model = parsed.model;
+    return typeof model === "string" && model.trim().length > 0 ? model.trim() : undefined;
   } catch {
     return undefined;
   }
@@ -246,8 +252,8 @@ export function buildQueryRewritePrompt(
 export function parseQueryRewrite(output: string, fallback: string): string {
   try {
     const parsed: unknown = JSON.parse(output.trim());
-    if (parsed && typeof parsed === "object" && "query" in parsed) {
-      const query = (parsed as { query: unknown }).query;
+    if (isRecord(parsed) && "query" in parsed) {
+      const query = parsed.query;
       if (typeof query === "string" && query.trim().length > 0 && query.length <= 200) {
         return query.trim();
       }

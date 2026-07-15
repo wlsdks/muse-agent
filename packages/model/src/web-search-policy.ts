@@ -1,4 +1,5 @@
 import { FALSY_BOOLEAN_VALUES } from "./web-egress-policy.js";
+import { isRecord } from "@muse/shared";
 
 export interface WebSearchPolicy {
   readonly enabled: boolean;
@@ -18,6 +19,22 @@ export interface DecideWebSearchPolicyArgs {
 }
 
 const DEFAULT_MAX_USES = 5;
+const DEFAULT_WEB_SEARCH_POLICY: WebSearchPolicy = { enabled: false, maxUses: DEFAULT_MAX_USES };
+
+export function readWebSearchPolicy(value: unknown): WebSearchPolicy {
+  if (!isRecord(value)) {
+    return DEFAULT_WEB_SEARCH_POLICY;
+  }
+  const enabled = value.enabled;
+  const maxUsesRaw = value.maxUses;
+  const maxUses = typeof maxUsesRaw === "number" && Number.isInteger(maxUsesRaw) && maxUsesRaw > 0
+    ? maxUsesRaw
+    : DEFAULT_MAX_USES;
+  return {
+    enabled: typeof enabled === "boolean" ? enabled : DEFAULT_WEB_SEARCH_POLICY.enabled,
+    maxUses
+  };
+}
 
 export function decideWebSearchPolicy(args: DecideWebSearchPolicyArgs): WebSearchPolicy {
   const env = args.env ?? {};

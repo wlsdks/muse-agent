@@ -7,6 +7,7 @@
  */
 
 import type { MuseTool } from "@muse/tools";
+import { isRecord } from "@muse/shared";
 
 import { cosineSimilarity } from "./episodic-recall.js";
 import { type KnowledgeChunk, rankKnowledgeChunks } from "./knowledge-ranking.js";
@@ -76,7 +77,8 @@ export function createKnowledgeSearchTool(options: KnowledgeSearchToolOptions): 
       risk: "read"
     },
     execute: async (args) => {
-      const query = typeof (args as { query?: unknown }).query === "string" ? (args as { query: string }).query : "";
+      const querySource = isRecord(args) ? args : {};
+      const query = typeof querySource.query === "string" ? querySource.query : "";
       const matches = await rankKnowledgeChunks(query, options.corpus, {
         diversify: true,
         embed: options.embed,

@@ -60,11 +60,11 @@ function matches(existing: Contact, incoming: AppleContact): boolean {
 }
 
 /** Fill only blank reach/birthday fields; never touch name, relationship, about, handle, aliases, connections. */
-function mergeInto(existing: Contact, incoming: AppleContact): { readonly next: Contact; readonly changed: boolean } {
-  let changed = false;
-  const next: Contact = { ...existing };
-  const patch = next as { -readonly [K in keyof Contact]: Contact[K] };
-  const firstEmail = incoming.emails[0];
+  function mergeInto(existing: Contact, incoming: AppleContact): { readonly next: Contact; readonly changed: boolean } {
+    let changed = false;
+    const next: Contact = { ...existing };
+    const patch: { -readonly [K in keyof Contact]: Contact[K] } = { ...next };
+    const firstEmail = incoming.emails[0];
   const firstPhone = incoming.phones[0];
   if (existing.email === undefined && firstEmail !== undefined) {
     patch.email = firstEmail;

@@ -11,6 +11,7 @@
 import { extractStructuredFromImage } from "@muse/agent-core";
 import { buildCalendarRegistry, resolveContactsFile, resolveNotesDir, resolveVisionModel, type MuseEnvironment } from "@muse/autoconfigure";
 import type { ModelProvider } from "@muse/model";
+import { isRecord } from "@muse/shared";
 
 import type { ProgramIO } from "./program.js";
 
@@ -31,8 +32,11 @@ export async function resolveSessionVisionModel(sessionModel: string, env: MuseE
   const baseUrl = env.OLLAMA_BASE_URL ?? "http://localhost:11434";
   try {
     const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    const body = (await res.json()) as { models?: ReadonlyArray<{ name?: string }> };
-    const availableModels = (body.models ?? []).map((m) => m.name ?? "").filter(Boolean);
+    const body = await res.json();
+    const models = isRecord(body) && Array.isArray(body.models) ? body.models : [];
+    const availableModels = models
+      .filter((value): value is { name: string } => isRecord(value) && typeof value.name === "string")
+      .map((entry) => entry.name);
     return resolveVisionModel({ availableModels, env, sessionModel });
   } catch {
     return desired;
@@ -116,7 +120,7 @@ export async function runVisionCommandAction(params: {
       const addContactTool = createContactsAddTool({ contacts: () => readContacts(file, env), save: (c) => addContact(file, c, env) });
       result = await addContactTool.execute(act.fields, { runId: "vision-auto", userId: userKey });
     }
-    io.stdout(result && typeof result === "object" && "error" in result ? `\n❌ ${String((result as { error: unknown }).error)}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
+    io.stdout(errorText(result) ? `\n❌ ${String(errorText(result))}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
     return;
   }
   if (options.toCalendar) {
@@ -148,7 +152,7 @@ export async function runVisionCommandAction(params: {
       ...(typeof ev.location === "string" ? { location: ev.location } : {}),
       ...(typeof ev.notes === "string" ? { notes: ev.notes } : {})
     });
-    io.stdout(res && typeof res === "object" && "error" in res ? `\n❌ ${String((res as { error: unknown }).error)}\n` : `\n✅ Created: ${JSON.stringify(res)}\n`);
+    io.stdout(errorText(res) ? `\n❌ ${String(errorText(res))}\n` : `\n✅ Created: ${JSON.stringify(res)}\n`);
     return;
   }
   const fields = (options.extract ?? "").split(",").map((f) => f.trim()).filter(Boolean);
@@ -170,4 +174,10 @@ export async function runVisionCommandAction(params: {
     return;
   }
   io.stdout(`${JSON.stringify(ex.data, null, options.json === true ? 0 : 2)}\n`);
+}
+
+function errorText(value: unknown): string | undefined {
+  if (!isRecord(value) || !("error" in value)) return undefined;
+  const next = value.error;
+  return typeof next === "string" ? next : undefined;
 }

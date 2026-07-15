@@ -12,6 +12,7 @@
 import { appendFile } from "node:fs/promises";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 
 import { scrubJobEvent } from "./job-event-scrub.js";
 
@@ -90,13 +91,13 @@ async function main(): Promise<void> {
           // A provider error event is not an exception; without
           // this the loop ends, the job is recorded `done` with
           // no output, and the worker exits 0 — a false success.
-          const err = (event as { error?: unknown }).error;
+          const err = isRecord(event) ? event.error : undefined;
           throw err instanceof Error
             ? err
             : new Error(typeof err === "string" ? err : "model stream failed");
         }
         if (event.type === "text-delta") {
-          const text = (event as { text?: string }).text;
+          const text = isRecord(event) && typeof event.text === "string" ? event.text : undefined;
           if (typeof text === "string" && text.length > 0) {
             await appendEvent(args.jobFile, { text, type: "progress" });
           }

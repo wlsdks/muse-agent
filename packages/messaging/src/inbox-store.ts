@@ -16,6 +16,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 import type { InboundMessage } from "./types.js";
 
 const DEFAULT_CAPACITY = 500;
@@ -47,10 +49,10 @@ export async function readInbox(file: string, limit?: number): Promise<readonly 
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { inbox?: unknown }).inbox)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.inbox)) {
     return [];
   }
-  const all = (parsed as { inbox: unknown[] }).inbox.flatMap((entry): readonly InboundMessage[] =>
+  const all = parsed.inbox.flatMap((entry): readonly InboundMessage[] =>
     isInboundMessage(entry) ? [entry] : []
   );
   // The file is stored newest-last so writes can append in O(1)
@@ -139,13 +141,12 @@ function clampCapacity(raw: number | undefined): number {
 }
 
 function isInboundMessage(value: unknown): value is InboundMessage {
-  if (!value || typeof value !== "object") {
+  if (!isRecord(value)) {
     return false;
   }
-  const candidate = value as InboundMessage;
-  return typeof candidate.providerId === "string"
-    && typeof candidate.messageId === "string"
-    && typeof candidate.source === "string"
-    && typeof candidate.receivedAtIso === "string"
-    && typeof candidate.text === "string";
+  return typeof value.providerId === "string"
+    && typeof value.messageId === "string"
+    && typeof value.source === "string"
+    && typeof value.receivedAtIso === "string"
+    && typeof value.text === "string";
 }

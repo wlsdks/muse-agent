@@ -1,4 +1,5 @@
 import { finiteOr, truncateUtf16Safe } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk, type KnowledgeMatch } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/domain-tools";
 import type { MuseTool } from "@muse/tools";
@@ -593,7 +594,8 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
       risk: "read"
     },
     execute: async (args) => {
-      const query = typeof (args as { query?: unknown }).query === "string" ? (args as { query: string }).query : "";
+      const argsRecord = isRecord(args) ? args : {};
+      const query = typeof argsRecord.query === "string" ? argsRecord.query : "";
       const corpus = await assembleKnowledgeCorpus({
         ...(options.notesProvider ? { notesProvider: options.notesProvider } : {}),
         ...(options.tasksProvider ? { tasksProvider: options.tasksProvider } : {}),

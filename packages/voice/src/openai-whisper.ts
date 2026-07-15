@@ -1,5 +1,6 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
 import { safeReadText } from "./http-utils.js";
+import { isRecord } from "@muse/shared";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -50,8 +51,9 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     this.apiKey = options.apiKey;
     this.endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
     this.model = options.model ?? DEFAULT_MODEL;
-    this.fetchImpl = options.fetchImpl ?? ((globalThis as { fetch?: FetchLike }).fetch as FetchLike);
-    if (!this.fetchImpl) {
+    const defaultFetch = globalThis.fetch;
+    this.fetchImpl = options.fetchImpl ?? defaultFetch;
+    if (typeof this.fetchImpl !== "function") {
       throw new VoiceValidationError("NO_FETCH", "global fetch is unavailable; pass fetchImpl");
     }
   }
@@ -121,7 +123,7 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
       throw new VoiceProviderError(this.id, "BAD_JSON", "Whisper returned invalid JSON", cause);
     }
 
-    if (!body || typeof body !== "object" || typeof (body as { text?: unknown }).text !== "string") {
+    if (!isRecord(body) || typeof body.text !== "string") {
       throw new VoiceProviderError(
         this.id,
         "BAD_SHAPE",
@@ -129,9 +131,9 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
       );
     }
 
-    const text = (body as { text: string }).text;
-    const language = (body as { language?: string }).language;
-    const durationSec = (body as { duration?: number }).duration;
+    const text = body.text;
+    const language = typeof body.language === "string" ? body.language : undefined;
+    const durationSec = typeof body.duration === "number" ? body.duration : undefined;
     return {
       text,
       language: typeof language === "string" ? language : undefined,

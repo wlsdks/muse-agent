@@ -163,9 +163,7 @@ export function renderActiveContext(snapshot: Record<string, unknown>): string {
   const weekday = typeof snapshot.weekday === "string" ? snapshot.weekday : "?";
   const timezone = typeof snapshot.timezone === "string" ? snapshot.timezone : "?";
   lines.push(`now=${nowIso ?? "?"} (${weekday}, ${timezone})`);
-  const workingHours = isRecord(snapshot.workingHours)
-    ? snapshot.workingHours as { start?: number; end?: number }
-    : undefined;
+  const workingHours = isRecord(snapshot.workingHours) ? snapshot.workingHours : undefined;
   if (workingHours && typeof workingHours.start === "number" && typeof workingHours.end === "number") {
     const inWindow = snapshot.isWorkingHours === undefined
       ? "unknown"

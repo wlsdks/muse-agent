@@ -158,15 +158,29 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
     .command("providers")
     .description("List configured tasks backends")
     .option("--json", "Print the raw API response instead of the formatted list")
-    .action(async (options: { readonly json?: boolean }, command) => {
-      const result = await helpers.apiRequest(io, command, "/api/tasks/providers");
-      if (options.json) {
-        helpers.writeOutput(io, result);
-        return;
-      }
-      const providers = (result as { providers?: Parameters<typeof formatProvidersList>[1] })?.providers ?? [];
-      io.stdout(formatProvidersList("Tasks providers", providers));
-    });
+  .action(async (options: { readonly json?: boolean }, command) => {
+    const result = await helpers.apiRequest(io, command, "/api/tasks/providers");
+    if (options.json) {
+      helpers.writeOutput(io, result);
+      return;
+    }
+    const rawProviders = isRecord(result) && Array.isArray(result.providers) ? result.providers : [];
+    const providers = rawProviders
+      .map((provider): { readonly id: string; readonly local?: boolean; readonly displayName?: string; readonly description?: string } | undefined => {
+        if (!isRecord(provider) || typeof provider.id !== "string" || provider.id.trim().length === 0) return undefined;
+        if (provider.local !== undefined && typeof provider.local !== "boolean") return undefined;
+        if (provider.displayName !== undefined && typeof provider.displayName !== "string") return undefined;
+        if (provider.description !== undefined && typeof provider.description !== "string") return undefined;
+        return {
+          id: provider.id,
+          ...(provider.local === undefined ? {} : { local: provider.local }),
+          ...(provider.displayName === undefined ? {} : { displayName: provider.displayName }),
+          ...(provider.description === undefined ? {} : { description: provider.description })
+        };
+      })
+      .filter((provider): provider is Parameters<typeof formatProvidersList>[1][number] => provider !== undefined);
+    io.stdout(formatProvidersList("Tasks providers", providers));
+  });
 
   tasks
     .command("flow")

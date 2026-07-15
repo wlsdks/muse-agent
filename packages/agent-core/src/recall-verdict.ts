@@ -27,6 +27,7 @@ import { type KnowledgeMatch } from "./knowledge-ranking.js";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 import { DEFAULT_CONFIDENT_AT } from "./recall-confidence.js";
 import { finiteOr, LEXICAL_STOPWORDS, lexicalTokens } from "./recall-lexical.js";
+import { isRecord } from "@muse/shared";
 
 export interface GroundingExplanationOptions {
   /** The top match's ABSOLUTE cosine — the rubric stores the categorical confidence, not the raw value. */
@@ -191,15 +192,14 @@ export const REVERIFY_RESPONSE_FORMAT = {
 export function parseGroundingReverifyJson(output: string): boolean {
   try {
     const parsed: unknown = JSON.parse(output.trim());
-    if (parsed && typeof parsed === "object" && "supported" in parsed) {
-      return (parsed as { supported: unknown }).supported === true;
+    if (isRecord(parsed) && typeof parsed.supported === "boolean") {
+      return parsed.supported === true;
     }
     return false;
   } catch {
     return parseGroundingReverifyVerdict(output);
   }
 }
-
 /**
  * Build the canonical one-shot grounding judge ({@link GroundingReverify}) from a
  * minimal text-generation provider — the SAME reverify the reflection + proactive-

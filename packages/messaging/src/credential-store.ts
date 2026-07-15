@@ -7,6 +7,7 @@ import {
   decodeMaybeEncryptedCredentialsJson,
   encryptCredentialEnvelope,
   isCredentialsFileEncryptedAtRest,
+  isRecord,
   type JsonObject
 } from "@muse/shared";
 
@@ -92,13 +93,15 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
       return { providers: emptyProviderMap(), version: 1 };
     }
     parsed = decodeMaybeEncryptedCredentialsJson(parsed, this.env); // THROWS fail-closed on a wrong key
-    const shape = parsed as Partial<PersistedShape>;
-    if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
+    if (!isRecord(parsed) || !isRecord(parsed.providers)) {
       return { providers: emptyProviderMap(), version: 1 };
     }
+    const providersRecord = parsed.providers;
     const providers = emptyProviderMap();
-    for (const [id, value] of Object.entries(shape.providers)) {
-      providers[id] = value as MessagingCredentials;
+    for (const [id, value] of Object.entries(providersRecord)) {
+      if (isRecord(value)) {
+        providers[id] = value;
+      }
     }
     return { providers, version: 1 };
   }
@@ -129,7 +132,10 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+  if (!isRecord(error)) {
+    return false;
+  }
+  return error.code === "ENOENT";
 }
 
 // Null-prototype so a providerId like `toString` / `__proto__` /

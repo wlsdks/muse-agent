@@ -10,6 +10,7 @@
  */
 
 import type { A2AEnvelope } from "@muse/agent-core";
+import { isRecord } from "@muse/shared";
 
 import { KNOW_HOW_ONLY_EXT_URI } from "./agent-card.js";
 
@@ -69,13 +70,13 @@ export function envelopeToSendRequest(envelope: A2AEnvelope, messageId: string, 
  */
 export function extractEnvelopeFromA2ABody(body: unknown): unknown {
   if (!body || typeof body !== "object") return null;
-  const asRpc = body as { params?: { message?: unknown } };
-  const message = asRpc.params?.message ?? body;
-  const parts = (message as { parts?: unknown }).parts;
+  const bodyRecord = isRecord(body) ? body : {};
+  const message = isRecord(bodyRecord.params) ? bodyRecord.params.message : body;
+  const messageRecord = isRecord(message) ? message : {};
+  const parts = messageRecord.parts;
   if (!Array.isArray(parts)) return null;
   const dataPart = parts.find(
-    (p): p is A2ADataPart => Boolean(p) && typeof p === "object" && (p as { kind?: unknown }).kind === "data"
-      && Boolean((p as { data?: unknown }).data) && typeof (p as { data?: unknown }).data === "object"
+    (p): p is A2ADataPart => isRecord(p) && p.kind === "data" && p.data !== undefined && typeof p.data === "object"
   );
   return dataPart ? dataPart.data : null;
 }

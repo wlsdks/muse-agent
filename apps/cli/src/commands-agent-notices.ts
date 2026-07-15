@@ -16,6 +16,7 @@
 
 import type { Command } from "commander";
 
+import { isRecord } from "@muse/shared";
 import type { ProgramIO } from "./program.js";
 import { formatApiErrorResponse, readApiOptions, readSseEvents } from "./program-helpers.js";
 
@@ -101,24 +102,21 @@ export function registerAgentNoticesCommands(
             }
             continue;
           }
-          if (event.event === "notice") {
-            if (options.json) {
-              io.stdout(`${event.data}\n`);
-              continue;
-            }
-            try {
-              const parsed = JSON.parse(event.data) as {
-                readonly kind?: string;
-                readonly text?: string;
-                readonly generatedAt?: string;
-                readonly sourceId?: string;
-              };
-              const stamp = formatNoticeStamp(parsed.generatedAt);
-              const kind = parsed.kind ?? "agent";
-              io.stdout(`[${stamp}] [${kind}] ${parsed.text ?? "(empty)"}\n`);
-            } catch {
-              io.stdout(`${event.data}\n`);
-            }
+            if (event.event === "notice") {
+              if (options.json) {
+                io.stdout(`${event.data}\n`);
+                continue;
+              }
+              try {
+                const parsed = JSON.parse(event.data);
+                const generatedAt = isRecord(parsed) && typeof parsed.generatedAt === "string" ? parsed.generatedAt : undefined;
+                const kind = isRecord(parsed) && typeof parsed.kind === "string" ? parsed.kind : "agent";
+                const text = isRecord(parsed) && typeof parsed.text === "string" ? parsed.text : "(empty)";
+                const stamp = formatNoticeStamp(generatedAt);
+                io.stdout(`[${stamp}] [${kind}] ${text}\n`);
+              } catch {
+                io.stdout(`${event.data}\n`);
+              }
             continue;
           }
         }

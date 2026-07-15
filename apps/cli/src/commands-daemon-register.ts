@@ -38,7 +38,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
 import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseAmbientNoticeRules, resolveEffectiveQuietHours, MacOsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHoursOption, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -119,7 +119,7 @@ export function liveQuietHours(
   io: ProgramIO,
   perLoopVar: string | undefined,
   baseVar: string | undefined
-): () => QuietHourRange | undefined {
+): QuietHoursOption {
   const settingsFile = resolveDaemonSettingsFile(e);
   let warned = false;
   return () => resolveEffectiveQuietHours({
@@ -326,7 +326,8 @@ const defaultRunLaunchctl = async (args: readonly string[]): Promise<{ code: num
 };
 
 function normalizeExecFileCode(cause: unknown): number {
-  const rawCode = (cause as { code?: number | string } | undefined)?.code;
+  if (!isRecord(cause)) return 1;
+  const rawCode = cause.code;
   if (typeof rawCode === "number") return rawCode;
   if (typeof rawCode === "string") {
     const parsed = Number(rawCode);

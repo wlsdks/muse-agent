@@ -199,23 +199,27 @@ function isCoRecallTrails(value: unknown): value is CoRecallTrails {
     return false;
   }
 
-  const raw = value as { readonly version?: unknown; readonly trails?: unknown };
-  if (raw.version !== 1 || raw.trails === undefined || raw.trails === null || Array.isArray(raw.trails)) {
+  if (!isRecord(value)) {
     return false;
   }
-  return isRecord(raw.trails) && Object.values(raw.trails).every((item) => isTrailEdge(item));
+  if (value.version !== 1 || value.trails === undefined || value.trails === null || Array.isArray(value.trails)) {
+    return false;
+  }
+  return isRecord(value.trails) && Object.values(value.trails).every((item) => isTrailEdge(item));
 }
 
 function isTrailEdge(value: unknown): value is TrailEdge {
   if (value === null || typeof value !== "object") {
     return false;
   }
-  const edge = value as { readonly a: unknown; readonly b: unknown; readonly weight: unknown; readonly lastDepositMs: unknown };
+  if (!isRecord(value)) {
+    return false;
+  }
   return (
-    typeof edge.a === "string" && edge.a.length > 0 &&
-    typeof edge.b === "string" && edge.b.length > 0 &&
-    typeof edge.weight === "number" && Number.isFinite(edge.weight) &&
-    typeof edge.lastDepositMs === "number" && Number.isFinite(edge.lastDepositMs)
+    typeof value.a === "string" && value.a.length > 0 &&
+    typeof value.b === "string" && value.b.length > 0 &&
+    typeof value.weight === "number" && Number.isFinite(value.weight) &&
+    typeof value.lastDepositMs === "number" && Number.isFinite(value.lastDepositMs)
   );
 }
 

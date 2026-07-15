@@ -212,7 +212,6 @@ function hashTurn(text: string): string {
 }
 
 function readUserId(metadata: { readonly [key: string]: unknown } | undefined): string | undefined {
-  if (!metadata) return undefined;
-  const value = (metadata as { userId?: unknown }).userId;
+  const value = metadata?.userId;
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }

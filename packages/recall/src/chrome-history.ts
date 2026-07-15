@@ -16,6 +16,7 @@
 import { promises as fs } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { isRecord } from "@muse/shared";
 
 import type { BrowsingVisit } from "./browsing-store.js";
 import { webkitTimeToIso } from "./browsing-store.js";
@@ -142,19 +143,13 @@ async function queryVisits(dbFile: string, sinceVisitTime: number, limit: number
 }
 
 function isRawVisitRow(row: unknown): row is RawVisitRow {
-  if (typeof row !== "object" || row === null) {
+  if (!isRecord(row)) {
     return false;
   }
-  const value = row as {
-    readonly visit_id: unknown;
-    readonly url: unknown;
-    readonly title: unknown;
-    readonly visit_time: unknown;
-  };
-  if (typeof value.visit_id !== "bigint" || typeof value.visit_time !== "bigint" || typeof value.url !== "string") {
+  if (typeof row.visit_id !== "bigint" || typeof row.visit_time !== "bigint" || typeof row.url !== "string") {
     return false;
   }
-  return value.title === null || typeof value.title === "string";
+  return row.title === null || typeof row.title === "string";
 }
 
 function toBrowsingVisit(row: RawVisitRow): readonly BrowsingVisit[] {

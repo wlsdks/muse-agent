@@ -352,18 +352,21 @@ export async function streamRemoteChat(
       continue;
     }
 
-    // AC1/AC4: the `grounding` frame carries `conversationId` on BOTH compat
-    // and extended modes — the CLI's remote stream always runs compat, so
-    // this (not `done`, which stays empty in compat) is where the id lands.
-    if (event.event === "grounding") {
-      try {
-        const parsed = JSON.parse(event.data) as { conversationId?: string };
-        if (typeof parsed.conversationId === "string" && parsed.conversationId.length > 0) {
-          responseConversationId = parsed.conversationId;
-        }
-      } catch {
-        // Malformed grounding event — ignore and continue.
-      }
+        // AC1/AC4: the `grounding` frame carries `conversationId` on BOTH compat
+        // and extended modes — the CLI's remote stream always runs compat, so
+        // this (not `done`, which stays empty in compat) is where the id lands.
+        if (event.event === "grounding") {
+          try {
+            const parsed = JSON.parse(event.data);
+            if (isRecord(parsed)) {
+              const conversationId = parsed.conversationId;
+              if (typeof conversationId === "string" && conversationId.length > 0) {
+                responseConversationId = conversationId;
+              }
+            }
+          } catch {
+            // Malformed grounding event — ignore and continue.
+          }
       continue;
     }
 
