@@ -157,6 +157,13 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
       client.post(`/api/attunement/threads/${encodeURIComponent(threadId)}/links/unlink`, { artifactId, artifactType }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] })
   });
+  const deleteThread = useMutation({
+    mutationFn: (threadId: string) => client.post(`/api/attunement/threads/${encodeURIComponent(threadId)}/delete`),
+    onSuccess: () => {
+      setOpenedPack(undefined);
+      return queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] });
+    }
+  });
   const data = review.data;
 
   return (
@@ -221,6 +228,9 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                           if (window.confirm(t("continuity.resetConfirm", { title: thread.title }))) reset.mutate(thread.id);
                         }}>{t("continuity.reset")}</Button>
                         <Button disabled={continueThread.isPending || thread.linkCount === 0 || hasExternalSource} size="sm" variant="secondary" onClick={() => continueThread.mutate(thread.id)}>{t("continuity.openPack")}</Button>
+                        <Button disabled={deleteThread.isPending} size="sm" variant="ghost" onClick={() => {
+                          if (window.confirm(t("continuity.deleteConfirm", { title: thread.title }))) deleteThread.mutate(thread.id);
+                        }}>{t("continuity.delete")}</Button>
                         {latestReset ? <Button disabled={undoReset.isPending} size="sm" variant="ghost" onClick={() => undoReset.mutate({ resetId: latestReset.id, threadId: thread.id })}>{t("continuity.undoReset")}</Button> : null}
                       </div>
                     </div>
@@ -274,6 +284,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
             {link.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.linkError")}</p> : null}
             {continueThread.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.packError")}</p> : null}
             {unlink.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.unlinkError")}</p> : null}
+            {deleteThread.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.deleteError")}</p> : null}
           </>
         ) : null}
       </AsyncBlock>

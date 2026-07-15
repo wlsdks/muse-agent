@@ -11,6 +11,7 @@ import {
   computeContinuityEvaluation,
   createLocalArtifactValidator,
   createPersonalThread,
+  deletePersonalThread,
   inspectThread,
   linkArtifact,
   mcpProviderId,
@@ -552,6 +553,16 @@ Examples:
         const removed = await unlinkArtifact(attunementFile(), { artifactId: artifactId.trim(), artifactType: type as ArtifactLink["artifactType"], threadId: threadId.trim() });
         if (!removed) throw new AttunementStoreError(`no ${type} link '${artifactId}' on thread '${threadId}'`);
         io.stdout(`Unlinked ${type}:${artifactId}\n`);
+      });
+    });
+
+  thread
+    .command("delete <thread-id>")
+    .description("Delete one personal thread and its continuity deliveries and policy receipts")
+    .action(async (threadId: string, _options: unknown, command: Command) => {
+      await commandAction(command, io, "thread delete", async () => {
+        const deleted = await deletePersonalThread(attunementFile(), threadId.trim());
+        io.stdout(`Deleted ${deleted.thread.kind} thread ${deleted.thread.id} (${String(deleted.deletedDeliveries)} deliveries, ${String(deleted.deletedResetReceipts)} reset receipts)\n`);
       });
     });
 

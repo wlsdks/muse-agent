@@ -1,4 +1,4 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, buildContinuityPack, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, linkArtifact, openContinuityDelivery, OUTCOMES, readAttunementState, recordContinuityOutcome, resetThreadPolicy, THREAD_KINDS, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, buildContinuityPack, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, linkArtifact, openContinuityDelivery, OUTCOMES, readAttunementState, recordContinuityOutcome, resetThreadPolicy, THREAD_KINDS, undoThreadReset, unlinkArtifact } from "@muse/attunement";
 import type { ContinuityOutcome } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
@@ -122,6 +122,11 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
   server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/reset", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     return resetThreadPolicy(gate.attunementFile, request.params.threadId);
+  });
+
+  server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/delete", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    return deletePersonalThread(gate.attunementFile, request.params.threadId);
   });
 
   server.post<{ Params: { readonly resetId: string; readonly threadId: string } }>("/api/attunement/threads/:threadId/resets/:resetId/undo", async (request, reply) => {

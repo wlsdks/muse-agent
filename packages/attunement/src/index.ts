@@ -14,6 +14,7 @@ export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,
+  deletePersonalThread,
   inspectThread,
   linkArtifact,
   openContinuityDelivery,
