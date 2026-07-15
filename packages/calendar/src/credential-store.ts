@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -79,15 +80,18 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     }
 
     try {
-      const parsed = JSON.parse(raw) as Partial<PersistedShape>;
-      if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
+      const parsed = JSON.parse(raw);
+      if (!isRecord(parsed) || !isRecord(parsed.providers)) {
         await quarantineCorruptStore(this.file);
         return { providers: emptyProviderMap(), version: 1 };
       }
 
       const providers = emptyProviderMap();
       for (const [id, value] of Object.entries(parsed.providers)) {
-        providers[id] = value as ProviderCredentials;
+        const credentials = parseProviderCredentials(value);
+        if (credentials !== undefined) {
+          providers[id] = credentials;
+        }
       }
       return { providers, version: 1 };
     } catch {
@@ -113,5 +117,9 @@ function emptyProviderMap(): Record<string, ProviderCredentials> {
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+  return isRecord(error) && error.code === "ENOENT";
+}
+
+function parseProviderCredentials(value: unknown): ProviderCredentials | undefined {
+  return isRecord(value) ? value : undefined;
 }

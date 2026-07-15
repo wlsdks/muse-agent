@@ -8,6 +8,7 @@ import {
   encryptCalendarEnvelope,
   isEncryptedCalendarEnvelope
 } from "./calendar-encryption.js";
+import { isRecord } from "@muse/shared";
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 import { CalendarProviderError, CalendarValidationError } from "./errors.js";
 import { expandRecurringEvent } from "./ics-parse.js";
@@ -205,12 +206,13 @@ export class LocalCalendarProvider implements CalendarProvider {
       }
     }
 
-    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { events?: unknown }).events)) {
+    const events = readRecordArrayField(parsed, "events");
+    if (events === undefined) {
       await quarantineCorruptStore(this.file);
       return [];
     }
 
-    const persisted = (parsed as { events: unknown[] }).events.flatMap((entry): readonly PersistedEvent[] =>
+    const persisted = events.flatMap((entry): readonly PersistedEvent[] =>
       isPersistedEvent(entry) ? [entry] : []
     );
 
@@ -321,6 +323,14 @@ function applyOptionalString(existing: string | undefined, next: string | null |
   return next ?? existing;
 }
 
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
+}
+
 function applyOptionalArray(
   existing: readonly string[] | undefined,
   next: readonly string[] | null | undefined
@@ -341,13 +351,15 @@ function isPersistedEvent(value: unknown): value is PersistedEvent {
   // and then vanish silently from every listEvents view (NaN
   // fails the range filter). Drop it here instead — the same
   // unparseable-event posture CalDAV's parseVEvent uses.
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as PersistedEvent).id === "string"
-    && typeof (value as PersistedEvent).title === "string"
-    && isParsableDateString((value as PersistedEvent).startsAt)
-    && isParsableDateString((value as PersistedEvent).endsAt)
-    && typeof (value as PersistedEvent).allDay === "boolean";
+  if (!isRecord(value)) {
+    return false;
+  }
+  const event = value;
+  return typeof event.id === "string"
+    && typeof event.title === "string"
+    && isParsableDateString(event.startsAt)
+    && isParsableDateString(event.endsAt)
+    && typeof event.allDay === "boolean";
 }
 
 function isParsableDateString(value: unknown): value is string {
@@ -355,7 +367,7 @@ function isParsableDateString(value: unknown): value is string {
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+  return isRecord(error) && error.code === "ENOENT";
 }
 
 function errorMessage(value: unknown): string {
