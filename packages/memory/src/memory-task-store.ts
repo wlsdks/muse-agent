@@ -21,7 +21,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 import type { MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely } from "kysely";
 import type {
@@ -291,7 +291,7 @@ async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promi
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**

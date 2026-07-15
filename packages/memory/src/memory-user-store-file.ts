@@ -20,7 +20,7 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, serializePerKey, sleep } from "@muse/shared";
+import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, serializePerKey, sleep, withBestEffort } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -560,7 +560,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
           throw cause;
         }
         if (await lockIsStale(lockPath)) {
-          await unlink(lockPath).catch(() => undefined); // steal a dead holder's lock
+          await withBestEffort(unlink(lockPath), undefined); // steal a dead holder's lock
           continue;
         }
         if (attempt >= LOCK_MAX_ATTEMPTS) {
@@ -572,8 +572,8 @@ export class FileUserMemoryStore implements UserMemoryStore {
     try {
       return await fn();
     } finally {
-      await handle.close().catch(() => undefined);
-      await unlink(lockPath).catch(() => undefined);
+      await withBestEffort(handle.close(), undefined);
+      await withBestEffort(unlink(lockPath), undefined);
     }
   }
 }

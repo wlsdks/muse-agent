@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 import type { ConversationSummaryTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 import type {
@@ -187,7 +187,7 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
       await handle.close();
     }
     await fs.rename(tmp, this.file);
-    await fs.chmod(this.file, 0o600).catch(() => undefined);
+    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
   }
 
   async get(sessionId: string): Promise<ConversationSummary | undefined> {

@@ -15,7 +15,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 
 /** Newest entries kept; bounds the file so a chatty extractor can't grow it without limit. */
@@ -648,7 +648,7 @@ export async function writeBeliefProvenance(file: string, entries: readonly Beli
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 function compareNewestFirst(a: BeliefProvenance, b: BeliefProvenance): number {
