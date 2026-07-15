@@ -307,7 +307,11 @@ export class CircuitBreakerRegistry {
 
   private evictOverflow(): void {
     while (this.breakers.size > this.maxBreakers) {
-      const oldest = this.breakers.keys().next().value as string | undefined;
+      const nextOldest = this.breakers.keys().next();
+      if (nextOldest.done) {
+        return;
+      }
+      const oldest = nextOldest.value;
 
       if (!oldest) {
         return;

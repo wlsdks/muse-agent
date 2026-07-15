@@ -108,5 +108,5 @@ export class ModelFallbackStrategy implements FallbackStrategy {
 function isProviderMap(
   providers: ReadonlyMap<string, ModelProvider> | readonly ModelProvider[]
 ): providers is ReadonlyMap<string, ModelProvider> {
-  return typeof (providers as ReadonlyMap<string, ModelProvider>).get === "function";
+  return providers instanceof Map;
 }
