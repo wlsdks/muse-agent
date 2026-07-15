@@ -108,10 +108,11 @@ export class NotionTasksProvider implements TasksProvider {
     this.statusDoneValue = options.statusDoneValue ?? NOTION_DEFAULT_STATUS_DONE;
     this.endpoint = options.endpoint ?? NOTION_DEFAULT_ENDPOINT;
     this.notionVersion = options.notionVersion ?? NOTION_DEFAULT_VERSION;
-    this.fetchImpl = createNotionFetch(options.fetchImpl);
-    if (!this.fetchImpl) {
+    const fetchImpl = createNotionFetch(options.fetchImpl);
+    if (!fetchImpl) {
       throw new TasksValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
+    this.fetchImpl = fetchImpl;
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
     this.sleep = options.retry?.sleep ?? sleep;
