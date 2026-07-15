@@ -84,12 +84,7 @@ export class McpManager {
     this.externalTransportAllowed = options.externalTransportAllowed ?? true;
   }
 
-  async register(input: McpServerInput): Promise<McpServer | undefined> {
-    if (!this.externalTransportAllowed) {
-      this.markExternalTransportBlocked(input.name);
-      return undefined;
-    }
-
+  private async validationFailureReason(input: McpServerInput): Promise<string | undefined> {
     const policy = await this.securityPolicyProvider.currentPolicy();
 
     // The `muse.` namespace is RESERVED for Muse's own in-process loopback tools
@@ -99,28 +94,16 @@ export class McpManager {
     // the provenance gate's first-party classification (a taint-cancelling
     // origin). Refuse, don't merely warn.
     if (isReservedServerName(input.name)) {
-      this.statuses.set(input.name, "disabled");
-      this.health.set(
-        input.name,
-        this.createHealthSnapshot(input.name, "unhealthy", "Server name denied: the `muse.` namespace is reserved for Muse's own loopback tools")
-      );
-      return undefined;
+      return "Server name denied: the `muse.` namespace is reserved for Muse's own loopback tools";
     }
 
     if (!(policy.allowedServerNames.length === 0 || policy.allowedServerNames.includes(input.name))) {
-      this.statuses.set(input.name, "disabled");
-      this.health.set(input.name, this.createHealthSnapshot(input.name, "unhealthy", "Server denied by policy"));
-      return undefined;
+      return "Server denied by policy";
     }
 
     const registerAudit = auditMcpServerConfig({ transportType: input.transportType, config: input.config ?? {} });
     if (!registerAudit.safe) {
-      this.statuses.set(input.name, "disabled");
-      this.health.set(
-        input.name,
-        this.createHealthSnapshot(input.name, "unhealthy", auditReason(registerAudit.reasons))
-      );
-      return undefined;
+      return auditReason(registerAudit.reasons);
     }
 
     const validation = validateMcpServer(
@@ -133,12 +116,37 @@ export class McpManager {
     );
 
     if (!validation.valid) {
-      this.statuses.set(input.name, "disabled");
-      this.health.set(input.name, this.createHealthSnapshot(
-        input.name,
-        "unhealthy",
-        validation.reason ?? "MCP server validation failed"
-      ));
+      return validation.reason ?? "MCP server validation failed";
+    }
+
+    return undefined;
+  }
+
+  private disableServer(name: string, reason: string): void {
+    this.statuses.set(name, "disabled");
+    this.health.set(name, this.createHealthSnapshot(name, "unhealthy", reason));
+  }
+
+  private async disconnectForDisabledServer(name: string): Promise<void> {
+    const connection = this.connections.get(name);
+
+    try {
+      await connection?.close?.();
+    } finally {
+      this.connections.delete(name);
+      this.tools.delete(name);
+    }
+  }
+
+  async register(input: McpServerInput): Promise<McpServer | undefined> {
+    if (!this.externalTransportAllowed) {
+      this.markExternalTransportBlocked(input.name);
+      return undefined;
+    }
+
+    const validationFailure = await this.validationFailureReason(input);
+    if (validationFailure) {
+      this.disableServer(input.name, validationFailure);
       return undefined;
     }
 
@@ -160,7 +168,19 @@ export class McpManager {
       return this.register(input);
     }
 
-    return this.store.update(input.name, input);
+    const validationFailure = await this.validationFailureReason(input);
+    if (validationFailure) {
+      await this.disconnectForDisabledServer(input.name);
+      this.disableServer(input.name, validationFailure);
+      return undefined;
+    }
+
+    const saved = await this.store.update(input.name, input);
+    if (saved) {
+      this.statuses.set(saved.name, "pending");
+      this.health.set(saved.name, this.createHealthSnapshot(saved.name, "unknown"));
+    }
+    return saved;
   }
 
   async unregister(name: string): Promise<void> {

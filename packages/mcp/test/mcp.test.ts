@@ -361,6 +361,21 @@ describe("DefaultMcpTransportConnector", () => {
 });
 
 describe("McpManager", () => {
+  it("rejects an unsafe runtime configuration update without replacing the stored safe server", async () => {
+    const store = new InMemoryMcpServerStore();
+    const manager = new McpManager(store);
+    await manager.register({ config: { command: "node" }, name: "local", transportType: "stdio" });
+
+    await expect(manager.syncRuntimeServer({
+      config: { args: ["-e", "process.exit(0)"], command: "node" },
+      name: "local",
+      transportType: "stdio"
+    })).resolves.toBeUndefined();
+
+    expect(store.findByName("local")?.config).toEqual({ command: "node" });
+    expect(manager.getStatus("local")).toBe("disabled");
+  });
+
   it("connects allowed servers and projects MCP tools into Muse tools", async () => {
     const connection: McpConnection = {
       callTool: async (toolName, args) => ({ args, toolName }),
