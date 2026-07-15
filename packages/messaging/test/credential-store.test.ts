@@ -1,6 +1,7 @@
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -90,6 +91,26 @@ describe("FileMessagingCredentialStore", () => {
     // and the store can still save over the corrupt file
     await store.save("telegram", { token: "recovered" });
     expect(await store.load("telegram")).toEqual({ token: "recovered" });
+  });
+
+  it("preserves an external provider update that lands while a local save waits on the file lock", async () => {
+    const store = new FileMessagingCredentialStore(file);
+    await store.save("telegram", { token: "telegram-token" });
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+
+    const localSave = store.save("discord", { token: "discord-token" });
+    await sleep(300);
+    await writeFile(file, `${JSON.stringify({
+      providers: {
+        slack: { token: "slack-token" },
+        telegram: { token: "telegram-token" }
+      },
+      version: 1
+    }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localSave;
+    expect(await store.list()).toEqual(["discord", "slack", "telegram"]);
   });
 });
 

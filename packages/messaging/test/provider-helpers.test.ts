@@ -97,6 +97,11 @@ describe("fetchWithTimeout", () => {
     const res = await fetchWithTimeout(ok, "http://x", {}, Number.NaN);
     expect(res.status).toBe(200);
   });
+
+  it("clamps an oversized finite timeout to Node's safe timer range instead of throwing before fetch", async () => {
+    const ok: typeof fetch = (async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
+    await expect(fetchWithTimeout(ok, "http://x", {}, Number.MAX_SAFE_INTEGER)).resolves.toMatchObject({ status: 200 });
+  });
 });
 
 describe("fetchReadWithRetry", () => {
@@ -176,6 +181,23 @@ describe("fetchReadWithRetry", () => {
     expect(res.status).toBe(200);
     expect(delays).toEqual([100]); // base * attempt(1), not base + attempt
   });
+
+  it("normalizes non-finite retry controls to bounded defaults", async () => {
+    const delays: number[] = [];
+    let calls = 0;
+    const impl: typeof fetch = (async () => {
+      calls += 1;
+      return new Response("retry", { status: 500 });
+    }) as unknown as typeof fetch;
+    const response = await fetchReadWithRetry(impl, "http://x", {}, {
+      baseDelayMs: Number.NaN,
+      maxAttempts: Number.POSITIVE_INFINITY,
+      sleep: async (ms) => { delays.push(ms); }
+    });
+    expect(response.status).toBe(500);
+    expect(calls).toBe(3);
+    expect(delays).toEqual([200, 400]);
+  });
 });
 
 describe("parseRetryAfterMs / retryAfterMsFromResponse — server-mandated 429 wait", () => {
@@ -187,6 +209,7 @@ describe("parseRetryAfterMs / retryAfterMsFromResponse — server-mandated 429 w
     expect(parseRetryAfterMs(null)).toBeUndefined();
     expect(parseRetryAfterMs("")).toBeUndefined();
     expect(parseRetryAfterMs("soon")).toBeUndefined();
+    expect(parseRetryAfterMs("1e100")).toBe(2_147_483_647);
   });
 
   it("prefers a body retry_after (seconds) over the header, falls back to the header otherwise", () => {

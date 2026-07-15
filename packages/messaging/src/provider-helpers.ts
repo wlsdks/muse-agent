@@ -13,6 +13,8 @@ import { isRetryableMessagingStatus } from "./errors.js";
 
 const MAX_INBOUND_LIMIT = 100;
 const DEFAULT_INBOUND_LIMIT = 20;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const MAX_READ_RETRY_ATTEMPTS = 10;
 
 const DEFAULT_OUTBOUND_TEXT_MAX = 4096;
 const TRUNCATION_MARKER = "… [truncated]";
@@ -55,7 +57,8 @@ export function clampInboundLimit(raw: number | undefined, max: number = MAX_INB
   if (raw === undefined || !Number.isFinite(raw)) {
     return DEFAULT_INBOUND_LIMIT;
   }
-  return Math.max(1, Math.min(max, Math.trunc(raw)));
+  const effectiveMax = Number.isSafeInteger(max) && max > 0 ? max : MAX_INBOUND_LIMIT;
+  return Math.max(1, Math.min(effectiveMax, Math.trunc(raw)));
 }
 
 /**
@@ -70,7 +73,8 @@ export function clampLongPollSeconds(raw: number | undefined, maxSeconds: number
   if (raw === undefined || !Number.isFinite(raw)) {
     return 0;
   }
-  return Math.max(0, Math.min(maxSeconds, Math.trunc(raw)));
+  const effectiveMax = Number.isSafeInteger(maxSeconds) && maxSeconds >= 0 ? maxSeconds : 0;
+  return Math.max(0, Math.min(effectiveMax, Math.trunc(raw)));
 }
 
 /**
@@ -94,6 +98,12 @@ function parseJsonBody<T>(body: string): T | undefined {
 
 export const DEFAULT_PROVIDER_FETCH_TIMEOUT_MS = 30_000;
 
+function normalizeTimerDelay(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.min(Math.trunc(value), MAX_TIMER_DELAY_MS)
+    : fallback;
+}
+
 /**
  * Wrap a provider's HTTP call in a timeout signal so a stalled connection
  * to the Bot API (dead socket, a
@@ -110,7 +120,7 @@ export async function fetchWithTimeout(
   init: RequestInit,
   timeoutMs: number = DEFAULT_PROVIDER_FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  const effectiveMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_PROVIDER_FETCH_TIMEOUT_MS;
+  const effectiveMs = normalizeTimerDelay(timeoutMs, DEFAULT_PROVIDER_FETCH_TIMEOUT_MS);
   const timeoutSignal = effectiveMs > 0 ? AbortSignal.timeout(effectiveMs) : undefined;
   const requestInit = timeoutSignal === undefined ? init : { ...init, signal: timeoutSignal };
   try {
@@ -143,7 +153,14 @@ export function parseRetryAfterMs(header: string | null | undefined): number | u
     return undefined;
   }
   const secs = Number(header.trim());
-  return Number.isFinite(secs) && secs >= 0 ? secs * 1000 : undefined;
+  return retryAfterSecondsToMs(secs);
+}
+
+function retryAfterSecondsToMs(seconds: number | undefined): number | undefined {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+    return undefined;
+  }
+  return Math.min(seconds * 1000, MAX_TIMER_DELAY_MS);
 }
 
 /**
@@ -156,8 +173,9 @@ export function retryAfterMsFromResponse(
   response: { readonly headers: { get(name: string): string | null } },
   bodyRetryAfterSeconds?: number
 ): number | undefined {
-  if (bodyRetryAfterSeconds !== undefined && Number.isFinite(bodyRetryAfterSeconds) && bodyRetryAfterSeconds >= 0) {
-    return bodyRetryAfterSeconds * 1000;
+  const bodyRetryAfterMs = retryAfterSecondsToMs(bodyRetryAfterSeconds);
+  if (bodyRetryAfterMs !== undefined) {
+    return bodyRetryAfterMs;
   }
   return parseRetryAfterMs(response.headers.get("retry-after"));
 }
@@ -175,8 +193,11 @@ export async function fetchReadWithRetry(
   init: RequestInit,
   options: ReadRetryOptions = {}
 ): Promise<Response> {
-  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
-  const baseDelayMs = options.baseDelayMs ?? 200;
+  const maxAttempts = Math.min(
+    normalizeTimerDelay(options.maxAttempts, 3),
+    MAX_READ_RETRY_ATTEMPTS
+  );
+  const baseDelayMs = normalizeTimerDelay(options.baseDelayMs, 200);
   const delay = options.sleep ?? sleep;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
