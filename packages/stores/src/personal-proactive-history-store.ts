@@ -18,7 +18,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText, withBestEffort } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
@@ -131,7 +131,7 @@ export async function rotateProactiveHistoryFiles(file: string, archiveMaxFiles:
   const max = Math.max(1, Math.trunc(archiveMaxFiles));
   // Drop anything past the retention budget.
   for (let i = max + 1; i <= max + 5; i += 1) {
-    await fs.unlink(`${file}.${i.toString()}`).catch(() => undefined);
+    await withBestEffort(fs.unlink(`${file}.${i.toString()}`), undefined);
   }
   // Shift archives upward starting from the top so we don't
   // clobber a target that still holds the previous slot's data.

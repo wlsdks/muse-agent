@@ -18,7 +18,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES } from "@muse/shared";
+import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
@@ -303,7 +303,7 @@ async function writeCredentialStore(io: CredentialStoreIO, store: CredentialStor
     mode: 0o600
   });
   await rename(tmp, filePath);
-  await chmod(filePath, 0o600).catch(() => undefined);
+    await withBestEffort(chmod(filePath, 0o600), undefined);
 }
 
 function encryptCredentialPayload(io: CredentialStoreIO, plaintext: string): EncryptedCredentialFile {

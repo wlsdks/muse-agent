@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "@muse/memory";
-import { hasNodeErrorCodeIn, isNodeErrorCode, sleep, NODE_ERROR_CODES } from "@muse/shared";
+import { hasNodeErrorCodeIn, isNodeErrorCode, sleep, withBestEffort, NODE_ERROR_CODES } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
@@ -168,7 +168,7 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
         continue;
       }
       if (probe === "stale") {
-        await fs.unlink(lockPath).catch(() => undefined);
+        await withBestEffort(fs.unlink(lockPath), undefined);
         continue;
       }
   if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
@@ -176,14 +176,14 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
       }
       await sleep(computeLockRetryDelay(attempt));
     } finally {
-      await handle?.close().catch(() => undefined);
+      await withBestEffort(handle?.close() ?? Promise.resolve(), undefined);
     }
   }
   try {
     return await fn();
   } finally {
     if (await lockHoldsNonce(lockPath, nonce)) {
-      await fs.unlink(lockPath).catch(() => undefined);
+      await withBestEffort(fs.unlink(lockPath), undefined);
     }
   }
 }

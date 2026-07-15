@@ -29,7 +29,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES, serializePerKey, sleep } from "@muse/shared";
+import { hasNodeErrorCodeIn, NODE_ERROR_CODES, serializePerKey, sleep, withBestEffort } from "@muse/shared";
 
 export interface AtomicWriteOptions {
   /** fsync the tmp file before rename (durable against a crash mid-rename). Default true. */
@@ -71,7 +71,7 @@ export async function atomicWriteFile(file: string, contents: string | Uint8Arra
         await sleep(5 + attempt * 5);
       }
     }
-    await fs.chmod(file, mode).catch(() => undefined);
+    await withBestEffort(fs.chmod(file, mode), undefined);
     // Best-effort: fsync the PARENT directory so the rename's directory-entry
     // update is itself durable. Without this, a crash between rename() and the
     // dirent hitting disk can lose the rename even though the file's own
@@ -97,7 +97,7 @@ export async function atomicWriteFile(file: string, contents: string | Uint8Arra
     // A write/fsync/rename failure must not leave the tmp as an orphan — it
     // would accumulate as `*.tmp-*` litter in the sidecar store dir. Best-effort
     // cleanup, then surface the original error.
-    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    await withBestEffort(fs.rm(tmp, { force: true }), undefined);
     throw error;
   }
 }

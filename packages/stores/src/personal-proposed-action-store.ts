@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { withFileLock } from "./encrypted-file.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -125,7 +125,7 @@ export async function writeProposedActions(file: string, proposals: readonly Pro
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**
