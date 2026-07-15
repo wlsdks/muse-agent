@@ -93,6 +93,7 @@ import type { ProgramIO } from "./program.js";
 import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
+import { isRecord } from "@muse/shared";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -335,8 +336,8 @@ function normalizeExecFileCode(cause: unknown): number {
 }
 
 function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): string | Buffer {
-  if (cause && typeof cause === "object" && key in cause) {
-    const value = (cause as Record<"stdout" | "stderr", string | Buffer | undefined>)[key];
+  if (isRecord(cause)) {
+    const value = cause[key];
     if (value !== undefined) return value;
   }
   return "";

@@ -113,7 +113,7 @@ export async function runStdioMcpServer(server: Server, onListening?: () => void
  * content, so a tool's real schema reaches the client byte-identical.
  */
 function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
-  const properties = isRecord(schema.properties) ? (schema.properties as Record<string, object>) : undefined;
+  const properties = isObjectRecord(schema.properties) ? schema.properties : undefined;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : undefined;
@@ -124,6 +124,13 @@ function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
     ...(schema.additionalProperties !== undefined ? { additionalProperties: schema.additionalProperties } : {})
   } satisfies Tool["inputSchema"];
   return inputSchema;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, object> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((candidate): candidate is object => typeof candidate === "object" && candidate !== null);
 }
 
 function missingRequiredArgs(schema: JsonObject, args: JsonObject): readonly string[] {

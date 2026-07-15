@@ -572,9 +572,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // RL over skills (from prior sessions): a skill corrected into the avoid
   // floor is dropped from this session's prompt entirely; a reinforced one
   // wins the limited body slots. Loaded once at start.
-  const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch(
-    () => ({}) as Record<string, number>
-  );
+  const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch((): Record<string, number> => ({}));
   const skillsPromptFor = (prompt: string): string =>
     buildSkillsPrompt(
       skills,

@@ -101,7 +101,7 @@ export async function readPersonaStore(file: string): Promise<PersonaStoreShape>
   // Null-prototype: a hand-edited file with a `__proto__` /
   // `constructor` key can't mutate a real prototype or leak an
   // inherited member through later bracket access.
-  const custom: Record<string, { preamble: string }> = Object.create(null) as Record<string, { preamble: string }>;
+  const custom: Record<string, { preamble: string }> = Object.create(null);
   for (const [id, value] of Object.entries(customRaw)) {
     if (!isRecord(value)) continue;
     const preamble = value.preamble;
