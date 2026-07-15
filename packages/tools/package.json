@@ -19,6 +19,7 @@
   "dependencies": {
     "@muse/model": "workspace:*",
     "@muse/policy": "workspace:*",
+    "@muse/resilience": "workspace:*",
     "@muse/shared": "workspace:*"
   }
 }

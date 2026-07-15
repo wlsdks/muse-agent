@@ -9,6 +9,7 @@ import {
   createGateEmbedder,
   parseBoolean,
   resolveAttunementFile,
+  resolveNotesDir,
   resolveActionLogFile,
   resolveContactsFile,
   resolveIntegrationEnvironment,
@@ -19,6 +20,7 @@ import {
   resolveWeaknessesFile,
   resolveAuthoredSkillsDir,
   resolveReflectionsFile,
+  resolveTasksFile,
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
 import { defaultBeliefProvenanceFile } from "@muse/memory";
@@ -325,7 +327,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   registerAttunementRoutes(server, {
     attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),
-    authService
+    authService,
+    notesDir: options.notesDir ?? resolveNotesDir(process.env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(process.env)
   });
   if (options.notesDir) {
     registerNotesRoutes(server, {

@@ -120,6 +120,7 @@ import {
 import { invokeHooks } from "./hook-orchestration.js";
 import { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
+import { isCancellationLikeError } from "@muse/resilience";
 import {
   recordCheckpoint,
   recordRunComplete,
@@ -991,6 +992,9 @@ export class AgentRuntime {
     try {
       planResult = await this.executeToolPlanGated(parsed, context);
     } catch (error) {
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
       const reason = error instanceof ToolPlanStepBlockedError
         ? `plan step '${error.tool}' did not complete (${error.status}): ${error.output}`
         : errorMessage(error);

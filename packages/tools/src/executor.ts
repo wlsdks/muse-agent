@@ -1,4 +1,5 @@
 import { ToolOutputSanitizer } from "@muse/policy";
+import { isCancellationLikeError } from "@muse/resilience";
 
 import type {
   ToolCallRequest,
@@ -70,6 +71,12 @@ export class ToolExecutor {
 
       return result;
     } catch (error) {
+      // Cancellation is a terminal run-state transition, not a tool observation.
+      // Converting it to a failed result would let the model loop continue after
+      // its caller has cancelled the turn.
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : "unknown tool failure";
       return this.failed(request, `Error: ${message}`);
     }

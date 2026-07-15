@@ -3,6 +3,8 @@ import type { MuseTool } from "@muse/tools";
 import { toErrorMessage } from "./error-utils.js";
 import type { Awaitable, McpConnection, McpConnectionResolution, McpRemoteTool } from "./index.js";
 
+import { isCancellationLikeError } from "@muse/resilience";
+
 export function createMcpMuseTool(
   serverName: string,
   tool: McpRemoteTool,
@@ -50,6 +52,9 @@ export function createMcpMuseTool(
       try {
         return await activeConnection.callTool(tool.name, args);
       } catch (error) {
+        if (isCancellationLikeError(error)) {
+          throw error;
+        }
         // A mid-session callTool rejection (auth expired → 401, server
         // 500, request timeout, an SDK throw) MUST surface to the agent
         // as a clear, actionable error — never escape unhandled (which

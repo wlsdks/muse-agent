@@ -7,6 +7,7 @@
  */
 
 import { estimateCostUsd } from "@muse/cache";
+import { isCancellationLikeError } from "@muse/resilience";
 import type { ModelMessage } from "@muse/model";
 import type { AgentRunHistoryStore, CheckpointStore } from "@muse/runtime-state";
 import { createAgentCheckpointState } from "./checkpoint.js";
@@ -180,7 +181,7 @@ export async function recordRunFailure(args: LifecycleRunFailureArgs): Promise<v
       completedAt: new Date(),
       error: args.error instanceof Error ? args.error.message : "unknown error",
       runId: args.context.runId,
-      status: "failed"
+      status: isCancellationLikeError(args.error) ? "cancelled" : "failed"
     });
   } catch {
     // History is observability state and must not block agent execution.

@@ -565,6 +565,9 @@ importers:
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
+      '@muse/resilience':
+        specifier: workspace:*
+        version: link:../resilience
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
@@ -845,6 +848,9 @@ importers:
       '@muse/policy':
         specifier: workspace:*
         version: link:../policy
+      '@muse/resilience':
+        specifier: workspace:*
+        version: link:../resilience
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

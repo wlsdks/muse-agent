@@ -509,6 +509,30 @@ export async function unlinkArtifact(file: string, input: UnlinkArtifactInput): 
   });
 }
 
+/** Delete one user-owned thread and every receipt that is meaningful only within it. */
+export async function deletePersonalThread(
+  file: string,
+  threadId: string
+): Promise<{ readonly deletedDeliveries: number; readonly deletedResetReceipts: number; readonly thread: PersonalThread }> {
+  return mutate(file, (state) => {
+    const thread = requireThread(state, threadId);
+    const resetIds = new Set(state.resetReceipts.filter((receipt) => receipt.threadId === thread.id).map((receipt) => receipt.id));
+    const deletedDeliveries = state.deliveries.filter((delivery) => delivery.threadId === thread.id).length;
+    const deletedResetReceipts = resetIds.size;
+    return {
+      changed: true,
+      result: { deletedDeliveries, deletedResetReceipts, thread },
+      state: {
+        ...state,
+        deliveries: state.deliveries.filter((delivery) => delivery.threadId !== thread.id),
+        resetReceipts: state.resetReceipts.filter((receipt) => receipt.threadId !== thread.id),
+        threads: state.threads.filter((candidate) => candidate.id !== thread.id),
+        undoResetReceipts: state.undoResetReceipts.filter((receipt) => receipt.threadId !== thread.id && !resetIds.has(receipt.resetId))
+      }
+    };
+  });
+}
+
 /** Open a feedback-addressable delivery only when it exactly reflects this thread's stored links. */
 export async function openContinuityDelivery(
   file: string,

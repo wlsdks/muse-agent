@@ -9,10 +9,12 @@ export {
   type ContinuityKindEvaluation
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+export { createLocalArtifactValidator, createLocalExactArtifactResolver, readCanonicalLocalNote, type LocalArtifactValidatorOptions } from "./local-artifacts.js";
 export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,
+  deletePersonalThread,
   inspectThread,
   linkArtifact,
   openContinuityDelivery,
