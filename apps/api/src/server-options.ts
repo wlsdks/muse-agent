@@ -31,6 +31,8 @@ import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 
 export interface ServerOptions {
+  /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */
+  readonly attunementFile?: string;
   readonly logger?: boolean;
   readonly cors?: CorsOptions;
   /**

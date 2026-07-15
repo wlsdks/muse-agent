@@ -8,6 +8,7 @@ import { isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
   buildContinuityPack,
+  computeContinuityEvaluation,
   createPersonalThread,
   inspectThread,
   linkArtifact,
@@ -388,16 +389,7 @@ function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): 
 }
 
 export function computeContinuityStats(state: AttunementState): ContinuityStats {
-  const kindByThreadId = new Map(state.threads.map((thread) => [thread.id, thread.kind]));
-  const deliveriesFor = (kind: PersonalThreadKind): ContinuityDelivery[] =>
-    state.deliveries.filter((delivery) => kindByThreadId.get(delivery.threadId) === kind);
-  return {
-    ...computeContinuityKindStats(state.deliveries),
-    byKind: {
-      life: computeContinuityKindStats(deliveriesFor("life")),
-      work: computeContinuityKindStats(deliveriesFor("work"))
-    }
-  };
+  return computeContinuityEvaluation(state);
 }
 
 function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
