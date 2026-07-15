@@ -863,6 +863,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
       m.registerRemoteCommand(program, io, _deps as never);
     },
   },
+  {
+    id: "features",
+    names: ["features"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-features.js");
+      m.registerFeaturesCommand(program, io);
+    },
+  },
 ];
 
 /** name -> loader index, including every top-level name a composite loader owns. */

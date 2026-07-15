@@ -351,6 +351,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": []
   },
   {
+    "name": "features",
+    "description": "Discover hidden capabilities that ship OFF by default, with the exact env var to enable each",
+    "argsTerm": "",
+    "hasOptions": true,
+    "subcommands": []
+  },
+  {
     "name": "feeds",
     "description": "RSS/Atom feed ingest for ambient world-state",
     "argsTerm": "",
