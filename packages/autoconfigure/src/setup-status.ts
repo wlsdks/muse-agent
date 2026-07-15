@@ -790,10 +790,7 @@ export async function collectSetupStatusJson(options: {
   const dailyBriefStatus = resolveDailyBriefSetupStatus(await readDailyBriefConfig(resolveDaemonConfigFilePath(env)));
 
   // User-memory auto-extract (default-on as of the recent flip).
-  const autoExtractEnv = env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase();
-  const autoExtractEnabled = autoExtractEnv === undefined
-    ? true
-    : autoExtractEnv === "true";
+  const autoExtractEnabled = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true);
   const autoExtractModel = env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL?.trim() || museModel || undefined;
 
   // Proactive surfacing daemon — collect raw env + compute the

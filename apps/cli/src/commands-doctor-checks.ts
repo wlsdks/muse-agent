@@ -1,6 +1,6 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, resolvePlatformCapabilities } from "@muse/shared";
+import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, parseBooleanFromEnv, resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { execFile as execFileCallback } from "node:child_process";
@@ -427,7 +427,7 @@ export interface OllamaPerfEnv {
  * more usable num_ctx on the same RAM. Advisory — warn, never fail.
  */
 export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
-  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
+  const flashOn = parseBooleanFromEnv(values.flashAttention, false);
   const kv = values.kvCacheType?.toLowerCase();
   const kvQuantized = kv === "q8_0" || kv === "q4_0";
   if (flashOn && kvQuantized) {
