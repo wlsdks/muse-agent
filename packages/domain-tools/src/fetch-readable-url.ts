@@ -17,6 +17,7 @@ import type { HostLookup } from "./web-url-guard.js";
 
 /** Stable pre-I/O result for a trusted local-only interactive-web denial. */
 export const LOCAL_EGRESS_BLOCKED = "LOCAL_EGRESS_BLOCKED";
+export const DEFAULT_MAX_READABLE_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export interface FetchReadableUrlOptions {
   /** Trusted composition posture; false denies before URL parsing or any I/O. */
@@ -28,6 +29,8 @@ export interface FetchReadableUrlOptions {
   readonly timeoutMs?: number;
   /** Cap on returned readable text. Default extractReadableText's own (16k). */
   readonly maxChars?: number;
+  /** Cap on downloaded body bytes before text extraction or PDF parsing. Default 2 MiB. */
+  readonly maxResponseBytes?: number;
   /**
    * Optional PDF text extractor. When the URL serves `application/pdf` AND this
    * is provided, the body is read as bytes and run through it (instead of being
@@ -91,6 +94,52 @@ function looksBinaryText(text: string): boolean {
   return replacements / sample.length > 0.1;
 }
 
+function resolveMaxResponseBytes(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_MAX_READABLE_RESPONSE_BYTES;
+}
+
+async function readResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array | undefined> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && /^\d+$/u.test(contentLength) && Number(contentLength) > maxBytes) {
+    return undefined;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return new Uint8Array();
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) {
+        break;
+      }
+      const chunk = next.value;
+      if (!chunk) {
+        continue;
+      }
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 export async function fetchReadableUrl(
   rawUrl: string,
   options: FetchReadableUrlOptions = {}
@@ -117,6 +166,7 @@ export async function fetchReadableUrl(
     return { ok: false, error: `fetch failed: ${errorMessage(error)}` };
   }
   if (!response.ok) return { ok: false, error: `fetch failed: HTTP ${response.status.toString()}` };
+  const maxResponseBytes = resolveMaxResponseBytes(options.maxResponseBytes);
 
   // Refuse a NON-TEXT resource by its declared content-type. A PDF / image /
   // octet-stream URL would otherwise decode to garbled bytes that the model
@@ -129,7 +179,11 @@ export async function fetchReadableUrl(
   if (isPdfContentType(declaredType) && options.pdfExtractor) {
     let text: string;
     try {
-      text = await options.pdfExtractor(new Uint8Array(await response.arrayBuffer()));
+      const bytes = await readResponseBytes(response, maxResponseBytes);
+      if (!bytes) {
+        return { ok: false, error: `response body exceeds ${maxResponseBytes.toString()} byte limit` };
+      }
+      text = await options.pdfExtractor(bytes);
     } catch (error) {
       return { ok: false, error: `PDF could not be read: ${errorMessage(error)}` };
     }
@@ -144,7 +198,11 @@ export async function fetchReadableUrl(
     return { ok: false, error: `not a readable text page (content-type: ${declaredType.split(";")[0]!.trim() || "unknown"})` };
   }
 
-  const html = await response.text();
+  const bytes = await readResponseBytes(response, maxResponseBytes);
+  if (!bytes) {
+    return { ok: false, error: `response body exceeds ${maxResponseBytes.toString()} byte limit` };
+  }
+  const html = new TextDecoder().decode(bytes);
   // Backstop: a binary body served WITH a text/missing content-type still gets
   // caught here, so garbled bytes never reach the model.
   if (looksBinaryText(html)) {

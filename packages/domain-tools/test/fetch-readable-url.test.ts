@@ -171,6 +171,32 @@ describe("fetchReadableUrl", () => {
     expect(res).toMatchObject({ ok: false });
     if (!res.ok) expect(res.error).toMatch(/binary content/u);
   });
+
+  it("refuses a body that exceeds the byte limit before text extraction", async () => {
+    const res = await fetchReadableUrl("https://example.test/large", {
+      fetchImpl: htmlFetch("x".repeat(128)),
+      lookup: publicLookup,
+      maxResponseBytes: 64
+    });
+
+    expect(res).toEqual({ error: "response body exceeds 64 byte limit", ok: false });
+  });
+
+  it("does not pass an oversized PDF body to the extractor", async () => {
+    let extractorCalled = false;
+    const res = await fetchReadableUrl("https://example.test/large.pdf", {
+      fetchImpl: typedFetch("x".repeat(128), "application/pdf"),
+      lookup: publicLookup,
+      maxResponseBytes: 64,
+      pdfExtractor: async () => {
+        extractorCalled = true;
+        return "must not run";
+      }
+    });
+
+    expect(res).toEqual({ error: "response body exceeds 64 byte limit", ok: false });
+    expect(extractorCalled).toBe(false);
+  });
 });
 
 describe("isPdfContentType", () => {
