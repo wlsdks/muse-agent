@@ -131,5 +131,5 @@ export function resolveEffectiveQuietHours(input: {
  * min" line so the rounding rule stays in one place.
  */
 export function minutesUntil(target: Date, now: Date): number {
-  return Math.max(0, Math.round((target.getTime() - now.getTime()) / 60_000));
+  return Math.max(0, Math.floor((target.getTime() - now.getTime()) / 60_000));
 }

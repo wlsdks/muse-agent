@@ -4,6 +4,7 @@ import {
   gateProactiveNoticeSink,
   isQuietHour,
   parseQuietHours,
+  minutesUntil,
   resolveEffectiveQuietHours,
   resolveQuietHoursOption
 } from "./quiet-hours.js";
@@ -121,5 +122,13 @@ describe("gateProactiveNoticeSink — now accepts a live resolver, not just a st
     const delivered: string[] = [];
     const sink = makeSink(delivered);
     expect(gateProactiveNoticeSink(sink, {})).toBe(sink);
+  });
+});
+
+describe("minutesUntil", () => {
+  it("floors fractional minutes so 90 seconds is still 1 minute, not 2", () => {
+    const now = new Date(2026, 0, 1, 12, 0, 0);
+    const target = new Date(2026, 0, 1, 12, 1, 30);
+    expect(minutesUntil(target, now)).toBe(1);
   });
 });
