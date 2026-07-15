@@ -191,9 +191,51 @@ const FACT_TOPICS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/주소|address/iu, ["address", "addr"]]
 ];
 
+function createLowercaseFactKeySet(keys: readonly string[]): ReadonlySet<string> {
+  return new Set(keys.map((key) => key.toLowerCase()));
+}
+
+function hasKnownFactForAnyFragment(knownFactKeys: ReadonlySet<string>, fragments: readonly string[]): boolean {
+  for (const fragment of fragments) {
+    for (const key of knownFactKeys) {
+      if (key.includes(fragment)) return true;
+    }
+  }
+  return false;
+}
+
+function extractActiveFactFragments(message: string): ReadonlySet<string> {
+  const activeFragments = new Set<string>();
+  for (const [topic, fragments] of FACT_TOPICS) {
+    if (!topic.test(message)) continue;
+    for (const fragment of fragments) {
+      activeFragments.add(fragment);
+    }
+  }
+  return activeFragments;
+}
+
+function keyHasAnyFactFragment(lowerKey: string): boolean {
+  for (const [, fragments] of FACT_TOPICS) {
+    for (const fragment of fragments) {
+      if (lowerKey.includes(fragment)) return true;
+    }
+  }
+  return false;
+}
+
+function keyMatchesActiveFactFragments(lowerKey: string, activeFragments: ReadonlySet<string>): boolean {
+  for (const fragment of activeFragments) {
+    if (lowerKey.includes(fragment)) return true;
+  }
+  return false;
+}
+
 function asksAboutStoredFact(question: string, knownFactKeys: readonly string[]): boolean {
-  const keys = knownFactKeys.map((key) => key.toLowerCase());
-  return FACT_TOPICS.some(([topic, fragments]) => topic.test(question) && fragments.some((frag) => keys.some((key) => key.includes(frag))));
+  const normalizedKnownFactKeys = createLowercaseFactKeySet(knownFactKeys);
+  return FACT_TOPICS.some(
+    ([topic, fragments]) => topic.test(question) && hasKnownFactForAnyFragment(normalizedKnownFactKeys, fragments)
+  );
 }
 
 /**
@@ -209,12 +251,12 @@ function asksAboutStoredFact(question: string, knownFactKeys: readonly string[])
  * the dog the model would otherwise drag into "물 왜 중요해?" or "내 이름?".
  */
 export function factKeysToInject(message: string, allKeys: readonly string[]): string[] {
+  const activeFactFragments = extractActiveFactFragments(message);
   return allKeys.filter((key) => {
     const lowerKey = key.toLowerCase();
     if (lowerKey === "user_name") return true;
-    const coveringTopics = FACT_TOPICS.filter(([, fragments]) => fragments.some((frag) => lowerKey.includes(frag)));
-    if (coveringTopics.length === 0) return true;
-    return coveringTopics.some(([topic]) => topic.test(message));
+    if (!keyHasAnyFactFragment(lowerKey)) return true;
+    return keyMatchesActiveFactFragments(lowerKey, activeFactFragments);
   });
 }
 
