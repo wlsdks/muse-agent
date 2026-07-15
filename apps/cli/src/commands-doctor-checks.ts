@@ -553,11 +553,15 @@ export async function readNotesIndexEmbedModel(path: string): Promise<string | u
     const raw = await fs.readFile(path, "utf8");
     return parseNotesIndexEmbedModel(raw);
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (isNodeError(cause) && cause.code === "ENOENT") return undefined;
     // Unreadable index (permissions?) — flag the probe instead of
     // silently dropping.
     return parseNotesIndexEmbedModel("");
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && typeof Reflect.get(error, "code") === "string";
 }
 
 /**

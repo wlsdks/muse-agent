@@ -87,25 +87,37 @@ export async function readFeedsStore(file: string): Promise<FeedsStore> {
   } catch {
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  if (!parsed || typeof parsed !== "object") {
+  if (!isRecord(parsed)) {
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  const candidate = parsed as Partial<FeedsStore>;
-  if (candidate.version !== FEEDS_STORE_SCHEMA_VERSION) {
-    await backupVersionMismatchedStore(file, candidate.version);
+  if (parsed.version !== FEEDS_STORE_SCHEMA_VERSION) {
+    await backupVersionMismatchedStore(file, parsed.version);
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  const feeds = (candidate.feeds ?? [])
-    .filter((f) => f && typeof f === "object" && typeof f.id === "string" && typeof f.url === "string")
-    .map((f) => normalizeFeedRecord(f));
+  const feeds = (parsed.feeds ?? [])
+    .flatMap((f) => {
+      const feed = normalizeFeedRecord(f);
+      return feed ? [feed] : [];
+    });
   return { version: FEEDS_STORE_SCHEMA_VERSION, feeds };
 }
 
-function normalizeFeedRecord(raw: FeedRecord): FeedRecord {
+function normalizeFeedRecord(raw: unknown): FeedRecord | undefined {
+  if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.url !== "string") {
+    return undefined;
+  }
+  const entries = Array.isArray(raw.entries)
+    ? raw.entries.flatMap((entry) => {
+      const item = normalizeFeedEntry(entry);
+      return item ? [item] : [];
+    })
+    : [];
   return {
-    ...raw,
+    id: raw.id,
+    url: raw.url,
     name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : raw.id,
-    entries: Array.isArray(raw.entries) ? raw.entries.map(normalizeFeedEntry) : []
+    entries,
+    ...(typeof raw.lastFetchedAt === "string" ? { lastFetchedAt: raw.lastFetchedAt } : {})
   };
 }
 
@@ -116,17 +128,30 @@ function normalizeFeedRecord(raw: FeedRecord): FeedRecord {
  * entry — it just falls back to lexical/recency matching. Mirrors the browsing
  * store's tolerant read.
  */
-function normalizeFeedEntry(entry: FeedEntry): FeedEntry {
-  if (!entry || typeof entry !== "object") return entry;
-  const e = entry as FeedEntry & { embedding?: unknown };
-  if (!("embedding" in e)) return entry;
-  const valid =
-    Array.isArray(e.embedding) &&
-    e.embedding.length > 0 &&
-    e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
-  if (valid) return entry;
-  const { embedding: _drop, ...rest } = e;
-  return rest as FeedEntry;
+function normalizeFeedEntry(entry: unknown): FeedEntry | undefined {
+  if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.url !== "string" || typeof entry.title !== "string") {
+    return undefined;
+  }
+  const link = typeof entry.link === "string" ? entry.link : "";
+  const publishedAt = typeof entry.publishedAt === "string" ? entry.publishedAt : "";
+  const summary = typeof entry.summary === "string" ? entry.summary : "";
+  if (!("embedding" in entry)) {
+    return { id: entry.id, title: entry.title, link, publishedAt, summary };
+  }
+  const embeddingRaw = entry.embedding;
+  const hasValidEmbedding = Array.isArray(embeddingRaw)
+    && embeddingRaw.length > 0
+    && embeddingRaw.every((n) => typeof n === "number" && Number.isFinite(n));
+  if (hasValidEmbedding) {
+    return { id: entry.id, title: entry.title, link, publishedAt, summary, embedding: embeddingRaw };
+  }
+  return {
+    id: entry.id,
+    title: entry.title,
+    link,
+    publishedAt,
+    summary
+  };
 }
 
 export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {

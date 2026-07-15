@@ -252,12 +252,11 @@ export async function gatherNoteFamilyActivity(
 }
 
 function readDirentParentPath(entry: Dirent): string | undefined {
-  const raw = entry as Record<string, unknown>;
-  const parentPath = raw.parentPath;
+  const parentPath = Reflect.get(entry, "parentPath");
   if (typeof parentPath === "string" && parentPath.length > 0) {
     return parentPath;
   }
-  const fallbackPath = raw.path;
+  const fallbackPath = Reflect.get(entry, "path");
   return typeof fallbackPath === "string" && fallbackPath.length > 0 ? fallbackPath : undefined;
 }
 

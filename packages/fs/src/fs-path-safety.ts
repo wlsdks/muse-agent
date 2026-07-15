@@ -111,7 +111,7 @@ async function canonicalize(input: string, baseDir: string): Promise<string> {
       const real = await realpath(current);
       return tail.length > 0 ? join(real, ...tail.reverse()) : real;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (!isNodeError(error) || error.code !== "ENOENT") {
         throw error;
       }
       const parent = dirname(current);
@@ -236,6 +236,10 @@ export function isSensitivePath(path: string): boolean {
   }
   const leaf = segments[segments.length - 1] ?? "";
   return DEFAULT_DENY_BASENAME_PATTERNS.some((pattern) => pattern.test(leaf));
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && typeof Reflect.get(error, "code") === "string";
 }
 
 function splitPathList(value: string | undefined): readonly string[] {

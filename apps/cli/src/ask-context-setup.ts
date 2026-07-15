@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { classifyCorpusOverview } from "@muse/agent-core";
 import { resolveNotesDir, resolveNotesIndexFile } from "@muse/autoconfigure";
 import { corpusOnboardingHint, formatCorpusOverview, queryHasAdHocGrounding, type FileEntry } from "@muse/recall";
+import { isRecord } from "@muse/shared";
 
 import type { AskOptions } from "./ask-command-options.js";
 import { listNoteFiles, notesCorpusFileCount } from "./ask-corpus-helpers.js";
@@ -85,7 +86,8 @@ export async function prepareAskContext(
   // The mismatch is still surfaced by the explicit guard below.
   let existingIndexModel: string | undefined;
   try {
-    existingIndexModel = (JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex).model;
+    const existingIndex = parseNotesIndex(await readFile(notesIndexPath(), "utf8"));
+    existingIndexModel = existingIndex?.model;
   } catch {
     existingIndexModel = undefined;
   }
@@ -118,9 +120,12 @@ export async function prepareAskContext(
   let index: NotesIndex | undefined;
   try {
     const raw = await readFile(notesIndexPath(), "utf8");
-    index = JSON.parse(raw) as NotesIndex;
+    index = parseNotesIndex(raw);
+    if (!index) {
+      throw new Error("notes index is malformed");
+    }
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+    if (isNodeError(cause) && cause.code === "ENOENT") {
       io.stderr("No notes index at ~/.muse/notes-index.json. Run `muse notes reindex` first.\n");
       return { kind: "error" };
     }
@@ -135,7 +140,11 @@ export async function prepareAskContext(
       io.stderr(`(embedding default upgraded '${index.model}' → '${embedModel}' — re-indexing your notes once)\n`);
       try {
         await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
-        index = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex;
+        const refreshed = parseNotesIndex(await readFile(notesIndexPath(), "utf8"));
+        if (!refreshed) {
+          throw new Error("notes index is malformed after reindex");
+        }
+        index = refreshed;
       } catch (cause) {
         io.stderr(`Re-index failed (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}\n`);
         return { kind: "error" };
@@ -185,4 +194,25 @@ export async function prepareAskContext(
   }
 
   return { kind: "ready", userKey, topK, embedModel, notesDir, index, noteFileCount };
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && typeof Reflect.get(error, "code") === "string";
+}
+
+function parseNotesIndex(raw: string): NotesIndex | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  return isNotesIndex(parsed) ? parsed : undefined;
+}
+
+function isNotesIndex(value: unknown): value is NotesIndex {
+  return isRecord(value)
+    && value.version === 1
+    && typeof value.model === "string"
+    && Array.isArray(value.files);
 }
