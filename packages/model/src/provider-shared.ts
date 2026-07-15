@@ -9,8 +9,8 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { ModelCapabilities, ModelEvent, ModelResponse } from "./index.js";
 
-import { isRecord } from "@muse/shared";
-export { isRecord };
+import { isRecord, parseJson } from "@muse/shared";
+export { isRecord, parseJson };
 
 export function isJsonObject(value: unknown): value is JsonObject {
   if (!isRecord(value)) {
@@ -34,14 +34,6 @@ export function isJsonValue(value: unknown): boolean {
   }
 
   return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-export function parseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
 }
 
 /**

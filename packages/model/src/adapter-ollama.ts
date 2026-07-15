@@ -287,13 +287,11 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 
     const handleLine = function* (line: string): Generator<ModelEvent> {
       let parsed: OllamaNativeChatResponse;
-      try {
-        const parsedValue = parseJson(line);
-        if (!isRecord(parsedValue)) {
-          return;
-        }
-        parsed = parsedValue;
-      } catch { return; }
+      const parsedValue = parseJson(line);
+      if (!isRecord(parsedValue)) {
+        return;
+      }
+      parsed = parsedValue;
       // Once Ollama has sent 200 + headers, a mid-generation failure
       // (OOM, context overflow, model eviction under load) arrives as
       // an `{"error": "..."}` NDJSON line, not an HTTP status. Without
@@ -404,7 +402,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       id = ++OllamaProvider.traceSeq;
       t0 = Date.now();
       let model = "";
-      try { model = (JSON.parse(String(init.body)) as { model?: string }).model ?? ""; } catch { /* ignore */ }
+      const parsedBody = parseJson(String(init.body));
+      if (isRecord(parsedBody) && typeof parsedBody.model === "string") {
+        model = parsedBody.model;
+      }
       process.stderr.write(`[modeltrace] #${id.toString()} START t=${new Date(t0).toISOString()} model=${model}\n`);
     }
     try {

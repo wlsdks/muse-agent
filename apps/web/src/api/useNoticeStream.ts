@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 
 import type { ProactiveNotice } from "./types.js";
@@ -56,10 +57,9 @@ export function useNoticeStream(
           for (const frame of frames) {
             const { data, eventName } = parseSseFrame(frame);
             if (eventName === "notice" && data) {
-              try {
-                onNoticeRef.current(JSON.parse(data) as ProactiveNotice);
-              } catch {
-                /* ignore malformed notice */
+              const payload = parseJson(data);
+              if (isRecord(payload)) {
+                onNoticeRef.current(payload as ProactiveNotice);
               }
             }
           }
