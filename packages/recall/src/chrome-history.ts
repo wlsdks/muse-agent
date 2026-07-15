@@ -115,7 +115,7 @@ export async function readChromeHistoryVisits(
   } catch {
     return [];
   } finally {
-  await withBestEffort(fs.unlink(tempCopy), undefined);
+    await withBestEffort(fs.unlink(tempCopy), undefined);
   }
   return rows.flatMap((row) => toBrowsingVisit(row));
 }

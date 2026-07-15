@@ -88,7 +88,9 @@ export class FileCheckpointStore implements CheckpointStore {
       if (names.length <= this.#maxRuns) return;
       const withMtime = await Promise.all(names.map(async (n) => ({ mtime: (await stat(join(this.#dir, n))).mtimeMs, name: n })));
       withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
-    await Promise.all(withMtime.slice(this.#maxRuns).map((e) => withBestEffort(rm(join(this.#dir, e.name), { force: true }), undefined)));
+      await Promise.all(withMtime.slice(this.#maxRuns).map((e) =>
+        withBestEffort(rm(join(this.#dir, e.name), { force: true }), undefined)
+      ));
     } catch {
       /* retention is best-effort */
     }
@@ -195,6 +197,6 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   async deleteByRunId(runId: string): Promise<void> {
-  await withBestEffort(rm(join(this.#dir, runFileName(runId)), { force: true }), undefined);
-}
+    await withBestEffort(rm(join(this.#dir, runFileName(runId)), { force: true }), undefined);
+  }
 }

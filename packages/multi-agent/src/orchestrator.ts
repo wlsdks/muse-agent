@@ -497,7 +497,7 @@ export class MultiAgentOrchestrator {
       const parsed = parseWorkerResult(raw);
       if (!parsed.ok) {
         const failure = new Error(parsed.reason);
-      await withBestEffort(this.publishWorkerFailure(worker.id, failure), undefined);
+        await withBestEffort(this.publishWorkerFailure(worker.id, failure), undefined);
         return { failure, step: { error: parsed.reason, status: "failed", workerId: worker.id } };
       }
       const result = parsed.result;

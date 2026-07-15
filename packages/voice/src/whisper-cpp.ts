@@ -180,7 +180,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     } finally {
       // Best-effort cleanup. Don't mask a transcription error with a
       // disk-cleanup error.
-    await withBestEffort(rm(workdir, { force: true, recursive: true }), undefined);
+      await withBestEffort(rm(workdir, { force: true, recursive: true }), undefined);
     }
   }
 }
