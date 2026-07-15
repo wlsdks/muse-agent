@@ -6,6 +6,7 @@
 
 import type { Command } from "commander";
 
+import { parseBooleanTriState } from "@muse/autoconfigure";
 import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
@@ -30,7 +31,7 @@ export interface SettingsCommandHelpers {
 
 export function inferSettingType(value: string): "boolean" | "number" | "json" | "string" {
   const trimmed = value.trim();
-  if (trimmed === "true" || trimmed === "false") {
+  if (parseBooleanTriState(trimmed) !== undefined) {
     return "boolean";
   }
   if (/^-?\d+(\.\d+)?$/u.test(trimmed)) {
