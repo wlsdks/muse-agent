@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 import {
@@ -106,10 +107,6 @@ const EMPTY_STATE: AttunementState = {
   undoResetReceipts: []
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isOneOf<T extends readonly string[]>(value: unknown, allowed: T): value is T[number] {
   return typeof value === "string" && allowed.includes(value);
 }
@@ -141,10 +138,9 @@ function isReference(value: unknown): value is ArtifactReference {
 
 function isLink(value: unknown): value is ArtifactLink {
   if (!isRecord(value) || !isReference(value)) return false;
-  const record = value as Record<string, unknown>;
-  return isNonEmptyString(record.linkedAt)
-    && record.linkedBy === "user"
-    && isNonEmptyString(record.threadId);
+  return isNonEmptyString(value.linkedAt)
+    && value.linkedBy === "user"
+    && isNonEmptyString(value.threadId);
 }
 
 function isPolicy(value: unknown): value is PersonalThread["policy"] {
@@ -176,7 +172,6 @@ function isDelivery(value: unknown): value is ContinuityDelivery {
     || !isNonEmptyString(value.threadId)) {
     return false;
   }
-  if (value.runId !== undefined && !isNonEmptyString(value.runId)) return false;
   if (value.outcome === undefined) return true;
   return isRecord(value.outcome)
     && isOneOf(value.outcome.outcome, OUTCOMES)
@@ -404,11 +399,15 @@ export async function readAttunementState(file: string): Promise<AttunementState
   try {
     raw = await fs.readFile(file, "utf8");
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return EMPTY_STATE;
+    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) return EMPTY_STATE;
     throw cause;
   }
   try {
-    return parseState(JSON.parse(raw) as unknown);
+    const parsed = parseJson(raw);
+    if (parsed === undefined) {
+      throw new AttunementStoreError("attunement store is not valid JSON; refusing to overwrite it");
+    }
+    return parseState(parsed);
   } catch (cause) {
     if (cause instanceof AttunementStoreError) throw cause;
     throw new AttunementStoreError("attunement store is not valid JSON; refusing to overwrite it");
@@ -530,7 +529,6 @@ export async function openContinuityDelivery(
       id: newId("delivery", options),
       openedAt: nowIso(options),
       policyVersion: thread.policy.version,
-      runId: newId("continuity-run", options),
       threadId: thread.id
     };
     return { changed: true, result: delivery, state: { ...state, deliveries: [...state.deliveries, delivery] } };
