@@ -1,6 +1,5 @@
 import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
-import { sleep } from "@muse/shared";
-import { isRecord } from "@muse/shared";
+import { isRecord, sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -247,7 +246,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
           await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : backoffMs);
           continue;
         }
-        const text = await response.text().catch(() => "");
+        const text = await withBestEffort(response.text(), "");
         throw new CalendarProviderError(
           this.id,
           `HTTP_${response.status}`,
@@ -299,7 +298,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = await withBestEffort(response.text(), "");
       throw new CalendarProviderError(
         this.id,
         `OAUTH_${response.status}`,

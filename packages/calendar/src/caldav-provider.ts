@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
 import { parseCalendarQueryResponse, renderCalendarQueryReport, renderVEvent } from "./caldav-ics.js";
-import { sleep } from "@muse/shared";
+import { sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -233,7 +233,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
   }
 
   private async errorText(response: Response): Promise<string> {
-    const text = await response.text().catch(() => "");
+    const text = await withBestEffort(response.text(), "");
     return `CalDAV ${response.status}: ${text}`.slice(0, 500);
   }
 }

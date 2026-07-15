@@ -8,7 +8,7 @@ import {
   encryptCalendarEnvelope,
   isEncryptedCalendarEnvelope
 } from "./calendar-encryption.js";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
+import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 import { CalendarProviderError, CalendarValidationError } from "./errors.js";
 import { expandRecurringEvent } from "./ics-parse.js";
@@ -262,7 +262,7 @@ export class LocalCalendarProvider implements CalendarProvider {
     // otherwise leave the schedule world-readable on a shared box.
     await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
-    await fs.chmod(this.file, 0o600).catch(() => undefined);
+    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
   }
 
   /**
@@ -271,7 +271,7 @@ export class LocalCalendarProvider implements CalendarProvider {
    * unrecoverable. No plaintext on disk yet ⇒ nothing to back up.
    */
   private async backupPlaintextBeforeEncrypt(): Promise<void> {
-    const existing = await fs.readFile(this.file, "utf8").catch(() => undefined);
+    const existing = await withBestEffort(fs.readFile(this.file, "utf8"), undefined);
     if (existing === undefined || existing.trim().length === 0) {
       return;
     }

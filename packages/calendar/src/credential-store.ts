@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
+import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -105,7 +105,7 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     await fs.mkdir(dirname(this.file), { recursive: true });
     await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
-    await fs.chmod(this.file, 0o600).catch(() => undefined);
+    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
   }
 }
 
