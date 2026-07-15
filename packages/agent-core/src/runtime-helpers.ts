@@ -3,7 +3,7 @@ import { composeUserModelSnapshot as composeUserModelSnapshotFn } from "@muse/me
 import { ModelProviderError, type ModelMessage, type ModelResponse, type ModelToolCall } from "@muse/model";
 import type { SpanHandle } from "@muse/observability";
 import type { AgentRunMode } from "@muse/runtime-state";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
 import { neutralizeInjectionSpans } from "./injection.js";
 import { isRecord } from "./internals.js";
@@ -186,10 +186,10 @@ export function recordContextWindowSpanAttributes(
  * without inspecting the full system prompt.
  */
 export function recordContextEngineeringSpanAttributes(span: SpanHandle, metadata: JsonObject | undefined): void {
-  if (!metadata) {
+  if (!metadata || !isRecord(metadata)) {
     return;
   }
-  const record = metadata as Record<string, unknown>;
+  const record = metadata;
   setBooleanAttr(span, "ctx.active_context_applied", record["activeContextApplied"]);
   setBooleanAttr(span, "ctx.active_context_in_working_hours", record["activeContextInWorkingHours"]);
   setBooleanAttr(span, "ctx.inbox_context_applied", record["inboxContextApplied"]);
@@ -256,7 +256,7 @@ export function projectTelemetryMetadata(
   if (!metadata) {
     return { counters, flags };
   }
-  const record = metadata as Record<string, unknown>;
+  const record = metadata;
   const flagKeys: readonly string[] = [
     "activeContextApplied", "activeContextInWorkingHours",
     "inboxContextApplied", "episodicRecallApplied",

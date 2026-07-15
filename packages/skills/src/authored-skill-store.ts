@@ -12,6 +12,8 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 import { FileSystemSkillLoader } from "./skill-loader.js";
 import { parseSkillFile } from "./skill-parser.js";
 import type { Skill } from "./skill-contract.js";
@@ -168,7 +170,7 @@ export class AuthoredSkillStore {
       const skill = authored.find((s) => s.name === name);
       if (!skill) return false;
 
-      const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+      const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
       const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
       const now = this.now();
 
@@ -502,21 +504,21 @@ export class AuthoredSkillStore {
   }
 
   private authoredAt(skill: Skill): number {
-    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
     const raw = muse["authoredAt"];
     const at = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
     return Number.isFinite(at) ? at : 0;
   }
 
   private lastActiveAt(skill: Skill): number {
-    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
     const raw = muse["lastUsedAt"];
     const used = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
     return Number.isFinite(used) ? used : this.authoredAt(skill);
   }
 
   private hasUsage(skill: Skill): boolean {
-    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
     return typeof muse["lastUsedAt"] === "string" && (muse["lastUsedAt"] as string).length > 0;
   }
 

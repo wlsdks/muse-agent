@@ -13,7 +13,7 @@
  */
 
 import { fetchWithRetry, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
-import { sleep } from "@muse/shared";
+import { isRecord, sleep } from "@muse/shared";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -96,9 +96,10 @@ function clampLimit(limit: number): number {
 }
 
 function messageIds(list: Record<string, unknown>): string[] {
-  return Array.isArray(list.messages)
-    ? (list.messages as Array<Record<string, unknown>>).flatMap((m) => (typeof m.id === "string" ? [m.id] : []))
-    : [];
+  if (!Array.isArray(list.messages)) {
+    return [];
+  }
+  return list.messages.flatMap((raw) => (isRecord(raw) && typeof raw.id === "string" ? [raw.id] : []));
 }
 
 /**
@@ -166,8 +167,11 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
         // A successful 2xx with an odd/non-JSON body must NEVER fail the send —
         // return undefined and let the caller record the send without an id.
         try {
-          const parsed = JSON.parse(await response.text()) as Record<string, unknown>;
-          return typeof parsed.id === "string" ? parsed.id : undefined;
+          const parsed = JSON.parse(await response.text());
+          if (isRecord(parsed) && typeof parsed.id === "string") {
+            return parsed.id;
+          }
+          return undefined;
         } catch {
           return undefined;
         }
@@ -203,7 +207,11 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     // text and turn a malformed body into a clear, classifiable error instead.
     const body = await response.text();
     try {
-      return JSON.parse(body) as Record<string, unknown>;
+      const parsed = JSON.parse(body);
+      if (isRecord(parsed)) {
+        return parsed;
+      }
+      throw new Error("non-object");
     } catch {
       throw new Error(`Gmail API returned a ${response.status.toString()} with a non-JSON body: ${body.slice(0, 200)}`);
     }
@@ -241,7 +249,7 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
         }
         continue;
       }
-      const payload = (msg.payload ?? {}) as { headers?: ReadonlyArray<Record<string, unknown>> };
+      const payload = isRecord(msg.payload) ? msg.payload : {};
       const headers = Array.isArray(payload.headers) ? payload.headers : [];
       const labelIds = Array.isArray(msg.labelIds) ? msg.labelIds : [];
       const dateHeader = header(headers, "Date");
@@ -274,7 +282,7 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
       }
       return undefined;
     }
-    const payload = (msg.payload ?? {}) as { headers?: ReadonlyArray<Record<string, unknown>> };
+    const payload = isRecord(msg.payload) ? msg.payload : {};
     const headers = Array.isArray(payload.headers) ? payload.headers : [];
     const dateHeader = header(headers, "Date");
     const body = extractPlainTextBody(payload) || (typeof msg.snippet === "string" ? msg.snippet : "");

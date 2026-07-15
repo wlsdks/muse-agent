@@ -16,7 +16,7 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { checkEditIntegrity } from "./edit-integrity.js";
@@ -344,10 +344,10 @@ function editExecutor(
 }
 
 function parseEdit(value: unknown): FsEditSpec | undefined {
-  if (typeof value !== "object" || value === null) {
+  if (!isRecord(value)) {
     return undefined;
   }
-  const record = value as Record<string, unknown>;
+  const record = value;
   if (typeof record["old_string"] !== "string" || typeof record["new_string"] !== "string") {
     return undefined;
   }

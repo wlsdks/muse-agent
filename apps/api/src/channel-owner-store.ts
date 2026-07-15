@@ -18,6 +18,17 @@ interface PersistedShape {
   readonly owners: Readonly<Record<string, string>>;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") {
+      record[key] = nestedValue;
+    }
+  }
+  return record;
+}
+
 export function resolveChannelOwnersFile(env: { readonly [key: string]: string | undefined }): string {
   const override = env.MUSE_CHANNEL_OWNERS_FILE?.trim();
   if (override && override.length > 0) {
@@ -92,11 +103,9 @@ async function readAll(file: string): Promise<Readonly<Record<string, string>>> 
     if (!parsed || typeof parsed !== "object" || !parsed.owners || typeof parsed.owners !== "object") {
       return {};
     }
-    return Object.fromEntries(
-      Object.entries(parsed.owners as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string"
-      )
-    );
+    const owners = toRecord(parsed.owners);
+    if (!owners) return {};
+    return Object.fromEntries(Object.entries(owners).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
   } catch {
     return {};
   }
@@ -225,10 +234,10 @@ async function readAllPairingCodes(file: string): Promise<Readonly<Record<string
     if (!parsed || typeof parsed !== "object" || !parsed.codes || typeof parsed.codes !== "object") {
       return {};
     }
+    const codes = toRecord(parsed.codes);
+    if (!codes) return {};
     return Object.fromEntries(
-      Object.entries(parsed.codes as Record<string, unknown>).filter(
-        (entry): entry is [string, PairingCodeEntry] => isPairingCodeEntry(entry[1])
-      )
+      Object.entries(codes).filter((entry): entry is [string, PairingCodeEntry] => isPairingCodeEntry(entry[1]))
     );
   } catch {
     return {};

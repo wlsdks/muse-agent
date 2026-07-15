@@ -6,6 +6,8 @@
  * extractors that were previously hand-duplicated in each provider file.
  */
 
+import { isRecord } from "@muse/shared";
+
 export const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
 export const NOTION_DEFAULT_VERSION = "2022-06-28";
 export const NOTION_DEFAULT_TITLE_PROPERTY = "Name";
@@ -29,10 +31,10 @@ export function mapNotionStatus(status: number): string {
 }
 
 export function isRecordArray(body: unknown, key: string): readonly unknown[] {
-  if (!body || typeof body !== "object") {
+  if (!isRecord(body)) {
     return [];
   }
-  const value = (body as Record<string, unknown>)[key];
+  const value = body[key];
   return Array.isArray(value) ? value : [];
 }
 

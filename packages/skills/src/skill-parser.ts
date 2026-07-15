@@ -18,6 +18,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 import type { Skill, SkillFrontmatter, SkillSource } from "./skill-contract.js";
 
 export class SkillParseError extends Error {
@@ -207,10 +209,10 @@ function extractRequiresInstall(
   let install: unknown;
   for (const vendor of ["muse", "openclaw"]) {
     const block = metadata[vendor];
-    if (!block || typeof block !== "object") {
+    if (!isRecord(block)) {
       continue;
     }
-    const record = block as Record<string, unknown>;
+    const record = block;
     if (requires === undefined && record.requires) {
       requires = record.requires;
     }
@@ -280,8 +282,8 @@ function safeJsonObject(value: string): Record<string, unknown> | undefined {
   }
   try {
     const parsed = JSON.parse(trimmed);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+    return isRecord(parsed)
+      ? parsed
       : undefined;
   } catch {
     return undefined;

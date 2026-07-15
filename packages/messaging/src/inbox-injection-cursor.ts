@@ -30,6 +30,8 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 const GLOBAL_USER_KEY = "_global";
 
 /**
@@ -86,16 +88,16 @@ async function readPersisted(file: string): Promise<PersistedByUser> {
   } catch {
     return {};
   }
-  if (!parsed || typeof parsed !== "object") {
+  if (!isRecord(parsed)) {
     return {};
   }
-  const versioned = parsed as { version?: unknown; byUser?: unknown; lastInjectedAt?: unknown };
-  if (versioned.version === 2 && versioned.byUser && typeof versioned.byUser === "object") {
+  const versioned = parsed;
+  if (versioned.version === 2 && isRecord(versioned.byUser)) {
     const out: Record<string, Record<string, SourceCursor>> = {};
-    for (const [key, value] of Object.entries(versioned.byUser as Record<string, unknown>)) {
-      if (value && typeof value === "object") {
+    for (const [key, value] of Object.entries(versioned.byUser)) {
+      if (isRecord(value)) {
         const inner: Record<string, SourceCursor> = {};
-        for (const [source, raw] of Object.entries(value as Record<string, unknown>)) {
+        for (const [source, raw] of Object.entries(value)) {
           const cursor = parseSourceCursor(raw);
           if (cursor) {
             inner[source] = cursor;
@@ -107,9 +109,9 @@ async function readPersisted(file: string): Promise<PersistedByUser> {
     return out;
   }
   // v1 migration: fold the flat map into the `_global` user slot.
-  if (versioned.lastInjectedAt && typeof versioned.lastInjectedAt === "object") {
+  if (isRecord(versioned.lastInjectedAt)) {
     const inner: Record<string, SourceCursor> = {};
-    for (const [source, raw] of Object.entries(versioned.lastInjectedAt as Record<string, unknown>)) {
+    for (const [source, raw] of Object.entries(versioned.lastInjectedAt)) {
       const cursor = parseSourceCursor(raw);
       if (cursor) {
         inner[source] = cursor;

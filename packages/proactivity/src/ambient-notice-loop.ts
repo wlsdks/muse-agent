@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { avoidedSourceKeys, readTrustLedger } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
@@ -161,10 +162,10 @@ export class FileAmbientSignalSource implements AmbientSignalSource {
     } catch {
       return undefined;
     }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!isRecord(parsed)) {
       return undefined;
     }
-    const obj = parsed as Record<string, unknown>;
+    const obj = parsed;
     const signal: Record<string, string> = {};
     for (const field of SIGNAL_FIELDS) {
       const value = stringField(obj, field);
@@ -195,17 +196,17 @@ export function parseAmbientNoticeRules(raw: string): AmbientNoticeRule[] {
   }
   const out: AmbientNoticeRule[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    if (!isRecord(entry)) {
       continue;
     }
-    const e = entry as Record<string, unknown>;
+    const e = entry;
     if (typeof e.id !== "string" || e.id.length === 0 || typeof e.title !== "string" || typeof e.message !== "string") {
       continue;
     }
-    if (!e.match || typeof e.match !== "object" || Array.isArray(e.match)) {
+    if (!isRecord(e.match)) {
       continue;
     }
-    const matchObj = e.match as Record<string, unknown>;
+    const matchObj = e.match;
     const match: Record<string, string> = {};
     for (const field of SIGNAL_FIELDS) {
       const value = stringField(matchObj, field);

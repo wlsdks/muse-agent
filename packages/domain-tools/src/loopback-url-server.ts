@@ -1,4 +1,4 @@
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -68,13 +68,13 @@ export function createUrlMcpServer(): LoopbackMcpServer {
         description: "Encodes a key/value object as an application/x-www-form-urlencoded query string.",
         execute: (args): JsonObject => {
           const params = args.params;
-          if (!params || typeof params !== "object" || Array.isArray(params)) {
+          if (!isRecord(params)) {
             return { error: "params must be a JSON object" };
           }
           const isScalar = (v: unknown): v is string | number | boolean =>
             typeof v === "string" || typeof v === "number" || typeof v === "boolean";
           const search = new URLSearchParams();
-          for (const [key, raw] of Object.entries(params as Record<string, unknown>)) {
+          for (const [key, raw] of Object.entries(params)) {
             if (Array.isArray(raw)) {
               for (const item of raw) {
                 // Skip null/undefined items, exactly as the scalar branch below does —

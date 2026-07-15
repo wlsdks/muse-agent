@@ -1,5 +1,6 @@
 import { FileCalendarCredentialStore } from "@muse/calendar";
 import { createMuseObservabilitySnapshotProvider } from "@muse/observability";
+import { isRecord } from "@muse/shared";
 
 import { parseOptionalString } from "./env-parsers.js";
 import {
@@ -91,13 +92,13 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     agentCardToolProvider: () =>
       assembly.toolRegistry.list().map((tool) => ({
         description: tool.definition.description,
-        inputSchema: tool.definition.inputSchema as Record<string, unknown> | null,
+        inputSchema: isRecord(tool.definition.inputSchema) ? tool.definition.inputSchema : null,
         name: tool.definition.name
       })),
     toolCatalogProvider: () =>
       assembly.toolRegistry.list().map((tool) => ({
         description: tool.definition.description,
-        inputSchema: tool.definition.inputSchema as Record<string, unknown> | null,
+        inputSchema: isRecord(tool.definition.inputSchema) ? tool.definition.inputSchema : null,
         name: tool.definition.name,
         risk: tool.definition.risk,
         ...(tool.definition.keywords && tool.definition.keywords.length > 0

@@ -8,6 +8,8 @@
  * span that parses as a JSON array and lets the caller's validity test pick.
  */
 
+import { isRecord } from "@muse/shared";
+
 export interface JsonArrayCandidate {
   readonly text: string;
   readonly value: readonly unknown[];
@@ -140,8 +142,8 @@ export function* iterateJsonObjectCandidates(text: string): Generator<JsonObject
     const candidate = text.slice(start, end + 1);
     try {
       const value: unknown = JSON.parse(candidate);
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        yield { text: candidate, value: value as Record<string, unknown> };
+      if (isRecord(value)) {
+        yield { text: candidate, value };
       }
     } catch {
       // not valid JSON — fall through to the next top-level `{`

@@ -3,7 +3,7 @@ import type {
   CalendarEventUpdate,
   CalendarProviderRegistry
 } from "@muse/calendar";
-import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
+import { assertNoSecretInPersistedFields, isRecord, type JsonObject } from "@muse/shared";
 
 import { computeAvailability } from "@muse/mcp-shared";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
@@ -142,7 +142,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             };
           }
           const to = parseIsoDate(readString(args, "to") ?? readString(args, "toIso")) ?? new Date(from.getTime() + 60 * 60_000);
-          const minRaw = (args as Record<string, unknown>)["minMinutes"];
+          const minRaw = isRecord(args) ? args.minMinutes : undefined;
           const minMinutes = typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : undefined;
           const providerId = readString(args, "providerId");
           try {

@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { ModelMessage } from "@muse/model";
-import { redactSecretsInText, type JsonObject } from "@muse/shared";
+import { isRecord, redactSecretsInText, type JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
 import type { AgentRunInput } from "./types.js";
 
@@ -128,10 +128,10 @@ export function decodeCheckpointMessages(encoded: readonly string[]): readonly M
 }
 
 function isModelMessage(value: unknown): value is ModelMessage {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return false;
   }
-  const record = value as Record<string, unknown>;
+  const record = value;
   if (typeof record.content !== "string") {
     return false;
   }

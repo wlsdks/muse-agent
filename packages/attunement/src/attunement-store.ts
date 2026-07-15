@@ -141,10 +141,9 @@ function isReference(value: unknown): value is ArtifactReference {
 
 function isLink(value: unknown): value is ArtifactLink {
   if (!isRecord(value) || !isReference(value)) return false;
-  const record = value as Record<string, unknown>;
-  return isNonEmptyString(record.linkedAt)
-    && record.linkedBy === "user"
-    && isNonEmptyString(record.threadId);
+  return isNonEmptyString(value.linkedAt)
+    && value.linkedBy === "user"
+    && isNonEmptyString(value.threadId);
 }
 
 function isPolicy(value: unknown): value is PersonalThread["policy"] {

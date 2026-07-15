@@ -11,6 +11,7 @@
 import { promises as fs } from "node:fs";
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
+import { isRecord } from "@muse/shared";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
 export interface WatchRule {
@@ -293,11 +294,11 @@ export function createChromeSnapshot(
 }
 
 function parseHeaders(raw: unknown): Record<string, string> | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     return undefined;
   }
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(raw)) {
     if (typeof value === "string" && key.length > 0) {
       out[key] = value;
     }
@@ -334,10 +335,9 @@ export function webWatchesFromConfig(
   }
   const out: WebWatch[] = [];
   for (const entry of parsed) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    if (!isRecord(entry)) {
       continue;
     }
-    const e = entry as Record<string, unknown>;
     // The locator field depends on the source: a file watch points at a local
     // PATH, web/chrome watches at a URL.
     const source = e.source === "file" ? "file" : e.source === "chrome" ? "chrome" : "http";
@@ -389,10 +389,10 @@ export function webWatchesFromConfig(
  * semantics can't drift.
  */
 export function parseWatchRule(raw: unknown): WatchRule | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     return undefined;
   }
-  const ruleObj = raw as Record<string, unknown>;
+  const ruleObj = raw;
   const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean; below?: number; above?: number } = {};
   for (const field of RULE_FIELDS) {
     if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {

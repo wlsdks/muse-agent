@@ -1,3 +1,5 @@
+import { isRecord } from "@muse/shared";
+
 /**
  * Pure environment-string parsers used across the autoconfigure
  * package. Lifted out of `index.ts` so internal modules
@@ -188,11 +190,11 @@ export function parseHeaderMap(value: string | undefined): Record<string, string
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     return undefined;
   }
   const out: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(parsed as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(parsed)) {
     if (key.trim().length === 0 || typeof raw !== "string") {
       return undefined;
     }

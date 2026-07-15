@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
+import { assertNoSecretInPersistedFields, isRecord, type JsonObject } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
 import { readString, readStringArray, errorMessage } from "@muse/mcp";
@@ -148,12 +148,12 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           `Returns up to ${maxListEntries} entries.`,
         execute: async (args): Promise<JsonObject> => {
           const tasks = await readTasks(file);
-          const tagRaw = (args as Record<string, unknown>)["tag"];
+          const tagRaw = isRecord(args) ? args.tag : undefined;
           const tagLabel = typeof tagRaw === "string" ? tagRaw.trim() : "";
           const wantTag = tagLabel.toLowerCase();
           const matchesTag = (taskTags: readonly string[] | undefined): boolean =>
             wantTag.length === 0 || (taskTags?.some((t) => t.toLowerCase() === wantTag) ?? false);
-          const dueRaw = (args as Record<string, unknown>)["dueWithinDays"];
+          const dueRaw = isRecord(args) ? args.dueWithinDays : undefined;
           if (typeof dueRaw === "number" && Number.isFinite(dueRaw)) {
             const allDue = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw })
               .map((entry) => entry.task)

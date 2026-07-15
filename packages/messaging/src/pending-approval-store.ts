@@ -19,6 +19,8 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 export interface PendingApproval {
   readonly id: string;
   /** Tool the agent attempted (e.g. "email_send"). */
@@ -40,10 +42,10 @@ export interface PendingApproval {
 const PENDING_APPROVAL_MAX_ENTRIES = 200;
 
 function isPendingApproval(value: unknown): value is PendingApproval {
-  if (!value || typeof value !== "object") {
+  if (!isRecord(value)) {
     return false;
   }
-  const e = value as Record<string, unknown>;
+  const e = value;
   return (
     typeof e["id"] === "string"
     && typeof e["tool"] === "string"
@@ -79,11 +81,11 @@ export async function readPendingApprovals(file: string): Promise<readonly Pendi
     await quarantineCorrupt(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { pending?: unknown }).pending)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.pending)) {
     await quarantineCorrupt(file);
     return [];
   }
-  return (parsed as { pending: unknown[] }).pending.filter(isPendingApproval);
+  return parsed.pending.filter(isPendingApproval);
 }
 
 async function writePendingApprovals(file: string, pending: readonly PendingApproval[]): Promise<void> {
