@@ -20,7 +20,7 @@ import { isErrorLike } from "@muse/shared";
 
 import { randomUUID } from "node:crypto";
 
-import { compareTasksByDueDate, parseTaskDueAt, readTasks, readTaskStatusFilter, writeTasks, type PersistedTask } from "@muse/stores";
+import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, type PersistedTask } from "@muse/stores";
 import { type TasksProviderRegistry } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
 
@@ -79,7 +79,6 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       }
       dueAt = parsed;
     }
-    const tasks = await readTasks(tasksFile);
     const created: PersistedTask = {
       createdAt: new Date().toISOString(),
       id: `task_${randomUUID()}`,
@@ -91,7 +90,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
         : {}),
       ...(dueAt ? { dueAt } : {})
     };
-    await writeTasks(tasksFile, [...tasks, created]);
+    await mutateTasks(tasksFile, (current) => [...current, created]);
     return reply.status(201).send(created);
   });
 
@@ -107,12 +106,6 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       readonly dueAt?: unknown;
       readonly urgent?: unknown;
     };
-    const tasks = await readTasks(tasksFile);
-    const index = tasks.findIndex((task) => task.id === id);
-    if (index < 0) {
-      return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
-    }
-    const existing = tasks[index]!;
     let dueAt: string | undefined | null;
     if (body.dueAt === null) {
       dueAt = null;
@@ -123,25 +116,15 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       }
       dueAt = parsed;
     }
-    const patched: PersistedTask = {
-      ...existing,
-      ...(typeof body.title === "string" && body.title.trim().length > 0 ? { title: body.title.trim() } : {}),
-      ...(typeof body.notes === "string"
-        ? body.notes.length > 0 ? { notes: body.notes } : { notes: undefined }
-        : {}),
-      ...(Array.isArray(body.tags)
-        ? body.tags.length > 0
-          ? { tags: (body.tags as unknown[]).filter((entry): entry is string => typeof entry === "string") }
-          : { tags: undefined }
-        : {}),
-      ...(dueAt === null
-        ? { dueAt: undefined }
-        : dueAt !== undefined ? { dueAt } : {}),
-      ...(typeof body.urgent === "boolean" ? { urgent: body.urgent } : {})
-    };
-    const next = [...tasks];
-    next[index] = patched;
-    await writeTasks(tasksFile, next);
+    let patched: PersistedTask | undefined;
+    await mutateTasks(tasksFile, (current) => {
+      const index = current.findIndex((task) => task.id === id);
+      if (index < 0) return current;
+      const existing = current[index]!;
+      patched = { ...existing, ...(typeof body.title === "string" && body.title.trim().length > 0 ? { title: body.title.trim() } : {}), ...(typeof body.notes === "string" ? body.notes.length > 0 ? { notes: body.notes } : { notes: undefined } : {}), ...(Array.isArray(body.tags) ? body.tags.length > 0 ? { tags: (body.tags as unknown[]).filter((entry): entry is string => typeof entry === "string") } : { tags: undefined } : {}), ...(dueAt === null ? { dueAt: undefined } : dueAt !== undefined ? { dueAt } : {}), ...(typeof body.urgent === "boolean" ? { urgent: body.urgent } : {}) };
+      const next = [...current]; next[index] = patched; return next;
+    });
+    if (!patched) return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
     return patched;
   });
 
@@ -150,15 +133,9 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       return reply;
     }
     const { id } = request.params as { readonly id: string };
-    const tasks = await readTasks(tasksFile);
-    const index = tasks.findIndex((task) => task.id === id);
-    if (index < 0) {
-      return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
-    }
-    const completed: PersistedTask = { ...tasks[index]!, completedAt: new Date().toISOString(), status: "done" };
-    const next = [...tasks];
-    next[index] = completed;
-    await writeTasks(tasksFile, next);
+    let completed: PersistedTask | undefined;
+    await mutateTasks(tasksFile, (current) => { const index = current.findIndex((task) => task.id === id); if (index < 0) return current; completed = { ...current[index]!, completedAt: new Date().toISOString(), status: "done" }; const next = [...current]; next[index] = completed; return next; });
+    if (!completed) return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
     return completed;
   });
 
@@ -167,12 +144,11 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       return reply;
     }
     const { id } = request.params as { readonly id: string };
-    const tasks = await readTasks(tasksFile);
-    const next = tasks.filter((task) => task.id !== id);
-    if (next.length === tasks.length) {
+    let removed = false;
+    await mutateTasks(tasksFile, (current) => { const next = current.filter((task) => task.id !== id); removed = next.length !== current.length; return next; });
+    if (!removed) {
       return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
     }
-    await writeTasks(tasksFile, next);
     return reply.status(204).send();
   });
 
