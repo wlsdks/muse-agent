@@ -134,19 +134,86 @@ describe("retrieveAndRankNotes — confident-gated 1-hop link expansion (the gra
     }
   });
 
-  it("does not expand from an ambiguous seed — confident-only gating is intact", async () => {
-    const files = [
-      await noteFile("hub.md", "muse project hub [[high]]", unit(0.3)),
-      await noteFile("high.md", "unrelated gamma detail", unit(0.6))
-    ];
+  it("an ambiguous seed promotes a linked neighbor ONLY above the calibrated floor (bar 0.55 → floor 0.35 for test-embed)", async () => {
     // Isolate the graph hop: the second-hop augment legitimately fires on
     // ambiguous verdicts and would re-add the same note through a different door.
     process.env.MUSE_RECALL_SECOND_HOP = "false";
     try {
-      const result = await ask(files);
-      expect(result.scored.map((s) => s.file)).not.toContain(files[1]!.path);
+      const clearing = [
+        await noteFile("hub.md", "muse project hub [[high]]", unit(0.3)),
+        await noteFile("high.md", "unrelated gamma detail", unit(0.6))
+      ];
+      const promoted = await ask(clearing);
+      expect(promoted.scored.map((s) => s.file)).toContain(clearing[1]!.path);
+
+      const below = [
+        await noteFile("hub2.md", "muse project hub [[weak]]", unit(0.3)),
+        await noteFile("weak.md", "unrelated epsilon detail", unit(0.2))
+      ];
+      const rejected = await retrieveAndRankNotes({
+        embedFn, embedModel: "test-embed", indexFiles: below, json: true, notesDir: dir,
+        onStderr: () => {}, query: "muse project hub", scope: undefined, topK: 1
+      });
+      expect(rejected.scored.map((s) => s.file)).not.toContain(below[1]!.path);
     } finally {
       delete process.env.MUSE_RECALL_SECOND_HOP;
     }
+  });
+});
+
+describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)", () => {
+  const unit = (x: number): number[] => [x, Math.sqrt(1 - x * x)];
+
+  const vault = async (): Promise<FileEntry[]> => [
+    await noteFile("close.md", "rent thoughts rambling", unit(0.9)),
+    await noteFile("answer.md", "autopay goes out on the 25th", unit(0.7)),
+    await noteFile("noise.md", "wifi password muse2026", unit(0.5))
+  ];
+
+  const ask = async (indexFiles: FileEntry[], rerankFn?: (q: string, t: readonly string[]) => Promise<readonly number[] | undefined>) =>
+    retrieveAndRankNotes({
+      embedFn,
+      embedModel: "test-embed",
+      indexFiles,
+      json: true,
+      notesDir: dir,
+      onStderr: () => {},
+      query: "rent transfer day",
+      ...(rerankFn ? { rerankFn } : {}),
+      scope: undefined,
+      topK: 1
+    });
+
+  it("the reranker's pick replaces the cosine top-1 in the prompt window", async () => {
+    const files = await vault();
+    let sawTexts: readonly string[] = [];
+    const result = await ask(files, async (_q, texts) => {
+      sawTexts = texts;
+      return [texts.findIndex((t) => t.includes("25th"))];
+    });
+    expect(sawTexts.length).toBeGreaterThan(1);
+    expect(result.scored[0]?.file).toBe(files[1]!.path);
+    expect(result.scored).toHaveLength(1);
+  });
+
+  it("a throwing or empty reranker fails open to the cosine ordering", async () => {
+    const files = await vault();
+    const thrown = await ask(files, async () => { throw new Error("model down"); });
+    expect(thrown.scored[0]?.file).toBe(files[0]!.path);
+    const empty = await ask(files, async () => undefined);
+    expect(empty.scored[0]?.file).toBe(files[0]!.path);
+  });
+
+  it("out-of-range indices from the model are discarded, not crashed on", async () => {
+    const files = await vault();
+    const result = await ask(files, async () => [99, -3, 1]);
+    expect(result.scored[0]?.file).toBe(files[1]!.path);
+  });
+
+  it("no rerankFn → unchanged single-topK behavior", async () => {
+    const files = await vault();
+    const result = await ask(files);
+    expect(result.scored[0]?.file).toBe(files[0]!.path);
+    expect(result.scored).toHaveLength(1);
   });
 });

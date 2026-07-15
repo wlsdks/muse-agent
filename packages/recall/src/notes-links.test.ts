@@ -254,3 +254,43 @@ describe("linkedFromResults — backlink direction (opt-in)", () => {
     expect(refs).toEqual(["fwd.md", "back.md"]);
   });
 });
+
+describe("buildNoteLinkGraph — title-mention edges for linkless notes (opt-in)", () => {
+  const notes = [
+    { body: "meeting summary: discussed the muse-roadmap milestones today", id: "clip-2026-07-14.md" },
+    { body: "the roadmap body itself", id: "muse-roadmap.md" },
+    { body: "totally unrelated grocery list", id: "groceries.md" }
+  ];
+
+  it("default graph stays wikilink-only", () => {
+    const graph = buildNoteLinkGraph(notes);
+    expect(graph.outbound.get("clip-2026-07-14.md")).toEqual([]);
+  });
+
+  it("a plain-text mention of another note's title becomes an edge (both directions queryable)", () => {
+    const graph = buildNoteLinkGraph(notes, { includeTitleMentions: true });
+    expect(graph.outbound.get("clip-2026-07-14.md")).toEqual(["muse-roadmap.md"]);
+    expect(linkedFromResults(["clip-2026-07-14.md"], graph, 5)).toEqual(["muse-roadmap.md"]);
+    expect(linkedFromResults(["muse-roadmap.md"], graph, 5, { includeBacklinks: true })).toEqual(["clip-2026-07-14.md"]);
+  });
+
+  it("short titles and hub titles (mentioned by >30% of notes) are skipped", () => {
+    const short = buildNoteLinkGraph([
+      { body: "call abc tomorrow", id: "abc.md" },
+      { body: "abc mentioned here too", id: "other.md" }
+    ], { includeTitleMentions: true });
+    expect(short.outbound.get("other.md")).toEqual([]);
+
+    const hubby = Array.from({ length: 10 }, (_, i) => ({ body: "see project-alpha for details", id: `note-${i}.md` }));
+    const hub = buildNoteLinkGraph([...hubby, { body: "the hub", id: "project-alpha.md" }], { includeTitleMentions: true });
+    expect(hub.outbound.get("note-0.md")).toEqual([]);
+  });
+
+  it("Korean titles work at 3+ chars with NFC bodies", () => {
+    const graph = buildNoteLinkGraph([
+      { body: "오늘 회의에서 로드맵정리 문서를 검토함", id: "clip.md" },
+      { body: "본문", id: `${"로드맵정리".normalize("NFD")}.md` }
+    ], { includeTitleMentions: true });
+    expect(linkedFromResults(["clip.md"], graph, 5)).toEqual([`${"로드맵정리".normalize("NFD")}.md`]);
+  });
+});

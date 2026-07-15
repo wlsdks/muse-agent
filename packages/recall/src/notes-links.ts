@@ -141,17 +141,34 @@ export interface NoteLinkGraph {
   readonly keyToId: ReadonlyMap<string, string>;
 }
 
-export function buildNoteLinkGraph(notes: readonly { readonly id: string; readonly body: string }[]): NoteLinkGraph {
-  const outbound = new Map<string, readonly string[]>();
+export function buildNoteLinkGraph(
+  notes: readonly { readonly id: string; readonly body: string }[],
+  options?: { readonly includeTitleMentions?: boolean }
+): NoteLinkGraph {
+  const outbound = new Map<string, string[]>();
   const backlinks = new Map<string, string[]>();
   const keyToId = new Map<string, string>();
   for (const note of notes) {
     keyToId.set(noteLinkKey(note.id), note.id);
   }
+  const addEdge = (fromId: string, target: string): void => {
+    const links = outbound.get(fromId) ?? [];
+    const key = noteLinkKey(target);
+    if (!links.some((existing) => noteLinkKey(existing) === key)) {
+      links.push(target);
+    }
+    outbound.set(fromId, links);
+    const arr = backlinks.get(key) ?? [];
+    if (!arr.includes(fromId)) {
+      arr.push(fromId);
+    }
+    backlinks.set(key, arr);
+  };
   for (const note of notes) {
-    const links = extractWikiLinks(note.body);
-    outbound.set(note.id, links);
-    for (const target of links) {
+    outbound.set(note.id, [...extractWikiLinks(note.body)]);
+  }
+  for (const note of notes) {
+    for (const target of outbound.get(note.id) ?? []) {
       const key = noteLinkKey(target);
       const arr = backlinks.get(key) ?? [];
       if (!arr.includes(note.id)) {
@@ -160,7 +177,41 @@ export function buildNoteLinkGraph(notes: readonly { readonly id: string; readon
       backlinks.set(key, arr);
     }
   }
+  if (options?.includeTitleMentions) {
+    addTitleMentionEdges(notes, keyToId, addEdge);
+  }
   return { backlinks, keyToId, outbound };
+}
+
+/**
+ * Implicit edges for the notes that carry NO [[wikilinks]] — machine-created
+ * notes (browsing ingestion, mirrors) never link by hand, so without this the
+ * graph covers only hand-written notes (KET-RAG's deterministic bipartite
+ * idea, minus the LLM). A note that MENTIONS another note's title in plain
+ * text gets an edge to it. Guards against noise: short/generic titles are
+ * skipped (min 3 chars for CJK-bearing titles, 5 otherwise) and a title
+ * mentioned by more than 30% of notes is treated as generic, not a link.
+ */
+function addTitleMentionEdges(
+  notes: readonly { readonly id: string; readonly body: string }[],
+  keyToId: ReadonlyMap<string, string>,
+  addEdge: (fromId: string, target: string) => void
+): void {
+  const hubCap = Math.max(2, Math.ceil(notes.length * 0.3));
+  const bodies = notes.map((note) => ({ id: note.id, text: note.body.normalize("NFC").toLowerCase() }));
+  for (const [key, targetId] of keyToId) {
+    const minLength = /[ᄀ-ᇿ㄰-㆏가-힯぀-ヿ一-鿿]/u.test(key) ? 3 : 5;
+    if (key.length < minLength) {
+      continue;
+    }
+    const mentioners = bodies.filter((b) => b.id !== targetId && b.text.includes(key));
+    if (mentioners.length === 0 || mentioners.length > hubCap) {
+      continue;
+    }
+    for (const mentioner of mentioners) {
+      addEdge(mentioner.id, targetId);
+    }
+  }
 }
 
 export interface NoteLinkView {
@@ -249,7 +300,7 @@ export function linkExpandRefs(args: {
   if (cap <= 0 || args.seedRefs.length === 0) {
     return [];
   }
-  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies), cap, { includeBacklinks: true });
+  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies, { includeTitleMentions: true }), cap, { includeBacklinks: true });
 }
 
 export interface NoteGraphAudit {
