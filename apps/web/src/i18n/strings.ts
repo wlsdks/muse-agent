@@ -140,6 +140,13 @@ const en = {
   "activity.title": "Activity",
   "activity.recentRuns": "Recent runs",
   "activity.proactive": "Proactive notices",
+  "activity.filter.label": "Filter by kind",
+  "activity.filter.all": "All",
+  "activity.kind.reminder": "Reminder",
+  "activity.kind.proactive": "Proactive",
+  "activity.kind.followup": "Follow-up",
+  "activity.kind.pattern": "Pattern",
+  "activity.kind.episode": "Episode",
 
   "tools.title": "Tools",
   "tools.subtitle": "The capabilities Muse can call. {n} registered.",
@@ -638,6 +645,13 @@ const ko: Strings = {
 
   "activity.title": "활동",
   "activity.recentRuns": "최근 실행",
+  "activity.filter.label": "종류별 필터",
+  "activity.filter.all": "전체",
+  "activity.kind.reminder": "리마인더",
+  "activity.kind.proactive": "선제 알림",
+  "activity.kind.followup": "팔로업",
+  "activity.kind.pattern": "패턴",
+  "activity.kind.episode": "에피소드",
   "activity.proactive": "선제 알림",
 
   "tools.title": "도구",

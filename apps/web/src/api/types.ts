@@ -198,6 +198,11 @@ interface HistoryEntry {
   readonly model?: string;
   readonly status?: string;
   readonly startedAt?: string;
+  /** `/api/history`'s real unified-feed shape (reminder/proactive/followup/pattern/episode). */
+  readonly id?: string;
+  readonly kind?: string;
+  readonly summary?: string;
+  readonly whenIso?: string;
 }
 export interface HistoryResponse {
   readonly entries?: readonly HistoryEntry[];
