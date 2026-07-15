@@ -2,9 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clampProjectGraphConcurrency, resolveProjectGraphConcurrency, getTscFastBaseArgs, getTscFastArgs } from "./tsc-fast-flags.mjs";
-
-const TS7_PARALLELISM_ENV = "TS7_PARALLELISM";
+import { clampProjectGraphConcurrency, resolveProjectGraphConcurrency, getTscFastBaseArgs, getTscFastArgs, TS7_PARALLELISM_ENV } from "./tsc-fast-flags.mjs";
 
 test("clampProjectGraphConcurrency normalizes invalid and bounded values", () => {
   assert.equal(clampProjectGraphConcurrency("abc"), 1);
@@ -12,6 +10,8 @@ test("clampProjectGraphConcurrency normalizes invalid and bounded values", () =>
   assert.equal(clampProjectGraphConcurrency("0"), 1);
   assert.equal(clampProjectGraphConcurrency("999"), 8);
   assert.equal(clampProjectGraphConcurrency("4"), 4);
+  assert.equal(clampProjectGraphConcurrency("1e3"), 8);
+  assert.equal(clampProjectGraphConcurrency("4.2"), 1);
 });
 
 test("TS7_PARALLELISM env overrides default concurrency", () => {
@@ -49,3 +49,13 @@ test("single-threaded mode forces singleThreaded flag", () => {
   assert.equal(args.includes("--builders"), false);
 });
 
+test("getTscFastArgs rejects unknown mode", () => {
+  assert.throws(
+    () => {
+      getTscFastArgs("invalid");
+    },
+    {
+      name: "RangeError"
+    }
+  );
+});

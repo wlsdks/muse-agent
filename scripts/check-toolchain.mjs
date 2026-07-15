@@ -28,7 +28,7 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { getTscFastArgs } from "./tsc-fast-flags.mjs";
+import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
 
 export function parseMajor(version) {
   const match = /(\d+)\./u.exec(version.trim());
@@ -65,19 +65,19 @@ function main() {
   if (scripts.build !== "pnpm run build:ts7-fast") {
     problems.push("root build script must use `pnpm run build:ts7-fast`");
   }
-  if (scripts["build:ts7-fast"] !== "node scripts/run-tsc-fast.mjs build") {
+  if (scripts["build:ts7-fast"] !== getTscFastCommand("build")) {
     problems.push("build:ts7-fast must call run-tsc-fast with `build` mode");
   }
-  if (scripts["build:ts7-single-thread"] !== "node scripts/run-tsc-fast.mjs build --single-threaded") {
+  if (scripts["build:ts7-single-thread"] !== getTscFastCommand("build", { singleThreaded: true })) {
     problems.push("build:ts7-single-thread must call run-tsc-fast with `build --single-threaded`");
   }
   if (scripts.typecheck !== "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck") {
     problems.push("typecheck must run `typecheck:ts7-fast` and web typecheck");
   }
-  if (scripts["typecheck:fast"] !== "node scripts/run-tsc-fast.mjs typecheck") {
+  if (scripts["typecheck:fast"] !== getTscFastCommand("typecheck")) {
     problems.push("typecheck:fast must call run-tsc-fast with `typecheck` mode");
   }
-  if (scripts["typecheck:ts7-fast"] !== "node scripts/run-tsc-fast.mjs typecheck") {
+  if (scripts["typecheck:ts7-fast"] !== getTscFastCommand("typecheck")) {
     problems.push("typecheck:ts7-fast must call run-tsc-fast with `typecheck` mode");
   }
 
