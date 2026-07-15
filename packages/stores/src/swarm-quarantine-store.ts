@@ -45,9 +45,18 @@ export interface SwarmQuarantineEntry {
 const MAX_QUARANTINE_ENTRIES = 1_000;
 const SHAREABLE_KINDS: ReadonlySet<string> = new Set<A2APayloadKind>(["skill", "strategy", "council-utterance"]);
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") record[key] = nestedValue;
+  }
+  return record;
+}
+
 function isEntry(value: unknown): value is SwarmQuarantineEntry {
-  if (!value || typeof value !== "object") return false;
-  const e = value as Record<string, unknown>;
+  const e = toRecord(value);
+  if (!e) return false;
   return typeof e.id === "string"
     && typeof e.kind === "string" && SHAREABLE_KINDS.has(e.kind)
     && typeof e.content === "string"
@@ -69,10 +78,11 @@ export async function readQuarantine(file: string): Promise<readonly SwarmQuaran
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { quarantine?: unknown }).quarantine)) {
+  const parsedRecord = toRecord(parsed);
+  if (!parsedRecord || !Array.isArray(parsedRecord.quarantine)) {
     return [];
   }
-  return (parsed as { quarantine: unknown[] }).quarantine.flatMap((e): readonly SwarmQuarantineEntry[] =>
+  return (parsedRecord.quarantine as unknown[]).flatMap((e): readonly SwarmQuarantineEntry[] =>
     isEntry(e) ? [e] : []
   );
 }
