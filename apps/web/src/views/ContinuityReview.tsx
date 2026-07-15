@@ -208,6 +208,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                   <Card key={thread.id}>
                     {(() => {
                       const latestReset = data.resetReceipts.find((receipt) => receipt.threadId === thread.id && !receipt.undone);
+                      const hasExternalSource = thread.links.some((source) => source.providerId !== "local");
                       return <>
                     <div style={{ alignItems: "flex-start", display: "flex", gap: 8, justifyContent: "space-between" }}>
                       <div>
@@ -219,7 +220,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                         <Button disabled={reset.isPending} size="sm" variant="ghost" onClick={() => {
                           if (window.confirm(t("continuity.resetConfirm", { title: thread.title }))) reset.mutate(thread.id);
                         }}>{t("continuity.reset")}</Button>
-                        <Button disabled={continueThread.isPending || thread.linkCount === 0} size="sm" variant="secondary" onClick={() => continueThread.mutate(thread.id)}>{t("continuity.openPack")}</Button>
+                        <Button disabled={continueThread.isPending || thread.linkCount === 0 || hasExternalSource} size="sm" variant="secondary" onClick={() => continueThread.mutate(thread.id)}>{t("continuity.openPack")}</Button>
                         {latestReset ? <Button disabled={undoReset.isPending} size="sm" variant="ghost" onClick={() => undoReset.mutate({ resetId: latestReset.id, threadId: thread.id })}>{t("continuity.undoReset")}</Button> : null}
                       </div>
                     </div>
@@ -228,6 +229,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                       {thread.links.map((source) => source.providerId === "local" ? <Button key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} disabled={unlink.isPending} size="sm" variant="ghost" onClick={() => unlink.mutate({ artifactId: source.artifactId, artifactType: source.artifactType as "task" | "note", threadId: thread.id })}>{t("continuity.unlink", { id: `${source.artifactType}:${source.artifactId}` })}</Button> : <Badge key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} tone="neutral">{source.artifactType}:{source.artifactId}</Badge>)}
                     </div>
                     <LinkForm disabled={link.isPending} threadId={thread.id} onLink={(input) => link.mutate({ ...input, threadId: thread.id })} />
+                    {hasExternalSource ? <div className="row-meta" style={{ marginTop: 8 }}>{t("continuity.externalCliOnly")}</div> : null}
                       </>;
                     })()}
                   </Card>
