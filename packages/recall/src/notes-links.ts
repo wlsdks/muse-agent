@@ -11,10 +11,16 @@
 
 import { levenshteinDistance } from "@muse/shared";
 
-/** A note's link key for resolution: basename without extension, lowercased. */
+/**
+ * A note's link key for resolution: basename without extension, NFC-normalized,
+ * lowercased. NFC matters: macOS filesystems hand back NFD-decomposed Korean
+ * filenames while `[[한글]]` targets typed in a body are NFC — without
+ * normalization the two never match and Korean-named notes silently drop out
+ * of the link graph.
+ */
 export function noteLinkKey(id: string): string {
   const base = id.split(/[\\/]/u).pop() ?? id;
-  return base.replace(/\.(md|markdown|txt)$/iu, "").trim().toLowerCase();
+  return base.replace(/\.(md|markdown|txt)$/iu, "").trim().normalize("NFC").toLowerCase();
 }
 
 export interface LinkFix {
@@ -180,7 +186,12 @@ export function noteLinkView(graph: NoteLinkGraph, noteId: string): NoteLinkView
  * matched to graph nodes by link key (basename stem). Unresolved targets
  * are skipped; capped at `limit`.
  */
-export function linkedFromResults(resultRefs: readonly string[], graph: NoteLinkGraph, limit: number): string[] {
+export function linkedFromResults(
+  resultRefs: readonly string[],
+  graph: NoteLinkGraph,
+  limit: number,
+  options?: { readonly includeBacklinks?: boolean }
+): string[] {
   const cap = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 0;
   if (cap === 0) {
     return [];
@@ -188,24 +199,32 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
   const resultKeys = new Set(resultRefs.map((ref) => noteLinkKey(ref)));
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const ref of resultRefs) {
-    const nodeId = graph.keyToId.get(noteLinkKey(ref));
-    if (!nodeId) {
-      continue;
-    }
-    for (const target of graph.outbound.get(nodeId) ?? []) {
-      const resolvedId = graph.keyToId.get(noteLinkKey(target));
-      if (!resolvedId) {
-        continue;
-      }
-      const key = noteLinkKey(resolvedId);
-      if (resultKeys.has(key) || seen.has(key)) {
-        continue;
-      }
+  const pushHitsCap = (id: string): boolean => {
+    const key = noteLinkKey(id);
+    if (!resultKeys.has(key) && !seen.has(key)) {
       seen.add(key);
-      out.push(resolvedId);
-      if (out.length >= cap) {
-        return out;
+      out.push(id);
+    }
+    return out.length >= cap;
+  };
+  for (const ref of resultRefs) {
+    const refKey = noteLinkKey(ref);
+    const nodeId = graph.keyToId.get(refKey);
+    if (nodeId) {
+      for (const target of graph.outbound.get(nodeId) ?? []) {
+        const resolvedId = graph.keyToId.get(noteLinkKey(target));
+        if (resolvedId && pushHitsCap(resolvedId)) {
+          return out;
+        }
+      }
+    }
+    if (options?.includeBacklinks) {
+      // Backlinks are usually the HIGHER-value direction in a Zettelkasten:
+      // answer-bearing notes link TO the topic note the query matched.
+      for (const sourceId of graph.backlinks.get(refKey) ?? []) {
+        if (pushHitsCap(sourceId)) {
+          return out;
+        }
       }
     }
   }
@@ -215,10 +234,11 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
 /**
  * Graph-augmented recall for `muse ask`: build the link graph from the SAME index
  * note bodies the ask ranks (so note ids == the ask's relativized sources, exact
- * match), then return the note ids 1-hop LINKED from the confident `seedRefs`,
- * deduped, excluding the seeds, capped — the answer-bearing note the question
- * links to but whose own text didn't match the query (GraphRAG / HippoRAG). Pure:
- * the caller promotes each ref's best ranked chunk into the grounding evidence.
+ * match), then return the note ids 1-hop from the confident `seedRefs` in BOTH
+ * directions — notes the seed links to AND notes that link to the seed —
+ * deduped, excluding the seeds, capped. The answer-bearing note is often the
+ * one that cites the topic note the query matched (GraphRAG / HippoRAG). Pure:
+ * the caller ranks candidates by their real query cosine and promotes the best.
  */
 export function linkExpandRefs(args: {
   readonly seedRefs: readonly string[];
@@ -229,7 +249,7 @@ export function linkExpandRefs(args: {
   if (cap <= 0 || args.seedRefs.length === 0) {
     return [];
   }
-  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies), cap);
+  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies), cap, { includeBacklinks: true });
 }
 
 export interface NoteGraphAudit {

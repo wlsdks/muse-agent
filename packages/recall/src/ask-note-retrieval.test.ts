@@ -82,3 +82,71 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     expect(result.scored.map((s) => s.file)).toEqual([a.path, b.path]);
   });
 });
+
+describe("retrieveAndRankNotes — confident-gated 1-hop link expansion (the graph-hop seam)", () => {
+  const unit = (x: number): number[] => [x, Math.sqrt(1 - x * x)];
+
+  const linkedVault = async (): Promise<FileEntry[]> => [
+    await noteFile("hub.md", "muse project hub [[low]] [[high]] [[mid]]", [1, 0]),
+    await noteFile("low.md", "unrelated beta detail", unit(0.2)),
+    await noteFile("high.md", "unrelated gamma detail", unit(0.6)),
+    await noteFile("mid.md", "unrelated delta detail", unit(0.4))
+  ];
+
+  const ask = async (indexFiles: FileEntry[]) => retrieveAndRankNotes({
+    embedFn,
+    embedModel: "test-embed",
+    indexFiles,
+    json: true,
+    notesDir: dir,
+    onStderr: () => {},
+    query: "muse project hub",
+    scope: undefined,
+    topK: 1
+  });
+
+  it("promotes linked notes by their REAL query cosine, not the [[link]] document order", async () => {
+    const files = await linkedVault();
+    const result = await ask(files);
+    expect(result.scored.map((s) => s.file)).toEqual([
+      files[0]!.path,       // the confident seed
+      files[2]!.path,       // high.md (cosine 0.6) — promoted first
+      files[3]!.path        // mid.md (cosine 0.4) — promoted second
+    ]);
+    expect(result.scored.map((s) => s.file)).not.toContain(files[1]!.path); // low.md loses the cap on cosine
+  });
+
+  it("promotes a note that BACKLINKS to the confident seed", async () => {
+    const seed = await noteFile("topic.md", "muse project hub", [1, 0]);
+    const citing = await noteFile("citing.md", "details citing [[topic]]", unit(0.5));
+    const result = await ask([seed, citing]);
+    expect(result.scored.map((s) => s.file)).toEqual([seed.path, citing.path]);
+  });
+
+  it("MUSE_RECALL_GRAPH_HOP=false disables expansion entirely (kill-switch parity with the second hop)", async () => {
+    const files = await linkedVault();
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    try {
+      const result = await ask(files);
+      expect(result.scored.map((s) => s.file)).toEqual([files[0]!.path]);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+    }
+  });
+
+  it("does not expand from an ambiguous seed — confident-only gating is intact", async () => {
+    const files = [
+      await noteFile("hub.md", "muse project hub [[high]]", unit(0.3)),
+      await noteFile("high.md", "unrelated gamma detail", unit(0.6))
+    ];
+    // Isolate the graph hop: the second-hop augment legitimately fires on
+    // ambiguous verdicts and would re-add the same note through a different door.
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await ask(files);
+      expect(result.scored.map((s) => s.file)).not.toContain(files[1]!.path);
+    } finally {
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+});

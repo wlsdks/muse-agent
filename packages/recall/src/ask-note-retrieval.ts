@@ -95,22 +95,24 @@ export async function retrieveAndRankNotes(params: {
       scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text })),
       { confidentAt: resolveRecallConfidentAt(process.env, embedModel) }
     );
+    const graphHopEnabled = process.env.MUSE_RECALL_GRAPH_HOP !== "false";
     try {
       const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
-      if (singleHopVerdict === "confident") {
+      if (graphHopEnabled && singleHopVerdict === "confident") {
         const noteBodies = scopedNoteFiles
           .map((f) => ({ body: f.chunks.map((c) => c.text).join("\n"), id: relativizeNoteSource(f.path, notesDir) }));
         const seen = new Set(seedMatches.map((m) => m.source));
-        for (const ref of linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 2 })) {
-          if (seen.has(ref)) continue;
-          const best = allScored
+        // Gather wide (both link directions), then promote by REAL query cosine
+        // — document order of a hub note's links is not a relevance signal.
+        const promoted = linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 8 })
+          .filter((ref) => !seen.has(ref))
+          .map((ref) => allScored
             .filter((s) => relativizeNoteSource(s.file, notesDir) === ref)
-            .sort((a, b) => b.score - a.score)[0];
-          if (best && !scored.includes(best)) {
-            scored = [...scored, best];
-            seen.add(ref);
-          }
-        }
+            .sort((a, b) => b.score - a.score)[0])
+          .filter((best): best is NonNullable<typeof best> => best !== undefined && !scored.includes(best))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 2);
+        scored = [...scored, ...promoted];
       }
     } catch {
       // graph expansion is best-effort — a malformed graph never fails the ask

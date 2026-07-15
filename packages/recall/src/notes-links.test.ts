@@ -205,3 +205,52 @@ describe("linkExpandRefs — graph-augmented recall for muse ask", () => {
     expect(linkExpandRefs({ noteBodies: bodies, seedRefs: ["apollo.md"], cap: 0 })).toEqual([]);
   });
 });
+
+describe("noteLinkKey — NFC normalization (Korean notes on macOS)", () => {
+  it("matches an NFD-decomposed filename (macOS) against an NFC-typed [[link]]", () => {
+    const nfdId = `${"노트".normalize("NFD")}.md`;
+    expect(nfdId).not.toBe("노트.md");
+    expect(noteLinkKey(nfdId)).toBe("노트");
+  });
+
+  it("resolves an NFC [[한글]] target to the NFD-named note in the graph", () => {
+    const nfdId = `${"한글메모".normalize("NFD")}.md`;
+    const graph = buildNoteLinkGraph([
+      { body: "본문", id: nfdId },
+      { body: "관련: [[한글메모]]", id: "seed.md" }
+    ]);
+    expect(linkedFromResults(["seed.md"], graph, 5)).toEqual([nfdId]);
+  });
+});
+
+describe("linkedFromResults — backlink direction (opt-in)", () => {
+  const graph = buildNoteLinkGraph([
+    { body: "topic body, no outbound links", id: "topic.md" },
+    { body: "details citing [[topic]]", id: "detail.md" },
+    { body: "more on [[topic]] here", id: "detail2.md" }
+  ]);
+
+  it("default stays outbound-only — the CLI links view is unchanged", () => {
+    expect(linkedFromResults(["topic.md"], graph, 5)).toEqual([]);
+  });
+
+  it("includeBacklinks surfaces the notes that cite the seed", () => {
+    expect(linkedFromResults(["topic.md"], graph, 5, { includeBacklinks: true })).toEqual(["detail.md", "detail2.md"]);
+  });
+
+  it("cap still binds across both directions", () => {
+    expect(linkedFromResults(["topic.md"], graph, 1, { includeBacklinks: true })).toEqual(["detail.md"]);
+  });
+
+  it("linkExpandRefs walks both directions", () => {
+    const refs = linkExpandRefs({
+      noteBodies: [
+        { body: "seed links [[fwd]]", id: "seed.md" },
+        { body: "forward target", id: "fwd.md" },
+        { body: "cites [[seed]]", id: "back.md" }
+      ],
+      seedRefs: ["seed.md"]
+    });
+    expect(refs).toEqual(["fwd.md", "back.md"]);
+  });
+});
