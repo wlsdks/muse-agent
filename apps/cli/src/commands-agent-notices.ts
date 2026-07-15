@@ -16,6 +16,7 @@
 
 import type { Command } from "commander";
 
+import { readNonEmptyEnv } from "./env.js";
 import type { ProgramIO } from "./program.js";
 import { formatApiErrorResponse, readApiOptions, readSseEvents } from "./program-helpers.js";
 
@@ -34,13 +35,8 @@ interface TailOptions {
   readonly json?: boolean;
 }
 
-function envValue(key: string): string | undefined {
-  const v = process.env[key]?.trim();
-  return v && v.length > 0 ? v : undefined;
-}
-
 function resolveUserId(explicit: string | undefined): string {
-  return explicit ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+  return explicit ?? readNonEmptyEnv(process.env, "MUSE_USER_ID") ?? readNonEmptyEnv(process.env, "USER") ?? "default";
 }
 
 /**

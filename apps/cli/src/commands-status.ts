@@ -38,6 +38,7 @@ import type { Command } from "commander";
 
 import { DEFAULT_DAEMON_INTERVAL_MS } from "./commands-daemon-loop.js";
 import { resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+import { readNonEmptyEnv } from "./env.js";
 import {
   BUILTIN_PERSONAS,
   isBuiltinPersonaId,
@@ -122,8 +123,7 @@ export interface StatusRuntimeOptions {
 }
 
 function envValue(runtime: StatusRuntime, key: string): string | undefined {
-  const v = runtime.env[key]?.trim();
-  return v && v.length > 0 ? v : undefined;
+  return readNonEmptyEnv(runtime.env, key);
 }
 
 function statusPath(env: MuseEnvironment, homeDir: string, envKey: string, filename: string): string {

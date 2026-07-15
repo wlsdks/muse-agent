@@ -24,6 +24,7 @@ import {
 import type { Command } from "commander";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
+import { readNonEmptyEnv } from "./env.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { reportNoModelConfigured } from "./no-model-message.js";
@@ -43,8 +44,7 @@ interface ForgetOptions {
 }
 
 export function envValue(key: string): string | undefined {
-  const v = process.env[key]?.trim();
-  return v && v.length > 0 ? v : undefined;
+  return readNonEmptyEnv(process.env, key);
 }
 
 export function composeKey(user: string | undefined, persona: string | undefined): string {

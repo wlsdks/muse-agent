@@ -29,15 +29,11 @@ import { decryptFileAtRest, encryptFileAtRest, readRecallHits, writeFadedMemoryK
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
+import { readNonEmptyEnv } from "./env.js";
 import { formatMemoryShow } from "./human-formatters.js";
 import { isApiUnreachable, resolvePersona } from "./program-helpers.js";
 import { parseJsonWith } from "./json-parse.js";
 import type { ProgramIO } from "./program.js";
-
-function envValue(key: string): string | undefined {
-  const v = process.env[key]?.trim();
-  return v && v.length > 0 ? v : undefined;
-}
 
 /**
  * Extend the persona precedence to `muse memory`.
@@ -48,7 +44,7 @@ function envValue(key: string): string | undefined {
  * wrote the bare `<user>` record instead.
  */
 export function resolveMemoryUserId(explicit: string | undefined, personaOption?: string): string {
-  const base = explicit ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+  const base = explicit ?? readNonEmptyEnv(process.env, "MUSE_USER_ID") ?? readNonEmptyEnv(process.env, "USER") ?? "default";
   const slot = resolvePersona(personaOption);
   return slot ? `${base}@${slot}` : base;
 }
