@@ -28,6 +28,13 @@ interface ReviewResponse {
     readonly thread: { readonly id: string; readonly kind: Kind; readonly title: string };
   }[];
   readonly evaluation: KindEvaluation & { readonly byKind: Readonly<Record<Kind, KindEvaluation>> };
+  readonly threads: readonly {
+    readonly id: string;
+    readonly kind: Kind;
+    readonly linkCount: number;
+    readonly policy: { readonly detail: string; readonly nextStep: string; readonly suppression: string; readonly version: number };
+    readonly title: string;
+  }[];
 }
 
 function rate(part: number, total: number): string {
@@ -95,6 +102,26 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               <KindSummary kind="life" evaluation={data.evaluation.byKind.life} />
               <KindSummary kind="work" evaluation={data.evaluation.byKind.work} />
             </div>
+
+            <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.threads")}</h2>
+            {data.threads.length === 0 ? (
+              <p className="muted" style={{ marginTop: 8 }}>{t("continuity.threadsEmpty")}</p>
+            ) : (
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", marginTop: 12 }}>
+                {data.threads.map((thread) => (
+                  <Card key={thread.id}>
+                    <div style={{ alignItems: "flex-start", display: "flex", gap: 8, justifyContent: "space-between" }}>
+                      <div>
+                        <div className="row-title">{thread.title}</div>
+                        <div className="row-meta">{kindLabel(thread.kind)} · {t("continuity.links", { n: thread.linkCount })}</div>
+                      </div>
+                      <Badge tone="neutral">v{thread.policy.version}</Badge>
+                    </div>
+                    <div className="row-meta" style={{ marginTop: 10 }}>{thread.policy.detail} · {thread.policy.nextStep} · {thread.policy.suppression}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
 
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.recent")}</h2>
             {data.deliveries.length === 0 ? (

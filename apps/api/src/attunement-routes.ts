@@ -37,7 +37,17 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
             thread: { id: thread.id, kind: thread.kind, title: thread.title }
           };
         }),
-      evaluation: computeContinuityEvaluation(state)
+      evaluation: computeContinuityEvaluation(state),
+      threads: state.threads
+        .slice()
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map((thread) => ({
+          id: thread.id,
+          kind: thread.kind,
+          linkCount: thread.links.length,
+          policy: thread.policy,
+          title: thread.title
+        }))
     };
   });
 
