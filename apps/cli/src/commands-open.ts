@@ -22,6 +22,7 @@ import { join } from "node:path";
 
 import { readFollowups, readObjectives, readProactiveHistory, readReminders, readTasks } from "@muse/stores";
 import type { Command } from "commander";
+import { parseJson } from "@muse/shared";
 
 import { findJobsByIdPrefix } from "./commands-jobs.js";
 import type { ProgramIO } from "./program.js";
@@ -50,7 +51,7 @@ function envOr(key: string, fallbackName: string): string {
 async function safeReadJson(path: string): Promise<unknown | undefined> {
   try {
     const raw = await fs.readFile(path, "utf8");
-    return JSON.parse(raw) as unknown;
+    return parseJson(raw);
   } catch {
     return undefined;
   }
@@ -60,16 +61,16 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   const hits: Hit[] = [];
 
   for (const r of await readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")).catch(() => [])) {
-    if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: toRecord(r) });
+    if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: { ...r } as Record<string, unknown> });
   }
 
   for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
-    if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: toRecord(f) });
+    if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: { ...f } as Record<string, unknown> });
   }
 
   // Objectives (standing delegated-autonomy items — `obj_<uuid>`)
   for (const o of await readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")).catch(() => [])) {
-    if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: toRecord(o) });
+    if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: { ...o } as Record<string, unknown> });
   }
 
   const episodesDoc = await safeReadJson(envOr("MUSE_EPISODES_FILE", "episodes.json")) as { episodes?: readonly Record<string, unknown>[] } | undefined;
@@ -86,11 +87,11 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   }
 
   for (const entry of await readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")).catch(() => [])) {
-    if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: toRecord(entry) });
+    if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: { ...entry } as Record<string, unknown> });
   }
 
   for (const t of await readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")).catch(() => [])) {
-    if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: toRecord(t) });
+    if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: { ...t } as Record<string, unknown> });
   }
 
   // Jobs (background-task records — `muse job run` → ~/.muse/jobs/<id>.jsonl)
@@ -99,10 +100,6 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   }
 
   return hits;
-}
-
-function toRecord<T extends object>(value: T): Record<string, unknown> {
-  return { ...value } as Record<string, unknown>;
 }
 
 export function registerOpenCommand(program: Command, io: ProgramIO): void {
