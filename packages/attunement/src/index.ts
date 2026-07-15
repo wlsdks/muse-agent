@@ -1,4 +1,13 @@
 export { buildContinuityPack } from "./continuity-pack.js";
+export {
+  CONTINUITY_IMPROVEMENT_COHORT_SIZE,
+  CONTINUITY_KILL_CRITERION_FIRST_PACKS,
+  computeContinuityEvaluation,
+  type ContinuityEvaluation,
+  type ContinuityFeedbackCohort,
+  type ContinuityImprovementGate,
+  type ContinuityKindEvaluation
+} from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 export {
   AttunementStoreError,

@@ -8,6 +8,7 @@ import { isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
   buildContinuityPack,
+  computeContinuityEvaluation,
   createPersonalThread,
   inspectThread,
   linkArtifact,
@@ -24,7 +25,9 @@ import {
   type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
-  type PersonalThread
+  type PersonalThread,
+  type PersonalThreadKind,
+  type ContinuityDelivery
 } from "@muse/attunement";
 import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import { readTaskById, readTasks } from "@muse/stores";
@@ -265,8 +268,21 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
 }
 
 const KILL_CRITERION_FIRST_PACKS = 20;
+const IMPROVEMENT_COHORT_SIZE = 5;
 
-export interface ContinuityStats {
+export interface ContinuityFeedbackCohort {
+  readonly rejected: number;
+  readonly used: number;
+}
+
+export interface ContinuityImprovementGate {
+  readonly firstFiveFeedback: ContinuityFeedbackCohort;
+  readonly nextFiveFeedback: ContinuityFeedbackCohort;
+  readonly reason: string;
+  readonly status: "awaiting-feedback" | "improving" | "mixed" | "regressing" | "unchanged";
+}
+
+export interface ContinuityKindStats {
   readonly totalDeliveries: number;
   readonly withOutcome: number;
   readonly outcomes: Record<ContinuityOutcome, number>;
@@ -275,6 +291,21 @@ export interface ContinuityStats {
     readonly used: number;
     readonly rejected: number;
   };
+  /** Per-kind first-five versus next-five feedback comparison; never enables delivery. */
+  readonly improvementGate: ContinuityImprovementGate;
+  /**
+   * This is deliberately a release gate, not an automation switch. Passing
+   * the outcome threshold never enables proactive delivery by itself.
+   */
+  readonly automationGate: {
+    readonly reasons: readonly string[];
+    readonly status: "hold" | "manual-only";
+  };
+}
+
+export interface ContinuityStats extends ContinuityKindStats {
+  /** Never aggregate life/work results into a single apparent success. */
+  readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindStats>>;
 }
 
 /**
@@ -283,26 +314,91 @@ export interface ContinuityStats {
  * usefulness before more automation). Reads only persisted deliveries; empty
  * state yields zeros, not a crash.
  */
-export function computeContinuityStats(state: AttunementState): ContinuityStats {
+function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): ContinuityKindStats {
   const outcomes: Record<ContinuityOutcome, number> = { adjusted: 0, ignored: 0, rejected: 0, used: 0 };
   let withOutcome = 0;
-  for (const delivery of state.deliveries) {
+  for (const delivery of deliveries) {
     if (delivery.outcome) {
       outcomes[delivery.outcome.outcome] += 1;
       withOutcome += 1;
     }
   }
-  const firstDeliveries = [...state.deliveries]
+  const firstDeliveries = [...deliveries]
     .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
     .slice(0, KILL_CRITERION_FIRST_PACKS);
   const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
   const rejected = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
+  const feedbackDeliveries = deliveries
+    .filter((delivery) => delivery.outcome)
+    .sort((left, right) => left.outcome!.recordedAt.localeCompare(right.outcome!.recordedAt));
+  const feedbackCohort = (cohort: readonly ContinuityDelivery[]): ContinuityFeedbackCohort => ({
+    rejected: cohort.filter((delivery) => delivery.outcome?.outcome === "rejected").length,
+    used: cohort.filter((delivery) => delivery.outcome?.outcome === "used").length
+  });
+  const firstFiveFeedback = feedbackCohort(feedbackDeliveries.slice(0, IMPROVEMENT_COHORT_SIZE));
+  const nextFiveFeedback = feedbackCohort(feedbackDeliveries.slice(IMPROVEMENT_COHORT_SIZE, IMPROVEMENT_COHORT_SIZE * 2));
+  const improvementGate: ContinuityImprovementGate = feedbackDeliveries.length < IMPROVEMENT_COHORT_SIZE * 2
+    ? {
+        firstFiveFeedback,
+        nextFiveFeedback,
+        reason: `need ${String(IMPROVEMENT_COHORT_SIZE * 2 - feedbackDeliveries.length)} more explicit feedback entries before comparing the first and next ${String(IMPROVEMENT_COHORT_SIZE)}`,
+        status: "awaiting-feedback"
+      }
+    : nextFiveFeedback.used >= firstFiveFeedback.used && nextFiveFeedback.rejected <= firstFiveFeedback.rejected
+      ? {
+          firstFiveFeedback,
+          nextFiveFeedback,
+          reason: nextFiveFeedback.used === firstFiveFeedback.used && nextFiveFeedback.rejected === firstFiveFeedback.rejected
+            ? "the next five feedback outcomes are unchanged from the first five"
+            : "the next five feedback outcomes improved without a higher rejection count",
+          status: nextFiveFeedback.used === firstFiveFeedback.used && nextFiveFeedback.rejected === firstFiveFeedback.rejected ? "unchanged" : "improving"
+        }
+      : nextFiveFeedback.used <= firstFiveFeedback.used && nextFiveFeedback.rejected >= firstFiveFeedback.rejected
+        ? {
+            firstFiveFeedback,
+            nextFiveFeedback,
+            reason: "the next five feedback outcomes have lower use or higher rejection; fix pack usefulness before automation",
+            status: "regressing"
+          }
+        : {
+            firstFiveFeedback,
+            nextFiveFeedback,
+            reason: "the next five feedback outcomes trade higher use for higher rejection, or the reverse; inspect the packs before automation",
+            status: "mixed"
+          };
+  const reasons: string[] = [];
+  if (firstDeliveries.length < KILL_CRITERION_FIRST_PACKS) {
+    reasons.push(`need ${String(KILL_CRITERION_FIRST_PACKS - firstDeliveries.length)} more eligible deliveries before evaluating automation`);
+  } else {
+    if (used * 100 < 20 * firstDeliveries.length) reasons.push("used rate is below the 20% kill criterion");
+    if (rejected * 100 > 30 * firstDeliveries.length) reasons.push("rejection rate exceeds the 30% kill criterion");
+  }
   return {
-    totalDeliveries: state.deliveries.length,
+    totalDeliveries: deliveries.length,
     withOutcome,
     outcomes,
-    firstPacks: { considered: firstDeliveries.length, rejected, used }
+    firstPacks: { considered: firstDeliveries.length, rejected, used },
+    improvementGate,
+    automationGate: reasons.length > 0
+      ? { reasons, status: "hold" }
+      : {
+          reasons: ["outcome threshold passed; proactive delivery remains disabled pending the separate Slice B consent and timing gate"],
+          status: "manual-only"
+        }
   };
+}
+
+export function computeContinuityStats(state: AttunementState): ContinuityStats {
+  return computeContinuityEvaluation(state);
+}
+
+function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
+  const { firstPacks, improvementGate, outcomes } = stats;
+  return [
+    `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
+    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    `    Feedback cohorts: first ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.firstFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.firstFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; next ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.nextFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.nextFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; trend ${improvementGate.status} — ${improvementGate.reason}.`
+  ];
 }
 
 export function formatContinuityStats(stats: ContinuityStats): string {
@@ -310,8 +406,59 @@ export function formatContinuityStats(stats: ContinuityStats): string {
   const lines = [
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
-    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`
+    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
+    `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    "By thread kind:",
+    ...formatKindStats("life", stats.byKind.life),
+    ...formatKindStats("work", stats.byKind.work)
   ];
+  return `${lines.join("\n")}\n`;
+}
+
+async function formatThreadReview(state: AttunementState, resolveExactArtifact: ExactArtifactResolver): Promise<string> {
+  if (state.threads.length === 0) {
+    return "No personal threads yet. Start one with `muse thread start <title> --kind <life|work>`.\n";
+  }
+
+  const lines = ["Personal Continuity review:"];
+  for (const thread of state.threads) {
+    const pack = await buildContinuityPack(state, thread.id, resolveExactArtifact);
+    const availableEvidence = pack.evidence.filter((entry) => entry.status === "available").length;
+    const latestFeedback = state.deliveries
+      .filter((delivery) => delivery.threadId === thread.id && delivery.outcome)
+      .sort((left, right) => right.outcome!.recordedAt.localeCompare(left.outcome!.recordedAt))[0]?.outcome?.outcome;
+    const evidence = pack.evidence.length === 0
+      ? "evidence: none linked"
+      : `evidence: ${availableEvidence.toString()}/${pack.evidence.length.toString()} available`;
+    const nextStep = pack.policy.nextStep === "hidden"
+      ? "next step: hidden by previous feedback"
+      : pack.nextStep
+        ? `next step: ${pack.nextStep.title} [${pack.nextStep.artifactId}]`
+        : "next step: none set";
+    const readiness = pack.evidence.length === 0
+      ? {
+          action: `link an exact local source: muse thread link ${thread.id} <task|note|resource> <id> --role <context|next-step>`,
+          status: "needs-link"
+        }
+      : availableEvidence === 0
+        ? {
+            action: `inspect and relink an available source: muse thread inspect ${thread.id}`,
+            status: "needs-relink"
+          }
+        : pack.policy.nextStep === "hidden"
+          ? {
+              action: `inspect feedback before changing policy: muse thread inspect ${thread.id}`,
+              status: "blocked-by-feedback"
+            }
+          : {
+              action: `prepare a pack manually: muse thread continue ${thread.id}`,
+              status: "ready"
+            };
+
+    lines.push(`  ${thread.id}  [${thread.kind}]  ${thread.title}  (${readiness.status})`);
+    lines.push(`    ${evidence}; ${nextStep}${latestFeedback ? `; latest feedback: ${latestFeedback}` : ""}`);
+    lines.push(`    manual action: ${readiness.action}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -326,7 +473,7 @@ function formatEvidence(pack: ContinuityPack): string[] {
   });
 }
 
-export function formatPack(pack: ContinuityPack, deliveryId: string): string {
+export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string): string {
   const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack)];
   if (pack.previousOutcome) lines.push(`Previous pack: ${pack.previousOutcome}`);
   if (pack.policy.nextStep === "hidden") {
@@ -349,6 +496,7 @@ export function formatPack(pack: ContinuityPack, deliveryId: string): string {
     );
   }
   lines.push(`Delivery: ${deliveryId}`);
+  if (runId) lines.push(`Run: ${runId}`);
   lines.push(`Record feedback: muse thread outcome ${deliveryId} <used|adjusted|ignored|rejected>`);
   return `${lines.join("\n")}\n`;
 }
@@ -376,12 +524,17 @@ async function runContinue(io: ProgramIO, threadId: string | undefined, resolveE
   const chosenId = await resolveContinueThreadId(threadId);
   const state = await readAttunementState(file);
   const pack = await buildContinuityPack(state, chosenId, resolveExactArtifact);
+  if (!pack.evidence.some((entry) => entry.status === "available")) {
+    throw new AttunementStoreError(
+      `thread '${chosenId}' has no currently available linked evidence; no delivery was recorded. Inspect its links with \`muse thread inspect ${chosenId}\` and relink an available local source.`
+    );
+  }
   const delivery = await openContinuityDelivery(file, {
     evidenceRefs: pack.evidenceRefs,
     expectedPolicyVersion: pack.deliveryPolicyVersion,
     threadId: chosenId
   });
-  io.stdout(formatPack(pack, delivery.id));
+  io.stdout(formatPack(pack, delivery.id, delivery.runId));
 }
 
 async function commandAction(command: Command, io: ProgramIO, label: string, action: () => Promise<void>): Promise<void> {
@@ -491,6 +644,16 @@ Examples:
       await commandAction(command, io, "thread stats", async () => {
         const stats = computeContinuityStats(await readAttunementState(attunementFile()));
         io.stdout(options.json ? `${JSON.stringify(stats, null, 2)}\n` : formatContinuityStats(stats));
+      });
+    });
+
+  thread
+    .command("review")
+    .description("Review explicitly chosen threads and their currently available resume context")
+    .action(async (_options: unknown, command: Command) => {
+      await commandAction(command, io, "thread review", async () => {
+        const state = await readAttunementState(attunementFile());
+        io.stdout(await formatThreadReview(state, resolveExactArtifact));
       });
     });
 

@@ -7,6 +7,7 @@ import {
   ConfigurationError,
   createGateEmbedder,
   parseBoolean,
+  resolveAttunementFile,
   resolveActionLogFile,
   resolveContactsFile,
   resolveIntegrationEnvironment,
@@ -26,6 +27,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 
 import { registerStaticWeb } from "./static-web.js";
 import { registerAdminRoutes } from "./admin-routes.js";
+import { registerAttunementRoutes } from "./attunement-routes.js";
 import { registerMcpRoutes } from "./mcp-routes.js";
 import { registerMultiAgentRoutes, resolveWorkerTimeoutMs } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
@@ -320,6 +322,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       ...(options.tasksProviderRegistry ? { tasksProviderRegistry: options.tasksProviderRegistry } : {})
     });
   }
+  registerAttunementRoutes(server, {
+    attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),
+    authService
+  });
   if (options.notesDir) {
     registerNotesRoutes(server, {
       authService,

@@ -106,6 +106,8 @@ export interface ContinuityDelivery {
   readonly openedAt: string;
   readonly outcome?: ContinuityOutcomeRecord;
   readonly policyVersion: number;
+  /** Stable correlation id for this delivery's local Continuity audit trail. */
+  readonly runId?: string;
   readonly threadId: string;
 }
 

@@ -15,6 +15,7 @@
     "@muse/agent-core": "workspace:*",
     "@muse/agent-specs": "workspace:*",
     "@muse/auth": "workspace:*",
+    "@muse/attunement": "workspace:*",
     "@muse/autoconfigure": "workspace:*",
     "@muse/calendar": "workspace:*",
     "@muse/domain-tools": "workspace:*",
