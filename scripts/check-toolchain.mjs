@@ -28,6 +28,7 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { getTscFastArgs } from "./tsc-fast-flags.mjs";
 
 export function parseMajor(version) {
   const match = /(\d+)\./u.exec(version.trim());
@@ -40,29 +41,6 @@ export const EXPECTED_MODULE_MAJOR = 6;
 export function readRootScripts() {
   const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
   return JSON.parse(raw).scripts ?? {};
-}
-
-export function hasConcurrentProjectGraphFlags(command) {
-  return /--checkers\s+\d+/u.test(command) && /--builders\s+\d+/u.test(command);
-}
-
-export function parseProjectGraphFlags(command) {
-  const checkers = /--checkers\s+(\d+)/u.exec(command)?.[1];
-  const builders = /--builders\s+(\d+)/u.exec(command)?.[1];
-  return {
-    checkers: checkers === undefined ? undefined : Number(checkers),
-    builders: builders === undefined ? undefined : Number(builders)
-  };
-}
-
-function hasMatchingProjectGraphConcurrency(a, b) {
-  const left = parseProjectGraphFlags(a);
-  const right = parseProjectGraphFlags(b);
-  return left.checkers === right.checkers && left.builders === right.builders && left.checkers > 0 && left.builders > 0;
-}
-
-export function hasNoEmitFlag(command) {
-  return /--noEmit\b/u.test(command);
 }
 
 function main() {
@@ -87,20 +65,28 @@ function main() {
   if (scripts.build !== "pnpm run build:ts7-fast") {
     problems.push("root build script must use `pnpm run build:ts7-fast`");
   }
-  if (!hasConcurrentProjectGraphFlags(scripts["build:ts7-fast"] ?? "")) {
-    problems.push("build:ts7-fast must include both --checkers and --builders");
+  if (scripts["build:ts7-fast"] !== "node scripts/run-tsc-fast.mjs build") {
+    problems.push("build:ts7-fast must call run-tsc-fast with `build` mode");
+  }
+  if (scripts["build:ts7-single-thread"] !== "node scripts/run-tsc-fast.mjs build --single-threaded") {
+    problems.push("build:ts7-single-thread must call run-tsc-fast with `build --single-threaded`");
   }
   if (scripts.typecheck !== "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck") {
     problems.push("typecheck must run `typecheck:ts7-fast` and web typecheck");
   }
-  if (!hasConcurrentProjectGraphFlags(scripts["typecheck:ts7-fast"] ?? "")) {
-    problems.push("typecheck:ts7-fast must include both --checkers and --builders");
+  if (scripts["typecheck:ts7-fast"] !== "node scripts/run-tsc-fast.mjs typecheck") {
+    problems.push("typecheck:ts7-fast must call run-tsc-fast with `typecheck` mode");
   }
-  if (!hasNoEmitFlag(scripts["typecheck:ts7-fast"] ?? "")) {
-    problems.push("typecheck:ts7-fast must include --noEmit");
+
+  const buildArgs = getTscFastArgs("build");
+  const typecheckArgs = getTscFastArgs("typecheck");
+  const buildHasNoEmit = buildArgs.includes("--noEmit");
+  const typecheckHasNoEmit = typecheckArgs.includes("--noEmit");
+  if (buildHasNoEmit) {
+    problems.push("run-tsc-fast build mode must keep emit enabled");
   }
-  if (!hasMatchingProjectGraphConcurrency(scripts["build:ts7-fast"] ?? "", scripts["typecheck:ts7-fast"] ?? "")) {
-    problems.push("build:ts7-fast and typecheck:ts7-fast must use identical --checkers/--builders values");
+  if (!typecheckHasNoEmit) {
+    problems.push("run-tsc-fast typecheck mode must include --noEmit");
   }
 
   if (problems.length > 0) {
