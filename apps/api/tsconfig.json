@@ -26,9 +26,6 @@
       "path": "../../packages/auth"
     },
     {
-      "path": "../../packages/attunement"
-    },
-    {
       "path": "../../packages/autoconfigure"
     },
     {
