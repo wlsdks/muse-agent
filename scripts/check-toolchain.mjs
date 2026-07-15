@@ -41,13 +41,24 @@ export const EXPECTED_ROOT_SCRIPTS = {
   check: "pnpm run check:toolchain && pnpm build && pnpm test",
 };
 
-function collectScriptProblems(scripts) {
+function collectRootScriptProblems(scripts) {
   const problems = [];
   for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
     const actualValue = scripts[name];
     if (actualValue !== expectedValue) {
       problems.push(`root script ${name} must be exactly ${JSON.stringify(expectedValue)} (got ${JSON.stringify(actualValue)})`);
     }
+  }
+  return problems;
+}
+
+function collectTscFastModeProblems({ buildArgs, typecheckArgs }) {
+  const problems = [];
+  if (buildArgs.includes("--noEmit")) {
+    problems.push("run-tsc-fast build mode must keep emit enabled");
+  }
+  if (!typecheckArgs.includes("--noEmit")) {
+    problems.push("run-tsc-fast typecheck mode must include --noEmit");
   }
   return problems;
 }
@@ -86,7 +97,7 @@ export function collectToolchainProblems({
 } = {}) {
   return [
     ...collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }),
-    ...collectScriptProblems(rootScripts),
+    ...collectRootScriptProblems(rootScripts),
   ];
 }
 
@@ -119,6 +130,10 @@ export function readRootPackage() {
   return JSON.parse(raw);
 }
 
+export function formatToolchainProblems(problems) {
+  return [...problems].sort();
+}
+
 function main() {
   const require = createRequire(import.meta.url);
   const moduleVersion = require("typescript").version;
@@ -137,21 +152,15 @@ function main() {
     tsDeclaration,
     nativeTsDeclaration,
   });
+  const tscFastModeProblems = collectTscFastModeProblems({
+    buildArgs: getTscFastArgs("build"),
+    typecheckArgs: getTscFastArgs("typecheck"),
+  });
 
-  const buildArgs = getTscFastArgs("build");
-  const typecheckArgs = getTscFastArgs("typecheck");
-  const buildHasNoEmit = buildArgs.includes("--noEmit");
-  const typecheckHasNoEmit = typecheckArgs.includes("--noEmit");
-  if (buildHasNoEmit) {
-    problems.push("run-tsc-fast build mode must keep emit enabled");
-  }
-  if (!typecheckHasNoEmit) {
-    problems.push("run-tsc-fast typecheck mode must include --noEmit");
-  }
-
-  if (problems.length > 0) {
+  const formattedProblems = formatToolchainProblems([...problems, ...tscFastModeProblems]);
+  if (formattedProblems.length > 0) {
     console.error("✗ toolchain split broken:");
-    for (const problem of problems) {
+    for (const problem of formattedProblems) {
       console.error(`  - ${problem}`);
     }
     process.exit(1);

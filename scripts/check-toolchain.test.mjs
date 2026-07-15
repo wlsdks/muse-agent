@@ -11,6 +11,7 @@ import {
   readRootPackage,
   parseMajor,
   collectDependencyProblems,
+  formatToolchainProblems,
   collectToolchainProblems,
   readRootScripts
 } from "./check-toolchain.mjs";
@@ -82,6 +83,33 @@ test("collectToolchainProblems reports missing script entries without false posi
     nativeTsDeclaration: devDependencies["@typescript/native"],
   });
   assert.equal(problems.some((p) => p.includes("root script build")), true);
+});
+
+test("collectToolchainProblems returns empty for current workspace contract", () => {
+  const packageJson = readRootPackage();
+  const devDependencies = packageJson.devDependencies ?? {};
+  const scripts = readRootScripts();
+  const problems = collectToolchainProblems({
+    rootScripts: scripts,
+    binVersion: "7.0.2",
+    moduleVersion: "6.0.2",
+    tsDeclaration: devDependencies.typescript,
+    nativeTsDeclaration: devDependencies["@typescript/native"],
+  });
+  assert.equal(problems.length, 0);
+});
+
+test("formatToolchainProblems keeps stable deterministic order for snapshot-like reporting", () => {
+  const problems = [
+    "root script b issue",
+    "root script a issue",
+    "dependency issue",
+  ];
+  assert.deepEqual(formatToolchainProblems(problems), [
+    "dependency issue",
+    "root script a issue",
+    "root script b issue",
+  ]);
 });
 
 test("ts7-fast scripts use the shared runner contract", () => {
