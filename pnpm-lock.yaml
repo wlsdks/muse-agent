@@ -455,6 +455,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
 
   packages/db:
     dependencies:

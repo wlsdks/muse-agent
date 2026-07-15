@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+
 import {
   calendarEncryptionEnabled,
   decryptCalendarEnvelope,
@@ -83,85 +85,91 @@ export class LocalCalendarProvider implements CalendarProvider {
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
     validateEventInput(input);
 
-    const events = await this.readAll();
-    const created: CalendarEvent = {
-      allDay: input.allDay ?? false,
-      endsAt: input.endsAt,
-      id: this.idFactory(),
-      providerId: this.id,
-      startsAt: input.startsAt,
-      title: input.title.trim(),
-      ...(input.location ? { location: input.location } : {}),
-      ...(input.notes ? { notes: input.notes } : {}),
-      ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {}),
-      ...(input.recurrence ? { recurrence: input.recurrence } : {})
-    };
+    return this.mutateEvents(async () => {
+      const events = await this.readAll();
+      const created: CalendarEvent = {
+        allDay: input.allDay ?? false,
+        endsAt: input.endsAt,
+        id: this.idFactory(),
+        providerId: this.id,
+        startsAt: input.startsAt,
+        title: input.title.trim(),
+        ...(input.location ? { location: input.location } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+        ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {}),
+        ...(input.recurrence ? { recurrence: input.recurrence } : {})
+      };
 
-    await this.writeAll([...events, created]);
-    return created;
+      await this.writeAll([...events, created]);
+      return created;
+    });
   }
 
   async updateEvent(id: string, input: CalendarEventUpdate): Promise<CalendarEvent> {
-    const events = await this.readAll();
-    const index = events.findIndex((event) => event.id === id);
+    return this.mutateEvents(async () => {
+      const events = await this.readAll();
+      const index = events.findIndex((event) => event.id === id);
 
-    if (index < 0) {
-      throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", `Calendar event not found: ${id}`);
-    }
+      if (index < 0) {
+        throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", `Calendar event not found: ${id}`);
+      }
 
-    const existing = events[index]!;
-    const merged: CalendarEvent = {
-      allDay: input.allDay ?? existing.allDay,
-      endsAt: input.endsAt ?? existing.endsAt,
-      id: existing.id,
-      providerId: existing.providerId,
-      startsAt: input.startsAt ?? existing.startsAt,
-      title: (input.title ?? existing.title).trim(),
-      ...(applyOptionalString(existing.location, input.location) !== undefined
-        ? { location: applyOptionalString(existing.location, input.location)! }
-        : {}),
-      ...(applyOptionalString(existing.notes, input.notes) !== undefined
-        ? { notes: applyOptionalString(existing.notes, input.notes)! }
-        : {}),
-      ...(applyOptionalArray(existing.tags, input.tags) !== undefined
-        ? { tags: applyOptionalArray(existing.tags, input.tags)! }
-        : {}),
-      // Preserve recurrence across an edit — a title/time change must not silently
-      // turn a recurring event into a one-off (CalendarEventUpdate can't alter it).
-      ...(existing.recurrence ? { recurrence: existing.recurrence } : {})
-    };
+      const existing = events[index]!;
+      const merged: CalendarEvent = {
+        allDay: input.allDay ?? existing.allDay,
+        endsAt: input.endsAt ?? existing.endsAt,
+        id: existing.id,
+        providerId: existing.providerId,
+        startsAt: input.startsAt ?? existing.startsAt,
+        title: (input.title ?? existing.title).trim(),
+        ...(applyOptionalString(existing.location, input.location) !== undefined
+          ? { location: applyOptionalString(existing.location, input.location)! }
+          : {}),
+        ...(applyOptionalString(existing.notes, input.notes) !== undefined
+          ? { notes: applyOptionalString(existing.notes, input.notes)! }
+          : {}),
+        ...(applyOptionalArray(existing.tags, input.tags) !== undefined
+          ? { tags: applyOptionalArray(existing.tags, input.tags)! }
+          : {}),
+        // Preserve recurrence across an edit — a title/time change must not silently
+        // turn a recurring event into a one-off (CalendarEventUpdate can't alter it).
+        ...(existing.recurrence ? { recurrence: existing.recurrence } : {})
+      };
 
-    if (!(merged.startsAt instanceof Date) || Number.isNaN(merged.startsAt.getTime())) {
-      throw new CalendarValidationError("INVALID_START", "startsAt must be a valid Date");
-    }
+      if (!(merged.startsAt instanceof Date) || Number.isNaN(merged.startsAt.getTime())) {
+        throw new CalendarValidationError("INVALID_START", "startsAt must be a valid Date");
+      }
 
-    if (!(merged.endsAt instanceof Date) || Number.isNaN(merged.endsAt.getTime())) {
-      throw new CalendarValidationError("INVALID_END", "endsAt must be a valid Date");
-    }
+      if (!(merged.endsAt instanceof Date) || Number.isNaN(merged.endsAt.getTime())) {
+        throw new CalendarValidationError("INVALID_END", "endsAt must be a valid Date");
+      }
 
-    if (merged.endsAt.getTime() < merged.startsAt.getTime()) {
-      throw new CalendarValidationError("INVALID_TIME_RANGE", "endsAt must be at or after startsAt");
-    }
+      if (merged.endsAt.getTime() < merged.startsAt.getTime()) {
+        throw new CalendarValidationError("INVALID_TIME_RANGE", "endsAt must be at or after startsAt");
+      }
 
-    if (merged.title.length === 0) {
-      throw new CalendarValidationError("INVALID_TITLE", "title must be a non-empty string");
-    }
+      if (merged.title.length === 0) {
+        throw new CalendarValidationError("INVALID_TITLE", "title must be a non-empty string");
+      }
 
-    const next = [...events];
-    next[index] = merged;
-    await this.writeAll(next);
-    return merged;
+      const next = [...events];
+      next[index] = merged;
+      await this.writeAll(next);
+      return merged;
+    });
   }
 
   async deleteEvent(id: string): Promise<void> {
-    const events = await this.readAll();
-    const next = events.filter((event) => event.id !== id);
+    await this.mutateEvents(async () => {
+      const events = await this.readAll();
+      const next = events.filter((event) => event.id !== id);
 
-    if (next.length === events.length) {
-      throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", `Calendar event not found: ${id}`);
-    }
+      if (next.length === events.length) {
+        throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", `Calendar event not found: ${id}`);
+      }
 
-    await this.writeAll(next);
+      await this.writeAll(next);
+    });
   }
 
   private async readAll(): Promise<readonly CalendarEvent[]> {
@@ -251,16 +259,18 @@ export class LocalCalendarProvider implements CalendarProvider {
       await this.backupPlaintextBeforeEncrypt();
     }
     const content = shouldEncrypt ? `${JSON.stringify(encryptCalendarEnvelope(payload, this.env))}\n` : payload;
-    const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
-
-    await fs.mkdir(dirname(this.file), { recursive: true });
     // 0o600: events carry title / location / notes / attendees that
     // are private user data. The credential-store sibling in this
     // package already uses 0o600 + chmod; default umask would
     // otherwise leave the schedule world-readable on a shared box.
-    await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
-    await fs.rename(tmp, this.file);
+    await atomicWriteFile(this.file, content);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
+  }
+
+  private async mutateEvents<T>(mutator: () => Promise<T>): Promise<T> {
+    return withFileMutationQueue(this.file, async () =>
+      withFileLock(this.file, mutator)
+    );
   }
 
   /**

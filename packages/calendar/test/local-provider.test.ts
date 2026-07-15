@@ -1,6 +1,8 @@
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -99,6 +101,27 @@ describe("LocalCalendarProvider", () => {
     await p.deleteEvent("e0");
     expect(await p.listEvents({ from: d("2026-05-15T00:00:00Z"), to: d("2026-05-16T00:00:00Z") })).toEqual([]);
     await expect(p.deleteEvent("e0")).rejects.toMatchObject({ code: "EVENT_NOT_FOUND" });
+  });
+
+  it("preserves an event an external writer adds while this process waits on the mutation lock", async () => {
+    const file = freshFile();
+    const provider = new LocalCalendarProvider({ file, idFactory: seq() });
+    await provider.createEvent({ endsAt: d("2026-05-15T09:30:00Z"), startsAt: d("2026-05-15T09:00:00Z"), title: "Initial" });
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+
+    const localCreate = provider.createEvent({ endsAt: d("2026-05-15T11:30:00Z"), startsAt: d("2026-05-15T11:00:00Z"), title: "Local" });
+    await sleep(300);
+    await writeFile(file, `${JSON.stringify({
+      events: [
+        { allDay: false, endsAt: "2026-05-15T09:30:00.000Z", id: "e0", startsAt: "2026-05-15T09:00:00.000Z", title: "Initial" },
+        { allDay: false, endsAt: "2026-05-15T10:30:00.000Z", id: "external", startsAt: "2026-05-15T10:00:00.000Z", title: "External" }
+      ]
+    }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localCreate;
+    const events = await provider.listEvents({ from: d("2026-05-15T00:00:00Z"), to: d("2026-05-16T00:00:00Z") });
+    expect(events.map((event) => event.title)).toEqual(["Initial", "External", "Local"]);
   });
 
   it("tolerates a missing / malformed calendar file as an empty calendar", async () => {
