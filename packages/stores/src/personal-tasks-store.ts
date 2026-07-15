@@ -15,7 +15,7 @@ import { atomicWriteFile } from "./atomic-file-store.js";
 
 import { promises as fs } from "node:fs";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { formatDueLocal } from "@muse/mcp-shared";
 import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "@muse/mcp-shared";
@@ -64,13 +64,22 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+  const tasks = readRecordArrayField(parsed, "tasks");
+  if (tasks === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>
+  return tasks.flatMap((entry): readonly PersistedTask[] =>
     isPersistedTask(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 /** Exact local-task lookup. Callers that need a known ID should not fall back

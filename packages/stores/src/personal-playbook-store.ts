@@ -19,6 +19,7 @@ import { withFileMutationQueue } from "./atomic-file-store.js";
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
 import { PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, retainPlaybookEntries } from "./playbook-rewards.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
+import { isRecord } from "@muse/shared";
 
 export {
   clampReward,
@@ -133,13 +134,22 @@ export async function readPlaybook(file: string, env: NodeJS.ProcessEnv = proces
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+  const entries = readRecordArrayField(parsed, "entries");
+  if (entries === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly PlaybookEntry[] =>
+  return entries.flatMap((entry): readonly PlaybookEntry[] =>
     isPlaybookEntry(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {

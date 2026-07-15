@@ -19,7 +19,7 @@
 
 import { promises as fs } from "node:fs";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
@@ -64,11 +64,12 @@ export async function readObjectives(file: string): Promise<readonly StandingObj
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { objectives?: unknown }).objectives)) {
+  const objectives = readRecordArrayField(parsed, "objectives");
+  if (objectives === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { objectives: unknown[] }).objectives.flatMap((entry): readonly StandingObjective[] =>
+  return objectives.flatMap((entry): readonly StandingObjective[] =>
     isStandingObjective(entry) ? [entry] : []
   );
 }
@@ -159,4 +160,12 @@ function isStandingObjective(value: unknown): value is StandingObjective {
     candidate.status === "escalated" ||
     candidate.status === "cancelled"
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }

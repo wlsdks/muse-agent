@@ -27,7 +27,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 
-import { type JsonObject, hasRegisteredSecrets, redactSecrets } from "@muse/shared";
+import { isRecord, type JsonObject, hasRegisteredSecrets, redactSecrets } from "@muse/shared";
 
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -191,13 +191,22 @@ export async function readActionLog(file: string, env: NodeJS.ProcessEnv = proce
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+  const entries = readRecordArrayField(parsed, "entries");
+  if (entries === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly ActionLogEntry[] =>
+  return entries.flatMap((entry): readonly ActionLogEntry[] =>
     isActionLogEntry(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 async function writeActionLog(file: string, entries: readonly ActionLogEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {

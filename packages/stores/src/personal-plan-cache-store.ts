@@ -10,6 +10,8 @@
 
 import { promises as fs } from "node:fs";
 
+import { isRecord } from "@muse/shared";
+
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
@@ -45,13 +47,22 @@ export async function readPlanCache(file: string): Promise<readonly PlanCacheEnt
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+  const entries = readRecordArrayField(parsed, "entries");
+  if (entries === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly PlanCacheEntry[] =>
+  return entries.flatMap((entry): readonly PlanCacheEntry[] =>
     isPlanCacheEntry(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writePlanCache(file: string, entries: readonly PlanCacheEntry[]): Promise<void> {

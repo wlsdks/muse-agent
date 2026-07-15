@@ -16,6 +16,8 @@
 
 import { promises as fs } from "node:fs";
 
+import { isRecord } from "@muse/shared";
+
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
@@ -54,11 +56,12 @@ export async function readSuppressedLessons(file: string): Promise<readonly Supp
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+  const entries = readRecordArrayField(parsed, "entries");
+  if (entries === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly SuppressedLesson[] =>
+  return entries.flatMap((entry): readonly SuppressedLesson[] =>
     isSuppressedLesson(entry) ? [entry] : []
   );
 }
@@ -114,4 +117,12 @@ function isSuppressedLesson(value: unknown): value is SuppressedLesson {
   if (typeof e.createdAt !== "string") return false;
   if (e.blockedCount !== undefined && (typeof e.blockedCount !== "number" || !Number.isFinite(e.blockedCount))) return false;
   return true;
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }

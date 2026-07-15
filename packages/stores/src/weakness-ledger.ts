@@ -135,10 +135,11 @@ export async function readWeaknesses(file: string): Promise<readonly WeaknessEnt
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { weaknesses?: unknown }).weaknesses)) {
+  const parsedRecord = toRecord(parsed);
+  if (!parsedRecord || !Array.isArray(parsedRecord.weaknesses)) {
     return [];
   }
-  return (parsed as { weaknesses: unknown[] }).weaknesses.filter(isWeaknessEntry);
+  return parsedRecord.weaknesses.filter(isWeaknessEntry);
 }
 
 export async function writeWeaknesses(file: string, entries: readonly WeaknessEntry[]): Promise<void> {

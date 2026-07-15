@@ -20,7 +20,7 @@
 import { promises as fs } from "node:fs";
 import { dirname, basename } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -80,13 +80,22 @@ export async function readFollowups(file: string): Promise<readonly PersistedFol
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { followups?: unknown }).followups)) {
+  const followups = readRecordArrayField(parsed, "followups");
+  if (followups === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { followups: unknown[] }).followups.flatMap((entry): readonly PersistedFollowup[] =>
+  return followups.flatMap((entry): readonly PersistedFollowup[] =>
     isPersistedFollowup(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeFollowups(file: string, followups: readonly PersistedFollowup[]): Promise<void> {

@@ -12,7 +12,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -90,13 +90,22 @@ async function readRaw(file: string): Promise<readonly ReminderHistoryEntry[]> {
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+  const entries = readRecordArrayField(parsed, "entries");
+  if (entries === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly ReminderHistoryEntry[] =>
+  return entries.flatMap((entry): readonly ReminderHistoryEntry[] =>
     isHistoryEntry(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 function clampReadLimit(raw: number | undefined): number {

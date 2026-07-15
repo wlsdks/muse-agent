@@ -18,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
+import { isRecord } from "@muse/shared";
 
 export interface RecallHitRecord {
   /** Stable key of the recalled memory — an episode `sessionId`. */
@@ -78,11 +79,8 @@ export async function readRecallHits(file: string): Promise<readonly RecallHitRe
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object") {
-    return [];
-  }
-  const hits = Object.entries(parsed).find(([key]) => key === "hits")?.[1];
-  if (!Array.isArray(hits)) {
+  const hits = readRecordArrayField(parsed, "hits");
+  if (hits === undefined) {
     return [];
   }
   return hits.flatMap((entry): readonly RecallHitRecord[] =>
@@ -188,11 +186,23 @@ export async function readFadedMemoryKeys(file: string): Promise<ReadonlySet<str
   } catch {
     return new Set();
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { keys?: unknown }).keys)) {
+  const keys = readStringArrayField(parsed, "keys");
+  if (keys === undefined) {
     return new Set();
   }
-  const keys = (parsed as { keys: unknown[] }).keys.filter((k): k is string => typeof k === "string" && k.length > 0);
-  return new Set(keys);
+  return new Set(keys.filter((k): k is string => typeof k === "string" && k.length > 0));
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
+}
+
+function readStringArrayField(value: unknown, key: string): unknown[] | undefined {
+  return readRecordArrayField(value, key);
 }
 
 function normalizeRecord(record: RecallHitRecord): RecallHitRecord {

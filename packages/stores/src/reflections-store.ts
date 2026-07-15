@@ -117,10 +117,11 @@ export async function readReflections(file: string, env: NodeJS.ProcessEnv = pro
   } catch {
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { reflections?: unknown }).reflections)) {
+  const record = toRecord(parsed);
+  if (!record || !Array.isArray(record.reflections)) {
     return [];
   }
-  return (parsed as { reflections: unknown[] }).reflections.flatMap((r): readonly StoredReflection[] =>
+  return record.reflections.flatMap((r): readonly StoredReflection[] =>
     isReflection(r) ? [r] : []
   );
 }

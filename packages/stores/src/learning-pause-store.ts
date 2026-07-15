@@ -14,6 +14,8 @@
 
 import { promises as fs } from "node:fs";
 
+import { isRecord } from "@muse/shared";
+
 import { atomicWriteFile } from "./atomic-file-store.js";
 
 export interface LearningPauseState {
@@ -31,8 +33,8 @@ export async function readLearningPauseState(file: string): Promise<LearningPaus
   }
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && (parsed as { paused?: unknown }).paused === true) {
-      const since = (parsed as { since?: unknown }).since;
+    if (isRecord(parsed) && parsed.paused === true) {
+      const since = parsed.since;
       return { paused: true, ...(typeof since === "string" ? { since } : {}) };
     }
   } catch {
