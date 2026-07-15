@@ -21,7 +21,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCommandWithTimeout } from "@muse/shared";
+import { errorMessage, runCommandWithTimeout } from "@muse/shared";
 
 import {
   DEFAULT_MODEL_CALL_TIMEOUT_MS,
@@ -208,7 +208,7 @@ export async function runCodexExecSafe(prompt: string, deps: CodexInvocationDeps
 
     throw cause instanceof ModelProviderError
       ? cause
-      : new ModelProviderError(CODEX_PROVIDER_ID, cause instanceof Error ? cause.message : String(cause), false);
+      : new ModelProviderError(CODEX_PROVIDER_ID, errorMessage(cause), false);
   } finally {
     await rm(workspace.dir, { force: true, recursive: true }).catch(() => undefined);
   }

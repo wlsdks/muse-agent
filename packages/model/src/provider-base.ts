@@ -11,7 +11,7 @@
  * cycle when the base class lived in index.ts.
  */
 
-import { truncateErrorBody } from "@muse/shared";
+import { errorMessage, truncateErrorBody } from "@muse/shared";
 
 import {
   defaultRemoteModelCapabilities,
@@ -68,6 +68,10 @@ export function isRetryableHttpStatus(status: number): boolean {
   return status >= 500 && status <= 599;
 }
 
+function isTimeoutError(cause: unknown): cause is Error & { readonly name: "TimeoutError" } {
+  return cause instanceof Error && cause.name === "TimeoutError";
+}
+
 /**
  * Run a provider fetch and normalize a TRANSPORT-level rejection (no HTTP
  * status — ECONNREFUSED/ECONNRESET/ETIMEDOUT/DNS, surfaced by `fetch` as a raw
@@ -99,14 +103,14 @@ export async function fetchOrThrowAsProviderError(
     }
     // The safety-cap timeout (modelCallSignal) fires as a TimeoutError — a
     // hung socket / wedged server, transient like a connection failure.
-    if (cause instanceof Error && cause.name === "TimeoutError") {
+    if (isTimeoutError(cause)) {
       throw new ModelProviderError(
         providerId,
         `${label} request to ${baseUrl} timed out (MUSE_MODEL_TIMEOUT_MS, default ${DEFAULT_MODEL_CALL_TIMEOUT_MS.toString()}ms) — the server accepted the connection but never answered`,
         true
       );
     }
-    const detail = cause instanceof Error ? cause.message : String(cause);
+    const detail = errorMessage(cause);
     const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/|$)/iu.test(baseUrl);
     const hint = isLoopback
       ? " — is the local model server running at this address?"
@@ -232,7 +236,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       yield {
         error: cause instanceof ModelProviderError
           ? cause
-          : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+          : new ModelProviderError(this.id, errorMessage(cause), true),
         type: "error"
       };
       return;
@@ -265,7 +269,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         yield {
           error: cause instanceof ModelProviderError
             ? cause
-            : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+            : new ModelProviderError(this.id, errorMessage(cause), true),
           type: "error"
         };
       }

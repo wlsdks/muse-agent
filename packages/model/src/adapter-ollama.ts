@@ -15,8 +15,7 @@
  * expects — only the capabilities get rewritten to `localModelCapabilities`.
  */
 
-import { truncateErrorBody } from "@muse/shared";
-import { isRecord, type JsonObject } from "@muse/shared";
+import { errorMessage, isRecord, truncateErrorBody, type JsonObject } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
@@ -258,7 +257,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       yield {
         error: cause instanceof ModelProviderError
           ? cause
-          : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+          : new ModelProviderError(this.id, errorMessage(cause), true),
         type: "error"
       };
       return;
@@ -431,7 +430,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       // failure — Ollama not running, restarting, or evicting a
       // cold-loaded model. Transient like a 5xx, so retryable
       // rather than a hard agent failure.
-      const detail = cause instanceof Error ? cause.message : String(cause);
+      const detail = errorMessage(cause);
       throw new ModelProviderError(
         this.id,
         `Ollama request to ${this.nativeBaseUrl}/api/chat failed: ${detail} — is Ollama running? (\`ollama serve\`)`,
