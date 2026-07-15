@@ -41,6 +41,13 @@ interface PendingRequest {
   readonly decidedAtIso?: string;
   readonly decidedBy?: string;
 }
+const APPROVAL_STATUSES = ["pending", "approved", "denied", "expired"] as const;
+const APPROVAL_STATUS_SET = new Set<string>(APPROVAL_STATUSES);
+type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+function isApprovalStatus(value: string): value is ApprovalStatus {
+  return APPROVAL_STATUS_SET.has(value);
+}
 
 export function approvalsPath(): string {
   return firstNonEmpty(process.env.MUSE_APPROVALS_FILE) ?? join(homedir(), ".muse", "pending-approvals.jsonl");
@@ -73,7 +80,7 @@ function isPendingRequest(value: unknown): value is PendingRequest {
   if (typeof value.toolName !== "string" || value.toolName.length === 0) return false;
   if (typeof value.userKey !== "string" || value.userKey.length === 0) return false;
   if (typeof value.askedAtIso !== "string" || value.askedAtIso.length === 0) return false;
-  if (typeof value.status !== "string" || !["pending", "approved", "denied", "expired"].includes(value.status)) return false;
+  if (typeof value.status !== "string" || !isApprovalStatus(value.status)) return false;
   if (value.decidedAtIso !== undefined && typeof value.decidedAtIso !== "string") return false;
   if (value.decidedBy !== undefined && typeof value.decidedBy !== "string") return false;
   if (value.reason !== undefined && typeof value.reason !== "string") return false;

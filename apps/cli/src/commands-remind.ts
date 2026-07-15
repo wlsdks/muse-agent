@@ -38,11 +38,17 @@ import { waitForShutdownSignal } from "./async-promises.js";
  * typos with the closest-match hint.
  */
 const REMIND_STATUS_VALUES = ["pending", "fired", "all", "due"] as const;
+const REMIND_STATUS_SET = new Set<string>(REMIND_STATUS_VALUES);
 const DRY_RUN_ERRORS: string[] = [];
+type RemindStatus = (typeof REMIND_STATUS_VALUES)[number];
+
+function isRemindStatus(raw: string): raw is RemindStatus {
+  return REMIND_STATUS_SET.has(raw);
+}
 
 function assertReminderStatusInput(raw: string): void {
   const trimmed = raw.trim().toLowerCase();
-  if (REMIND_STATUS_VALUES.includes(trimmed as (typeof REMIND_STATUS_VALUES)[number])) {
+  if (isRemindStatus(trimmed)) {
     return;
   }
   const suggestion = closestCommandName(trimmed, REMIND_STATUS_VALUES);

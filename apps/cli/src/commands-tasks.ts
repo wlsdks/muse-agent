@@ -47,10 +47,16 @@ function environment(): MuseEnvironment {
  * pretending the filter worked.
  */
 const TASK_STATUS_VALUES = ["open", "done", "all"] as const;
+const TASK_STATUS_SET = new Set<string>(TASK_STATUS_VALUES);
+type TaskStatus = (typeof TASK_STATUS_VALUES)[number];
+
+function isTaskStatus(raw: string): raw is TaskStatus {
+  return TASK_STATUS_SET.has(raw);
+}
 
 function assertTaskStatusInput(raw: string): void {
   const trimmed = raw.trim().toLowerCase();
-  if (TASK_STATUS_VALUES.includes(trimmed as (typeof TASK_STATUS_VALUES)[number])) {
+  if (isTaskStatus(trimmed)) {
     return;
   }
   const suggestion = closestCommandName(trimmed, TASK_STATUS_VALUES);
