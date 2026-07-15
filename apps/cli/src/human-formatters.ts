@@ -11,6 +11,7 @@
  */
 
 import { isGoalKey, isVetoKey } from "@muse/recall";
+import { isRecord } from "@muse/shared";
 
 interface HumanTaskRow {
   readonly id: string;
@@ -260,7 +261,10 @@ function normalizeKeyValue(
   if (Array.isArray(source)) {
     return source.map((entry) => ({ key: entry.key, value: entry.value }));
   }
-  const record = source as Record<string, string>;
+  if (!isRecord(source)) {
+    return [];
+  }
+  const record = source;
   return Object.entries(record).map(([key, value]) => ({ key, value: String(value) }));
 }
 

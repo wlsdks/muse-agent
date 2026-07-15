@@ -216,12 +216,13 @@ export function createHttpSnapshot(
   options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions; readonly headers?: Record<string, string> } = {}
 ): () => Promise<string | undefined> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const existingHeaders = isRecord(options.retryOptions?.init?.headers) ? options.retryOptions.init.headers : undefined;
   const retryOptions: RetryOptions = options.headers
     ? {
         ...(options.retryOptions ?? {}),
         init: {
           ...(options.retryOptions?.init ?? {}),
-          headers: { ...(options.retryOptions?.init?.headers as Record<string, string> | undefined), ...options.headers }
+          headers: { ...existingHeaders, ...options.headers }
         }
       }
     : options.retryOptions ?? {};

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { decodeMaybeEncryptedCredentialsJson } from "@muse/shared";
+import { decodeMaybeEncryptedCredentialsJson, isRecord } from "@muse/shared";
 
 /**
  * Read a `~/.muse/{file}.json` credentials file into a
@@ -36,11 +36,24 @@ export function readCredentialsSync(
   // decodeMaybeEncryptedCredentialsJson THROWS on a wrong key — that error
   // must propagate here, never be folded into the "malformed JSON" catch.
   parsed = decodeMaybeEncryptedCredentialsJson(parsed, env);
-  const shape = parsed as { readonly providers?: unknown };
-  if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
+  const shape = isRecord(parsed) ? parsed : {};
+  const providers = isProviderRecord(shape.providers);
+  if (!providers) {
     return {};
   }
-  return { ...(shape.providers as Record<string, Record<string, unknown>>) };
+  return providers;
+}
+
+function isProviderRecord(value: unknown): value is Record<string, Record<string, unknown>> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  for (const nested of Object.values(value)) {
+    if (!isRecord(nested)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

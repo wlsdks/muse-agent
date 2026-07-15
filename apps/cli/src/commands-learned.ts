@@ -331,7 +331,7 @@ export function registerLearnedCommand(program: Command, io: ProgramIO): void {
       const [strategies, authored, skillRewards, reflections, paused, memoryRecord, vetoes, patterns] = await Promise.all([
         queryPlaybook(resolvePlaybookFile(env), userId).catch(() => []),
         new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []),
-        readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>)),
+        readSkillRewards(resolveSkillRewardsFile()).catch((): Record<string, number> => ({})),
         readReflections(resolveReflectionsFile()).catch(() => []),
         isLearningPaused(resolveLearningPauseFile(env)).catch(() => false),
         new FileUserMemoryStore().findByUserId(userId).catch(() => undefined),
