@@ -15,6 +15,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { isRecord } from "@muse/shared";
 
 export interface ClusterMember {
   readonly name: string;
@@ -63,19 +64,24 @@ function isRejectLedger(value: unknown): value is RejectLedger {
   }
 
   for (const rawEntry of Object.values(value)) {
-    if (rawEntry === null || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+    if (!isRejectLedgerEntry(rawEntry)) {
       return false;
     }
-    const entry = rawEntry as { readonly rejectCount: unknown; readonly lastRejectedAt: unknown };
-    if (typeof entry.rejectCount !== "number" || !Number.isFinite(entry.rejectCount)) {
-      return false;
-    }
-    if (typeof entry.lastRejectedAt !== "string") {
+    if (!Number.isFinite(rawEntry.rejectCount) || rawEntry.rejectCount < 0) {
       return false;
     }
   }
 
   return true;
+}
+
+function isRejectLedgerEntry(value: unknown): value is { readonly rejectCount: number; readonly lastRejectedAt: string } {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const entry = value;
+  return typeof entry.rejectCount === "number" && Number.isFinite(entry.rejectCount)
+    && typeof entry.lastRejectedAt === "string";
 }
 
 async function writeLedger(file: string, ledger: RejectLedger): Promise<void> {

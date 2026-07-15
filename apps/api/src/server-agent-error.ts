@@ -4,7 +4,7 @@ import {
   PlanExecutionError,
   PlanValidationFailedError
 } from "@muse/agent-core";
-import { redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText } from "@muse/shared";
 
 export function sendAgentError(
   reply: { status(statusCode: number): { send(payload: unknown): void } },
@@ -92,13 +92,12 @@ export function sendAgentError(
 function isRetryableUpstreamError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
-  while (current && typeof current === "object" && !seen.has(current)) {
+  while (isRecord(current) && !seen.has(current)) {
     seen.add(current);
-    const candidate = current as { name?: unknown; retryable?: unknown; cause?: unknown };
-    if (candidate.name === "ModelProviderError" && candidate.retryable === true) {
+    if (current.name === "ModelProviderError" && current.retryable === true) {
       return true;
     }
-    current = candidate.cause;
+    current = current.cause;
   }
   return false;
 }
