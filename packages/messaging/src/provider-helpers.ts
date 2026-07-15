@@ -8,8 +8,8 @@
  * module only owns the cross-cutting numeric/parsing primitives.
  */
 
+import { parseJson, sleep } from "@muse/shared";
 import { isRetryableMessagingStatus } from "./errors.js";
-import { sleep } from "@muse/shared";
 
 const MAX_INBOUND_LIMIT = 100;
 const DEFAULT_INBOUND_LIMIT = 20;
@@ -84,11 +84,12 @@ export function tryParseJson<T>(body: string): T | undefined {
   if (body.length === 0) {
     return undefined;
   }
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    return undefined;
-  }
+  return parseJsonBody<T>(body);
+}
+
+function parseJsonBody<T>(body: string): T | undefined {
+  const parsed = parseJson(body);
+  return parsed === undefined ? undefined : parsed as T;
 }
 
 export const DEFAULT_PROVIDER_FETCH_TIMEOUT_MS = 30_000;

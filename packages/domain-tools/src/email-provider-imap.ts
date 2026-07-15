@@ -127,20 +127,24 @@ function defaultSmtpClientFactory(config: { readonly host: string; readonly port
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`));
-    }, timeoutMs);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (cause: unknown) => {
-        clearTimeout(timer);
-        reject(cause);
-      }
-    );
+  if (timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = Promise.withResolvers<T>();
+  const timeoutError = new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`);
+
+  timeoutHandle = setTimeout(() => {
+    timeout.reject(timeoutError);
+  }, timeoutMs);
+
+  timeoutHandle.unref?.();
+
+  return Promise.race([promise, timeout.promise]).finally(() => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
   });
 }
 

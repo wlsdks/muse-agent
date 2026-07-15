@@ -32,7 +32,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname } from "node:path";
 
 import { classifyProviderLocality } from "@muse/model";
-import { closestCommandName, isRecord } from "@muse/shared";
+import { closestCommandName, isRecord, parseJson } from "@muse/shared";
 
 import type { MuseEnvironment } from "./index.js";
 import { mergeModelKeysFromFile } from "./personal-providers.js";
@@ -227,10 +227,8 @@ function isNodeErrnoException(value: unknown): value is NodeJS.ErrnoException {
 export async function readMuseCliConfigFile(filePath: string): Promise<MuseCliDefaultModelConfig> {
   try {
     const raw = await readFile(filePath, "utf8");
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw) as unknown;
-    } catch {
+    const parsed = parseJson(raw);
+    if (parsed === undefined) {
       throw new Error(`config file is not valid JSON: ${filePath} — fix or delete it`);
     }
     if (!isRecord(parsed)) {

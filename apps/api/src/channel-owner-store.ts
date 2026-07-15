@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomInt, timingSafeEqual } from "node:crypto";
 
+import { isRecord, parseJson } from "@muse/shared";
+
 /**
  * Per-provider channel pairing: adoption as owner requires a one-time
  * pairing code the owner reads from an authenticated surface (web
@@ -16,6 +18,17 @@ import { randomInt, timingSafeEqual } from "node:crypto";
 interface PersistedShape {
   readonly version: 1;
   readonly owners: Readonly<Record<string, string>>;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") {
+      record[key] = nestedValue;
+    }
+  }
+  return record;
 }
 
 export function resolveChannelOwnersFile(env: { readonly [key: string]: string | undefined }): string {
@@ -87,19 +100,19 @@ async function readAll(file: string): Promise<Readonly<Record<string, string>>> 
   } catch {
     return {};
   }
-  try {
-    const parsed = JSON.parse(text) as { owners?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.owners || typeof parsed.owners !== "object") {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(parsed.owners as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string"
-      )
-    );
-  } catch {
+  const parsed = parseJson(text);
+  if (!isRecord(parsed) || !isRecord(parsed.owners)) {
     return {};
   }
+  const owners = toRecord(parsed.owners);
+  if (!owners) return {};
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(owners)) {
+    if (typeof value === "string") {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 /**
@@ -220,29 +233,26 @@ async function readAllPairingCodes(file: string): Promise<Readonly<Record<string
   } catch {
     return {};
   }
-  try {
-    const parsed = JSON.parse(text) as { codes?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.codes || typeof parsed.codes !== "object") {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(parsed.codes as Record<string, unknown>).filter(
-        (entry): entry is [string, PairingCodeEntry] => isPairingCodeEntry(entry[1])
-      )
-    );
-  } catch {
+  const parsed = parseJson(text);
+  if (!isRecord(parsed) || !isRecord(parsed.codes)) {
     return {};
   }
+  const codes = toRecord(parsed.codes);
+  if (!codes) return {};
+  const output: Record<string, PairingCodeEntry> = {};
+  for (const [key, value] of Object.entries(codes)) {
+    if (isPairingCodeEntry(value)) {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 function isPairingCodeEntry(value: unknown): value is PairingCodeEntry {
-  return (
-    typeof value === "object"
-    && value !== null
-    && typeof (value as { code?: unknown }).code === "string"
-    && typeof (value as { attempts?: unknown }).attempts === "number"
-    && typeof (value as { createdAt?: unknown }).createdAt === "string"
-  );
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.code === "string" && typeof value.attempts === "number" && typeof value.createdAt === "string";
 }
 
 async function writePairingCodes(file: string, codes: Readonly<Record<string, PairingCodeEntry>>): Promise<void> {

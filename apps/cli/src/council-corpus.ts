@@ -18,10 +18,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { cosineSimilarity, type KnowledgeMatch } from "@muse/agent-core";
+import { isRecord, parseBooleanFromEnv } from "@muse/shared";
 
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { parseJsonWith } from "./json-parse.js";
 
 interface NotesIndexShape {
   readonly model?: string;
@@ -29,6 +31,43 @@ interface NotesIndexShape {
     readonly path: string;
     readonly chunks?: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }>;
   }>;
+}
+
+function isNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+function isCouncilChunk(value: unknown): value is { readonly text: string; readonly embedding: readonly number[] } {
+  return isRecord(value) && typeof value.text === "string" && isNumberArray(value.embedding);
+}
+
+function isCouncilFile(value: unknown): value is { readonly path: string; readonly chunks?: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }> } {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    (
+      value.chunks === undefined ||
+      (
+        Array.isArray(value.chunks) &&
+        value.chunks.every(isCouncilChunk)
+      )
+    )
+  );
+}
+
+function isCouncilIndex(value: unknown): value is NotesIndexShape {
+  return (
+    isRecord(value) &&
+    (value.model === undefined || typeof value.model === "string") &&
+    (
+      value.files === undefined ||
+      (Array.isArray(value.files) && value.files.every(isCouncilFile))
+    )
+  );
+}
+
+function parseNotesIndex(raw: unknown): NotesIndexShape | undefined {
+  return isCouncilIndex(raw) ? raw : undefined;
 }
 
 export function defaultEmbedModel(env: Record<string, string | undefined> = process.env): string {
@@ -55,10 +94,13 @@ export async function councilCorpusMatches(
   const env = options.env ?? process.env;
   const embedFn = options.embedFn ?? embed;
   const topK = options.topK ?? 6;
-  let index: NotesIndexShape;
+  let index: NotesIndexShape | undefined;
   try {
-    index = JSON.parse(await readFile(notesIndexFile(env), "utf8")) as NotesIndexShape;
+    index = parseJsonWith(await readFile(notesIndexFile(env), "utf8"), parseNotesIndex);
   } catch {
+    return [];
+  }
+  if (!index) {
     return [];
   }
   const liveFiles = filterLiveNoteIndexFiles(index.files ?? [], existsSync);
@@ -85,5 +127,5 @@ export async function councilCorpusMatches(
 
 /** Whether THIS Muse opted its council voice into grounded self-abstention. */
 export function isCouncilGroundedMode(env: Record<string, string | undefined> = process.env): boolean {
-  return ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL_GROUNDED ?? "").trim().toLowerCase());
+  return parseBooleanFromEnv(env.MUSE_A2A_COUNCIL_GROUNDED, false);
 }

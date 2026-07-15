@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 
 const here = pathDirname(fileURLToPath(import.meta.url));
 
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -37,6 +38,7 @@ import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
 import { waitForShutdownSignal } from "./async-promises.js";
 import { waitForChildProcessClose } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
+import { parseJsonWith } from "./json-parse.js";
 
 /**
  * Accepted values for `muse job list --status`.
@@ -138,15 +140,49 @@ interface JobEvent {
   readonly userKey?: string;
 }
 
+function isJobEvent(value: unknown): value is JobEvent {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (typeof value.type !== "string" || !isJobStatus(value.type)) {
+    return false;
+  }
+  if (typeof value.tsIso !== "string") {
+    return false;
+  }
+  if (value.text !== undefined && typeof value.text !== "string") {
+    return false;
+  }
+  if (value.prompt !== undefined && typeof value.prompt !== "string") {
+    return false;
+  }
+  if (value.model !== undefined && typeof value.model !== "string") {
+    return false;
+  }
+  if (value.userKey !== undefined && typeof value.userKey !== "string") {
+    return false;
+  }
+  return true;
+}
+
+function parseJobEvent(rawLine: string): JobEvent | undefined {
+  return parseJsonWith(rawLine, isJobEvent);
+}
+
+function isJobStatus(value: string): value is JobEvent["type"] {
+  return value === "started" || value === "progress" || value === "result" || value === "error" || value === "done";
+}
+
 async function readJobLines(file: string): Promise<readonly JobEvent[]> {
   try {
     const raw = await readFile(file, "utf8");
     const out: JobEvent[] = [];
     for (const line of raw.split("\n")) {
       if (line.trim().length === 0) continue;
-      try {
-        out.push(JSON.parse(line) as JobEvent);
-      } catch { /* skip */ }
+      const event = parseJobEvent(line);
+      if (event) {
+        out.push(event);
+      }
     }
     return out;
   } catch { return []; }
@@ -199,7 +235,10 @@ export function countRunningJobs(dir: string): number {
       const raw = readFileSync(pathJoin(dir, name), "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
-        try { events.push(JSON.parse(line) as JobEvent); } catch { /* skip */ }
+        const event = parseJobEvent(line);
+        if (event) {
+          events.push(event);
+        }
       }
     } catch { continue; }
     if (jobSummary(events).status === "running") running += 1;

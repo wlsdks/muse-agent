@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
+import { isRecord, parseJson } from "@muse/shared";
 
 export interface FakeMcpAdminServer {
   readonly close: () => Promise<void>;
@@ -177,7 +178,8 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  const parsed = parseJson(Buffer.concat(chunks).toString("utf8"));
+  return isRecord(parsed) ? parsed : {};
 }
 
 export function createMcpFixtureServerCode(): string {

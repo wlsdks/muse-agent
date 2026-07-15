@@ -31,12 +31,14 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { waitForShutdownSignal } from "./async-promises.js";
 import { readRequestBody } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
+import { parseJsonWith } from "./json-parse.js";
 
 interface ServeOptions {
   readonly port: string;
@@ -51,6 +53,29 @@ export interface NotifyBody {
   readonly text?: string;
   readonly body?: string;
   readonly dueAt?: string;
+}
+
+function isNotifyBody(value: unknown): value is NotifyBody {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.title !== undefined && typeof value.title !== "string") {
+    return false;
+  }
+  if (value.text !== undefined && typeof value.text !== "string") {
+    return false;
+  }
+  if (value.body !== undefined && typeof value.body !== "string") {
+    return false;
+  }
+  if (value.dueAt !== undefined && typeof value.dueAt !== "string") {
+    return false;
+  }
+  return true;
+}
+
+function parseNotifyBody(rawBody: string): NotifyBody | undefined {
+  return parseJsonWith(rawBody, isNotifyBody);
 }
 
 /**
@@ -158,13 +183,13 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
           let payload: NotifyBody;
           const contentType = (req.headers["content-type"] ?? "").toString();
           if (contentType.includes("application/json")) {
-            try {
-              payload = JSON.parse(rawBody) as NotifyBody;
-            } catch {
+            const parsed = parseNotifyBody(rawBody);
+            if (!parsed) {
               res.writeHead(400, { "content-type": "text/plain" });
               res.end("Invalid JSON\n");
               return;
             }
+            payload = parsed;
           } else {
             payload = { text: rawBody };
           }

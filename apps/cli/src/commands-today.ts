@@ -19,14 +19,15 @@ import {
   createMuseRuntimeAssembly,
   resolveContactsFile,
   resolveEpisodesFile,
-  resolveTasksFile
+  resolveTasksFile,
+  type MuseEnvironment
 } from "@muse/autoconfigure";
 import { queryContacts, readTasks, readEpisodes } from "@muse/stores";
 import {
   TODAY_BRIEF_SYSTEM_PROMPT as BRIEF_SYSTEM_PROMPT,
   buildTodayBriefUserMessage
 } from "@muse/prompts";
-import { redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -35,6 +36,8 @@ import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import { isApiUnreachable } from "./program-helpers.js";
+import { withBestEffort } from "./async-promises.js";
+import { parseJsonWith } from "./json-parse.js";
 export { formatHeadlines, formatWeatherLine, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks } from "./today-stale-revisit.js";
@@ -84,6 +87,59 @@ import {
   type SpeakerShells
 } from "./voice-playback.js";
 
+interface TodayNotesIndexChunk {
+  readonly text: string;
+  readonly embedding: readonly number[];
+}
+
+interface TodayNotesIndexFile {
+  readonly path: string;
+  readonly chunks: ReadonlyArray<TodayNotesIndexChunk>;
+}
+
+interface TodayNotesIndexShape {
+  readonly model: string;
+  readonly files: ReadonlyArray<TodayNotesIndexFile>;
+}
+
+function isNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+function isTodayNotesChunk(value: unknown): value is TodayNotesIndexChunk {
+  return (
+    isRecord(value) &&
+    typeof value.text === "string" &&
+    isNumberArray(value.embedding)
+  );
+}
+
+function isTodayNotesIndexFile(value: unknown): value is TodayNotesIndexFile {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    Array.isArray(value.chunks) &&
+    value.chunks.every(isTodayNotesChunk)
+  );
+}
+
+function isTodayNotesIndex(value: unknown): value is TodayNotesIndexShape {
+  return (
+    isRecord(value) &&
+    typeof value.model === "string" &&
+    Array.isArray(value.files) &&
+    value.files.every(isTodayNotesIndexFile)
+  );
+}
+
+function parseTodayNotesIndex(raw: unknown): TodayNotesIndexShape | undefined {
+  return isTodayNotesIndex(raw) ? raw : undefined;
+}
+
+function environment(): MuseEnvironment {
+  return process.env;
+}
+
 export interface TodayCommandShells {
   readonly tts?: TextToSpeechProvider;
   readonly speaker?: SpeakerShells;
@@ -105,6 +161,7 @@ export interface TodayCommandHelpers {
    */
   readonly shells?: TodayCommandShells;
 }
+
 
 export function registerTodayCommands(program: Command, io: ProgramIO, helpers: TodayCommandHelpers): void {
   program
@@ -167,13 +224,14 @@ Examples:
           // explicitly on stderr so the user knows what's
           // happening, but never fail the command.
           if (isApiUnreachable(cause)) {
-            // Only warn when the user EXPLICITLY pointed Muse at an API
-            // (--api-url / MUSE_API_URL). The default is local-first with no
-            // daemon, so "API not reachable" on every plain `muse today` reads
-            // as broken to the CLI-only user the product targets — silently use
-            // the on-disk briefing instead.
-            const globals = command.optsWithGlobals() as { readonly apiUrl?: string };
-            if (apiWasExplicitlyConfigured(globals.apiUrl, process.env.MUSE_API_URL)) {
+              // Only warn when the user EXPLICITLY pointed Muse at an API
+              // (--api-url / MUSE_API_URL). The default is local-first with no
+              // daemon, so "API not reachable" on every plain `muse today` reads
+              // as broken to the CLI-only user the product targets — silently use
+              // the on-disk briefing instead.
+            const globals = command.optsWithGlobals<{ readonly apiUrl?: string }>();
+            const configuredApiUrl = typeof globals.apiUrl === "string" && globals.apiUrl.trim().length > 0 ? globals.apiUrl : undefined;
+            if (apiWasExplicitlyConfigured(configuredApiUrl, process.env.MUSE_API_URL)) {
               io.stderr("muse: API not reachable — falling back to local briefing.\n");
             }
             briefing = await composeLocalBriefing(lookaheadHours);
@@ -184,7 +242,8 @@ Examples:
         }
       }
 
-      const weatherLine = await resolveTodayWeatherLine(process.env as Record<string, string | undefined>);
+      const env = environment();
+      const weatherLine = await resolveTodayWeatherLine(env);
       if (weatherLine) {
         briefing = { ...briefing, weather: weatherLine };
       }
@@ -193,7 +252,7 @@ Examples:
       // feeds store and merged here — same pattern as weather — so the
       // brief surfaces the user's ambient world-state on BOTH the local
       // and remote paths (the API daemon doesn't compose feeds).
-      const headlines = await resolveTodayFeedHeadlines(process.env as Record<string, string | undefined>, lookaheadHours);
+      const headlines = await resolveTodayFeedHeadlines(env, lookaheadHours);
       if (headlines && headlines.length > 0) {
         briefing = { ...briefing, headlines };
       }
@@ -204,7 +263,7 @@ Examples:
       // feeds, so it works on both the local and remote briefing paths. Fail-soft.
       if (briefing.events && briefing.events.length > 0) {
         try {
-          const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>));
+          const contacts = await queryContacts(resolveContactsFile(env));
           if (contacts.length > 0) {
             briefing = {
               ...briefing,
@@ -237,7 +296,7 @@ Examples:
         try {
           const { collectDueRevisits } = await import("./commands-notes-rag.js");
           const { resolveNotesDir } = await import("@muse/autoconfigure");
-          const due = await collectDueRevisits(resolveNotesDir(process.env as Record<string, string | undefined>));
+          const due = await collectDueRevisits(resolveNotesDir(env));
           revisitSection = formatRevisitSection(due);
         } catch {
           // unreadable notes dir must not fail the brief
@@ -250,7 +309,7 @@ Examples:
       let staleTasksSection = "";
       if (!options.json) {
         try {
-          const all = await readTasks(resolveTasksFile(process.env as Record<string, string | undefined>));
+          const all = await readTasks(resolveTasksFile(env));
           staleTasksSection = formatStaleTasksSection(selectStaleTasks(all, Date.now()));
         } catch {
           // unreadable tasks file must not fail the brief
@@ -264,7 +323,7 @@ Examples:
       if (!options.json) {
         try {
           const { resolveNotesDir } = await import("@muse/autoconfigure");
-          const mtimes = await collectNoteMtimes(resolveNotesDir(process.env as Record<string, string | undefined>));
+          const mtimes = await collectNoteMtimes(resolveNotesDir(env));
           focusSection = formatNoteFocusSection(selectNoteFocus(mtimes, Date.now()));
         } catch {
           // unreadable notes dir must not fail the brief
@@ -276,7 +335,7 @@ Examples:
       let episodeRevisitLine = "";
       if (!options.json) {
         try {
-          const episodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
+          const episodes = await readEpisodes(resolveEpisodesFile(env));
           episodeRevisitLine = formatEpisodeRevisitLine(selectEpisodeToRevisit(episodes, Date.now()));
         } catch {
           // unreadable episodes file must not fail the brief
@@ -298,7 +357,7 @@ Examples:
           // still gets only the prose.
           const { resolveNotesDir } = await import("@muse/autoconfigure");
           const { LocalDirNotesProvider } = await import("@muse/domain-tools");
-          const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+          const notesDir = resolveNotesDir(env);
           const provider = new LocalDirNotesProvider({ notesDir });
           const title = `Today brief — ${shortDateLabel(briefing.generatedAt)}`;
           // Scrub the LLM brief before it persists — a task/event
@@ -341,10 +400,9 @@ async function findTodayConnections(query: string, embedModel = DEFAULT_EMBED_MO
   if (query.trim().length === 0) {
     return [];
   }
-  interface NotesIdx { readonly model: string; readonly files: ReadonlyArray<{ readonly path: string; readonly chunks: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }> }> }
-  let notesIndex: NotesIdx | undefined;
+  let notesIndex: TodayNotesIndexShape | undefined;
   try {
-    notesIndex = JSON.parse(await fsReadFile(join(homedir(), ".muse", "notes-index.json"), "utf8")) as NotesIdx;
+    notesIndex = parseJsonWith(await fsReadFile(join(homedir(), ".muse", "notes-index.json"), "utf8"), parseTodayNotesIndex);
   } catch {
     notesIndex = undefined;
   }
@@ -359,7 +417,7 @@ async function findTodayConnections(query: string, embedModel = DEFAULT_EMBED_MO
   const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
   let episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
   if (episodeEntries.length > 0) {
-    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((e) => e.id));
+    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(environment()))).map((e) => e.id));
     episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
   }
   const queryVec = await embed(query, embedModel);
@@ -421,7 +479,7 @@ async function renderBrief(
   // The morning brief should speak in the active persona's voice
   // (JARVIS / casual / …), same as `muse chat`. Empty (default
   // persona) → unchanged request.
-  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  const personaPreamble = (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
 
   if (local) {
     const userBody = `Briefing JSON:\n${JSON.stringify(modelBriefing, null, 2)}\n\nRender this as a short conversational morning brief.`;
@@ -438,12 +496,20 @@ async function renderBrief(
   if (personaPreamble.length > 0) {
     body.systemPrompt = personaPreamble;
   }
-  const response = (await helpers.apiRequest(io, command, "/api/chat", body)) as Record<string, unknown>;
-  const content = typeof response.content === "string" ? response.content : "";
+  const response = await helpers.apiRequest(io, command, "/api/chat", body);
+  const responseRecord: Record<string, unknown> = {};
+  if (response && typeof response === "object" && !Array.isArray(response)) {
+    for (const [key, value] of Object.entries(response)) {
+      if (typeof key === "string") {
+        responseRecord[key] = value;
+      }
+    }
+  }
+  const content = typeof responseRecord.content === "string" ? responseRecord.content : "";
   if (!content) {
     throw new Error(
       `today --brief got an empty response from the model${
-        typeof response.errorMessage === "string" ? ` (${response.errorMessage})` : ""
+        typeof responseRecord.errorMessage === "string" ? ` (${responseRecord.errorMessage})` : ""
       }`
     );
   }

@@ -18,9 +18,11 @@ import { join } from "node:path";
 import { decideProactiveRecall, FindingResurfaceSuppressor, resolveRecallConfidentAt, type KnowledgeMatch } from "@muse/agent-core";
 import { relativizeNoteSource } from "@muse/recall";
 import { resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
+import { isRecord } from "@muse/shared";
 
 import { cosineSimilarity, embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { parseJsonWith } from "./json-parse.js";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 
 interface IndexChunk {
@@ -32,6 +34,41 @@ interface IndexChunk {
 interface NotesIndex {
   readonly model?: string;
   readonly files?: readonly { readonly chunks?: readonly IndexChunk[] }[];
+}
+
+function isNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+function isIndexChunk(value: unknown): value is IndexChunk {
+  return (
+    isRecord(value) &&
+    typeof value.file === "string" &&
+    typeof value.text === "string" &&
+    isNumberArray(value.embedding)
+  );
+}
+
+function isNotesFile(value: unknown): value is { readonly file?: string; readonly chunks?: readonly IndexChunk[] } {
+  return (
+    isRecord(value) &&
+    (value.chunks === undefined || (
+      Array.isArray(value.chunks) &&
+      value.chunks.every(isIndexChunk)
+    ))
+  );
+}
+
+function isNotesIndex(value: unknown): value is NotesIndex {
+  return (
+    isRecord(value) &&
+    (value.model === undefined || typeof value.model === "string") &&
+    (value.files === undefined || (Array.isArray(value.files) && value.files.every(isNotesFile)))
+  );
+}
+
+function parseNotesIndex(raw: unknown): NotesIndex | undefined {
+  return isNotesIndex(raw) ? raw : undefined;
 }
 
 /**
@@ -82,10 +119,13 @@ export function createIndexedProactiveInvestigator(
   return async (item) => {
     const query = item.title.trim();
     if (query.length === 0) return undefined;
-    let index: NotesIndex;
+    let index: NotesIndex | undefined;
     try {
-      index = JSON.parse(await readFile(indexFile, "utf8")) as NotesIndex;
+      index = parseJsonWith(await readFile(indexFile, "utf8"), parseNotesIndex);
     } catch {
+      return undefined;
+    }
+    if (!index) {
       return undefined;
     }
     const chunks = (index.files ?? []).flatMap((f) => f.chunks ?? []);

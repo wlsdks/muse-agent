@@ -1,4 +1,4 @@
-import type { JsonValue } from "@muse/shared";
+import { parseBooleanTriStateFromEnv, parseJson, type JsonValue } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 export type RuntimeSettingType = "string" | "number" | "boolean" | "json";
@@ -140,11 +140,12 @@ export class RuntimeSettings {
       return defaultValue;
     }
 
-    try {
-      return JSON.parse(value) as T;
-    } catch {
+    const parsed = parseJsonValue(value);
+    if (parsed === undefined) {
       return defaultValue;
     }
+
+    return parsed as T;
   }
 
   async set(input: RuntimeSettingUpsert): Promise<RuntimeSetting> {
@@ -195,6 +196,11 @@ function compareRuntimeSettings(left: RuntimeSetting, right: RuntimeSetting): nu
   return left.category.localeCompare(right.category) || left.key.localeCompare(right.key);
 }
 
+function parseJsonValue(value: string): JsonValue | undefined {
+  const parsed = parseJson(value);
+  return parsed === undefined ? undefined : parsed as JsonValue;
+}
+
 function parseFiniteNumber(value: string | undefined): number | undefined {
   if (value === undefined || value.trim().length === 0) {
     return undefined;
@@ -215,18 +221,7 @@ function parseFiniteNumber(value: string | undefined): number | undefined {
  * internally by `RuntimeSettings.getBoolean`.
  */
 export function parseBooleanSetting(value: string | undefined): boolean | undefined {
-  return parseBooleanValue(value);
-}
-
-const TRUTHY_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
-const FALSY_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
-
-function parseBooleanValue(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const normalised = value.trim().toLowerCase();
-  if (TRUTHY_VALUES.has(normalised)) return true;
-  if (FALSY_VALUES.has(normalised)) return false;
-  return undefined;
+  return parseBooleanTriStateFromEnv(value);
 }
 
 export { KyselyRuntimeSettingsStore } from "./kysely-store.js";

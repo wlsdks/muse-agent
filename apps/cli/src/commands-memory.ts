@@ -30,6 +30,7 @@ import type { Command } from "commander";
 import { closestCommandName } from "./closest-command.js";
 import { formatMemoryShow } from "./human-formatters.js";
 import { isApiUnreachable, resolvePersona } from "./program-helpers.js";
+import { parseJsonWith } from "./json-parse.js";
 import type { ProgramIO } from "./program.js";
 
 function envValue(key: string): string | undefined {
@@ -499,7 +500,10 @@ Examples:
       if (options.baseline) {
         try {
           const raw = await readFile(options.baseline, "utf8");
-          const parsed = JSON.parse(raw) as MemorySnapshotLike;
+          const parsed = parseJsonWith(raw, parseMemorySnapshot);
+          if (!parsed) {
+            throw new Error("invalid shape");
+          }
           baseline = {
             facts: parsed.facts ?? {},
             preferences: parsed.preferences ?? {}
@@ -731,6 +735,34 @@ export interface MemoryDiff {
 interface MemorySnapshotLike {
   readonly facts?: Readonly<Record<string, string>>;
   readonly preferences?: Readonly<Record<string, string>>;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  for (const [key, val] of Object.entries(value)) {
+    if (typeof key !== "string" || typeof val !== "string") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function parseMemorySnapshot(raw: unknown): MemorySnapshotLike | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  if (raw.facts !== undefined && !isStringRecord(raw.facts)) {
+    return undefined;
+  }
+  if (raw.preferences !== undefined && !isStringRecord(raw.preferences)) {
+    return undefined;
+  }
+  return {
+    facts: raw.facts,
+    preferences: raw.preferences
+  };
 }
 
 /**
