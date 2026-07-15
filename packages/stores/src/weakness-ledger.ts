@@ -65,6 +65,15 @@ export interface WeaknessEntry {
   readonly lastResolved?: string;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") record[key] = nestedValue;
+  }
+  return record;
+}
+
 /**
  * Increment the matching `(axis, topic)` row's count + lastSeen, or insert a new
  * one. Returns a new array (input is not mutated).
@@ -102,10 +111,8 @@ export function upsertWeakness(
 }
 
 function isWeaknessEntry(value: unknown): value is WeaknessEntry {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const entry = value as Record<string, unknown>;
+  const entry = toRecord(value);
+  if (!entry) return false;
   return (
     typeof entry["axis"] === "string" &&
     typeof entry["topic"] === "string" &&

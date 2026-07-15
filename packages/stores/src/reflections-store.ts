@@ -39,6 +39,17 @@ export interface ReflectionRetentionOptions {
   readonly fullSupport?: number;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (typeof key === "string") {
+      record[key] = nestedValue;
+    }
+  }
+  return record;
+}
+
 /**
  * Retention score for cap-overflow eviction — Generative Agents (arXiv:2304.03442):
  * what survives a capped memory store is recency PLUS salience (importance), not
@@ -81,8 +92,8 @@ export function selectRetainedReflections(
 }
 
 function isReflection(value: unknown): value is StoredReflection {
-  if (!value || typeof value !== "object") return false;
-  const r = value as Record<string, unknown>;
+  const r = toRecord(value);
+  if (!r) return false;
   return typeof r.id === "string"
     && typeof r.insight === "string" && r.insight.length > 0
     && Array.isArray(r.sourceIds) && r.sourceIds.every((s) => typeof s === "string")
