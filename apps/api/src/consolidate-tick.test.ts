@@ -16,6 +16,14 @@ const IDLE_MS = 30 * 60_000;
 // Local-time 03:00 so getHours() === 3 regardless of the runner's timezone.
 const NOW = new Date(2026, 4, 1, 3, 0, 0);
 
+const readArchiveOrEmpty = async (dir: string): Promise<string[]> => {
+  try {
+    return await readdir(dir);
+  } catch {
+    return [];
+  }
+};
+
 function baseOptions(overrides: Partial<Parameters<typeof startConsolidateTick>[0]> = {}): Parameters<typeof startConsolidateTick>[0] {
   return {
     authoredSkillsDir: "/tmp/unused",
@@ -335,7 +343,7 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     const store = new AuthoredSkillStore({ dir });
     const live = (await store.listAuthored()).map((s) => s.name).sort();
     expect(live).toEqual(["summarise-doc", "summarise-email"]); // both intact (rollback)
-    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
+    const archived = await readArchiveOrEmpty(join(dir, ".archive"));
     expect(archived).toEqual([]); // nothing archived
     expect(logs.some((m) => m.includes("held-out gate rejected"))).toBe(true);
   });
