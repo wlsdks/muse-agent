@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { atomicWriteFile } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export type DaemonSettings = Readonly<Record<string, boolean>>;
 
@@ -87,21 +87,28 @@ async function writeDaemonSettingsFile(file: string, next: DaemonSettingsFile): 
   await atomicWriteFile(file, `${JSON.stringify(next)}\n`, { mode: 0o600 });
 }
 
+async function updateDaemonSettingsFile(
+  file: string,
+  update: (current: DaemonSettingsFile) => DaemonSettingsFile
+): Promise<void> {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
+    await writeDaemonSettingsFile(file, update(readDaemonSettingsFileSync(file)));
+  }));
+}
+
 export async function writeDaemonSetting(file: string, key: string, enabled: boolean): Promise<void> {
-  const current = readDaemonSettingsFileSync(file);
-  await writeDaemonSettingsFile(file, {
+  await updateDaemonSettingsFile(file, (current) => ({
     ...(current.quietHours !== undefined ? { quietHours: current.quietHours } : {}),
     flags: { ...(current.flags ?? {}), [key]: enabled },
     version: 1
-  });
+  }));
 }
 
 /** `null` clears the persisted setting (falls back to env-only resolution). */
 export async function writeQuietHoursSetting(file: string, setting: PersistedQuietHours | null): Promise<void> {
-  const current = readDaemonSettingsFileSync(file);
-  await writeDaemonSettingsFile(file, {
+  await updateDaemonSettingsFile(file, (current) => ({
     flags: current.flags ?? {},
     quietHours: setting,
     version: 1
-  });
+  }));
 }
