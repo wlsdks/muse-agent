@@ -26,7 +26,9 @@ import { promises as fs } from "node:fs";
 import { readFollowups, type PersistedFollowup, readProactiveHistory, readReminderHistory } from "@muse/stores";
 import { withBestEffort } from "@muse/shared";
 
-export type ActivityKind = "reminder" | "proactive" | "followup" | "pattern" | "episode";
+export const ACTIVITY_KINDS = ["reminder", "proactive", "followup", "pattern", "episode"] as const;
+
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 export interface ActivityEntry {
   readonly kind: ActivityKind;
@@ -50,18 +52,6 @@ export interface ReadActivityFeedOptions {
   readonly sinceMs?: number;
   /** Max entries returned. Caller validates the bound; helper just slices. */
   readonly limit?: number;
-}
-
-interface PatternFiredRow {
-  readonly patternId?: unknown;
-  readonly firedAtMs?: unknown;
-  readonly suggestion?: unknown;
-}
-
-interface EpisodeRow {
-  readonly id?: unknown;
-  readonly endedAt?: unknown;
-  readonly summary?: unknown;
 }
 
 async function safeReadJson(path: string): Promise<unknown | undefined> {
@@ -161,19 +151,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function readRowsFromDocument(document: unknown, key: "fired" | "episodes"): readonly unknown[] {
+function readRowsFromDocument(document: unknown, key: "fired" | "episodes"): readonly Record<string, unknown>[] {
   if (!isRecord(document)) return [];
   const rows = document[key];
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(rows) ? rows.filter(isRecord) : [];
 }
-
-export const ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
-  "reminder",
-  "proactive",
-  "followup",
-  "pattern",
-  "episode"
-]);
 
 export async function readActivityFeed(options: ReadActivityFeedOptions): Promise<readonly ActivityEntry[]> {
   const readers: ReadonlyArray<readonly [ActivityKind, () => Promise<readonly ActivityEntry[]>]> = [
