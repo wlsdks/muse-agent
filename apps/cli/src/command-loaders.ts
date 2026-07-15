@@ -488,6 +488,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "serve",
+    names: ["serve"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-serve.js");
+      m.registerServeCommand(program, io);
+    },
+  },
+  {
     id: "metrics",
     names: ["metrics"],
     load: async (program, io, _deps) => {

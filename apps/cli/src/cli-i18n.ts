@@ -79,7 +79,34 @@ const en = {
   "quiet.notSet": "quiet hours: not set — set with `muse quiet 22:00-07:00`",
   "email.notConfigured": "muse {command}: run `muse setup email` or set MUSE_GMAIL_TOKEN.",
   "listen.notConfigured": "voice providers are not configured. Run `muse setup voice` to check what's missing (or set OPENAI_API_KEY / MUSE_VOICE_OPENAI_API_KEY for the cloud path).",
-  "remote.disable.notInstalled": "tailscale isn't installed — nothing to turn off. Install it from {url} if you meant to set up remote access."
+  "remote.disable.notInstalled": "tailscale isn't installed — nothing to turn off. Install it from {url} if you meant to set up remote access.",
+
+  "serve.notGitCheckout": "muse serve: this install can't self-manage a server — it isn't running from a git checkout of the Muse workspace (no pnpm-workspace.yaml + .git found above the running entry). Nothing was started.\n",
+  "serve.distMissing": "muse serve: apps/api/dist/index.js not found under {repoRoot} — build it first with `muse update` (or `pnpm build` in that checkout). Nothing was started.\n",
+  "serve.starting": "Starting the Muse API server ({host}:{port}, {repoRoot})…\n  ctrl-c to stop\n",
+  "serve.alreadyRunning": "Muse API server is already running at {host}:{port} (pid {pid}, version {version}, since {startedAtIso}) — see `muse serve --status`. Nothing was spawned.\n",
+  "serve.alreadyRunning.devVsDevNote": "  (both this CLI and the running server report version \"dev\" — can't tell dev builds apart; pass --replace to force a restart.)\n",
+  "serve.foundDifferentBuild": "A Muse API server is already answering at {host}:{port}, but {detail}. Re-run with --replace to shut it down and start this build, or leave it running. Nothing was touched.\n",
+  "serve.foundNonMuse": "Something is already listening at {host}:{port} that doesn't look like the Muse API ({detail}). Refusing to touch it — free the port, or bind a different one with --port. Nothing was touched.\n",
+  "serve.replacing": "Replacing the running server at {host}:{port}…\n",
+  "serve.replaceShutdownFailed": "muse serve --replace: could not replace the running server — {detail}. Nothing was started.\n",
+  "serve.exited": "Muse API server exited (code {code}).\n",
+
+  "serve.install.platformUnsupported": "muse serve --install is only wired for macOS (launchd) right now — this platform reports '{platform}'. Run `muse serve` directly in the foreground, or use your OS's own service manager to keep it resident.\n",
+  "serve.install.written": "Muse API LaunchAgent written and loaded (label: {label}, pid {pid})\n  logs: {logDir}\n  remove with: `muse serve --uninstall`\n",
+  "serve.install.failed": "launchctl did not confirm {plistFile} running after load: {detail}\n",
+  "serve.uninstall.notInstalled": "Muse API LaunchAgent was not installed at {plistFile} (nothing to remove)\n",
+  "serve.uninstall.stillRegistered": "launchctl unload did NOT stop {label} — it is still registered. Keeping {plistFile} so you have a route back. Run `launchctl unload -w {plistFile}` manually, then retry `muse serve --uninstall`.\n",
+  "serve.uninstall.removeFailed": "launchctl unload succeeded but failed to remove {plistFile}: {detail}\n",
+  "serve.uninstall.removed": "Muse API LaunchAgent unloaded and removed ({plistFile})\n",
+  "serve.status.running": "muse serve — running at {host}:{port} (pid {pid}, version {version}, since {startedAtIso})\n",
+  "serve.status.notRunning": "muse serve — not running at {host}:{port} (run `muse serve` to start it)\n",
+  "serve.status.autostartInstalled": "autostart:    installed ({plistFile})\n",
+  "serve.status.autostartNotInstalled": "autostart:    not installed (run `muse serve --install`)\n",
+  "serve.status.autostartUnsupportedPlatform": "autostart:    not available on this platform ({platform}) — macOS (launchd) only\n",
+
+  "programHttp.serverNotRunning": "Muse API server is not running (tried {baseUrl}) — this command needs it. Start it with `muse serve` (or `muse serve --install` to keep it always-on), point at a running one with --api-url, or check `--help` for this command in case it has a --local (no-server) mode.",
+  "programHttp.htmlResponseHint": "Muse API {status} at {baseUrl}: response was HTML, not JSON. The URL probably points at a web server instead of the Muse API — start it with `muse serve`, or pass --api-url <correct url>."
 } as const;
 
 export type CliStringKey = keyof typeof en;
@@ -154,7 +181,34 @@ const ko: CliStrings = {
   "quiet.notSet": "무음 시간: 설정 안 됨 — `muse quiet 22:00-07:00`로 설정하세요",
   "email.notConfigured": "muse {command}: `muse setup email`을 실행하거나 MUSE_GMAIL_TOKEN을 설정하세요.",
   "listen.notConfigured": "음성 provider가 설정되지 않았어요. `muse setup voice`로 무엇이 빠졌는지 확인하세요 (또는 클라우드 경로용으로 OPENAI_API_KEY / MUSE_VOICE_OPENAI_API_KEY를 설정하세요).",
-  "remote.disable.notInstalled": "tailscale가 설치되어 있지 않아요 — 끌 것이 없어요. 원격 접속을 설정하려던 거라면 {url}에서 설치하세요."
+  "remote.disable.notInstalled": "tailscale가 설치되어 있지 않아요 — 끌 것이 없어요. 원격 접속을 설정하려던 거라면 {url}에서 설치하세요.",
+
+  "serve.notGitCheckout": "muse serve: 서버를 직접 관리할 수 없어요 — 실행 중인 위치가 Muse 워크스페이스의 git 체크아웃이 아니에요 (실행 파일 상위에서 pnpm-workspace.yaml + .git을 찾지 못했어요). 아무것도 시작하지 않았어요.\n",
+  "serve.distMissing": "muse serve: {repoRoot} 아래에서 apps/api/dist/index.js를 찾지 못했어요 — 먼저 `muse update`(또는 해당 체크아웃에서 `pnpm build`)로 빌드하세요. 아무것도 시작하지 않았어요.\n",
+  "serve.starting": "Muse API 서버를 시작합니다 ({host}:{port}, {repoRoot})…\n  ctrl-c로 중지\n",
+  "serve.alreadyRunning": "Muse API 서버가 이미 {host}:{port}에서 실행 중이에요 (pid {pid}, 버전 {version}, {startedAtIso}부터) — `muse serve --status`로 확인하세요. 아무것도 시작하지 않았어요.\n",
+  "serve.alreadyRunning.devVsDevNote": "  (이 CLI와 실행 중인 서버 모두 버전 \"dev\"로 표시돼요 — dev 빌드끼리는 구분할 수 없어요; 강제로 재시작하려면 --replace를 넘기세요.)\n",
+  "serve.foundDifferentBuild": "Muse API 서버가 이미 {host}:{port}에서 응답하고 있지만, {detail}. 종료하고 이 빌드로 시작하려면 --replace를 붙여 다시 실행하거나, 그대로 두세요. 아무것도 건드리지 않았어요.\n",
+  "serve.foundNonMuse": "{host}:{port}에 이미 Muse API처럼 보이지 않는 다른 무언가가 떠 있어요 ({detail}). 건드리지 않을게요 — 포트를 비우거나 --port로 다른 포트를 지정하세요. 아무것도 건드리지 않았어요.\n",
+  "serve.replacing": "{host}:{port}에서 실행 중인 서버를 교체합니다…\n",
+  "serve.replaceShutdownFailed": "muse serve --replace: 실행 중인 서버를 교체하지 못했어요 — {detail}. 아무것도 시작하지 않았어요.\n",
+  "serve.exited": "Muse API 서버가 종료됐어요 (코드 {code}).\n",
+
+  "serve.install.platformUnsupported": "muse serve --install은 지금은 macOS(launchd)에서만 지원돼요 — 이 플랫폼은 '{platform}'으로 확인됐어요. `muse serve`를 포그라운드로 직접 실행하거나, 이 OS의 서비스 관리자로 상주시키세요.\n",
+  "serve.install.written": "Muse API LaunchAgent가 작성되고 로드됐어요 (label: {label}, pid {pid})\n  로그: {logDir}\n  제거: `muse serve --uninstall`\n",
+  "serve.install.failed": "launchctl이 {plistFile} 로드 후 실행 중임을 확인하지 못했어요: {detail}\n",
+  "serve.uninstall.notInstalled": "{plistFile}에 Muse API LaunchAgent가 설치되어 있지 않아요 (제거할 것이 없어요)\n",
+  "serve.uninstall.stillRegistered": "launchctl unload가 {label}을(를) 멈추지 못했어요 — 아직 등록되어 있어요. 되돌아갈 수 있도록 {plistFile}을(를) 남겨뒀어요. `launchctl unload -w {plistFile}`을 직접 실행한 뒤 `muse serve --uninstall`을 다시 시도하세요.\n",
+  "serve.uninstall.removeFailed": "launchctl unload는 성공했지만 {plistFile} 제거에 실패했어요: {detail}\n",
+  "serve.uninstall.removed": "Muse API LaunchAgent가 언로드되고 제거됐어요 ({plistFile})\n",
+  "serve.status.running": "muse serve — {host}:{port}에서 실행 중 (pid {pid}, 버전 {version}, {startedAtIso}부터)\n",
+  "serve.status.notRunning": "muse serve — {host}:{port}에서 실행 중이 아니에요 (`muse serve`로 시작하세요)\n",
+  "serve.status.autostartInstalled": "autostart:    설치됨 ({plistFile})\n",
+  "serve.status.autostartNotInstalled": "autostart:    설치 안 됨 (`muse serve --install`로 설치하세요)\n",
+  "serve.status.autostartUnsupportedPlatform": "autostart:    이 플랫폼에서는 사용할 수 없어요 ({platform}) — macOS(launchd) 전용\n",
+
+  "programHttp.serverNotRunning": "Muse API 서버가 실행 중이 아니에요 ({baseUrl}로 시도함) — 이 명령에는 서버가 필요해요. `muse serve`로 시작하거나 (`muse serve --install`로 항상 켜두거나), --api-url로 실행 중인 다른 서버를 가리키거나, 이 명령에 --local(서버 없이 실행) 모드가 있는지 `--help`로 확인하세요.",
+  "programHttp.htmlResponseHint": "Muse API {status} at {baseUrl}: 응답이 JSON이 아니라 HTML이었어요. Muse API가 아닌 다른 웹 서버를 가리키고 있는 것 같아요 — `muse serve`로 시작하거나 --api-url <올바른 URL>을 넘기세요."
 };
 
 export const CLI_DICTIONARIES: Record<Lang, CliStrings> = { en, ko };

@@ -336,7 +336,7 @@ describe("apiRequest — connection-refused hint (admin commands with no local m
   it("rejects with an actionable message (not a raw connection-refused stack) and never resolves", async () => {
     const io = freshIo();
     await expect(apiRequest(io, new Command(), "/api/admin/token-cost/daily")).rejects.toThrow(
-      /Muse API server is not running.*pnpm --filter @muse\/api dev/su
+      /Muse API server is not running.*muse serve/su
     );
   });
 

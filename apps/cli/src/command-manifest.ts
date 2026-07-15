@@ -890,6 +890,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "serve",
+    "description": "Run the Muse API server — the one command that starts it (foreground); --install keeps it always-on",
+    "argsTerm": "",
+    "hasOptions": true,
+    "subcommands": []
+  },
+  {
     "name": "settings",
     "description": "Inspect and edit runtime settings",
     "argsTerm": "",

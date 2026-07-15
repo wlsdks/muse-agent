@@ -17,6 +17,7 @@ import type { Command } from "commander";
 import { stripUntrustedTerminalChars, truncateErrorBody , errorMessage, isErrorLike } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
+import { t } from "./cli-i18n.js";
 import { parseJson } from "./json-parse.js";
 import { formatCitations } from "./human-formatters.js";
 import { readApiOptions } from "./program-config.js";
@@ -75,11 +76,7 @@ export function formatApiErrorResponse(
 ): Error {
   const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
   if (contentType.includes("text/html")) {
-    return new Error(
-      `Muse API ${response.status} at ${baseUrl}: response was HTML, not JSON. ` +
-      `The URL probably points at a web server instead of the Muse API — ` +
-      `start the API with \`pnpm --filter @muse/api dev\` or pass --api-url <correct url>.`
-    );
+    return new Error(t("programHttp.htmlResponseHint", { baseUrl, status: response.status }));
   }
   const trimmed = body.trim();
   // The Muse API error envelope is a JSON object carrying a
@@ -135,11 +132,7 @@ function friendlyFetchError(baseUrl: string, error: unknown): Error {
   const cause = isRecord(error) && isRecord(error.cause) ? error.cause : undefined;
   const code = cause && typeof cause.code === "string" ? cause.code : undefined;
   if (code === "ECONNREFUSED") {
-    return new Error(
-      `Muse API server is not running (tried ${baseUrl}) — this command needs it. ` +
-      `Start it with \`pnpm --filter @muse/api dev\`, point at a running one with --api-url, ` +
-      `or check \`--help\` for this command in case it has a --local (no-server) mode.`
-    );
+    return new Error(t("programHttp.serverNotRunning", { baseUrl }));
   }
   if (code === "ENOTFOUND") {
     return new Error(`Muse API host unresolved (${baseUrl}). Check --api-url.`);
