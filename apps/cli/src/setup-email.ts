@@ -24,6 +24,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 
 import { password, select, text, isCancel } from "@clack/prompts";
 import { ImapSmtpEmailProvider, type ImapSmtpEmailProviderConfig } from "@muse/domain-tools";
@@ -31,7 +33,7 @@ import { startOAuthCallbackServer, type OAuthCallbackServer } from "@muse/mcp";
 
 import { writeEmailImapCredential, writeGmailCredential, type GmailOAuthCredential, type ImapEmailCredential } from "./credential-store.js";
 import { generateOAuthState, generatePkcePair } from "./setup-calendar.js";
-import { exchangeGmailAuthorizationCode, GMAIL_AUTH_ENDPOINT, GMAIL_SCOPES, googlePreflightGuidance, preflightGoogleOAuthClient, validateGoogleOAuthClientIdInput, type GmailClientPreflightResult, type GmailTokenExchangeResult } from "./gmail-oauth.js";
+import { exchangeGmailAuthorizationCode, GMAIL_AUTH_ENDPOINT, GMAIL_SCOPES, googlePreflightGuidance, looksLikeClientSecretJsonInput, parseGoogleClientSecretJson, preflightGoogleOAuthClient, validateGoogleOAuthClientIdInput, type GmailClientPreflightResult, type GmailTokenExchangeResult } from "./gmail-oauth.js";
 import type { ProgramIO } from "./program.js";
 
 const WALKTHROUGH = `
@@ -46,8 +48,10 @@ Gmail setup — one-time browser consent, then it refreshes itself forever.
      https://console.cloud.google.com/auth/audience → "Test users" → + Add users.
   4. Create the client: https://console.cloud.google.com/auth/clients
      "+ Create client" → Application type "Desktop app".
-  5. Copy the Client ID (ends in .apps.googleusercontent.com) AND the Client
-     Secret from the creation dialog — paste them below.
+  5. EASIEST: click ⬇ in the creation dialog to download the
+     client_secret_*.json and paste that file's PATH below — Muse reads the
+     ID + secret from it, so nothing can be mis-pasted or mismatched.
+     (Or copy the Client ID and Client Secret by hand as before.)
 
   ⚠️  Google shows the Client Secret ONLY ONCE, in that creation dialog.
       If you closed it, create a new client — the secret is not viewable later.
@@ -172,9 +176,9 @@ export async function runGmailOAuthLoopback(params: {
 
 async function defaultPromptClientId(): Promise<string | undefined> {
   const value = await text({
-    message: "Google OAuth Client ID:",
-    placeholder: "xxx.apps.googleusercontent.com",
-    validate: validateGoogleOAuthClientIdInput
+    message: "Google OAuth Client ID (or path to the downloaded client_secret_*.json):",
+    placeholder: "xxx.apps.googleusercontent.com  ·  ~/Downloads/client_secret_xxx.json",
+    validate: (input) => looksLikeClientSecretJsonInput(input ?? "") ? undefined : validateGoogleOAuthClientIdInput(input)
   });
   return isCancel(value) || typeof value !== "string" || value.trim().length === 0 ? undefined : value.trim();
 }
@@ -228,6 +232,7 @@ export interface SetupEmailDeps extends GmailOAuthLoopbackDeps, AppPasswordSetup
   readonly promptMethod?: () => Promise<EmailSetupMethod | undefined>;
   readonly promptClientId?: () => Promise<string | undefined>;
   readonly promptClientSecret?: () => Promise<string | undefined>;
+  readonly readFileImpl?: (path: string) => Promise<string>;
   readonly verifyProfile?: (accessToken: string, fetchImpl: typeof fetch) => Promise<string | undefined>;
 }
 
@@ -366,15 +371,41 @@ export async function runAppPasswordEmailSetup(io: SetupEmailIO, deps: Partial<A
 async function runOAuthEmailSetup(io: SetupEmailIO, deps: Partial<SetupEmailDeps>): Promise<SetupEmailResult> {
   io.stdout(WALKTHROUGH);
 
-  const clientId = await (deps.promptClientId ?? defaultPromptClientId)();
-  if (!clientId) {
+  const clientIdInput = await (deps.promptClientId ?? defaultPromptClientId)();
+  if (!clientIdInput) {
     io.stdout("Setup cancelled.\n");
     return { ok: false };
   }
-  const clientSecret = await (deps.promptClientSecret ?? defaultPromptClientSecret)();
-  if (!clientSecret) {
-    io.stdout("Setup cancelled.\n");
-    return { ok: false };
+
+  let clientId = clientIdInput;
+  let clientSecret: string;
+  const jsonKind = looksLikeClientSecretJsonInput(clientIdInput);
+  if (jsonKind) {
+    let content = clientIdInput;
+    if (jsonKind === "path") {
+      const expanded = clientIdInput.trim().replace(/^~(?=[\\/])/u, homedir());
+      try {
+        content = await (deps.readFileImpl ?? ((p: string) => readFile(p, "utf8")))(expanded);
+      } catch {
+        io.stderr(`muse setup email: could not read ${expanded}\n`);
+        return { ok: false };
+      }
+    }
+    const parsed = parseGoogleClientSecretJson(content);
+    if (!parsed.ok) {
+      io.stderr(`muse setup email: ${parsed.error}\n`);
+      return { ok: false };
+    }
+    clientId = parsed.credentials.clientId;
+    clientSecret = parsed.credentials.clientSecret;
+    io.stdout("✓ Desktop-app client credentials read from the JSON\n");
+  } else {
+    const promptedSecret = await (deps.promptClientSecret ?? defaultPromptClientSecret)();
+    if (!promptedSecret) {
+      io.stdout("Setup cancelled.\n");
+      return { ok: false };
+    }
+    clientSecret = promptedSecret;
   }
 
   const fetchImpl = deps.fetchImpl ?? io.fetch ?? globalThis.fetch;

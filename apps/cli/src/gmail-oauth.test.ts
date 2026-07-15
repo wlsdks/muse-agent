@@ -349,3 +349,41 @@ describe("preflightGoogleOAuthClient — scope parameter", () => {
     expect(probedUrl).toContain(encodeURIComponent("https://www.googleapis.com/auth/calendar"));
   });
 });
+
+describe("parseGoogleClientSecretJson — the downloaded client_secret_*.json replaces hand-pasting", () => {
+  it("accepts a Desktop-app JSON (\"installed\" section)", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    const result = parseGoogleClientSecretJson(JSON.stringify({
+      installed: { client_id: "x.apps.googleusercontent.com", client_secret: "GOCSPX-abc", redirect_uris: ["http://localhost"] }
+    }));
+    expect(result).toEqual({ credentials: { clientId: "x.apps.googleusercontent.com", clientSecret: "GOCSPX-abc" }, ok: true });
+  });
+
+  it("names the wrong-client-type mistake: a \"web\" JSON is rejected with the Desktop-app fix", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    const result = parseGoogleClientSecretJson(JSON.stringify({ web: { client_id: "x.apps.googleusercontent.com", client_secret: "s" } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Desktop app");
+  });
+
+  it("rejects non-JSON and JSON without an installed section", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    expect(parseGoogleClientSecretJson("not json").ok).toBe(false);
+    expect(parseGoogleClientSecretJson("{}").ok).toBe(false);
+  });
+
+  it("rejects a malformed client_id or empty secret inside the JSON", async () => {
+    const { parseGoogleClientSecretJson } = await import("./gmail-oauth.js");
+    expect(parseGoogleClientSecretJson(JSON.stringify({ installed: { client_id: "truncated", client_secret: "s" } })).ok).toBe(false);
+    expect(parseGoogleClientSecretJson(JSON.stringify({ installed: { client_id: "x.apps.googleusercontent.com", client_secret: "" } })).ok).toBe(false);
+  });
+});
+
+describe("looksLikeClientSecretJsonInput — routing wizard input", () => {
+  it("classifies pasted JSON, a .json path, and a bare client ID", async () => {
+    const { looksLikeClientSecretJsonInput } = await import("./gmail-oauth.js");
+    expect(looksLikeClientSecretJsonInput('{"installed":{}}')).toBe("content");
+    expect(looksLikeClientSecretJsonInput("~/Downloads/client_secret_x.json")).toBe("path");
+    expect(looksLikeClientSecretJsonInput("x.apps.googleusercontent.com")).toBeUndefined();
+  });
+});

@@ -409,3 +409,82 @@ describe("runGmailOAuthLoopback — client preflight", () => {
     expect(printed.join("")).toContain("console.cloud.google.com/auth/clients");
   });
 });
+
+describe("runEmailSetup — client_secret_*.json input (no hand-pasting)", () => {
+  let workdir: string;
+  const oauth = { promptMethod: async () => "oauth" as const };
+
+  beforeEach(async () => {
+    workdir = await mkdtemp(path.join(tmpdir(), "muse-setup-email-json-"));
+  });
+  afterEach(async () => {
+    await rm(workdir, { force: true, recursive: true });
+  });
+
+  const installedJson = JSON.stringify({
+    installed: { client_id: "json-cid.apps.googleusercontent.com", client_secret: "GOCSPX-json-secret" }
+  });
+
+  it("a .json path resolves ID + secret from the file; the secret prompt is never shown", async () => {
+    const { io } = captureIo({ configDir: workdir });
+    const server = fakeCallbackServer({ code: "auth-code-1" });
+    let secretPrompted = false;
+    const result = await runEmailSetup(io, {
+      ...oauth,
+      exchangeCode: async (args) => {
+        expect(args.clientId).toBe("json-cid.apps.googleusercontent.com");
+        expect(args.clientSecret).toBe("GOCSPX-json-secret");
+        return { accessToken: "at-1", expiresAt: Date.now() + 3600_000, refreshToken: "rt-1" };
+      },
+      promptClientId: async () => "~/Downloads/client_secret_x.json",
+      promptClientSecret: async () => { secretPrompted = true; return "should-not-be-used"; },
+      readFileImpl: async (path) => {
+        expect(path.endsWith("/Downloads/client_secret_x.json")).toBe(true);
+        expect(path.startsWith("~")).toBe(false);
+        return installedJson;
+      },
+      startCallbackServer: server.start
+    });
+    expect(result.ok).toBe(true);
+    expect(secretPrompted).toBe(false);
+    const stored = await readGmailCredential(io);
+    expect(stored?.clientId).toBe("json-cid.apps.googleusercontent.com");
+    expect(stored?.clientSecret).toBe("GOCSPX-json-secret");
+  });
+
+  it("pasted JSON content works without any file read", async () => {
+    const { io } = captureIo({ configDir: workdir });
+    const server = fakeCallbackServer({ code: "auth-code-1" });
+    const result = await runEmailSetup(io, {
+      ...oauth,
+      exchangeCode: async () => ({ accessToken: "at-1", expiresAt: Date.now() + 3600_000, refreshToken: "rt-1" }),
+      promptClientId: async () => installedJson,
+      startCallbackServer: server.start
+    });
+    expect(result.ok).toBe(true);
+    expect((await readGmailCredential(io))?.clientId).toBe("json-cid.apps.googleusercontent.com");
+  });
+
+  it("a Web-application JSON aborts with the Desktop-app remedy and stores NOTHING", async () => {
+    const { io, lines } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, {
+      ...oauth,
+      promptClientId: async () => JSON.stringify({ web: { client_id: "x.apps.googleusercontent.com", client_secret: "s" } })
+    });
+    expect(result.ok).toBe(false);
+    expect(lines.some((line) => line.includes("Desktop app"))).toBe(true);
+    expect(await readGmailCredential(io)).toBeUndefined();
+  });
+
+  it("an unreadable path aborts cleanly with the path in the message", async () => {
+    const { io, lines } = captureIo({ configDir: workdir });
+    const result = await runEmailSetup(io, {
+      ...oauth,
+      promptClientId: async () => "/nope/missing.json",
+      readFileImpl: async () => { throw new Error("ENOENT"); }
+    });
+    expect(result.ok).toBe(false);
+    expect(lines.some((line) => line.includes("/nope/missing.json"))).toBe(true);
+    expect(await readGmailCredential(io)).toBeUndefined();
+  });
+});

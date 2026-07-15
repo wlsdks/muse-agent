@@ -77,6 +77,57 @@ export function validateGoogleOAuthClientIdInput(input: string | undefined): str
   return undefined;
 }
 
+export interface GoogleOAuthClientCredentials {
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
+
+export type GoogleClientSecretParse =
+  | { readonly ok: true; readonly credentials: GoogleOAuthClientCredentials }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Parses the `client_secret_*.json` Google offers for download when a client
+ * is created. Accepting the file kills the two dominant invalid_client causes
+ * at once: a hand-paste that mangles the ID/secret, and pairing a client ID
+ * with the secret of a DIFFERENT client. A "web" section means the user
+ * created the wrong client type — Muse's loopback flow needs "Desktop app".
+ */
+export function parseGoogleClientSecretJson(content: string): GoogleClientSecretParse {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return { error: "that isn't valid JSON — download the client_secret_*.json from the client's creation dialog and try again", ok: false };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return { error: "unexpected JSON shape — expected the downloaded client_secret_*.json object", ok: false };
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.web !== undefined) {
+    return { error: "this client was created as a \"Web application\" — Muse needs Application type \"Desktop app\". Create a new OAuth client with the right type and download its JSON.", ok: false };
+  }
+  const installed = record.installed;
+  if (installed === null || typeof installed !== "object") {
+    return { error: "no \"installed\" section found — is this the client_secret JSON of a Desktop-app OAuth client?", ok: false };
+  }
+  const fields = installed as Record<string, unknown>;
+  const clientId = fields.client_id;
+  const clientSecret = fields.client_secret;
+  if (typeof clientId !== "string" || !clientId.endsWith(".apps.googleusercontent.com") || typeof clientSecret !== "string" || clientSecret.length === 0) {
+    return { error: "client_id / client_secret are missing or malformed in the JSON", ok: false };
+  }
+  return { credentials: { clientId, clientSecret }, ok: true };
+}
+
+/** Distinguishes wizard input: pasted JSON content, a *.json file path, or (undefined) a bare client ID. */
+export function looksLikeClientSecretJsonInput(raw: string): "content" | "path" | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) return "content";
+  if (/\.json$/iu.test(trimmed)) return "path";
+  return undefined;
+}
+
 export function googlePreflightGuidance(rerunCommand: string): string {
   return `
 Google rejected this Client ID before showing any consent screen.
@@ -233,7 +284,7 @@ export async function refreshGmailAccessToken(params: {
   if (!response.ok) {
     const errorCode = parseOAuthErrorCode(await response.text().catch(() => ""));
     if (errorCode === "invalid_grant") {
-      throw new GmailOAuthInvalidGrantError("Gmail refresh token is invalid or revoked — run `muse setup email` again.");
+      throw new GmailOAuthInvalidGrantError("Gmail refresh token is invalid or revoked — run `muse setup email` again. If this happens every ~7 days, your Google app is still in \"Testing\": publish it to Production at https://console.cloud.google.com/auth/audience (personal use needs no review).");
     }
     throw new Error(`Gmail token refresh failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
@@ -282,7 +333,7 @@ async function resolveStoredAccessToken(deps: GmailTokenSourceDeps): Promise<str
     throw new GmailNotConfiguredError("No Gmail account connected — run `muse setup email`.");
   }
   if (credential.refreshTokenInvalid) {
-    throw new GmailOAuthInvalidGrantError("Gmail refresh token was revoked or expired — run `muse setup email` again.");
+    throw new GmailOAuthInvalidGrantError("Gmail refresh token was revoked or expired — run `muse setup email` again. If this happens every ~7 days, your Google app is still in \"Testing\": publish it to Production at https://console.cloud.google.com/auth/audience (personal use needs no review).");
   }
   if (credential.accessToken && credential.accessTokenExpiresAt !== undefined && credential.accessTokenExpiresAt > now() + 60_000) {
     return credential.accessToken;
