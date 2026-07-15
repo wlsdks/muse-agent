@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "pnpm run build:ts7-fast",
-    "build:ts7-fast": "node scripts/run-tsc-fast.mjs build && pnpm --filter @muse/web build",
+    "build:ts7-fast": "node scripts/run-tsc-fast.mjs build",
     "build:ts7-single-thread": "node scripts/run-tsc-fast.mjs build --single-threaded",
     "check": "pnpm run check:toolchain && pnpm build && pnpm test",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
@@ -107,7 +107,8 @@
     "docs:env": "node scripts/env-inventory.mjs --write",
     "check:ts7": "node scripts/check-toolchain.mjs",
     "check:tsconfig": "node scripts/check-tsconfig-options.mjs",
-    "check:toolchain": "pnpm run check:ts7 && pnpm run check:tsconfig"
+    "check:toolchain": "pnpm run check:ts7 && pnpm run check:tsconfig",
+    "build:with-web": "pnpm run build:ts7-fast && pnpm --filter @muse/web build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
