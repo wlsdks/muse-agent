@@ -39,6 +39,7 @@ import { resolveDefaultUserKey } from "./user-id.js";
 import { withBestEffort } from "./async-promises.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
+const JOURNEY_KIND_SET = new Set<string>(JOURNEY_KINDS);
 const EMPTY_BELIEF_PROVENANCE: readonly BeliefProvenance[] = [];
 
 function environment(): MuseEnvironment {
@@ -46,7 +47,7 @@ function environment(): MuseEnvironment {
 }
 
 function isJourneyStoreKind(value: string): value is JourneyStoreKind {
-  return (JOURNEY_KINDS as readonly string[]).includes(value);
+  return JOURNEY_KIND_SET.has(value);
 }
 
 async function loadFactRecords(userId: string): Promise<readonly JourneyFactRecord[]> {

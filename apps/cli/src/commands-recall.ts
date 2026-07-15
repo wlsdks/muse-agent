@@ -237,6 +237,11 @@ export function clampLimit(raw: string | undefined): number {
  */
 export const RECALL_SOURCE_VALUES = ["all", "notes", "episodes"] as const;
 export type RecallSource = (typeof RECALL_SOURCE_VALUES)[number];
+const RECALL_SOURCE_SET = new Set<string>(RECALL_SOURCE_VALUES);
+
+function isRecallSource(value: string): value is RecallSource {
+  return RECALL_SOURCE_SET.has(value);
+}
 
 export type RecallSourceResolution =
   | { readonly kind: "ok"; readonly source: RecallSource }
@@ -252,8 +257,8 @@ export function resolveSource(raw: string | undefined): RecallSourceResolution {
   if (raw === undefined) return { kind: "ok", source: "all" };
   const trimmed = raw.trim().toLowerCase();
   if (trimmed.length === 0) return { kind: "ok", source: "all" };
-  if ((RECALL_SOURCE_VALUES as readonly string[]).includes(trimmed)) {
-    return { kind: "ok", source: trimmed as RecallSource };
+  if (isRecallSource(trimmed)) {
+    return { kind: "ok", source: trimmed };
   }
   return { kind: "invalid", input: raw };
 }
