@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { cosineSimilarity, type KnowledgeMatch } from "@muse/agent-core";
+import { parseBooleanFromEnv } from "@muse/shared";
 
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
@@ -85,5 +86,5 @@ export async function councilCorpusMatches(
 
 /** Whether THIS Muse opted its council voice into grounded self-abstention. */
 export function isCouncilGroundedMode(env: Record<string, string | undefined> = process.env): boolean {
-  return ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL_GROUNDED ?? "").trim().toLowerCase());
+  return parseBooleanFromEnv(env.MUSE_A2A_COUNCIL_GROUNDED, false);
 }

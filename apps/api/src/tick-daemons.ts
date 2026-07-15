@@ -59,6 +59,13 @@ function optionalNumber(raw: string | undefined): number | undefined {
   return raw ? Number(raw) : undefined;
 }
 
+type AmbientSourceMode = "macos" | "file";
+
+function resolveAmbientSourceMode(env: NodeJS.ProcessEnv): AmbientSourceMode {
+  const source = env.MUSE_AMBIENT_SOURCE?.trim().toLowerCase();
+  return source === "macos" && process.platform === "darwin" ? "macos" : "file";
+}
+
 /**
  * Live quiet-hours resolver shared by every UNASKED-notice daemon starter
  * below: per-loop env, then the shared base env, then the persisted setting
@@ -661,7 +668,8 @@ export function startAmbientDaemonIfConfigured(
   const quietHours = liveQuietHours(env, server, env.MUSE_AMBIENT_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
-  const source = env.MUSE_AMBIENT_SOURCE?.trim() === "macos" && process.platform === "darwin"
+  const sourceMode = resolveAmbientSourceMode(env);
+  const source = sourceMode === "macos"
     ? new MacOsActiveWindowSource({ includeClipboard: parseBoolean(env.MUSE_AMBIENT_CLIPBOARD, false) })
     : new FileAmbientSignalSource(resolveAmbientSignalFile(env));
   const handle = startAmbientTick({

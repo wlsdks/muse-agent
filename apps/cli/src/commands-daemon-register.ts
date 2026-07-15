@@ -647,12 +647,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ambientRules = [];
         }
         if (ambientRules.length > 0) {
+          const ambientSourceRaw = e.MUSE_AMBIENT_SOURCE?.trim().toLowerCase() ?? "";
+          const ambientSourceFile = e.MUSE_AMBIENT_FILE?.trim();
+          const hasAmbientFile = ambientSourceFile !== undefined && ambientSourceFile.length > 0;
           // Real macOS active-window perception when opted in on darwin
           // (or whenever a test injects the osascript runner); otherwise
           // the file source an external OS helper writes.
-          const useMacos = e.MUSE_AMBIENT_SOURCE?.trim() === "macos"
+          const useMacos = ambientSourceRaw === "macos"
             && (helpers.ambientMacosRun !== undefined || process.platform === "darwin");
-          const useWindows = e.MUSE_AMBIENT_SOURCE?.trim() === "windows"
+          const useWindows = ambientSourceRaw === "windows"
             && (helpers.ambientMacosRun !== undefined || process.platform === "win32");
           let ambientSource;
           if (useMacos) {
@@ -668,9 +671,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             });
             io.stdout(`  ambient source: Windows active window\n`);
           } else {
-            const ambientFile = e.MUSE_AMBIENT_FILE?.trim()?.length
-              ? e.MUSE_AMBIENT_FILE.trim()
-              : join(homedir(), ".muse", "ambient.json");
+            const ambientFile = hasAmbientFile ? ambientSourceFile : join(homedir(), ".muse", "ambient.json");
             ambientSource = new FileAmbientSignalSource(ambientFile);
           }
           ambientRunner = createAmbientNoticeRunner({

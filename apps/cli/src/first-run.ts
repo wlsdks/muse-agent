@@ -27,7 +27,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
-import { isRecord } from "@muse/shared";
+import { isRecord, parseBooleanFromEnv } from "@muse/shared";
 
 import { CLOUD_PROVIDERS, planCloudSetup } from "./commands-setup-cloud.js";
 import { runDataSetupInFlagMode, type DataSetupFlags, type DataSetupResult } from "./commands-setup-data.js";
@@ -76,11 +76,6 @@ export function providerKeyPresent(env: NodeJS.ProcessEnv): boolean {
   return PROVIDER_KEY_ENV_VARS.some((key) => (env[key] ?? "").trim().length > 0);
 }
 
-function truthy(value: string | undefined): boolean {
-  const v = (value ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
 /**
  * True when the auto-launch must be BYPASSED regardless of setup state:
  * an explicit opt-out, OR any non-interactive / test context. Vitest, CI and
@@ -88,9 +83,9 @@ function truthy(value: string | undefined): boolean {
  */
 export function firstRunSkipRequested(env: NodeJS.ProcessEnv, noSetupFlag = false): boolean {
   if (noSetupFlag) return true;
-  if (truthy(env.MUSE_SKIP_FIRST_RUN)) return true;
-  if (truthy(env.VITEST) || env.VITEST_WORKER_ID !== undefined) return true;
-  if (truthy(env.CI)) return true;
+  if (parseBooleanFromEnv(env.MUSE_SKIP_FIRST_RUN, false)) return true;
+  if (parseBooleanFromEnv(env.VITEST, false) || env.VITEST_WORKER_ID !== undefined) return true;
+  if (parseBooleanFromEnv(env.CI, false)) return true;
   if (env.NODE_ENV === "test") return true;
   return false;
 }
