@@ -115,7 +115,7 @@ export class RuntimeSettings {
 
     // Unknown spellings fall back to defaultValue (not false) so an
     // admin's intent isn't silently inverted.
-    const parsed = parseBooleanValue(value);
+    const parsed = parseBooleanTriStateFromEnv(value);
     return parsed ?? defaultValue;
   }
 

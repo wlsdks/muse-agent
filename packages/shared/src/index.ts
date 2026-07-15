@@ -68,6 +68,23 @@ export function parseJsonWith<T>(raw: string, predicate: JsonPredicate<T>): T | 
   return parsed !== undefined && predicate(parsed) ? parsed : undefined;
 }
 
+/** Parse common environment/config boolean spellings without inverting unknown input. */
+export function parseBooleanTriStateFromEnv(value: string | undefined): boolean | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized ?? "")) return true;
+  if (["0", "false", "no", "off"].includes(normalized ?? "")) return false;
+  return undefined;
+}
+
+/** Await an optional enrichment without letting its failure break the primary path. */
+export async function withBestEffort<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await promise;
+  } catch {
+    return fallback;
+  }
+}
+
 export type MuseMode = "local" | "remote";
 
 export type RunStatus = "queued" | "running" | "blocked" | "completed" | "failed" | "cancelled";

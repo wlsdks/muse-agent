@@ -252,7 +252,7 @@ export async function recordTimingFeedback(
   if (!["used", "adjusted", "ignored", "rejected"].includes(outcome)) {
     throw new AttunementStoreError("timing feedback must be used, adjusted, ignored, or rejected");
   }
-  return mutateTimingState(file, options, (state) => {
+  return mutateTimingState<{ readonly applied: boolean; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }>(file, options, (state) => {
     const candidate = state.candidates.find((entry) => entry.id === candidateId);
     if (!candidate) throw new AttunementStoreError(`no timing candidate with id '${candidateId}'`);
     const session = requireSession(state, candidate.sessionId);
@@ -370,16 +370,16 @@ function parseTimingState(value: unknown): TimingState {
     || !value.sessions.every(isSession) || !value.observations.every(isObservation) || !value.candidates.every(isCandidate) || !value.feedback.every(isFeedback)) {
     throw new AttunementStoreError("timing state is malformed or uses an unsupported schema");
   }
-  return value as TimingState;
+  return value as unknown as TimingState;
 }
 
 function isSession(value: unknown): value is ThreadTimingSession {
   return isExactRecord(value, ["consentVersion", "createdAt", "id", "policy", "status", "threadId", "updatedAt"]) && isNonEmptyString(value.id) && isNonEmptyString(value.threadId) && isNonEmptyString(value.createdAt) && isNonEmptyString(value.updatedAt)
-    && isIso(value.createdAt) && isIso(value.updatedAt) && Number.isSafeInteger(value.consentVersion) && value.consentVersion >= 1 && TIMING_SESSION_STATUSES.includes(value.status as TimingSessionStatus) && isPolicy(value.policy);
+    && isIso(value.createdAt) && isIso(value.updatedAt) && isPositiveSafeInteger(value.consentVersion) && TIMING_SESSION_STATUSES.includes(value.status as TimingSessionStatus) && isPolicy(value.policy);
 }
 
 function isPolicy(value: unknown): value is TimingPolicy {
-  return isExactRecord(value, ["offerCooldownMs", "stableFocusMs", "version"]) && isPositiveSafeInteger(value.offerCooldownMs) && isPositiveSafeInteger(value.stableFocusMs) && Number.isSafeInteger(value.version) && value.version >= 0;
+  return isExactRecord(value, ["offerCooldownMs", "stableFocusMs", "version"]) && isPositiveSafeInteger(value.offerCooldownMs) && isPositiveSafeInteger(value.stableFocusMs) && isNonNegativeSafeInteger(value.version);
 }
 
 function isObservation(value: unknown): value is TimingObservation {
@@ -397,7 +397,7 @@ function isCandidate(value: unknown): value is TimingCandidate {
 function isFeedback(value: unknown): value is TimingFeedback {
   return isExactRecord(value, ["candidateId", "outcome", "recordedAt", "resultingCooldownMs", "resultingPolicyVersion", "sessionId", "threadId"]) && isNonEmptyString(value.candidateId) && isNonEmptyString(value.sessionId) && isNonEmptyString(value.threadId) && isNonEmptyString(value.recordedAt)
     && isIso(value.recordedAt) && ["used", "adjusted", "ignored", "rejected"].includes(value.outcome as string) && isPositiveSafeInteger(value.resultingCooldownMs)
-    && Number.isSafeInteger(value.resultingPolicyVersion) && value.resultingPolicyVersion >= 0;
+    && isNonNegativeSafeInteger(value.resultingPolicyVersion);
 }
 
 function validateObservationInput(input: RecordTimingObservationInput): void {
@@ -460,6 +460,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isIso(value: string): boolean {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, parseJson } from "@muse/shared";
+import { isRecord, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 import {
@@ -113,6 +113,10 @@ function isOneOf<T extends readonly string[]>(value: unknown, allowed: T): value
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isNodeErrorCode(cause: unknown, code: string): boolean {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -399,7 +403,7 @@ export async function readAttunementState(file: string): Promise<AttunementState
   try {
     raw = await fs.readFile(file, "utf8");
   } catch (cause) {
-    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) return EMPTY_STATE;
+    if (isNodeErrorCode(cause, "ENOENT")) return EMPTY_STATE;
     throw cause;
   }
   try {
