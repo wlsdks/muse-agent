@@ -30,7 +30,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
 
-const EXPECTED_ROOT_SCRIPTS = {
+export const EXPECTED_ROOT_SCRIPTS = {
   build: "pnpm run build:ts7-fast",
   typecheck: "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck",
   "build:ts7-fast": getTscFastCommand("build"),
@@ -41,7 +41,59 @@ const EXPECTED_ROOT_SCRIPTS = {
   check: "pnpm run check:toolchain && pnpm build && pnpm test",
 };
 
+function collectScriptProblems(scripts) {
+  const problems = [];
+  for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
+    const actualValue = scripts[name];
+    if (actualValue !== expectedValue) {
+      problems.push(`root script ${name} must be exactly ${JSON.stringify(expectedValue)} (got ${JSON.stringify(actualValue)})`);
+    }
+  }
+  return problems;
+}
+
+function collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }) {
+  const problems = [];
+  if (parseMajor(binVersion) !== EXPECTED_BUILD_MAJOR) {
+    problems.push(
+      `the \`tsc\` binary is v${String(binVersion).trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5-7x faster; the \`@typescript/native\` alias provides it)`
+    );
+  }
+  if (parseMajor(moduleVersion) !== EXPECTED_MODULE_MAJOR) {
+    problems.push(
+      `the \`typescript\` MODULE is v${moduleVersion} — typescript-eslint and knip import it and crash on ${EXPECTED_BUILD_MAJOR}.0, which ships no compiler API (it lands in 7.1). Keep it at ${EXPECTED_MODULE_MAJOR}.`
+    );
+  }
+  if (typeof tsDeclaration !== "string" || !tsDeclaration.startsWith(EXPECTED_TYPESCRIPT_PACKAGE_PREFIX)) {
+    problems.push(
+      `expected devDependency \`typescript\` to stay on ${EXPECTED_TYPESCRIPT_PACKAGE_PREFIX} for TS7 toolchain split (got ${String(tsDeclaration)})`
+    );
+  }
+  if (typeof nativeTsDeclaration !== "string" || !nativeTsDeclaration.startsWith(EXPECTED_NATIVE_PACKAGE_PREFIX)) {
+    problems.push(
+      `expected devDependency \`@typescript/native\` to stay on ${EXPECTED_NATIVE_PACKAGE_PREFIX} for TS7 native compiler`
+    );
+  }
+  return problems;
+}
+
+export function collectToolchainProblems({
+  rootScripts = {},
+  moduleVersion,
+  tsDeclaration,
+  nativeTsDeclaration,
+  binVersion,
+} = {}) {
+  return [
+    ...collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }),
+    ...collectScriptProblems(rootScripts),
+  ];
+}
+
 export function parseMajor(version) {
+  if (typeof version !== "string") {
+    return Number.NaN;
+  }
   const match = /(\d+)\./u.exec(version.trim());
   return match ? Number(match[1]) : Number.NaN;
 }
@@ -72,35 +124,14 @@ function main() {
   const binVersion = execFileSync("node_modules/.bin/tsc", ["--version"], { encoding: "utf8" })
     .replace(/^Version\s*/iu, "");
 
-  const problems = [];
-  if (parseMajor(binVersion) !== EXPECTED_BUILD_MAJOR) {
-    problems.push(
-      `the \`tsc\` binary is v${binVersion.trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5-7x faster; the \`@typescript/native\` alias provides it)`
-    );
-  }
-  if (parseMajor(moduleVersion) !== EXPECTED_MODULE_MAJOR) {
-    problems.push(
-      `the \`typescript\` MODULE is v${moduleVersion} — typescript-eslint and knip import it and crash on ${EXPECTED_BUILD_MAJOR}.0, which ships no compiler API (it lands in 7.1). Keep it at ${EXPECTED_MODULE_MAJOR}.`
-    );
-  }
-  if (typeof tsDeclaration !== "string" || !tsDeclaration.startsWith(EXPECTED_TYPESCRIPT_PACKAGE_PREFIX)) {
-    problems.push(
-      `expected devDependency \`typescript\` to stay on ${EXPECTED_TYPESCRIPT_PACKAGE_PREFIX} for TS7 toolchain split (got ${String(tsDeclaration)})`
-    );
-  }
-  if (typeof nativeTsDeclaration !== "string" || !nativeTsDeclaration.startsWith(EXPECTED_NATIVE_PACKAGE_PREFIX)) {
-    problems.push(
-      `expected devDependency \`@typescript/native\` to stay on ${EXPECTED_NATIVE_PACKAGE_PREFIX} for TS7 native compiler`
-    );
-  }
-
   const scripts = readRootScripts();
-  for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
-    const actualValue = scripts[name];
-    if (actualValue !== expectedValue) {
-      problems.push(`root script ${name} must be exactly ${JSON.stringify(expectedValue)} (got ${JSON.stringify(actualValue)})`);
-    }
-  }
+  const problems = collectToolchainProblems({
+    rootScripts: scripts,
+    binVersion,
+    moduleVersion,
+    tsDeclaration,
+    nativeTsDeclaration,
+  });
 
   const buildArgs = getTscFastArgs("build");
   const typecheckArgs = getTscFastArgs("typecheck");

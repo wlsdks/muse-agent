@@ -7,8 +7,10 @@ import {
   EXPECTED_MODULE_MAJOR,
   EXPECTED_NATIVE_PACKAGE_PREFIX,
   EXPECTED_TYPESCRIPT_PACKAGE_PREFIX,
+  EXPECTED_ROOT_SCRIPTS,
   readRootPackage,
   parseMajor,
+  collectToolchainProblems,
   readRootScripts
 } from "./check-toolchain.mjs";
 import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
@@ -21,6 +23,7 @@ test("parseMajor reads the major from tsc's version output and from a semver", (
 
 test("parseMajor yields NaN on garbage rather than a wrong number", () => {
   assert.ok(Number.isNaN(parseMajor("not-a-version")));
+  assert.ok(Number.isNaN(parseMajor(undefined)));
 });
 
 test("check-toolchain policy requires TS7 split dependency selectors", () => {
@@ -42,12 +45,27 @@ test("the split is build-on-7, module-on-6 (TS7 ships no compiler API until 7.1)
 
 test("root scripts keep TS7-fast build/typecheck paths", () => {
   const scripts = readRootScripts();
-  assert.equal(scripts.build, "pnpm run build:ts7-fast");
-  assert.equal(scripts.typecheck, "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck");
-  assert.equal(scripts.check, "pnpm run check:toolchain && pnpm build && pnpm test");
+  for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
+    assert.equal(scripts[name], expectedValue);
+  }
   assert.equal(scripts["typecheck:fast"], getTscFastCommand("typecheck"));
   assert.equal(scripts["typecheck:ts7-single-thread"], getTscFastCommand("typecheck", { singleThreaded: true }));
   assert.equal(scripts["build:ts7-single-thread"], getTscFastCommand("build", { singleThreaded: true }));
+});
+
+test("collectToolchainProblems reports missing script entries without false positives", () => {
+  const scripts = { ...readRootScripts() };
+  scripts.build = "wrong";
+  const packageJson = readRootPackage();
+  const devDependencies = packageJson.devDependencies ?? {};
+  const problems = collectToolchainProblems({
+    rootScripts: scripts,
+    binVersion: "7.0.2",
+    moduleVersion: "6.0.2",
+    tsDeclaration: devDependencies.typescript,
+    nativeTsDeclaration: devDependencies["@typescript/native"],
+  });
+  assert.equal(problems.some((p) => p.includes("root script build")), true);
 });
 
 test("ts7-fast scripts use the shared runner contract", () => {
