@@ -22,7 +22,7 @@
  */
 
 import type { McpSecurityPolicyTable, McpServerTable, MuseDatabase } from "@muse/db";
-import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import {
@@ -218,7 +218,28 @@ export function mapMcpSecurityPolicyRow(row: McpSecurityPolicyRow): McpSecurityP
 }
 
 function toJsonObject(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const normalized: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    normalized[key] = normalizeJsonValue(item);
+  }
+  return normalized;
+}
+
+function normalizeJsonValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeJsonValue(entry));
+  }
+  if (isRecord(value)) {
+    return toJsonObject(value);
+  }
+  return null;
 }
 
 function toStringArray(value: JsonValue): readonly string[] {

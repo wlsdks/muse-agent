@@ -1,4 +1,4 @@
-import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { DebugReplayCaptureTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
@@ -196,8 +196,8 @@ function jsonArray(value: unknown): JsonValue[] {
 }
 
 function jsonObject(value: unknown): JsonObject {
-  if (value && typeof value === "object" && !Array.isArray(value) && isJsonValue(value)) {
-    return value as JsonObject;
+  if (isRecord(value)) {
+    return toJsonObject(value);
   }
   if (typeof value === "string" && value.trim().length > 0) {
     try {
@@ -207,6 +207,16 @@ function jsonObject(value: unknown): JsonObject {
     }
   }
   return {};
+}
+
+function toJsonObject(value: Record<string, unknown>): JsonObject {
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isJsonValue(item)) {
+      out[key] = item;
+    }
+  }
+  return out;
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

@@ -1,5 +1,5 @@
 import { clearPendingApproval, listPendingApprovals } from "@muse/messaging";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 export interface ChatApprovalExecuteResult {
@@ -8,16 +8,40 @@ export interface ChatApprovalExecuteResult {
 }
 
 function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record: Record<string, unknown> = {};
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (typeof key === "string") {
-        record[key] = nestedValue;
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (isJsonValue(nestedValue)) {
+      out[key] = nestedValue;
+    }
+  }
+  return out;
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  const out: JsonObject = {};
+  if (!isRecord(value)) {
+    return out;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+      if (isJsonValue(nestedValue)) {
+        out[key] = nestedValue;
       }
     }
-    return record;
+  return out;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
   }
-  return undefined;
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 /**
@@ -73,7 +97,7 @@ export async function executeChatApproval(opts: {
   if (!tool) {
     return { statusCode: 409, body: { error: "tool no longer available" } };
   }
-  const result = await tool.execute(entry.arguments as JsonObject, { runId: `chat-approve-${entry.id}` });
+  const result = await tool.execute(toJsonObject(entry.arguments), { runId: `chat-approve-${entry.id}` });
   if (isErrorShaped(result)) {
     return { statusCode: 200, body: { ran: false, tool: entry.tool } };
   }

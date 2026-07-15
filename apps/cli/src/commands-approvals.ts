@@ -11,7 +11,7 @@
 import { resolvePendingApprovalsFile } from "@muse/autoconfigure";
 import type { HostLookup } from "@muse/domain-tools";
 import { clearPendingApproval, listPendingApprovals, type PendingApproval } from "@muse/messaging";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { Command } from "commander";
 
 import { buildActuatorTools } from "./actuator-tools.js";
@@ -62,15 +62,8 @@ export async function approvePendingApproval(opts: {
   if (!tool) {
     return { status: "no-tool", tool: entry.tool };
   }
-  const result = await tool.execute(entry.arguments as JsonObject, { runId: `approve-${entry.id}` });
-  const resultRecord: Record<string, unknown> = {};
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    for (const [key, value] of Object.entries(result)) {
-      if (typeof key === "string") {
-        resultRecord[key] = value;
-      }
-    }
-  }
+  const result = await tool.execute(toJsonObject(entry.arguments), { runId: `approve-${entry.id}` });
+  const resultRecord = toRecord(result);
   const ran = resultRecord["sent"] === true || resultRecord["performed"] === true;
   if (ran) {
     // Replay-guard: only a successful run clears the pending entry; a
@@ -88,6 +81,40 @@ function pendingFile(): string {
 function formatPending(entry: PendingApproval): string {
   const who = entry.userId ?? `${entry.providerId}:${entry.source}`;
   return `${entry.id}  ${who}  ${entry.tool} — ${entry.draft} (expires ${entry.expiresAt})`;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!isRecord(value)) {
+    return out;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = entry;
+  }
+  return out;
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  const out: JsonObject = {};
+  if (!isRecord(value)) {
+    return out;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (isJsonValue(item)) {
+      out[key] = item;
+    }
+  }
+  return out;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 export function registerApprovalsCommands(program: Command, io: ProgramIO): void {

@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, isRecord, type JsonObject, withBestEffort } from "@muse/shared";
+import { createRunId, isRecord, type JsonObject, type JsonValue, withBestEffort } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
@@ -33,13 +33,36 @@ function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
   const r = raw;
   if (typeof r.runId !== "string" || typeof r.step !== "number" || !Number.isFinite(r.step)) return undefined;
   const createdAt = typeof r.createdAt === "string" ? new Date(r.createdAt) : new Date(0);
-  return {
+    return {
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date(0) : createdAt,
     id: typeof r.id === "string" ? r.id : "unknown",
     runId: r.runId,
-    state: (r.state && typeof r.state === "object" ? r.state : {}) as JsonObject,
+    state: toJsonObject(r.state),
     step: r.step
   };
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isJsonValue(item)) {
+      out[key] = item;
+    }
+  }
+  return out;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 const byStep = (a: ExecutionCheckpoint, b: ExecutionCheckpoint): number => a.step - b.step;

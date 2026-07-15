@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { ActiveRunTracker } from "./active-run-tracker.js";
@@ -422,9 +422,26 @@ function readOptionalStringArray(value: JsonValue | undefined): readonly string[
 }
 
 function readOptionalJsonObject(value: JsonValue | undefined): JsonObject | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as JsonObject
-    : undefined;
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const normalized: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isJsonValue(item)) {
+      normalized[key] = item;
+    }
+  }
+  return normalized;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 function toSchedulerJobToolResult(job: ScheduledJob): JsonObject {
