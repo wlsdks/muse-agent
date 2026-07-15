@@ -1,12 +1,14 @@
 import { resolveCapabilityProfile } from "./capability-profile.js";
 
+const TOOL_EXPOSURE_AUTHORITY_BRAND = Symbol("muse.toolExposureAuthority");
+
 /**
  * An opaque token issued only by trusted server code. Its runtime authority is
  * held in a private WeakMap, so a request body, object spread, or JSON round
  * trip cannot manufacture one.
  */
 export type ToolExposureAuthority = object & {
-  readonly __museToolExposureAuthority?: never;
+  readonly [TOOL_EXPOSURE_AUTHORITY_BRAND]: true;
 };
 
 export interface ToolExposureAuthorityInput {
@@ -39,7 +41,7 @@ function normalizedProfileId(profileId: string | undefined): string | undefined 
 
 /** Creates an immutable token whose authority cannot survive serialization. */
 export function createToolExposureAuthority(input: ToolExposureAuthorityInput = {}): ToolExposureAuthority {
-  const token = Object.freeze({}) as ToolExposureAuthority;
+  const token = Object.freeze({ [TOOL_EXPOSURE_AUTHORITY_BRAND]: true }) as const;
   const profileId = normalizedProfileId(input.profileId);
   const record = Object.freeze({
     allowedToolNames: copyToolNames(input.allowedToolNames),
