@@ -308,7 +308,20 @@ export class GoogleCalendarProvider implements CalendarProvider {
       );
     }
 
-    const payload = await response.json();
+    // The OAuth endpoint can also return a 2xx HTML proxy page or a truncated
+    // body. Keep this boundary typed like the calendar API path instead of
+    // leaking an opaque JSON SyntaxError to the setup/runtime caller.
+    const body = await response.text();
+    const payload = parseJsonBody<unknown>(body);
+    if (payload === undefined) {
+      throw new CalendarProviderError(
+        this.id,
+        "OAUTH_INVALID_RESPONSE",
+        `Google OAuth returned a ${response.status.toString()} with a non-JSON body: ${body.slice(0, 200)}`.slice(0, 500),
+        undefined,
+        response.status
+      );
+    }
     const accessToken = readStringField(payload, "access_token");
     if (accessToken === undefined) {
       throw new CalendarProviderError(this.id, "OAUTH_INVALID_RESPONSE", "Google OAuth response missing access_token");

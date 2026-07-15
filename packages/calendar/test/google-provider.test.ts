@@ -69,6 +69,9 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
 
     const noToken = makeFetch(() => new Response("{}", { status: 200 }), () => new Response(JSON.stringify({ expires_in: 3600 }), { status: 200 }));
     await expect(provider(noToken.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "OAUTH_INVALID_RESPONSE" });
+
+    const malformed = makeFetch(() => new Response("{}", { status: 200 }), () => new Response("<html>proxy failure</html>", { status: 200 }));
+    await expect(provider(malformed.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "OAUTH_INVALID_RESPONSE", status: 200 });
   });
 
   it("RETRIES a transient 503 on the idempotent GET, then succeeds", async () => {
