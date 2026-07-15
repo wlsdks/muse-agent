@@ -669,8 +669,7 @@ export function resolveOrchestrateTierModels(defaultModel: string, env: NodeJS.P
 // single heavy model sequentially instead of thrashing two large
 // models. Default (unset) ⇒ both tiers may run.
 export function resolveTierCapacityProbe(env: NodeJS.ProcessEnv): () => boolean {
-  const single = env.MUSE_TIER_SINGLE_MODEL_HOST?.trim().toLowerCase();
-  const canHoldBoth = !(single === "1" || single === "true" || single === "yes");
+  const canHoldBoth = !parseBooleanFromEnv(env.MUSE_TIER_SINGLE_MODEL_HOST, false);
   return () => canHoldBoth;
 }
 
