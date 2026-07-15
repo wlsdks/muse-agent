@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 import { isRecord, parseJson } from "./parse-json.js";
+import { errorMessage } from "@muse/shared";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
 
@@ -152,7 +153,7 @@ export async function applyApprove(
       setError(`${outcome.tool} did not run — it's still pending. Try again.`);
     }
   } catch (cause) {
-    setError(cause instanceof Error ? cause.message : "approval failed");
+    setError(errorMessage(cause, "approval failed"));
   }
 }
 
@@ -194,7 +195,7 @@ export async function applyDeny(
       setError(`${outcome.tool} was not denied — try again.`);
     }
   } catch (cause) {
-    setError(cause instanceof Error ? cause.message : "deny failed");
+    setError(errorMessage(cause, "deny failed"));
   }
 }
 
@@ -333,7 +334,7 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         }
       } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : "request failed";
+        const detail = errorMessage(cause, "request failed");
         setError(detail);
         commit((t) => {
           if (!t.text) {

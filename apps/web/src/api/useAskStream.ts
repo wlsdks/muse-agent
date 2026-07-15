@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+import { errorMessage } from "@muse/shared";
 
 import type { AskResult, AskRetrieval, AskVerdict } from "./types.js";
 
@@ -173,7 +174,7 @@ export function useAskStream(baseUrl: string, token: string) {
           }
         }
       } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : "request failed";
+        const detail = errorMessage(cause, "request failed");
         setState((prev) => ({ ...prev, error: prev.error ?? detail }));
       } finally {
         setPending(false);

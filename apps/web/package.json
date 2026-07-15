@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
+    "@muse/shared": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

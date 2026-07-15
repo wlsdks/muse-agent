@@ -5,6 +5,10 @@ import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 
 import type { ProactiveNotice } from "./types.js";
 
+function isProactiveNotice(value: unknown): value is ProactiveNotice {
+  return isRecord(value);
+}
+
 /**
  * Subscribes to the server's `GET /api/agent-notices/stream?userId=…`
  * SSE feed and invokes `onNotice` for every `notice` event. Uses fetch
@@ -58,8 +62,8 @@ export function useNoticeStream(
             const { data, eventName } = parseSseFrame(frame);
             if (eventName === "notice" && data) {
               const payload = parseJson(data);
-              if (isRecord(payload)) {
-                onNoticeRef.current(payload as ProactiveNotice);
+              if (isProactiveNotice(payload)) {
+                onNoticeRef.current(payload);
               }
             }
           }

@@ -44,6 +44,9 @@ importers:
       '@muse/agent-specs':
         specifier: workspace:*
         version: link:../../packages/agent-specs
+      '@muse/attunement':
+        specifier: workspace:*
+        version: link:../../packages/attunement
       '@muse/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -235,6 +238,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@tanstack/react-query':
         specifier: ^5.101.2
         version: 5.101.2(react@19.2.7)
