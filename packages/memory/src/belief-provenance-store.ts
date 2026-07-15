@@ -15,6 +15,8 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { withFileLock, withFileMutationQueue } from "@muse/shared";
+
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 
 /** Newest entries kept; bounds the file so a chatty extractor can't grow it without limit. */
@@ -657,8 +659,6 @@ function compareNewestFirst(a: BeliefProvenance, b: BeliefProvenance): number {
 }
 
 export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
-  private static readonly writeQueues = new Map<string, Promise<unknown>>();
-
   constructor(private readonly file: string = defaultBeliefProvenanceFile(), private readonly env: NodeJS.ProcessEnv = process.env) {}
 
   async record(entry: BeliefProvenance): Promise<void> {
@@ -681,17 +681,7 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
   }
 
   private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
-    const prior = FileBeliefProvenanceStore.writeQueues.get(this.file) ?? Promise.resolve();
-    const next = prior.catch(() => undefined).then(operation);
-    FileBeliefProvenanceStore.writeQueues.set(this.file, next);
-
-    try {
-      return await next;
-    } finally {
-      if (FileBeliefProvenanceStore.writeQueues.get(this.file) === next) {
-        FileBeliefProvenanceStore.writeQueues.delete(this.file);
-      }
-    }
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
 }
 

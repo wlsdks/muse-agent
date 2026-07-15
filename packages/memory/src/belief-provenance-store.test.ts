@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { withFileLock } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
 import { beliefValueTimeline, FileBeliefProvenanceStore, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
@@ -169,5 +170,29 @@ describe("FileBeliefProvenanceStore", () => {
     } finally {
       await rm(dir, { force: true, recursive: true });
     }
+  });
+
+  it("waits for an external process lock before appending provenance", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-belief-provenance-lock-"));
+    const file = join(dir, "beliefs.json");
+    const acquired = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const heldLock = withFileLock(file, async () => {
+      acquired.resolve();
+      await release.promise;
+    });
+    await acquired.promise;
+
+    let settled = false;
+    const pendingRecord = new FileBeliefProvenanceStore(file).record(bp({ key: "locked_key" })).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(settled).toBe(false);
+
+    release.resolve();
+    await Promise.all([heldLock, pendingRecord]);
+    expect((await new FileBeliefProvenanceStore(file).query("u")).map((entry) => entry.key)).toContain("locked_key");
+    await rm(dir, { force: true, recursive: true });
   });
 });
