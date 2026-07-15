@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { runCommandWithTimeout } from "@muse/shared";
+import { runCommandWithTimeout, withBestEffort } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
 import type {
@@ -160,7 +160,7 @@ export class PiperTtsProvider implements TextToSpeechProvider {
         format: "wav"
       };
     } finally {
-      await rm(workdir, { force: true, recursive: true }).catch(() => undefined);
+      await withBestEffort(rm(workdir, { force: true, recursive: true }), undefined);
     }
   }
 }

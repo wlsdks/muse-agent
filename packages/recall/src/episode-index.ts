@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import type { PersistedEpisode } from "@muse/stores";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
@@ -98,7 +98,7 @@ export async function saveEpisodeIndex(file: string, index: EpisodeIndex): Promi
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(index, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**

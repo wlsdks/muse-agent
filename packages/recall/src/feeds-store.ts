@@ -17,7 +17,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { isRecord, stripUntrustedTerminalChars } from "@muse/shared";
+import { isRecord, stripUntrustedTerminalChars, withBestEffort } from "@muse/shared";
 import { XMLParser } from "fast-xml-parser";
 
 import { roundVectorForStore } from "./browsing-store.js";
@@ -159,7 +159,7 @@ export async function writeFeedsStore(file: string, store: FeedsStore): Promise<
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**

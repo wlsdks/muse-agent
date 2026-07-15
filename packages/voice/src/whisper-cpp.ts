@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { runCommandWithTimeout } from "@muse/shared";
+import { runCommandWithTimeout, withBestEffort } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
 import type {
@@ -180,7 +180,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     } finally {
       // Best-effort cleanup. Don't mask a transcription error with a
       // disk-cleanup error.
-      await rm(workdir, { force: true, recursive: true }).catch(() => undefined);
+    await withBestEffort(rm(workdir, { force: true, recursive: true }), undefined);
     }
   }
 }

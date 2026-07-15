@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 export const BROWSING_STORE_SCHEMA_VERSION = 1;
 
@@ -153,7 +153,7 @@ export async function writeBrowsingStore(file: string, store: BrowsingStore): Pr
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 /**

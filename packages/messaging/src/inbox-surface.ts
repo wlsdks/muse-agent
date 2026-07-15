@@ -76,16 +76,27 @@ export class FileBackedInboxContextProvider {
       readonly fresh: readonly InboundMessage[];
     }
     const collected: CollectedSource[] = [];
-    for (const config of this.sources) {
-      try {
-        const cursor = await readInboxInjectionCursor(config.cursorFile, userId);
-        const inbox = await readInbox(config.inboxFile, this.perProviderLimit * 4);
-        const fresh = filterFresh(inbox, cursor, this.perProviderLimit);
-        if (fresh.length > 0) {
-          collected.push({ config, fresh });
+    const configByProviderId = new Map<string, InboxSourceConfig>();
+
+    const reads = await Promise.all(
+      this.sources.map(async (config) => {
+        try {
+          const cursor = await readInboxInjectionCursor(config.cursorFile, userId);
+          const inbox = await readInbox(config.inboxFile, this.perProviderLimit * 4);
+          const fresh = filterFresh(inbox, cursor, this.perProviderLimit);
+          if (fresh.length > 0) {
+            configByProviderId.set(config.providerId, config);
+            return { config, fresh };
+          }
+        } catch {
+          // fail-open per source
         }
-      } catch {
-        // fail-open per source
+        return undefined;
+      })
+    );
+    for (const entry of reads) {
+      if (entry) {
+        collected.push(entry);
       }
     }
     if (collected.length === 0) {
@@ -98,16 +109,23 @@ export class FileBackedInboxContextProvider {
     // totalLimit of 30 should yield ~25 Slack + 5 Discord, not 30
     // Slack and 0 Discord.
     const surfaced: { readonly providerId: string; readonly message: InboundMessage }[] = [];
-    const queues = collected.map((entry) => ({
-      messages: [...entry.fresh],
-      providerId: entry.config.providerId
+    type Queue = {
+      readonly messages: readonly InboundMessage[];
+      readonly providerId: string;
+      cursor: number;
+    };
+    const queues: Queue[] = collected.map((entry) => ({
+      messages: entry.fresh,
+      providerId: entry.config.providerId,
+      cursor: 0
     }));
     while (surfaced.length < this.totalLimit) {
       let progressed = false;
       for (const queue of queues) {
         if (surfaced.length >= this.totalLimit) break;
-        const next = queue.messages.shift();
+        const next = queue.messages[queue.cursor];
         if (!next) continue;
+        queue.cursor += 1;
         surfaced.push({ message: next, providerId: queue.providerId });
         progressed = true;
       }
@@ -123,7 +141,7 @@ export class FileBackedInboxContextProvider {
     // sitting in the unshipped tail.
     const advanceBySource = new Map<string, { cursorFile: string; advance: Record<string, SourceCursor> }>();
     for (const { message, providerId } of surfaced) {
-      const config = collected.find((entry) => entry.config.providerId === providerId)?.config;
+      const config = configByProviderId.get(providerId);
       if (!config) continue;
       const bucket = advanceBySource.get(config.cursorFile) ?? {
         advance: {},

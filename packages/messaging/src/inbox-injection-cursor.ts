@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import { serializePerFile } from "./file-mutation-queue.js";
 
@@ -133,7 +133,7 @@ async function writePersisted(file: string, byUser: PersistedByUser): Promise<vo
   await fs.mkdir(dirname(file), { recursive: true });
   await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 // Per-file mutation queue: writeInboxInjectionCursor / advanceInboxInjectionCursor

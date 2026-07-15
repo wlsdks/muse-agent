@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, isRecord, type JsonObject } from "@muse/shared";
+import { createRunId, isRecord, type JsonObject, withBestEffort } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
@@ -88,7 +88,7 @@ export class FileCheckpointStore implements CheckpointStore {
       if (names.length <= this.#maxRuns) return;
       const withMtime = await Promise.all(names.map(async (n) => ({ mtime: (await stat(join(this.#dir, n))).mtimeMs, name: n })));
       withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
-      await Promise.all(withMtime.slice(this.#maxRuns).map((e) => rm(join(this.#dir, e.name), { force: true }).catch(() => undefined)));
+    await Promise.all(withMtime.slice(this.#maxRuns).map((e) => withBestEffort(rm(join(this.#dir, e.name), { force: true }), undefined)));
     } catch {
       /* retention is best-effort */
     }
@@ -195,6 +195,6 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   async deleteByRunId(runId: string): Promise<void> {
-    await rm(join(this.#dir, runFileName(runId)), { force: true }).catch(() => undefined);
-  }
+  await withBestEffort(rm(join(this.#dir, runFileName(runId)), { force: true }), undefined);
+}
 }

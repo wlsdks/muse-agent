@@ -1,17 +1,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import {
-  backupPlaintextCredentialsFile,
-  credentialEncryptionEnabled,
-  decodeMaybeEncryptedCredentialsJson,
-  encryptCredentialEnvelope,
-  isCredentialsFileEncryptedAtRest,
-  isNodeErrorCode,
-  isRecord,
-  NODE_ERROR_CODES,
-  type JsonObject
-} from "@muse/shared";
+import { backupPlaintextCredentialsFile, credentialEncryptionEnabled, decodeMaybeEncryptedCredentialsJson, encryptCredentialEnvelope, isCredentialsFileEncryptedAtRest, isNodeErrorCode, isRecord, NODE_ERROR_CODES, type JsonObject, withBestEffort } from "@muse/shared";
 
 export type MessagingCredentials = JsonObject;
 
@@ -120,7 +110,7 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(this.file);
     const shouldEncrypt = credentialEncryptionEnabled(this.env) || alreadyEncrypted;
     if (shouldEncrypt && !alreadyEncrypted) {
-      const existing = await fs.readFile(this.file, "utf8").catch(() => undefined);
+      const existing = await withBestEffort(fs.readFile(this.file, "utf8"), undefined);
       if (existing !== undefined) {
         await backupPlaintextCredentialsFile(this.file, existing);
       }
@@ -129,7 +119,7 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
     await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
-    await fs.chmod(this.file, 0o600).catch(() => undefined);
+    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
   }
 }
 

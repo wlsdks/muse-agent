@@ -1,5 +1,7 @@
 import type { MessagingProviderRegistry } from "./registry.js";
 import type { InboundMessage } from "./types.js";
+import { withBestEffort } from "@muse/shared";
+
 
 /**
  * Structural duck-type of the agent runner. `@muse/messaging` must
@@ -85,16 +87,16 @@ export function inboundKey(message: { readonly providerId: string; readonly mess
 export async function respondToInbound(
   options: RespondToInboundOptions
 ): Promise<RespondToInboundResult> {
-  const already = options.alreadyHandled ?? new Set<string>();
+  const alreadyHandled = options.alreadyHandled ?? new Set<string>();
   const ackAlreadySent = options.ackAlreadySent ?? new Set<string>();
-  const handled: string[] = [];
-  const acked: string[] = [];
+  const handled = new Set<string>();
+  const acked = new Set<string>();
   const errors: string[] = [];
   let replied = 0;
 
   for (const message of options.messages) {
     const key = inboundKey(message);
-    if (already.has(key) || handled.includes(key)) {
+    if (alreadyHandled.has(key) || handled.has(key)) {
       continue;
     }
     let typingTimer: ReturnType<typeof setInterval> | undefined;
@@ -107,7 +109,7 @@ export async function respondToInbound(
           const sendTyping = provider.sendTyping.bind(provider);
           await sendTyping(message.source);
           typingTimer = setInterval(() => {
-            void sendTyping(message.source).catch(() => undefined);
+            withBestEffort(sendTyping(message.source), undefined);
           }, options.typingIntervalMs ?? DEFAULT_TYPING_INTERVAL_MS);
           if (typeof typingTimer.unref === "function") {
             typingTimer.unref();
@@ -133,9 +135,7 @@ export async function respondToInbound(
                       destination: message.source,
                       text
                     });
-                    if (!acked.includes(key)) {
-                      acked.push(key);
-                    }
+                    acked.add(key);
                   } catch {
                     // Ack delivery is cosmetic — a failed notify must never
                     // fail the run or affect handled-marking. Not recording
@@ -151,7 +151,7 @@ export async function respondToInbound(
       if (reply.length === 0) {
         // Agent consumed it and chose to stay silent — done, don't
         // reprocess; nothing to send.
-        handled.push(key);
+        handled.add(key);
         continue;
       }
       await options.registry.send(message.providerId, {
@@ -162,7 +162,7 @@ export async function respondToInbound(
       // transient send failure (rate limit / network) must be
       // retried next pass, not silently swallowed with the answer
       // lost forever.
-      handled.push(key);
+      handled.add(key);
       replied += 1;
     } catch (cause) {
       errors.push(`${key}: ${cause instanceof Error ? cause.message : String(cause)}`);
@@ -173,5 +173,5 @@ export async function respondToInbound(
     }
   }
 
-  return { acked, errors, handled, replied };
+  return { acked: [...acked], errors, handled: [...handled], replied };
 }

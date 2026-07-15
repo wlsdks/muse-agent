@@ -16,7 +16,7 @@
 import { promises as fs } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import type { BrowsingVisit } from "./browsing-store.js";
 import { webkitTimeToIso } from "./browsing-store.js";
@@ -115,7 +115,7 @@ export async function readChromeHistoryVisits(
   } catch {
     return [];
   } finally {
-    await fs.unlink(tempCopy).catch(() => undefined);
+  await withBestEffort(fs.unlink(tempCopy), undefined);
   }
   return rows.flatMap((row) => toBrowsingVisit(row));
 }

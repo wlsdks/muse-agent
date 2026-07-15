@@ -19,6 +19,8 @@
 import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { withBestEffort } from "@muse/shared";
+
 
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import { InMemoryPromptLayerRegistry } from "@muse/prompts";
@@ -389,5 +391,5 @@ export async function writePersonaFile(filePath: string, frontmatter: PersonaFro
   await fs.mkdir(dirname(filePath), { recursive: true });
   await fs.writeFile(tmp, rendered, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, filePath);
-  await fs.chmod(filePath, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(filePath, 0o600), undefined);
 }

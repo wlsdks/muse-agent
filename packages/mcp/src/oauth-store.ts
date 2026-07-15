@@ -22,16 +22,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
 import type { OAuthClientInformationFull, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
-import {
-  backupPlaintextCredentialsFile,
-  credentialEncryptionEnabled,
-  decodeMaybeEncryptedCredentialsJson,
-  encryptCredentialEnvelope,
-  isCredentialsFileEncryptedAtRest,
-  isNodeErrorCode,
-  isRecord,
-  NODE_ERROR_CODES
-} from "@muse/shared";
+import { backupPlaintextCredentialsFile, credentialEncryptionEnabled, decodeMaybeEncryptedCredentialsJson, encryptCredentialEnvelope, isCredentialsFileEncryptedAtRest, isNodeErrorCode, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -212,7 +203,7 @@ async function writeRecord(
   const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
   const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
   if (shouldEncrypt && !alreadyEncrypted) {
-    const existing = await fs.readFile(file, "utf8").catch(() => undefined);
+    const existing = await withBestEffort(fs.readFile(file, "utf8"), undefined);
     if (existing !== undefined) {
       await backupPlaintextCredentialsFile(file, existing);
     }
@@ -221,7 +212,7 @@ async function writeRecord(
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 function isFileNotFound(error: unknown): boolean {

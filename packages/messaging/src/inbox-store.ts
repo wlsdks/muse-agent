@@ -16,7 +16,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, withBestEffort } from "@muse/shared";
 
 import type { InboundMessage } from "./types.js";
 import { serializePerFile } from "./file-mutation-queue.js";
@@ -98,7 +98,7 @@ async function doAppendInbound(
   await fs.mkdir(dirname(file), { recursive: true });
   await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await withBestEffort(fs.chmod(file, 0o600), undefined);
 }
 
 async function readPersistedRaw(file: string): Promise<readonly InboundMessage[]> {
@@ -110,13 +110,12 @@ async function readPersistedRaw(file: string): Promise<readonly InboundMessage[]
   }
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
+    if (!isRecord(parsed) || !Array.isArray(parsed.inbox)) {
       return [];
     }
-    const inbox = Object.entries(parsed).find(([key]) => key === "inbox")?.[1];
-    return Array.isArray(inbox)
-      ? inbox.flatMap((entry): readonly InboundMessage[] => isInboundMessage(entry) ? [entry] : [])
-      : [];
+    return parsed.inbox.flatMap((entry): readonly InboundMessage[] => (
+      isInboundMessage(entry) ? [entry] : []
+    ));
   } catch {
     return [];
   }
