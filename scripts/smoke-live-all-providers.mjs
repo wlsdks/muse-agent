@@ -106,16 +106,14 @@ async function runProviderSuite(provider) {
   const checks = [];
   let failures = 0;
 
-  function record(name, fn) {
-    return Promise.resolve()
-      .then(fn)
-      .then(() => {
-        checks.push({ name, status: "ok" });
-      })
-      .catch((error) => {
-        failures += 1;
-        checks.push({ error: error instanceof Error ? error.message : String(error), name, status: "fail" });
-      });
+  async function record(name, fn) {
+    try {
+      await fn();
+      checks.push({ name, status: "ok" });
+    } catch (error) {
+      failures += 1;
+      checks.push({ error: error instanceof Error ? error.message : String(error), name, status: "fail" });
+    }
   }
 
   try {
