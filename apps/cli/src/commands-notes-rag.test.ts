@@ -98,7 +98,7 @@ async function writeIndex(indexPath: string, files: { path: string; mtimeMs: num
     builtAtIso: new Date(0).toISOString(),
     files: files.map((f) => ({ chunks: [], mtimeMs: f.mtimeMs, path: f.path })),
     model: "nomic-embed-text",
-    version: 1
+    version: 2
   };
   await writeFile(indexPath, JSON.stringify(payload), "utf8");
 }
@@ -142,7 +142,7 @@ describe("isNotesIndexStale", () => {
       builtAtIso: new Date(Date.now() + 60_000).toISOString(),
       files: [{ chunks: [], mtimeMs: Date.now() - 60_000, path: notePath }],
       model: "nomic-embed-text",
-      version: 1
+      version: 2
     };
     await writeFile(indexPath, JSON.stringify(payload), "utf8");
     expect(await isNotesIndexStale(root, indexPath)).toBe(false);
@@ -415,7 +415,7 @@ describe("muse notes related — semantic note discovery (embedding similarity)"
       { chunks: [chunk("d.md", [0.5, 0.5, 0])], mtimeMs: 4, path: "/notes/d.md" }  // medium
     ],
     model: "nomic-embed-text",
-    version: 1 as const
+    version: 2 as const
   };
 
   it("ranks notes by centroid cosine, excludes the target and zero-overlap notes", () => {
