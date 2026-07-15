@@ -20,6 +20,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
+import { parseBooleanFromEnv } from "./env-boolean.js";
 
 export interface EncryptedCredentialEnvelope {
   readonly version: 1;
@@ -107,7 +108,7 @@ export function decryptCredentialEnvelope(
 
 /** Opt-in write gate — mirrors `MUSE_CALENDAR_ENCRYPT` for the credential stores. */
 export function credentialEncryptionEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return ["true", "1", "yes", "on"].includes((env.MUSE_CREDENTIALS_ENCRYPT ?? "").trim().toLowerCase());
+  return parseBooleanFromEnv(env.MUSE_CREDENTIALS_ENCRYPT, false);
 }
 
 /**

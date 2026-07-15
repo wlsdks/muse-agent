@@ -62,10 +62,10 @@ export function buildActiveContextProvider(
   taskMemoryStore?: TaskMemoryStore,
   calendarRegistry?: CalendarProviderRegistry
 ): ActiveContextProvider | undefined {
-  if (env.MUSE_ACTIVE_CONTEXT_ENABLED?.trim().toLowerCase() === "false") {
+  if (!parseBoolean(env.MUSE_ACTIVE_CONTEXT_ENABLED, true)) {
     return undefined;
   }
-  const calendarEventsResolver = calendarRegistry && env.MUSE_ACTIVE_CONTEXT_CALENDAR_ENABLED?.trim().toLowerCase() !== "false"
+  const calendarEventsResolver = calendarRegistry && parseBoolean(env.MUSE_ACTIVE_CONTEXT_CALENDAR_ENABLED, true)
     ? {
         async resolve(options: { readonly nowIso: string; readonly timezone: string; readonly userId?: string }) {
           try {
@@ -120,9 +120,8 @@ export function buildActiveContextProvider(
   // to remind you about X at 3 — it's 2:55" without an extra tool
   // call. Opt-out via `MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED=false`.
   const remindersResolver: RemindersResolver | undefined =
-    env.MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED?.trim().toLowerCase() === "false"
-      ? undefined
-      : {
+    parseBoolean(env.MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED, true)
+      ? {
         async resolve(): Promise<readonly ReminderHint[] | undefined> {
           try {
             const reminders = await readReminders(resolveRemindersFile(env));
@@ -133,7 +132,8 @@ export function buildActiveContextProvider(
             return undefined;
           }
         }
-      };
+      }
+      : undefined;
   return new DefaultActiveContextProvider({
     ...(activeTaskResolver ? { activeTaskResolver } : {}),
     ...(calendarEventsResolver ? { calendarEventsResolver } : {}),
@@ -158,7 +158,7 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
   if (isLocalOnlyEnabled(env)) {
     return undefined;
   }
-  if (env.MUSE_INBOX_CONTEXT_ENABLED?.trim().toLowerCase() === "false") {
+  if (!parseBoolean(env.MUSE_INBOX_CONTEXT_ENABLED, true)) {
     return undefined;
   }
   const sources: InboxSourceConfig[] = [];
@@ -225,7 +225,7 @@ export function buildEpisodicRecallProvider(
   env: MuseEnvironment,
   summaryStore: ConversationSummaryStore | undefined
 ): EpisodicRecallProvider | undefined {
-  if (env.MUSE_EPISODIC_RECALL_ENABLED?.trim().toLowerCase() === "false") {
+  if (!parseBoolean(env.MUSE_EPISODIC_RECALL_ENABLED, true)) {
     return undefined;
   }
   if (!summaryStore || typeof summaryStore.listAll !== "function") {
@@ -241,7 +241,7 @@ export function buildEpisodicRecallProvider(
   // Embedding recall on by default (zero-cost local Ollama;
   // fail-open to Jaccard if unreachable). Opt out with
   // MUSE_EPISODIC_RECALL_EMBED=false.
-  const embedEnabled = env.MUSE_EPISODIC_RECALL_EMBED?.trim().toLowerCase() !== "false";
+  const embedEnabled = parseBoolean(env.MUSE_EPISODIC_RECALL_EMBED, true);
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe";
   // ACT-R activation fuel: the recall-hits ledger this same provider already
   // writes (withRecallHitRecording below) feeds frequency × recency ranking —
@@ -387,7 +387,7 @@ export function buildBackgroundReviewHooks(
  * Default off so existing setups see no behavioural change.
  */
 export function buildToolFilter(env: MuseEnvironment): ToolFilter | undefined {
-  if (env.MUSE_TOOL_FILTER_ENABLED?.trim().toLowerCase() !== "true") {
+  if (!parseBoolean(env.MUSE_TOOL_FILTER_ENABLED, false)) {
     return undefined;
   }
   return new DefaultToolFilter();
@@ -406,7 +406,7 @@ export function buildToolFilter(env: MuseEnvironment): ToolFilter | undefined {
  * accesses the same `TelemetryAggregator` interface.
  */
 export function buildTelemetryAggregator(env: MuseEnvironment): TelemetryAggregator | undefined {
-  if (env.MUSE_TELEMETRY_AGGREGATOR_ENABLED?.trim().toLowerCase() === "false") {
+  if (!parseBoolean(env.MUSE_TELEMETRY_AGGREGATOR_ENABLED, true)) {
     return undefined;
   }
   const capacityRaw = env.MUSE_TELEMETRY_AGGREGATOR_CAPACITY?.trim();
