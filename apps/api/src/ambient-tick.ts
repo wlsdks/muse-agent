@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Ambient-perception firing daemon — schedules the P20 edge-triggered
  * ambient runner on the API server's lifecycle, mirroring
@@ -81,7 +82,7 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
         options.logger?.(`ambient-tick: delivered ${summary.delivered.toString()} notice(s) via ${options.providerId}`);
       }
     } catch (cause) {
-      options.errorLogger?.(`ambient-tick: ${cause instanceof Error ? cause.message : String(cause)}`);
+      options.errorLogger?.(`ambient-tick: ${errorMessage(cause)}`);
     } finally {
       firing = false;
     }
@@ -104,3 +105,4 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

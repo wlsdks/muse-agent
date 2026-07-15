@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse actions` — review the reviewable autonomous-action log.
  * The objectives daemon appends a rationale-bearing entry for
@@ -107,7 +108,7 @@ export function registerActionsCommands(program: Command, io: ProgramIO): void {
           io.stdout(`${formatEntry(e)}\n`);
         }
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("actions failed", { exitCode: 1 });
       }
     });
@@ -170,3 +171,4 @@ export function registerActionsCommands(program: Command, io: ProgramIO): void {
       io.stdout(`Action log at rest: ${encrypted ? "ENCRYPTED" : "plaintext"} (${file})\n`);
     });
 }
+

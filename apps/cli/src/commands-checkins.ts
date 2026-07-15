@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `muse checkins` — the user-facing surface for proactive commitment
  * check-ins. `scan` reads the recent chat, detects the user's open-loop
@@ -201,7 +202,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
     .option("--json", "Print the raw payload")
     .action(async (id: string, when: string, options: { readonly json?: boolean }) => {
       const parsed = parseReminderDueAt(when, () => new Date());
-      if (parsed instanceof Error) {
+      if (isErrorLike(parsed)) {
         io.stderr(`muse checkins snooze: ${parsed.message}\n`);
         process.exitCode = 1;
         return;

@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
+import { isErrorLike } from "@muse/shared";
 
 import { redactSecrets } from "./secret-redaction.js";
 import { SECRET_PATTERNS } from "./secret-patterns.js";
@@ -214,6 +215,30 @@ export function formatErrorForTerminal(cause: unknown, cap: number = DEFAULT_ERR
  */
 export function errorMessage(cause: unknown, fallback?: string): string {
   return asMessageFromValue(cause) ?? fallback ?? String(cause);
+}
+
+/**
+ * Safe nominal check for error-like values without hard-coding `instanceof Error`.
+ * This intentionally accepts cross-realm/structured-clone error objects that
+ * still carry the standard `name`/`message` shape, which keeps message
+ * extraction resilient when values cross worker/VM boundaries.
+ */
+export function isErrorLike(value: unknown): value is Error {
+  if (value instanceof Error) {
+    return true;
+  }
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  return ("name" in value && "message" in value) && typeof (value as { name: unknown }).name === "string" && typeof (value as { message: unknown }).message === "string";
+}
+
+/**
+ * Normalize unknown thrown values into an `Error` instance, preserving explicit
+ * `Error` inputs. Useful in places where APIs require an `Error` object.
+ */
+export function asError(error: unknown): Error {
+  return isErrorLike(error) ? error : new Error(errorMessage(error));
 }
 
 /**

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse chat` helpers (one-shot + input/parsing). Lives next to program.ts
  * since it shares the createProgram entry-point's `ProgramIO` shape and the
@@ -189,7 +190,7 @@ export function createTuiChatSubmitter(
       await writeRunLog(io.workspaceDir ?? process.cwd(), {
         message,
         ...(options.model !== undefined ? { model: options.model } : {}),
-        response: { error: error instanceof Error ? error.message : String(error), success: false },
+        response: { error: errorMessage(error), success: false },
         source
       }).catch(() => undefined); // best-effort: a logging failure must not mask the original error
       throw error;
@@ -698,3 +699,4 @@ export function wireReplGracefulExit(args: {
     process.off("SIGINT", sigintProcess);
   };
 }
+

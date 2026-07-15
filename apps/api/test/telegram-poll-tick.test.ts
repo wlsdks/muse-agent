@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { isErrorLike } from "@muse/shared";
 
 import type { InboundMessage, TelegramProvider } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
@@ -27,7 +28,7 @@ function fakeProvider(batches: readonly (readonly InboundMessage[] | Error)[]): 
     pollUpdates: async () => {
       const next = batches[call] ?? [];
       call += 1;
-      if (next instanceof Error) {
+      if (isErrorLike(next)) {
         throw next;
       }
       return next;
@@ -119,3 +120,4 @@ describe("startTelegramPollTick", () => {
     }
   });
 });
+

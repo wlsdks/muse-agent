@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse doctor`'s email auth check: is SOMETHING configured, and does a
  * live probe actually still work? Two configured shapes get a real probe:
@@ -62,7 +63,7 @@ export async function emailAuthCheck(
         const guidance = formatEmailAuthGuidance(cause, imapCredential.email);
         return { detail: `connected but the IMAP login failed — ${guidance} Run \`muse setup email\` again.`, name, status: "fail" };
       }
-      return { detail: `connected but couldn't verify the IMAP login right now: ${cause instanceof Error ? cause.message : String(cause)}`, name, status: "warn" };
+      return { detail: `connected but couldn't verify the IMAP login right now: ${errorMessage(cause)}`, name, status: "warn" };
     }
   }
   if (!credential) {
@@ -87,6 +88,7 @@ export async function emailAuthCheck(
     if (cause instanceof GmailOAuthRetryableError) {
       return { detail: "connected but couldn't verify the refresh right now (network) — try `muse doctor` again shortly", name, status: "warn" };
     }
-    return { detail: `connected but the refresh check failed: ${cause instanceof Error ? cause.message : String(cause)}`, name, status: "warn" };
+    return { detail: `connected but the refresh check failed: ${errorMessage(cause)}`, name, status: "warn" };
   }
 }
+

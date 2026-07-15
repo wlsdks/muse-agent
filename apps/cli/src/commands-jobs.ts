@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 
 const here = pathDirname(fileURLToPath(import.meta.url));
 
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage} from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -541,7 +541,7 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
       try {
         await unlink(file);
       } catch (cause) {
-        io.stderr(`muse job delete: failed to remove ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse job delete: failed to remove ${file}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }

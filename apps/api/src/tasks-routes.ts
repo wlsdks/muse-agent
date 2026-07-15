@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `/api/tasks/*` routes — the personal-domain trio's todo surface.
  *
@@ -73,7 +74,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
     if (dueAtRaw.length > 0) {
       const parsed = parseTaskDueAt(dueAtRaw, () => new Date());
-      if (parsed instanceof Error) {
+      if (isErrorLike(parsed)) {
         return reply.status(400).send({ code: "INVALID_TASK_DUE_AT", message: parsed.message });
       }
       dueAt = parsed;
@@ -117,7 +118,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       dueAt = null;
     } else if (typeof body.dueAt === "string" && body.dueAt.trim().length > 0) {
       const parsed = parseTaskDueAt(body.dueAt, () => new Date());
-      if (parsed instanceof Error) {
+      if (isErrorLike(parsed)) {
         return reply.status(400).send({ code: "INVALID_TASK_DUE_AT", message: parsed.message });
       }
       dueAt = parsed;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { errorMessage, isErrorLike } from "@muse/shared";
 /**
  * Background worker that `muse job run` detaches by default.
  * Reads --job-* CLI args, runs the prompt through the local agent
@@ -91,7 +92,7 @@ async function main(): Promise<void> {
           // this the loop ends, the job is recorded `done` with
           // no output, and the worker exits 0 — a false success.
           const err = (event as { error?: unknown }).error;
-          throw err instanceof Error
+          throw isErrorLike(err)
             ? err
             : new Error(typeof err === "string" ? err : "model stream failed");
         }
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
     await appendEvent(args.jobFile, { type: "done" });
   } catch (cause) {
     await appendEvent(args.jobFile, {
-      text: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
+      text: errorMessage(cause),
       type: "error"
     });
     process.exit(1);
@@ -122,3 +123,4 @@ async function main(): Promise<void> {
 }
 
 await main();
+

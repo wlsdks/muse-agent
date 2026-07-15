@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for Muse's WEDGE — confidence-gated CITED RECALL — on LOCAL
  * Ollama embeddings (nomic-embed-text). This proves the identity's core claim
@@ -44,7 +45,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`verify-cited-recall skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`verify-cited-recall skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -116,3 +117,4 @@ for (const c of cases) {
 
 console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${embedModel}` : `\n${failures}/${cases.length} FAILED on ${embedModel}`);
 process.exit(failures === 0 ? 0 : 1);
+

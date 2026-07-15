@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse setup data` — the "connect your data" wizard.
  *
@@ -187,7 +188,7 @@ export async function runDataSetup(deps: DataSetupDeps): Promise<DataSetupResult
       }
     } catch (cause) {
       failed.push(step.id);
-      io.stderr(`  ⚠ ${step.id} step failed (continuing): ${cause instanceof Error ? cause.message : String(cause)}\n`);
+      io.stderr(`  ⚠ ${step.id} step failed (continuing): ${errorMessage(cause)}\n`);
     }
   }
 
@@ -316,3 +317,4 @@ Examples:
       renderDataSetupSummary(io, result);
     });
 }
+

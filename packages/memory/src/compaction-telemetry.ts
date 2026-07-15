@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Bounded, low-cardinality classification for a compaction failure — the
  * self-improvement flywheel needs a stable bucket to aggregate on, not a
@@ -129,7 +130,7 @@ export function classifyCompactionFailure(input: CompactionFailureInput): Compac
     return classifyByStatus(status, retryable);
   }
 
-  if (input instanceof Error || message.length > 0) {
+  if (isErrorLike(input) || message.length > 0) {
     return "summary_failed";
   }
 

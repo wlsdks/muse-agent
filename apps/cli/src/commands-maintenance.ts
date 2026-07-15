@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse maintenance compact` rotates the rotated archive
  * sidecars (`proactive-history.json.1`, `.2`, …) into
@@ -227,7 +228,7 @@ export function registerMaintenanceCommand(program: Command, io: ProgramIO): voi
           await unlink(entry.source);
           compacted += 1;
         } catch (cause) {
-          io.stderr(`failed to compact ${entry.source}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`failed to compact ${entry.source}: ${errorMessage(cause)}\n`);
         }
       }
       if (options.json) {
@@ -309,3 +310,4 @@ function notificationLogPath(): string {
   const raw = process.env.MUSE_MESSAGING_LOG_FILE?.trim();
   return raw && raw.length > 0 ? raw : join(homedir(), ".muse", "notifications.log");
 }
+

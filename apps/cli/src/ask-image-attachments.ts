@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse ask --image` / `--auto-image` attachment loading, lifted out of the
  * commands-ask god-file. Resolves a local image path to an inline base64
@@ -44,7 +45,7 @@ export async function loadImageAttachment(filePath: string): Promise<LoadedImage
   try {
     bytes = await readFile(filePath);
   } catch (cause) {
-    return { error: `muse ask --image: could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`, ok: false };
+    return { error: `muse ask --image: could not read ${filePath}: ${errorMessage(cause)}`, ok: false };
   }
   if (bytes.length === 0) {
     return { error: `muse ask --image: ${filePath} is empty (0 bytes)`, ok: false };
@@ -66,3 +67,4 @@ export function collectAutoImageAttachments(query: string): Promise<readonly { r
     loadImage: loadImageAttachment
   });
 }
+

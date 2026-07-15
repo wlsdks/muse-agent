@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Deterministic error classification — maps an arbitrary thrown
  * error onto a stable recovery-relevant taxonomy so retry / fallback
@@ -195,7 +196,7 @@ function extractStatus(error: unknown): number | null {
 }
 
 function directMessage(value: unknown): string {
-  if (value instanceof Error) return value.message;
+  if (isErrorLike(value)) return value.message;
   if (typeof value === "string") return value;
   if (typeof value === "object" && value !== null) {
     const m = (value as { message?: unknown }).message;
@@ -238,7 +239,7 @@ function extractMessage(error: unknown): string {
 }
 
 function errorName(error: unknown): string {
-  if (error instanceof Error) return error.name;
+  if (isErrorLike(error)) return error.name;
   if (typeof error === "object" && error !== null) {
     const n = (error as { name?: unknown }).name;
     if (typeof n === "string") return n;

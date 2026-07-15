@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Ad-hoc grounding for `muse ask`, lifted out of the commands-ask god-file:
  * ground THIS answer on a specific --file (or folder), a public --url, or the
@@ -90,7 +91,7 @@ export async function applyAdHocGrounding(params: {
           }
         }
       } catch (cause) {
-        onStderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        onStderr(`muse: could not read --file ${fileLabel} (${errorMessage(cause)})\n`);
       }
     } else {
     try {
@@ -108,7 +109,7 @@ export async function applyAdHocGrounding(params: {
             onStderr(`muse: --file ${fileLabel} is a PDF with no extractable text (it may be scanned images) — I can't ground on it.\n`);
           }
         } catch (pdfErr) {
-          onStderr(`muse: --file ${fileLabel} could not be read as a PDF (${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}) — I won't ground on it.\n`);
+          onStderr(`muse: --file ${fileLabel} could not be read as a PDF (${errorMessage(pdfErr)}) — I won't ground on it.\n`);
         }
       } else if (isEmlDocument(fileLabel)) {
         // A saved email — extract the decoded subject/sender + readable body
@@ -123,7 +124,7 @@ export async function applyAdHocGrounding(params: {
         try {
           fileText = docxToText(bytes, fileLabel);
         } catch (docxErr) {
-          onStderr(`muse: --file ${fileLabel} could not be read as a .docx (${docxErr instanceof Error ? docxErr.message : String(docxErr)}) — I won't ground on it.\n`);
+          onStderr(`muse: --file ${fileLabel} could not be read as a .docx (${errorMessage(docxErr)}) — I won't ground on it.\n`);
         }
       } else if (isPptxDocument(fileLabel)) {
         // A PowerPoint .pptx is likewise a ZIP of XML — extract its slide text
@@ -131,7 +132,7 @@ export async function applyAdHocGrounding(params: {
         try {
           fileText = pptxToText(bytes, fileLabel);
         } catch (pptxErr) {
-          onStderr(`muse: --file ${fileLabel} could not be read as a .pptx (${pptxErr instanceof Error ? pptxErr.message : String(pptxErr)}) — I won't ground on it.\n`);
+          onStderr(`muse: --file ${fileLabel} could not be read as a .pptx (${errorMessage(pptxErr)}) — I won't ground on it.\n`);
         }
       } else if (looksLikeBinaryContent(bytes)) {
         // A non-PDF binary (image, archive, office doc): refuse — feeding
@@ -160,7 +161,7 @@ export async function applyAdHocGrounding(params: {
         }
       }
     } catch (cause) {
-      onStderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+      onStderr(`muse: could not read --file ${fileLabel} (${errorMessage(cause)})\n`);
     }
     }
   }
@@ -207,7 +208,7 @@ export async function applyAdHocGrounding(params: {
           onStderr(`muse: --url ${urlLabel} returned no readable text — I can't ground on it.\n`);
         }
       } catch (cause) {
-        onStderr(`muse: could not fetch --url ${urlLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        onStderr(`muse: could not fetch --url ${urlLabel} (${errorMessage(cause)})\n`);
       }
     }
   }
@@ -235,9 +236,10 @@ export async function applyAdHocGrounding(params: {
         onStderr("muse: your clipboard is empty — I can't ground on it.\n");
       }
     } catch (cause) {
-      onStderr(`muse: could not read the clipboard (${cause instanceof Error ? cause.message : String(cause)}) — I won't ground on it.\n`);
+      onStderr(`muse: could not read the clipboard (${errorMessage(cause)}) — I won't ground on it.\n`);
     }
   }
 
   return { notesUnavailable };
 }
+

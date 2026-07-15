@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Standing-objective re-evaluation daemon — wires
  * `runDueObjectives` (P5-b2) into apps/api as a `setInterval`
@@ -78,7 +79,7 @@ export function startObjectivesTick(options: ObjectivesTickOptions): ObjectivesT
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`objectives-tick: ${message}`);
     } finally {
       firing = false;
@@ -104,3 +105,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { Command } from "commander";
@@ -18,7 +19,7 @@ async function runFollowup(args: string[]): Promise<{ readonly error?: string; r
     registerFollowupCommands(program, io);
     await program.parseAsync(["node", "muse", "followup", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { error, stdout: stdout.join("") };
 }
@@ -147,3 +148,4 @@ describe("muse followup list --search — filter by summary (sibling parity with
     expect(payload.total).toBe(1);
   });
 });
+

@@ -1,4 +1,5 @@
 import type {
+import { errorMessage } from "@muse/shared";
   IntegrationMessagingProviderId,
   ResolvedIntegrationEnvironment,
   ResolvedMessagingProviderEnvironment
@@ -242,7 +243,7 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
         text: "✅ Muse test message — this channel is connected and can reach you."
       });
     } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
+      const reason = errorMessage(cause);
       return reply.status(502).send({ message: reason, reason });
     }
     return { destination: owner, ok: true };
@@ -272,3 +273,4 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     return { ok: true };
   });
 }
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse journey` — one reverse-chronological "what Muse learned about you"
  * timeline, merged across the stores that separately hold the pieces: the
@@ -155,7 +156,7 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           io.stdout(NO_HISTORY_FOOTER);
         }
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("journey failed", { exitCode: 1 });
       }
     });
@@ -197,8 +198,9 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           `Use \`muse skills curate --max-idle-days <n>\` to archive it once idle, or \`muse skills consolidate --apply\` to merge overlapping skills (both archive, never destroy).\n`
         );
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("journey forget failed", { exitCode: 1 });
       }
     });
 }
+

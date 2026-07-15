@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for the FEED cross-lingual RESCUE arm — a KOREAN query reaching an
  * EN headline that has rolled OUT of the recency window, which recency alone can
@@ -78,7 +79,7 @@ const embedFn = (text, m) => embed(text, m, { baseUrlResolver });
 try {
   await embedFn("probe", embedModel);
 } catch (cause) {
-  console.log(`verify-feed-crosslingual skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). A skip is not a pass.`);
+  console.log(`verify-feed-crosslingual skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). A skip is not a pass.`);
   process.exit(0);
 }
 
@@ -182,3 +183,4 @@ await seedFeeds(await embedOldRust());
 
 console.log(failures === 0 ? `\nverify-feed-crosslingual: ALL PASS (3) on ${model}` : `\nverify-feed-crosslingual: ${failures}/3 FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);
+

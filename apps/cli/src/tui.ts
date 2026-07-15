@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, render, useInput } from "ink";
+import { errorMessage } from "@muse/shared";
 
 export interface MuseTuiChatTurn {
   readonly assistant: string;
@@ -40,7 +41,7 @@ function MuseStatusTui({ model }: { readonly model: MuseStatusTuiModel }): React
             setChatTurns((turns) => appendChatTurn(turns, { assistant, user: message }));
           })
           .catch((error: unknown) => {
-            setChatError(error instanceof Error ? error.message : String(error));
+            setChatError(errorMessage(error));
           })
           .finally(() => setChatStatus("idle"));
         return;
@@ -122,3 +123,4 @@ export async function renderMuseStatusTui(model: MuseStatusTuiModel): Promise<vo
   const instance = render(React.createElement(MuseStatusTui, { model }));
   await instance.waitUntilExit();
 }
+

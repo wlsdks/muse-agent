@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Daily digest-flush daemon — the delivery half of the interruption budget
  * (`packages/proactivity/src/digest-flush.ts` + `interruption-gate.ts`),
@@ -86,7 +87,7 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`digest-tick: ${message}`);
     } finally {
       firing = false;
@@ -114,3 +115,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

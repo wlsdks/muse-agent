@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `muse remind` command group — passive personal reminders.
  *
@@ -144,7 +145,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       // or not `--local` is set — no degraded API error, no wasted
       // round-trip on input the server would only reject anyway.
       const resolvedDueAt = parseReminderDueAt(when, () => new Date());
-      if (resolvedDueAt instanceof Error) {
+      if (isErrorLike(resolvedDueAt)) {
         throw resolvedDueAt;
       }
       // A reminder fires AT its dueAt, so a PAST time is almost always a date
@@ -299,7 +300,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         let nextDueAt: string;
         if (options.in && options.in.trim().length > 0) {
           const parsed = parseReminderDueAt(options.in, () => new Date());
-          if (parsed instanceof Error) {
+          if (isErrorLike(parsed)) {
             throw parsed;
           }
           nextDueAt = parsed;

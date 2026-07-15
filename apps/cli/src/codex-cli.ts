@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Codex delegation — talk to OpenAI's ChatGPT models through the user's OWN
  * official `codex` CLI login, never through a Muse-held token.
@@ -136,7 +137,7 @@ export async function runCodexExec(prompt: string, deps: CodexExecDeps = {}): Pr
     });
     return { exitCode: result.exitCode, ok: true, stderr: result.stderr, text: result.output };
   } catch (error) {
-    return { exitCode: null, ok: false, stderr: error instanceof Error ? error.message : String(error), text: "" };
+    return { exitCode: null, ok: false, stderr: errorMessage(error), text: "" };
   }
 }
 
@@ -260,3 +261,4 @@ export function applyCodexModelToEnv(
   env.MUSE_MODEL_PROVIDER_ID = CODEX_PROVIDER_ID;
   return model;
 }
+

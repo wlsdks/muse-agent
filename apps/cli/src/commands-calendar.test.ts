@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { LocalCalendarProvider } from "@muse/calendar";
 import { type PersistedReminder } from "@muse/stores";
@@ -259,7 +260,7 @@ async function runCalendarConflicts(args: string[], events: Array<Record<string,
     registerCalendarCommands(program, io, helpers);
     await program.parseAsync(["node", "muse", "calendar", "conflicts", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { apiPaths, error, json, stdout };
 }
@@ -313,7 +314,7 @@ async function runCalendarFree(args: string[], events: Array<Record<string, unkn
     registerCalendarCommands(program, io, helpers);
     await program.parseAsync(["node", "muse", "calendar", "free", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { apiPaths, error, json, stdout };
 }
@@ -385,7 +386,7 @@ describe("muse calendar add — create a local event from the terminal", () => {
       registerCalendarCommands(program, io, helpers);
       await program.parseAsync(["node", "muse", "calendar", "add", ...args]);
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = errorMessage(cause);
     }
     return { error, stdout };
   }
@@ -441,7 +442,7 @@ describe("muse calendar add — create a local event from the terminal", () => {
       await program.parseAsync(["node", "muse", "calendar", "events", ...args]);
       return { stdout: stdout.join("") };
     } catch (cause) {
-      return { error: cause instanceof Error ? cause.message : String(cause), stdout: stdout.join("") };
+      return { error: errorMessage(cause), stdout: stdout.join("") };
     }
   }
 
@@ -494,7 +495,7 @@ describe("muse calendar delete — cancel a local event by id", () => {
       registerCalendarCommands(program, io, helpers);
       await program.parseAsync(["node", "muse", "calendar", ...args]);
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = errorMessage(cause);
     }
     return { error, out: out.join("") };
   }
@@ -606,7 +607,7 @@ describe("muse calendar export — iCalendar (.ics) over the API events seam", (
       registerCalendarCommands(program, io, helpers);
       await program.parseAsync(["node", "muse", "calendar", "export", ...args]);
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      error = errorMessage(cause);
     }
     return { apiPaths, error, stdout: stdout.join("") };
   }
@@ -629,3 +630,4 @@ describe("muse calendar export — iCalendar (.ics) over the API events seam", (
     expect(r.apiPaths).toEqual([]);
   });
 });
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * The tools `muse mcp serve` exposes — five read-only (grounded recall,
  * knowledge search, user-model read, calendar read, tasks read) plus one write-proxy
@@ -290,7 +291,7 @@ function buildMuseRecallTool(deps: McpServeDependencies): MuseTool {
         // The local model / embed endpoint is unreachable — never fall back
         // to an uncited guess; the caller (serve.ts) turns this throw into a
         // structured MCP tool error.
-        throw new Error(`muse_recall: local model unreachable — ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        throw new Error(`muse_recall: local model unreachable — ${errorMessage(error)}`, { cause: error });
       }
 
       const out: Record<string, JsonValue> = {
@@ -596,3 +597,4 @@ export function buildMcpServeTools(deps: McpServeDependencies): readonly MuseToo
     buildProposeActionTool(deps)
   ];
 }
+

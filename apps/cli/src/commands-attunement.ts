@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Personal Continuity CLI — deliberately local and deterministic. The user
  * chooses a life/work thread and explicitly links sources; this command never
@@ -472,7 +473,7 @@ async function commandAction(command: Command, io: ProgramIO, label: string, act
   try {
     await action();
   } catch (cause) {
-    io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    io.stderr(`${errorMessage(cause)}\n`);
     command.error(`${label} failed`, { exitCode: 1 });
   }
 }
@@ -651,3 +652,4 @@ Examples:
       });
     });
 }
+

@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { runDigestFlushIfDue } from "@muse/proactivity";
@@ -31,7 +32,7 @@ async function runDigest(args: string[]): Promise<{ readonly error?: string; rea
     registerDigestCommands(program, io);
     await program.parseAsync(["node", "muse", "digest", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { error, stdout: stdout.join("") };
 }
@@ -153,3 +154,4 @@ describe("describeNextDigestFlush — pure hint text", () => {
     expect(describeNextDigestFlush(new Date(2026, 6, 12, 20, 0, 0), 18, false)).toBe("tomorrow at 18:00 local");
   });
 });
+

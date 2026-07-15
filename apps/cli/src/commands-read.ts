@@ -18,7 +18,7 @@ import { basename, extname, relative, sep } from "node:path";
 import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
 import { LocalDirNotesProvider } from "@muse/domain-tools";
 import { composeSurfacePrompt } from "@muse/prompts";
-import { redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText , errorMessage} from "@muse/shared";
 import type { Command } from "commander";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
@@ -123,7 +123,7 @@ export async function ingestDirectoryToNotes(
       pageCount = parsed.pageCount;
     } catch (cause) {
       skipped += 1;
-      onProgress?.(`✗ ${file} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
+      onProgress?.(`✗ ${file} (could not read — skipped: ${errorMessage(cause)})`);
       continue;
     }
     if (text.length === 0) {
@@ -142,7 +142,7 @@ export async function ingestDirectoryToNotes(
       onProgress?.(`+ ${file} → ${id}`);
     } catch (cause) {
       skipped += 1;
-      onProgress?.(`✗ ${file} (save failed — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
+      onProgress?.(`✗ ${file} (save failed — skipped: ${errorMessage(cause)})`);
     }
   }
   return { ingested, skipped, total: files.length };
@@ -196,7 +196,7 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
       try {
         buffer = await readFile(filePath);
       } catch (cause) {
-        io.stderr(`muse read: could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse read: could not read ${filePath}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -204,7 +204,7 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
       try {
         parsed = await extractDocumentText(filePath, buffer);
       } catch (cause) {
-        io.stderr(`muse read: could not read document: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse read: could not read document: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -220,7 +220,7 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
             await saveDocumentToNotes(notesDir, saveId, filePath, text, parsed.pageCount);
             io.stderr(`(saved ${parsed.pageCount.toString()}-page document to ${saveId} in ${notesDir} — now searchable via \`muse ask\` and knowledge_search)\n`);
           } catch (cause) {
-            io.stderr(`(failed to save document to notes: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+            io.stderr(`(failed to save document to notes: ${errorMessage(cause)})\n`);
             process.exitCode = 1;
           }
         }

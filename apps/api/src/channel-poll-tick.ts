@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Generic multi-channel polling daemon shared by the per-channel
  * messaging providers (currently Discord and Slack — both walk
@@ -62,7 +63,7 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
           }
           totalIngested += inbound.length;
         } catch (cause) {
-          const message = cause instanceof Error ? cause.message : String(cause);
+          const message = errorMessage(cause);
           options.errorLogger?.(`${options.logPrefix}: channel ${channel}: ${message}`);
         }
       }
@@ -108,3 +109,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

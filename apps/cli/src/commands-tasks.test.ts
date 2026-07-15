@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import { Command } from "commander";
@@ -140,7 +141,7 @@ describe("muse tasks — API-unreachable falls back to the local store (local-fi
       await program.parseAsync(["node", "muse", "tasks", ...args]);
       return undefined;
     } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause);
+      return errorMessage(cause);
     }
   };
   const unreachable: TasksCommandHelpers["apiRequest"] = async () => {
@@ -213,7 +214,7 @@ async function runTasks(args: string[]): Promise<{
     registerTasksCommands(program, io, helpers);
     await program.parseAsync(["node", "muse", "tasks", "add", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { apiCalls, error };
 }
@@ -414,3 +415,4 @@ describe("muse tasks add --due — past-due heads-up (sibling parity with `remin
     expect(stderr).not.toContain("PAST");
   });
 });
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Delivery/schedule tick cluster — factored out of
  * `commands-daemon-register.ts`'s `muse daemon` action so the handler stays
@@ -249,7 +250,7 @@ export function makeDailyBriefTick(deps: MakeDailyBriefTickDeps): () => Promise<
       stdout(`[${nowDate.toISOString()}] daily-brief: delivered\n`);
     } catch (cause) {
       // Fail-soft — a send blip must never break the daemon; next tick retries.
-      stdout(`[${nowDate.toISOString()}] daily-brief: send failed (will retry next tick): ${cause instanceof Error ? cause.message : String(cause)}\n`);
+      stdout(`[${nowDate.toISOString()}] daily-brief: send failed (will retry next tick): ${errorMessage(cause)}\n`);
     }
   };
 }
@@ -309,7 +310,7 @@ export function makeSchedulerTick(deps: MakeSchedulerTickDeps): () => Promise<vo
     try {
       jobs = await store.list();
     } catch (cause) {
-      stdout(`${tag} scheduler: failed to read the job store: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+      stdout(`${tag} scheduler: failed to read the job store: ${errorMessage(cause)}\n`);
       return;
     }
 
@@ -367,7 +368,7 @@ export function makeSchedulerTick(deps: MakeSchedulerTickDeps): () => Promise<vo
           });
         }
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
+        const message = errorMessage(cause);
         await store.updateExecutionResult(job.id, "failed", message);
         errors.push(`${job.name}: ${message}`);
       } finally {
@@ -651,3 +652,4 @@ export function makeRetentionPruneTick(deps: MakeRetentionPruneTickDeps): () => 
     } catch { /* maybeAutoPrune already never throws — this is a final backstop */ }
   };
 }
+

@@ -3,6 +3,7 @@ import { EventEmitter, on as waitForEvent } from "node:events";
 import { summarizeTokenConfidence, type AgentRunInput, type AgentRunResult, type AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
+import { errorMessage } from "@muse/shared";
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
@@ -546,7 +547,7 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
 
     if (runtimeError) {
       yield `event: error\ndata: ${sseData(
-        runtimeError instanceof Error ? runtimeError.message : String(runtimeError)
+        errorMessage(runtimeError)
       )}\n\n`;
       return;
     }
@@ -910,3 +911,4 @@ function toConversationEntry(message: AgentMessage): ConversationEntry {
     ...(message.targetAgentId !== undefined ? { targetAgentId: message.targetAgentId } : {})
   };
 }
+

@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { isErrorLike } from "@muse/shared";
 
 import type { DiscordProvider, InboundFetchOptions, InboundMessage } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
@@ -32,7 +33,7 @@ function fakeProvider(scripts: Record<string, readonly (readonly InboundMessage[
       const idx = cursors[source] ?? 0;
       cursors[source] = idx + 1;
       const next = script[idx] ?? [];
-      if (next instanceof Error) {
+      if (isErrorLike(next)) {
         throw next;
       }
       return next;
@@ -151,3 +152,4 @@ describe("startDiscordPollTick", () => {
     }
   });
 });
+

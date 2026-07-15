@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse memory` command group.
  *
@@ -509,7 +510,7 @@ Examples:
             preferences: parsed.preferences ?? {}
           };
         } catch (cause) {
-          io.stderr(`Could not read baseline ${options.baseline}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`Could not read baseline ${options.baseline}: ${errorMessage(cause)}\n`);
           process.exitCode = 1;
           return;
         }
@@ -603,7 +604,7 @@ Examples:
         io.stdout(`   A plaintext backup is at: ${backupPath ?? "(none)"}\n`);
         io.stdout("   The key comes from MUSE_MEMORY_KEY (or a per-host fallback). Keep MUSE_MEMORY_KEY safe — without it AND the backup, the data is unrecoverable.\n");
       } catch (cause) {
-        io.stderr(`muse memory encrypt: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse memory encrypt: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
       }
     });
@@ -618,7 +619,7 @@ Examples:
         await decryptFileAtRest(defaultBeliefProvenanceFile()).catch(() => undefined); // keep provenance in lock-step with the facts
         io.stdout(alreadyPlaintext ? "Your user-memory is already plaintext.\n" : "🔓 Rewrote your user-memory + its belief-provenance as plaintext.\n");
       } catch (cause) {
-        io.stderr(`muse memory decrypt: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse memory decrypt: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
       }
     });
@@ -818,3 +819,4 @@ function diffSlot(prev: Readonly<Record<string, string>>, curr: Readonly<Record<
   }
   return { added, changed, removed };
 }
+

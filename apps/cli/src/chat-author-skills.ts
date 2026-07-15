@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Session-end skill authoring. Reads the just-finished session, detects
  * procedural user corrections, asks the local model to generalise each into
@@ -51,7 +52,7 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
   try {
     [lines, boundaries] = await Promise.all([readLines(), readBoundaries()]);
   } catch (cause) {
-    return { reason: `history read failed: ${cause instanceof Error ? cause.message : String(cause)}`, status: "skipped" };
+    return { reason: `history read failed: ${errorMessage(cause)}`, status: "skipped" };
   }
 
   const range = extractCurrentSessionTurns(lines, boundaries);
@@ -185,3 +186,4 @@ export async function applySkillRewardsFromSession(options: SkillRewardOptions):
   }
   return { decayed, reinforced };
 }
+

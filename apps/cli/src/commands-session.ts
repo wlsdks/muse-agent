@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse session` — focus / DND controls for the JARVIS daemons.
  *
@@ -110,7 +111,7 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
       try {
         untilMs = resolveLockUntilMs(options.hours, options.minutes, nowMs);
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -180,3 +181,4 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
       io.stdout(`session locked until ${until} — ${formatRemainingDuration(minsRemainingFloat)} remaining\n`);
     });
 }
+

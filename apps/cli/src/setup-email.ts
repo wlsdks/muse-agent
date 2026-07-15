@@ -1,3 +1,4 @@
+import { errorMessage, asError } from "@muse/shared";
 /**
  * `muse setup email` — asks the connection method first, then runs one of
  * two wizards:
@@ -127,7 +128,7 @@ export async function runGmailOAuthLoopback(params: {
     try {
       ({ code } = await callback.waitForCode());
     } catch (cause) {
-      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+      return { ok: false, reason: errorMessage(cause) };
     }
 
     let exchanged: GmailTokenExchangeResult;
@@ -142,7 +143,7 @@ export async function runGmailOAuthLoopback(params: {
         redirectUri
       });
     } catch (cause) {
-      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+      return { ok: false, reason: errorMessage(cause) };
     }
 
     return {
@@ -363,7 +364,7 @@ async function defaultVerifyImapConnection(config: ImapSmtpEmailProviderConfig):
     const { messageCount } = await new ImapSmtpEmailProvider(config).verifyConnection();
     return { messageCount, ok: true };
   } catch (cause) {
-    return { error: cause instanceof Error ? cause : new Error(String(cause)), ok: false };
+    return { error: asError(cause), ok: false };
   }
 }
 
@@ -491,3 +492,4 @@ async function runOAuthEmailSetup(io: SetupEmailIO, deps: Partial<SetupEmailDeps
 
   return { ok: true };
 }
+

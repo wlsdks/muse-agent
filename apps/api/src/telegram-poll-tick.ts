@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Telegram polling daemon (Phase 2.a.3 + 2.a.4 per docs/design/messaging.md).
  *
@@ -93,7 +94,7 @@ export function startTelegramPollTick(options: TelegramPollOptions): TelegramPol
       options.onIngested?.(inbound.length);
       return true;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`telegram-poll: ${message}`);
       return false;
     } finally {
@@ -155,3 +156,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

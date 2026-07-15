@@ -4,7 +4,7 @@ import {
   PlanExecutionError,
   PlanValidationFailedError
 } from "@muse/agent-core";
-import { redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText, isErrorLike } from "@muse/shared";
 
 import type { ApiError } from "./server-helpers.js";
 
@@ -107,7 +107,7 @@ function isRetryableUpstreamError(error: unknown): boolean {
  * carry the original secret.
  */
 export function unwrapErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) {
+  if (!(isErrorLike(error))) {
     return "Agent run failed";
   }
 
@@ -115,7 +115,7 @@ export function unwrapErrorMessage(error: unknown): string {
   const segments: string[] = [];
   let current: unknown = error;
 
-  while (current instanceof Error && !seen.has(current)) {
+  while (isErrorLike(current) && !seen.has(current)) {
     seen.add(current);
     segments.push(current.message);
     current = (current as Error & { readonly cause?: unknown }).cause;

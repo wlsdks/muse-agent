@@ -20,7 +20,7 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { sleep } from "@muse/shared";
+import { sleep, isErrorLike } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -351,7 +351,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     try {
       return await readFile(this.file, "utf8");
     } catch (cause) {
-      if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
+      if (isErrorLike(cause) && (cause as NodeJS.ErrnoException).code === "ENOENT") {
         return undefined;
       }
       throw cause;
@@ -472,7 +472,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
       try {
         handle = await open(lockPath, "wx");
       } catch (cause) {
-        if (!(cause instanceof Error) || (cause as NodeJS.ErrnoException).code !== "EEXIST") {
+        if (!(isErrorLike(cause)) || (cause as NodeJS.ErrnoException).code !== "EEXIST") {
           throw cause;
         }
         if (await lockIsStale(lockPath)) {

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse board` (S4) — the user-facing surface of the durable agent task board: add work,
  * see it move across columns, run the next ready task, and approve/reject what the agent
@@ -166,7 +167,7 @@ function makeAgentExecutor(io: ProgramIO): TaskExecutor {
       // output is returned so a synthesis container can later combine the sub-task answers.
       return taskNeedsReview(task.title) ? { needsReview: true, output: finalOut, status: "completed" } : { output: finalOut, status: "completed" };
     } catch (cause) {
-      return { reason: cause instanceof Error ? cause.message : String(cause), status: "failed" };
+      return { reason: errorMessage(cause), status: "failed" };
     }
   };
 }
@@ -335,3 +336,4 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
       io.stdout(ran === 0 ? "Nothing ready to run (every task is done, in flight, blocked, or waiting on a dependency).\n" : `Ran ${ran.toString()} task(s).\n`);
     });
 }
+

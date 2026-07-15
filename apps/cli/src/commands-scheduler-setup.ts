@@ -1,3 +1,4 @@
+import { errorMessage, isErrorLike } from "@muse/shared";
 /**
  * `muse scheduler` and `muse setup` command groups, extracted from
  * apps/cli/src/program.ts.
@@ -139,7 +140,7 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
         return;
       }
       const cadence = parseCadence(options.every);
-      if (cadence instanceof Error) {
+      if (isErrorLike(cadence)) {
         io.stderr(`muse scheduler add: ${cadence.message}\n`);
         process.exitCode = 1;
         return;
@@ -172,7 +173,7 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
           io.stdout(formatDaemonLivenessNotice(verdict));
         }
       } catch (cause) {
-        io.stderr(`muse scheduler add: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse scheduler add: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
       }
     });
@@ -755,3 +756,4 @@ function formatBytes(bytes: number): string {
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Pattern-detection firing daemon — step 4 wiring of
  * `docs/design/pattern-detection.md`. setInterval rider on the
@@ -99,7 +100,7 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`pattern-tick: ${message}`);
     } finally {
       firing = false;
@@ -123,3 +124,4 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

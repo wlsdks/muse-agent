@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue, isErrorLike } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
 import { readString, readStringArray, errorMessage } from "@muse/mcp";
@@ -99,7 +99,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           let dueAt: string | undefined;
           if (dueAtRaw && dueAtRaw.length > 0) {
             const parsed = parseTaskDueAt(dueAtRaw, now);
-            if (parsed instanceof Error) {
+            if (isErrorLike(parsed)) {
               return { error: parsed.message };
             }
             dueAt = parsed;
@@ -308,7 +308,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
               const haveExisting = existingDue !== undefined && !Number.isNaN(existingDue.getTime());
               const anchor = isTimeOnlyPhrase(dueArg) && haveExisting ? () => startOfLocalDay(existingDue!) : now;
               const parsed = parseTaskDueAt(dueArg, anchor);
-              if (parsed instanceof Error) {
+              if (isErrorLike(parsed)) {
                 return { error: parsed.message };
               }
               // isUtcMidnight excludes a relative OFFSET ("in 2 hours"), which

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Chat producer for idle self-learning — at REPL exit, ENQUEUE
  * the corrections the user made this session onto the learn-queue instead of
@@ -64,7 +65,7 @@ export async function enqueueSessionCorrections(options: EnqueueCorrectionsOptio
   try {
     [lines, boundaries] = await Promise.all([readLines(), readBoundaries()]);
   } catch (cause) {
-    return { enqueued: 0, reason: `history read failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+    return { enqueued: 0, reason: `history read failed: ${errorMessage(cause)}` };
   }
 
   const range = extractCurrentSessionTurns(lines, boundaries);
@@ -93,3 +94,4 @@ export async function enqueueSessionCorrections(options: EnqueueCorrectionsOptio
   }
   return { enqueued: corrections.length };
 }
+

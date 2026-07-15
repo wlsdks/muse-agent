@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { createFsWriteTools, FileCheckpointStore, type CheckpointManifest } from "@muse/fs";
 import { Command } from "commander";
@@ -102,7 +103,7 @@ async function run(dir: string, args: string[]): Promise<{ stdout: string; stder
     registerRollbackCommand(program, io);
     await program.parseAsync(["node", "muse", "rollback", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   } finally {
     if (prev === undefined) delete process.env.MUSE_CHECKPOINTS_DIR;
     else process.env.MUSE_CHECKPOINTS_DIR = prev;
@@ -319,3 +320,4 @@ describe("byte fidelity — a BINARY file deleted via the REAL file_delete tool 
     expect(restored.length).toBe(jpegBytes.length);
   });
 });
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Situational-briefing daemon — wires `runDueSituationalBriefing`
  * (P8-b2) into apps/api as a `setInterval` rider, the parallel of
@@ -120,7 +121,7 @@ export function startSituationalBriefingTick(
         options.logger?.(`situational-briefing-tick: delivered via ${options.providerId}`);
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`situational-briefing-tick: ${message}`);
     } finally {
       firing = false;
@@ -146,3 +147,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

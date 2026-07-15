@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for the BROWSING recall WEDGE — "that page I read last week"
  * grounded on the LOCAL Chrome browsing archive (`~/.muse/browsing.json`), under
@@ -78,7 +79,7 @@ const embedFn = (text, m) => embed(text, m, { baseUrlResolver });
 try {
   await embedFn("probe", embedModel);
 } catch (cause) {
-  console.log(`verify-browsing-recall skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). A skip is not a pass.`);
+  console.log(`verify-browsing-recall skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). A skip is not a pass.`);
   process.exit(0);
 }
 
@@ -192,3 +193,4 @@ await clearStore();
 
 console.log(failures === 0 ? `\nverify-browsing-recall: ALL PASS (4) on ${model}` : `\nverify-browsing-recall: ${failures}/4 FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);
+

@@ -1,3 +1,4 @@
+import { errorMessage, isErrorLike } from "@muse/shared";
 /**
  * Ink chat surface for a bare `muse` — a claude / codex style bottom
  * input BOX with a streaming transcript scrolling above it.
@@ -766,7 +767,7 @@ export function MuseChatApp(props: {
           if (interruptRef.current) { accumulated += accumulated.length > 0 ? " …(interrupted)" : "(interrupted)"; break; }
           if (event.type === "error") {
             const err = event.error;
-            throw err instanceof Error ? err : new Error(typeof err === "string" ? err : "model stream failed");
+            throw isErrorLike(err) ? err : new Error(typeof err === "string" ? err : "model stream failed");
           }
           if (event.type === "tool-call-started" && typeof event.name === "string") {
             toolsRan.push(event.name);
@@ -786,7 +787,7 @@ export function MuseChatApp(props: {
           }
         }
       } catch (error) {
-        accumulated = `⚠ ${friendlyError(error instanceof Error ? error.message : String(error))}`;
+        accumulated = `⚠ ${friendlyError(errorMessage(error))}`;
       }
     }
     if (turnTokens > 0) setSessionTokens((t) => t + turnTokens);
@@ -1159,3 +1160,4 @@ export function MuseChatApp(props: {
     hintElement,
     hudElement);
 }
+

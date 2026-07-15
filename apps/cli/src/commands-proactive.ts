@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse proactive` — operator tools for the proactive surfacing
  * daemon (see `docs/design/proactive-surfacing.md`).
@@ -104,7 +105,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         await registry.send(provider, { destination, text: options.text });
         io.stdout(`Sent test message via ${provider} → ${destination}\n`);
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
+        const message = errorMessage(cause);
         io.stderr(`Failed: ${message}\n`);
         command.error("Send failed", { exitCode: 1 });
       }
@@ -150,7 +151,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           }
         }
       } catch (cause) {
-        lines.push(`Calendar: ERROR ${cause instanceof Error ? cause.message : String(cause)}`);
+        lines.push(`Calendar: ERROR ${errorMessage(cause)}`);
       }
 
       try {
@@ -171,7 +172,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           }
         }
       } catch (cause) {
-        lines.push(`Tasks: ERROR ${cause instanceof Error ? cause.message : String(cause)}`);
+        lines.push(`Tasks: ERROR ${errorMessage(cause)}`);
       }
 
       io.stdout(`${lines.join("\n")}\n`);
@@ -240,14 +241,14 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
               try {
                 await synthesizeAndPlay(tts, { text });
               } catch (cause) {
-                io.stderr(`speak failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+                io.stderr(`speak failed: ${errorMessage(cause)}\n`);
               }
             };
           } else {
             io.stderr("--speak: TTS not configured (set MUSE_VOICE_TTS=piper + MUSE_PIPER_VOICE). Continuing text-only.\n");
           }
         } catch (cause) {
-          io.stderr(`--speak setup failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`--speak setup failed: ${errorMessage(cause)}\n`);
         }
       }
 
@@ -553,3 +554,4 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       }
     });
 }
+

@@ -11,7 +11,7 @@
 
 import { spawn } from "node:child_process";
 
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { stripUntrustedTerminalChars , errorMessage} from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -132,7 +132,7 @@ export function registerGlanceCommand(program: Command, io: ProgramIO): void {
       try {
         raw = await runOsascript();
       } catch (cause) {
-        io.stderr(`muse glance: osascript failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse glance: osascript failed: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }

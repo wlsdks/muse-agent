@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage} from "@muse/shared";
 
 import { depositCoRecall, readTrails, resolveTrailsFile, writeTrails } from "./recall-trail.js";
 import { resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
@@ -430,7 +430,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
       } catch (cause) {
         io.stderr(
           `muse recall: embedding failed — is Ollama running with '${embedModel}' pulled? ` +
-          `(underlying: ${cause instanceof Error ? cause.message : String(cause)})\n`
+          `(underlying: ${errorMessage(cause)})\n`
         );
         process.exitCode = 1;
         return;

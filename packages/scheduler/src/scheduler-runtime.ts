@@ -1,6 +1,7 @@
 import type { McpManager } from "@muse/mcp";
 import { classifyError, TimeoutError, withTimeout } from "@muse/resilience";
 import type { MuseTool } from "@muse/tools";
+import { isErrorLike } from "@muse/shared";
 
 import { SchedulerExecutionError } from "./scheduler-errors.js";
 import {
@@ -155,7 +156,7 @@ export class ScheduledJobDispatcher {
       }
     }
 
-    throw lastError instanceof Error ? lastError : new SchedulerExecutionError(`Job '${job.name}' failed`);
+    throw isErrorLike(lastError) ? lastError : new SchedulerExecutionError(`Job '${job.name}' failed`);
   }
 
   private dispatchByType(job: ScheduledJob): Promise<string> {

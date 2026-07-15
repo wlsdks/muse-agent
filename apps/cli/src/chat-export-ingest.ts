@@ -12,7 +12,7 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage} from "@muse/shared";
 import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
@@ -174,7 +174,7 @@ Examples:
       try {
         raw = await readFile(file, "utf8");
       } catch (cause) {
-        io.stderr(commandErrorLine("ingest", `Could not read '${file}': ${cause instanceof Error ? cause.message : String(cause)}`));
+        io.stderr(commandErrorLine("ingest", `Could not read '${file}': ${errorMessage(cause)}`));
         process.exitCode = 1;
         return;
       }

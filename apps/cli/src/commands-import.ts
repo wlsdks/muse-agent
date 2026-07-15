@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse import <tar> [--dry-run] [--force]` — restore a backup
  * produced by `muse export` into `~/.muse/`.
@@ -219,7 +220,7 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
         workingBundle = decrypted.path;
         tempPath = decrypted.tempPath;
       } catch (cause) {
-        io.stderr(commandErrorLine("import", cause instanceof Error ? cause.message : String(cause)));
+        io.stderr(commandErrorLine("import", errorMessage(cause)));
         process.exitCode = 1;
         return;
       }
@@ -269,3 +270,4 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
+

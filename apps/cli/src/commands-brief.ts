@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse brief` — JARVIS morning briefing.
  *
@@ -165,7 +166,7 @@ async function speakAloud(io: ProgramIO, text: string): Promise<void> {
     const result = await tts.synthesize({ text });
     await playSynthesizedAudio(result.audio, result.format);
   } catch (cause) {
-    io.stderr(`(speak failed: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+    io.stderr(`(speak failed: ${errorMessage(cause)})\n`);
   }
 }
 
@@ -575,3 +576,4 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
+

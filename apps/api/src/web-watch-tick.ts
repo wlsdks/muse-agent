@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Web-watch daemon — schedules the P21 web-watch runner on the API
  * server's lifecycle, mirroring `ambient-tick.ts`. Each tick polls
@@ -62,7 +63,7 @@ export function startWebWatchTick(options: WebWatchTickOptions): WebWatchTickHan
         options.logger?.(`web-watch: delivered ${summary.delivered.toString()} notice(s) via ${options.providerId}`);
       }
     } catch (cause) {
-      options.errorLogger?.(`web-watch: ${cause instanceof Error ? cause.message : String(cause)}`);
+      options.errorLogger?.(`web-watch: ${errorMessage(cause)}`);
     } finally {
       firing = false;
     }
@@ -85,3 +86,4 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

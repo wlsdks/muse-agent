@@ -21,7 +21,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { errorMessage, runCommandWithTimeout } from "@muse/shared";
+import { errorMessage, runCommandWithTimeout, isErrorLike } from "@muse/shared";
 
 import {
   DEFAULT_MODEL_CALL_TIMEOUT_MS,
@@ -66,7 +66,7 @@ export interface CodexInvocationResult {
 }
 
 function isErrnoException(value: unknown): value is NodeJS.ErrnoException {
-  return value instanceof Error && "code" in value;
+  return isErrorLike(value) && "code" in value;
 }
 
 async function defaultWorkspace(): Promise<{ readonly dir: string; readonly outFile: string }> {

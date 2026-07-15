@@ -35,7 +35,7 @@ import { runRunOutcomesDoctor } from "./commands-doctor-outcomes.js";
 export { formatRunOutcomes } from "./commands-doctor-outcomes.js";
 import { runApprovalRateDoctor } from "./commands-doctor-approval-rate.js";
 export { formatApprovalRateDoctor } from "./commands-doctor-approval-rate.js";
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage} from "@muse/shared";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -350,7 +350,7 @@ async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
     await embed("probe");
   } catch (cause) {
     io.stdout(
-      `grounding edge — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${DEFAULT_EMBED_MODEL}\n`
+      `grounding edge — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${errorMessage(cause)}). Try: ollama pull ${DEFAULT_EMBED_MODEL}\n`
     );
     return "ok";
   }
@@ -729,7 +729,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
         }
       } catch (cause) {
         checks.push({
-          detail: `${base} JSON probe failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          detail: `${base} JSON probe failed: ${errorMessage(cause)}`,
           name: "searxng",
           status: "warn"
         });

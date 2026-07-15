@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse weather <location>` — current conditions via Open-Meteo
  * (free, no API key). Read-only world-sensing, so no outbound-safety
@@ -34,7 +35,7 @@ export function registerWeatherCommand(program: Command, io: ProgramIO, provider
       try {
         location = await weather.geocode(query);
       } catch (cause) {
-        io.stderr(`muse weather: lookup failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse weather: lookup failed: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -59,7 +60,7 @@ export function registerWeatherCommand(program: Command, io: ProgramIO, provider
         try {
           forecast = await weather.dailyForecast(location, { days: Math.trunc(days) });
         } catch (cause) {
-          io.stderr(`muse weather: forecast failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`muse weather: forecast failed: ${errorMessage(cause)}\n`);
           process.exitCode = 1;
           return;
         }
@@ -78,7 +79,7 @@ export function registerWeatherCommand(program: Command, io: ProgramIO, provider
       try {
         current = await weather.currentWeather(location);
       } catch (cause) {
-        io.stderr(`muse weather: forecast failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse weather: forecast failed: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -100,3 +101,4 @@ export function registerWeatherCommand(program: Command, io: ProgramIO, provider
       io.stdout(`${line}\n`);
     });
 }
+

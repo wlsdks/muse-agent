@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for Muse's SCORED edge — faithfulness + false-refusal RATES over
  * a bundled held-out corpus, on the REAL local stack (the PRODUCTION default
@@ -55,7 +56,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`verify-faithfulness-rate skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`verify-faithfulness-rate skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -78,3 +79,4 @@ console.log(
     : `\nFAIL — a rate regressed below threshold on ${model}`
 );
 process.exit(report.status === "ok" ? 0 : 1);
+

@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `muse tasks` command group.
  *
@@ -284,7 +285,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       let resolvedDueAt: string | undefined;
       if (options.due && options.due.trim().length > 0) {
         const parsed = parseTaskDueAt(options.due, () => new Date());
-        if (parsed instanceof Error) {
+        if (isErrorLike(parsed)) {
           throw parsed;
         }
         resolvedDueAt = parsed;
@@ -427,7 +428,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
           updates.dueAt = null;
         } else {
           const parsed = parseTaskDueAt(options.due, () => new Date());
-          if (parsed instanceof Error) {
+          if (isErrorLike(parsed)) {
             throw parsed;
           }
           updates.dueAt = parsed;

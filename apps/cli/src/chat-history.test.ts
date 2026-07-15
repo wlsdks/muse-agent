@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { errorMessage } from "@muse/shared";
 
 import { activityLogPath, capContentForSummary, lastChatHistoryPath } from "./chat-history.js";
 
@@ -56,7 +57,7 @@ describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through", ()
       try {
         return { kind: "ok", value: resolver() };
       } catch (cause) {
-        return { kind: "err", message: cause instanceof Error ? cause.message : String(cause) };
+        return { kind: "err", message: errorMessage(cause) };
       }
     };
     const r1 = probe(lastChatHistoryPath);
@@ -76,3 +77,4 @@ describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through", ()
     }
   });
 });
+

@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "@muse/memory";
-import { sleep } from "@muse/shared";
+import { sleep, isErrorLike } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
@@ -152,7 +152,7 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
       // EPERM/EACCES/EBUSY rather than EEXIST — same meaning: contended, retry.
       const code = (cause as NodeJS.ErrnoException).code;
       const contended = code === "EEXIST" || code === "EPERM" || code === "EACCES" || code === "EBUSY";
-      if (!(cause instanceof Error) || !contended) {
+      if (!(isErrorLike(cause)) || !contended) {
         throw cause;
       }
       const probe = await probeLock(lockPath);

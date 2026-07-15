@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `/api/reminders/*` routes — passive personal reminders.
  *
@@ -65,7 +66,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       return reply.status(400).send({ code: "INVALID_REMINDER", message: "dueAt is required" });
     }
     const parsed = parseReminderDueAt(dueAtRaw, () => new Date());
-    if (parsed instanceof Error) {
+    if (isErrorLike(parsed)) {
       return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
     }
     if (body?.recurrence !== undefined && body.recurrence !== "daily" && body.recurrence !== "weekly" && body.recurrence !== "monthly" && body.recurrence !== "yearly") {
@@ -73,7 +74,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     }
     const recurrence = body?.recurrence as ReminderRecurrence | undefined;
     const viaResult = parseReminderVia(body?.via);
-    if (viaResult instanceof Error) {
+    if (isErrorLike(viaResult)) {
       return reply.status(400).send({ code: "INVALID_REMINDER_VIA", message: viaResult.message });
     }
     const via = viaResult;
@@ -108,7 +109,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
     if (dueAtRaw.length > 0) {
       const parsed = parseReminderDueAt(dueAtRaw, () => new Date());
-      if (parsed instanceof Error) {
+      if (isErrorLike(parsed)) {
         return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
       }
       nextDueAt = parsed;

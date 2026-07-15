@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Self-followup firing daemon — step 4 of
  * `docs/design/agent-self-followup.md` wired into apps/api as a
@@ -91,7 +92,7 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`followup-tick: ${message}`);
     } finally {
       firing = false;
@@ -117,3 +118,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * DS-13 — idempotent, interval-gated age-based retention pruner for Muse's
  * unbounded append-only LOCAL state. Four targets, each with its own shape:
@@ -145,7 +146,7 @@ async function safePrune<T>(fn: () => Promise<T>): Promise<T | { readonly error:
   try {
     return await fn();
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -211,6 +212,7 @@ export async function maybeAutoPrune(options: MaybeAutoPruneOptions = {}): Promi
   } catch (err) {
     // Final backstop: even a bug in the gate/meta logic itself (not just an
     // individual target) must never throw into the caller.
-    return { ran: false, reason: `prune orchestrator error (ignored): ${err instanceof Error ? err.message : String(err)}` };
+    return { ran: false, reason: `prune orchestrator error (ignored): ${errorMessage(err)}` };
   }
 }
+

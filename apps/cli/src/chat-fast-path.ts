@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Deterministic fast-path dispatcher for `muse chat` — extracted from
  * `runLocalChat` so the god-function reads as setup → fast-path → grounding →
@@ -169,7 +170,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
     if (datePhrase !== null) {
       const { parseReminderDueAt } = await import("@muse/stores");
       const resolved = parseReminderDueAt(datePhrase, () => new Date());
-      if (!(resolved instanceof Error)) {
+      if (!(isErrorLike(resolved))) {
         return {
           response: formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) }),
           runId: "local-date",
@@ -182,7 +183,7 @@ export async function resolveChatFastPath(message: string): Promise<ChatFastPath
       const { parseReminderDueAt } = await import("@muse/stores");
       const now = new Date();
       const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
-      if (!(resolved instanceof Error)) {
+      if (!(isErrorLike(resolved))) {
         const days = countdownDays(now, resolved);
         if (days >= 0) {
           return { response: formatCountdown(countdown.unit, days, resolved, countdown.ko), runId: "local-countdown", toolsUsed: [] };

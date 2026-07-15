@@ -11,7 +11,7 @@
  * cycle when the base class lived in index.ts.
  */
 
-import { errorMessage, truncateErrorBody } from "@muse/shared";
+import { errorMessage, truncateErrorBody, isErrorLike } from "@muse/shared";
 
 import {
   defaultRemoteModelCapabilities,
@@ -69,7 +69,7 @@ export function isRetryableHttpStatus(status: number): boolean {
 }
 
 function isTimeoutError(cause: unknown): cause is Error & { readonly name: "TimeoutError" } {
-  return cause instanceof Error && cause.name === "TimeoutError";
+  return isErrorLike(cause) && cause.name === "TimeoutError";
 }
 
 /**

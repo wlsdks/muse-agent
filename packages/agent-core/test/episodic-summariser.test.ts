@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { isErrorLike } from "@muse/shared";
 
 import {
   extractCurrentSessionTurns,
@@ -72,7 +73,7 @@ function stubProvider(generated: { readonly output: string } | Error): ModelProv
     id: "stub",
     listModels: async () => [],
     generate: async () => {
-      if (generated instanceof Error) throw generated;
+      if (isErrorLike(generated)) throw generated;
       return {
         id: "stub-resp",
         model: "stub",
@@ -347,3 +348,4 @@ describe("isEpisodeWorthRetaining — episode-write salience gate (SSGM arXiv:26
     expect(isEpisodeWorthRetaining(sum("hey bye", 3), { trivialImportanceAtOrBelow: 3 })).toBe(false);
   });
 });
+

@@ -1,4 +1,5 @@
 import { calibrateAbstention } from "@muse/agent-core";
+import { errorMessage } from "@muse/shared";
 
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
@@ -85,7 +86,7 @@ export async function runCalibrationDoctor(io: ProgramIO, alpha: number, asJson:
   try {
     noteVecs = await Promise.all(GROUNDING_EVAL_CORPUS.notes.map((note) => embed(note.text) as Promise<number[]>));
   } catch (cause) {
-    io.stdout(`calibration — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${cause instanceof Error ? cause.message : String(cause)}).\n`);
+    io.stdout(`calibration — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${errorMessage(cause)}).\n`);
     return;
   }
   const topCosine = async (query: string): Promise<number> => {
@@ -115,3 +116,4 @@ export async function runCalibrationDoctor(io: ProgramIO, alpha: number, asJson:
     io.stdout(`\n  Apply (opt-in): export MUSE_GROUNDING_MIN_COSINE=${chosen.threshold.toFixed(3)}   # the α=${alpha.toFixed(2)} threshold; the chat gate stays at 0.5 until set\n`);
   }
 }
+

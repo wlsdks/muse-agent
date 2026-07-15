@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for Muse's NORTH STAR — confidence-gated PROACTIVE recall — on
  * LOCAL Ollama embeddings (nomic-embed-text). Proactivity reuses the SAME CRAG
@@ -50,7 +51,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`verify-proactive-recall-gate skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`verify-proactive-recall-gate skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -103,3 +104,4 @@ for (const c of cases) {
 await rm(dir, { force: true, recursive: true }).catch(() => undefined);
 console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${embedModel}` : `\n${failures}/${cases.length} FAILED on ${embedModel}`);
 process.exit(failures === 0 ? 0 : 1);
+

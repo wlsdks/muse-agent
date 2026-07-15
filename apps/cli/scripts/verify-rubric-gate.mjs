@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for the RUBRIC-GATED grounding verifier (RGV) — the output-side
  * half of Muse's "shows its work" edge, run on REAL local embeddings. Where
@@ -39,7 +40,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`verify-rubric-gate skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`verify-rubric-gate skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -92,3 +93,4 @@ for (const c of cases) {
 
 console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${embedModel}` : `\n${failures}/${cases.length} FAILED on ${embedModel}`);
 process.exit(failures === 0 ? 0 : 1);
+

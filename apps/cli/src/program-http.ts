@@ -14,7 +14,7 @@
 
 import type { Command } from "commander";
 
-import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
+import { stripUntrustedTerminalChars, truncateErrorBody , errorMessage, isErrorLike } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
 import { parseJson } from "./json-parse.js";
@@ -144,7 +144,7 @@ function friendlyFetchError(baseUrl: string, error: unknown): Error {
   if (code === "ENOTFOUND") {
     return new Error(`Muse API host unresolved (${baseUrl}). Check --api-url.`);
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return new Error(`Muse API request failed: ${message}`);
 }
 
@@ -155,7 +155,7 @@ function friendlyFetchError(baseUrl: string, error: unknown): Error {
  * raises for ECONNREFUSED / ENOTFOUND.
  */
 export function isApiUnreachable(error: unknown): boolean {
-  if (!(error instanceof Error)) {
+  if (!(isErrorLike(error))) {
     return false;
   }
   return error.message.includes("Muse API server is not running") || error.message.includes("Muse API host unresolved");

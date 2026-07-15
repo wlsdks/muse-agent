@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * eval:grounding-delta — the architectural-delta benchmark.
  *
@@ -53,7 +54,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`eval:grounding-delta skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`eval:grounding-delta skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -83,3 +84,4 @@ console.log(
     : `\nFAIL — gate ON adds no faithfulness over gate OFF (Δ=${dFaith.toFixed(2)}) on ${model} — the gate is not earning its place`
 );
 process.exit(dFaith > 0 ? 0 : 1);
+

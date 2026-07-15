@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse mcp` command group.
  *
@@ -151,7 +152,7 @@ Examples:
       try {
         entry = buildEntryFromOptions(name, options);
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("Invalid arguments", { exitCode: 1 });
         return;
       }
@@ -182,7 +183,7 @@ Examples:
       try {
         entries = loadExternalMcpConfig(process.env);
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("Invalid MCP config", { exitCode: 1 });
         return;
       }
@@ -230,7 +231,7 @@ Examples:
         io.stdout(`Authorized '${result.serverId}'. Tokens stored under ${oauthDir}.\n`);
         io.stdout(`Connect with: muse mcp connect ${name}\n`);
       } catch (cause) {
-        io.stderr(`OAuth login failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`OAuth login failed: ${errorMessage(cause)}\n`);
         command.error("OAuth login failed", { exitCode: 1 });
       }
     });
@@ -642,3 +643,4 @@ export const MCP_PRESETS: Record<string, McpPresetRecipe> = {
     })
   }
 };
+

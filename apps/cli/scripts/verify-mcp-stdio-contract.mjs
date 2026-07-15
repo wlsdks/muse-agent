@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * REAL subprocess stdio contract test for `muse mcp serve` — spawns the
  * actual CLI binary (`node apps/cli/dist/index.js mcp serve`) as a child
@@ -81,7 +82,7 @@ try {
   client = new Client({ name: "stdio-contract", version: "0" }, { capabilities: {} });
   await client.connect(transport);
 } catch (error) {
-  console.log(`SKIP: could not spawn muse mcp serve (${error instanceof Error ? error.message : String(error)})`);
+  console.log(`SKIP: could not spawn muse mcp serve (${errorMessage(error)})`);
   rmSync(tmpHome, { force: true, recursive: true });
   process.exit(0);
 }
@@ -120,7 +121,7 @@ try {
       : fail(`tasks_read(status=open) expected exactly the open task, got ${JSON.stringify(payload)}`);
   }
 } catch (error) {
-  fail(`unexpected error mid-contract: ${error instanceof Error ? error.message : String(error)}`);
+  fail(`unexpected error mid-contract: ${errorMessage(error)}`);
 } finally {
   await client.close().catch(() => {});
   rmSync(tmpHome, { force: true, recursive: true });
@@ -128,3 +129,4 @@ try {
 
 console.log(failures === 0 ? "\nverify-mcp-stdio-contract: ALL PASS" : `\nverify-mcp-stdio-contract: ${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);
+

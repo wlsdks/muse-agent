@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse listen` — Voice Phase C from `docs/design/voice-mode.md`.
  *
@@ -74,7 +75,7 @@ export async function safeTranscribe(
     const result = await stt.transcribe(request);
     return result.text.trim();
   } catch (cause) {
-    io.stderr(`transcription failed (resuming listen): ${cause instanceof Error ? cause.message : String(cause)}\n`);
+    io.stderr(`transcription failed (resuming listen): ${errorMessage(cause)}\n`);
     return undefined;
   }
 }
@@ -136,7 +137,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
             try {
               clipAudio = await captureWavForSeconds(shells, clipSeconds);
             } catch (cause) {
-              io.stderr(`sox error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+              io.stderr(`sox error: ${errorMessage(cause)}\n`);
               break;
             }
             if (!active) break;
@@ -163,7 +164,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
               try {
                 followAudio = await captureWavForSeconds(shells, clipSeconds);
               } catch (cause) {
-                io.stderr(`sox error during prompt capture: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+                io.stderr(`sox error during prompt capture: ${errorMessage(cause)}\n`);
                 break;
               }
               if (followAudio.byteLength === 0) continue;
@@ -185,7 +186,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
             try {
               await runVoiceTurn(prompt);
             } catch (cause) {
-              io.stderr(`voice turn failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+              io.stderr(`voice turn failed: ${errorMessage(cause)}\n`);
             }
             io.stdout(`Listening for "${options.wake.trim()}"...\n`);
           }
@@ -202,7 +203,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
       try {
         recording = shells.spawnRec(["-q", "-r", "16000", "-c", "1", "-t", "wav", "-"]);
       } catch (cause) {
-        io.stderr(`failed to start sox: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`failed to start sox: ${errorMessage(cause)}\n`);
         command.error("sox spawn failed", { exitCode: 1 });
         return;
       }
@@ -214,7 +215,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
       try {
         await stopPromise;
       } catch (cause) {
-        io.stderr(`sox exited with error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`sox exited with error: ${errorMessage(cause)}\n`);
         command.error("sox failed", { exitCode: 1 });
         return;
       }
@@ -237,7 +238,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         // backend hiccup) must end with the same clean one-line error +
         // exit as the sox / empty-capture failures above — not a raw
         // unhandled throw out of the action.
-        io.stderr(`transcription failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`transcription failed: ${errorMessage(cause)}\n`);
         command.error("transcription failed", { exitCode: 1 });
         return;
       }
@@ -317,3 +318,4 @@ export function defaultBuildVoiceProviders(): { stt?: SpeechToTextProvider; tts?
     ...(tts ? { tts } : {})
   };
 }
+

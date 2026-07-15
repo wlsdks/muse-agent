@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Self-contained helpers lifted out of the `muse proactive watch`
  * action so its handler reads as orchestration rather than one
@@ -161,6 +162,7 @@ export async function runProactiveTick(ctx: ProactiveTickContext, startedAt: Dat
       io.stdout(`${tag} 0/${summary.imminent.toString()} imminent (quiet)\n`);
     }
   } catch (cause) {
-    io.stderr(`tick error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+    io.stderr(`tick error: ${errorMessage(cause)}\n`);
   }
 }
+

@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer } from "@muse/domain-tools";
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage} from "@muse/shared";
 import type { SpeechToTextProvider } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -214,7 +214,7 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
           indexed = true;
         }
       } catch (cause) {
-        io.stderr(`(auto-index skipped — ${cause instanceof Error ? cause.message : String(cause)}; run \`muse notes reindex\` later)\n`);
+        io.stderr(`(auto-index skipped — ${errorMessage(cause)}; run \`muse notes reindex\` later)\n`);
       }
       io.stdout(`captured → ${path}${indexed ? " (indexed)" : ""}\n`);
 

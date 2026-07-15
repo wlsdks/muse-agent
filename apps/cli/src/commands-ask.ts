@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse ask <query>` — RAG-grounded one-shot question.
  *
@@ -474,14 +475,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // uncaught throw that leaves stdout empty.
           const rendered = renderAskStreamError({
             answer: collectedAnswer,
-            error: cause instanceof Error ? cause.message : String(cause),
+            error: errorMessage(cause),
             json: options.json ?? false,
             model,
             query
           });
           if (rendered.stdout !== undefined) io.stdout(rendered.stdout);
           if (rendered.stderr !== undefined) io.stderr(rendered.stderr);
-          await writeAskFailureLog(cause instanceof Error ? cause.message : String(cause));
+          await writeAskFailureLog(errorMessage(cause));
           process.exitCode = 1;
           return;
         }
@@ -620,7 +621,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               }
             }
           } catch (cause) {
-            streamError = cause instanceof Error ? cause.message : String(cause);
+            streamError = errorMessage(cause);
           }
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
         answerLogprobs = logprobsCapture;
@@ -773,3 +774,4 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
+

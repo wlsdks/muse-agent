@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse ask` context setup, lifted out of the commands-ask god-file: resolves
  * the user key / top-K / embed model from options, runs the auto-stale
@@ -110,7 +111,7 @@ export async function prepareAskContext(
         }
       }
     } catch (cause) {
-      io.stderr(`(auto-reindex skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+      io.stderr(`(auto-reindex skipped: ${errorMessage(cause)})\n`);
     }
   }
 
@@ -137,7 +138,7 @@ export async function prepareAskContext(
         await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
         index = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex;
       } catch (cause) {
-        io.stderr(`Re-index failed (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}\n`);
+        io.stderr(`Re-index failed (${errorMessage(cause)}). Try: ollama pull ${embedModel}\n`);
         return { kind: "error" };
       }
     }
@@ -186,3 +187,4 @@ export async function prepareAskContext(
 
   return { kind: "ready", userKey, topK, embedModel, notesDir, index, noteFileCount };
 }
+

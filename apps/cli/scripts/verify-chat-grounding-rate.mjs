@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * LIVE battery for the CONVERSATIONAL surface (`muse chat`) — faithfulness +
  * false-refusal RATES of the sync `gateChatAnswer` path over a held-out corpus,
@@ -37,7 +38,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`verify-chat-grounding-rate skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}`);
+  console.log(`verify-chat-grounding-rate skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}). Try: ollama pull ${embedModel}`);
   process.exit(0);
 }
 
@@ -51,3 +52,4 @@ console.log(
     : `\nFAIL — a chat-gate rate regressed below threshold`
 );
 process.exit(report.status === "ok" ? 0 : 1);
+

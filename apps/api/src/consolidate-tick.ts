@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Idle-gated curator daemon — runs the authored-skill consolidation
  * (`AuthoredSkillStore.consolidate` + the local-Qwen umbrella merger) ON ITS
@@ -223,7 +224,7 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
             options.logger?.(`consolidate-tick: archived ${archived.length.toString()} stale skill(s)`);
           }
         } catch (cause) {
-          options.errorLogger?.(`consolidate-tick (curate): ${cause instanceof Error ? cause.message : String(cause)}`);
+          options.errorLogger?.(`consolidate-tick (curate): ${errorMessage(cause)}`);
         }
       }
       // Brake-first: when a real OS-idle probe is wired, the LLM merge ALSO
@@ -258,7 +259,7 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
         options.logger?.(`consolidate-tick: folded ${m.merged.length.toString()} skills → ${m.umbrella}`);
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`consolidate-tick: ${message}`);
     } finally {
       firing = false;
@@ -282,3 +283,4 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

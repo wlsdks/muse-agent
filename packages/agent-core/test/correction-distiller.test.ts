@@ -1,5 +1,6 @@
 import { type ModelProvider, type ModelRequest } from "@muse/model";
 import { describe, expect, it } from "vitest";
+import { isErrorLike } from "@muse/shared";
 
 import {
   classifyCorrectionContradiction,
@@ -15,7 +16,7 @@ const t = (role: "user" | "assistant", content: string): SessionTurnLine => ({ c
 
 describe("classifyCorrectionContradiction — polarity gate parse + fail-closed (the autonomous-decay safety seam)", () => {
   const provider = (output: string | Error): Pick<ModelProvider, "generate"> => ({
-    generate: async () => { if (output instanceof Error) throw output; return { output } as Awaited<ReturnType<ModelProvider["generate"]>>; }
+    generate: async () => { if (isErrorLike(output)) throw output; return { output } as Awaited<ReturnType<ModelProvider["generate"]>>; }
   });
   const run = (out: string | Error) => classifyCorrectionContradiction("stop X", "do X", { model: "m", modelProvider: provider(out) });
 
@@ -637,3 +638,4 @@ describe("distillStrategyFromCorrection — gist ceiling (SIB verbatim-overfit g
     expect(DEFAULT_STRATEGY_VERBATIM_CEILING).toBe(0.92);
   });
 });
+

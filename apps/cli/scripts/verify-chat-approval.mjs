@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Live verification of the in-chat tool-approval gate against the REAL
  * local-Qwen runtime (LOCAL OLLAMA ONLY, per testing.md). Proves the
@@ -51,7 +52,7 @@ async function run(allow) {
     }
   });
   for await (const ev of stream) {
-    if (ev.type === "error") throw ev.error instanceof Error ? ev.error : new Error(String(ev.error));
+    if (ev.type === "error") throw ev.isErrorLike(error) ? ev.error : new Error(String(ev.error));
   }
   return consulted;
 }
@@ -81,3 +82,4 @@ if (fails.length > 0) {
   process.exit(1);
 }
 console.log("RESULT: PASS — in-chat approval gate is fail-closed end-to-end");
+

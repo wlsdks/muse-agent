@@ -5,7 +5,7 @@
  */
 
 import { MCP_EXTERNAL_TRANSPORT_BLOCKED, type McpManager, type McpServer } from "@muse/mcp";
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId, type JsonObject, isErrorLike } from "@muse/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   invalid,
@@ -174,7 +174,7 @@ export async function proxyMcpAdminRequest(
 function isTimeoutError(cause: unknown): cause is Error {
   return cause instanceof DOMException
     ? cause.name === "AbortError" || cause.name === "TimeoutError"
-    : cause instanceof Error && cause.name === "TimeoutError";
+    : isErrorLike(cause) && cause.name === "TimeoutError";
 }
 
 export function mcpExternalTransportBlocked(reply: FastifyReply) {

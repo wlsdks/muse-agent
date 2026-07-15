@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse setup briefing` — one-command morning-briefing preset: every day at
  * a chosen local time, `muse today`'s deterministic content (tasks + next
@@ -40,7 +41,7 @@ async function defaultPromptTime(defaultValue: string): Promise<string | undefin
         parseDailyBriefTime(candidate);
         return undefined;
       } catch (cause) {
-        return cause instanceof Error ? cause.message : "invalid time";
+        return errorMessage(cause, "invalid time");
       }
     }
   });
@@ -96,7 +97,7 @@ export function registerSetupBriefingCommand(
       try {
         parsed = parseDailyBriefTime(timeInput);
       } catch (cause) {
-        io.stderr(`muse setup briefing: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse setup briefing: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -116,3 +117,4 @@ export function registerSetupBriefingCommand(
       io.stdout(formatDaemonLivenessNotice(verdict));
     });
 }
+

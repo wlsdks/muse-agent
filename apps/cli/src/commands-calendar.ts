@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse calendar` command group — read AND write slice of `/api/calendar/*`.
  *
@@ -794,7 +795,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       try {
         body = await readFile(file, "utf8");
       } catch (cause) {
-        io.stderr(`Could not read ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`Could not read ${file}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -851,3 +852,4 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       );
     });
 }
+

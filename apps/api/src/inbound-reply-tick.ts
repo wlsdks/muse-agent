@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Conversational reply daemon. Each tick reads
  * the inbox file the poll/webhook ingestion daemons populate, runs
@@ -92,7 +93,7 @@ export function startInboundReplyTick(options: InboundReplyOptions): InboundRepl
         options.errorLogger?.(`inbound-reply: ${error}`);
       }
     } catch (cause) {
-      options.errorLogger?.(`inbound-reply: ${cause instanceof Error ? cause.message : String(cause)}`);
+      options.errorLogger?.(`inbound-reply: ${errorMessage(cause)}`);
     } finally {
       running = false;
     }
@@ -117,3 +118,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse setup messaging` — interactive wizard that walks the user
  * through enabling Telegram / Discord / Slack / LINE bots and
@@ -139,7 +140,7 @@ export async function runMessagingSetup(io: SetupMessagingIO): Promise<void> {
       await store.save(spec.id, { token: String(token).trim() });
       io.stdout(`✓ ${spec.id} — token saved\n`);
     } catch (cause) {
-      io.stderr(`failed to save ${spec.id}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+      io.stderr(`failed to save ${spec.id}: ${errorMessage(cause)}\n`);
     }
   }
 
@@ -152,3 +153,4 @@ function maskToken(token: string): string {
   }
   return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
+

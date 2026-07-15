@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse show <image>` — inline terminal image render via the
  * iTerm2 inline-image protocol.
@@ -112,7 +113,7 @@ export function registerShowCommand(program: Command, io: ProgramIO): void {
       try {
         imageBytes = await readFile(filePath);
       } catch (cause) {
-        io.stderr(`muse show: could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse show: could not read ${filePath}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -158,3 +159,4 @@ export function registerShowCommand(program: Command, io: ProgramIO): void {
       io.stdout(`(opened ${filePath} via the system viewer; this terminal doesn't advertise inline-image support)\n`);
     });
 }
+

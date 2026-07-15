@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
-import { isRecord, parseJson } from "@muse/shared";
+import { isRecord, parseJson , asError} from "@muse/shared";
 
 export interface FakeMcpAdminServer {
   readonly close: () => Promise<void>;
@@ -136,7 +136,7 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
       once(server, "listening").then(() => undefined),
       once(server, "error").then((values) => {
         const cause = values[0];
-        throw cause instanceof Error ? cause : new Error(String(cause));
+        throw asError(cause);
       })
     ]);
     return undefined;
@@ -155,7 +155,7 @@ export async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
           once(server, "close").then(() => undefined),
           once(server, "error").then((values) => {
             const cause = values[0];
-            throw cause instanceof Error ? cause : new Error(String(cause));
+            throw asError(cause);
           })
         ]);
       };

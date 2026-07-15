@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse csv <file> --sum amount` — exact, deterministic aggregates over a CSV.
  * The local model is unreliable at arithmetic across rows; this computes the
@@ -69,7 +70,7 @@ export function registerCsvCommand(program: Command, io: ProgramIO): void {
       try {
         text = await readFile(pathResolve(process.cwd(), file), "utf8");
       } catch (cause) {
-        io.stderr(`muse csv: cannot read ${file} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        io.stderr(`muse csv: cannot read ${file} (${errorMessage(cause)})\n`);
         process.exitCode = 1;
         return;
       }
@@ -107,3 +108,4 @@ export function registerCsvCommand(program: Command, io: ProgramIO): void {
       io.stdout(formatCsvAggregate(result, where));
     });
 }
+

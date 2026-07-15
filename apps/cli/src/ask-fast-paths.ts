@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Deterministic non-RAG short-circuit constants for `muse ask` — the
  * on-brand replies a pure social / capability / action prompt gets
@@ -100,7 +101,7 @@ export function tryDeterministicAnswer(
   const datePhrase = detectDateQuery(query);
   if (datePhrase !== null) {
     const resolved = parseReminderDueAt(datePhrase, () => new Date());
-    if (!(resolved instanceof Error)) {
+    if (!(isErrorLike(resolved))) {
       const answer = formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) });
       return { answer, jsonPayload: { answer, date: { iso: resolved, phrase: datePhrase }, query } };
     }
@@ -110,7 +111,7 @@ export function tryDeterministicAnswer(
   if (countdown) {
     const now = new Date();
     const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
-    if (!(resolved instanceof Error)) {
+    if (!(isErrorLike(resolved))) {
       const days = countdownDays(now, resolved);
       if (days >= 0) {
         const answer = formatCountdown(countdown.unit, days, resolved, countdown.ko);

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * eval:embedder-ab — retrieval A/B across embedding models (report-only).
  *
@@ -28,7 +29,7 @@ let reachable = true;
 try {
   await createOllamaEmbedder("nomic-embed-text")("probe");
 } catch (cause) {
-  console.log(`embedder-ab — skipped: local Ollama unreachable (${cause instanceof Error ? cause.message : String(cause)})`);
+  console.log(`embedder-ab — skipped: local Ollama unreachable (${errorMessage(cause)})`);
   reachable = false;
 }
 
@@ -51,3 +52,4 @@ if (reachable) {
     console.log(`| ${model} | ${pct(ko.hit1, ko.total)} (${ko.hit1}/${ko.total}) | ${pct(ko.hitK, ko.total)} | ${pct(en.hit1, en.total)} (${en.hit1}/${en.total}) | ${pct(en.hitK, en.total)} | ${misses.length === 0 ? "—" : misses.join(" · ")} |`);
   }
 }
+

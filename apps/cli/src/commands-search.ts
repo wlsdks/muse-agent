@@ -18,7 +18,7 @@
 import { createLoopbackMcpConnection } from "@muse/mcp";
 import { createSearchMcpServer, normaliseTimeRange } from "@muse/domain-tools";
 import { isInteractiveWebEgressAllowed, isLocalOnlyEnabled } from "@muse/model";
-import { isRecord, redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
+import { isRecord, redactSecretsInText, stripUntrustedTerminalChars , errorMessage} from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -219,7 +219,7 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
           });
           io.stderr(`(saved ${rows.length.toString()} result(s) to ${options.toNotes.trim()} in ${notesDir})\n`);
         } catch (cause) {
-          const msg = cause instanceof Error ? cause.message : String(cause);
+          const msg = errorMessage(cause);
           io.stderr(`(failed to save: ${msg})\n`);
           process.exitCode = 1;
           return;

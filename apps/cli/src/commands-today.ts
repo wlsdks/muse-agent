@@ -27,7 +27,7 @@ import {
   TODAY_BRIEF_SYSTEM_PROMPT as BRIEF_SYSTEM_PROMPT,
   buildTodayBriefUserMessage
 } from "@muse/prompts";
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { isRecord, redactSecretsInText , errorMessage} from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -378,7 +378,7 @@ Examples:
             });
             io.stderr(`(saved brief to ${options.saveToNotes.trim()} in ${notesDir})\n`);
           } catch (cause) {
-            const msg = cause instanceof Error ? cause.message : String(cause);
+            const msg = errorMessage(cause);
             io.stderr(`(failed to save brief: ${msg})\n`);
             process.exitCode = 1;
           }

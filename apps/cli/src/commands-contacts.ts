@@ -16,7 +16,7 @@ import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAt
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
 import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
-import { createRunId } from "@muse/shared";
+import { createRunId , errorMessage} from "@muse/shared";
 import type { Command } from "commander";
 
 import { buildContactNetwork, formatContactNetwork } from "./contact-network.js";
@@ -229,7 +229,7 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       try {
         text = await readFile(file, "utf8");
       } catch (cause) {
-        io.stderr(`muse contacts import: cannot read ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse contacts import: cannot read ${file}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }
@@ -298,7 +298,7 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       try {
         await writeFile(target, vcf, "utf8");
       } catch (cause) {
-        io.stderr(`muse contacts export: cannot write ${target}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse contacts export: cannot write ${target}: ${errorMessage(cause)}\n`);
         process.exitCode = 1;
         return;
       }

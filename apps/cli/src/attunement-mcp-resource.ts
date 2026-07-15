@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * External MCP resource adapters for Personal Continuity.
  *
@@ -138,7 +139,7 @@ export async function validateMcpResource(
   } catch (cause) {
     if (cause instanceof AttunementStoreError) throw cause;
     throw new AttunementStoreError(
-      `could not read resource '${resourceId}' from MCP server '${server}': ${cause instanceof Error ? cause.message : String(cause)}`
+      `could not read resource '${resourceId}' from MCP server '${server}': ${errorMessage(cause)}`
     );
   }
   const extracted = adapter.extract(result);
@@ -188,3 +189,4 @@ export async function resolveMcpResourceArtifact(
     ...(extracted.summary ? { summary: extracted.summary } : {})
   };
 }
+

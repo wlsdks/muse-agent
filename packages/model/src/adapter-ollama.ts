@@ -15,7 +15,7 @@
  * expects — only the capabilities get rewritten to `localModelCapabilities`.
  */
 
-import { errorMessage, isRecord, truncateErrorBody, type JsonObject } from "@muse/shared";
+import { errorMessage, isRecord, truncateErrorBody, type JsonObject, isErrorLike } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
@@ -419,7 +419,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         throw new ModelProviderError(this.id, "Ollama request cancelled by the caller", false);
       }
       // The non-streaming safety-cap timeout — a wedged server, transient.
-      if (cause instanceof Error && cause.name === "TimeoutError") {
+      if (isErrorLike(cause) && cause.name === "TimeoutError") {
         throw new ModelProviderError(
           this.id,
           `Ollama request to ${this.nativeBaseUrl}/api/chat timed out (MUSE_MODEL_TIMEOUT_MS) — the server accepted the connection but never answered`,

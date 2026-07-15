@@ -18,7 +18,7 @@ import { platform } from "node:process";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
 import { sleep } from "./async-promises.js";
-import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
+import { stripUntrustedTerminalChars, truncateErrorBody , asError} from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 
 import { closestCommandName } from "./closest-command.js";
@@ -163,7 +163,7 @@ async function runPlayerWithWatchdog(
   let settled = false;
   const completion = Promise.race([
     once(child, "error").then(([error]) => {
-      throw error instanceof Error ? error : new Error(String(error));
+      throw asError(error);
     }),
     once(child, "close").then(([code]) => {
       if (code === 0) return;

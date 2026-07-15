@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse export [--output <path>]` — backup every ~/.muse JSON
  * store + the notes directory into a single timestamped tar.gz.
@@ -334,7 +335,7 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
         try {
           passphrase = await resolveExportPassphrase();
         } catch (cause) {
-          io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`${errorMessage(cause)}\n`);
           process.exitCode = 1;
           return;
         }
@@ -354,3 +355,4 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
+

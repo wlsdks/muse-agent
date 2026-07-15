@@ -31,7 +31,7 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
-import { isRecord } from "@muse/shared";
+import { isRecord , errorMessage, isErrorLike } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -91,7 +91,7 @@ export function resolveWebhookDueAt(
 ): { readonly dueAt?: string; readonly unparsed?: string } {
   if (typeof rawDueAt !== "string" || rawDueAt.trim().length === 0) return {};
   const parsed = parseTaskDueAt(rawDueAt, now);
-  return parsed instanceof Error ? { unparsed: rawDueAt } : { dueAt: parsed };
+  return isErrorLike(parsed) ? { unparsed: rawDueAt } : { dueAt: parsed };
 }
 
 export type WebhookNotify =
@@ -243,7 +243,7 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
             ...(asTask && dueAtUnparsed !== undefined ? { dueAtIgnored: dueAtUnparsed } : {})
           }));
         } catch (cause) {
-          io.stderr(`handler error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`handler error: ${errorMessage(cause)}\n`);
           res.writeHead(500, { "content-type": "text/plain" });
           res.end("Internal error\n");
         }

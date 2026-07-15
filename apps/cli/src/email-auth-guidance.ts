@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * AC3: turns a rejected-login error into a localized guidance line. The
  * package (`@muse/domain-tools`) stays locale-free — it only classifies
@@ -23,7 +24,7 @@ import { t, type CliStringKey } from "./cli-i18n.js";
  */
 export function formatEmailAuthGuidance(cause: unknown, email?: string): string {
   if (!(cause instanceof ImapSmtpAuthError) || cause.code === "auth-unknown") {
-    return cause instanceof Error ? cause.message : String(cause);
+    return errorMessage(cause);
   }
 
   const guidanceKey: CliStringKey = cause.code === "app-password-required"
@@ -41,3 +42,4 @@ export function formatEmailAuthGuidance(cause: unknown, email?: string): string 
   }
   return lines.join(" ");
 }
+

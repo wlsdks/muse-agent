@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Actionable top-level error formatting (clig.dev "Errors").
  *
@@ -80,13 +81,13 @@ export function commandFromArgv(argv: readonly string[]): string | undefined {
  */
 export function isExpectedCliError(error: unknown): boolean {
   if (isApiUnreachable(error)) return true;
-  if (!(error instanceof Error)) return false;
+  if (!(isErrorLike(error))) return false;
   if (PROGRAMMER_ERROR_NAMES.has(error.name)) return false;
   return typeof error.message === "string" && error.message.trim().length > 0;
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
+  if (isErrorLike(error)) {
     return error.message.trim().length > 0 ? error.message : error.name;
   }
   return String(error);
@@ -124,7 +125,7 @@ export function bugReportUrl(errorText: string, options: FormatCliErrorOptions =
 export function formatCliError(error: unknown, options: FormatCliErrorOptions = {}): string {
   const message = errorMessage(error);
   if (isExpectedCliError(error)) {
-    if (error instanceof Error && error.name === "SyntaxError") {
+    if (isErrorLike(error) && error.name === "SyntaxError") {
       return `muse: invalid JSON — ${message}\n`;
     }
     return `muse: ${message}\n`;

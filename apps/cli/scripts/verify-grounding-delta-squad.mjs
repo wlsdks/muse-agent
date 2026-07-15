@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * eval:grounding-delta:squad — the architectural-delta benchmark on a PUBLIC dataset.
  *
@@ -48,7 +49,7 @@ const embed = createOllamaEmbedder(embedModel);
 try {
   await embed("probe");
 } catch (cause) {
-  console.log(`eval:grounding-delta:squad skipped — embed model '${embedModel}' unavailable (${cause instanceof Error ? cause.message : String(cause)}).`);
+  console.log(`eval:grounding-delta:squad skipped — embed model '${embedModel}' unavailable (${errorMessage(cause)}).`);
   process.exit(0);
 }
 
@@ -81,3 +82,4 @@ console.log(
     : `\nFAIL — gate ON adds no faithfulness over gate OFF (Δ=${dFaith.toFixed(2)}) on the SQuAD slice (${model})`
 );
 process.exit(dFaith > 0 ? 0 : 1);
+

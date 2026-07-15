@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorMessage } from "@muse/shared";
 
 import { readReminders, recordProactiveHeartbeat, writeReminders, type PersistedReminder } from "@muse/stores";
 import { Command } from "commander";
@@ -43,7 +44,7 @@ async function runRemind(
     registerRemindCommands(program, io, helpers);
     await program.parseAsync(["node", "muse", "remind", ...args]);
   } catch (cause) {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorMessage(cause);
   }
   return { apiCalls, error, stderr: stderr.join(""), stdout: stdout.join("") };
 }

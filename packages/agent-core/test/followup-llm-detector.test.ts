@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { isErrorLike } from "@muse/shared";
 
 import {
   LLM_FOLLOWUP_FUTURE_HORIZON_MS,
@@ -12,7 +13,7 @@ function stubProvider(output: string | Error): ModelProvider {
     id: "stub",
     listModels: async () => [],
     generate: async () => {
-      if (output instanceof Error) throw output;
+      if (isErrorLike(output)) throw output;
       return { id: "x", model: "x", output };
     },
     stream: async function* () { /* not used */ }
@@ -170,3 +171,4 @@ describe("extractFollowupPromisesLlm", () => {
     expect(seenUser).toContain("turn");
   });
 });
+

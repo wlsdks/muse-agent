@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Gmail OAuth 2.0 (installed-app / loopback flow), raw fetch only — no
  * vendor SDK (architecture.md). Literal endpoints/params per Google's
@@ -232,7 +233,7 @@ export async function exchangeGmailAuthorizationCode(params: {
       method: "POST"
     });
   } catch (cause) {
-    throw new Error(`Gmail token exchange failed: network error (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
+    throw new Error(`Gmail token exchange failed: network error (${errorMessage(cause)})`, { cause });
   }
   if (!response.ok) {
     const errorCode = parseOAuthErrorCode(await response.text().catch(() => ""));
@@ -276,7 +277,7 @@ export async function refreshGmailAccessToken(params: {
       method: "POST"
     });
   } catch (cause) {
-    throw new GmailOAuthRetryableError(`Gmail token refresh failed: network error (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
+    throw new GmailOAuthRetryableError(`Gmail token refresh failed: network error (${errorMessage(cause)})`, { cause });
   }
   if (response.status >= 500) {
     throw new GmailOAuthRetryableError(`Gmail token refresh failed: server error (${response.status.toString()})`);
@@ -366,3 +367,4 @@ async function resolveStoredAccessToken(deps: GmailTokenSourceDeps): Promise<str
   await writeGmailCredential(deps.io, updated);
   return refreshed.accessToken;
 }
+

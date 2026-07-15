@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse notes reindex` / `muse notes search` — local vector RAG.
  *
@@ -194,7 +195,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
           }
         }
       } catch (cause) {
-        io.stderr(`muse: cannot read notes dir ${dir} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        io.stderr(`muse: cannot read notes dir ${dir} (${errorMessage(cause)})\n`);
         process.exitCode = 1;
         return;
       }
@@ -298,7 +299,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
           }
         } catch (cause) {
           if (!options.json) {
-            io.stderr(`(auto-reindex skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+            io.stderr(`(auto-reindex skipped: ${errorMessage(cause)})\n`);
           }
         }
       }
@@ -587,3 +588,4 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
       io.stdout(`${formatBridges(bridges)}\n`);
     });
 }
+

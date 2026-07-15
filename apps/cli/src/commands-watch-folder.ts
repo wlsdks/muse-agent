@@ -1,3 +1,4 @@
+import { errorMessage, isErrorLike } from "@muse/shared";
 /**
  * `muse watch-folder` — credential-free external-signal trigger.
  *
@@ -148,7 +149,7 @@ export function resolveInboxDueAt(
     return { dueAt: fallback() };
   }
   const parsed = parseTaskDueAt(hint, now);
-  if (parsed instanceof Error) {
+  if (isErrorLike(parsed)) {
     return { dueAt: fallback(), unparsedHint: hint };
   }
   return { dueAt: parsed };
@@ -265,7 +266,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
               const parsed = await extractDocumentText(full, buffer);
               extracted = { pageCount: parsed.pageCount, text: (parsed.text ?? "").trim() };
             } catch (cause) {
-              io.stderr(`  ✗ ${filename} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+              io.stderr(`  ✗ ${filename} (could not read — skipped: ${errorMessage(cause)})\n`);
               return;
             }
             if (extracted.text.length === 0) {
@@ -276,7 +277,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
             try {
               await saveDocumentToNotes(notesDir, noteId, full, extracted.text, extracted.pageCount);
             } catch (cause) {
-              io.stderr(`  ✗ ${filename} (save failed — skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+              io.stderr(`  ✗ ${filename} (save failed — skipped: ${errorMessage(cause)})\n`);
               return;
             }
             const archived = join(processedDir, `${Date.now().toString()}-${filename}`);
@@ -292,7 +293,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
             const buffer = await readFile(full);
             notice = buildInboxNotice(filename, buffer, MAX_PREVIEW_BYTES);
           } catch (cause) {
-            io.stderr(`Failed to read ${filename}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+            io.stderr(`Failed to read ${filename}: ${errorMessage(cause)}\n`);
             return;
           }
 
@@ -325,7 +326,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
               await writeTasks(tasksFile, [...existing, task]);
               io.stdout(`  + task created: ${task.id} (dueAt ${dueAt})\n`);
             } catch (cause) {
-              io.stderr(`  task-create failed for ${filename}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+              io.stderr(`  task-create failed for ${filename}: ${errorMessage(cause)}\n`);
             }
           }
 
@@ -334,7 +335,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
           try {
             await rename(full, archived);
           } catch (cause) {
-            io.stderr(`Failed to archive ${filename}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+            io.stderr(`Failed to archive ${filename}: ${errorMessage(cause)}\n`);
           }
 
           await appendProactiveHistory(historyFile, {
@@ -351,7 +352,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
 
           io.stdout(`[${new Date().toISOString()}] fired ${filename} → ${provider}/${destination}\n`);
         } catch (cause) {
-          io.stderr(`Handler error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`Handler error: ${errorMessage(cause)}\n`);
         } finally {
           inFlight.delete(filename);
         }
@@ -380,3 +381,4 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       io.stdout("\n(ctrl-c — stopping)\n");
     });
 }
+

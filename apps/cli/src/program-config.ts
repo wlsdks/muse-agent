@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Local CLI config store + API-target resolution, extracted from
  * `program-helpers.ts`:
@@ -235,5 +236,5 @@ export function unsetConfigValue(
 }
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {
-  return value instanceof Error && "code" in value;
+  return isErrorLike(value) && "code" in value;
 }

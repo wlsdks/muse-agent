@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse summarize <file>` — an EXTRACTIVE summary of a document: the file's own
  * top sentences, picked by Luhn's significant-word density. Deterministic, local,
@@ -44,7 +45,7 @@ export function registerSummarizeCommand(program: Command, io: ProgramIO): void 
       try {
         text = await readFile(pathResolve(process.cwd(), file), "utf8");
       } catch (cause) {
-        io.stderr(`muse summarize: cannot read ${file} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        io.stderr(`muse summarize: cannot read ${file} (${errorMessage(cause)})\n`);
         process.exitCode = 1;
         return;
       }
@@ -67,3 +68,4 @@ export function registerSummarizeCommand(program: Command, io: ProgramIO): void 
       }
     });
 }
+

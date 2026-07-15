@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * X-3 (slice 5a) — read-only `muse bg` surface over the background-process
  * registry. `list` shows what the agent has running/finished across turns;
@@ -178,7 +179,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
         });
         io.stdout(`Started '${record.id}' (pid ${record.pid.toString()}). Logs: muse bg logs ${record.id}\n`);
       } catch (error) {
-        io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+        io.stderr(`${errorMessage(error)}\n`);
       }
     });
 
@@ -217,7 +218,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
         });
         io.stdout(`Restarted '${prior.id}' as '${record.id}' (pid ${record.pid.toString()}).\n`);
       } catch (error) {
-        io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+        io.stderr(`${errorMessage(error)}\n`);
       }
     });
 
@@ -242,3 +243,4 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       }
     });
 }
+

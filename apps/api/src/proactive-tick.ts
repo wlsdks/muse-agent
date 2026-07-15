@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Proactive surfacing daemon (Phase A per docs/design/proactive-surfacing.md).
  * Sibling of reminder-tick.ts — same setInterval-on-the-API-server
@@ -171,7 +172,7 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`proactive-tick: ${message}`);
     } finally {
       firing = false;
@@ -317,3 +318,4 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
     }
   };
 }
+

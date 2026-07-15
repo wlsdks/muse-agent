@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Matrix ingestion daemon — the `/sync` counterpart of
  * `telegram-poll-tick.ts`'s long-poll mode.
@@ -71,7 +72,7 @@ export function startMatrixSyncTick(options: MatrixSyncOptions): MatrixSyncHandl
       options.onIngested?.(inbound.length);
       return true;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`matrix-sync: ${message}`);
       return false;
     } finally {
@@ -117,3 +118,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

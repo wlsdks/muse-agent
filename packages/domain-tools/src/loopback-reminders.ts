@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue, isErrorLike } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
@@ -174,7 +174,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: "dueAt is required" };
           }
           const parsed = parseReminderDueAt(dueAtRaw, now);
-          if (parsed instanceof Error) {
+          if (isErrorLike(parsed)) {
             // Whetstone (agent-path sibling of `calendar add`): the
             // deterministic parser couldn't resolve this dueAt phrase — record the
             // time-parse weakness so a recurring misread surfaces. Fail-soft.
@@ -331,7 +331,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             const haveExisting = !Number.isNaN(existingDue.getTime());
             const anchor = resolveSnoozeAnchor(dueAtRaw, existingDue, haveExisting, now);
             const parsed = parseReminderDueAt(dueAtRaw, anchor);
-            if (parsed instanceof Error) {
+            if (isErrorLike(parsed)) {
               // Whetstone (in-file sibling of `add`): a snooze/reschedule dueAt the
               // deterministic parser can't resolve is the same time-parse signal. Fail-soft.
               await recordDueAtParseWeakness(dueAtRaw, options.weaknessesFile);
@@ -392,7 +392,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           }
           const firedAtRaw = readString(args, "firedAt")?.trim();
           const firedAt = parseFiredAt(firedAtRaw, now);
-          if (firedAt instanceof Error) {
+          if (isErrorLike(firedAt)) {
             return { error: firedAt.message };
           }
           const reminders = await readReminders(file);

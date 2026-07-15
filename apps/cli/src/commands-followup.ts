@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * `muse followup` command group — visibility + control over the
  * agent's self-queued follow-up promises.
@@ -112,7 +113,7 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
         throw new Error("<when> is required");
       }
       const parsed = parseReminderDueAt(whenRaw, () => new Date());
-      if (parsed instanceof Error) {
+      if (isErrorLike(parsed)) {
         throw parsed;
       }
       const file = localFollowupsFile();

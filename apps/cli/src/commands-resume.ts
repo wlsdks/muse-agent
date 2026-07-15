@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse resume` — fault-tolerant execution. A run that crashed or was interrupted
  * mid-tool-loop persisted a per-step checkpoint (the messages-so-far incl. completed
@@ -69,7 +70,7 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
         const result = await assembly.agentRuntime.run(input);
         io.stdout(`${result.response.output}\n`);
       } catch (error) {
-        io.stderr(`Resume of '${runId}' failed: ${error instanceof Error ? error.message : String(error)}. It stays resumable — try again.\n`);
+        io.stderr(`Resume of '${runId}' failed: ${errorMessage(error)}. It stays resumable — try again.\n`);
         return;
       }
       // The resumed run reached completion — clear its checkpoints so it isn't
@@ -77,3 +78,4 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
       await store.deleteByRunId(runId);
     });
 }
+

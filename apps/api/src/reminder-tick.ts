@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * Reminder firing daemon (Phase B per docs/design/reminder-firing.md)
  * implemented as a plain `setInterval` riding the API server's
@@ -111,7 +112,7 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         }
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorMessage(cause);
       options.errorLogger?.(`reminder-tick: ${message}`);
     } finally {
       firing = false;
@@ -140,3 +141,4 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
+

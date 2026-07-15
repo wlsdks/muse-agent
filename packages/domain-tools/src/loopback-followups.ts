@@ -1,4 +1,4 @@
-import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue, isErrorLike } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -166,7 +166,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
             return { error: "scheduledFor is required" };
           }
           const parsed = parseReminderDueAt(whenRaw, now);
-          if (parsed instanceof Error) {
+          if (isErrorLike(parsed)) {
             return { error: parsed.message };
           }
           try {

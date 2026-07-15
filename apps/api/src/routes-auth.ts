@@ -1,3 +1,4 @@
+import { errorMessage, isErrorLike } from "@muse/shared";
 // Registration/login/logout/identity registrars — split out of server-routes.ts (domain cohesion).
 
 import { extractBearerToken } from "@muse/auth";
@@ -18,8 +19,8 @@ export function registerAuthRoutes(server: FastifyInstance, authService: NonNull
       return reply.status(201).send(toLoginResponse(await authService.register(parsed.value)));
     } catch (error) {
       return reply.status(400).send({
-        code: error instanceof Error && "code" in error ? String(error.code) : "REGISTRATION_FAILED",
-        message: error instanceof Error ? error.message : "Registration failed"
+        code: isErrorLike(error) && "code" in error ? String(error.code) : "REGISTRATION_FAILED",
+        message: errorMessage(error, "Registration failed")
       });
     }
   });
@@ -60,3 +61,4 @@ export function registerAuthRoutes(server: FastifyInstance, authService: NonNull
     revoked: await authService.logout(extractBearerToken(request.headers.authorization))
   }));
 }
+

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse objectives` — the user entry point to the standing-objective
  * delegated-autonomy chain (store → daemon). Local mode over
@@ -88,7 +89,7 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
         });
         io.stdout(`Registered objective ${id}: ${text}\n`);
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("objectives add failed", { exitCode: 1 });
       }
     });
@@ -124,7 +125,7 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
           io.stdout(`${o.id}  [${o.status}/${o.kind}]  ${o.spec}\n`);
         }
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`${errorMessage(cause)}\n`);
         command.error("objectives list failed", { exitCode: 1 });
       }
     });
@@ -188,3 +189,4 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
       });
     });
 }
+

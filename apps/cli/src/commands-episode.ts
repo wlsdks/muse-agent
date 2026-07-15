@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse episode` command group — visibility + control over the
  * agent's auto-captured prior-session summaries.
@@ -322,7 +323,7 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         io.stderr(
           `muse episode reindex: embedding failed — ` +
           `is Ollama running with '${model}' pulled? ` +
-          `(underlying: ${cause instanceof Error ? cause.message : String(cause)})\n`
+          `(underlying: ${errorMessage(cause)})\n`
         );
         process.exitCode = 1;
         return;
@@ -540,3 +541,4 @@ function parseLlmJudgeIds(raw: string): readonly string[] {
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
 }
+

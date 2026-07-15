@@ -1,3 +1,4 @@
+import { isErrorLike } from "@muse/shared";
 /**
  * Muse compat auth routes extracted from compat-routes.ts.
  *
@@ -39,7 +40,7 @@ export function registerAuthCompatibilityRoutes(server: FastifyInstance, options
       const login = await authService.register(parsed.value);
       return reply.status(201).send(toCompatAuthResponse(login));
     } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "REGISTRATION_FAILED";
+      const code = isErrorLike(error) && "code" in error ? String(error.code) : "REGISTRATION_FAILED";
       return reply.status(code === "USER_EXISTS" ? 409 : 400).send({
         error: code === "USER_EXISTS" ? "Email already registered" : errorMessage(error, "Registration failed"),
         token: "",

@@ -1,3 +1,4 @@
+import { errorMessage } from "@muse/shared";
 /**
  * `muse daemon` — run Muse's background daemons in one foreground
  * process the user can launch directly, instead of needing the full
@@ -536,7 +537,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         try {
           rmSync(plistFile);
         } catch (cause) {
-          io.stderr(`launchctl unload succeeded but failed to remove ${plistFile}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`launchctl unload succeeded but failed to remove ${plistFile}: ${errorMessage(cause)}\n`);
           process.exitCode = 1;
           return;
         }
@@ -1194,10 +1195,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       await (helpers.runDaemonLoop ?? runDaemonLoop)({
         intervalMs: interval * 1000,
         onError: (cause) => {
-          io.stderr(`tick error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          io.stderr(`tick error: ${errorMessage(cause)}\n`);
         },
         signal,
         tick: runTick
       });
     });
 }
+
