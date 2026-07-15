@@ -13,7 +13,13 @@ export function serializePerKey<T>(inFlight: Map<string, Promise<unknown>>, key:
     return operation();
   })();
 
-  inFlight.set(key, next.then(() => undefined).catch(() => undefined));
+  let serialized: Promise<unknown>;
+  serialized = next.finally(() => {
+    if (inFlight.get(key) === serialized) {
+      inFlight.delete(key);
+    }
+  });
+
+  inFlight.set(key, serialized);
   return next;
 }
-

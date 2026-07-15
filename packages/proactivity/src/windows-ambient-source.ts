@@ -112,7 +112,16 @@ export class WindowsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultPowerShellRun(script: string, timeoutMs: number): Promise<string | undefined> {
-  return execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs, encoding: "utf8" })
-    .then(({ stdout }) => stdout)
-    .catch(() => undefined);
+  return (async (): Promise<string | undefined> => {
+    try {
+      const { stdout } = await execFile(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", script],
+        { timeout: timeoutMs, encoding: "utf8" }
+      );
+      return stdout;
+    } catch {
+      return undefined;
+    }
+  })();
 }

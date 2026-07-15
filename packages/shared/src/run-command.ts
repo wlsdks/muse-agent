@@ -84,13 +84,16 @@ function createRunCommandResult(
 }
 
 function exitCodePayload(child: ChildProcess, stdout: StreamAccumulator, stderr: StreamAccumulator, encoding: BufferEncoding): Promise<RunCommandResult> {
-  return once(child, "close").then(([exitCode, signal]) => createRunCommandResult(
-    exitCode,
-    signal ?? null,
-    Buffer.concat(stdout.chunks).toString(encoding),
-    Buffer.concat(stderr.chunks).toString(encoding),
-    false
-  ));
+  return (async (): Promise<RunCommandResult> => {
+    const [exitCode, signal] = await once(child, "close");
+    return createRunCommandResult(
+      exitCode,
+      signal ?? null,
+      Buffer.concat(stdout.chunks).toString(encoding),
+      Buffer.concat(stderr.chunks).toString(encoding),
+      false
+    );
+  })();
 }
 
 export async function runCommandWithTimeout(options: RunCommandOptions): Promise<RunCommandResult> {
@@ -148,9 +151,10 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   child.stdin.end();
 
   const closeResult = exitCodePayload(child, stdout, stderr, encoding);
-  const errorResult = once(child, "error").then(([error]) => {
+  const errorResult = (async (): Promise<RunCommandResult> => {
+    const [error] = await once(child, "error");
     throw asError(error);
-  });
+  })();
   const outcome = Promise.race([closeResult, errorResult]);
 
   const hasFiniteTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;

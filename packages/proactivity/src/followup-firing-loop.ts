@@ -162,10 +162,9 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
       }
       // Retry wraps only the send — synthesis above already ran
       // once, so a transient 5xx doesn't re-invoke the model.
-      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
-        destination: options.destination,
-        text
-      }).then(() => undefined);
+      const deliver = async (): Promise<void> => {
+        await sendWithRetry(options.registry, options.providerId, { destination: options.destination, text });
+      };
       let digested = false;
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;

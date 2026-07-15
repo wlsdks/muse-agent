@@ -426,8 +426,9 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
 
   for (const checkin of due) {
     try {
-      const deliver = (): Promise<void> =>
-        options.registry.send(options.providerId, { destination: options.destination, text: checkin.question }).then(() => undefined);
+      const deliver = async (): Promise<void> => {
+        await options.registry.send(options.providerId, { destination: options.destination, text: checkin.question });
+      };
       let digested = false;
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;

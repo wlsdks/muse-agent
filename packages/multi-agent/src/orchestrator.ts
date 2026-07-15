@@ -242,8 +242,9 @@ export class MultiAgentOrchestrator {
     const subtaskCount = selectedWorkers.length;
     const workerIds = selectedWorkers.map((worker) => worker.id);
 
-    void this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt)
-      .then((result) => {
+    void (async () => {
+      try {
+        const result = await this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt);
         store?.complete({
           finishedAt: this.clock(),
           orchestrationId: runId,
@@ -253,8 +254,7 @@ export class MultiAgentOrchestrator {
           subtaskCount,
           workerIds
         });
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         store?.complete({
           error: errorMessage(error),
           finishedAt: this.clock(),
@@ -263,7 +263,8 @@ export class MultiAgentOrchestrator {
           subtaskCount,
           workerIds
         });
-      });
+      }
+    })();
 
     return { orchestrationId: runId, subtaskCount };
   }
