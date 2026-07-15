@@ -37,6 +37,12 @@ const SUCCESS_HTML =
 export async function startOAuthCallbackServer(
   options: OAuthCallbackServerOptions
 ): Promise<OAuthCallbackServer> {
+  if (options.expectedState.trim().length === 0) {
+    throw new Error("OAuth callback requires a non-empty CSRF state");
+  }
+  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
+    throw new Error("OAuth callback timeout must be a positive finite number");
+  }
   const codeDeferred = Promise.withResolvers<{ readonly code: string }>();
   let settled = false;
 
@@ -79,9 +85,9 @@ export async function startOAuthCallbackServer(
 
   // Keep callback path clean: once the wait has been resolved/rejected,
   // clear the timer so an unused waiting path doesn't hold resources.
-  codeDeferred.promise.finally(() => {
+  void codeDeferred.promise.finally(() => {
     clearTimeout(timeout);
-  });
+  }).catch(() => undefined);
 
   const close = async (): Promise<void> => {
     clearTimeout(timeout);
