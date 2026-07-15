@@ -267,6 +267,19 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
 }
 
 const KILL_CRITERION_FIRST_PACKS = 20;
+const IMPROVEMENT_COHORT_SIZE = 5;
+
+export interface ContinuityFeedbackCohort {
+  readonly rejected: number;
+  readonly used: number;
+}
+
+export interface ContinuityImprovementGate {
+  readonly firstFiveFeedback: ContinuityFeedbackCohort;
+  readonly nextFiveFeedback: ContinuityFeedbackCohort;
+  readonly reason: string;
+  readonly status: "awaiting-feedback" | "improving" | "mixed" | "regressing" | "unchanged";
+}
 
 export interface ContinuityKindStats {
   readonly totalDeliveries: number;
@@ -277,6 +290,8 @@ export interface ContinuityKindStats {
     readonly used: number;
     readonly rejected: number;
   };
+  /** Per-kind first-five versus next-five feedback comparison; never enables delivery. */
+  readonly improvementGate: ContinuityImprovementGate;
   /**
    * This is deliberately a release gate, not an automation switch. Passing
    * the outcome threshold never enables proactive delivery by itself.
@@ -312,6 +327,44 @@ function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): 
     .slice(0, KILL_CRITERION_FIRST_PACKS);
   const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
   const rejected = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
+  const feedbackDeliveries = deliveries
+    .filter((delivery) => delivery.outcome)
+    .sort((left, right) => left.outcome!.recordedAt.localeCompare(right.outcome!.recordedAt));
+  const feedbackCohort = (cohort: readonly ContinuityDelivery[]): ContinuityFeedbackCohort => ({
+    rejected: cohort.filter((delivery) => delivery.outcome?.outcome === "rejected").length,
+    used: cohort.filter((delivery) => delivery.outcome?.outcome === "used").length
+  });
+  const firstFiveFeedback = feedbackCohort(feedbackDeliveries.slice(0, IMPROVEMENT_COHORT_SIZE));
+  const nextFiveFeedback = feedbackCohort(feedbackDeliveries.slice(IMPROVEMENT_COHORT_SIZE, IMPROVEMENT_COHORT_SIZE * 2));
+  const improvementGate: ContinuityImprovementGate = feedbackDeliveries.length < IMPROVEMENT_COHORT_SIZE * 2
+    ? {
+        firstFiveFeedback,
+        nextFiveFeedback,
+        reason: `need ${String(IMPROVEMENT_COHORT_SIZE * 2 - feedbackDeliveries.length)} more explicit feedback entries before comparing the first and next ${String(IMPROVEMENT_COHORT_SIZE)}`,
+        status: "awaiting-feedback"
+      }
+    : nextFiveFeedback.used >= firstFiveFeedback.used && nextFiveFeedback.rejected <= firstFiveFeedback.rejected
+      ? {
+          firstFiveFeedback,
+          nextFiveFeedback,
+          reason: nextFiveFeedback.used === firstFiveFeedback.used && nextFiveFeedback.rejected === firstFiveFeedback.rejected
+            ? "the next five feedback outcomes are unchanged from the first five"
+            : "the next five feedback outcomes improved without a higher rejection count",
+          status: nextFiveFeedback.used === firstFiveFeedback.used && nextFiveFeedback.rejected === firstFiveFeedback.rejected ? "unchanged" : "improving"
+        }
+      : nextFiveFeedback.used <= firstFiveFeedback.used && nextFiveFeedback.rejected >= firstFiveFeedback.rejected
+        ? {
+            firstFiveFeedback,
+            nextFiveFeedback,
+            reason: "the next five feedback outcomes have lower use or higher rejection; fix pack usefulness before automation",
+            status: "regressing"
+          }
+        : {
+            firstFiveFeedback,
+            nextFiveFeedback,
+            reason: "the next five feedback outcomes trade higher use for higher rejection, or the reverse; inspect the packs before automation",
+            status: "mixed"
+          };
   const reasons: string[] = [];
   if (firstDeliveries.length < KILL_CRITERION_FIRST_PACKS) {
     reasons.push(`need ${String(KILL_CRITERION_FIRST_PACKS - firstDeliveries.length)} more eligible deliveries before evaluating automation`);
@@ -324,6 +377,7 @@ function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): 
     withOutcome,
     outcomes,
     firstPacks: { considered: firstDeliveries.length, rejected, used },
+    improvementGate,
     automationGate: reasons.length > 0
       ? { reasons, status: "hold" }
       : {
@@ -347,10 +401,11 @@ export function computeContinuityStats(state: AttunementState): ContinuityStats 
 }
 
 function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
-  const { outcomes, firstPacks } = stats;
+  const { firstPacks, improvementGate, outcomes } = stats;
   return [
     `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
-    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`
+    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    `    Feedback cohorts: first ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.firstFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.firstFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; next ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.nextFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.nextFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; trend ${improvementGate.status} — ${improvementGate.reason}.`
   ];
 }
 
