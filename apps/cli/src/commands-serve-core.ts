@@ -8,6 +8,7 @@
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
+import { join } from "node:path";
 
 import { errorMessage } from "@muse/shared";
 
@@ -34,6 +35,31 @@ export function resolveServeHost(raw: string | undefined, fallback = "127.0.0.1"
 /** A bind host of "all interfaces" isn't a valid client-side connect target on every platform — probe loopback instead. */
 export function hostForProbe(host: string): string {
   return host === "0.0.0.0" || host === "::" || host.trim().length === 0 ? "127.0.0.1" : host;
+}
+
+export interface ServeWebDirResolution {
+  /** Set when MUSE_WEB_DIR should be passed to the child — either an explicit override or the discovered build. */
+  readonly webDir?: string;
+  /** True only when nothing was found: no explicit override AND apps/web/dist isn't built. */
+  readonly builtInMissing: boolean;
+}
+
+/**
+ * Pure: an explicit MUSE_WEB_DIR always wins (never overridden). Otherwise,
+ * auto-detect the built web UI at `<repoRoot>/apps/web/dist` so `muse serve`
+ * serves it by default — without this, GET / 404s and the "web UI on your
+ * phone" story silently breaks even though the build is right there.
+ */
+export function resolveServeWebDir(
+  env: NodeJS.ProcessEnv,
+  repoRoot: string,
+  exists: (path: string) => boolean
+): ServeWebDirResolution {
+  const explicit = env.MUSE_WEB_DIR?.trim();
+  if (explicit && explicit.length > 0) return { builtInMissing: false, webDir: explicit };
+  const distDir = join(repoRoot, "apps", "web", "dist");
+  if (exists(join(distDir, "index.html"))) return { builtInMissing: false, webDir: distDir };
+  return { builtInMissing: true };
 }
 
 export interface ServeHealthPayload {
@@ -95,6 +121,32 @@ export async function probeServeHealth(
     return { kind: "ambiguous", detail: `HTTP ${String(response.status)} answered but not with the Muse API /health payload shape` };
   }
   return { kind: "healthy", pid: record.pid, startedAtIso: record.startedAtIso, version: record.version };
+}
+
+export type WebUiProbeResult = "serving" | "not-serving" | "unknown";
+
+/**
+ * GET the server's own base URL and classify the web UI by status code —
+ * the /health payload doesn't carry this, so `muse serve --status` needs a
+ * second, cheap probe. 200 (registerStaticWeb's index.html / SPA fallback)
+ * means served; a 404 (fastify's default when registerStaticWeb never
+ * registered its handler, i.e. MUSE_WEB_DIR was unset for that server) means
+ * not served. Anything else — including a network error — is honestly
+ * "unknown" rather than guessed.
+ */
+export async function probeWebUi(
+  fetchImpl: typeof globalThis.fetch,
+  baseUrl: string,
+  timeoutMs = 1500
+): Promise<WebUiProbeResult> {
+  try {
+    const response = await fetchImpl(baseUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (response.status === 200) return "serving";
+    if (response.status === 404) return "not-serving";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 export type ServeDecision =

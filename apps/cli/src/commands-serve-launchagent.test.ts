@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,7 +56,7 @@ describe("defaultRunLaunchctl", () => {
 describe("installApiAutostart", () => {
   it("refuses on a non-darwin platform, writes nothing", async () => {
     const { io, stderr } = freshIo();
-    const result = await installApiAutostart(io, {}, { distEntry: "/repo/apps/api/dist/index.js", host: "127.0.0.1", platform: "linux", port: 3030 });
+    const result = await installApiAutostart(io, {}, { distEntry: "/repo/apps/api/dist/index.js", host: "127.0.0.1", platform: "linux", port: 3030, repoRoot: "/repo" });
     expect(result.ok).toBe(false);
     expect(stderr.join("")).toContain("only wired for macOS");
   });
@@ -76,9 +76,11 @@ describe("installApiAutostart", () => {
 
     const result = await installApiAutostart(io, env, {
       distEntry: "/repo/apps/api/dist/index.js",
+      existsSync: () => false,
       host: "127.0.0.1",
       platform: "darwin",
       port: 4321,
+      repoRoot: "/repo",
       runLaunchctl
     });
 
@@ -102,13 +104,91 @@ describe("installApiAutostart", () => {
 
     const result = await installApiAutostart(io, env, {
       distEntry: "/repo/apps/api/dist/index.js",
+      existsSync: () => false,
       host: "127.0.0.1",
       platform: "darwin",
       port: 3030,
+      repoRoot: "/repo",
       runLaunchctl
     });
 
     expect(result.ok).toBe(false);
     expect(stdout.join("")).not.toContain("pid");
+  });
+
+  it("bakes MUSE_WEB_DIR into the plist when apps/web/dist/index.html exists and no explicit override is set", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-serve-install-webdir-"));
+    const plistFile = join(dir, "com.muse.api.plist");
+    const env = { MUSE_API_PLIST_FILE: plistFile };
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "load") return { code: 0, stderr: "", stdout: "" };
+      if (args[0] === "list") return { code: 0, stderr: "", stdout: '{\n\t"PID" = 888;\n};\n' };
+      return { code: 1, stderr: "", stdout: "" };
+    };
+    const { io } = freshIo();
+
+    await installApiAutostart(io, env, {
+      distEntry: "/repo/apps/api/dist/index.js",
+      existsSync: (path) => path === "/repo/apps/web/dist/index.html",
+      host: "127.0.0.1",
+      platform: "darwin",
+      port: 3030,
+      repoRoot: "/repo",
+      runLaunchctl
+    });
+
+    const plistContents = readFileSync(plistFile, "utf8");
+    expect(plistContents).toContain("<key>MUSE_WEB_DIR</key>");
+    expect(plistContents).toContain(join("/repo", "apps", "web", "dist"));
+  });
+
+  it("does NOT bake MUSE_WEB_DIR into the plist when apps/web/dist is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-serve-install-nowebdir-"));
+    const plistFile = join(dir, "com.muse.api.plist");
+    const env = { MUSE_API_PLIST_FILE: plistFile };
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "load") return { code: 0, stderr: "", stdout: "" };
+      if (args[0] === "list") return { code: 0, stderr: "", stdout: '{\n\t"PID" = 889;\n};\n' };
+      return { code: 1, stderr: "", stdout: "" };
+    };
+    const { io } = freshIo();
+
+    await installApiAutostart(io, env, {
+      distEntry: "/repo/apps/api/dist/index.js",
+      existsSync: () => false,
+      host: "127.0.0.1",
+      platform: "darwin",
+      port: 3030,
+      repoRoot: "/repo",
+      runLaunchctl
+    });
+
+    const plistContents = readFileSync(plistFile, "utf8");
+    expect(plistContents).not.toContain("MUSE_WEB_DIR");
+  });
+
+  it("an explicit MUSE_WEB_DIR in env always wins over the apps/web/dist auto-detect", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-serve-install-explicitwebdir-"));
+    const plistFile = join(dir, "com.muse.api.plist");
+    const env = { MUSE_API_PLIST_FILE: plistFile, MUSE_WEB_DIR: "/custom/web-dir" };
+    const runLaunchctl = async (args: readonly string[]) => {
+      if (args[0] === "load") return { code: 0, stderr: "", stdout: "" };
+      if (args[0] === "list") return { code: 0, stderr: "", stdout: '{\n\t"PID" = 890;\n};\n' };
+      return { code: 1, stderr: "", stdout: "" };
+    };
+    const { io } = freshIo();
+
+    await installApiAutostart(io, env, {
+      distEntry: "/repo/apps/api/dist/index.js",
+      existsSync: (path) => path === "/repo/apps/web/dist/index.html",
+      host: "127.0.0.1",
+      platform: "darwin",
+      port: 3030,
+      repoRoot: "/repo",
+      runLaunchctl
+    });
+
+    const plistContents = readFileSync(plistFile, "utf8");
+    expect(plistContents).toContain("<key>MUSE_WEB_DIR</key>\n    <string>/custom/web-dir</string>");
   });
 });

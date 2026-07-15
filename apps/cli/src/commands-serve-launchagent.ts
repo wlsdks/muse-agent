@@ -10,13 +10,14 @@
  */
 
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { t } from "./cli-i18n.js";
 import { parseLaunchctlListInfo } from "./commands-daemon-launchagent.js";
+import { resolveServeWebDir } from "./commands-serve-core.js";
 
 import type { ProgramIO } from "./program.js";
 
@@ -111,10 +112,13 @@ export const defaultRunLaunchctl = async (args: readonly string[]): Promise<{ re
 
 export interface InstallApiAutostartOptions {
   readonly distEntry: string;
+  readonly repoRoot: string;
   readonly port: number;
   readonly host: string;
   readonly platform?: NodeJS.Platform;
   readonly runLaunchctl?: (args: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }>;
+  /** Test seam — same shape as ServeHelpers.existsSync, used for the MUSE_WEB_DIR auto-detect. */
+  readonly existsSync?: (path: string) => boolean;
 }
 
 /**
@@ -136,8 +140,13 @@ export async function installApiAutostart(
   const plistFile = resolveApiLaunchAgentFile(env);
   const home = env.HOME?.trim()?.length ? env.HOME.trim() : homedir();
   const logDir = join(home, ".muse", "logs");
+  const webDirResolution = resolveServeWebDir(env, opts.repoRoot, opts.existsSync ?? existsSync);
   const plist = buildApiLaunchAgentPlist({
-    environmentVariables: { HOST: opts.host, PORT: String(opts.port) },
+    environmentVariables: {
+      HOST: opts.host,
+      PORT: String(opts.port),
+      ...(webDirResolution.webDir ? { MUSE_WEB_DIR: webDirResolution.webDir } : {})
+    },
     label: API_LAUNCH_AGENT_LABEL,
     programArguments: [process.execPath, opts.distEntry],
     stderrPath: join(logDir, "api.err.log"),

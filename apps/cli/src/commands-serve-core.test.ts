@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,8 +8,10 @@ import {
   defaultServeSpawn,
   hostForProbe,
   probeServeHealth,
+  probeWebUi,
   resolveServeHost,
   resolveServePort,
+  resolveServeWebDir,
   runServeForeground,
   shutdownAndWaitFree,
   type ServeChildHandle
@@ -46,6 +50,50 @@ describe("hostForProbe", () => {
     expect(hostForProbe("0.0.0.0")).toBe("127.0.0.1");
     expect(hostForProbe("::")).toBe("127.0.0.1");
     expect(hostForProbe("192.168.1.5")).toBe("192.168.1.5");
+  });
+});
+
+describe("resolveServeWebDir (muse serve default web UI)", () => {
+  it("auto-detects apps/web/dist when MUSE_WEB_DIR is unset and index.html exists", () => {
+    const exists = (path: string) => path === join("/repo", "apps", "web", "dist", "index.html");
+    const result = resolveServeWebDir({}, "/repo", exists);
+    expect(result).toEqual({ builtInMissing: false, webDir: join("/repo", "apps", "web", "dist") });
+  });
+
+  it("reports builtInMissing (no webDir) when MUSE_WEB_DIR is unset and the dist build isn't there", () => {
+    const result = resolveServeWebDir({}, "/repo", () => false);
+    expect(result).toEqual({ builtInMissing: true });
+  });
+
+  it("an explicit MUSE_WEB_DIR always wins, even when apps/web/dist also exists", () => {
+    const exists = () => true;
+    const result = resolveServeWebDir({ MUSE_WEB_DIR: "/custom/web-dir" }, "/repo", exists);
+    expect(result).toEqual({ builtInMissing: false, webDir: "/custom/web-dir" });
+  });
+
+  it("treats a whitespace-only MUSE_WEB_DIR as unset and falls through to auto-detect", () => {
+    const exists = (path: string) => path === join("/repo", "apps", "web", "dist", "index.html");
+    const result = resolveServeWebDir({ MUSE_WEB_DIR: "   " }, "/repo", exists);
+    expect(result).toEqual({ builtInMissing: false, webDir: join("/repo", "apps", "web", "dist") });
+  });
+});
+
+describe("probeWebUi (muse serve --status web UI line, AC3)", () => {
+  it("classifies HTTP 200 as serving", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("<html></html>", { status: 200 }));
+    expect(await probeWebUi(fetchImpl, "http://127.0.0.1:3030")).toBe("serving");
+  });
+
+  it("classifies HTTP 404 as not-serving", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
+    expect(await probeWebUi(fetchImpl, "http://127.0.0.1:3030")).toBe("not-serving");
+  });
+
+  it("classifies any other status or a network failure as honestly unknown, never guessed", async () => {
+    const errorFetch = vi.fn().mockRejectedValue(new Error("network down"));
+    expect(await probeWebUi(errorFetch, "http://127.0.0.1:3030")).toBe("unknown");
+    const oddStatusFetch = vi.fn().mockResolvedValue(new Response("teapot", { status: 418 }));
+    expect(await probeWebUi(oddStatusFetch, "http://127.0.0.1:3030")).toBe("unknown");
   });
 });
 

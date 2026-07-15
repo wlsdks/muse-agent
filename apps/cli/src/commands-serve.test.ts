@@ -215,6 +215,117 @@ describe("muse serve — foreground (AC1/AC4)", () => {
   });
 });
 
+describe("muse serve — default web UI serving (AC1)", () => {
+  function fakeRepoFsWithWeb(opts: { readonly webDistExists: boolean }) {
+    const base = fakeRepoFs();
+    return {
+      ...base,
+      existsSync: (path: string) => {
+        if (path === join(REPO_ROOT, "apps", "web", "dist", "index.html")) return opts.webDistExists;
+        return base.existsSync(path);
+      }
+    };
+  }
+
+  it("passes MUSE_WEB_DIR=<repoRoot>/apps/web/dist to the child when unset and the dist build exists", async () => {
+    const spawnCalls: Parameters<ServeSpawnFn>[0][] = [];
+    const spawn: ServeSpawnFn = (call) => {
+      spawnCalls.push(call);
+      return immediateExitChild(0);
+    };
+    const { exitCode } = await runServe([], {
+      ...fakeRepoFsWithWeb({ webDistExists: true }),
+      env: () => ({}),
+      fetchImpl: connectionRefused as unknown as typeof globalThis.fetch,
+      spawn
+    });
+    expect(exitCode).toBeUndefined();
+    expect(spawnCalls[0]?.env.MUSE_WEB_DIR).toBe(join(REPO_ROOT, "apps", "web", "dist"));
+  });
+
+  it("an explicit MUSE_WEB_DIR env var always wins over the auto-detected dist path", async () => {
+    const spawnCalls: Parameters<ServeSpawnFn>[0][] = [];
+    const spawn: ServeSpawnFn = (call) => {
+      spawnCalls.push(call);
+      return immediateExitChild(0);
+    };
+    const { exitCode } = await runServe([], {
+      ...fakeRepoFsWithWeb({ webDistExists: true }),
+      env: () => ({ MUSE_WEB_DIR: "/custom/web-dir" }),
+      fetchImpl: connectionRefused as unknown as typeof globalThis.fetch,
+      spawn
+    });
+    expect(exitCode).toBeUndefined();
+    expect(spawnCalls[0]?.env.MUSE_WEB_DIR).toBe("/custom/web-dir");
+  });
+
+  it("spawns without MUSE_WEB_DIR + prints a hint when the web dist isn't built", async () => {
+    const spawnCalls: Parameters<ServeSpawnFn>[0][] = [];
+    const spawn: ServeSpawnFn = (call) => {
+      spawnCalls.push(call);
+      return immediateExitChild(0);
+    };
+    const { stdout, exitCode } = await runServe([], {
+      ...fakeRepoFsWithWeb({ webDistExists: false }),
+      env: () => ({}),
+      fetchImpl: connectionRefused as unknown as typeof globalThis.fetch,
+      spawn
+    });
+    expect(exitCode).toBeUndefined();
+    expect(spawnCalls[0]?.env.MUSE_WEB_DIR).toBeUndefined();
+    expect(stdout).toContain("apps/web/dist not built");
+    expect(stdout).toContain("muse update");
+  });
+});
+
+describe("muse serve --status web UI line (AC3)", () => {
+  it("reports the web UI as served when GET / returns 200", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("/health")) return jsonResponse({ pid: 99, startedAtIso: "t", version: "dev" });
+      return new Response("<html></html>", { status: 200 });
+    });
+    const { stdout, exitCode } = await runServe(["--status"], {
+      env: () => ({}),
+      existsSync: () => false,
+      fetchImpl,
+      platform: "darwin"
+    });
+    expect(exitCode).toBeUndefined();
+    expect(stdout).toContain("web UI:");
+    expect(stdout).toMatch(/web UI:\s+served/u);
+  });
+
+  it("reports the web UI as not served when GET / returns 404", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("/health")) return jsonResponse({ pid: 99, startedAtIso: "t", version: "dev" });
+      return new Response("not found", { status: 404 });
+    });
+    const { stdout, exitCode } = await runServe(["--status"], {
+      env: () => ({}),
+      existsSync: () => false,
+      fetchImpl,
+      platform: "darwin"
+    });
+    expect(exitCode).toBeUndefined();
+    expect(stdout).toMatch(/web UI:\s+not served/u);
+  });
+
+  it("does not probe or print a web UI line when the server isn't running", async () => {
+    const fetchImpl = vi.fn(connectionRefused);
+    const { stdout, exitCode } = await runServe(["--status"], {
+      env: () => ({}),
+      existsSync: () => false,
+      fetchImpl: fetchImpl as unknown as typeof globalThis.fetch,
+      platform: "darwin"
+    });
+    expect(exitCode).toBeUndefined();
+    expect(stdout).not.toContain("web UI:");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("muse serve --install / --uninstall / --status (AC2)", () => {
   it("--install refuses on a non-darwin platform", async () => {
     const { stderr, exitCode } = await runServe(["--install"], { ...fakeRepoFs(), platform: "linux" });

@@ -23,8 +23,10 @@ import {
   defaultServeSpawn,
   hostForProbe,
   probeServeHealth,
+  probeWebUi,
   resolveServeHost,
   resolveServePort,
+  resolveServeWebDir,
   runServeForeground,
   shutdownAndWaitFree,
   type ServeSpawnFn
@@ -103,8 +105,10 @@ export function registerServeCommand(program: Command, io: ProgramIO, helpers: S
         }
         const result = await installApiAutostart(io, e, {
           distEntry: located.distEntry,
+          existsSync: exists,
           host,
           port,
+          repoRoot: located.repoRoot,
           ...(helpers.platform ? { platform: helpers.platform } : {}),
           ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {})
         });
@@ -148,6 +152,14 @@ export function registerServeCommand(program: Command, io: ProgramIO, helpers: S
         io.stdout(probe.kind === "healthy"
           ? t("serve.status.running", { host: probeHost, pid: String(probe.pid), port: String(port), startedAtIso: probe.startedAtIso, version: probe.version })
           : t("serve.status.notRunning", { host: probeHost, port: String(port) }));
+        if (probe.kind === "healthy") {
+          const webUi = await probeWebUi(fetchImpl, baseUrl);
+          io.stdout(webUi === "serving"
+            ? t("serve.status.webUi.serving", { host: probeHost, port: String(port) })
+            : webUi === "not-serving"
+              ? t("serve.status.webUi.notServing")
+              : t("serve.status.webUi.unknown"));
+        }
         const plat = helpers.platform ?? process.platform;
         if (plat === "darwin") {
           const plistFile = resolveApiLaunchAgentFile(e);
@@ -205,12 +217,15 @@ export function registerServeCommand(program: Command, io: ProgramIO, helpers: S
         }
       }
 
+      const webDirResolution = resolveServeWebDir(e, located.repoRoot, exists);
+      if (webDirResolution.builtInMissing) io.stdout(t("serve.webDirMissing", { repoRoot: located.repoRoot }));
+
       io.stdout(t("serve.starting", { host: probeHost, port: String(port), repoRoot: located.repoRoot }));
       const exitCode = await runServeForeground({
         args: [located.distEntry],
         command: process.execPath,
         cwd: located.repoRoot,
-        env: { ...e, HOST: host, PORT: String(port) },
+        env: { ...e, HOST: host, PORT: String(port), ...(webDirResolution.webDir ? { MUSE_WEB_DIR: webDirResolution.webDir } : {}) },
         ...(helpers.registerSignalHandler ? { registerSignalHandler: helpers.registerSignalHandler } : {}),
         spawn: helpers.spawn ?? defaultServeSpawn,
         stdout: io.stdout
