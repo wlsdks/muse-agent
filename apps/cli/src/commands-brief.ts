@@ -126,11 +126,12 @@ export async function playAudioFile(
   const processResult = waitForChildProcessResult(child, player).finally(() => {
     settled = true;
   });
-  const watchdog = sleep(BRIEF_AUDIO_PLAYER_TIMEOUT_MS).then(() => {
+  const watchdog = (async () => {
+    await sleep(BRIEF_AUDIO_PLAYER_TIMEOUT_MS);
     if (settled) return;
     child.kill("SIGKILL");
     throw new Error(`${player} timed out after ${BRIEF_AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`);
-  });
+  })();
   await Promise.race([processResult, watchdog]);
 }
 

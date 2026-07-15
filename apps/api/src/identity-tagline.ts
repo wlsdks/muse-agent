@@ -305,7 +305,10 @@ export async function applyTaglineModel(
   try {
     out = await Promise.race([
       model({ prompt, system }).catch(() => undefined),
-      sleep(timeoutMs).then(() => undefined)
+      (async () => {
+        await sleep(timeoutMs);
+        return undefined;
+      })()
     ]);
   } catch {
     out = undefined;

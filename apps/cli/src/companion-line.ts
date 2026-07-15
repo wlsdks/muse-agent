@@ -566,7 +566,13 @@ export interface CompanionModelFns {
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
-  return Promise.race([p.catch(() => undefined), sleep(ms).then(() => undefined)]);
+  return Promise.race([
+    p.catch(() => undefined),
+    (async () => {
+      await sleep(ms);
+      return undefined;
+    })()
+  ]);
 }
 
 function toMuseEnvironment(processEnv: NodeJS.ProcessEnv): Record<string, string | undefined> {

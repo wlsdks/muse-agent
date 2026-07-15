@@ -43,14 +43,16 @@ export class ActiveRunTracker {
     if (this.active.size === 0) {
       return "drained";
     }
-    let timedOut = false;
-    const timeout = sleep(timeoutMs).then(() => {
-      timedOut = true;
-    });
-    await Promise.race([
+    const timeout = (async () => {
+      await sleep(timeoutMs);
+      return "timeout";
+    })();
+    const outcome = await Promise.race<
+      readonly PromiseSettledResult<unknown>[] | "timeout"
+    >([
       Promise.allSettled([...this.active]),
       timeout
     ]);
-    return timedOut ? "timeout" : "drained";
+    return outcome === "timeout" ? "timeout" : "drained";
   }
 }

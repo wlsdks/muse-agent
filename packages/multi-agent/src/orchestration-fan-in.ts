@@ -30,9 +30,10 @@ export async function withDeadline<T>(operation: () => Promise<T>, timeoutMs: nu
     return operation();
   }
   const timeoutController = new AbortController();
-  const deadline = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+  const deadline = (async () => {
+    await sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal });
     throw new Error(`${label} exceeded the ${timeoutMs.toString()}ms deadline`);
-  });
+  })();
   try {
     return await Promise.race([operation(), deadline]);
   } finally {

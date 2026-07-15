@@ -177,11 +177,12 @@ async function runPlayerWithWatchdog(
   ]).finally(() => {
     settled = true;
   });
-  const watchdog = sleep(AUDIO_PLAYER_TIMEOUT_MS).then(() => {
+  const watchdog = (async () => {
+    await sleep(AUDIO_PLAYER_TIMEOUT_MS);
     if (settled) return;
     child.kill("SIGKILL");
     throw new Error(`${player} timed out after ${AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`);
-  });
+  })();
   await Promise.race([completion, watchdog]);
 }
 

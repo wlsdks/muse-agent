@@ -105,14 +105,15 @@ export async function runOsascript(spawnFn: typeof spawn = spawn): Promise<strin
   const processResult = waitForChildProcessResult(child, "osascript", stderrChunks).finally(() => {
     settled = true;
   });
-  const watchdog = sleep(GLANCE_OSASCRIPT_TIMEOUT_MS).then(() => {
+  const watchdog = (async () => {
+    await sleep(GLANCE_OSASCRIPT_TIMEOUT_MS);
     if (settled) return;
     child.kill("SIGKILL");
     throw new Error(
       `osascript timed out after ${GLANCE_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed `
       + "(unanswered Accessibility prompt or a wedged UI-scripting target?)"
     );
-  });
+  })();
   await Promise.race([processResult, watchdog]);
   return Buffer.concat(stdoutChunks).toString("utf8");
 }

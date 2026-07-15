@@ -395,10 +395,11 @@ export async function withTimeout<T>(
   try {
     return await Promise.race([
       operation(controller.signal),
-      sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+      (async () => {
+        await sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal });
         controller.abort();
         throw new TimeoutError(timeoutMs);
-      })
+      })()
     ]);
   } finally {
     timeoutController.abort();

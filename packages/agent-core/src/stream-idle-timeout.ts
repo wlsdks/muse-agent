@@ -36,13 +36,14 @@ export async function* withStreamIdleTimeout<T>(
   try {
     for (;;) {
       const timerController = new AbortController();
-      const idle = sleepWithTimer(idleMs, undefined, { signal: timerController.signal }).then(() => {
+      const idle = (async () => {
+        await sleepWithTimer(idleMs, undefined, { signal: timerController.signal });
         throw new ModelProviderError(
           providerId,
           `model stream idle for >${idleMs.toString()}ms — provider stalled`,
           false
         );
-      });
+      })();
       let step: IteratorResult<T>;
       try {
         step = await Promise.race([iterator.next(), idle]);

@@ -20,9 +20,10 @@ async function callWithTimeout<T>(operation: Promise<T>, timeoutMs: number, mess
     return operation;
   }
   const timeoutController = new AbortController();
-  const timeout = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal, ref: false }).then(() => {
+  const timeout = (async () => {
+    await sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal, ref: false });
     throw new Error(message);
-  });
+  })();
   try {
     return await Promise.race([operation, timeout]);
   } finally {

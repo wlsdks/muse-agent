@@ -365,9 +365,10 @@ async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promis
   try {
     return await Promise.race([
       promise,
-      sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
+      (async () => {
+        await sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal });
         throw new Error("auto-extract: extraction timed out");
-      })
+      })()
     ]);
   } finally {
     timeoutController.abort();
