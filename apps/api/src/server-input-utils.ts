@@ -1,5 +1,5 @@
 import type { RuntimeSettingType } from "@muse/runtime-settings";
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import { isRecord } from "@muse/shared";
 export { isRecord };
 
@@ -24,7 +24,7 @@ export function isJsonObject(value: unknown): value is JsonObject {
   return Object.values(value).every(isJsonValue);
 }
 
-export function isJsonValue(value: unknown): boolean {
+export function isJsonValue(value: unknown): value is JsonValue {
   if (value === null || typeof value === "boolean" || typeof value === "string") {
     return true;
   }

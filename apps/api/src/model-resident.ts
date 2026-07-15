@@ -10,10 +10,7 @@
  * unattended.
  */
 
-/** The bit of Ollama's `/api/ps` payload we care about. */
-interface OllamaPsResponse {
-  readonly models?: ReadonlyArray<{ readonly name?: string; readonly model?: string }>;
-}
+import { isRecord } from "@muse/shared";
 
 /** Last path segment, with any `provider/` prefix dropped (`ollama/qwen3:8b` → `qwen3:8b`). */
 function normalizeModel(name: string): string {
@@ -24,14 +21,19 @@ function normalizeModel(name: string): string {
 
 /** Resident model names from a parsed `/api/ps` body. Tolerant of shape drift. */
 export function parseResidentModels(body: unknown): string[] {
-  const models = (body as OllamaPsResponse | null)?.models;
+  const parsed = isRecord(body) ? body : undefined;
+  const models = Array.isArray(parsed?.models) ? parsed.models : undefined;
   if (!Array.isArray(models)) {
     return [];
   }
   const names = new Set<string>();
-  for (const m of models) {
-    if (typeof m?.name === "string" && m.name.length > 0) names.add(m.name);
-    if (typeof m?.model === "string" && m.model.length > 0) names.add(m.model);
+  for (const model of models) {
+    if (model && typeof model === "object") {
+      const candidateName = typeof model.name === "string" ? model.name : undefined;
+      const candidateModel = typeof model.model === "string" ? model.model : undefined;
+      if (candidateName && candidateName.length > 0) names.add(candidateName);
+      if (candidateModel && candidateModel.length > 0) names.add(candidateModel);
+    }
   }
   return [...names];
 }

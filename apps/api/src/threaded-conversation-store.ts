@@ -16,6 +16,7 @@ import { access, rename } from "node:fs/promises";
 
 import { readAllThreads, type ThreadedTurnStore, type ThreadTurn } from "@muse/messaging";
 import { FileConversationStore, recentChatTurns } from "@muse/stores";
+import { isRecord } from "@muse/shared";
 
 // The pre-S3b `inbound-thread-store.ts` MAX_TURNS — a RAW turn count (not a
 // pair count), preserved so migrating to the conversation store doesn't
@@ -91,7 +92,10 @@ export async function migrateLegacyThreadFile(
     return { migrated: false, threadCount: 0 };
   }
   const threads = await readAllThreads(threadFile);
-  const entries = Object.entries(threads).filter(([, turns]) => turns.length > 0) as [string, readonly ThreadTurn[]][];
+  const entries = Object.entries(threads).filter((entry): entry is [string, readonly ThreadTurn[]] => {
+    const turns = entry[1];
+    return Array.isArray(turns) && turns.every((turn): turn is ThreadTurn => isThreadTurn(turn));
+  });
   try {
     for (const [key, turns] of entries) {
       await store.appendTurns(key, turns.map((turn) => ({ content: turn.content, role: turn.role })), {
@@ -105,4 +109,12 @@ export async function migrateLegacyThreadFile(
   }
   await rename(threadFile, `${threadFile}.migrated`);
   return { migrated: true, threadCount: entries.length };
+}
+
+function isThreadTurn(value: unknown): value is ThreadTurn {
+  return isThreadTurnObject(value) && (value.role === "user" || value.role === "assistant") && typeof value.content === "string";
+}
+
+function isThreadTurnObject(value: unknown): value is { readonly role: unknown; readonly content: unknown } {
+  return isRecord(value);
 }

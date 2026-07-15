@@ -14,8 +14,8 @@
  * Re-exported from the observability barrel for backwards compatibility.
  */
 
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { ModelUsage } from "@muse/model";
-import { isRecord, type JsonObject } from "@muse/shared";
 import type {
   PromptDriftDetector,
   SloAlertEvaluator
@@ -158,8 +158,28 @@ export function createDerivedAgentMetrics(options: DerivedAgentMetricsOptions): 
 }
 
 function toJsonObject(value: object): JsonObject {
+  const out: JsonObject = {};
   if (!isRecord(value)) {
-    return {};
+    return out;
   }
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as JsonObject;
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) {
+      continue;
+    }
+    out[key] = toJsonArrayValue(item);
+  }
+  return out;
+}
+
+function toJsonArrayValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "boolean" || typeof value === "string" || typeof value === "number") {
+    return value;
+  }
+  if (value === undefined) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => toJsonArrayValue(entry));
+  }
+  return isRecord(value) ? toJsonObject(value) : String(value);
 }

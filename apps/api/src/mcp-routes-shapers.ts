@@ -16,6 +16,7 @@
 import { McpRegistryError, type McpManager, type McpSecurityPolicy, type McpServer } from "@muse/mcp";
 
 import { isRecord, type ApiError, type JsonObject } from "./mcp-routes-parsers.js";
+import { type JsonValue } from "@muse/shared";
 
 type ReplyLike = { status(statusCode: number): { send(payload: ApiError): void } };
 
@@ -96,24 +97,34 @@ export function toMcpSecurityPolicyResponse(policy: McpSecurityPolicy) {
 }
 
 export function sanitizeConfig(config: JsonObject): JsonObject {
-  return Object.fromEntries(
-    Object.entries(config).map(([key, value]) => [
-      key,
-      isSensitiveConfigKey(key) ? "[redacted]" : sanitizeConfigValue(value)
-    ])
-  ) as JsonObject;
+  const out: JsonObject = {};
+  for (const [key, value] of Object.entries(config)) {
+    out[key] = isSensitiveConfigKey(key) ? "[redacted]" : sanitizeConfigValue(value);
+  }
+  return out;
 }
 
-function sanitizeConfigValue(value: JsonObject[string]): JsonObject[string] {
+function sanitizeConfigValue(value: JsonValue | undefined): JsonValue | undefined {
   if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeConfigValue(entry)) as JsonObject[string];
+    return value.map((entry) => sanitizeConfigValue(entry)).filter((entry): entry is JsonValue => entry !== undefined);
   }
 
   if (isRecord(value)) {
-    return sanitizeConfig(value as JsonObject);
+    return parseConfigObject(value);
   }
 
   return value;
+}
+
+function parseConfigObject(value: Record<string, unknown>): JsonObject {
+  const out: JsonObject = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const parsed = sanitizeConfigValue(rawValue);
+    if (parsed !== undefined) {
+      out[key] = parsed;
+    }
+  }
+  return out;
 }
 
 export function stringifyToolOutput(value: unknown): string {

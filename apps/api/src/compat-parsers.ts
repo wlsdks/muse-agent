@@ -29,7 +29,13 @@ export function toJsonObject(value: unknown): JsonObject {
     return {};
   }
 
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => isJsonValue(item))) as JsonObject;
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isJsonValue(item)) {
+      out[key] = item;
+    }
+  }
+  return out;
 }
 
 export function jsonObjectField(value: unknown): JsonObject {
