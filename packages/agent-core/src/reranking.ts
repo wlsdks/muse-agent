@@ -35,7 +35,10 @@ export function applyReranking<T extends { readonly score: number }>(
     return matches.map((m) => ({ ...m, rerankScore: m.score }));
   }
   return matches
-    .map((m, i) => ({ ...m, rerankScore: Number.isFinite(scores[i]) ? (scores[i] as number) : m.score }))
+    .map((m, i) => {
+      const score = scores[i];
+      return { ...m, rerankScore: Number.isFinite(score) ? score : m.score };
+    })
     .sort((a, b) => b.rerankScore - a.rerankScore);
 }
 
