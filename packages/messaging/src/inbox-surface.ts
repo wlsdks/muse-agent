@@ -51,6 +51,7 @@ export interface InboxSnapshot {
 
 const DEFAULT_PER_PROVIDER_LIMIT = 20;
 const DEFAULT_TOTAL_LIMIT = 80;
+const EMPTY_CURSOR_IDS = new Set<string>();
 
 export class FileBackedInboxContextProvider {
   private readonly sources: readonly InboxSourceConfig[];
@@ -187,6 +188,9 @@ export function filterFresh(
   perProviderLimit: number
 ): readonly InboundMessage[] {
   type ParsedInboundMessage = InboundMessage & { readonly receivedAtEpoch: number };
+  const cursorMessageIds = new Map<string, ReadonlySet<string>>(
+    Object.entries(cursor).map(([source, sourceCursor]) => [source, new Set(sourceCursor.ids)])
+  );
   const cursorParsedAt = new Map<string, number>(
     Object.entries(cursor).map(([source, sourceCursor]) => [source, Date.parse(sourceCursor.iso)])
   );
@@ -210,10 +214,13 @@ export function filterFresh(
       return a.messageId.localeCompare(b.messageId);
     });
   const fresh = sorted.filter((message) => {
-    const last = cursor[message.source];
-    if (!last) {
+    const sourceCursor = cursor[message.source];
+    if (!sourceCursor) {
       return true;
     }
+
+    const boundaryIds = cursorMessageIds.get(message.source) ?? EMPTY_CURSOR_IDS;
+
     const cursorAt = cursorParsedAt.get(message.source) ?? Number.NaN;
     if (Number.isFinite(message.receivedAtEpoch) && Number.isFinite(cursorAt)) {
       if (message.receivedAtEpoch > cursorAt) {
@@ -227,15 +234,15 @@ export function filterFresh(
       // boundary: the message at the instant is already-seen (preserving
       // the original receivedAtEpoch comparison semantics).
       if (message.receivedAtEpoch === cursorAt) {
-        return last.ids.length > 0 && !last.ids.includes(message.messageId);
+        return boundaryIds.size > 0 && !boundaryIds.has(message.messageId);
       }
       return false;
     }
-    if (message.receivedAtIso > last.iso) {
+    if (message.receivedAtIso > sourceCursor.iso) {
       return true;
     }
-    if (message.receivedAtIso === last.iso) {
-      return last.ids.length > 0 && !last.ids.includes(message.messageId);
+    if (message.receivedAtIso === sourceCursor.iso) {
+      return boundaryIds.size > 0 && !boundaryIds.has(message.messageId);
     }
     return false;
   });
