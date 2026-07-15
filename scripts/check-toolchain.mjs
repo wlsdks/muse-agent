@@ -52,7 +52,7 @@ function collectScriptProblems(scripts) {
   return problems;
 }
 
-function collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }) {
+export function collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }) {
   const problems = [];
   if (parseMajor(binVersion) !== EXPECTED_BUILD_MAJOR) {
     problems.push(

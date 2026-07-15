@@ -10,6 +10,7 @@ import {
   EXPECTED_ROOT_SCRIPTS,
   readRootPackage,
   parseMajor,
+  collectDependencyProblems,
   collectToolchainProblems,
   readRootScripts
 } from "./check-toolchain.mjs";
@@ -25,6 +26,20 @@ test("parseMajor reads the major from tsc's version output and from a semver", (
 test("parseMajor yields NaN on garbage rather than a wrong number", () => {
   assert.ok(Number.isNaN(parseMajor("not-a-version")));
   assert.ok(Number.isNaN(parseMajor(undefined)));
+});
+
+test("collectDependencyProblems flags compiler split violations", () => {
+  const problems = collectDependencyProblems({
+    binVersion: "6.9.9",
+    moduleVersion: "7.0.2",
+    tsDeclaration: "npm:typescript@7",
+    nativeTsDeclaration: "npm:typescript@7",
+  });
+
+  assert.equal(problems.some((p) => p.includes("`tsc` binary")), true);
+  assert.equal(problems.some((p) => p.includes("`typescript` MODULE")), true);
+  assert.equal(problems.some((p) => p.includes("expected devDependency `typescript`")), true);
+  assert.equal(problems.some((p) => p.includes("`@typescript/native`")), true);
 });
 
 test("check-toolchain policy requires TS7 split dependency selectors", () => {
