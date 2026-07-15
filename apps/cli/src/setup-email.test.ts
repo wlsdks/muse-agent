@@ -257,7 +257,7 @@ describe("runEmailSetup — the OAuth wizard (choice 2, unchanged; clack prompts
       async () => {
         const { io, lines } = captureIo({ configDir: workdir });
         const server = fakeCallbackServer({ rejectWith: new Error("boom") });
-        await runEmailSetup(io, { ...oauth, promptClientId: async () => "cid", promptClientSecret: async () => secretMarker, startCallbackServer: server.start });
+        await runEmailSetup(io, { ...oauth, openBrowser: () => undefined, promptClientId: async () => "cid", promptClientSecret: async () => secretMarker, startCallbackServer: server.start });
         return lines;
       },
       async () => {
@@ -266,6 +266,7 @@ describe("runEmailSetup — the OAuth wizard (choice 2, unchanged; clack prompts
         await runEmailSetup(io, {
           ...oauth,
           exchangeCode: async () => ({ accessToken: "at", expiresAt: Date.now() + 1000, refreshToken: "rt" }),
+          openBrowser: () => undefined,
           promptClientId: async () => "cid",
           promptClientSecret: async () => secretMarker,
           startCallbackServer: server.start,
@@ -700,5 +701,18 @@ describe("muse setup email — KO rendering (AC4: language=ko reads natural Kore
     expect(printed).toContain("일반 로그인 비밀번호를 입력하셨어요");
     expect(printed).toContain("myaccount.google.com/apppasswords?authuser=user%40gmail.com");
     expect(printed).not.toContain("IMAP login rejected");
+  });
+});
+
+describe("defaultOpenBrowser — the real-browser guard (a test must NEVER pop the owner's browser)", () => {
+  it("is a hard no-op under vitest even with a spawn impl injected", async () => {
+    const { defaultOpenBrowser } = await import("./setup-email.js");
+    const calls: string[][] = [];
+    const fakeSpawn = ((cmd: string, args: string[]) => {
+      calls.push([cmd, ...args]);
+      return { on: () => undefined } as never;
+    }) as never;
+    defaultOpenBrowser("https://accounts.google.com/o/oauth2/v2/auth?should=never-open", fakeSpawn);
+    expect(calls).toEqual([]);
   });
 });

@@ -175,10 +175,19 @@ async function defaultPromptClientSecret(): Promise<string | undefined> {
 }
 
 /** macOS `open` best-effort; every other platform falls back to the printed URL (runGmailOAuthLoopback always prints it). */
-function defaultOpenBrowser(url: string): void {
+/**
+ * Opening a REAL browser from a test is a user-visible incident, not a
+ * harmless side effect: an un-injected wizard test popped Google login
+ * tabs on the owner's desktop every time the suite ran. Same hard
+ * boundary as the launchctl/tailscale exec seams — under vitest this is
+ * a no-op even when a test forgets to inject openBrowser.
+ */
+export function defaultOpenBrowser(url: string, spawnImpl: typeof spawn = spawn): void {
+  const underVitest = (process.env.VITEST ?? "").trim().length > 0 || process.env.VITEST_WORKER_ID !== undefined;
+  if (underVitest) return;
   if (process.platform !== "darwin") return;
   try {
-    spawn("open", [url], { stdio: "ignore" }).on("error", () => undefined);
+    spawnImpl("open", [url], { stdio: "ignore" }).on("error", () => undefined);
   } catch { /* best-effort — the printed URL is the real fallback */ }
 }
 
