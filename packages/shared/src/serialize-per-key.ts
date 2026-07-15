@@ -6,10 +6,12 @@
  * the scheduled operation. Rejections from prior queued work are absorbed so one
  * failing operation does not block the queue for the same key.
  */
+import { withBestEffort } from "./best-effort.js";
+
 export function serializePerKey<T>(inFlight: Map<string, Promise<unknown>>, key: string, operation: () => Promise<T>): Promise<T> {
   const prior = inFlight.get(key) ?? Promise.resolve();
   const next = (async (): Promise<T> => {
-    await prior.catch(() => undefined);
+    await withBestEffort(prior, undefined);
     return operation();
   })();
 

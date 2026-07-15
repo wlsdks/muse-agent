@@ -80,7 +80,7 @@ import {
 import { composeLearnedUserModelSection, loadUserPersonaSync, PersonaHotReloadRegistry, resolvePersonaFilePath } from "@muse/recall";
 import type { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import { redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText, withBestEffort } from "@muse/shared";
 import { RuntimeSettings } from "@muse/runtime-settings";
 import {
   FileCheckpointStore,
@@ -554,7 +554,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     // that created it exited. Fire-and-forget: assembly itself stays
     // synchronous, and a failure here (e.g. a corrupt persisted cron
     // expression) must not block the whole runtime from coming up.
-    void schedulerService.loadEnabledJobs().catch(() => undefined);
+    void withBestEffort(schedulerService.loadEnabledJobs(), undefined);
   }
 
   assertAuthConfigCoherent(env, Boolean(authService));

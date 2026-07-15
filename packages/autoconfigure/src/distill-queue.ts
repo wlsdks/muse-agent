@@ -24,6 +24,7 @@ import {
   type CorrectionExchange,
   type DistilledStrategy
 } from "@muse/agent-core";
+import { withBestEffort } from "@muse/shared";
 import { bumpPlaybookObservation, incrementSuppressionBlocked, isLearningPaused, markLearnEventsDone, queryPlaybook, querySuppressedLessons, readPendingLearnEvents, recordPlaybookStrategy, type LearnCorrectionEvent } from "@muse/stores";
 
 export interface DistillQueuedDeps {
@@ -158,10 +159,10 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
     // path (see rule-conflict.ts / behavioural-rule-budget.ts for why cosine
     // can't do this). Fail-soft: a classifier error records no conflicts.
     const conflictCandidates = bankEntries.filter((entry) => isInjectableStrategy(entry) && !isStaleStrategy(entry, now().getTime()));
-    const conflictsWith = await findConflictingRuleIds(strategy.text, conflictCandidates, {
+    const conflictsWith = await withBestEffort(findConflictingRuleIds(strategy.text, conflictCandidates, {
       model: deps.model,
       modelProvider: deps.modelProvider
-    }).catch(() => []);
+    }), []);
     await recordPlaybookStrategy(deps.playbookFile, {
       createdAt: now().toISOString(),
       id: newId(),
