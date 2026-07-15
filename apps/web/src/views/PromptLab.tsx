@@ -75,6 +75,7 @@ export function PromptLab({ client }: { client: ApiClient }) {
         question: question.trim()
       })
   });
+  const experimentError = experiment.error ? errorMessage(experiment.error, "Experiment failed.") : null;
 
   return (
     <div className="content-narrow">
@@ -245,9 +246,9 @@ export function PromptLab({ client }: { client: ApiClient }) {
           </div>
           {experiment.error && (
             <div className="banner err" style={{ marginTop: 8 }}>
-              {errorMessage(experiment.error, "Experiment failed.").includes("503")
+              {experimentError.includes("503")
                 ? t("pl.experiment.unavailable")
-                : errorMessage(experiment.error, "Experiment failed.")}
+                : experimentError}
             </div>
           )}
           {experiment.data && (
