@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 import { isRecord, parseJson } from "./parse-json.js";
-import { errorMessage } from "@muse/shared";
+import { errorMessage } from "@muse/shared/browser";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
 

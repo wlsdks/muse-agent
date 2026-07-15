@@ -1,8 +1,12 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { errorMessage } from "./error-utils.js";
+import { isRecord } from "./json-utils.js";
 import { redactSecrets } from "./secret-redaction.js";
 import { SECRET_PATTERNS } from "./secret-patterns.js";
+
+import type { JsonObject, JsonValue } from "./json-utils.js";
 
 export {
   clearSecretRegistryForTests,
@@ -45,28 +49,8 @@ export {
   type RunCommandResult
 } from "./run-command.js";
 
-export type JsonPrimitive = string | number | boolean | null;
-
-export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
-
-export interface JsonObject {
-  readonly [key: string]: JsonValue;
-}
-
-export type JsonPredicate<T> = (value: unknown) => value is T;
-
-export function parseJson(raw: string): unknown | undefined {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-}
-
-export function parseJsonWith<T>(raw: string, predicate: JsonPredicate<T>): T | undefined {
-  const parsed = parseJson(raw);
-  return parsed !== undefined && predicate(parsed) ? parsed : undefined;
-}
+export { asError, errorMessage, isErrorLike } from "./error-utils.js";
+export { isRecord, parseJson, parseJsonWith, type JsonObject, type JsonPredicate, type JsonPrimitive, type JsonValue } from "./json-utils.js";
 
 /** Parse common environment/config boolean spellings without inverting unknown input. */
 export function parseBooleanTriStateFromEnv(value: string | undefined): boolean | undefined {
@@ -194,19 +178,6 @@ export function redactSecretsInText(value: string): string {
   return redactSecrets(scrubbed);
 }
 
-function asMessageFromValue(cause: unknown): string | undefined {
-  if (typeof cause === "string") {
-    return cause;
-  }
-
-  if (cause !== null && typeof cause === "object" && "message" in cause) {
-    const message = (cause as { message?: unknown }).message;
-    return typeof message === "string" ? message : undefined;
-  }
-
-  return undefined;
-}
-
 /**
  * One-stop sanitizer for printing an unknown error to a terminal.
  * Extracts the message (Error instance or String fallback), strips
@@ -218,43 +189,8 @@ function asMessageFromValue(cause: unknown): string | undefined {
  * inject text that mimics a real prompt.
  */
 export function formatErrorForTerminal(cause: unknown, cap: number = DEFAULT_ERROR_BODY_CAP): string {
-  const message = asMessageFromValue(cause) ?? String(cause);
+  const message = errorMessage(cause);
   return truncateErrorBody(stripUntrustedTerminalChars(message), cap);
-}
-
-/**
- * Extract a human-readable message from an unknown thrown value.
- * An `Error` instance yields its `.message`; anything else falls
- * back to `fallback` when given, else `String(cause)` (so a thrown
- * string / number / plain object still produces useful text instead
- * of a generic placeholder).
- */
-export function errorMessage(cause: unknown, fallback?: string): string {
-  return asMessageFromValue(cause) ?? fallback ?? String(cause);
-}
-
-/**
- * Safe nominal check for error-like values without hard-coding `instanceof Error`.
- * This intentionally accepts cross-realm/structured-clone error objects that
- * still carry the standard `name`/`message` shape, which keeps message
- * extraction resilient when values cross worker/VM boundaries.
- */
-export function isErrorLike(value: unknown): value is Error {
-  if (value instanceof Error) {
-    return true;
-  }
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  return ("name" in value && "message" in value) && typeof (value as { name: unknown }).name === "string" && typeof (value as { message: unknown }).message === "string";
-}
-
-/**
- * Normalize unknown thrown values into an `Error` instance, preserving explicit
- * `Error` inputs. Useful in places where APIs require an `Error` object.
- */
-export function asError(error: unknown): Error {
-  return isErrorLike(error) ? error : new Error(errorMessage(error));
 }
 
 /**
@@ -320,8 +256,7 @@ export function createCancellationToken(): CancellationToken {
     throwIfCancelled: () => {
       if (controller.signal.aborted) {
         const reason = controller.signal.reason;
-        const message = asMessageFromValue(reason);
-        throw new Error(message ?? "Operation cancelled");
+        throw new Error(errorMessage(reason, "Operation cancelled"));
       }
     }
   };
@@ -388,11 +323,6 @@ export function closestCommandName(
     if (!best || d < best.distance) best = { name: candidate, distance: d };
   }
   return best?.name;
-}
-
-/** Type guard for a non-null, non-array object (the canonical shape-inspection helper). */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /** True only for JSON values that can round-trip without non-finite numbers. */

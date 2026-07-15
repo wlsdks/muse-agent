@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
-import { errorMessage } from "@muse/shared";
+import { errorMessage } from "@muse/shared/browser";
 
 import type { AskResult, AskRetrieval, AskVerdict } from "./types.js";
 
