@@ -20,7 +20,7 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, sleep } from "@muse/shared";
+import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, serializePerKey, sleep } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -248,8 +248,6 @@ function legacyDefaultEntry(data: StoredFile, userId: string): StoredMemory | un
   return data.users["default"];
 }
 
-const resolvedPromise = async (): Promise<unknown> => undefined;
-
 export class FileUserMemoryStore implements UserMemoryStore {
   private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
@@ -393,10 +391,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
   }
 
   private async serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
-    const prior = FileUserMemoryStore.writeQueues.get(this.file) ?? resolvedPromise();
-    const next = prior.catch(() => undefined).then(fn);
-    FileUserMemoryStore.writeQueues.set(this.file, next.catch(() => undefined));
-    return next;
+    return serializePerKey(FileUserMemoryStore.writeQueues, this.file, fn);
   }
 
   // Returns the parsed file AND whether it was encrypted at rest, so a write can
