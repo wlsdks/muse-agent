@@ -79,7 +79,7 @@
     "test": "pnpm -r --sort --if-present test",
     "test:changed": "node scripts/test-changed.mjs",
     "typecheck": "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck",
-    "typecheck:fast": "tsc -b --incremental --pretty false --noEmit",
+    "typecheck:fast": "node scripts/run-tsc-fast.mjs typecheck",
     "typecheck:ts7-fast": "node scripts/run-tsc-fast.mjs typecheck",
     "self-eval": "node scripts/self-eval.mjs",
     "self-eval:test": "node --test scripts/*.test.mjs",
