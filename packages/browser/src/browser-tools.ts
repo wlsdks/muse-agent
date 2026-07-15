@@ -723,6 +723,10 @@ interface FillFieldInput {
   readonly value: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
  * Parse + validate the `fields` argument into typed {target, value} pairs.
  * Returns an error envelope (never a partial list) if the shape is wrong or
@@ -735,9 +739,9 @@ function parseFillFields(raw: JsonValue | undefined): { readonly fields: readonl
   }
   const parsed: FillFieldInput[] = [];
   for (let i = 0; i < raw.length; i += 1) {
-    const entry = raw[i];
-    const target = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["target"] === "string" ? ((entry as JsonObject)["target"] as string).trim() : "";
-    const value = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["value"] === "string" ? ((entry as JsonObject)["value"] as string) : "";
+    const entry = isRecord(raw[i]) ? raw[i] : undefined;
+    const target = typeof entry?.target === "string" ? entry.target.trim() : "";
+    const value = typeof entry?.value === "string" ? entry.value : "";
     if (target.length === 0) {
       return { error: { reason: `field ${i.toString()} is missing a 'target' (the field label, e.g. 'Email')` } };
     }

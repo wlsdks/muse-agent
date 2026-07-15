@@ -18,8 +18,12 @@ interface PersistedShape {
   readonly owners: Readonly<Record<string, string>>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const record: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(value)) {
     if (typeof key === "string") {
@@ -99,8 +103,8 @@ async function readAll(file: string): Promise<Readonly<Record<string, string>>> 
     return {};
   }
   try {
-    const parsed = JSON.parse(text) as { owners?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.owners || typeof parsed.owners !== "object") {
+    const parsed = JSON.parse(text);
+    if (!isRecord(parsed) || !isRecord(parsed.owners)) {
       return {};
     }
     const owners = toRecord(parsed.owners);
@@ -230,8 +234,8 @@ async function readAllPairingCodes(file: string): Promise<Readonly<Record<string
     return {};
   }
   try {
-    const parsed = JSON.parse(text) as { codes?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.codes || typeof parsed.codes !== "object") {
+    const parsed = JSON.parse(text);
+    if (!isRecord(parsed) || !isRecord(parsed.codes)) {
       return {};
     }
     const codes = toRecord(parsed.codes);
@@ -245,13 +249,10 @@ async function readAllPairingCodes(file: string): Promise<Readonly<Record<string
 }
 
 function isPairingCodeEntry(value: unknown): value is PairingCodeEntry {
-  return (
-    typeof value === "object"
-    && value !== null
-    && typeof (value as { code?: unknown }).code === "string"
-    && typeof (value as { attempts?: unknown }).attempts === "number"
-    && typeof (value as { createdAt?: unknown }).createdAt === "string"
-  );
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.code === "string" && typeof value.attempts === "number" && typeof value.createdAt === "string";
 }
 
 async function writePairingCodes(file: string, codes: Readonly<Record<string, PairingCodeEntry>>): Promise<void> {

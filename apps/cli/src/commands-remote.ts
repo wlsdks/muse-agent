@@ -49,6 +49,10 @@ const INSTALL_URLS: Readonly<Record<string, string>> = {
   win32: "https://tailscale.com/download/windows"
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export interface RemoteExecResult {
   readonly exitCode: number | null;
   readonly stdout: string;
@@ -133,12 +137,13 @@ export interface TailscaleSelfStatus {
 /** `tailscale status --json` → `ipnstate.Status` (BackendState + Self.DNSName, a trailing-dot FQDN). */
 export function parseTailscaleStatusJson(raw: string): TailscaleSelfStatus | undefined {
   try {
-    const parsed = JSON.parse(raw) as {
-      readonly BackendState?: unknown;
-      readonly Self?: { readonly DNSName?: unknown };
-    };
+    const parsed = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+    const self = isRecord(parsed.Self) ? parsed.Self : undefined;
     const backendState = typeof parsed.BackendState === "string" ? parsed.BackendState : "NoState";
-    const rawDnsName = typeof parsed.Self?.DNSName === "string" ? parsed.Self.DNSName : undefined;
+    const rawDnsName = typeof self?.DNSName === "string" ? self.DNSName : undefined;
     const dnsName = rawDnsName ? rawDnsName.replace(/\.$/u, "") : undefined;
     return { backendState, dnsName };
   } catch {
@@ -176,11 +181,10 @@ export async function checkTailscaleLogin(deps: {
 /** `tailscale serve status --json` → `ipn.ServeConfig` (TCP / Web / Services, all `omitempty`). */
 export function parseServeStatusJson(raw: string): boolean {
   try {
-    const parsed = JSON.parse(raw) as {
-      readonly TCP?: Readonly<Record<string, unknown>>;
-      readonly Web?: Readonly<Record<string, unknown>>;
-      readonly Services?: Readonly<Record<string, unknown>>;
-    };
+    const parsed = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+      return false;
+    }
     return (
       Object.keys(parsed.TCP ?? {}).length > 0 ||
       Object.keys(parsed.Web ?? {}).length > 0 ||
