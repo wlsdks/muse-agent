@@ -5,8 +5,9 @@
  * Re-exported from the observability barrel for backwards compatibility.
  */
 
-import type {
 import { errorMessage } from "@muse/shared";
+
+import type {
   CacheHealthProbe,
   McpHealthProbe,
   StartupCheck,

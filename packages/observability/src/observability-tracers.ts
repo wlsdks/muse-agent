@@ -13,7 +13,7 @@
  */
 
 import type { MuseDatabase, TraceEventTable } from "@muse/db";
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import type {
   MuseTracer,

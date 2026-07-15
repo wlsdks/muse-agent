@@ -18,7 +18,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { isRecord } from "@muse/shared";
+import { errorMessage, isRecord } from "@muse/shared";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";

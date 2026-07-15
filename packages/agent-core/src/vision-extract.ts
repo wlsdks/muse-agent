@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject } from "@muse/shared";
+import { errorMessage, isRecord, type JsonObject } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
 /**

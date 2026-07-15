@@ -1,5 +1,6 @@
-import type {
 import { errorMessage } from "@muse/shared";
+
+import type {
   IntegrationMessagingProviderId,
   ResolvedIntegrationEnvironment,
   ResolvedMessagingProviderEnvironment
@@ -273,4 +274,3 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     return { ok: true };
   });
 }
-

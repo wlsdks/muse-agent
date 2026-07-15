@@ -1,6 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
-import { isErrorLike } from "@muse/shared";
 
 import { redactSecrets } from "./secret-redaction.js";
 import { SECRET_PATTERNS } from "./secret-patterns.js";

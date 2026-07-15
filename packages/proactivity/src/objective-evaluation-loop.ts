@@ -15,8 +15,9 @@
  * reminder / proactive ticks.
  */
 
-import {
 import { errorMessage } from "@muse/shared";
+
+import {
   patchObjective,
   readObjectives,
   withProcessLock,

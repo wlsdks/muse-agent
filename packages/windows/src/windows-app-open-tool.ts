@@ -1,4 +1,4 @@
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { defaultPowerShellRunner, POWERSHELL_TIMEOUT_MS, psBase64Expr, type WinPowerShellRunner } from "./windows-exec.js";

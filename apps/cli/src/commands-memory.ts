@@ -1,4 +1,4 @@
-import { errorMessage } from "@muse/shared";
+import { errorMessage, isRecord } from "@muse/shared";
 /**
  * `muse memory` command group.
  *
@@ -501,7 +501,7 @@ Examples:
       if (options.baseline) {
         try {
           const raw = await readFile(options.baseline, "utf8");
-          const parsed = parseJsonWith(raw, parseMemorySnapshot);
+          const parsed = parseJsonWith(raw, isMemorySnapshot);
           if (!parsed) {
             throw new Error("invalid shape");
           }
@@ -750,20 +750,17 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return true;
 }
 
-function parseMemorySnapshot(raw: unknown): MemorySnapshotLike | undefined {
+function isMemorySnapshot(raw: unknown): raw is MemorySnapshotLike {
   if (!isRecord(raw)) {
-    return undefined;
+    return false;
   }
   if (raw.facts !== undefined && !isStringRecord(raw.facts)) {
-    return undefined;
+    return false;
   }
   if (raw.preferences !== undefined && !isStringRecord(raw.preferences)) {
-    return undefined;
+    return false;
   }
-  return {
-    facts: raw.facts,
-    preferences: raw.preferences
-  };
+  return true;
 }
 
 /**
@@ -819,4 +816,3 @@ function diffSlot(prev: Readonly<Record<string, string>>, curr: Readonly<Record<
   }
   return { added, changed, removed };
 }
-

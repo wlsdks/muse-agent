@@ -8,5 +8,8 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist"],
-  "references": [{ "path": "../stores" }]
+  "references": [
+    { "path": "../shared" },
+    { "path": "../stores" }
+  ]
 }

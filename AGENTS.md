@@ -42,7 +42,7 @@ self-contained — copy it into any project and point that project's
 
 | Area | Choice |
 | --- | --- |
-| Language | TypeScript |
+| Language | TypeScript 7 native compiler; TypeScript 6 API compatibility alias for tooling |
 | Runtime | Node.js >= 22.12 (24 LTS recommended) |
 | Package manager | pnpm workspace |
 | Server | Fastify |
@@ -55,6 +55,21 @@ self-contained — copy it into any project and point that project's
 | Calendar adapters | Local file, Google Calendar, CalDAV (iCloud / Fastmail / Proton), macOS Calendar.app |
 | Observability | OpenTelemetry + pino + persisted trace events |
 | Tests | Vitest + Playwright + Testcontainers |
+
+## TypeScript 7 toolchain
+
+Muse compiles its project graph with the TypeScript 7 native compiler. The
+`typescript` package name remains an alias to Microsoft's `@typescript/typescript6`
+compatibility package for tooling that consumes the TypeScript compiler API (notably
+typescript-eslint) until that tooling supports the stable TS7 API. Do not replace that
+alias with TS7 or use `tsc6` for normal builds without an explicit compatibility review.
+
+Use `pnpm typecheck:fast` for the normal TS7 graph check and
+`pnpm typecheck:ts7-fast` only when measuring parallel TS7 checkers/builders. Keep
+project references aligned with workspace runtime dependencies, preserve real type
+predicates at `unknown`/JSON boundaries, and do not suppress diagnostics through
+`ignoreDeprecations`. Details and the official-source migration procedure are in
+[`docs/development/typescript-7.md`](docs/development/typescript-7.md).
 
 ## Repository layout
 

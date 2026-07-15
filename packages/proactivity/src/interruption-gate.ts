@@ -36,8 +36,9 @@
  * too — a write error there must never block a real send.
  */
 
-import {
 import { errorMessage } from "@muse/shared";
+
+import {
   appendDigestItem,
   appendInterruptionDelivery,
   appendLastProactiveDelivery,

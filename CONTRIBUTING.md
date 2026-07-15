@@ -23,12 +23,19 @@ Read these in order:
 ```bash
 # Requirements: Node.js 24 LTS + pnpm 10
 pnpm install
+pnpm check:toolchain
 pnpm build
 pnpm test
 ```
 
 The repo is a pnpm workspace; every package builds with `tsc -p
 tsconfig.json` and tests with `vitest run`.
+
+Compilation uses the TypeScript 7 native compiler. The `typescript` dependency is
+intentionally the official TypeScript 6 compiler-API compatibility alias for tooling;
+do not replace it during ordinary dependency updates. See
+[`docs/development/typescript-7.md`](docs/development/typescript-7.md) for the
+supported migration and verification procedure.
 
 ## Verification gates (cheapest first)
 

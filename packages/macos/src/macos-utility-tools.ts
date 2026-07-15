@@ -4,7 +4,7 @@
  * exec helper — no AppleScript escaping, so they share no state with the osascript tools.
  */
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { runChild, type MacCommandResult } from "./macos-exec.js";

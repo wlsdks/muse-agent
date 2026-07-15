@@ -27,7 +27,7 @@
  */
 
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";

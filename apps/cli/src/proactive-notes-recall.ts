@@ -67,10 +67,6 @@ function isNotesIndex(value: unknown): value is NotesIndex {
   );
 }
 
-function parseNotesIndex(raw: unknown): NotesIndex | undefined {
-  return isNotesIndex(raw) ? raw : undefined;
-}
-
 /**
  * Pure: cosine-rank the pre-embedded chunks against an already-embedded query
  * vector and return the top-K as KnowledgeMatch[] (cosine = score). Exported
@@ -121,7 +117,7 @@ export function createIndexedProactiveInvestigator(
     if (query.length === 0) return undefined;
     let index: NotesIndex | undefined;
     try {
-      index = parseJsonWith(await readFile(indexFile, "utf8"), parseNotesIndex);
+      index = parseJsonWith(await readFile(indexFile, "utf8"), isNotesIndex);
     } catch {
       return undefined;
     }

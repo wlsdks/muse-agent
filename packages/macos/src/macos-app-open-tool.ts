@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { runChild, type MacCommandResult } from "./macos-exec.js";

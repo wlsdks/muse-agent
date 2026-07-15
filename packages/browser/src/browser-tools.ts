@@ -12,7 +12,7 @@
  * gate + controller are INJECTED so the wiring lives at the CLI boundary.
  */
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type BrowserKey, type PageSnapshot } from "./controller.js";

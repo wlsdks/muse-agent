@@ -16,7 +16,7 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { checkEditIntegrity } from "./edit-integrity.js";

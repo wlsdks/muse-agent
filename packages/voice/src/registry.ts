@@ -1,8 +1,9 @@
 import { VoiceProviderError } from "./errors.js";
 import { resolveTtsPersona } from "./persona.js";
 import { truncateForTts } from "./tts-truncate.js";
-import type {
 import { errorMessage } from "@muse/shared";
+
+import type {
   SpeechToTextProvider,
   TextToSpeechProvider,
   TtsPersona,

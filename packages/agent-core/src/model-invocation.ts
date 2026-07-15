@@ -21,7 +21,7 @@ import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resil
 import { retry, scaleRequestTimeout, withTimeout } from "@muse/resilience";
 import { decideWebSearchPolicy, parseModelName, USAGE_RECORDED_BY_RUNTIME_FLAG, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchPolicy, type WebSearchSettings } from "@muse/model";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import { sanitiseCitations } from "./citation-sanitiser.js";
 

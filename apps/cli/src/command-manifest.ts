@@ -1021,11 +1021,13 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "hasOptions": false,
     "subcommands": [
       "continue",
+      "delete",
       "inspect",
       "link",
       "list",
       "outcome",
       "reset",
+      "review",
       "start",
       "stats",
       "undo-reset",
@@ -1038,6 +1040,22 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "argsTerm": "[place...]",
     "hasOptions": true,
     "subcommands": []
+  },
+  {
+    "name": "timing",
+    "description": "explicit, local-only timing controls for one personal thread",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "evaluate",
+      "feedback",
+      "forget",
+      "inspect",
+      "pause",
+      "record",
+      "resume",
+      "start"
+    ]
   },
   {
     "name": "today",

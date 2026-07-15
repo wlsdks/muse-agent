@@ -27,7 +27,8 @@
  *   - `MISSING_DATABASE_ID` when an op requires databaseId but none was set
  */
 
-import { errorMessage, NotesProviderError,
+import { errorMessage } from "@muse/shared";
+import { NotesProviderError,
   NotesValidationError,
   type NotesAppendInput,
   type NotesContent,

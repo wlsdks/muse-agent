@@ -1,5 +1,6 @@
-import {
 import { errorMessage } from "@muse/shared";
+
+import {
   DiscordProvider,
   SlackProvider,
   TelegramProvider,

@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "./index.js";
 import {
   createBase64Tool,

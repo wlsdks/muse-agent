@@ -24,7 +24,7 @@
  * untouched.
  */
 
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { errorMessage, stripUntrustedTerminalChars } from "@muse/shared";
 
 import {
   defaultOsascriptRunner,

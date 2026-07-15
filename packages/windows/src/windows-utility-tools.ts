@@ -3,7 +3,7 @@
  * macos-utility-tools: no shared state with the richer tools, one runner seam.
  */
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { defaultPowerShellRunner, POWERSHELL_TIMEOUT_MS, psBase64Expr } from "./windows-exec.js";

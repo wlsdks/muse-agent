@@ -18,7 +18,7 @@
 
 import { spawn } from "node:child_process";
 
-import { redactSecretsInText, runCommandWithTimeout, type JsonObject, type JsonValue } from "@muse/shared";
+import { errorMessage, redactSecretsInText, runCommandWithTimeout, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import { readOptionalNumber, readOptionalString } from "./muse-tools-helpers.js";

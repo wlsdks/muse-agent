@@ -10,7 +10,7 @@
  * faked — never a fake "did the thing" flag.
  */
 
-import { redactSecretsInText } from "@muse/shared";
+import { errorMessage, redactSecretsInText } from "@muse/shared";
 
 import { findConsent } from "@muse/stores";
 import { appendActionLog, type ActionResult } from "@muse/stores";

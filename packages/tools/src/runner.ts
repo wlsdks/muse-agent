@@ -1,8 +1,5 @@
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { errorMessage, isRecord, redactSecretsInText, runCommandWithTimeout, type JsonObject } from "@muse/shared";
 import { spawn, type ChildProcess } from "node:child_process";
-import { runCommandWithTimeout } from "@muse/shared";
-
-import type { JsonObject } from "@muse/shared";
 
 import { classifyDangerousCommand } from "./dangerous-command.js";
 import { classifyRunnerFailure, type RunnerFailureKind } from "./runner-failure.js";

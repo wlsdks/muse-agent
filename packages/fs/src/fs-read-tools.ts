@@ -13,7 +13,7 @@ import { glob, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { createIgnoreFilter, type IgnoreFilter } from "./fs-gitignore.js";

@@ -20,7 +20,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { once } from "node:events";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool, MuseToolContext } from "@muse/tools";
 
 export interface MuseToolsMcpServerOptions {

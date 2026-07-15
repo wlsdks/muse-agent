@@ -4,7 +4,7 @@
  * media/volume controls from a stock PowerShell.
  */
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { defaultPowerShellRunner, POWERSHELL_TIMEOUT_MS } from "./windows-exec.js";

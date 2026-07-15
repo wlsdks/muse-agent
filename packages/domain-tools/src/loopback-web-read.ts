@@ -1,5 +1,5 @@
-import { errorMessage, extractPdfTextWithPdfjs } from "@muse/fs";
-import type { JsonObject } from "@muse/shared";
+import { extractPdfTextWithPdfjs } from "@muse/fs";
+import { errorMessage, type JsonObject } from "@muse/shared";
 
 import type { RetryOptions } from "@muse/mcp-shared";
 import type { LoopbackMcpServer } from "@muse/mcp";

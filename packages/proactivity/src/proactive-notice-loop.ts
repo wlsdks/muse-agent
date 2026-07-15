@@ -19,7 +19,7 @@
 
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { redactSecretsInText } from "@muse/shared";
+import { errorMessage, redactSecretsInText } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";

@@ -27,7 +27,8 @@
  *   - `FETCH_FAILED` when the underlying fetch rejects
  */
 
-import { errorMessage, TasksProviderError,
+import { errorMessage } from "@muse/shared";
+import { TasksProviderError,
   TasksValidationError,
   type Task,
   type TaskInput,

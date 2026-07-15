@@ -8,7 +8,7 @@
  * gate is indistinguishable from "no write happened".
  */
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";

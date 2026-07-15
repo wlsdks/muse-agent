@@ -1,6 +1,7 @@
 import { CalendarProviderError } from "./errors.js";
-import type {
 import { errorMessage } from "@muse/shared";
+
+import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarEventUpdate,

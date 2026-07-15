@@ -28,7 +28,7 @@ import { promises as fs } from "node:fs";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { sendWithRetry } from "@muse/mcp-shared";
-import { redactSecretsInText } from "@muse/shared";
+import { errorMessage, redactSecretsInText } from "@muse/shared";
 import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";

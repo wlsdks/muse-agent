@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { createMcpMuseTool, type McpConnection, type McpRemoteTool } from "./index.js";
 

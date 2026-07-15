@@ -2,8 +2,9 @@ import { Readable } from "node:stream";
 import { EventEmitter, on as waitForEvent } from "node:events";
 import { summarizeTokenConfidence, type AgentRunInput, type AgentRunResult, type AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
-import {
 import { errorMessage } from "@muse/shared";
+
+import {
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
@@ -911,4 +912,3 @@ function toConversationEntry(message: AgentMessage): ConversationEntry {
     ...(message.targetAgentId !== undefined ? { targetAgentId: message.targetAgentId } : {})
   };
 }
-

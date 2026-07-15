@@ -40,7 +40,7 @@ import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { pathToFileURL } from "node:url";
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { ToolRisk } from "@muse/tools";
 
 import { toErrorMessage } from "./error-utils.js";

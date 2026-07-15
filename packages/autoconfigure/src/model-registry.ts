@@ -32,7 +32,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname } from "node:path";
 
 import { classifyProviderLocality } from "@muse/model";
-import { closestCommandName, isRecord, parseJson } from "@muse/shared";
+import { errorMessage, closestCommandName, isRecord, parseJson } from "@muse/shared";
 
 import type { MuseEnvironment } from "./index.js";
 import { mergeModelKeysFromFile } from "./personal-providers.js";

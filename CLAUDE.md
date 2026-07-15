@@ -31,6 +31,7 @@ adding the rule there — this file should shrink, not grow.
 ```bash
 # while developing — fast feedback per change:
 pnpm --filter @muse/<name> build       # one package
+pnpm typecheck:fast                    # TypeScript 7 project graph, no test fan-out
 pnpm test:changed                      # ONLY the tests related to your git-changed files (vitest related) — the DEFAULT per-edit gate, NOT a whole package suite
 pnpm test:changed --uncommitted        # tighter: uncommitted changes only (mid-edit inner loop)
 pnpm --filter @muse/<name> test        # one whole package (heavier — use only when a change is broad)
@@ -48,6 +49,12 @@ pnpm lint                              # 0 errors / 0 warnings required
 ```
 
 These commands are the ground truth. If any fails, stop and triage.
+
+For TypeScript/toolchain work, follow
+[`docs/development/typescript-7.md`](docs/development/typescript-7.md): normal builds
+use TS7, while the `typescript` dependency intentionally remains the TS6 compiler-API
+compatibility alias for tooling. Do not mask migration diagnostics with compiler-option
+relaxations.
 
 **To decide what to work on next, run the `improve-muse` skill** — it finds the
 work (regression → backlog → gap-scout) and ends with a ranked recommendation;

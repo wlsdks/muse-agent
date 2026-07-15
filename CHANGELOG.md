@@ -8,6 +8,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+### Changed
+
+- **TypeScript 7 migration hardening:** the native TS7 project graph now has
+  explicit workspace references, valid shared imports, and genuine JSON type
+  predicates at CLI persistence boundaries. The TypeScript 6 compatibility
+  alias remains limited to compiler-API tooling; normal Muse builds continue
+  to use TS7.
+
+### Documentation
+
+- Added the supported TS7/TS6 toolchain split, migration rules, verification
+  order, and official references in `docs/development/typescript-7.md`; linked
+  it from the agent and contributor contracts.
+
 ## [0.2.42] - 2026-07-15
 
 The wiring release: email that actually connects, a daemon you can finally

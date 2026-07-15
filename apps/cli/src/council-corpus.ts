@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { cosineSimilarity, type KnowledgeMatch } from "@muse/agent-core";
-import { isRecord, parseBooleanFromEnv } from "@muse/shared";
+import { isRecord, parseBooleanTriStateFromEnv } from "@muse/shared";
 
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
@@ -66,10 +66,6 @@ function isCouncilIndex(value: unknown): value is NotesIndexShape {
   );
 }
 
-function parseNotesIndex(raw: unknown): NotesIndexShape | undefined {
-  return isCouncilIndex(raw) ? raw : undefined;
-}
-
 export function defaultEmbedModel(env: Record<string, string | undefined> = process.env): string {
   return env.MUSE_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
 }
@@ -96,7 +92,7 @@ export async function councilCorpusMatches(
   const topK = options.topK ?? 6;
   let index: NotesIndexShape | undefined;
   try {
-    index = parseJsonWith(await readFile(notesIndexFile(env), "utf8"), parseNotesIndex);
+    index = parseJsonWith(await readFile(notesIndexFile(env), "utf8"), isCouncilIndex);
   } catch {
     return [];
   }
@@ -127,5 +123,5 @@ export async function councilCorpusMatches(
 
 /** Whether THIS Muse opted its council voice into grounded self-abstention. */
 export function isCouncilGroundedMode(env: Record<string, string | undefined> = process.env): boolean {
-  return parseBooleanFromEnv(env.MUSE_A2A_COUNCIL_GROUNDED, false);
+  return parseBooleanTriStateFromEnv(env.MUSE_A2A_COUNCIL_GROUNDED) ?? false;
 }

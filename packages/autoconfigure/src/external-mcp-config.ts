@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { McpServerInput, McpServerStore, McpTransportType } from "@muse/mcp";
 
 import { ConfigurationError, type MuseEnvironment } from "./index.js";

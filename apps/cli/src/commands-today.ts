@@ -36,7 +36,7 @@ import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import { isApiUnreachable } from "./program-helpers.js";
-import { withBestEffort } from "./async-promises.js";
+import { withBestEffort } from "@muse/shared";
 import { parseJsonWith } from "./json-parse.js";
 export { formatHeadlines, formatWeatherLine, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
@@ -132,10 +132,6 @@ function isTodayNotesIndex(value: unknown): value is TodayNotesIndexShape {
   );
 }
 
-function parseTodayNotesIndex(raw: unknown): TodayNotesIndexShape | undefined {
-  return isTodayNotesIndex(raw) ? raw : undefined;
-}
-
 function environment(): MuseEnvironment {
   return process.env;
 }
@@ -229,7 +225,7 @@ Examples:
               // daemon, so "API not reachable" on every plain `muse today` reads
               // as broken to the CLI-only user the product targets — silently use
               // the on-disk briefing instead.
-            const globals = command.optsWithGlobals<{ readonly apiUrl?: string }>();
+            const globals = command.optsWithGlobals();
             const configuredApiUrl = typeof globals.apiUrl === "string" && globals.apiUrl.trim().length > 0 ? globals.apiUrl : undefined;
             if (apiWasExplicitlyConfigured(configuredApiUrl, process.env.MUSE_API_URL)) {
               io.stderr("muse: API not reachable — falling back to local briefing.\n");
@@ -402,7 +398,7 @@ async function findTodayConnections(query: string, embedModel = DEFAULT_EMBED_MO
   }
   let notesIndex: TodayNotesIndexShape | undefined;
   try {
-    notesIndex = parseJsonWith(await fsReadFile(join(homedir(), ".muse", "notes-index.json"), "utf8"), parseTodayNotesIndex);
+    notesIndex = parseJsonWith(await fsReadFile(join(homedir(), ".muse", "notes-index.json"), "utf8"), isTodayNotesIndex);
   } catch {
     notesIndex = undefined;
   }
