@@ -17,7 +17,6 @@
 
 import { randomUUID } from "node:crypto";
 
-<<<<<<< HEAD
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile, type MuseEnvironment } from "@muse/autoconfigure";
 import {
   classifyDaemonLoopHeartbeat,
@@ -39,7 +38,7 @@ import {
 } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
-import { asRecord } from "@muse/shared";
+import { asRecord, isNodeErrorCode, NODE_ERROR_CODES } from "@muse/shared";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 

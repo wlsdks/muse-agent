@@ -36,7 +36,6 @@ export function readDaemonConfig(file: string): DaemonConfig {
     return {};
   }
   try {
-<<<<<<< HEAD
     const parsed = JSON.parse(raw);
     const config: { provider?: string; destination?: string; dailyBrief?: DailyBriefConfig } = {};
     if (isRecord(parsed)) {
