@@ -20,6 +20,7 @@
  */
 
 import type { JsonObject } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
 import {
@@ -106,13 +107,22 @@ export async function readEpisodes(
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { episodes?: unknown }).episodes)) {
+  const episodes = readRecordArrayField(parsed, "episodes");
+  if (episodes === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { episodes: unknown[] }).episodes.flatMap((entry): readonly PersistedEpisode[] =>
+  return episodes.flatMap((entry): readonly PersistedEpisode[] =>
     isPersistedEpisode(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeEpisodes(

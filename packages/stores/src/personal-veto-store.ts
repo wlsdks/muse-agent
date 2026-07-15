@@ -19,6 +19,7 @@
 import { promises as fs } from "node:fs";
 
 import type { JsonObject } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
@@ -47,13 +48,22 @@ export async function readVetoes(file: string): Promise<readonly ActionVeto[]> {
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { vetoes?: unknown }).vetoes)) {
+  const vetoes = readRecordArrayField(parsed, "vetoes");
+  if (vetoes === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { vetoes: unknown[] }).vetoes.flatMap((entry): readonly ActionVeto[] =>
+  return vetoes.flatMap((entry): readonly ActionVeto[] =>
     isActionVeto(entry) ? [entry] : []
   );
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeVetoes(file: string, vetoes: readonly ActionVeto[]): Promise<void> {

@@ -15,6 +15,7 @@
  */
 
 import type { JsonObject } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
@@ -171,14 +172,23 @@ export async function readContacts(file: string, env: NodeJS.ProcessEnv = proces
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { contacts?: unknown }).contacts)) {
+  const contacts = readRecordArrayField(parsed, "contacts");
+  if (contacts === undefined) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { contacts: unknown[] }).contacts.flatMap((entry): readonly Contact[] => {
+  return contacts.flatMap((entry): readonly Contact[] => {
     const contact = coerceContact(entry);
     return contact ? [contact] : [];
   });
+}
+
+function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeContacts(file: string, contacts: readonly Contact[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
