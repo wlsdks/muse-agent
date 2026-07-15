@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
 
+import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+import { errorMessage } from "@muse/shared";
 
-import type { AskResult, AskRetrieval } from "./types.js";
+import type { AskResult, AskRetrieval, AskVerdict } from "./types.js";
 
 export { parseSseFrame, splitSseFrames };
 
@@ -15,6 +17,62 @@ export interface AskState {
 
 export const INITIAL_ASK_STATE: AskState = { answer: "", error: null, result: null, retrieval: null };
 
+function isAskVerdict(value: unknown): value is AskVerdict {
+  return value === "confident" || value === "ambiguous" || value === "none";
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function asAskRetrieval(data: unknown): AskRetrieval | undefined {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+  const groundedChunkCount = data.groundedChunkCount;
+  const notesUnavailable = data.notesUnavailable;
+  const verdict = data.verdict;
+  if (typeof groundedChunkCount !== "number" || typeof notesUnavailable !== "boolean" || !isAskVerdict(verdict)) {
+    return undefined;
+  }
+  return { groundedChunkCount, notesUnavailable, verdict };
+}
+
+function asAskResult(data: unknown): AskResult | undefined {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+  const answer = data.answer;
+  const verdict = data.verdict;
+  const citations = data.citations;
+  const strippedCitations = data.strippedCitations;
+  const refusal = data.refusal;
+  const notesUnavailable = data.notesUnavailable;
+  const groundedChunkCount = data.groundedChunkCount;
+  if (
+    typeof answer !== "string" ||
+    !isAskVerdict(verdict) ||
+    !isStringArray(citations) ||
+    !isStringArray(strippedCitations) ||
+    typeof refusal !== "boolean" ||
+    typeof notesUnavailable !== "boolean" ||
+    typeof groundedChunkCount !== "number"
+  ) {
+    return undefined;
+  }
+  const receipts = typeof data.receipts === "string" ? data.receipts : undefined;
+  return {
+    answer,
+    verdict,
+    citations,
+    strippedCitations,
+    refusal,
+    notesUnavailable,
+    groundedChunkCount,
+    ...(receipts ? { receipts } : {})
+  };
+}
+
 /**
  * Pure reducer over one decoded SSE event — the whole `/api/ask` streaming
  * contract (`toAskSseStream` in ask-routes.ts): `retrieval` (JSON, arrives
@@ -25,22 +83,21 @@ export const INITIAL_ASK_STATE: AskState = { answer: "", error: null, result: nu
  */
 export function reduceAskEvent(state: AskState, eventName: string, data: string): AskState {
   if (eventName === "retrieval") {
-    try {
-      return { ...state, retrieval: JSON.parse(data) as AskRetrieval };
-    } catch {
+    const retrieval = asAskRetrieval(parseJson(data));
+    if (!retrieval) {
       return state;
     }
+    return { ...state, retrieval };
   }
   if (eventName === "delta") {
     return data.length > 0 ? { ...state, answer: state.answer + data } : state;
   }
   if (eventName === "result") {
-    try {
-      const result = JSON.parse(data) as AskResult;
-      return { ...state, answer: result.answer, result };
-    } catch {
+    const result = asAskResult(parseJson(data));
+    if (!result) {
       return state;
     }
+    return { ...state, answer: result.answer, result };
   }
   if (eventName === "error") {
     return { ...state, error: data.length > 0 ? data : "request failed" };
@@ -88,7 +145,10 @@ export function useAskStream(baseUrl: string, token: string) {
 
         const contentType = res.headers.get("content-type") ?? "";
         if (!contentType.includes("text/event-stream")) {
-          const body = (await res.json()) as AskResult;
+          const body = asAskResult(await res.json());
+          if (!body) {
+            throw new Error("Malformed non-stream response");
+          }
           setState((prev) => ({ ...prev, answer: body.answer, result: body }));
           return;
         }
@@ -114,7 +174,7 @@ export function useAskStream(baseUrl: string, token: string) {
           }
         }
       } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : "request failed";
+        const detail = errorMessage(cause, "request failed");
         setState((prev) => ({ ...prev, error: prev.error ?? detail }));
       } finally {
         setPending(false);

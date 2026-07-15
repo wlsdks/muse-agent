@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { errorMessage } from "@muse/shared";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -134,7 +135,7 @@ export function MessagingView({ client }: { client: ApiClient }) {
                   {t("common.cancel")}
                 </Button>
               </div>
-              {send.error && <div className="banner err" style={{ marginTop: 10 }}>{(send.error as Error).message}</div>}
+              {send.error && <div className="banner err" style={{ marginTop: 10 }}>{errorMessage(send.error, "Failed to queue message for send.")}</div>}
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>

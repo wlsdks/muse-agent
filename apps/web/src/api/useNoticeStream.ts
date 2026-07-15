@@ -1,8 +1,13 @@
 import { useEffect, useRef } from "react";
 
+import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 
 import type { ProactiveNotice } from "./types.js";
+
+function isProactiveNotice(value: unknown): value is ProactiveNotice {
+  return isRecord(value);
+}
 
 /**
  * Subscribes to the server's `GET /api/agent-notices/stream?userId=…`
@@ -56,10 +61,9 @@ export function useNoticeStream(
           for (const frame of frames) {
             const { data, eventName } = parseSseFrame(frame);
             if (eventName === "notice" && data) {
-              try {
-                onNoticeRef.current(JSON.parse(data) as ProactiveNotice);
-              } catch {
-                /* ignore malformed notice */
+              const payload = parseJson(data);
+              if (isProactiveNotice(payload)) {
+                onNoticeRef.current(payload);
               }
             }
           }

@@ -15,6 +15,7 @@ import {
   MessagingValidationError,
   type MessagingProviderRegistry
 } from "@muse/messaging";
+import { errorMessage } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -194,7 +195,7 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
             ...(error.status !== undefined ? { upstreamStatus: error.status } : {})
           });
         }
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorMessage(error, "Invalid messaging poll request");
         // The autoconfigure-built dispatcher raises plain Errors for
         // "source required" and "LINE not pollable" — surface those
         // as 400 so the web caller can show the message verbatim.

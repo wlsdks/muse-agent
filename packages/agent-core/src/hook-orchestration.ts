@@ -16,6 +16,7 @@ import type { Awaitable } from "@muse/cache";
 import type { HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import type { AgentRunContext, HookStage } from "./types.js";
 import { setTimeout as sleepWithTimer } from "node:timers/promises";
+import { errorMessage } from "@muse/shared";
 
 /** Mirror of the runtime's pluggable hook registry surface. */
 interface HookRegistryLike {
@@ -180,7 +181,7 @@ export async function recordHookTrace(
     await hookTraceStore.record({
       completedAt: new Date(),
       durationMs: Math.max(0, Date.now() - startedAtMs),
-      ...(error ? { error: error instanceof Error ? error.message : "unknown hook failure" } : {}),
+      ...(error ? { error: errorMessage(error, "unknown hook failure") } : {}),
       hookId,
       lifecycle,
       ...(context.input.metadata ? { metadata: context.input.metadata } : {}),

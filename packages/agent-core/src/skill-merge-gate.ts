@@ -34,6 +34,7 @@
 
 import { cosineSimilarity } from "./episodic-recall.js";
 import { comparableScript } from "./script-family.js";
+import { errorMessage } from "@muse/shared";
 import type { SkillDraft } from "./skill-review.js";
 
 export interface MergeCoverageVerdict {
@@ -120,7 +121,7 @@ export async function validateMergeCoverage(
       originalVecs.push(await options.embed(item.text));
     }
   } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
+    const message = errorMessage(cause);
     return {
       accept: false,
       covered: [],

@@ -1,4 +1,5 @@
 import { createApiServerOptions, seedExternalMcpServers } from "@muse/autoconfigure";
+import { errorMessage } from "@muse/shared";
 import { createGracefulShutdown } from "./graceful-shutdown.js";
 import { resolveListenHost, resolveListenPort } from "./listen-config.js";
 import { buildServer } from "./server.js";
@@ -36,7 +37,7 @@ if (seeded.length > 0) {
   startupLogger.info(`seeded ${seeded.length} external MCP server(s) from ~/.muse/mcp.json: ${seeded.join(", ")}`);
   for (const name of seeded) {
     void options.mcp.manager.connect(name).catch((cause: unknown) => {
-      startupLogger.warn(`failed to connect external MCP server '${name}': ${cause instanceof Error ? cause.message : String(cause)}`);
+      startupLogger.warn(`failed to connect external MCP server '${name}': ${errorMessage(cause, "external MCP server connect failed")}`);
     });
   }
 }

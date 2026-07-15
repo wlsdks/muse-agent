@@ -15,8 +15,7 @@
  * expects — only the capabilities get rewritten to `localModelCapabilities`.
  */
 
-import { truncateErrorBody } from "@muse/shared";
-import { isRecord, type JsonObject } from "@muse/shared";
+import { errorMessage, isRecord, truncateErrorBody, type JsonObject } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
@@ -258,7 +257,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       yield {
         error: cause instanceof ModelProviderError
           ? cause
-          : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+          : new ModelProviderError(this.id, errorMessage(cause), true),
         type: "error"
       };
       return;
@@ -287,13 +286,11 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 
     const handleLine = function* (line: string): Generator<ModelEvent> {
       let parsed: OllamaNativeChatResponse;
-      try {
-        const parsedValue = parseJson(line);
-        if (!isRecord(parsedValue)) {
-          return;
-        }
-        parsed = parsedValue;
-      } catch { return; }
+      const parsedValue = parseJson(line);
+      if (!isRecord(parsedValue)) {
+        return;
+      }
+      parsed = parsedValue;
       // Once Ollama has sent 200 + headers, a mid-generation failure
       // (OOM, context overflow, model eviction under load) arrives as
       // an `{"error": "..."}` NDJSON line, not an HTTP status. Without
@@ -404,7 +401,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       id = ++OllamaProvider.traceSeq;
       t0 = Date.now();
       let model = "";
-      try { model = (JSON.parse(String(init.body)) as { model?: string }).model ?? ""; } catch { /* ignore */ }
+      const parsedBody = parseJson(String(init.body));
+      if (isRecord(parsedBody) && typeof parsedBody.model === "string") {
+        model = parsedBody.model;
+      }
       process.stderr.write(`[modeltrace] #${id.toString()} START t=${new Date(t0).toISOString()} model=${model}\n`);
     }
     try {
@@ -430,7 +430,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       // failure — Ollama not running, restarting, or evicting a
       // cold-loaded model. Transient like a 5xx, so retryable
       // rather than a hard agent failure.
-      const detail = cause instanceof Error ? cause.message : String(cause);
+      const detail = errorMessage(cause);
       throw new ModelProviderError(
         this.id,
         `Ollama request to ${this.nativeBaseUrl}/api/chat failed: ${detail} — is Ollama running? (\`ollama serve\`)`,

@@ -19,7 +19,7 @@
 
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import type { ResolvedIntegrationEnvironment } from "@muse/autoconfigure";
-import type { JsonObject } from "@muse/shared";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -89,7 +89,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
         total: events.length
       };
     } catch (error) {
-      return reply.status(502).send({ code: "CALENDAR_LIST_FAILED", message: error instanceof Error ? error.message : String(error) });
+      return reply.status(502).send({ code: "CALENDAR_LIST_FAILED", message: errorMessage(error, "Calendar list failed") });
     }
   });
 
@@ -140,7 +140,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
         url: event.url ?? null
       });
     } catch (error) {
-      return reply.status(502).send({ code: "CALENDAR_CREATE_FAILED", message: error instanceof Error ? error.message : String(error) });
+      return reply.status(502).send({ code: "CALENDAR_CREATE_FAILED", message: errorMessage(error, "Calendar create failed") });
     }
   });
 
@@ -160,7 +160,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       await syncRemindersOnEventDelete(resolveRemindersFile(process.env as Record<string, string | undefined>), id);
       return reply.status(204).send();
     } catch (error) {
-      return reply.status(502).send({ code: "CALENDAR_DELETE_FAILED", message: error instanceof Error ? error.message : String(error) });
+      return reply.status(502).send({ code: "CALENDAR_DELETE_FAILED", message: errorMessage(error, "Calendar delete failed") });
     }
   });
 

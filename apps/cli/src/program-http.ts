@@ -17,6 +17,7 @@ import type { Command } from "commander";
 import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
+import { parseJson } from "./json-parse.js";
 import { formatCitations } from "./human-formatters.js";
 import { readApiOptions } from "./program-config.js";
 import { dropUndefined } from "./program-output.js";
@@ -54,7 +55,7 @@ export async function apiRequest(
     throw formatApiErrorResponse(response, responseText, baseUrl);
   }
 
-  return responseText.length > 0 ? JSON.parse(responseText) as unknown : undefined;
+  return responseText.length > 0 ? parseJson(responseText) : undefined;
 }
 
 /**
@@ -104,12 +105,7 @@ function extractApiErrorEnvelope(
   if (body.length === 0 || (body[0] !== "{" && body[0] !== "[")) {
     return undefined;
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return undefined;
-  }
+  const parsed = parseJson(body);
   if (!isRecord(parsed)) {
     return undefined;
   }
@@ -341,13 +337,12 @@ export async function streamRemoteChat(
     }
 
     if (event.event === "citations") {
-      try {
-        const parsed = JSON.parse(event.data) as unknown;
-        if (Array.isArray(parsed)) {
-          streamCitations = parsed as Array<{ url: string; title: string }>;
-        }
-      } catch {
-        // Malformed citations event — ignore and continue.
+      const parsed = parseJson(event.data);
+      if (
+        Array.isArray(parsed)
+        && parsed.every((entry) => isRecord(entry) && typeof entry.url === "string" && typeof entry.title === "string")
+      ) {
+        streamCitations = parsed;
       }
       continue;
     }
@@ -356,13 +351,9 @@ export async function streamRemoteChat(
     // and extended modes — the CLI's remote stream always runs compat, so
     // this (not `done`, which stays empty in compat) is where the id lands.
     if (event.event === "grounding") {
-      try {
-        const parsed = JSON.parse(event.data) as { conversationId?: string };
-        if (typeof parsed.conversationId === "string" && parsed.conversationId.length > 0) {
-          responseConversationId = parsed.conversationId;
-        }
-      } catch {
-        // Malformed grounding event — ignore and continue.
+      const parsed = parseJson(event.data);
+      if (isRecord(parsed) && typeof parsed.conversationId === "string" && parsed.conversationId.length > 0) {
+        responseConversationId = parsed.conversationId;
       }
       continue;
     }

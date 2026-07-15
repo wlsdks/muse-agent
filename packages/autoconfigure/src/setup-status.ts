@@ -14,7 +14,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter as pathDelimiter, join as pathJoin } from "node:path";
 
-import { isRecord } from "@muse/shared";
+import { isRecord, parseJson } from "@muse/shared";
 import { hasStoredEmailImapCredentialSync, hasStoredGmailCredentialSync } from "@muse/stores";
 
 import { parseBoolean, parseBooleanTriState, parseInteger } from "./env-parsers.js";
@@ -614,9 +614,10 @@ function resolveDaemonConfigFilePath(env: Readonly<Record<string, string | undef
 async function readDailyBriefConfig(file: string): Promise<{ readonly enabled: boolean; readonly time?: string } | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { dailyBrief?: unknown };
-    if (isRecord(parsed.dailyBrief)) {
-      const record = parsed.dailyBrief;
+    const parsed = parseJson(raw);
+    const dailyBrief = isRecord(parsed) ? parsed.dailyBrief : undefined;
+    if (isRecord(dailyBrief)) {
+      const record = dailyBrief;
       const time = typeof record.time === "string" && record.time.trim().length > 0 ? record.time.trim() : undefined;
       return { enabled: record.enabled === true, ...(time ? { time } : {}) };
     }
@@ -643,8 +644,8 @@ export function resolveDailyBriefSetupStatus(config: { readonly enabled: boolean
 export async function readConfigDefaultModel(file: string): Promise<string | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { defaultModel?: unknown };
-    if (parsed && typeof parsed === "object" && typeof parsed.defaultModel === "string") {
+    const parsed = parseJson(raw);
+    if (isRecord(parsed) && typeof parsed.defaultModel === "string") {
       const trimmed = parsed.defaultModel.trim();
       return trimmed.length > 0 ? trimmed : undefined;
     }
@@ -937,8 +938,8 @@ export async function readModelKeyState(file: string, env: MuseEnvironment): Pro
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+    const parsed = parseJson(raw);
+    if (isRecord(parsed) && isRecord(parsed.providers)) {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -983,8 +984,8 @@ export async function readMessagingProviderState(
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(credentialsFile, "utf8");
-    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+    const parsed = parseJson(raw);
+    if (isRecord(parsed) && isRecord(parsed.providers)) {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -1014,8 +1015,8 @@ export async function readMessagingProviderState(
 export async function readMcpEntryCount(file: string): Promise<number> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
-    if (parsed && typeof parsed === "object" && parsed.mcpServers && typeof parsed.mcpServers === "object") {
+    const parsed = parseJson(raw);
+    if (isRecord(parsed) && isRecord(parsed.mcpServers)) {
       return Object.keys(parsed.mcpServers).length;
     }
   } catch {
@@ -1056,8 +1057,8 @@ export async function countNotes(dir: string): Promise<number | undefined> {
 export async function readTaskCount(file: string): Promise<number | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as { tasks?: unknown };
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tasks)) {
+    const parsed = parseJson(raw);
+    if (isRecord(parsed) && Array.isArray(parsed.tasks)) {
       return parsed.tasks.length;
     }
     return 0;

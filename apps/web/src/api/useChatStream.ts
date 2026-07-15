@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+import { isRecord, parseJson } from "./parse-json.js";
+import { errorMessage } from "@muse/shared";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
 
@@ -38,11 +40,42 @@ const STORE_KEY = "muse.chat.transcript";
 // independent of any future transcript-shape change.
 const CONVERSATION_ID_KEY = "muse.chat.conversationId";
 
+function isRecordString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isStoredChatTurn(value: unknown): value is ChatTurn {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const role = (value as { role?: unknown }).role;
+  return (role === "user" || role === "assistant") && isRecordString((value as { text?: unknown }).text);
+}
+
+function isPendingApproval(value: unknown): value is PendingApproval {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const { id, tool, draft } = value as Record<string, unknown>;
+  return isRecordString(id) && isRecordString(tool) && isRecordString(draft);
+}
+
+function isCitation(value: unknown): value is Citation {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const { url, title } = value as Record<string, unknown>;
+  return isRecordString(url) && isRecordString(title);
+}
+
 function loadTranscript(): readonly ChatTurn[] {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as ChatTurn[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = raw ? parseJson(raw) : undefined;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(isStoredChatTurn);
   } catch {
     return [];
   }
@@ -120,7 +153,7 @@ export async function applyApprove(
       setError(`${outcome.tool} did not run — it's still pending. Try again.`);
     }
   } catch (cause) {
-    setError(cause instanceof Error ? cause.message : "approval failed");
+    setError(errorMessage(cause, "approval failed"));
   }
 }
 
@@ -162,7 +195,7 @@ export async function applyDeny(
       setError(`${outcome.tool} was not denied — try again.`);
     }
   } catch (cause) {
-    setError(cause instanceof Error ? cause.message : "deny failed");
+    setError(errorMessage(cause, "deny failed"));
   }
 }
 
@@ -301,7 +334,7 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         }
       } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : "request failed";
+        const detail = errorMessage(cause, "request failed");
         setError(detail);
         commit((t) => {
           if (!t.text) {
@@ -367,15 +400,18 @@ export function handleEvent(
   }
 
   if (eventName === "pending-approvals") {
-    try {
-      const payload = JSON.parse(dataLine) as { pendingApprovals?: readonly PendingApproval[] };
-      if (Array.isArray(payload.pendingApprovals) && payload.pendingApprovals.length > 0) {
+    const payload = parseJson(dataLine);
+    if (!isRecord(payload)) {
+      return;
+    }
+    const pendingApprovals = payload.pendingApprovals;
+    if (Array.isArray(pendingApprovals) && pendingApprovals.length > 0) {
+      const filtered = pendingApprovals.filter(isPendingApproval);
+      if (filtered.length > 0) {
         commit((t) => {
-          t.pendingApprovals = payload.pendingApprovals;
+          t.pendingApprovals = filtered;
         });
       }
-    } catch {
-      /* ignore malformed pending-approvals frame */
     }
     return;
   }
@@ -383,18 +419,15 @@ export function handleEvent(
   // The gated answer is AUTHORITATIVE: the grounding gate may have replaced
   // a fabricated/uncited claim after the raw tokens streamed by.
   if (eventName === "grounding") {
-    try {
-      const payload = JSON.parse(dataLine) as { answer?: string; conversationId?: string };
-      if (typeof payload.answer === "string" && payload.answer.length > 0) {
-        commit((t) => {
-          t.text = payload.answer!;
-        });
-      }
-      if (typeof payload.conversationId === "string" && payload.conversationId.length > 0) {
-        onConversationId?.(payload.conversationId);
-      }
-    } catch {
-      /* ignore malformed grounding frame */
+    const payload = parseJson(dataLine);
+    const answer = isRecord(payload) && isRecordString(payload.answer) && payload.answer.length > 0 ? payload.answer : undefined;
+    if (typeof answer === "string" && answer.length > 0) {
+      commit((t) => {
+        t.text = answer;
+      });
+    }
+    if (isRecord(payload) && isRecordString(payload.conversationId) && payload.conversationId.length > 0) {
+      onConversationId?.(payload.conversationId);
     }
     setThinking(false);
     return;
@@ -402,38 +435,46 @@ export function handleEvent(
 
   if (eventName === "done") {
     setThinking(false);
-    try {
-      const payload = JSON.parse(dataLine) as ChatResponse;
-      if (payload.conversationId) {
-        onConversationId?.(payload.conversationId);
-      }
-      commit((t) => {
-        const finalText = payload.response ?? payload.content;
-        if (finalText) {
-          t.text = finalText;
-        }
-        if (payload.citations?.length) {
-          t.citations = payload.citations;
-        }
-        if (payload.toolsUsed?.length) {
-          t.tools = payload.toolsUsed;
-        }
-      });
-    } catch {
-      /* ignore non-JSON done payload */
+    const payload = parseJson(dataLine);
+    if (!isRecord(payload)) {
+      return;
     }
+    const finalText = isRecordString(payload.response)
+      ? payload.response
+      : isRecordString(payload.content)
+        ? payload.content
+        : undefined;
+    if (isRecordString(payload.conversationId) && payload.conversationId.length > 0) {
+      onConversationId?.(payload.conversationId);
+    }
+    commit((t) => {
+      if (finalText) {
+        t.text = finalText;
+      }
+      if (Array.isArray(payload.citations)) {
+        const citations = payload.citations.filter(isCitation);
+        if (citations.length > 0) {
+          t.citations = citations;
+        }
+      }
+      if (Array.isArray(payload.toolsUsed)) {
+        const toolsUsed = payload.toolsUsed.filter(isRecordString);
+        if (toolsUsed.length > 0) {
+          t.tools = toolsUsed;
+        }
+      }
+    });
     return;
   }
 
   if (eventName === "delta" || eventName === "message") {
     setThinking(false);
-    let chunk = dataLine;
-    try {
-      const payload = JSON.parse(dataLine) as { delta?: string; content?: string };
-      chunk = payload.delta ?? payload.content ?? "";
-    } catch {
-      /* plain-text delta */
-    }
+    const parsed = parseJson(dataLine);
+    const chunk = isRecord(parsed)
+      ? (typeof parsed.delta === "string" ? parsed.delta : typeof parsed.content === "string" ? parsed.content : dataLine)
+      : typeof parsed === "string"
+        ? parsed
+        : dataLine;
     if (chunk) {
       commit((t) => {
         t.text += chunk;
@@ -442,8 +483,31 @@ export function handleEvent(
     return;
   }
 
+  if (eventName === "tool_call") {
+    const payload = parseJson(dataLine);
+    const payloadRecord = isRecord(payload) ? payload : undefined;
+    const toolPhase = payloadRecord && isRecordString(payloadRecord.phase) ? payloadRecord.phase : undefined;
+    const toolName = payloadRecord && isRecordString(payloadRecord.name) ? payloadRecord.name : undefined;
+    setActiveTool(toolPhase === "started" ? toolName ?? "working" : "");
+    return;
+  }
+
+  if (eventName === "citations") {
+    const payload = parseJson(dataLine);
+    if (Array.isArray(payload)) {
+      const citations = payload.filter(isCitation);
+      commit((t) => {
+        if (citations.length > 0) {
+          t.citations = citations;
+        }
+      });
+    }
+    return;
+  }
+
   if (eventName === "tool_start") {
-    const name = dataLine.replace(/^"|"$/g, "").trim();
+    const parsed = parseJson(dataLine);
+    const name = isRecordString(parsed) ? parsed : dataLine.replace(/^"|"$/g, "").trim();
     setActiveTool(name);
     commit((t) => {
       t.tools = [...(t.tools ?? []), name];
@@ -454,28 +518,5 @@ export function handleEvent(
   if (eventName === "tool_end") {
     setActiveTool("");
     return;
-  }
-
-  if (eventName === "tool_call") {
-    try {
-      const payload = JSON.parse(dataLine) as { phase?: string; name?: string };
-      setActiveTool(payload.phase === "started" ? payload.name ?? "working" : "");
-    } catch {
-      /* ignore */
-    }
-    return;
-  }
-
-  if (eventName === "citations") {
-    try {
-      const payload = JSON.parse(dataLine) as readonly Citation[];
-      if (Array.isArray(payload) && payload.length > 0) {
-        commit((t) => {
-          t.citations = payload;
-        });
-      }
-    } catch {
-      /* ignore */
-    }
   }
 }

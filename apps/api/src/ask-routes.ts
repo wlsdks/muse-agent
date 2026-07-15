@@ -28,6 +28,7 @@ import { Readable } from "node:stream";
 import { requireAuthenticated } from "./server-helpers.js";
 import { sseData } from "./server-multipart-sse.js";
 import type { ServerOptions } from "./server.js";
+import { errorMessage } from "@muse/shared";
 
 export interface AskRoutesOptions {
   readonly authService: ServerOptions["authService"];
@@ -88,7 +89,7 @@ export async function* toAskSseStream(events: AsyncIterable<GroundedRecallEvent>
       yield `event: result\ndata: ${sseData(JSON.stringify(event.result))}\n\n`;
     }
   } catch (error) {
-    yield `event: error\ndata: ${sseData(error instanceof Error ? error.message : String(error))}\n\n`;
+    yield `event: error\ndata: ${sseData(errorMessage(error, "ask stream failed"))}\n\n`;
   }
 }
 

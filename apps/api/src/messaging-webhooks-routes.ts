@@ -12,6 +12,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { errorMessage } from "@muse/shared";
 import {
   appendInbound,
   type InboundMessage
@@ -87,7 +88,7 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
         stored += 1;
       } catch (cause) {
         request.log.warn(
-          `messaging-webhook: failed to persist line message ${inbound.messageId}: ${cause instanceof Error ? cause.message : String(cause)}`
+          `messaging-webhook: failed to persist line message ${inbound.messageId}: ${errorMessage(cause, "Failed to persist message")}`
         );
       }
     }

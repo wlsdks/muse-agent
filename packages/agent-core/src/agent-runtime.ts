@@ -50,7 +50,7 @@ import {
   selectToolNamesForExposureAuthority,
   type GuardBlockRateMonitor
 } from "@muse/policy";
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId, errorMessage, type JsonObject } from "@muse/shared";
 import {
   ToolExecutor,
   ToolRegistry,
@@ -777,7 +777,7 @@ export class AgentRuntime {
       900,
       "failed",
       context.input.messages,
-      error instanceof Error ? error.message : String(error)
+      errorMessage(error)
     );
     await this.recordRunFailure(context, error);
     this.recordAgentRun(context, context.input.model, "failed", startedAtMs);
@@ -993,7 +993,7 @@ export class AgentRuntime {
     } catch (error) {
       const reason = error instanceof ToolPlanStepBlockedError
         ? `plan step '${error.tool}' did not complete (${error.status}): ${error.output}`
-        : error instanceof Error ? error.message : String(error);
+        : errorMessage(error);
       const executed = blockedToolResult(toolCall, `Error: ${reason}`);
       await this.invokeHooks("afterTool", context, executed);
       return executed;
@@ -1364,7 +1364,7 @@ export class AgentRuntime {
         // the tool, never crash the run or let the call through.
         decision = {
           allowed: false,
-          reason: `approval gate error: ${error instanceof Error ? error.message : String(error)}`
+          reason: `approval gate error: ${errorMessage(error)}`
         };
       }
       // Runtime-enforced hard deny: an egress "deny" is authoritative

@@ -3,6 +3,7 @@ import {
   RuleBasedAgentSpecResolver
 } from "@muse/agent-specs";
 import { extractBearerToken } from "@muse/auth";
+import { errorMessage } from "@muse/shared";
 import {
   ConfigurationError,
   createGateEmbedder,
@@ -208,7 +209,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     try {
       done(null, parseMultipartBody(request.headers["content-type"], body as Buffer));
     } catch (error) {
-      done(error instanceof Error ? error : new Error("Invalid multipart body"));
+      done(new Error(errorMessage(error, "Invalid multipart body")));
     }
   });
 
@@ -645,7 +646,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         // to abort the channel starting up. No retry — the next boot (or
         // daemon toggle) tries again.
         void telegram.registerCommands().catch((error: unknown) => {
-          server.log.warn(`telegram setMyCommands failed: ${error instanceof Error ? error.message : String(error)}`);
+          server.log.warn(`telegram setMyCommands failed: ${errorMessage(error, "telegram setMyCommands failed")}`);
         });
       }
       const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
