@@ -39,6 +39,12 @@ describe("createApiClient", () => {
     await expect(client.get("/api/chat")).rejects.toThrow(/upstream unavailable/);
   });
 
+  it("surfaces the API's standard error field on a non-OK response", async () => {
+    mockFetch(() => new Response(JSON.stringify({ error: "continuity run not found" }), { status: 404 }));
+    const client = createApiClient("http://127.0.0.1:3030", "");
+    await expect(client.get("/api/continuity/run")).rejects.toThrow(/continuity run not found/);
+  });
+
   it("returns undefined for 204 No Content (DELETE)", async () => {
     mockFetch(() => new Response(null, { status: 204 }));
     const client = createApiClient("http://127.0.0.1:3030", "");
