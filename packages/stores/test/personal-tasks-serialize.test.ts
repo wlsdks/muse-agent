@@ -1,10 +1,10 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { type PersistedTask, readTaskById, readTaskStatusFilter, resolveTaskRef, serializeTask, serializeTaskForModel, writeTasks } from "../src/personal-tasks-store.js";
+import { type PersistedTask, readTaskById, readTaskStatusFilter, readTasks, resolveTaskRef, serializeTask, serializeTaskForModel, writeTasks } from "../src/personal-tasks-store.js";
 
 const base: PersistedTask = { id: "t1", title: "buy milk", status: "open", createdAt: "2026-01-01T00:00:00Z" };
 
@@ -142,5 +142,19 @@ describe("readTaskById", () => {
     expect(await readTaskById(file, "t1")).toEqual(base);
     expect(await readTaskById(file, "buy milk")).toBeUndefined();
     expect(await readTaskById(file, "t")).toBeUndefined();
+  });
+});
+
+describe("readTasks", () => {
+  it("drops entries with malformed optional fields at the local JSON boundary", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-task-read-")), "tasks.json");
+    writeFileSync(file, JSON.stringify({
+      tasks: [
+        base,
+        { ...base, id: "invalid-tags", tags: ["home", 7] },
+        { ...base, id: "invalid-proactive", proactive: "yes" }
+      ]
+    }));
+    expect(await readTasks(file)).toEqual([base]);
   });
 });
