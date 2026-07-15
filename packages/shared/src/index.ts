@@ -49,6 +49,13 @@ export {
   type RunCommandResult
 } from "./run-command.js";
 
+export {
+  ENV_BOOLEAN_FALSE_VALUES,
+  ENV_BOOLEAN_TRUE_VALUES,
+  parseBooleanFromEnv,
+  parseBooleanTriStateFromEnv
+} from "./env-boolean.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];

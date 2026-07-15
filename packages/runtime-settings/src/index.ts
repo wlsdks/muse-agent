@@ -1,4 +1,5 @@
 import type { JsonValue } from "@muse/shared";
+import { parseBooleanTriStateFromEnv } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 export type RuntimeSettingType = "string" | "number" | "boolean" | "json";
@@ -215,18 +216,7 @@ function parseFiniteNumber(value: string | undefined): number | undefined {
  * internally by `RuntimeSettings.getBoolean`.
  */
 export function parseBooleanSetting(value: string | undefined): boolean | undefined {
-  return parseBooleanValue(value);
-}
-
-const TRUTHY_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
-const FALSY_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
-
-function parseBooleanValue(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const normalised = value.trim().toLowerCase();
-  if (TRUTHY_VALUES.has(normalised)) return true;
-  if (FALSY_VALUES.has(normalised)) return false;
-  return undefined;
+  return parseBooleanTriStateFromEnv(value);
 }
 
 export { KyselyRuntimeSettingsStore } from "./kysely-store.js";

@@ -1,5 +1,4 @@
-import { FALSY_BOOLEAN_VALUES } from "./web-egress-policy.js";
-import { isRecord } from "@muse/shared";
+import { isRecord, parseBooleanTriStateFromEnv } from "@muse/shared";
 
 export interface WebSearchPolicy {
   readonly enabled: boolean;
@@ -47,7 +46,7 @@ export function decideWebSearchPolicy(args: DecideWebSearchPolicyArgs): WebSearc
   // are intentionally NOT a force-enable: that would clash with
   // `args.override === false` and is unnecessary since the default
   // is already enabled.
-  if (parseBooleanTriState(env.MUSE_WEB_SEARCH) === false) {
+  if (parseBooleanTriStateFromEnv(env.MUSE_WEB_SEARCH) === false) {
     return { enabled: false, maxUses: resolveMaxUses(env, settings) };
   }
 
@@ -90,14 +89,4 @@ function strictPositiveInt(raw: string): number | undefined {
   if (!/^[+-]?\d+$/u.test(trimmed)) return undefined;
   const parsed = Number(trimmed);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-const TRUTHY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
-
-function parseBooleanTriState(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const normalised = value.trim().toLowerCase();
-  if (TRUTHY_BOOLEAN_VALUES.has(normalised)) return true;
-  if (FALSY_BOOLEAN_VALUES.has(normalised)) return false;
-  return undefined;
 }
