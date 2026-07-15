@@ -7,6 +7,13 @@ import type { WindowsToolDeps } from "./windows-app-open-tool.js";
 export const WIN_APP_READ_SOURCES = ["battery", "wifi", "storage", "frontmost"] as const;
 type WinReadSource = (typeof WIN_APP_READ_SOURCES)[number];
 
+function parseNonNegativeFiniteNumber(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 const READ_SCRIPTS: Readonly<Record<WinReadSource, string>> = {
   battery: "$b = Get-CimInstance Win32_Battery; if ($b) { \"$($b.EstimatedChargeRemaining)`t$($b.BatteryStatus -eq 2)\" }",
   frontmost: [
@@ -69,8 +76,8 @@ export function parseReadOutput(source: WinReadSource, stdout: string): JsonObje
   const text = stdout.trim();
   if (source === "battery") {
     const [pct, charging] = text.split("\t");
-    const percent = Number.parseInt(pct ?? "", 10);
-    if (!Number.isFinite(percent)) {
+    const percent = parseNonNegativeFiniteNumber(pct);
+    if (percent === undefined || !Number.isInteger(percent) || percent > 100) {
       return { ok: false, reason: "no battery detected (desktop PC?)", source };
     }
     return { charging: /true/iu.test(charging ?? ""), ok: true, percent, source };
@@ -82,9 +89,15 @@ export function parseReadOutput(source: WinReadSource, stdout: string): JsonObje
     const ssid = /SSID\s*:\s*(.+)$/mu.exec(text)?.[1]?.trim();
     return ssid ? { ok: true, source, ssid } : { ok: false, reason: "not connected to wifi", source };
   }
-  const drives = text.split("\n").filter(Boolean).map((line) => {
-    const [name, freeGb, totalGb] = line.split("\t");
-    return { freeGb: Number.parseFloat(freeGb ?? "0"), name: name ?? "?", totalGb: Number.parseFloat(totalGb ?? "0") };
+  const drives = text.split("\n").flatMap((line) => {
+    const [rawName, rawFreeGb, rawTotalGb] = line.split("\t");
+    const name = rawName?.trim();
+    const freeGb = parseNonNegativeFiniteNumber(rawFreeGb);
+    const totalGb = parseNonNegativeFiniteNumber(rawTotalGb);
+    if (!name || freeGb === undefined || totalGb === undefined || freeGb > totalGb) {
+      return [];
+    }
+    return [{ freeGb, name, totalGb }];
   });
-  return drives.length > 0 ? { drives, ok: true, source } : { ok: false, reason: "no drives reported", source };
+  return drives.length > 0 ? { drives, ok: true, source } : { ok: false, reason: "no valid drives reported", source };
 }

@@ -73,4 +73,11 @@ describe("toSvg", () => {
     expect(svg).toContain("4s linear infinite");
     expect(svg).toContain('width="96"');
   });
+
+  it("rejects invalid options instead of emitting broken SVG markup", () => {
+    expect(() => toSvg({ sequence: [] })).toThrow("sequence must contain at least one frame");
+    expect(() => toSvg({ sequence: ["unknown" as FrameName] })).toThrow("sequence contains an unknown frame");
+    expect(() => toSvg({ durationSec: Number.POSITIVE_INFINITY })).toThrow("durationSec must be a finite positive number");
+    expect(() => toSvg({ size: 0 })).toThrow("size must be a finite positive number");
+  });
 });

@@ -31,6 +31,13 @@ export interface SvgOptions {
 
 const EPS = 0.01;
 
+function requireFinitePositiveOption(name: string, value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(`${name} must be a finite positive number`);
+  }
+  return value;
+}
+
 function rectsFor(frame: readonly string[], palette: Readonly<Record<string, string>>): string {
   const rects: string[] = [];
   for (let r = 0; r < frame.length; r++) {
@@ -76,8 +83,14 @@ function keyframesFor(name: string, onWindows: ReadonlyArray<[number, number]>):
 
 export function toSvg(options: SvgOptions = {}): string {
   const sequence = options.sequence ?? DEFAULT_SEQUENCE;
-  const duration = options.durationSec ?? 3;
-  const size = options.size ?? 128;
+  if (sequence.length === 0) {
+    throw new RangeError("sequence must contain at least one frame");
+  }
+  if (sequence.some((frame) => !Object.hasOwn(FRAMES, frame))) {
+    throw new RangeError("sequence contains an unknown frame");
+  }
+  const duration = requireFinitePositiveOption("durationSec", options.durationSec ?? 3);
+  const size = requireFinitePositiveOption("size", options.size ?? 128);
   const n = sequence.length;
   const slotPct = 100 / n;
 

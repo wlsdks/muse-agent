@@ -116,7 +116,11 @@ export class InMemoryAgentSpecRegistry implements AgentSpecRegistry {
   private readonly idByName = new Map<string, string>();
 
   constructor(specs: readonly AgentSpecInput[] = [], options: InMemoryAgentSpecRegistryOptions = {}) {
-    this.maxEntries = options.maxEntries ?? InMemoryAgentSpecRegistry.defaultMaxEntries;
+    const maxEntries = options.maxEntries ?? InMemoryAgentSpecRegistry.defaultMaxEntries;
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) {
+      throw new RangeError("maxEntries must be a positive safe integer");
+    }
+    this.maxEntries = maxEntries;
     this.idFactory = options.idFactory ?? (() => createRunId("agent_spec"));
     this.now = options.now ?? (() => new Date());
 
