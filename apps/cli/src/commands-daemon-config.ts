@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 /** `muse setup briefing`'s config — the daemon-config-extension idiom (AC1): read LIVE each tick, no restart needed. */
 export interface DailyBriefConfig {
   readonly enabled: boolean;
