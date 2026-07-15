@@ -132,12 +132,24 @@ export class GoogleCalendarProvider implements CalendarProvider {
       timeMax: range.to.toISOString(),
       timeMin: range.from.toISOString()
     });
-    const payload = await this.request<{ readonly items?: readonly GoogleEventPayload[] }>(
+    const payload = await this.request<{ readonly items?: unknown }>(
       `/calendars/${encodeURIComponent(this.options.calendarId)}/events?${params.toString()}`,
       { method: "GET" }
     );
 
-    return (payload.items ?? []).map((item) => this.toEvent(item));
+    // A single malformed event must not turn into a plausible-looking epoch
+    // event or hide the rest of the user's calendar. List responses are
+    // best-effort: retain well-formed items and drop only invalid entries.
+    if (!isRecord(payload) || !Array.isArray(payload.items)) {
+      return [];
+    }
+    return payload.items.flatMap((item): readonly CalendarEvent[] => {
+      try {
+        return [this.toEvent(item)];
+      } catch {
+        return [];
+      }
+    });
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
@@ -165,22 +177,35 @@ export class GoogleCalendarProvider implements CalendarProvider {
     );
   }
 
-  private toEvent(payload: GoogleEventPayload): CalendarEvent {
-    const allDay = Boolean(payload.start?.date) && !payload.start?.dateTime;
-    const startsAt = parseGoogleTime(payload.start) ?? new Date(0);
-    const endsAt = parseGoogleTime(payload.end) ?? startsAt;
+  private toEvent(payload: unknown): CalendarEvent {
+    if (!isRecord(payload)) {
+      throw new CalendarProviderError(this.id, "MALFORMED_EVENT", "Google Calendar returned a non-object event");
+    }
+
+    const id = readStringField(payload, "id");
+    const startsAt = parseGoogleTime(payload.start);
+    const endsAt = parseGoogleTime(payload.end);
+    if (!id || id.trim().length === 0 || !startsAt || !endsAt || endsAt.getTime() < startsAt.getTime()) {
+      throw new CalendarProviderError(
+        this.id,
+        "MALFORMED_EVENT",
+        "Google Calendar returned an event without a valid id and time range"
+      );
+    }
+    const start = isRecord(payload.start) ? payload.start : undefined;
+    const allDay = typeof start?.date === "string" && typeof start.dateTime !== "string";
 
     return {
       allDay,
       endsAt,
-      id: payload.id,
+      id,
       providerId: this.id,
       raw: payload,
       startsAt,
-      title: payload.summary ?? "(untitled)",
-      ...(payload.location ? { location: payload.location } : {}),
-      ...(payload.description ? { notes: payload.description } : {}),
-      ...(payload.htmlLink ? { url: payload.htmlLink } : {})
+      title: readStringField(payload, "summary") ?? "(untitled)",
+      ...(readStringField(payload, "location") ? { location: readStringField(payload, "location")! } : {}),
+      ...(readStringField(payload, "description") ? { notes: readStringField(payload, "description")! } : {}),
+      ...(readStringField(payload, "htmlLink") ? { url: readStringField(payload, "htmlLink")! } : {})
     };
   }
 
@@ -353,11 +378,8 @@ function readStringField(value: unknown, key: string): string | undefined {
   return typeof candidate === "string" ? candidate : undefined;
 }
 
-function parseGoogleTime(value: GoogleEventPayload["start"]): Date | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const raw = value.dateTime ?? value.date;
+function parseGoogleTime(value: unknown): Date | undefined {
+  const raw = readStringField(value, "dateTime") ?? readStringField(value, "date");
   if (!raw) {
     return undefined;
   }

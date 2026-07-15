@@ -91,6 +91,18 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
     await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });
   });
 
+  it("drops malformed list entries instead of exposing epoch or undefined-id events", async () => {
+    const fetch = makeFetch(() => new Response(JSON.stringify({
+      items: [
+        ITEMS.items[0],
+        { end: { dateTime: "2026-05-30T10:00:00Z" }, id: "bad-time", start: { dateTime: "not-a-date" } },
+        { end: { dateTime: "2026-05-30T10:00:00Z" }, start: { dateTime: "2026-05-30T09:00:00Z" } }
+      ]
+    }), { status: 200 }));
+
+    await expect(provider(fetch.impl).listEvents(RANGE)).resolves.toMatchObject([{ id: "g1" }]);
+  });
+
   // A fetch that HANGS on the API endpoint (only the AbortController resolves it,
   // by rejecting) — the token endpoint responds normally. Counts how many API
   // attempts the per-request timeout aborted.
@@ -131,6 +143,21 @@ describe("GoogleCalendarProvider — writes retry only a 429 rate-limit (never a
     expect(post.method).toBe("POST");
     expect(JSON.parse(post.body ?? "{}")).toEqual({ end: { dateTime: "2026-06-01T11:00:00.000Z" }, location: "Z", start: { dateTime: "2026-06-01T10:00:00.000Z" }, summary: "New" });
     expect(created.id).toBe("new1");
+  });
+
+  it("rejects a malformed successful write response instead of returning an unusable event", async () => {
+    const fetch = makeFetch(() => new Response(JSON.stringify({
+      end: { dateTime: "2026-06-01T11:00:00Z" },
+      start: { dateTime: "not-a-date" }
+    }), { status: 200 }));
+
+    await expect(
+      provider(fetch.impl).createEvent({
+        endsAt: new Date("2026-06-01T11:00:00Z"),
+        startsAt: new Date("2026-06-01T10:00:00Z"),
+        title: "New"
+      })
+    ).rejects.toMatchObject({ code: "MALFORMED_EVENT" });
   });
 
   it("does NOT retry a 500 on a write (a retried mutation could double-create)", async () => {
