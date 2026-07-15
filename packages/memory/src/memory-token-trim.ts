@@ -87,18 +87,14 @@ export function trimConversationMessages(
   // Structural hygiene (runs every call, like boundary integrity): drop
   // multi-MB inline image bytes from stale turns so they aren't re-shipped
   // to the model on every turn. Byte-identical no-op when no stale image.
-  const messages = [...stripStaleImageAttachments(inputMessages).messages].filter(
-    (message): message is ConversationMessage => message !== undefined
-  );
+  const messages = [...stripStaleImageAttachments(inputMessages).messages];
 
   if (hardBudgetTokens <= 0) {
     const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
-    const kept: ConversationMessage[] = [];
-    if (lastUserIndex >= 0 && messages.length > 1 && messages[lastUserIndex] !== undefined) {
-      kept.push(messages[lastUserIndex]);
-    } else {
-      kept.push(...messages);
-    }
+    const kept =
+      lastUserIndex >= 0 && messages.length > 1
+        ? [messages[lastUserIndex] as ConversationMessage]
+        : messages;
 
     const keptSet = new Set<ConversationMessage>(kept);
     return {
@@ -135,7 +131,7 @@ export function trimConversationMessages(
   const trimTarget = triggeredByHard
     ? hardBudgetTokens
     : triggeredByWorking
-      ? workingTarget ?? hardBudgetTokens
+      ? (workingTarget as number)
       : hardBudgetTokens;
 
   if (options.compactionStrategy === "importance") {
@@ -473,18 +469,14 @@ function removeOrphanToolResponses(messages: ConversationMessage[], tokens: numb
 
   while (index < messages.length) {
     const message = messages[index];
-    if (message === undefined) {
-      index++;
-      continue;
-    }
 
-    if (message.role === "assistant") {
+    if (message?.role === "assistant") {
       pendingToolCallIds = (message.toolCalls ?? []).map((toolCall) => toolCall.id);
       index++;
       continue;
     }
 
-    if (message.role !== "tool") {
+    if (message?.role !== "tool") {
       pendingToolCallIds = [];
       index++;
       continue;
@@ -521,7 +513,7 @@ function removeUnansweredToolCalls(
 
   while (index < messages.length) {
     const message = messages[index];
-    if (message === undefined || message.role !== "assistant" || !hasToolCalls(message)) {
+    if (message?.role !== "assistant" || !hasToolCalls(message)) {
       index++;
       continue;
     }
@@ -532,13 +524,8 @@ function removeUnansweredToolCalls(
     // matched answer as unanswered) would drop the assistant and re-create
     // the orphan tool_result this pass exists to prevent.
     const pending = (message.toolCalls ?? []).map((toolCall) => toolCall.id);
-    for (let probe = index + 1; probe < messages.length; probe++) {
-      const toolResponse = messages[probe];
-      if (toolResponse === undefined || toolResponse.role !== "tool") {
-        break;
-      }
-
-      consumeToolResponse(toolResponse, pending);
+    for (let probe = index + 1; probe < messages.length && messages[probe]?.role === "tool"; probe++) {
+      consumeToolResponse(messages[probe] as ConversationMessage, pending);
     }
     const unanswered = new Set(pending);
 

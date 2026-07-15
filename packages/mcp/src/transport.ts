@@ -290,13 +290,8 @@ function resolveStringRecord(value: JsonValue | undefined): Record<string, strin
     return undefined;
   }
 
-  const out: Record<string, string> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item === "string") {
-      out[key] = item;
-    }
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 /**
@@ -452,14 +447,11 @@ function normalizeJsonValue(value: unknown): JsonValue {
   }
 
   if (value && typeof value === "object") {
-    const out: JsonObject = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (item === undefined || typeof item === "function" || typeof item === "symbol") {
-        continue;
-      }
-      out[key] = normalizeJsonValue(item);
-    }
-    return out;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter((entry) => entry[1] !== undefined && typeof entry[1] !== "function" && typeof entry[1] !== "symbol")
+        .map(([key, item]) => [key, normalizeJsonValue(item)])
+    );
   }
 
   return String(value);
@@ -468,14 +460,7 @@ function normalizeJsonValue(value: unknown): JsonValue {
 function toJsonObject(value: unknown): JsonObject {
   // value is untrusted MCP wire data (already JSON-decoded), so a record
   // here is already JSON-safe — narrow to JsonObject accordingly.
-  if (!isRecord(value)) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, item] of Object.entries(value)) {
-    out[key] = normalizeJsonValue(item);
-  }
-  return out;
+  return isRecord(value) ? (value as JsonObject) : {};
 }
 
 async function closeQuietly(client: Client): Promise<void> {
@@ -495,8 +480,8 @@ async function closeQuietly(client: Client): Promise<void> {
  * non-status sentinel never poses as a retry classification.
  */
 function mcpConnectErrorStatus(error: unknown): number | undefined {
-  if (!isRecord(error) || !("code" in error)) return undefined;
-  const code = error.code;
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
   if (typeof code !== "number" || !Number.isFinite(code) || code < 100 || code > 599) {
     return undefined;
   }

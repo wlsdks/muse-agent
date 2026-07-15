@@ -14,7 +14,7 @@
 
 import type { Command } from "commander";
 
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES, stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
+import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
 import { formatCitations } from "./human-formatters.js";
@@ -54,7 +54,7 @@ export async function apiRequest(
     throw formatApiErrorResponse(response, responseText, baseUrl);
   }
 
-  return responseText.length > 0 ? JSON.parse(responseText) : undefined;
+  return responseText.length > 0 ? JSON.parse(responseText) as unknown : undefined;
 }
 
 /**
@@ -137,14 +137,15 @@ function extractApiErrorEnvelope(
  */
 function friendlyFetchError(baseUrl: string, error: unknown): Error {
   const cause = isRecord(error) && isRecord(error.cause) ? error.cause : undefined;
-  if (hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.ECONNREFUSED)) {
+  const code = cause && typeof cause.code === "string" ? cause.code : undefined;
+  if (code === "ECONNREFUSED") {
     return new Error(
       `Muse API server is not running (tried ${baseUrl}) — this command needs it. ` +
       `Start it with \`pnpm --filter @muse/api dev\`, point at a running one with --api-url, ` +
       `or check \`--help\` for this command in case it has a --local (no-server) mode.`
     );
   }
-  if (hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.ENOTFOUND)) {
+  if (code === "ENOTFOUND") {
     return new Error(`Muse API host unresolved (${baseUrl}). Check --api-url.`);
   }
   const message = error instanceof Error ? error.message : String(error);
@@ -341,7 +342,7 @@ export async function streamRemoteChat(
 
     if (event.event === "citations") {
       try {
-        const parsed = JSON.parse(event.data);
+        const parsed = JSON.parse(event.data) as unknown;
         if (Array.isArray(parsed)) {
           streamCitations = parsed as Array<{ url: string; title: string }>;
         }
@@ -351,21 +352,18 @@ export async function streamRemoteChat(
       continue;
     }
 
-        // AC1/AC4: the `grounding` frame carries `conversationId` on BOTH compat
-        // and extended modes — the CLI's remote stream always runs compat, so
-        // this (not `done`, which stays empty in compat) is where the id lands.
-        if (event.event === "grounding") {
-          try {
-            const parsed = JSON.parse(event.data);
-            if (isRecord(parsed)) {
-              const conversationId = parsed.conversationId;
-              if (typeof conversationId === "string" && conversationId.length > 0) {
-                responseConversationId = conversationId;
-              }
-            }
-          } catch {
-            // Malformed grounding event — ignore and continue.
-          }
+    // AC1/AC4: the `grounding` frame carries `conversationId` on BOTH compat
+    // and extended modes — the CLI's remote stream always runs compat, so
+    // this (not `done`, which stays empty in compat) is where the id lands.
+    if (event.event === "grounding") {
+      try {
+        const parsed = JSON.parse(event.data) as { conversationId?: string };
+        if (typeof parsed.conversationId === "string" && parsed.conversationId.length > 0) {
+          responseConversationId = parsed.conversationId;
+        }
+      } catch {
+        // Malformed grounding event — ignore and continue.
+      }
       continue;
     }
 

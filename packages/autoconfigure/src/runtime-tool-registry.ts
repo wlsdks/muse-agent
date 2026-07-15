@@ -18,7 +18,6 @@ import type { UserMemoryStore } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
-import { withBestEffort } from "@muse/shared";
 
 import { createOllamaEmbedder, recordFactRecallHits } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
@@ -299,7 +298,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
       interactions: async () => {
         const contacts = await queryContacts(resolveContactsFile(env));
         const events = calendarRegistry
-          ? (await withBestEffort(calendarRegistry.listEvents({ from: new Date(0), to: new Date() }), [])).map((e) => ({ notes: e.notes, startsAt: e.startsAt.toISOString(), title: e.title }))
+          ? (await calendarRegistry.listEvents({ from: new Date(0), to: new Date() })).map((e) => ({ notes: e.notes, startsAt: e.startsAt.toISOString(), title: e.title }))
           : [];
         return interactionsFromEvents(contacts, events);
       }
@@ -308,12 +307,12 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
       weekInput: async () => {
         const horizon = new Date();
         const events = calendarRegistry
-          ? (await withBestEffort(calendarRegistry.listEvents({ from: horizon, to: new Date(horizon.getTime() + 14 * 86_400_000) }), [])).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.allDay ? { allDay: true } : {}) }))
+          ? (await calendarRegistry.listEvents({ from: horizon, to: new Date(horizon.getTime() + 14 * 86_400_000) })).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.allDay ? { allDay: true } : {}) }))
           : [];
-        const tasks = (await withBestEffort(readTasks(tasksFile), []))
+        const tasks = (await readTasks(tasksFile).catch(() => []))
           .filter((task) => task.status === "open" && typeof task.dueAt === "string")
           .map((task) => ({ dueAt: task.dueAt!, title: task.title }));
-        const reminders = (await withBestEffort(readReminders(resolveRemindersFile(env)), []))
+        const reminders = (await readReminders(resolveRemindersFile(env)).catch(() => []))
           .filter((reminder) => reminder.status === "pending" && typeof reminder.dueAt === "string")
           .map((reminder) => ({ dueAt: reminder.dueAt, text: reminder.text }));
         const birthdays = resolveUpcomingBirthdays(await queryContacts(resolveContactsFile(env)), { withinDays: 14 })
@@ -327,15 +326,15 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
         const events = calendarRegistry
-          ? (await withBestEffort(calendarRegistry.listEvents({ from: startOfToday, to: endOfToday }), [])).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.endsAt ? { endsAtIso: e.endsAt.toISOString() } : {}), ...(e.allDay ? { allDay: true } : {}) }))
+          ? (await calendarRegistry.listEvents({ from: startOfToday, to: endOfToday }).catch(() => [])).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.endsAt ? { endsAtIso: e.endsAt.toISOString() } : {}), ...(e.allDay ? { allDay: true } : {}) }))
           : [];
-        const tasks = (await withBestEffort(readTasks(tasksFile), []))
+        const tasks = (await readTasks(tasksFile).catch(() => []))
           .filter((task) => task.status === "open" && typeof task.dueAt === "string")
           .map((task) => ({ dueAt: task.dueAt!, title: task.title }));
-        const reminders = (await withBestEffort(readReminders(resolveRemindersFile(env)), []))
+        const reminders = (await readReminders(resolveRemindersFile(env)).catch(() => []))
           .filter((reminder) => reminder.status === "pending" && typeof reminder.dueAt === "string")
           .map((reminder) => ({ dueAt: reminder.dueAt, text: reminder.text }));
-        const followups = (await withBestEffort(readFollowups(resolveFollowupsFile(env)), []))
+        const followups = (await readFollowups(resolveFollowupsFile(env)).catch(() => []))
           .filter((followup) => followup.status === "scheduled" && typeof followup.scheduledFor === "string")
           .map((followup) => ({ scheduledFor: followup.scheduledFor, summary: followup.summary }));
         return { events, followups, reminders, tasks };
@@ -347,8 +346,8 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
         const nowMs = now.getTime();
         const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const isToday = (iso: string): boolean => { const ms = Date.parse(iso); return Number.isFinite(ms) && ms >= startOfTodayMs && ms <= nowMs; };
-        const allTasks = await withBestEffort(readTasks(tasksFile), []);
-        const allReminders = await withBestEffort(readReminders(resolveRemindersFile(env)), []);
+        const allTasks = await readTasks(tasksFile).catch(() => []);
+        const allReminders = await readReminders(resolveRemindersFile(env)).catch(() => []);
         const completedTasks = allTasks
           .filter((task) => task.status === "done" && typeof task.completedAt === "string" && isToday(task.completedAt))
           .map((task) => ({ completedAt: task.completedAt!, title: task.title }));
@@ -368,12 +367,12 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
       find: async () => {
         const now = Date.now();
         const events = calendarRegistry
-          ? await withBestEffort(calendarRegistry.listEvents({ from: new Date(now - 365 * 86_400_000), to: new Date(now + 365 * 86_400_000) }), [])
+          ? await calendarRegistry.listEvents({ from: new Date(now - 365 * 86_400_000), to: new Date(now + 365 * 86_400_000) }).catch(() => [])
           : [];
         const [tasks, reminders, contacts] = await Promise.all([
-          withBestEffort(readTasks(tasksFile), []),
-          withBestEffort(readReminders(resolveRemindersFile(env)), []),
-          withBestEffort(queryContacts(resolveContactsFile(env)), [])
+          readTasks(tasksFile).catch(() => []),
+          readReminders(resolveRemindersFile(env)).catch(() => []),
+          queryContacts(resolveContactsFile(env)).catch(() => [])
         ]);
         return { contacts, events, reminders, tasks };
       }

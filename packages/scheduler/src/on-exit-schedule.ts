@@ -52,7 +52,7 @@ export interface OnExitTrigger {
 
 export function validateOnExitTrigger(trigger: OnExitTrigger): void {
   if (trigger.kind !== "on-exit") {
-    throw new SchedulerValidationError(`Expected an on-exit trigger, got kind '${String(trigger.kind)}'`);
+    throw new SchedulerValidationError(`Expected an on-exit trigger, got kind '${String((trigger as { kind?: unknown }).kind)}'`);
   }
 
   if (!trigger.command?.trim()) {
@@ -174,10 +174,9 @@ export class OnExitWatcher {
       status
     });
 
-    const onExitPromise = (async (): Promise<OnExitWatchOutcome> => {
-      const { exitCode, signal } = await child.waitForExit();
-      return toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal);
-    })();
+    const onExitPromise = child.waitForExit().then(({ exitCode, signal }) =>
+      toOutcome(timedOut ? "timed-out" : "exited", exitCode, signal)
+    );
 
     const pollMs = trigger.pollMs;
     const onPollPromise = pollMs

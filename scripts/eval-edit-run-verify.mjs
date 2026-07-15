@@ -22,7 +22,6 @@ import { join } from "node:path";
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createRustRunnerTool } from "../packages/tools/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
-import { readTextOrDefault, runBestEffort } from "./best-effort.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -77,7 +76,7 @@ let failures = 0;
 let dir;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "previous run directory cleanup");
+    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
     dir = await mkdtemp(join(tmpdir(), "muse-edit-run-verify-"));
     const sumPath = join(dir, "sum.mjs");
     const testPath = join(dir, "sum.test.mjs");
@@ -123,7 +122,7 @@ try {
     const toolsUsed = result.toolsUsed ?? [];
     const modelRanTest = toolsUsed.includes("run_command");
     const testPasses = await runTest(testPath);
-    const noiseIntact = (await readTextOrDefault(() => readFile(join(dir, "product.mjs"), "utf8")) === NOISE);
+    const noiseIntact = (await readFile(join(dir, "product.mjs"), "utf8").catch(() => "")) === NOISE;
     const ok = testPasses && modelRanTest && noiseIntact;
     if (!ok) failures += 1;
     console.log(
@@ -131,10 +130,10 @@ try {
       `test-passes=${testPasses.toString()} model-ran-test=${modelRanTest.toString()} ` +
       `no-collateral=${noiseIntact.toString()} tools=[${toolsUsed.join(",")}]`
     );
-    if (!ok) console.log(`  sum.mjs now: ${JSON.stringify(await readTextOrDefault(() => readFile(sumPath, "utf8"))}`);
+    if (!ok) console.log(`  sum.mjs now: ${JSON.stringify(await readFile(sumPath, "utf8").catch(() => ""))}`);
   }
 } finally {
-  if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "temporary eval directory cleanup");
+  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
 }
 
 if (failures > 0) {

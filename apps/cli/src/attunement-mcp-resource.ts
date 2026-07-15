@@ -11,7 +11,6 @@
  */
 
 import { AttunementStoreError, mcpProviderId, type ArtifactRole, type ResolvedArtifact } from "@muse/attunement";
-import type { JsonObject } from "@muse/shared";
 
 /**
  * Calls a READ tool on a connected MCP server. Injected so tests use a
@@ -19,11 +18,11 @@ import type { JsonObject } from "@muse/shared";
  * the raw (untrusted) tool result; throws when the server is unreachable / the
  * tool errors.
  */
-export type McpToolCaller = (server: string, toolName: string, args: JsonObject) => Promise<unknown>;
+export type McpToolCaller = (server: string, toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 
 interface ResourceReadPlan {
   readonly toolName: string;
-  readonly args: JsonObject;
+  readonly args: Record<string, unknown>;
   /** The normalized, canonical resource id stored and re-resolved later. */
   readonly canonicalId: string;
 }
@@ -44,17 +43,13 @@ const GITHUB_RESOURCE_PATTERN = /^(?<owner>[^/\s]+)\/(?<repo>[^/\s]+)\/(?<kind>i
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value === "string") {
     try {
-      return asRecord(JSON.parse(value));
+      return asRecord(JSON.parse(value) as unknown);
     } catch {
       return undefined;
     }
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const output: Record<string, unknown> = {};
-    for (const [key, entryValue] of Object.entries(value)) {
-      if (typeof key === "string") output[key] = entryValue;
-    }
-    return output;
+    return value as Record<string, unknown>;
   }
   return undefined;
 }

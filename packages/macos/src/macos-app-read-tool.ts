@@ -1,4 +1,3 @@
-import { createStringSetGuard, parseBooleanFromEnv } from "@muse/shared";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -14,15 +13,10 @@ const MAC_OSASCRIPT_READ_APPS = [
   "clipboard", "music", "frontmost_window", "contacts", "mail_unread", "safari_tab", "chrome_tab", "volume",
   "reminders", "calendar", "notes", "running_apps"
 ] as const;
+type MacReadApp = (typeof MAC_OSASCRIPT_READ_APPS)[number];
+// …plus shell-backed sources that don't go through osascript.
 const MAC_SHELL_READ_APPS = ["battery", "storage", "wifi_status", "ip_address"] as const;
 const MAC_APP_READ_APPS = [...MAC_OSASCRIPT_READ_APPS, ...MAC_SHELL_READ_APPS] as const;
-
-type MacReadApp = (typeof MAC_OSASCRIPT_READ_APPS)[number];
-type MacAppRead = (typeof MAC_APP_READ_APPS)[number];
-
-const isMacReadApp = createStringSetGuard(MAC_OSASCRIPT_READ_APPS);
-const isMacShellReadApp = createStringSetGuard(MAC_SHELL_READ_APPS);
-const isMacAppReadApp = createStringSetGuard(MAC_APP_READ_APPS);
 
 function buildReadScript(app: MacReadApp, query: string): string {
   switch (app) {
@@ -235,7 +229,7 @@ function parseReadOutput(app: MacReadApp, stdout: string): JsonObject {
     case "volume": {
       const [vol = "0", muted = "false"] = raw.split("\t");
       const outputVolume = Number.parseInt(vol, 10);
-      return { app, muted: parseBooleanFromEnv(muted, false), outputVolume: Number.isFinite(outputVolume) ? outputVolume : 0 };
+      return { app, muted: muted.trim() === "true", outputVolume: Number.isFinite(outputVolume) ? outputVolume : 0 };
     }
     case "reminders": {
       const items: JsonValue[] = raw
@@ -330,6 +324,8 @@ function parseRunningAppsOutput(raw: string): string[] {
     .filter((name) => name.length > 0);
 }
 
+type MacShellRead = (typeof MAC_SHELL_READ_APPS)[number];
+
 export interface MacAppReadToolDeps {
   readonly runner?: MacOsascriptRunner;
   /** Shell runner for the non-osascript sources (`battery` → pmset, `storage` → df). */
@@ -396,10 +392,10 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
     },
     execute: async (args): Promise<JsonObject> => {
       const app = typeof args["app"] === "string" ? args["app"].trim() : "";
-      if (!isMacAppReadApp(app)) {
+      if (!MAC_APP_READ_APPS.includes(app as (typeof MAC_APP_READ_APPS)[number])) {
         return { error: `app must be one of: ${MAC_APP_READ_APPS.join(", ")}` };
       }
-      if (isMacShellReadApp(app)) {
+      if (MAC_SHELL_READ_APPS.includes(app as MacShellRead)) {
         if (app === "wifi_status") {
           let ports: MacCommandResult;
           try {
@@ -465,10 +461,7 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
       }
       let result: MacCommandResult;
       try {
-        if (!isMacReadApp(app)) {
-          return { error: `app must be one of: ${MAC_OSASCRIPT_READ_APPS.join(", ")}` };
-        }
-        result = await runner(buildReadScript(app, query));
+        result = await runner(buildReadScript(app as MacReadApp, query));
       } catch (cause) {
         return { error: `osascript spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
       }
@@ -481,7 +474,7 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         }
         return { error: `osascript failed: ${result.stderr.trim().slice(0, 300)}` };
       }
-      return parseReadOutput(app, result.stdout);
+      return parseReadOutput(app as MacReadApp, result.stdout);
     }
   };
 }

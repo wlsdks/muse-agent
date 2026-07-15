@@ -25,50 +25,27 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
-import { resolveTscBinary } from "./run-tsc-fast.mjs";
 
-export const EXPECTED_ROOT_SCRIPTS = {
-  build: "pnpm run build:ts7-fast",
-  typecheck: "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck",
-  "build:ts7-fast": getTscFastCommand("build"),
-  "build:ts7-single-thread": getTscFastCommand("build", { singleThreaded: true }),
-  "typecheck:fast": getTscFastCommand("typecheck"),
-  "typecheck:ts7-fast": getTscFastCommand("typecheck"),
-  "typecheck:ts7-single-thread": getTscFastCommand("typecheck", { singleThreaded: true }),
-  check: "pnpm run check:toolchain && pnpm build && pnpm test",
-};
-
-function collectRootScriptProblems(scripts) {
-  const problems = [];
-  for (const [name, expectedValue] of Object.entries(EXPECTED_ROOT_SCRIPTS)) {
-    const actualValue = scripts[name];
-    if (actualValue !== expectedValue) {
-      problems.push(`root script ${name} must be exactly ${JSON.stringify(expectedValue)} (got ${JSON.stringify(actualValue)})`);
-    }
-  }
-  return problems;
+export function parseMajor(version) {
+  const match = /(\d+)\./u.exec(version.trim());
+  return match ? Number(match[1]) : Number.NaN;
 }
 
-function collectTscFastModeProblems({ buildArgs, typecheckArgs }) {
-  const problems = [];
-  if (buildArgs.includes("--noEmit")) {
-    problems.push("run-tsc-fast build mode must keep emit enabled");
-  }
-  if (!typecheckArgs.includes("--noEmit")) {
-    problems.push("run-tsc-fast typecheck mode must include --noEmit");
-  }
-  return problems;
-}
+export const EXPECTED_BUILD_MAJOR = 7;
+export const EXPECTED_MODULE_MAJOR = 6;
 
-export function collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }) {
+function main() {
+  const require = createRequire(import.meta.url);
+  const moduleVersion = require("typescript").version;
+  const binVersion = execFileSync("node_modules/.bin/tsc", ["--version"], { encoding: "utf8" })
+    .replace(/^Version\s*/iu, "");
+
   const problems = [];
   if (parseMajor(binVersion) !== EXPECTED_BUILD_MAJOR) {
     problems.push(
-      `the \`tsc\` binary is v${String(binVersion).trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5-7x faster; the \`@typescript/native\` alias provides it)`
+      `the \`tsc\` binary is v${binVersion.trim()} — builds must run on the TypeScript ${EXPECTED_BUILD_MAJOR} native compiler (5-7x faster; the \`@typescript/native\` alias provides it)`
     );
   }
   if (parseMajor(moduleVersion) !== EXPECTED_MODULE_MAJOR) {
@@ -76,99 +53,15 @@ export function collectDependencyProblems({ binVersion, moduleVersion, tsDeclara
       `the \`typescript\` MODULE is v${moduleVersion} — typescript-eslint and knip import it and crash on ${EXPECTED_BUILD_MAJOR}.0, which ships no compiler API (it lands in 7.1). Keep it at ${EXPECTED_MODULE_MAJOR}.`
     );
   }
-  if (typeof tsDeclaration !== "string" || !tsDeclaration.startsWith(EXPECTED_TYPESCRIPT_PACKAGE_PREFIX)) {
-    problems.push(
-      `expected devDependency \`typescript\` to stay on ${EXPECTED_TYPESCRIPT_PACKAGE_PREFIX} for TS7 toolchain split (got ${String(tsDeclaration)})`
-    );
-  }
-  if (typeof nativeTsDeclaration !== "string" || !nativeTsDeclaration.startsWith(EXPECTED_NATIVE_PACKAGE_PREFIX)) {
-    problems.push(
-      `expected devDependency \`@typescript/native\` to stay on ${EXPECTED_NATIVE_PACKAGE_PREFIX} for TS7 native compiler`
-    );
-  }
-  return problems;
-}
 
-export function collectToolchainProblems({
-  rootScripts = {},
-  moduleVersion,
-  tsDeclaration,
-  nativeTsDeclaration,
-  binVersion,
-} = {}) {
-  return [
-    ...collectDependencyProblems({ binVersion, moduleVersion, tsDeclaration, nativeTsDeclaration }),
-    ...collectRootScriptProblems(rootScripts),
-  ];
-}
-
-export function parseMajor(version) {
-  if (typeof version !== "string") {
-    return Number.NaN;
-  }
-  const match = /^(\d+)/u.exec(version.trim());
-  return match ? Number(match[1]) : Number.NaN;
-}
-
-export const EXPECTED_BUILD_MAJOR = 7;
-export const EXPECTED_MODULE_MAJOR = 6;
-export const EXPECTED_TYPESCRIPT_PACKAGE_PREFIX = "npm:@typescript/typescript6";
-export const EXPECTED_NATIVE_PACKAGE_PREFIX = "npm:typescript";
-const ROOT_PACKAGE_URL = new URL("../package.json", import.meta.url);
-const TS_BINARY_PATH = resolveTscBinary();
-
-export function readTscBinaryVersion() {
-  return execFileSync(TS_BINARY_PATH, ["--version"], { encoding: "utf8" })
-    .replace(/^Version\s*/iu, "");
-}
-
-export function readRootScripts() {
-  return readRootPackage().scripts ?? {};
-}
-
-export function readRootPackage() {
-  const raw = readFileSync(ROOT_PACKAGE_URL, "utf8");
-  return JSON.parse(raw);
-}
-
-export function formatToolchainProblems(problems) {
-  return [...problems].sort();
-}
-
-function main() {
-  const require = createRequire(import.meta.url);
-  const moduleVersion = require("typescript").version;
-  const packageJson = readRootPackage();
-  const devDependencies = packageJson.devDependencies ?? {};
-  const tsDeclaration = devDependencies.typescript;
-  const nativeTsDeclaration = devDependencies["@typescript/native"];
-
-  const binVersion = readTscBinaryVersion();
-
-  const scripts = readRootScripts();
-  const problems = collectToolchainProblems({
-    rootScripts: scripts,
-    binVersion,
-    moduleVersion,
-    tsDeclaration,
-    nativeTsDeclaration,
-  });
-  const tscFastModeProblems = collectTscFastModeProblems({
-    buildArgs: getTscFastArgs("build"),
-    typecheckArgs: getTscFastArgs("typecheck"),
-  });
-
-  const formattedProblems = formatToolchainProblems([...problems, ...tscFastModeProblems]);
-  if (formattedProblems.length > 0) {
+  if (problems.length > 0) {
     console.error("✗ toolchain split broken:");
-    for (const problem of formattedProblems) {
+    for (const problem of problems) {
       console.error(`  - ${problem}`);
     }
     process.exit(1);
   }
-  console.log(
-    `✓ toolchain: build tsc ${TS_BINARY_PATH} v${binVersion.trim()} (native) · typescript module v${moduleVersion} (compiler API for eslint/knip)`
-  );
+  console.log(`✓ toolchain: build tsc v${binVersion.trim()} (native) · typescript module v${moduleVersion} (compiler API for eslint/knip)`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

@@ -1,6 +1,6 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, parseBooleanFromEnv, resolvePlatformCapabilities } from "@muse/shared";
+import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { execFile as execFileCallback } from "node:child_process";
@@ -427,7 +427,7 @@ export interface OllamaPerfEnv {
  * more usable num_ctx on the same RAM. Advisory — warn, never fail.
  */
 export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
-  const flashOn = parseBooleanFromEnv(values.flashAttention, false);
+  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
   const kv = values.kvCacheType?.toLowerCase();
   const kvQuantized = kv === "q8_0" || kv === "q4_0";
   if (flashOn && kvQuantized) {
@@ -535,14 +535,16 @@ export function readMuseSpeedEnv(env: Record<string, string | undefined>): MuseS
  */
 export function parseNotesIndexEmbedModel(rawJson: string | undefined): string | undefined {
   if (rawJson === undefined) return undefined;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawJson);
-    const candidate = isRecord(parsed) && typeof parsed.model === "string" ? parsed.model : undefined;
-    if (candidate && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
+    parsed = JSON.parse(rawJson);
   } catch {
     return DEFAULT_EMBED_MODEL;
+  }
+  if (!parsed || typeof parsed !== "object") return DEFAULT_EMBED_MODEL;
+  const candidate = (parsed as { model?: unknown }).model;
+  if (typeof candidate === "string" && candidate.trim().length > 0) {
+    return candidate.trim();
   }
   return DEFAULT_EMBED_MODEL;
 }
@@ -552,7 +554,7 @@ export async function readNotesIndexEmbedModel(path: string): Promise<string | u
     const raw = await fs.readFile(path, "utf8");
     return parseNotesIndexEmbedModel(raw);
   } catch (cause) {
-    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) return undefined;
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     // Unreadable index (permissions?) — flag the probe instead of
     // silently dropping.
     return parseNotesIndexEmbedModel("");
@@ -902,10 +904,11 @@ export async function probeOllamaPromptCache(options: {
         signal: AbortSignal.timeout(timeoutMs)
       });
       if (!res.ok) return undefined;
-      const body = await res.json();
-      const promptEvalDuration = isRecord(body) && typeof body.prompt_eval_duration === "number" ? body.prompt_eval_duration : 0;
-      const promptEvalCount = isRecord(body) && typeof body.prompt_eval_count === "number" ? body.prompt_eval_count : 0;
-      return { ms: Math.round(promptEvalDuration / 1e6), tokens: promptEvalCount };
+      const body = (await res.json()) as { prompt_eval_duration?: number; prompt_eval_count?: number };
+      return {
+        ms: Math.round((body.prompt_eval_duration ?? 0) / 1e6),
+        tokens: body.prompt_eval_count ?? 0
+      };
     } catch {
       return undefined;
     }

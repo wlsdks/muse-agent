@@ -14,8 +14,7 @@
  * without bouncing through a shell.
  */
 
-import { createStringSetGuard } from "@muse/shared";
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import {
@@ -23,8 +22,6 @@ import {
   readActivityFeed,
   type ActivityKind
 } from "./personal-activity-feed.js";
-
-const isActivityKind = createStringSetGuard(ACTIVITY_KINDS);
 
 export interface HistoryMcpServerOptions {
   readonly reminderHistoryFile?: string;
@@ -66,12 +63,12 @@ export function createHistoryMcpServer(options: HistoryMcpServerOptions): Loopba
       let kind: ActivityKind | undefined;
       if (typeof kindRaw === "string" && kindRaw.length > 0) {
         const normalized = kindRaw.trim().toLowerCase();
-        if (!isActivityKind(normalized)) {
+        if (!ACTIVITY_KINDS.has(normalized as ActivityKind)) {
           return {
             error: `kind must be one of: ${[...ACTIVITY_KINDS].join(", ")} (got '${normalized}')`
           };
         }
-        kind = normalized;
+        kind = normalized as ActivityKind;
       }
 
       let sinceMs: number | undefined;
@@ -98,7 +95,7 @@ export function createHistoryMcpServer(options: HistoryMcpServerOptions): Loopba
           ...(sinceMs !== undefined ? { sinceMs } : {})
         });
         return {
-          entries: [...entries],
+          entries: entries as unknown as JsonValue,
           total: entries.length
         };
       } catch (error) {

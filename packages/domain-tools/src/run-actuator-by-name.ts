@@ -20,15 +20,6 @@ import { createWebActionTool } from "./web-action-tool.js";
 import type { WebActionApprovalGate } from "./web-action.js";
 import type { HostLookup } from "./web-url-guard.js";
 
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (typeof key === "string") record[key] = nestedValue;
-  }
-  return record;
-}
-
 export interface RunActuatorByNameDeps {
   readonly actionLogFile: string;
   readonly userId: string;
@@ -73,12 +64,8 @@ export async function runActuatorByName(
       contacts: deps.contacts,
       sender: new GmailEmailProvider(deps.gmailToken, fetchImpl),
       userId: deps.userId
-    }).execute(args, ctx));
-    const resultRecord = toRecord(result);
-    if (!resultRecord) {
-      return classifyFailure({});
-    }
-    return resultRecord["sent"] === true ? { ran: true } : classifyFailure(resultRecord);
+    }).execute(args, ctx)) as Record<string, unknown>;
+    return result["sent"] === true ? { ran: true } : classifyFailure(result);
   }
 
   if (tool === "web_action") {
@@ -88,12 +75,8 @@ export async function runActuatorByName(
       fetchImpl,
       userId: deps.userId,
       ...(deps.lookup !== undefined ? { lookup: deps.lookup } : {})
-    }).execute(args, ctx));
-    const resultRecord = toRecord(result);
-    if (!resultRecord) {
-      return classifyFailure({});
-    }
-    return resultRecord["performed"] === true ? { ran: true } : classifyFailure(resultRecord);
+    }).execute(args, ctx)) as Record<string, unknown>;
+    return result["performed"] === true ? { ran: true } : classifyFailure(result);
   }
 
   if (tool === "home_action") {
@@ -108,12 +91,8 @@ export async function runActuatorByName(
       token: deps.homeAssistantToken,
       userId: deps.userId,
       ...(deps.localOnly ? { localOnly: true } : {})
-    }).execute(args, ctx));
-    const resultRecord = toRecord(result);
-    if (!resultRecord) {
-      return classifyFailure({});
-    }
-    return resultRecord["performed"] === true ? { ran: true } : classifyFailure(resultRecord);
+    }).execute(args, ctx)) as Record<string, unknown>;
+    return result["performed"] === true ? { ran: true } : classifyFailure(result);
   }
 
   return { ran: false, reason: "unknown-tool", detail: tool };

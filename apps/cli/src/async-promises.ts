@@ -7,17 +7,9 @@ import type { IncomingMessage } from "node:http";
 // it deterministically; `timers/promises` isn't reliably intercepted by fake
 // timers.
 export function sleep(milliseconds: number): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, milliseconds);
-  return promise;
-}
-
-export async function withBestEffort<T, F>(promise: Promise<T>, fallback: F): Promise<T | F> {
-  try {
-    return await promise;
-  } catch {
-    return fallback;
-  }
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 export async function waitForShutdownSignal(signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"]): Promise<NodeJS.Signals> {
@@ -40,7 +32,7 @@ export async function waitForChildProcessResult(
   stderrChunks?: readonly Buffer[]
 ): Promise<void> {
   const result = await Promise.race([
-    once(child, "error").then(([cause]) => ({ kind: "error" as const, error: normalizeChildError(cause) })),
+    once(child, "error").then(([cause]) => ({ kind: "error" as const, error: cause as Error })),
     once(child, "close").then(([code, signal]) => ({ kind: "close" as const, code: code ?? 0, signal: signal ?? null }))
   ]);
 
@@ -61,10 +53,6 @@ export async function waitForChildProcessResult(
   }
 
   throw new Error(`${context} terminated by ${result.signal} after code ${result.code.toString()}${stderrMessage}`);
-}
-
-function normalizeChildError(cause: unknown): Error {
-  return cause instanceof Error ? cause : new Error(typeof cause === "string" ? cause : "child process failed");
 }
 
 export async function readRequestBody(

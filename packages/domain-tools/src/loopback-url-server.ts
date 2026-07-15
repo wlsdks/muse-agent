@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -30,7 +30,7 @@ export function createUrlMcpServer(): LoopbackMcpServer {
           // a plain DATA key, not hit the prototype setter (pollution + the param vanishing)
           // or collide with the inherited Object constructor (corrupting the dedup). The
           // `existing === undefined` check below then works for EVERY key.
-          const query: Record<string, string | string[]> = Object.create(null);
+          const query: Record<string, string | string[]> = Object.create(null) as Record<string, string | string[]>;
           for (const [key, value] of parsed.searchParams.entries()) {
             const existing = query[key];
             if (existing === undefined) {
@@ -50,7 +50,7 @@ export function createUrlMcpServer(): LoopbackMcpServer {
             pathname: parsed.pathname,
             port: parsed.port,
             protocol: parsed.protocol,
-            query,
+            query: query as JsonValue,
             search: parsed.search,
             username: parsed.username
           } satisfies JsonObject;
@@ -68,13 +68,13 @@ export function createUrlMcpServer(): LoopbackMcpServer {
         description: "Encodes a key/value object as an application/x-www-form-urlencoded query string.",
         execute: (args): JsonObject => {
           const params = args.params;
-          if (!isRecord(params)) {
+          if (!params || typeof params !== "object" || Array.isArray(params)) {
             return { error: "params must be a JSON object" };
           }
           const isScalar = (v: unknown): v is string | number | boolean =>
             typeof v === "string" || typeof v === "number" || typeof v === "boolean";
           const search = new URLSearchParams();
-          for (const [key, raw] of Object.entries(params)) {
+          for (const [key, raw] of Object.entries(params as Record<string, unknown>)) {
             if (Array.isArray(raw)) {
               for (const item of raw) {
                 // Skip null/undefined items, exactly as the scalar branch below does —

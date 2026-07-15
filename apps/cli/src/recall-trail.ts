@@ -14,8 +14,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
 interface TrailEdge {
   readonly a: string;
   readonly b: string;
@@ -184,43 +182,14 @@ export function resolveTrailsFile(env: Record<string, string | undefined> = proc
 /** Read the trail store, fail-soft to empty on any error (missing / corrupt). */
 export async function readTrails(file: string): Promise<CoRecallTrails> {
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8"));
-    if (isCoRecallTrails(parsed)) {
-      return parsed;
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && (parsed as CoRecallTrails).version === 1 && (parsed as CoRecallTrails).trails && typeof (parsed as CoRecallTrails).trails === "object") {
+      return parsed as CoRecallTrails;
     }
   } catch {
     // missing / unreadable / corrupt — start fresh
   }
   return emptyTrails();
-}
-
-function isCoRecallTrails(value: unknown): value is CoRecallTrails {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-
-  if (!isRecord(value)) {
-    return false;
-  }
-  if (value.version !== 1 || value.trails === undefined || value.trails === null || Array.isArray(value.trails)) {
-    return false;
-  }
-  return isRecord(value.trails) && Object.values(value.trails).every((item) => isTrailEdge(item));
-}
-
-function isTrailEdge(value: unknown): value is TrailEdge {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  if (!isRecord(value)) {
-    return false;
-  }
-  return (
-    typeof value.a === "string" && value.a.length > 0 &&
-    typeof value.b === "string" && value.b.length > 0 &&
-    typeof value.weight === "number" && Number.isFinite(value.weight) &&
-    typeof value.lastDepositMs === "number" && Number.isFinite(value.lastDepositMs)
-  );
 }
 
 export async function writeTrails(file: string, trails: CoRecallTrails): Promise<void> {

@@ -11,18 +11,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
-
 
 import { readSessionLock, writeSessionLock, type SessionLockPayload } from "@muse/proactivity";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
-import { pathExists } from "./path-exists.js";
-import { withBestEffort } from "./async-promises.js";
 
 interface LockOptions {
   readonly hours?: string;
@@ -142,7 +138,7 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
       const file = defaultSessionLockFile();
       const had = existsSync(file);
       if (had) {
-        await withBestEffort(unlink(file), undefined);
+        await unlink(file).catch(() => undefined);
       }
       if (options.json) {
         io.stdout(`${JSON.stringify({ cleared: had }, null, 2)}\n`);
@@ -164,7 +160,7 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
         // Disambiguate the expired-vs-missing case for human output
         // by reading file mtime; on missing the message is fine
         // either way.
-        const exists = await pathExists(file);
+        const exists = await stat(file).then(() => true).catch(() => false);
         if (options.json) {
           io.stdout(`${JSON.stringify({ active: false, expired: exists, file }, null, 2)}\n`);
           return;

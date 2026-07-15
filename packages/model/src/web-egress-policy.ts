@@ -11,12 +11,11 @@
  * participate in the decision.
  */
 
-import { ENV_BOOLEAN_FALSE_VALUES, parseBooleanFromEnv } from "@muse/shared";
 import { isLocalOnlyEnabled } from "./local-only-policy.js";
 
 // Canonical falsy-spelling set shared with web-search-policy.ts so the two
 // kill-switch parsers can never drift apart.
-export const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = ENV_BOOLEAN_FALSE_VALUES;
+export const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
 
 /**
  * True unless `MUSE_WEB_EGRESS` is an explicit falsy spelling
@@ -24,7 +23,11 @@ export const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = ENV_BOOLEAN_FALSE_VALUE
  * means web tools stay available, preserving current behaviour.
  */
 export function isWebEgressAllowed(env: Readonly<Record<string, string | undefined>>): boolean {
-  return parseBooleanFromEnv(env["MUSE_WEB_EGRESS"], true);
+  const raw = env["MUSE_WEB_EGRESS"];
+  if (raw === undefined) {
+    return true;
+  }
+  return !FALSY_BOOLEAN_VALUES.has(raw.trim().toLowerCase());
 }
 
 /**

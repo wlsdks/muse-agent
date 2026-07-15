@@ -505,10 +505,9 @@ describe("MultiAgentOrchestrator", () => {
       { mode: "parallel" }
     );
 
-    const modelById: Record<string, string | undefined> = {};
-    for (const step of result.results) {
-      modelById[step.workerId] = step.result?.response.model;
-    }
+    const modelById = Object.fromEntries(
+      result.results.map((step) => [step.workerId, step.result?.response.model])
+    );
     // Each override-carrying worker executed on its declared local model.
     expect(modelById.fast).toBe("ollama/qwen3:1.7b");
     expect(modelById.heavy).toBe("ollama/qwen3:8b");

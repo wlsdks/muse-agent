@@ -4,11 +4,6 @@ import type { JsonObject } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 
-function readStringArg(args: Record<string, unknown>, key: string): string {
-  const raw = args[key];
-  return typeof raw === "string" ? raw : "";
-}
-
 /**
  * Data / encoding tools — math, hash, csv, base64. The arithmetic
  * evaluator and CSV parser are local to this file because they only
@@ -38,7 +33,7 @@ export function createMathEvalTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const expression = readStringArg(args, "expression").trim();
+      const expression = typeof args["expression"] === "string" ? (args["expression"] as string).trim() : "";
       if (expression.length === 0) {
         return { error: "expression is required" };
       }
@@ -88,8 +83,10 @@ export function createHashTextTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const text = readStringArg(args, "text");
-      const algorithmInput = readStringArg(args, "algorithm").trim().toLowerCase() || "sha256";
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      const algorithmInput = typeof args["algorithm"] === "string"
+        ? (args["algorithm"] as string).trim().toLowerCase()
+        : "sha256";
       const algorithm = algorithmInput.length === 0 ? "sha256" : algorithmInput;
       if (!HASH_TEXT_ALGORITHMS.has(algorithm)) {
         return { error: `algorithm must be one of: sha256, sha1, md5 (got '${algorithm}')` };
@@ -127,7 +124,7 @@ export function createCsvParseTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const text = readStringArg(args, "text");
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
       if (text.length === 0) {
         return { rows: [] } satisfies JsonObject;
       }
@@ -206,8 +203,8 @@ export function createBase64Tool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const mode = readStringArg(args, "mode").trim().toLowerCase();
-      const text = readStringArg(args, "text");
+      const mode = typeof args["mode"] === "string" ? (args["mode"] as string).trim().toLowerCase() : "";
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
       const urlSafe = args["urlSafe"] === true;
 
       if (mode !== "encode" && mode !== "decode") {

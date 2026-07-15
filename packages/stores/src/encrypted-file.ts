@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "@muse/memory";
-import { hasNodeErrorCodeIn, isNodeErrorCode, sleep, withBestEffort, NODE_ERROR_CODES } from "@muse/shared";
+import { sleep } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
@@ -110,7 +110,7 @@ async function probeLock(lockPath: string): Promise<LockProbe> {
     // the file) says nothing about the holder — calling it stale deletes a
     // LIVE holder's lock and admits a second writer (a real lost-update
     // observed on the windows-latest runner).
-    return isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT) ? "vanished" : "live";
+    return (cause as NodeJS.ErrnoException).code === "ENOENT" ? "vanished" : "live";
   }
 }
 
@@ -150,16 +150,11 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
     } catch (cause) {
       // win32 surfaces a concurrent unlink-vs-open race on the lock file as
       // EPERM/EACCES/EBUSY rather than EEXIST — same meaning: contended, retry.
-      const contended = hasNodeErrorCodeIn(
-        cause,
-        NODE_ERROR_CODES.EEXIST,
-        NODE_ERROR_CODES.EPERM,
-        NODE_ERROR_CODES.EACCES,
-        NODE_ERROR_CODES.EBUSY
-      );
-  if (!(cause instanceof Error) || !contended) {
-    throw cause;
-  }
+      const code = (cause as NodeJS.ErrnoException).code;
+      const contended = code === "EEXIST" || code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (!(cause instanceof Error) || !contended) {
+        throw cause;
+      }
       const probe = await probeLock(lockPath);
       if (probe === "vanished") {
         // Nothing to steal — the holder already released. Unlinking here would
@@ -168,22 +163,22 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
         continue;
       }
       if (probe === "stale") {
-        await withBestEffort(fs.unlink(lockPath), undefined);
+        await fs.unlink(lockPath).catch(() => undefined);
         continue;
       }
-  if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
+      if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
         throw new Error(`${file} is locked by another write in progress — retry shortly`, { cause });
       }
       await sleep(computeLockRetryDelay(attempt));
     } finally {
-      await withBestEffort(handle?.close() ?? Promise.resolve(), undefined);
+      await handle?.close().catch(() => undefined);
     }
   }
   try {
     return await fn();
   } finally {
     if (await lockHoldsNonce(lockPath, nonce)) {
-      await withBestEffort(fs.unlink(lockPath), undefined);
+      await fs.unlink(lockPath).catch(() => undefined);
     }
   }
 }
@@ -239,9 +234,8 @@ export async function decryptFileAtRest(
   return withFileLock(file, async () => {
     const { text, encrypted } = await readMaybeEncrypted(file, env);
     if (!encrypted || text === undefined) {
-  return { alreadyPlaintext: true };
-}
-
+      return { alreadyPlaintext: true };
+    }
     await writeMaybeEncrypted(file, text, false, env);
     return { alreadyPlaintext: false };
   });

@@ -27,7 +27,6 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 
-import { isRecord } from "@muse/shared";
 import { password, select, text, isCancel } from "@clack/prompts";
 import { ImapSmtpEmailProvider, type ImapSmtpEmailProviderConfig } from "@muse/domain-tools";
 import { startOAuthCallbackServer, type OAuthCallbackServer } from "@muse/mcp";
@@ -197,14 +196,14 @@ function defaultOpenBrowser(url: string): void {
   } catch { /* best-effort — the printed URL is the real fallback */ }
 }
 
-  async function defaultVerifyGmailProfile(accessToken: string, fetchImpl: typeof fetch): Promise<string | undefined> {
-    try {
-      const response = await fetchImpl("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+async function defaultVerifyGmailProfile(accessToken: string, fetchImpl: typeof fetch): Promise<string | undefined> {
+  try {
+    const response = await fetchImpl("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
       headers: { authorization: `Bearer ${accessToken}` }
     });
     if (!response.ok) return undefined;
-    const payload = await response.json();
-    return isRecord(payload) && typeof payload.emailAddress === "string" ? payload.emailAddress : undefined;
+    const payload = await response.json() as { readonly emailAddress?: string };
+    return payload.emailAddress;
   } catch {
     return undefined;
   }

@@ -56,7 +56,7 @@ import {
 } from "@muse/recall";
 import type { createStageTimer } from "@muse/recall";
 import type { SessionFeedReflectionGrounding } from "./ask-session-grounding.js";
-import { createRunId, parseBooleanFromEnv } from "@muse/shared";
+import { createRunId } from "@muse/shared";
 
 import { computeRuleAdmission } from "./ask-behavioural-rules.js";
 import { embed } from "./embed.js";
@@ -199,7 +199,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
     // similarity so a strategy phrased differently from the query still
     // surfaces, instead of pure lexical token-overlap. Off by default (it
     // adds a local nomic pass per strategy); fail-soft back to lexical.
-    const embedForPlaybook = parseBooleanFromEnv(process.env.MUSE_PLAYBOOK_EMBED_RANK, false)
+    const embedForPlaybook = process.env.MUSE_PLAYBOOK_EMBED_RANK === "true"
       ? (text: string) => embed(text, process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL)
       : undefined;
     // The shared behavioural-rule budget (agent-core's selectBehaviouralRules)
@@ -316,7 +316,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
   // self-learning daemon defers instead of contending for it. Best-effort
   // (fail-soft): if the lease write fails we still answer, and process
   // exit frees it (the daemon ignores a dead-pid lease).
-  const leaseFile = resolveOllamaLeaseFile(process.env);
+  const leaseFile = resolveOllamaLeaseFile(process.env as Record<string, string | undefined>);
   const acquireLease = async (): Promise<void> => {
     try {
       await acquireOllamaLease(leaseFile, process.pid, Date.now());

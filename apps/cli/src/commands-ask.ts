@@ -24,14 +24,11 @@
 
 import { existsSync } from "node:fs";
 
-
-
 import { enforceAnswerCitations, withUngroundableFallback } from "@muse/agent-core";
 import { classifyActionRequest } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveAnswerTemperature, resolveNoteProvenanceFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import { releaseOllamaLease } from "@muse/stores";
-import { parseBooleanFromEnv } from "@muse/shared";
 
 import { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
@@ -77,7 +74,6 @@ import { buildMusePersona } from "@muse/recall";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { listNoteFiles, notesCorpusFileCount, selectGraphConnections } from "./ask-corpus-helpers.js";
-import { withBestEffort } from "./async-promises.js";
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
@@ -138,7 +134,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // under --json so scripted callers never see stray non-JSON output.
       if (!options.json) {
         const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
-        await withBestEffort(maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }), false);
+        await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
       }
       const composedInput = await composeAskInput(queryParts, options, io);
       if (!composedInput.ok) {
@@ -245,7 +241,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         process.env.MUSE_MODEL = options.model;
         process.env.MUSE_MODEL_PROVIDER_ID = CODEX_PROVIDER_ID;
       } else if (options.model === undefined) {
-        const activation = await withBestEffort(resolveCodexActivation(), undefined);
+        const activation = await resolveCodexActivation().catch(() => undefined);
         if (activation?.active && activation.model) {
           applyCodexModelToEnv(process.env, activation.model);
         } else if (activation && !activation.active && activation.setupSteps) {
@@ -272,7 +268,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // masks the real error, and every failure path returns before the success
       // trace at the end of the run, so there's no double-write.
       const writeAskFailureLog = async (failure: string): Promise<void> => {
-        await withBestEffort(writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
+        await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
           query,
           model,
           timings: askStages.timings(),
@@ -281,12 +277,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           success: false,
           toolsUsed: [],
           errorMessage: failure
-        }))), undefined);
+        })).catch(() => undefined);
       };
       // Vision surface may run a dedicated model (MUSE_VISION_MODEL, else the
       // measured local vision default when the chat model IS the local default).
       // Fail-soft to `model` when the optional vision model isn't pulled.
-      const visionModel = await resolveSessionVisionModel(model, process.env);
+      const visionModel = await resolveSessionVisionModel(model, process.env as MuseEnvironment);
       if (visionModel !== model) {
         io.stderr(`(vision: ${visionModel})\n`);
       }
@@ -312,7 +308,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // ask-behavioural-rules.ts / behavioural-rule-budget.ts. Fail-soft: an
       // admission error (bad playbook file, etc.) falls back to buildMusePersona's
       // own uncapped default rather than blocking the answer.
-      const admittedRuleKeys = await withBestEffort(computeRuleAdmission(userMemory, userKey, query).then((admission) => admission.admittedRuleKeys), undefined);
+      const admittedRuleKeys = await computeRuleAdmission(userMemory, userKey, query)
+        .then((admission) => admission.admittedRuleKeys)
+        .catch(() => undefined);
       const personaPrompt = userMemory ? buildMusePersona(userMemory, userKey, { admittedRuleKeys }) : undefined;
       const { loadActivePersonaPreamble } = await import("./persona-store.js");
       const personaTemplatePreamble = await loadActivePersonaPreamble();
@@ -323,7 +321,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // note against the user's own is rendered trust-aware (prefer your own),
       // not a neutral "either could be current" (GROUNDED≠TRUE ask-path parity).
       const untrustedNoteSources = untrustedNotePaths(
-        await readNoteProvenance(resolveNoteProvenanceFile(process.env))
+        await readNoteProvenance(resolveNoteProvenanceFile(process.env as MuseEnvironment))
       );
       // `muse ask --with-tools` builds its own context block + system prompt
       // inline; the plain chat-only path composes the SAME work through
@@ -553,7 +551,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 answerModel: model,
                 embedModel,
                 scope: options.scope?.trim(),
-                temperature: resolveAnswerTemperature(process.env),
+                temperature: resolveAnswerTemperature(process.env as MuseEnvironment),
                 topK
               },
               query,
@@ -580,7 +578,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                     ],
                     // Observational confidence instrumentation (frontier F1): opt-in,
                     // never alters decoding; summarized onto the run-log trace below.
-                    ...(parseBooleanFromEnv(process.env.MUSE_LOGPROBS, false) ? { logprobs: true } : {}),
+                    ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
                     ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
                     model: args.model,
                     // Ctrl-C aborts the in-flight HTTP call itself (Ollama stops

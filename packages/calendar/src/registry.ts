@@ -32,8 +32,6 @@ export interface CalendarProviderRegistryOptions {
   readonly onProviderError?: (providerId: string, message: string) => void;
 }
 
-const EMPTY_CALENDAR_EVENTS: readonly CalendarEvent[] = [];
-
 /**
  * Holds the set of active calendar providers and routes per-provider
  * operations. The registry is a small fan-out: every "list events"
@@ -113,7 +111,7 @@ export class CalendarProviderRegistry {
           const message = cause instanceof Error ? cause.message : String(cause);
           failedProviders.push({ providerId: provider.id, message });
           this.onProviderError?.(provider.id, message);
-          return EMPTY_CALENDAR_EVENTS;
+          return [] as readonly CalendarEvent[];
         }
       })
     );

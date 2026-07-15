@@ -1,6 +1,5 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { createStringSetGuard } from "@muse/shared";
 
 import { defaultOsascriptRunner, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 
@@ -8,7 +7,6 @@ import { defaultOsascriptRunner, isPermissionError, OSASCRIPT_TIMEOUT_MS, type M
 
 const MEDIA_ACTIONS = ["play", "pause", "playpause", "next", "previous"] as const;
 type MediaAction = (typeof MEDIA_ACTIONS)[number];
-const isMediaAction = createStringSetGuard(MEDIA_ACTIONS);
 
 const MEDIA_VERB: Record<MediaAction, string> = {
   next: "next track",
@@ -70,12 +68,12 @@ export function createMacMediaControlTool(deps: MacMediaControlToolDeps = {}): M
     },
     execute: async (args): Promise<JsonObject> => {
       const action = typeof args["action"] === "string" ? args["action"].trim() : "";
-      if (!isMediaAction(action)) {
+      if (!MEDIA_ACTIONS.includes(action as MediaAction)) {
         return { controlled: false, reason: `action must be one of: ${MEDIA_ACTIONS.join(", ")}` };
       }
       let result: MacCommandResult;
       try {
-        result = await runner(buildMediaScript(action));
+        result = await runner(buildMediaScript(action as MediaAction));
       } catch (cause) {
         return { controlled: false, reason: `osascript spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
       }

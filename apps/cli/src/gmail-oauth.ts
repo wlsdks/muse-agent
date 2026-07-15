@@ -17,11 +17,9 @@
  */
 
 import type { MuseEnvironment } from "@muse/autoconfigure";
-import { isRecord } from "@muse/shared";
 
 import { readGmailCredential, writeGmailCredential, type GmailOAuthCredential } from "./credential-store.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 export const GMAIL_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GMAIL_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -195,9 +193,8 @@ export interface GmailAccessTokenRefreshResult {
 /** Parses `{"error": "..."}` out of a token-endpoint error body; undefined when the body isn't that shape. */
 function parseOAuthErrorCode(body: string): string | undefined {
   try {
-    const parsed = JSON.parse(body);
-    const error = isRecord(parsed) ? parsed.error : undefined;
-    return typeof error === "string" ? error : undefined;
+    const parsed = JSON.parse(body) as { readonly error?: unknown };
+    return typeof parsed.error === "string" ? parsed.error : undefined;
   } catch {
     return undefined;
   }
@@ -238,23 +235,20 @@ export async function exchangeGmailAuthorizationCode(params: {
     throw new Error(`Gmail token exchange failed: network error (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
   }
   if (!response.ok) {
-    const errorCode = parseOAuthErrorCode(await withBestEffort(response.text(), ""));
+    const errorCode = parseOAuthErrorCode(await response.text().catch(() => ""));
     // Never echo the response body — Google's OAuth errors don't carry the
     // client secret, but the redaction floor (AC4) applies to every error
     // surface, so only a parsed, allow-listed field ever reaches the message.
     throw new Error(`Gmail token exchange failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
-  const payload = await response.json();
-  const accessToken = isRecord(payload) && typeof payload.access_token === "string" ? payload.access_token : undefined;
-  const refreshToken = isRecord(payload) && typeof payload.refresh_token === "string" ? payload.refresh_token : undefined;
-  const expiresIn = isRecord(payload) && typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in) ? payload.expires_in : 3600;
-  if (!accessToken || !refreshToken) {
+  const payload = await response.json() as { readonly access_token?: string; readonly refresh_token?: string; readonly expires_in?: number };
+  if (!payload.access_token || !payload.refresh_token) {
     throw new Error("Gmail token exchange response missing access_token/refresh_token — ensure the consent screen requested offline access.");
   }
   return {
-    accessToken,
-    expiresAt: now() + expiresIn * 1000,
-    refreshToken
+    accessToken: payload.access_token,
+    expiresAt: now() + (payload.expires_in ?? 3600) * 1000,
+    refreshToken: payload.refresh_token
   };
 }
 
@@ -288,19 +282,17 @@ export async function refreshGmailAccessToken(params: {
     throw new GmailOAuthRetryableError(`Gmail token refresh failed: server error (${response.status.toString()})`);
   }
   if (!response.ok) {
-    const errorCode = parseOAuthErrorCode(await withBestEffort(response.text(), ""));
+    const errorCode = parseOAuthErrorCode(await response.text().catch(() => ""));
     if (errorCode === "invalid_grant") {
       throw new GmailOAuthInvalidGrantError("Gmail refresh token is invalid or revoked — run `muse setup email` again. If this happens every ~7 days, your Google app is still in \"Testing\": publish it to Production at https://console.cloud.google.com/auth/audience (personal use needs no review).");
     }
     throw new Error(`Gmail token refresh failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
-  const payload = await response.json();
-  const accessToken = isRecord(payload) && typeof payload.access_token === "string" ? payload.access_token : undefined;
-  const expiresIn = isRecord(payload) && typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in) ? payload.expires_in : 3600;
-  if (!accessToken) {
+  const payload = await response.json() as { readonly access_token?: string; readonly expires_in?: number };
+  if (!payload.access_token) {
     throw new Error("Gmail token refresh response missing access_token");
   }
-  return { accessToken, expiresAt: now() + expiresIn * 1000 };
+  return { accessToken: payload.access_token, expiresAt: now() + (payload.expires_in ?? 3600) * 1000 };
 }
 
 export interface GmailTokenSourceDeps {

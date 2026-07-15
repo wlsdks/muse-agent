@@ -1,6 +1,6 @@
 import { MCP_EXTERNAL_TRANSPORT_BLOCKED, McpSecurityPolicyProvider, type McpManager, type McpSecurityPolicyStore, type McpServer } from "@muse/mcp";
 import { ToolOutputSanitizer } from "@muse/policy";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import {
   parseMcpSecurityPolicyInput,
@@ -32,9 +32,6 @@ export interface McpRouteOptions {
   ) => boolean;
   readonly mcp?: McpRouteMcp;
 }
-
-type McpRoutePathParams = { name: string };
-type McpToolRoutePathParams = { name: string; toolName: string };
 
 export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOptions): void {
   for (const prefix of ["/api/mcp", "/mcp", "/admin/mcp"]) {
@@ -86,7 +83,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       }
     });
 
-    server.get(`${prefix}/servers/:name`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.get(`${prefix}/servers/:name`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
@@ -97,7 +94,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
         return reply;
       }
 
-      const { name } = request.params;
+      const { name } = request.params as { readonly name: string };
       const entry = await findMcpServer(mcp.manager, name);
 
       if (!entry) {
@@ -107,23 +104,23 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       return toServerDetail(entry, mcp.manager);
     });
 
-    server.put(`${prefix}/servers/:name`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.put(`${prefix}/servers/:name`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
-      return updateMcpServer(request.params.name, request.body, options, reply);
+      return updateMcpServer(request.params, request.body, options, reply);
     });
 
-    server.patch(`${prefix}/servers/:name`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.patch(`${prefix}/servers/:name`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
-      return updateMcpServer(request.params.name, request.body, options, reply);
+      return updateMcpServer(request.params, request.body, options, reply);
     });
 
-    server.delete(`${prefix}/servers/:name`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.delete(`${prefix}/servers/:name`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
@@ -134,7 +131,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
         return reply;
       }
 
-      const { name } = request.params;
+      const { name } = request.params as { readonly name: string };
 
       if (!(await findMcpServer(mcp.manager, name))) {
         return sendMcpServerNotFound(reply, name);
@@ -144,15 +141,15 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       return reply.status(204).send(undefined);
     });
 
-    server.post(`${prefix}/servers/:name/connect`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.post(`${prefix}/servers/:name/connect`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
-      return connectMcpServer(request.params.name, options, reply);
+      return connectMcpServer(request.params, options, reply);
     });
 
-    server.post(`${prefix}/servers/:name/disconnect`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.post(`${prefix}/servers/:name/disconnect`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
@@ -163,7 +160,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
         return reply;
       }
 
-      const { name } = request.params;
+      const { name } = request.params as { readonly name: string };
 
       if (!(await findMcpServer(mcp.manager, name))) {
         return sendMcpServerNotFound(reply, name);
@@ -173,20 +170,20 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       return { status: toCompatEnum(mcp.manager.getStatus(name) ?? "disconnected") };
     });
 
-    server.get(`${prefix}/servers/:name/health`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.get(`${prefix}/servers/:name/health`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
-      return checkMcpServerHealth(request.params.name, options, reply);
+      return checkMcpServerHealth(request.params, options, reply);
     });
 
-    server.post(`${prefix}/servers/:name/reconnect`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.post(`${prefix}/servers/:name/reconnect`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
-      return reconnectMcpServer(request.params.name, options, reply);
+      return reconnectMcpServer(request.params, options, reply);
     });
 
     server.post(`${prefix}/reconnect-due`, async (request, reply) => {
@@ -207,7 +204,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       return mcp.manager.reconnectDue();
     });
 
-    server.get(`${prefix}/servers/:name/tools`, async (request: FastifyRequest<{ Params: McpRoutePathParams }>, reply) => {
+    server.get(`${prefix}/servers/:name/tools`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
@@ -218,11 +215,13 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
         return reply;
       }
 
-      if (!(await findMcpServer(mcp.manager, request.params.name))) {
-        return sendMcpServerNotFound(reply, request.params.name);
+      const { name } = request.params as { readonly name: string };
+
+      if (!(await findMcpServer(mcp.manager, name))) {
+        return sendMcpServerNotFound(reply, name);
       }
 
-      return mcp.manager.getToolCatalog(request.params.name);
+      return mcp.manager.getToolCatalog(name);
     });
 
     server.get(`${prefix}/tools`, async (request, reply) => {
@@ -239,9 +238,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
       return mcp.manager.getToolCatalog();
     });
 
-    server.post(
-      `${prefix}/servers/:name/tools/:toolName/call`,
-      async (request: FastifyRequest<{ Params: McpToolRoutePathParams }>, reply) => {
+    server.post(`${prefix}/servers/:name/tools/:toolName/call`, async (request, reply) => {
       if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
@@ -281,7 +278,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
 }
 
 async function updateMcpServer(
-  name: string,
+  params: unknown,
   body: unknown,
   options: McpRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError | undefined): void } }
@@ -292,6 +289,7 @@ async function updateMcpServer(
     return reply;
   }
 
+  const { name } = params as { readonly name: string };
   const existing = await findMcpServer(mcp.manager, name);
 
   if (!existing) {
@@ -325,7 +323,7 @@ async function updateMcpServer(
 }
 
 async function connectMcpServer(
-  name: string,
+  params: unknown,
   options: McpRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError | unknown): void } }
 ) {
@@ -334,6 +332,8 @@ async function connectMcpServer(
   if (!mcp) {
     return reply;
   }
+
+  const { name } = params as { readonly name: string };
 
   if (!(await findMcpServer(mcp.manager, name))) {
     return sendMcpServerNotFound(reply, name);
@@ -360,7 +360,7 @@ async function connectMcpServer(
 }
 
 async function checkMcpServerHealth(
-  name: string,
+  params: unknown,
   options: McpRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError | unknown): void } }
 ) {
@@ -369,6 +369,8 @@ async function checkMcpServerHealth(
   if (!mcp) {
     return reply;
   }
+
+  const { name } = params as { readonly name: string };
 
   if (!(await findMcpServer(mcp.manager, name))) {
     return sendMcpServerNotFound(reply, name);
@@ -378,7 +380,7 @@ async function checkMcpServerHealth(
 }
 
 async function reconnectMcpServer(
-  name: string,
+  params: unknown,
   options: McpRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError | unknown): void } }
 ) {
@@ -387,6 +389,8 @@ async function reconnectMcpServer(
   if (!mcp) {
     return reply;
   }
+
+  const { name } = params as { readonly name: string };
 
   if (!(await findMcpServer(mcp.manager, name))) {
     return sendMcpServerNotFound(reply, name);
@@ -413,7 +417,7 @@ async function reconnectMcpServer(
 }
 
 async function callMcpTool(
-  params: McpToolRoutePathParams,
+  params: unknown,
   body: unknown,
   options: McpRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError | unknown): void } }
@@ -424,7 +428,7 @@ async function callMcpTool(
     return reply;
   }
 
-  const { name, toolName } = params;
+  const { name, toolName } = params as { readonly name: string; readonly toolName: string };
   const parsed = parseToolCallBody(body);
 
   if (!parsed.ok) {
@@ -538,3 +542,4 @@ function externalMcpTransportBlocked(): ApiError {
     message: "External MCP transport is disabled by the local-only privacy posture"
   };
 }
+

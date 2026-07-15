@@ -23,7 +23,6 @@ import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, pars
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
-import { resolveAmbientSourceMode } from "@muse/shared";
 
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
@@ -370,14 +369,11 @@ export function startSituationalBriefingDaemonIfConfigured(
   // refreshes the snapshot.
   let knownContactEmails = new Set<string>();
   if (gmailToken && gmailToken.length > 0) {
-    void (async () => {
-      try {
-        const contacts = await queryContacts(resolveContactsFile(env));
+    void queryContacts(resolveContactsFile(env))
+      .then((contacts) => {
         knownContactEmails = new Set(contacts.flatMap((c) => (c.email ? [c.email.toLowerCase()] : [])));
-      } catch {
-        // no-op: this is best-effort enrichment and telemetry does not depend on it
-      }
-    })();
+      })
+      .catch(() => undefined);
   }
   const inboxKnownSenderOpt = gmailToken && gmailToken.length > 0
     ? {
@@ -566,7 +562,7 @@ export function startConsolidateDaemonIfConfigured(
       ? createFileBackedActivityTracker({ file: presenceFile })
       : createInMemoryActivityTracker();
     server.addHook("onRequest", async (request) => {
-      const path = request.url;
+      const path = (request as { readonly url?: string }).url ?? "";
       if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
         tracker.record();
       }
@@ -662,8 +658,7 @@ export function startAmbientDaemonIfConfigured(
   const quietHours = liveQuietHours(env, server, env.MUSE_AMBIENT_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
-  const sourceMode = resolveAmbientSourceMode(env.MUSE_AMBIENT_SOURCE, { platform: process.platform });
-  const source = sourceMode === "macos"
+  const source = env.MUSE_AMBIENT_SOURCE?.trim() === "macos" && process.platform === "darwin"
     ? new MacOsActiveWindowSource({ includeClipboard: parseBoolean(env.MUSE_AMBIENT_CLIPBOARD, false) })
     : new FileAmbientSignalSource(resolveAmbientSignalFile(env));
   const handle = startAmbientTick({

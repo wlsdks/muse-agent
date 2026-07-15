@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { executePlanExecuteLoop, type PlanExecuteRunner } from "../src/plan-execute-loop.js";
 import type { AgentRunContext } from "../src/types.js";
-import { readNotesOrAbsent, readNotesOrEmpty } from "./note-store-test-helpers.js";
 
 // τ-bench-style TERMINAL-STATE eval on the FULL plan-execute assembly (agent-eval
 // gap B remaining). The earlier gap-B test scripted the tool-loop's model turns;
@@ -29,6 +28,9 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+const readNotes = async (): Promise<readonly { text: string }[] | "absent"> =>
+  fs.readFile(noteFile, "utf8").then((raw) => JSON.parse(raw) as { text: string }[]).catch(() => "absent" as const);
+
 const saveNoteTool = (): MuseTool => ({
   definition: {
     description: "Persist a note to the user's store.",
@@ -37,7 +39,7 @@ const saveNoteTool = (): MuseTool => ({
     risk: "write",
   },
   execute: async (args) => {
-    const prior = await readNotesOrEmpty(noteFile);
+    const prior = await fs.readFile(noteFile, "utf8").then((r) => JSON.parse(r) as { text: string }[]).catch(() => []);
     prior.push({ text: String((args as { text: unknown }).text) });
     await fs.writeFile(noteFile, JSON.stringify(prior));
     return `saved: ${String((args as { text: unknown }).text)}`;
@@ -88,7 +90,7 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
     const prompt = steer([{ tool: "save_note", args: { text: "buy milk" }, description: "save the note" }]);
     const result = await executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool));
 
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "buy milk" }]); // WORLD STATE, not trajectory
+    expect(await readNotes()).toEqual([{ text: "buy milk" }]); // WORLD STATE, not trajectory
     expect(result.toolsUsed).toEqual(["save_note"]);
     expect(result.toolResults[0]?.result.status).toBe("completed");
     expect(result.finalResponse.output.length).toBeGreaterThan(0); // real synthesis answered
@@ -103,7 +105,7 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
     ]);
     const result = await executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool));
 
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "first" }, { text: "second" }]);
+    expect(await readNotes()).toEqual([{ text: "first" }, { text: "second" }]);
     expect(result.toolResults).toHaveLength(2);
   });
 
@@ -114,7 +116,7 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
     await expect(
       executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool)),
     ).rejects.toMatchObject({ code: "PLAN_ALL_STEPS_FAILED" });
-    expect(await readNotesOrAbsent(noteFile)).toBe("absent"); // failed tool left no side effect
+    expect(await readNotes()).toBe("absent"); // failed tool left no side effect
   });
 
   it("rejects a directive naming an unavailable tool at validation — no tool runs, no mutation", async () => {
@@ -127,7 +129,7 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
     const result = await executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool));
     // No save_note was called — the invalid tool never reached execution.
     expect(result.toolResults).toHaveLength(0);
-    expect(await readNotesOrAbsent(noteFile)).toBe("absent");
+    expect(await readNotes()).toBe("absent");
   });
 
   it("an empty-plan directive falls through to a direct answer and mutates nothing", async () => {
@@ -138,6 +140,6 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
 
     expect(result.toolResults).toHaveLength(0);
     expect(result.finalResponse.output.length).toBeGreaterThan(0);
-    expect(await readNotesOrAbsent(noteFile)).toBe("absent");
+    expect(await readNotes()).toBe("absent");
   });
 });

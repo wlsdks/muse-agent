@@ -51,13 +51,6 @@ function isCont(ch: string): boolean {
   return /\d/u.test(ch) || SCALE_UNIT_CHARS.has(ch) || HANGUL_NUMERAL_RE.test(ch);
 }
 
-function parseFactCategory(raw: string | undefined): FactCategory {
-  if (raw === "ENTITY" || raw === "DECISION" || raw === "CONDITION" || raw === "STATE" || raw === "NUMERIC") {
-    return raw;
-  }
-  return "GENERAL";
-}
-
 /**
  * Return true when the phrase is a COMPLETE token in `source` at `offset`.
  * Guards applied symmetrically on all four directions:
@@ -221,7 +214,7 @@ export function extractSalientFacts(messages: readonly ConversationMessage[]): S
     .flatMap((entity) => {
       const value = sanitizeValue(entity);
       if (!value) return [];
-      return [{ category: "ENTITY", key: sanitizeKey(entity), value }];
+      return [{ category: "ENTITY" as FactCategory, key: sanitizeKey(entity), value }];
     });
 
   const all = [...numericFacts, ...decisionFacts, ...entityFacts];
@@ -305,7 +298,7 @@ export function parseKeyDetailsBlock(text: string): StructuredFact[] {
     const { cat, key, value } = match.groups;
     if (!key || !value) continue;
     facts.push({
-      category: parseFactCategory(cat),
+      category: (cat ?? "GENERAL") as FactCategory,
       key: key.trim(),
       value: value.trim()
     });

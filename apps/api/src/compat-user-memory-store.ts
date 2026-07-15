@@ -18,7 +18,6 @@ import {
   toBody,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
-import { readRouteParam } from "./compat-parsers.js";
 
 export async function updateUserMemory(
   request: FastifyRequest,
@@ -26,12 +25,7 @@ export async function updateUserMemory(
   key: "facts" | "preferences",
   options?: CompatibilityRouteOptions
 ) {
-  const userId = readRouteParam(request, "userId");
-
-  if (!userId) {
-    return reply.status(400).send(errorResponse("Invalid userId"));
-  }
-
+  const { userId } = request.params as { readonly userId: string };
   const body = toBody(request.body);
   const itemKey = readBodyString(body, "key")?.trim();
   const itemValue = readBodyString(body, "value")?.trim();
@@ -111,10 +105,10 @@ export async function canAccessUserMemory(
 }
 
 async function currentAuthIdentity(
-  request: FastifyRequest & { readonly auth?: AuthIdentity },
+  request: FastifyRequest,
   options: CompatibilityRouteOptions
 ): Promise<AuthIdentity | undefined> {
-  return request.auth
+  return (request as { auth?: AuthIdentity }).auth
     ?? await options.authService?.authenticateBearer(extractBearerToken(request.headers.authorization));
 }
 

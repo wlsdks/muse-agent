@@ -13,15 +13,11 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-
-
 import { parseSkillFile } from "@muse/skills";
 import type { Command } from "commander";
 
 import { isSafeSkillName } from "./commands-skills.js";
 import type { ProgramIO } from "./program.js";
-import { pathExists } from "./path-exists.js";
-import { withBestEffort } from "./async-promises.js";
 
 export interface AgentDef {
   readonly name: string;
@@ -66,7 +62,7 @@ export async function loadAgents(dir: string): Promise<readonly AgentDef[]> {
   for (const entry of entries) {
     const file = join(dir, entry, "AGENT.md");
     try {
-      const info = await withBestEffort(stat(file), undefined);
+      const info = await stat(file).catch(() => undefined);
       if (!info?.isFile()) continue;
       const parsed = await parseSkillFile(file, { source: "user" });
       out.push({ description: parsed.description, name: parsed.name, prompt: parsed.body.trim() });
@@ -123,7 +119,7 @@ export function registerAgentsCommands(program: Command, io: ProgramIO): void {
         return;
       }
       const file = join(resolveAgentsDir(), name, "AGENT.md");
-      if (await pathExists(file)) {
+      if (await stat(file).then(() => true).catch(() => false)) {
         io.stderr(`error: an agent already exists at ${file}\n`);
         process.exitCode = 1;
         return;

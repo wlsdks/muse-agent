@@ -12,8 +12,6 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { isRecord, withBestEffort } from "@muse/shared";
-
 import { FileSystemSkillLoader } from "./skill-loader.js";
 import { parseSkillFile } from "./skill-parser.js";
 import type { Skill } from "./skill-contract.js";
@@ -64,7 +62,6 @@ export interface AuthoredSkillStoreOptions {
 
 export const DEFAULT_MAX_AUTHORED_SKILLS = 30;
 const PATCH_SIMILARITY_THRESHOLD = 0.6;
-const EMPTY_FILE_LIST: readonly string[] = [];
 
 async function writeFileAtomic(filePath: string, text: string): Promise<void> {
   await fs.mkdir(dirname(filePath), { recursive: true });
@@ -77,7 +74,7 @@ async function writeFileAtomic(filePath: string, text: string): Promise<void> {
     await handle.close();
   }
   await fs.rename(tmp, filePath);
-  await withBestEffort(fs.chmod(filePath, 0o600), undefined);
+  await fs.chmod(filePath, 0o600).catch(() => undefined);
 }
 
 /**
@@ -129,7 +126,7 @@ export class AuthoredSkillStore {
         { name: match.name, description: draft.description, body: draft.body },
         this.now().toISOString()
       );
-    const existing = await withBestEffort(fs.readFile(match.sourceInfo.filePath, "utf8"), "");
+      const existing = await fs.readFile(match.sourceInfo.filePath, "utf8").catch(() => "");
       if (stripTimestamps(existing) === stripTimestamps(text)) {
         return { action: "skip", skill: match };
       }
@@ -171,7 +168,7 @@ export class AuthoredSkillStore {
       const skill = authored.find((s) => s.name === name);
       if (!skill) return false;
 
-      const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
+      const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
       const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
       const now = this.now();
 
@@ -366,10 +363,7 @@ export class AuthoredSkillStore {
 
   /** Archived skill folder names (under `.archive/`) — what `restore` can revive. */
   async listArchived(): Promise<readonly string[]> {
-    return withBestEffort<string[], readonly string[]>(
-      fs.readdir(join(this.dir, ".archive")),
-      EMPTY_FILE_LIST
-    );
+    return fs.readdir(join(this.dir, ".archive")).catch(() => [] as string[]);
   }
 
   /**
@@ -387,30 +381,20 @@ export class AuthoredSkillStore {
     } catch {
       // slot free — proceed
     }
-    try {
-      await fs.rename(src, dest);
-      return true;
-    } catch {
-      return false;
-    }
+    return fs.rename(src, dest).then(() => true).catch(() => false);
   }
 
   /** Pre-mutation snapshots, newest last — what `rollback()` can restore. */
   async listSnapshots(): Promise<readonly SkillSnapshot[]> {
-    const files = await withBestEffort<string[], readonly string[]>(
-      fs.readdir(this.snapshotsDir()),
-      EMPTY_FILE_LIST
-    );
+    const files = await fs.readdir(this.snapshotsDir()).catch(() => [] as string[]);
     const out: SkillSnapshot[] = [];
     for (const file of files.filter((f) => f.endsWith(".json")).sort()) {
-      const raw = await withBestEffort<string, string | undefined>(
-        fs.readFile(join(this.snapshotsDir(), file), "utf8"),
-        undefined
-      );
+      const raw = await fs.readFile(join(this.snapshotsDir(), file), "utf8").catch(() => undefined);
       if (raw === undefined) continue;
-      const parsed = AuthoredSkillStore.parseSnapshot(raw);
-      if (parsed) {
-        out.push(parsed);
+      try {
+        out.push(JSON.parse(raw) as SkillSnapshot);
+      } catch {
+        // corrupt/partial snapshot file — skip, don't fail the whole list
       }
     }
     return out;
@@ -464,7 +448,7 @@ export class AuthoredSkillStore {
     if (skills.length === 0) return undefined;
     const entries: SkillSnapshotEntry[] = [];
     for (const skill of skills) {
-      const content = await withBestEffort(fs.readFile(skill.sourceInfo.filePath, "utf8"), "");
+      const content = await fs.readFile(skill.sourceInfo.filePath, "utf8").catch(() => "");
       entries.push({
         content,
         contentHash: createHash("sha256").update(content).digest("hex"),
@@ -480,16 +464,13 @@ export class AuthoredSkillStore {
   }
 
   private async pruneSnapshots(): Promise<void> {
-    const files = (await withBestEffort<string[], readonly string[]>(
-      fs.readdir(this.snapshotsDir()),
-      EMPTY_FILE_LIST
-    ))
+    const files = (await fs.readdir(this.snapshotsDir()).catch(() => [] as string[]))
       .filter((f) => f.endsWith(".json"))
       .sort();
     const excess = files.length - this.snapshotRingSize;
     if (excess <= 0) return;
     for (const file of files.slice(0, excess)) {
-      await withBestEffort(fs.unlink(join(this.snapshotsDir(), file)), undefined);
+      await fs.unlink(join(this.snapshotsDir(), file)).catch(() => undefined);
     }
   }
 
@@ -505,82 +486,38 @@ export class AuthoredSkillStore {
     const liveFile = join(liveDir, "SKILL.md");
     const archiveDir = join(this.dir, ".archive", entry.slug);
 
-    const currentContent = await withBestEffort(fs.readFile(liveFile, "utf8"), undefined);
+    const currentContent = await fs.readFile(liveFile, "utf8").catch(() => undefined);
     let conflict = false;
     if (currentContent !== undefined && currentContent !== entry.content) {
       const preserveDir = join(this.dir, ".archive", `${entry.slug}-postsnapshot-${this.now().getTime().toString()}`);
-      await withBestEffort(fs.rename(liveDir, preserveDir), undefined);
+      await fs.rename(liveDir, preserveDir).catch(() => undefined);
       conflict = true;
     } else if (currentContent === undefined) {
       // Not live — if curate/consolidate archived it, reclaim the folder so
       // rollback doesn't leave an orphaned duplicate under .archive.
-      await withBestEffort(fs.rename(archiveDir, liveDir), undefined);
+      await fs.rename(archiveDir, liveDir).catch(() => undefined);
     }
     await writeFileAtomic(liveFile, entry.content);
     return conflict;
   }
 
   private authoredAt(skill: Skill): number {
-    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["authoredAt"];
     const at = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
     return Number.isFinite(at) ? at : 0;
   }
 
   private lastActiveAt(skill: Skill): number {
-    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["lastUsedAt"];
     const used = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
     return Number.isFinite(used) ? used : this.authoredAt(skill);
   }
 
   private hasUsage(skill: Skill): boolean {
-    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata?.["muse"] : {};
-    return typeof muse["lastUsedAt"] === "string" && muse.lastUsedAt.length > 0;
-  }
-
-  private static parseSnapshot(raw: string): SkillSnapshot | undefined {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return undefined;
-    }
-
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
-    if (typeof parsed.id !== "string" || parsed.id.length === 0) {
-      return undefined;
-    }
-    if (typeof parsed.createdAt !== "string" || parsed.createdAt.length === 0) {
-      return undefined;
-    }
-    if (!Array.isArray(parsed.entries)) {
-      return undefined;
-    }
-
-    const entries: SkillSnapshotEntry[] = [];
-    for (const entry of parsed.entries) {
-      if (!isRecord(entry) || typeof entry.name !== "string" || entry.name.trim() === "") {
-        return undefined;
-      }
-      if (typeof entry.slug !== "string" || entry.slug.trim() === "") return undefined;
-      if (typeof entry.contentHash !== "string" || entry.contentHash.length === 0) return undefined;
-      if (typeof entry.content !== "string") return undefined;
-      entries.push({
-        content: entry.content,
-        contentHash: entry.contentHash,
-        name: entry.name,
-        slug: entry.slug
-      });
-    }
-
-    return {
-      createdAt: parsed.createdAt,
-      entries,
-      id: parsed.id
-    };
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    return typeof muse["lastUsedAt"] === "string" && (muse["lastUsedAt"] as string).length > 0;
   }
 
   private async archiveSkill(skill: Skill): Promise<boolean> {
@@ -588,12 +525,7 @@ export class AuthoredSkillStore {
     const base = folder.split(/[\\/]/u).pop() ?? "skill";
     const dest = join(this.dir, ".archive", base);
     await fs.mkdir(dirname(dest), { recursive: true });
-    try {
-      await fs.rename(folder, dest);
-      return true;
-    } catch {
-      return false;
-    } // never delete
+    return fs.rename(folder, dest).then(() => true).catch(() => false); // never delete
   }
 
   private async enforceCap(): Promise<void> {

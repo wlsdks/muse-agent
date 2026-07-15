@@ -13,7 +13,6 @@ import { performWebActionWithApproval, type WebActionApprovalGate } from "@muse/
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
-import { confirmBoolean } from "./confirm-boolean.js";
 import type { ProgramIO } from "./program.js";
 
 interface RunOptions {
@@ -45,14 +44,16 @@ export function registerWebActionCommands(program: Command, io: ProgramIO, deps:
         url: options.url ?? "",
         ...(options.body !== undefined ? { body: options.body } : {})
       };
-      const gate: WebActionApprovalGate = deps.approvalGate ?? (async (action) => {
+      const gate: WebActionApprovalGate = deps.approvalGate ?? ((action) => {
         io.stdout(`\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`);
-        const approved = await confirmBoolean(confirm, isCancel, "Perform this web action?");
-        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
+        return confirm({ message: "Perform this web action?" }).then((answer) =>
+          isCancel(answer) || answer !== true
+            ? { approved: false, reason: "user did not confirm" }
+            : { approved: true });
       });
 
       const outcome = await performWebActionWithApproval({
-        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env),
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
         approvalGate: gate,
         fetchImpl: deps.fetchImpl ?? globalThis.fetch,
         request,

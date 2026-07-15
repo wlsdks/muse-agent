@@ -59,7 +59,6 @@ import {
   type ScheduledJobStore
 } from "@muse/scheduler";
 import { formatBirthdayBriefLine, isSchedulerPaused, queryContacts, readEpisodes, readProactiveHistory, resolveUpcomingBirthdays } from "@muse/stores";
-import { isRecord } from "@muse/shared";
 
 import { backgroundStoreFile } from "./commands-background.js";
 import { checkinsFile } from "./commands-checkins.js";
@@ -235,9 +234,7 @@ export function makeDailyBriefTick(deps: MakeDailyBriefTickDeps): () => Promise<
     const nowDate = now();
     let lastFiredISO: string | undefined;
     try {
-      const raw = JSON.parse(readFileSync(sidecarFile, "utf8"));
-      const parsed = isRecord(raw) ? raw : undefined;
-      lastFiredISO = typeof parsed?.lastFired === "string" ? parsed.lastFired : undefined;
+      lastFiredISO = (JSON.parse(readFileSync(sidecarFile, "utf8")) as { lastFired?: string }).lastFired;
     } catch { /* no sidecar yet ⇒ never fired */ }
     if (!shouldFireDailyBrief(nowDate, lastFiredISO, parsedTime.hour, parsedTime.minute)) {
       return;

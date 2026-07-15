@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAgentRuntime } from "../src/index.js";
 import type { AgentRuntimeStreamEvent } from "../src/agent-runtime-types.js";
-import { readNotesOrAbsent, readNotesOrEmpty } from "./note-store-test-helpers.js";
 
 // Full agent-run e2e through AgentRuntime in plan_execute mode (backlog P2). Unlike
 // the plan-execute-trajectory unit test (which drives streamPlanExecute directly),
@@ -28,6 +27,9 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+const readNotes = async (): Promise<readonly { text: string }[] | "absent"> =>
+  fs.readFile(noteFile, "utf8").then((raw) => JSON.parse(raw) as { text: string }[]).catch(() => "absent" as const);
+
 const saveNoteTool = (): MuseTool => ({
   definition: {
     description: "Persist a note to the user's store.",
@@ -36,7 +38,7 @@ const saveNoteTool = (): MuseTool => ({
     risk: "read", // read-risk so no approval gate is involved — this e2e is about the run composition
   },
   execute: async (args) => {
-    const prior = await readNotesOrEmpty(noteFile);
+    const prior = await fs.readFile(noteFile, "utf8").then((r) => JSON.parse(r) as { text: string }[]).catch(() => []);
     prior.push({ text: String((args as { text: unknown }).text) });
     await fs.writeFile(noteFile, JSON.stringify(prior));
     return `saved: ${String((args as { text: unknown }).text)}`;
@@ -81,7 +83,7 @@ describe("agent run e2e — plan_execute through AgentRuntime (real diagnostic +
     const doneEvent = events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>;
     expect(doneEvent.response.output.length).toBeGreaterThan(0);
 
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "buy milk" }]); // terminal WORLD STATE
+    expect(await readNotes()).toEqual([{ text: "buy milk" }]); // terminal WORLD STATE
   });
 
   it("run(): the blocking variant accomplishes the same goal and persists a completed run record", async () => {
@@ -101,7 +103,7 @@ describe("agent run e2e — plan_execute through AgentRuntime (real diagnostic +
     });
 
     expect(result.response.output.length).toBeGreaterThan(0);
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "call mom" }]);
+    expect(await readNotes()).toEqual([{ text: "call mom" }]);
     const record = await history.findRun("run-pe-block");
     expect(record?.status).toBe("completed");
   });

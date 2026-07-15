@@ -16,7 +16,6 @@
 import { promises as fs } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 import type { BrowsingVisit } from "./browsing-store.js";
 import { webkitTimeToIso } from "./browsing-store.js";
@@ -97,11 +96,8 @@ export async function readChromeHistoryVisits(
   historyFile: string,
   options: ReadChromeHistoryOptions = {}
 ): Promise<readonly BrowsingVisit[]> {
-  const sinceVisitTimeCandidate = options.sinceVisitTime ?? Number.NaN;
-  const sinceVisitTime = Number.isFinite(sinceVisitTimeCandidate) ? sinceVisitTimeCandidate : 0;
-
-  const limitCandidate = options.limit ?? 0;
-  const limit = Number.isFinite(limitCandidate) && limitCandidate > 0 ? Math.trunc(limitCandidate) : 2000;
+  const sinceVisitTime = Number.isFinite(options.sinceVisitTime) ? (options.sinceVisitTime as number) : 0;
+  const limit = Number.isFinite(options.limit) && (options.limit ?? 0) > 0 ? Math.trunc(options.limit as number) : 2000;
 
   const tempCopy = join(tmpdir(), `muse-chrome-history-${process.pid.toString()}-${Date.now().toString()}-${Math.random().toString(36).slice(2)}.sqlite`);
   let rows: readonly RawVisitRow[];
@@ -115,7 +111,7 @@ export async function readChromeHistoryVisits(
   } catch {
     return [];
   } finally {
-    await withBestEffort(fs.unlink(tempCopy), undefined);
+    await fs.unlink(tempCopy).catch(() => undefined);
   }
   return rows.flatMap((row) => toBrowsingVisit(row));
 }
@@ -143,13 +139,19 @@ async function queryVisits(dbFile: string, sinceVisitTime: number, limit: number
 }
 
 function isRawVisitRow(row: unknown): row is RawVisitRow {
-  if (!isRecord(row)) {
+  if (typeof row !== "object" || row === null) {
     return false;
   }
-  if (typeof row.visit_id !== "bigint" || typeof row.visit_time !== "bigint" || typeof row.url !== "string") {
+  const value = row as {
+    readonly visit_id: unknown;
+    readonly url: unknown;
+    readonly title: unknown;
+    readonly visit_time: unknown;
+  };
+  if (typeof value.visit_id !== "bigint" || typeof value.visit_time !== "bigint" || typeof value.url !== "string") {
     return false;
   }
-  return row.title === null || typeof row.title === "string";
+  return value.title === null || typeof value.title === "string";
 }
 
 function toBrowsingVisit(row: RawVisitRow): readonly BrowsingVisit[] {

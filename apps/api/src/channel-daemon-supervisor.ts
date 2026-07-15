@@ -71,17 +71,18 @@ export function createChannelDaemonSupervisor(): ChannelDaemonSupervisor {
       entry.lastIngestCount = count;
     },
     status() {
-      const status = {} as Record<string, ChannelDaemonStatus>;
-      for (const [name, entry] of daemons.entries()) {
-        status[name] = {
-          running: entry.handle !== undefined,
-          ...(entry.lastIngestAtIso ? { lastIngestAtIso: entry.lastIngestAtIso } : {}),
-          ...(entry.lastIngestCount !== undefined ? { lastIngestCount: entry.lastIngestCount } : {}),
-          ...(entry.lastError ? { lastError: entry.lastError } : {}),
-          ...(entry.lastErrorAtIso ? { lastErrorAtIso: entry.lastErrorAtIso } : {})
-        };
-      }
-      return status;
+      return Object.fromEntries(
+        [...daemons.entries()].map(([name, entry]) => [
+          name,
+          {
+            running: entry.handle !== undefined,
+            ...(entry.lastIngestAtIso ? { lastIngestAtIso: entry.lastIngestAtIso } : {}),
+            ...(entry.lastIngestCount !== undefined ? { lastIngestCount: entry.lastIngestCount } : {}),
+            ...(entry.lastError ? { lastError: entry.lastError } : {}),
+            ...(entry.lastErrorAtIso ? { lastErrorAtIso: entry.lastErrorAtIso } : {})
+          }
+        ])
+      );
     },
     stop(name) {
       const entry = daemons.get(name);

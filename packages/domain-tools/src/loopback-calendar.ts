@@ -3,7 +3,7 @@ import type {
   CalendarEventUpdate,
   CalendarProviderRegistry
 } from "@muse/calendar";
-import { assertNoSecretInPersistedFields, isRecord, type JsonObject } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { computeAvailability } from "@muse/mcp-shared";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
@@ -67,7 +67,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             displayName: info.displayName,
             id: info.id,
             local: info.local
-          }))
+          })) as JsonValue
         }),
         inputSchema: {
           additionalProperties: false,
@@ -101,7 +101,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
               ? all
               : all.filter((e) => `${e.title} ${e.location ?? ""} ${e.notes ?? ""}`.toLowerCase().includes(needle));
             return {
-              events: events.map(serializeEvent),
+              events: events.map(serializeEvent) as JsonValue,
               total: events.length,
               ...(queryTrimmed ? { query: queryTrimmed } : {})
             };
@@ -142,7 +142,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             };
           }
           const to = parseIsoDate(readString(args, "to") ?? readString(args, "toIso")) ?? new Date(from.getTime() + 60 * 60_000);
-          const minRaw = isRecord(args) ? args.minMinutes : undefined;
+          const minRaw = (args as Record<string, unknown>)["minMinutes"];
           const minMinutes = typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : undefined;
           const providerId = readString(args, "providerId");
           try {
@@ -153,11 +153,11 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
                 endsAtIso: block.endsAt.toISOString(),
                 startsAtIso: block.startsAt.toISOString(),
                 titles: [...block.titles]
-              })),
+              })) as JsonValue,
               free: result.free.map((slot) => ({
                 endsAtIso: slot.endsAt.toISOString(),
                 startsAtIso: slot.startsAt.toISOString()
-              })),
+              })) as JsonValue,
               fullyFree: result.fullyFree,
               windowFromIso: from.toISOString(),
               windowToIso: to.toISOString()
@@ -206,7 +206,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
                 overlapEndsAtIso: c.overlapEndsAt.toISOString(),
                 overlapStartsAtIso: c.overlapStartsAt.toISOString(),
                 overlapStartsAtLocal: eventLocal(c.overlapStartsAt, false)
-              })),
+              })) as JsonValue,
               total: conflicts.length,
               windowFromIso: from.toISOString(),
               windowToIso: to.toISOString()
@@ -282,7 +282,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           const recurrence = cadence ? `FREQ=${cadence.toUpperCase()}` : undefined;
           const guard = assertNoSecretInPersistedFields({ title, notes, location });
           if (!guard.safe) {
-            return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
           const input: CalendarEventInput = {
             allDay,
@@ -296,7 +296,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           };
           try {
             const created = await registry.createEvent(providerId, input);
-            return { event: serializeEvent(created) };
+            return { event: serializeEvent(created) as JsonValue };
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -345,7 +345,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             location: readString(args, "location")
           });
           if (!updateGuard.safe) {
-            return { blocked: true, error: updateGuard.notice, kinds: [...updateGuard.kinds] };
+            return { blocked: true, error: updateGuard.notice, kinds: updateGuard.kinds as JsonValue };
           }
           const resolved = await resolveEventForAction(registry, ref, readString(args, "providerId"));
           if ("error" in resolved) {
@@ -418,7 +418,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             const remindersShifted = remindersFile && update.startsAt
               ? await syncRemindersOnEventReschedule(remindersFile, resolved.event.id, resolved.event.startsAt, update.startsAt)
               : 0;
-            return { event: serializeEvent(updated), ...(remindersShifted > 0 ? { remindersShifted } : {}) };
+            return { event: serializeEvent(updated) as JsonValue, ...(remindersShifted > 0 ? { remindersShifted } : {}) };
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -487,3 +487,4 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
     ]
   };
 }
+

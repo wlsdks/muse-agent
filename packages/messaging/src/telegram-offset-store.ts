@@ -16,15 +16,9 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
 interface PersistedShape {
   readonly version: 1;
   readonly offset: number;
-}
-
-function isPersistedTelegramOffset(value: unknown): value is PersistedShape {
-  return isRecord(value) && value.version === 1 && typeof value.offset === "number" && Number.isFinite(value.offset);
 }
 
 export async function readTelegramOffset(file: string): Promise<number | undefined> {
@@ -36,14 +30,18 @@ export async function readTelegramOffset(file: string): Promise<number | undefin
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return undefined;
   }
-  if (!isPersistedTelegramOffset(parsed)) {
+  if (!parsed || typeof parsed !== "object") {
     return undefined;
   }
-  return Math.trunc(parsed.offset);
+  const candidate = (parsed as { offset?: unknown }).offset;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return undefined;
+  }
+  return Math.trunc(candidate);
 }
 
 export async function writeTelegramOffset(file: string, offset: number): Promise<void> {

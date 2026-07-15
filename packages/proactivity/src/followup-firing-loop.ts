@@ -26,8 +26,6 @@
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { composeIdentityPrompt } from "@muse/prompts";
-import { withBestEffort } from "@muse/shared";
-
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import {
@@ -152,7 +150,7 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
   let delivered = 0;
 
   const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
     : undefined;
 
   for (const followup of due) {
@@ -164,9 +162,10 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
       }
       // Retry wraps only the send — synthesis above already ran
       // once, so a transient 5xx doesn't re-invoke the model.
-      const deliver = async (): Promise<void> => {
-        await sendWithRetry(options.registry, options.providerId, { destination: options.destination, text });
-      };
+      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
+        destination: options.destination,
+        text
+      }).then(() => undefined);
       let digested = false;
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;

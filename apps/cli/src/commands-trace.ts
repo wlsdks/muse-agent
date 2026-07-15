@@ -14,7 +14,6 @@ import type { Command } from "commander";
 
 import { FileCheckpointStore, resolveCheckpointsDir, type MuseEnvironment } from "@muse/autoconfigure";
 import type { SourceCheckSignals } from "@muse/recall";
-import { isRecord } from "@muse/shared";
 
 import type { ProgramIO } from "./program.js";
 
@@ -48,20 +47,17 @@ function asBool(v: unknown): boolean { return v === true; }
 function strList(v: unknown): readonly string[] | undefined {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
 }
-function toRecord(v: unknown): Record<string, unknown> | undefined {
-  return isRecord(v) ? v : undefined;
-}
 
 function parseSourceCheck(v: unknown): SourceCheckSignals | undefined {
-  const r = toRecord(v);
-  if (!r) return undefined;
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Record<string, unknown>;
   const sc = { citationUncited: asBool(r.citationUncited), citationUnsupported: asBool(r.citationUnsupported), untrustedOnly: asBool(r.untrustedOnly) };
   return sc.untrustedOnly || sc.citationUnsupported || sc.citationUncited ? sc : undefined;
 }
 
 function parseDecomposition(v: unknown): DecompositionSignals | undefined {
-  const r = toRecord(v);
-  if (!r) return undefined;
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Record<string, unknown>;
   const conflicts = strList(r.subtaskConflicts);
   const incomplete = strList(r.synthesisIncomplete);
   const truncated = asBool(r.truncated);
@@ -77,39 +73,30 @@ function parseDecomposition(v: unknown): DecompositionSignals | undefined {
 export function parseRunEvent(runId: string, raw: string): RunDetail | undefined {
   const lines = raw.trim().split("\n").filter((l) => l.trim().length > 0);
   if (lines.length === 0) return undefined;
-  let event: unknown;
+  let event: Record<string, unknown>;
   try {
-    event = JSON.parse(lines[lines.length - 1]!.trim());
+    event = JSON.parse(lines[lines.length - 1]!) as Record<string, unknown>;
   } catch {
     return undefined;
   }
-  const eventRecord = toRecord(event);
-  if (!eventRecord) {
-    return undefined;
-  }
-  const responseRecord = toRecord(eventRecord.response) ?? {};
-  const sourceCheck = parseSourceCheck(responseRecord.sourceCheck);
-  const decomposition = parseDecomposition(responseRecord.decomposition);
-  const retrieval = Array.isArray(responseRecord.retrieval)
-    ? responseRecord.retrieval.flatMap((entry): readonly { readonly source: string; readonly score: number }[] => {
-      if (!isRecord(entry)) return [];
-      const source = entry.source;
-      const score = entry.score;
-      if (typeof source !== "string" || typeof score !== "number") return [];
-      return [{ source, score }];
-    })
+  const response = (event.response && typeof event.response === "object" ? event.response : {}) as Record<string, unknown>;
+  const retrieval = Array.isArray(response.retrieval)
+    ? response.retrieval.filter((r): r is { source: string; score: number } =>
+        !!r && typeof r === "object"
+        && typeof (r as { source?: unknown }).source === "string"
+        && typeof (r as { score?: unknown }).score === "number") // guard `.score.toFixed` against a malformed entry
     : [];
   return {
-    answer: asString(responseRecord.response),
-    grounded: typeof eventRecord.grounded === "string" ? eventRecord.grounded : null,
-    query: asString(eventRecord.message),
-    recordedAt: asString(eventRecord.recordedAt),
+    answer: asString(response.response),
+    grounded: typeof event.grounded === "string" ? event.grounded : null,
+    query: asString(event.message),
+    recordedAt: asString(event.recordedAt),
     retrieval,
     runId,
-    success: typeof eventRecord.success === "boolean" ? eventRecord.success : null,
-    toolsUsed: Array.isArray(responseRecord.toolsUsed) ? responseRecord.toolsUsed.filter((t): t is string => typeof t === "string") : [],
-    ...(sourceCheck ? { sourceCheck } : {}),
-    ...(decomposition ? { decomposition } : {})
+    success: typeof event.success === "boolean" ? event.success : null,
+    toolsUsed: Array.isArray(response.toolsUsed) ? response.toolsUsed.filter((t): t is string => typeof t === "string") : [],
+    ...(parseSourceCheck(response.sourceCheck) ? { sourceCheck: parseSourceCheck(response.sourceCheck) } : {}),
+    ...(parseDecomposition(response.decomposition) ? { decomposition: parseDecomposition(response.decomposition) } : {})
   };
 }
 
@@ -202,12 +189,8 @@ export function registerTraceCommand(program: Command, io: ProgramIO): void {
         io.stderr(`Trace for '${runId}' is empty or unreadable.\n`);
         return;
       }
-      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env));
+      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
       const checkpoints = await store.findByRunId(runId);
-      io.stdout(`${formatRunDetail(detail, checkpoints.map((c): { readonly step: number; readonly phase: string } => {
-        const state = toRecord(c.state);
-        const phase = typeof state?.phase === "string" ? state.phase : "?";
-        return { phase, step: c.step };
-      }))}\n`);
+      io.stdout(`${formatRunDetail(detail, checkpoints.map((c) => ({ phase: typeof (c.state as { phase?: unknown }).phase === "string" ? (c.state as { phase: string }).phase : "?", step: c.step })))}\n`);
     });
 }

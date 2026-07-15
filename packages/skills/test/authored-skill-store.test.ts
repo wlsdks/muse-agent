@@ -1,5 +1,4 @@
 import { mkdtempSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -19,14 +18,6 @@ import type { Skill } from "../src/skill-contract.js";
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), "muse-authored-"));
 }
-
-const readDirOrEmpty = async (path: string): Promise<string[]> => {
-  try {
-    return await readdir(path);
-  } catch {
-    return [];
-  }
-};
 
 describe("AuthoredSkillStore — create + execute-gate", () => {
   it("writes a parseable SKILL.md and tags it authored", async () => {
@@ -122,7 +113,8 @@ describe("AuthoredSkillStore — cap & collisions", () => {
     await store.writeOrPatch({ name: "three", description: "gamma topic", body: "3" });
     const live = await store.listAuthored();
     expect(live.map((s) => s.name).sort()).toEqual(["three", "two"]);
-    const archived = await readDirOrEmpty(join(dir, ".archive"));
+    const { readdir } = await import("node:fs/promises");
+    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
     expect(archived).toContain("one");
   });
 
@@ -223,7 +215,8 @@ describe("AuthoredSkillStore — quarantine on risky body", () => {
     expect(res.action).toBe("quarantined");
     expect(res.reasons).toContain("prompt-injection");
     expect(await store.listAuthored()).toHaveLength(0);
-    const quarantined = await readDirOrEmpty(join(dir, ".quarantine"));
+    const { readdir } = await import("node:fs/promises");
+    const quarantined = await readdir(join(dir, ".quarantine")).catch(() => [] as string[]);
     expect(quarantined).toContain("evil");
   });
 
@@ -249,7 +242,8 @@ describe("AuthoredSkillStore — curate", () => {
     expect(archived).toEqual(["stale-skill"]);
     expect(await storeCurate.listAuthored()).toHaveLength(0);
 
-    const inArchive = await readDirOrEmpty(join(dir, ".archive"));
+    const { readdir } = await import("node:fs/promises");
+    const inArchive = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
     expect(inArchive).toContain("stale-skill");
   });
 
@@ -378,7 +372,8 @@ describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-dele
     expect(live).toContain("summarise");
     expect(live).toContain("book-flight");
     expect(live).not.toContain("summarise-email"); // archived, not live
-    const archived = await readDirOrEmpty(join(dir, ".archive"));
+    const { readdir } = await import("node:fs/promises");
+    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
     expect(archived).toContain("summarise-email"); // archived, not deleted
   });
 
@@ -397,7 +392,8 @@ describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-dele
     expect(live).toContain("summarise-email");
     expect(live).toContain("summarise-doc");
     expect(live).not.toContain("summarise"); // umbrella never written
-    const archived = await readDirOrEmpty(join(dir, ".archive"));
+    const { readdir } = await import("node:fs/promises");
+    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
     expect(archived).toEqual([]); // rollback: no original archived
   });
 
@@ -450,7 +446,8 @@ describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-dele
     expect(plan).toHaveLength(0);
     const live = (await store.listAuthored()).map((s) => s.name).sort();
     expect(live).toContain("summarise-email"); // originals intact
-    expect(await readDirOrEmpty(join(dir, ".archive"))).toEqual([]);
+    const { readdir } = await import("node:fs/promises");
+    expect(await readdir(join(dir, ".archive")).catch(() => [] as string[])).toEqual([]);
   });
 
   it("cooldown: shouldSkipCluster=true skips the cluster BEFORE merge (no merge call, absent from plan)", async () => {
@@ -612,7 +609,8 @@ describe("AuthoredSkillStore — snapshotBeforeCurate / rollback (batch safety n
     const liveSkill = live.find((s) => s.name === "reused-name");
     expect(liveSkill?.body).toContain("OLD body before curate");
 
-    const archivedFolders = await readDirOrEmpty(join(dir, ".archive"));
+    const { readdir } = await import("node:fs/promises");
+    const archivedFolders = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
     expect(archivedFolders.some((f) => f.startsWith("reused-name-postsnapshot-"))).toBe(true);
   });
 

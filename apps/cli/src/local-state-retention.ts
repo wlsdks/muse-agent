@@ -32,8 +32,6 @@ import { dirname, join } from "node:path";
 import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveCheckpointsDir } from "@muse/autoconfigure";
 import { pruneActionLogByAge, pruneByAge, pruneLearnQueueByAge, resolveLearnQueueFile, type ActionLogPruneResult } from "@muse/stores";
-import { isRecord } from "@muse/shared";
-import { withBestEffort } from "./async-promises.js";
 
 export interface RetentionWindows {
   /** `.muse/runs/*.jsonl` — default 90 days (mirrors the checkpoints window; a trace's diagnostic value fades fast). */
@@ -68,7 +66,7 @@ interface PruneMeta {
 async function readPruneMeta(file: string): Promise<PruneMeta> {
   try {
     const raw = await readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && typeof (parsed as PruneMeta).lastPrunedAtMs === "number") {
       return parsed as PruneMeta;
     }
@@ -91,13 +89,13 @@ export interface FilePruneResult {
 
 /** Parse the last event's `recordedAt` out of a run-log JSONL file (mirrors `readLocalRuns`'s "last event wins" contract). Falls back to the file's mtime when the content is missing/unparseable so a legacy or partially-written trace still ages out. */
 async function runFileTimestampMs(path: string, fallbackMtimeMs: number): Promise<number> {
-    try {
-      const raw = await readFile(path, "utf8");
-      const lines = raw.trim().split("\n").filter((l) => l.trim().length > 0);
-      const last = lines[lines.length - 1];
-      if (last) {
-      const event = JSON.parse(last);
-      const ms = isRecord(event) && typeof event.recordedAt === "string" ? Date.parse(event.recordedAt) : NaN;
+  try {
+    const raw = await readFile(path, "utf8");
+    const lines = raw.trim().split("\n").filter((l) => l.trim().length > 0);
+    const last = lines[lines.length - 1];
+    if (last) {
+      const event = JSON.parse(last) as { recordedAt?: unknown };
+      const ms = typeof event.recordedAt === "string" ? Date.parse(event.recordedAt) : NaN;
       if (Number.isFinite(ms)) return ms;
     }
   } catch {
@@ -117,11 +115,11 @@ export async function pruneRunsByAge(runsDir: string, options: { readonly ageDay
   }
   const withTimestamps = await Promise.all(names.map(async (name) => {
     const full = join(runsDir, name);
-    const mtimeMs = await withBestEffort(stat(full).then((s) => s.mtimeMs), now);
+    const mtimeMs = await stat(full).then((s) => s.mtimeMs).catch(() => now);
     return { name, ts: await runFileTimestampMs(full, mtimeMs) };
   }));
   const { kept, dropped } = pruneByAge(withTimestamps, { ageDays: options.ageDays, now, timestampOf: (e) => e.ts });
-  await Promise.all(dropped.map((e) => withBestEffort(rm(join(runsDir, e.name), { force: true }), undefined)));
+  await Promise.all(dropped.map((e) => rm(join(runsDir, e.name), { force: true }).catch(() => undefined)));
   return { dropped: dropped.length, droppedFiles: dropped.map((e) => e.name), kept: kept.length };
 }
 
@@ -135,11 +133,11 @@ export async function pruneCheckpointsByAge(checkpointsDir: string, options: { r
     return { dropped: 0, droppedFiles: [], kept: 0 };
   }
   const withTimestamps = await Promise.all(names.map(async (name) => {
-    const mtimeMs = await withBestEffort(stat(join(checkpointsDir, name)).then((s) => s.mtimeMs), now);
+    const mtimeMs = await stat(join(checkpointsDir, name)).then((s) => s.mtimeMs).catch(() => now);
     return { mtimeMs, name };
   }));
   const { kept, dropped } = pruneByAge(withTimestamps, { ageDays: options.ageDays, now, timestampOf: (e) => e.mtimeMs });
-  await Promise.all(dropped.map((e) => withBestEffort(rm(join(checkpointsDir, e.name), { force: true }), undefined)));
+  await Promise.all(dropped.map((e) => rm(join(checkpointsDir, e.name), { force: true }).catch(() => undefined)));
   return { dropped: dropped.length, droppedFiles: dropped.map((e) => e.name), kept: kept.length };
 }
 
@@ -199,9 +197,9 @@ export async function maybeAutoPrune(options: MaybeAutoPruneOptions = {}): Promi
     const workspaceDir = options.workspaceDir ?? process.cwd();
 
     const runs = await safePrune(() => pruneRunsByAge(join(workspaceDir, ".muse", "runs"), { ageDays: windows.runsAgeDays, now }));
-    const checkpoints = await safePrune(() => pruneCheckpointsByAge(resolveCheckpointsDir(env), { ageDays: windows.checkpointsAgeDays, now }));
-    const actionLog = await safePrune(() => pruneActionLogByAge(resolveActionLogFile(env), { ageDays: windows.actionLogAgeDays, now }, env));
-    const learnQueue = await safePrune(() => pruneLearnQueueByAge(resolveLearnQueueFile(env), { ageDays: windows.learnQueueAgeDays, now }));
+    const checkpoints = await safePrune(() => pruneCheckpointsByAge(resolveCheckpointsDir(env as MuseEnvironment), { ageDays: windows.checkpointsAgeDays, now }));
+    const actionLog = await safePrune(() => pruneActionLogByAge(resolveActionLogFile(env as MuseEnvironment), { ageDays: windows.actionLogAgeDays, now }, env));
+    const learnQueue = await safePrune(() => pruneLearnQueueByAge(resolveLearnQueueFile(env as Record<string, string | undefined>), { ageDays: windows.learnQueueAgeDays, now }));
 
     try {
       await writePruneMeta(metaFile, { lastPrunedAtMs: now });

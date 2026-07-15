@@ -181,7 +181,7 @@ function createSnapshotStatusEnvironmentView(
   // another Proxy whose invariant validation reaches hidden descriptors when
   // this view filters ownKeys. A fresh extensible, null-prototype target keeps
   // every virtual key configurable and makes all traps self-contained.
-  const snapshotTarget: Record<string, never> = Object.create(null);
+  const snapshotTarget = Object.create(null) as Record<string, never>;
   return new Proxy(snapshotTarget, {
     defineProperty: () => false,
     deleteProperty: () => false,
@@ -375,13 +375,7 @@ export interface LocalOnlyStatusSnapshot {
   readonly detail: string;
 }
 
-const CLOUD_CREDENTIAL_ENV_KEYS: readonly string[] = [
-  "GEMINI_API_KEY",
-  "GOOGLE_API_KEY",
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "OPENROUTER_API_KEY"
-];
+const CLOUD_CREDENTIAL_ENV_KEYS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"] as const;
 
 export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | undefined>>): LocalOnlyStatusSnapshot {
   // Local-only is an OPT-IN posture (MUSE_LOCAL_ONLY=true); cloud is allowed by
@@ -620,8 +614,8 @@ function resolveDaemonConfigFilePath(env: Readonly<Record<string, string | undef
 async function readDailyBriefConfig(file: string): Promise<{ readonly enabled: boolean; readonly time?: string } | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && isRecord(parsed.dailyBrief)) {
+    const parsed = JSON.parse(raw) as { dailyBrief?: unknown };
+    if (isRecord(parsed.dailyBrief)) {
       const record = parsed.dailyBrief;
       const time = typeof record.time === "string" && record.time.trim().length > 0 ? record.time.trim() : undefined;
       return { enabled: record.enabled === true, ...(time ? { time } : {}) };
@@ -649,8 +643,8 @@ export function resolveDailyBriefSetupStatus(config: { readonly enabled: boolean
 export async function readConfigDefaultModel(file: string): Promise<string | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && typeof parsed.defaultModel === "string") {
+    const parsed = JSON.parse(raw) as { defaultModel?: unknown };
+    if (parsed && typeof parsed === "object" && typeof parsed.defaultModel === "string") {
       const trimmed = parsed.defaultModel.trim();
       return trimmed.length > 0 ? trimmed : undefined;
     }
@@ -790,7 +784,10 @@ export async function collectSetupStatusJson(options: {
   const dailyBriefStatus = resolveDailyBriefSetupStatus(await readDailyBriefConfig(resolveDaemonConfigFilePath(env)));
 
   // User-memory auto-extract (default-on as of the recent flip).
-  const autoExtractEnabled = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true);
+  const autoExtractEnv = env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase();
+  const autoExtractEnabled = autoExtractEnv === undefined
+    ? true
+    : autoExtractEnv === "true";
   const autoExtractModel = env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL?.trim() || museModel || undefined;
 
   // Proactive surfacing daemon — collect raw env + compute the
@@ -896,11 +893,11 @@ export async function collectSetupStatusJson(options: {
     voice: voiceStatus,
     webSearch: {
       ...readWebSearchEnvSnapshot(env),
-      status: "ok"
+      status: "ok" as const
     },
     userMemory: {
       autoExtract: autoExtractEnabled,
-      status: "ok",
+      status: "ok" as const,
       ...(autoExtractEnabled && autoExtractModel ? { model: autoExtractModel } : {}),
       ...(autoExtractEnabled
         ? {}
@@ -914,7 +911,7 @@ export async function collectSetupStatusJson(options: {
       ...(proactiveProvider ? { providerId: proactiveProvider } : {}),
       ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
       sidecarFile: proactiveSidecarFile,
-      status: proactiveEnabled ? "ok" : "info",
+      status: proactiveEnabled ? "ok" as const : "info" as const,
       tickMs: proactiveTickMs,
       ...(proactiveEnabled
         ? {}
@@ -926,7 +923,7 @@ export async function collectSetupStatusJson(options: {
       enabled: reminderEnabled,
       ...(reminderProvider ? { providerId: reminderProvider } : {}),
       ...(reminderQuietHours ? { quietHours: reminderQuietHours } : {}),
-      status: reminderEnabled ? "ok" : "info",
+      status: reminderEnabled ? "ok" as const : "info" as const,
       tickMs: reminderTickMs,
       ...(reminderEnabled
         ? {}
@@ -940,8 +937,8 @@ export async function readModelKeyState(file: string, env: MuseEnvironment): Pro
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && isRecord(parsed.providers)) {
+    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
+    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -986,8 +983,8 @@ export async function readMessagingProviderState(
   let storedProviders: Record<string, unknown> = {};
   try {
     const raw = await fs.readFile(credentialsFile, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && isRecord(parsed.providers)) {
+    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
+    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
       storedProviders = parsed.providers;
     }
   } catch {
@@ -1017,8 +1014,8 @@ export async function readMessagingProviderState(
 export async function readMcpEntryCount(file: string): Promise<number> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && isRecord(parsed.mcpServers)) {
+    const parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
+    if (parsed && typeof parsed === "object" && parsed.mcpServers && typeof parsed.mcpServers === "object") {
       return Object.keys(parsed.mcpServers).length;
     }
   } catch {
@@ -1059,8 +1056,8 @@ export async function countNotes(dir: string): Promise<number | undefined> {
 export async function readTaskCount(file: string): Promise<number | undefined> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && Array.isArray(parsed.tasks)) {
+    const parsed = JSON.parse(raw) as { tasks?: unknown };
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tasks)) {
       return parsed.tasks.length;
     }
     return 0;

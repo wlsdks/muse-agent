@@ -1,5 +1,3 @@
-import { isNodeErrorCode, NODE_ERROR_CODES } from "@muse/shared";
-
 /// When Muse's desktop app spawns this server as a child, it passes its own PID
 /// as MUSE_PARENT_PID. A child process is NOT killed if the parent dies
 /// abnormally (crash / force-quit) — so we poll the parent and self-exit when it
@@ -31,6 +29,6 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return isNodeErrorCode(error, NODE_ERROR_CODES.EPERM);
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }

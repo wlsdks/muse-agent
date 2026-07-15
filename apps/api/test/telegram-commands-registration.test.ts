@@ -10,7 +10,6 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,12 +45,6 @@ afterEach(() => {
 });
 
 describe("telegram setMyCommands boot registration", () => {
-  const BOOT_SETTLE_MS = 20;
-
-  async function waitForBootSettle() {
-    await setTimeout(BOOT_SETTLE_MS);
-  }
-
   it("registers the exact command list once when the channel starts polling at boot", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-tg-cmds-"));
     const daemonSettingsFile = join(dir, "daemon-settings.json");
@@ -72,7 +65,7 @@ describe("telegram setMyCommands boot registration", () => {
       telegramInboxFile: join(dir, "telegram-inbox.json")
     });
     try {
-      await waitForBootSettle();
+      await new Promise((resolve) => setTimeout(resolve, 20));
       const commandCalls = calls.filter((c) => c.url.endsWith("/setMyCommands"));
       expect(commandCalls).toHaveLength(1);
       expect(commandCalls[0]?.url).toBe("https://api.telegram.org/botT/setMyCommands");
@@ -108,7 +101,7 @@ describe("telegram setMyCommands boot registration", () => {
       telegramInboxFile: join(dir, "telegram-inbox.json")
     });
     try {
-      await waitForBootSettle();
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       await server.inject({
         method: "PATCH",
@@ -120,7 +113,7 @@ describe("telegram setMyCommands boot registration", () => {
         payload: { enabled: true, key: "MUSE_TELEGRAM_POLL_ENABLED" },
         url: "/api/settings/daemon-flags"
       });
-      await waitForBootSettle();
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       const commandCalls = calls.filter((c) => c.url.endsWith("/setMyCommands"));
       expect(commandCalls).toHaveLength(1);
@@ -144,7 +137,7 @@ describe("telegram setMyCommands boot registration", () => {
     // "telegram not configured" boot shape.
     const server = buildServer({ logger: false });
     try {
-      await waitForBootSettle();
+      await new Promise((resolve) => setTimeout(resolve, 20));
       expect(telegramCalls).toEqual([]);
     } finally {
       globalThis.fetch = originalFetch;

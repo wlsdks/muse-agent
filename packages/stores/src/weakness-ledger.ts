@@ -65,15 +65,6 @@ export interface WeaknessEntry {
   readonly lastResolved?: string;
 }
 
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (typeof key === "string") record[key] = nestedValue;
-  }
-  return record;
-}
-
 /**
  * Increment the matching `(axis, topic)` row's count + lastSeen, or insert a new
  * one. Returns a new array (input is not mutated).
@@ -111,8 +102,10 @@ export function upsertWeakness(
 }
 
 function isWeaknessEntry(value: unknown): value is WeaknessEntry {
-  const entry = toRecord(value);
-  if (!entry) return false;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const entry = value as Record<string, unknown>;
   return (
     typeof entry["axis"] === "string" &&
     typeof entry["topic"] === "string" &&
@@ -131,15 +124,14 @@ export async function readWeaknesses(file: string): Promise<readonly WeaknessEnt
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const parsedRecord = toRecord(parsed);
-  if (!parsedRecord || !Array.isArray(parsedRecord.weaknesses)) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { weaknesses?: unknown }).weaknesses)) {
     return [];
   }
-  return parsedRecord.weaknesses.filter(isWeaknessEntry);
+  return (parsed as { weaknesses: unknown[] }).weaknesses.filter(isWeaknessEntry);
 }
 
 export async function writeWeaknesses(file: string, entries: readonly WeaknessEntry[]): Promise<void> {

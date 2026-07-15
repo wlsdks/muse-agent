@@ -21,7 +21,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES, runCommandWithTimeout, withBestEffort } from "@muse/shared";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import {
   DEFAULT_MODEL_CALL_TIMEOUT_MS,
@@ -65,6 +65,9 @@ export interface CodexInvocationResult {
   readonly usage?: { readonly outputTokens: number };
 }
 
+function isErrnoException(value: unknown): value is NodeJS.ErrnoException {
+  return value instanceof Error && "code" in value;
+}
 
 async function defaultWorkspace(): Promise<{ readonly dir: string; readonly outFile: string }> {
   const dir = await mkdtemp(join(tmpdir(), "muse-codex-"));
@@ -130,7 +133,7 @@ function codexErrorFromExit(exitCode: number | null, diagnostics: string): Model
 }
 
 function codexErrorFromSpawnCause(binary: string, cause: unknown): ModelProviderError | undefined {
-  if (hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.ENOENT, NODE_ERROR_CODES.EACCES)) {
+  if (isErrnoException(cause) && (cause.code === "ENOENT" || cause.code === "EACCES")) {
     return new ModelProviderError(
       CODEX_PROVIDER_ID,
       `could not run '${binary}': ${cause.message} — is the official codex CLI installed and on PATH? (npm i -g @openai/codex)`,
@@ -207,7 +210,7 @@ export async function runCodexExecSafe(prompt: string, deps: CodexInvocationDeps
       ? cause
       : new ModelProviderError(CODEX_PROVIDER_ID, cause instanceof Error ? cause.message : String(cause), false);
   } finally {
-    await withBestEffort(rm(workspace.dir, { force: true, recursive: true }), undefined);
+    await rm(workspace.dir, { force: true, recursive: true }).catch(() => undefined);
   }
 }
 

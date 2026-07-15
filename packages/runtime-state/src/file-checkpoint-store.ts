@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, isRecord, type JsonObject, type JsonValue, withBestEffort } from "@muse/shared";
+import { createRunId, type JsonObject } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
@@ -29,46 +29,23 @@ function serialize(checkpoint: ExecutionCheckpoint): JsonObject {
 }
 
 function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
-  if (!isRecord(raw)) return undefined;
-  const r = raw;
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
   if (typeof r.runId !== "string" || typeof r.step !== "number" || !Number.isFinite(r.step)) return undefined;
   const createdAt = typeof r.createdAt === "string" ? new Date(r.createdAt) : new Date(0);
-    return {
+  return {
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date(0) : createdAt,
     id: typeof r.id === "string" ? r.id : "unknown",
     runId: r.runId,
-    state: toJsonObject(r.state),
+    state: (r.state && typeof r.state === "object" ? r.state : {}) as JsonObject,
     step: r.step
   };
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  if (!isRecord(value)) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (isJsonValue(item)) {
-      out[key] = item;
-    }
-  }
-  return out;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 const byStep = (a: ExecutionCheckpoint, b: ExecutionCheckpoint): number => a.step - b.step;
 
 function checkpointPhase(c: ExecutionCheckpoint): string {
-  const p = isRecord(c.state) ? c.state.phase : undefined;
+  const p = (c.state as { phase?: unknown }).phase;
   return typeof p === "string" ? p : "unknown";
 }
 
@@ -111,9 +88,7 @@ export class FileCheckpointStore implements CheckpointStore {
       if (names.length <= this.#maxRuns) return;
       const withMtime = await Promise.all(names.map(async (n) => ({ mtime: (await stat(join(this.#dir, n))).mtimeMs, name: n })));
       withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
-      await Promise.all(withMtime.slice(this.#maxRuns).map((e) =>
-        withBestEffort(rm(join(this.#dir, e.name), { force: true }), undefined)
-      ));
+      await Promise.all(withMtime.slice(this.#maxRuns).map((e) => rm(join(this.#dir, e.name), { force: true }).catch(() => undefined)));
     } catch {
       /* retention is best-effort */
     }
@@ -220,6 +195,6 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   async deleteByRunId(runId: string): Promise<void> {
-    await withBestEffort(rm(join(this.#dir, runFileName(runId)), { force: true }), undefined);
+    await rm(join(this.#dir, runFileName(runId)), { force: true }).catch(() => undefined);
   }
 }

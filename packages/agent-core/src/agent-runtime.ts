@@ -50,7 +50,7 @@ import {
   selectToolNamesForExposureAuthority,
   type GuardBlockRateMonitor
 } from "@muse/policy";
-import { createRunId, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, type JsonObject } from "@muse/shared";
 import {
   ToolExecutor,
   ToolRegistry,
@@ -939,7 +939,7 @@ export class AgentRuntime {
     const executor: ToolPlanExecutor = async (tool, args) => {
       stepIndex += 1;
       const toolCall: ModelToolCall = {
-        arguments: toJsonObject(args),
+        arguments: args as JsonObject,
         id: `${context.runId}-ptc-${stepIndex.toString()}`,
         name: tool
       };
@@ -1490,19 +1490,25 @@ export class AgentRuntime {
     return this.responseFilters.length === 0 && this.outputGuards.length === 0;
   }
 
-  private async invokeHooks<Name extends keyof HookStage>(
-    name: Name,
+  private async invokeHooks(name: "beforeStart", context: AgentRunContext): Promise<void>;
+  private async invokeHooks(name: "beforeTool", context: AgentRunContext, toolCall: ModelToolCall): Promise<void>;
+  private async invokeHooks(
+    name: "afterTool",
     context: AgentRunContext,
-    value?: Name extends "beforeStart" ? never : Name extends "beforeTool" ? ModelToolCall : Name extends "afterTool" ? {
-      readonly result: ToolExecutionResult;
-      readonly toolCall: ModelToolCall;
-    } : Name extends "afterComplete" ? ModelResponse : Name extends "onError" ? unknown : never
-  ): Promise<void> {
+    value: { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall }
+  ): Promise<void>;
+  private async invokeHooks(
+    name: "afterComplete",
+    context: AgentRunContext,
+    response: ModelResponse
+  ): Promise<void>;
+  private async invokeHooks(name: "onError", context: AgentRunContext, error: unknown): Promise<void>;
+  private async invokeHooks(name: keyof HookStage, context: AgentRunContext, value?: unknown): Promise<void> {
     return invokeHooks(name, context, {
       hooks: this.hooks,
       ...(this.hookRegistry ? { hookRegistry: this.hookRegistry } : {}),
       ...(this.hookTraceStore ? { hookTraceStore: this.hookTraceStore } : {})
-    }, value);
+    }, value as never);
   }
 
   private recordAgentRun(
@@ -1606,28 +1612,6 @@ export class AgentRuntime {
       historyStore: this.historyStore
     });
   }
-}
-
-function toJsonObject(value: Record<string, unknown> | undefined): JsonObject {
-  const out: JsonObject = {};
-  const source = value ?? {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 /**

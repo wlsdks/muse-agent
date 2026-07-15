@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { executeModelLoop, type ModelLoopRunner } from "../src/model-loop.js";
 import type { AgentRunContext } from "../src/types.js";
-import { readNotesOrAbsent, readNotesOrEmpty } from "./note-store-test-helpers.js";
 
 // τ-bench-style TERMINAL-STATE / task-completion eval (agent-eval gap B): rather
 // than matching the trajectory, drive the REAL model loop + REAL ToolExecutor
@@ -26,6 +25,9 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+const readNotes = async (): Promise<readonly { text: string }[] | "absent"> =>
+  fs.readFile(noteFile, "utf8").then((raw) => JSON.parse(raw) as { text: string }[]).catch(() => "absent" as const);
+
 const saveNoteTool = (): MuseTool => ({
   definition: {
     description: "Persist a note to the user's store.",
@@ -34,7 +36,7 @@ const saveNoteTool = (): MuseTool => ({
     risk: "write",
   },
   execute: async (args) => {
-    const prior = await readNotesOrEmpty(noteFile);
+    const prior = await fs.readFile(noteFile, "utf8").then((r) => JSON.parse(r) as { text: string }[]).catch(() => []);
     prior.push({ text: String((args as { text: unknown }).text) });
     await fs.writeFile(noteFile, JSON.stringify(prior));
     return `saved: ${String((args as { text: unknown }).text)}`;
@@ -83,7 +85,7 @@ describe("terminal-state task completion (gap B — real loop + real ToolExecuto
       request(tool),
     );
     // assert the WORLD STATE, not the path
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "buy milk" }]);
+    expect(await readNotes()).toEqual([{ text: "buy milk" }]);
     expect(result.finalResponse.output).toBe("Saved your note.");
     expect(result.toolsUsed).toEqual(["save_note"]);
     expect(result.toolResults[0]?.result.status).toBe("completed");
@@ -103,7 +105,7 @@ describe("terminal-state task completion (gap B — real loop + real ToolExecuto
     );
     expect(result.toolResults.map((r) => r.result.status)).toEqual(["completed", "completed"]);
     // both calls report success, but the store holds exactly ONE note
-    expect(await readNotesOrAbsent(noteFile)).toEqual([{ text: "once" }]);
+    expect(await readNotes()).toEqual([{ text: "once" }]);
   });
 
   it("does not mutate the store when the model answers directly (no tool call)", async () => {
@@ -111,7 +113,7 @@ describe("terminal-state task completion (gap B — real loop + real ToolExecuto
     const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
     const result = await executeModelLoop(realRunner(executor, [resp("Here's a note idea instead.")]), context(), {} as never, request(tool));
     expect(result.toolsUsed).toEqual([]);
-    expect(await readNotesOrAbsent(noteFile)).toBe("absent");
+    expect(await readNotes()).toBe("absent");
   });
 
   it("leaves the store unmutated when the tool fails, yet the run still completes", async () => {
@@ -125,6 +127,6 @@ describe("terminal-state task completion (gap B — real loop + real ToolExecuto
     );
     expect(result.toolResults[0]?.result.status).toBe("failed");
     expect(result.finalResponse.output).toBe("I couldn't save that.");
-    expect(await readNotesOrAbsent(noteFile)).toBe("absent");
+    expect(await readNotes()).toBe("absent");
   });
 });

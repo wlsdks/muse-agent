@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { createStringSetGuard, runCommandWithTimeout, withBestEffort } from "@muse/shared";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
 import type {
@@ -22,7 +22,6 @@ const SUPPORTED_FORMATS = [
   "audio/ogg",
   "audio/flac"
 ] as const;
-const isSupportedFormat = createStringSetGuard(SUPPORTED_FORMATS);
 
 /**
  * Result of spawning `whisper-cpp`. The runner is responsible for the
@@ -127,7 +126,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     // letting whisper-cpp fail with a cryptic exit code. Strip any
     // `; codecs=…` parameter before matching.
     const baseMime = request.mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!isSupportedFormat(baseMime)) {
+    if (!SUPPORTED_FORMATS.includes(baseMime as (typeof SUPPORTED_FORMATS)[number])) {
       throw new VoiceValidationError(
         "UNSUPPORTED_FORMAT",
         `unsupported audio format "${request.mimeType}"; supported: ${SUPPORTED_FORMATS.join(", ")}`
@@ -181,7 +180,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     } finally {
       // Best-effort cleanup. Don't mask a transcription error with a
       // disk-cleanup error.
-      await withBestEffort(rm(workdir, { force: true, recursive: true }), undefined);
+      await rm(workdir, { force: true, recursive: true }).catch(() => undefined);
     }
   }
 }

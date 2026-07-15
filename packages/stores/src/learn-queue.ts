@@ -14,8 +14,6 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 /** `~/.muse/learn-queue.jsonl` by default; override via `MUSE_LEARN_QUEUE_FILE`. */
@@ -41,8 +39,7 @@ export interface LearnCorrectionEvent {
 export const MAX_LEARN_QUEUE_EVENTS = 200;
 
 function isEvent(value: unknown): value is LearnCorrectionEvent {
-  if (!isRecord(value)) return false;
-  const e = value;
+  const e = value as Partial<LearnCorrectionEvent> | null;
   return !!e && typeof e.id === "string" && typeof e.userId === "string"
     && typeof e.priorAnswer === "string" && typeof e.correction === "string"
     && typeof e.enqueuedAtMs === "number";
@@ -73,7 +70,7 @@ export async function readPendingLearnEvents(file: string): Promise<readonly Lea
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     try {
-      const parsed = JSON.parse(trimmed);
+      const parsed = JSON.parse(trimmed) as unknown;
       if (isEvent(parsed)) out.push(parsed);
     } catch { /* skip corrupt line */ }
   }

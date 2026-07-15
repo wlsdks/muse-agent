@@ -323,13 +323,11 @@ function readStringRecord(value: unknown): Readonly<Record<string, string>> | un
     return undefined;
   }
 
-  const out: Record<string, string> = {};
-  for (const [key, candidate] of Object.entries(value)) {
-    if (typeof candidate === "string" && !isUnsafeEnvKey(key)) {
-      out[key] = candidate;
-    }
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string" && !isUnsafeEnvKey(entry[0])
+    )
+  );
 }
 
 /**

@@ -15,7 +15,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { isRecord } from "@muse/shared";
 
 export interface ClusterMember {
   readonly name: string;
@@ -48,40 +47,11 @@ export function fingerprintCluster(cluster: readonly ClusterMember[]): string {
 
 async function readLedger(file: string): Promise<RejectLedger> {
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8"));
-    if (!isRejectLedger(parsed)) {
-      return {};
-    }
-    return parsed;
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as RejectLedger) : {};
   } catch {
     return {}; // missing or corrupt → empty (fail-soft)
   }
-}
-
-function isRejectLedger(value: unknown): value is RejectLedger {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  for (const rawEntry of Object.values(value)) {
-    if (!isRejectLedgerEntry(rawEntry)) {
-      return false;
-    }
-    if (!Number.isFinite(rawEntry.rejectCount) || rawEntry.rejectCount < 0) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function isRejectLedgerEntry(value: unknown): value is { readonly rejectCount: number; readonly lastRejectedAt: string } {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const entry = value;
-  return typeof entry.rejectCount === "number" && Number.isFinite(entry.rejectCount)
-    && typeof entry.lastRejectedAt === "string";
 }
 
 async function writeLedger(file: string, ledger: RejectLedger): Promise<void> {

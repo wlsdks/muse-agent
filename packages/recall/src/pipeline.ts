@@ -18,7 +18,6 @@ import {
   citedSourcesIn,
   detectEvidenceContradictions,
   enforceAnswerCitations,
-  type ContradictionPair,
   reorderForLongContext,
   withUngroundableFallback,
   type AllowedCitations
@@ -343,7 +342,7 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
   const contradictions = await detectEvidenceContradictions(
     contextChunks.map((s: ScoredChunk) => ({ cosine: s.score, score: s.score, source: s.file, text: s.chunk.text })),
     (text) => embedFn(text, embedModel ?? "")
-  ).catch((): readonly ContradictionPair[] => []);
+  ).catch(() => [] as const);
   // Ad-hoc chunks are note-class evidence found THIS turn — notes are no
   // longer "unavailable" once any (index retrieval OR ad-hoc) contributed.
   const notesUnavailable = retrieval.notesUnavailable && extraChunks.length === 0;

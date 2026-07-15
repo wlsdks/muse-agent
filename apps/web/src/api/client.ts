@@ -3,15 +3,13 @@
  * server only through this — the web ships no model logic of its own.
  */
 
-import { isRecord, readOptionalString } from "./safe-json.js";
-
 export interface ApiClient {
   readonly baseUrl: string;
   readonly get: <T>(path: string) => Promise<T>;
   readonly post: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly put: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly patch: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
-  readonly del: (path: string) => Promise<void>;
+  readonly del: <T>(path: string) => Promise<T>;
 }
 
 export function createApiClient(baseUrl: string, token: string): ApiClient {
@@ -31,7 +29,7 @@ async function request<T>(
   path: string,
   body: Record<string, unknown> | undefined,
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-): Promise<T | void> {
+): Promise<T> {
   const response = await fetch(new URL(path, baseUrl).toString(), {
     body: body ? JSON.stringify(body) : undefined,
     headers: {
@@ -45,7 +43,7 @@ async function request<T>(
     throw new Error(await errorDetail(response));
   }
   if (response.status === 204) {
-    return;
+    return undefined as T;
   }
   return (await response.json()) as T;
 }
@@ -55,12 +53,10 @@ async function request<T>(
 async function errorDetail(response: Response): Promise<string> {
   const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
   try {
-    const body = await response.json();
-    if (!isRecord(body)) {
-      return status;
-    }
-    const candidate = [readOptionalString(body.errorMessage), readOptionalString(body.message)]
-      .find((value): value is string => Boolean(value?.trim().length));
+    const body = (await response.json()) as { errorMessage?: unknown; message?: unknown };
+    const candidate = [body.errorMessage, body.message].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
     return candidate ? `${status}: ${candidate}` : status;
   } catch {
     return status;

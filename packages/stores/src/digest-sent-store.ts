@@ -11,8 +11,6 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile } from "./atomic-file-store.js";
 
 export interface DigestSentState {
@@ -37,9 +35,8 @@ export async function readDigestSentDate(file: string): Promise<string | undefin
     return undefined;
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (!isRecord(parsed)) return undefined;
-    const lastSentDate = parsed.lastSentDate;
+    const parsed = JSON.parse(raw) as unknown;
+    const lastSentDate = (parsed as { lastSentDate?: unknown } | null)?.lastSentDate;
     return typeof lastSentDate === "string" && lastSentDate.length > 0 ? lastSentDate : undefined;
   } catch {
     return undefined;

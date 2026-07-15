@@ -42,7 +42,6 @@ import { adjustPlaybookReward, isLearningPaused, queryPlaybook, recordPlaybookSt
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 import { readSessionInjectedIds } from "./playbook-injections.js";
-import { withBestEffort } from "./async-promises.js";
 
 type ModelProviderLike = DistillStrategyOptions["modelProvider"];
 
@@ -138,7 +137,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   // (the daemon ticks checked it; this did not). It gates BOTH halves: no new
   // strategy is distilled AND no existing reward moves, since a decay is
   // unlearning and the pause forbids learning in either direction.
-  if (await isLearningPaused(resolveLearningPauseFile(env))) {
+  if (await isLearningPaused(resolveLearningPauseFile(env as Record<string, string | undefined>))) {
     return { decayed: [], lowConsistencyRejected: 0, reason: "learning is paused (muse playbook resume)", reinforced: [], status: "skipped" };
   }
 
@@ -166,7 +165,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
     return { decayed: [], reason: "no user corrections or approvals in this session", reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
 
-  const playbookFile = options.playbookFile ?? resolvePlaybookFile(env);
+  const playbookFile = options.playbookFile ?? resolvePlaybookFile(env as Record<string, string | undefined>);
   const existing = await queryPlaybook(playbookFile, ownerId);
   const existingTexts = existing.map((entry) => entry.text);
   const adjustedIds = new Set<string>();
@@ -308,10 +307,10 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
       // deterministic lookup at inject time, with zero model calls in the turn.
       // Fail-soft: a classifier error records no conflicts, never blocks the write.
       const conflictCandidates = existing.filter((entry) => isInjectableStrategy(entry) && !isStaleStrategy(entry, now().getTime()));
-      const conflictsWith = await withBestEffort(findConflictingRuleIds(distilled.text, conflictCandidates, {
+      const conflictsWith = await findConflictingRuleIds(distilled.text, conflictCandidates, {
         model: options.model,
         modelProvider: options.modelProvider
-      }), []);
+      }).catch(() => []);
       await recordPlaybookStrategy(playbookFile, {
         createdAt: now().toISOString(),
         id: idFactory(),

@@ -10,19 +10,15 @@
  */
 
 import { queryVetoes, removeVeto, type ActionVeto } from "@muse/stores";
-import { resolveVetoesFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveVetoesFile } from "@muse/autoconfigure";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
-function environment(): MuseEnvironment {
-  return process.env;
-}
-
 function vetoesFile(): string {
-  return resolveVetoesFile(environment());
+  return resolveVetoesFile(process.env as Record<string, string | undefined>);
 }
 
 /**

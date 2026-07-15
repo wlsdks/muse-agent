@@ -177,11 +177,8 @@ export function fromAnthropicResponse(providerId: string, requestedModel: string
   };
 }
 
-function stripEncryptedContent(r: unknown): Record<string, unknown> {
-  if (!isRecord(r)) {
-    return {};
-  }
-  const { encrypted_content: _encrypted, ...rest } = r;
+function stripEncryptedContent(r: Record<string, unknown>): Record<string, unknown> {
+  const { encrypted_content: _encrypted, ...rest } = r as { encrypted_content?: unknown };
   return rest;
 }
 

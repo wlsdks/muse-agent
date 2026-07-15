@@ -8,11 +8,6 @@ import {
   readRequiredDate
 } from "./muse-tools-helpers.js";
 
-function readStringArg(args: Record<string, unknown>, key: string): string {
-  const raw = args[key];
-  return typeof raw === "string" ? raw : "";
-}
-
 /**
  * Time / date / scheduling tools — the subset of `createMuseTools`
  * that depends on a wall clock or operates on ISO-8601 / cron
@@ -224,7 +219,7 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const weekdayInput = readStringArg(args, "weekday").trim().toLowerCase();
+      const weekdayInput = typeof args["weekday"] === "string" ? (args["weekday"] as string).trim().toLowerCase() : "";
       if (weekdayInput.length === 0) {
         return { error: "weekday is required" };
       }
@@ -280,8 +275,8 @@ export function createCronForDatetimeTool(): MuseTool {
       risk: "read"
     },
     execute: (args): JsonObject => {
-      const isoInput = readStringArg(args, "iso").trim();
-      const modeInput = readStringArg(args, "mode").trim().toLowerCase() || "once";
+      const isoInput = typeof args["iso"] === "string" ? (args["iso"] as string).trim() : "";
+      const modeInput = typeof args["mode"] === "string" ? (args["mode"] as string).trim().toLowerCase() : "once";
       const mode = modeInput.length === 0 ? "once" : modeInput;
 
       if (!CRON_DATETIME_MODES.has(mode)) {

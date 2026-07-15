@@ -42,14 +42,6 @@ function tokenEndpointFetch(opts: {
   return { calls, fetchImpl };
 }
 
-function toRecord(params: URLSearchParams): Record<string, string> {
-  const output: Record<string, string> = {};
-  for (const [key, value] of params) {
-    output[key] = value;
-  }
-  return output;
-}
-
 describe("exchangeGmailAuthorizationCode", () => {
   it("posts the exact authorization_code body and returns access/refresh tokens + a computed expiry", async () => {
     const { fetchImpl, calls } = tokenEndpointFetch({
@@ -65,7 +57,7 @@ describe("exchangeGmailAuthorizationCode", () => {
       redirectUri: "http://127.0.0.1:5555/callback"
     });
     expect(result).toEqual({ accessToken: "at-1", expiresAt: 1_000_000 + 3_600_000, refreshToken: "rt-1" });
-    expect(toRecord(calls[0]!)).toEqual({
+    expect(Object.fromEntries(calls[0]!)).toEqual({
       client_id: "cid",
       client_secret: "csecret",
       code: "auth-code",
@@ -104,7 +96,7 @@ describe("refreshGmailAccessToken", () => {
       clientId: "cid", clientSecret: "csecret", fetchImpl, now: () => 5_000, refreshToken: "rt-1"
     });
     expect(result).toEqual({ accessToken: "at-2", expiresAt: 5_000 + 1_800_000 });
-    expect(toRecord(calls[0]!)).toEqual({
+    expect(Object.fromEntries(calls[0]!)).toEqual({
       client_id: "cid",
       client_secret: "csecret",
       grant_type: "refresh_token",

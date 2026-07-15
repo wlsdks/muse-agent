@@ -5,15 +5,11 @@
  * convention), never the file mtime.
  */
 
-import { resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { collectDatedNotes, formatOnThisDay, selectOnThisDay } from "./on-this-day.js";
 import type { ProgramIO } from "./program.js";
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 export function registerOnThisDayCommand(program: Command, io: ProgramIO): void {
   program
@@ -33,7 +29,7 @@ export function registerOnThisDayCommand(program: Command, io: ProgramIO): void 
         windowDays = parsed;
       }
 
-      const dir = resolveNotesDir(environment());
+      const dir = resolveNotesDir(process.env as Record<string, string | undefined>);
       const dated = await collectDatedNotes(dir);
 
       const now = new Date();

@@ -92,12 +92,13 @@ export function computeApproximateTokens(text: string): number {
 
 function trimOldestCacheEntries(cache: Map<string, CacheEntry>, maxEntries: number): void {
   while (cache.size > maxEntries) {
-    const oldest = cache.keys().next();
-    if (oldest.done) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+
+    if (oldestKey === undefined) {
       return;
     }
 
-    cache.delete(oldest.value);
+    cache.delete(oldestKey);
   }
 }
 

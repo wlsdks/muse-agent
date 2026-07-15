@@ -203,12 +203,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     }
   });
   server.addContentTypeParser(/^multipart\/form-data/u, { parseAs: "buffer" }, (request, body, done) => {
-    if (!Buffer.isBuffer(body)) {
-      done(new Error("Invalid multipart body type"));
-      return;
-    }
     try {
-      done(null, parseMultipartBody(request.headers["content-type"], body));
+      done(null, parseMultipartBody(request.headers["content-type"], body as Buffer));
     } catch (error) {
       done(error instanceof Error ? error : new Error("Invalid multipart body"));
     }
@@ -350,7 +346,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         return response.output;
       },
       notesDir: options.notesDir,
-      notesIndexFile: resolveNotesIndexFile(process.env),
+      notesIndexFile: resolveNotesIndexFile(process.env as Record<string, string | undefined>),
       streamAnswer: async function* ({ system, user, model, temperature }) {
         for await (const event of askModelProvider.stream({
           messages: [
@@ -577,7 +573,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     : undefined;
   if (sharedActivityTracker) {
     server.addHook("onRequest", async (request) => {
-      const path = request.url ?? "";
+      const path = (request as { readonly url?: string }).url ?? "";
       if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
         sharedActivityTracker.record();
       }

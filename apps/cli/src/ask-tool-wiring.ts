@@ -14,7 +14,6 @@ import type { MuseTool } from "@muse/tools";
 
 import type { AskOptions } from "./ask-command-options.js";
 import type { ProgramIO } from "./program.js";
-import { confirmBoolean } from "./confirm-boolean.js";
 
 export type ScreenVisionHolder = {
   current?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
@@ -50,7 +49,7 @@ export async function buildAskToolWiring(params: {
   const screenVision: ScreenVisionHolder = {};
   if (useActuators) {
     const actuatorMod = await import("./actuator-tools.js");
-    const actuatorEnv = process.env;
+    const actuatorEnv = process.env as MuseEnvironment;
     io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv, io)));
     extraTools = actuatorMod.buildActuatorTools({
       describeScreenImage: async (input) =>
@@ -141,9 +140,9 @@ export async function buildAskToolWiring(params: {
       checkEditIntegrity: true,
       checkpointStore: new FileCheckpointStore({ dir: defaultCheckpointsDir(process.env) }),
       approvalGate: actuatorMod.buildFsWriteApprovalGate({
-      confirmAction: (message: string) => confirmBoolean(fsConfirm, fsIsCancel, message),
-      io,
-        stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env) })
+        confirmAction: (message: string) => fsConfirm({ message }).then((answer) => !fsIsCancel(answer) && answer === true),
+        io,
+        stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env as MuseEnvironment) })
       })
     });
     // web_download reaches the public web, so the master web-egress switch
@@ -164,7 +163,7 @@ export async function buildAskToolWiring(params: {
     const actuatorMod = await import("./actuator-tools.js");
     const { confirm, isCancel } = await import("@clack/prompts");
     messagingApprovalGate = actuatorMod.buildMessagingApprovalGate({
-      confirmAction: (message: string) => confirmBoolean(confirm, isCancel, message),
+      confirmAction: (message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true),
       io
     });
   }

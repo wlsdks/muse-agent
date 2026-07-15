@@ -31,7 +31,6 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { CODEX_DEFAULT_MODEL_ID, CODEX_PROVIDER_ID, runCodexExecSafe } from "@muse/model";
-import { isRecord } from "@muse/shared";
 
 export interface CodexReadiness {
   /** `codex` resolves on PATH. */
@@ -181,8 +180,8 @@ export async function writeCodexDelegationConfig(home: string, now: Date = new D
 export async function readCodexDelegationConfig(home: string): Promise<CodexDelegationConfig | undefined> {
   try {
     const raw = await readFile(codexConfigPath(home), "utf8");
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && parsed.provider === "codex" && parsed.delegated === true) {
+    const parsed = JSON.parse(raw) as Partial<CodexDelegationConfig>;
+    if (parsed.provider === "codex" && parsed.delegated === true) {
       return {
         configuredAt: typeof parsed.configuredAt === "string" ? parsed.configuredAt : "",
         delegated: true,

@@ -18,7 +18,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
+import { isRecord } from "@muse/shared";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
@@ -200,10 +200,10 @@ export function hasStoredGmailCredentialSync(io: CredentialStoreIO): boolean {
     return false;
   }
   try {
-    const file = JSON.parse(raw);
+    const file = JSON.parse(raw) as unknown;
     if (!isEncryptedCredentialFile(file)) return false;
     const plaintext = decryptCredentialPayload(io, file);
-    const store = JSON.parse(plaintext);
+    const store = JSON.parse(plaintext) as unknown;
     return isCredentialStore(store) && store.gmail !== undefined && !store.gmail.refreshTokenInvalid;
   } catch {
     return false;
@@ -234,10 +234,10 @@ export function readEmailImapCredentialSync(io: CredentialStoreIO): ImapEmailCre
     return undefined;
   }
   try {
-    const file = JSON.parse(raw);
+    const file = JSON.parse(raw) as unknown;
     if (!isEncryptedCredentialFile(file)) return undefined;
     const plaintext = decryptCredentialPayload(io, file);
-    const store = JSON.parse(plaintext);
+    const store = JSON.parse(plaintext) as unknown;
     return isCredentialStore(store) ? store.emailImap : undefined;
   } catch {
     return undefined;
@@ -252,7 +252,7 @@ async function readCredentialStore(
   try {
     raw = await readFile(credentialPath(io), "utf8");
   } catch (error) {
-    if (hasNodeErrorCodeIn(error, NODE_ERROR_CODES.ENOENT)) {
+    if (isNodeError(error) && error.code === "ENOENT") {
       return { tokens: {} };
     }
     // A genuine filesystem error (permissions, etc.) is not a "content
@@ -261,13 +261,13 @@ async function readCredentialStore(
   }
 
   try {
-    const file = JSON.parse(raw);
+    const file = JSON.parse(raw) as unknown;
     if (!isEncryptedCredentialFile(file)) {
       throw new Error("Invalid Muse credential store format");
     }
 
     const plaintext = decryptCredentialPayload(io, file);
-    const store = JSON.parse(plaintext);
+    const store = JSON.parse(plaintext) as unknown;
     if (!isCredentialStore(store)) {
       throw new Error("Invalid Muse credential payload");
     }
@@ -303,7 +303,7 @@ async function writeCredentialStore(io: CredentialStoreIO, store: CredentialStor
     mode: 0o600
   });
   await rename(tmp, filePath);
-    await withBestEffort(chmod(filePath, 0o600), undefined);
+  await chmod(filePath, 0o600).catch(() => undefined);
 }
 
 function encryptCredentialPayload(io: CredentialStoreIO, plaintext: string): EncryptedCredentialFile {
@@ -387,4 +387,8 @@ function isImapEmailCredential(value: unknown): value is ImapEmailCredential {
     && typeof value.appPassword === "string"
     && (value.imapHost === undefined || typeof value.imapHost === "string")
     && (value.smtpHost === undefined || typeof value.smtpHost === "string");
+}
+
+function isNodeError(value: unknown): value is NodeJS.ErrnoException {
+  return value instanceof Error && "code" in value;
 }

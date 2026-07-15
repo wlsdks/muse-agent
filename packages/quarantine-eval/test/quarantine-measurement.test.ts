@@ -674,12 +674,7 @@ describe("synthetic quarantine measurement kernel", () => {
 
   it("keeps canonical raw whitespace and object key order semantically equivalent", async () => {
     const manifest = await fixtureManifest();
-    const entries = Object.entries(manifest);
-    const reversed: Record<string, unknown> = {};
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const [name, value] = entries[i] as [string, unknown];
-      reversed[name] = value;
-    }
+    const reversed = Object.fromEntries(Object.entries(manifest).reverse());
     const first = evaluateSyntheticQuarantineJson(`\n  ${JSON.stringify(reversed, null, 2)}\n`, FROZEN);
     const second = evaluateSyntheticQuarantineJson(await fixtureRaw(), FROZEN);
     expect(first).toEqual(second);

@@ -38,31 +38,19 @@ export {
   type EncryptedCredentialEnvelope
 } from "./credential-encryption.js";
 
-export { sleep, withTimeout, withTimeoutFallback } from "./sleep.js";
-export { isNodeError, isNodeErrorCode, hasNodeErrorCodeIn, NODE_ERROR_CODES, type NodeErrorCode } from "./node-error.js";
-export { serializePerKey } from "./serialize-per-key.js";
-export { withBestEffort } from "./best-effort.js";
-export { createStringSetGuard } from "./string-set-guard.js";
-export { resolveAmbientSourceMode, type AmbientSourceMode, type AmbientSourceResolveOptions } from "./ambient-source.js";
+export { sleep } from "./sleep.js";
 export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult
 } from "./run-command.js";
 
-export {
-  ENV_BOOLEAN_FALSE_VALUES,
-  ENV_BOOLEAN_TRUE_VALUES,
-  parseBooleanFromEnv,
-  parseBooleanTriStateFromEnv
-} from "./env-boolean.js";
-
 export type JsonPrimitive = string | number | boolean | null;
 
-export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 
 export interface JsonObject {
-  [key: string]: JsonValue | undefined;
+  readonly [key: string]: JsonValue;
 }
 
 export type MuseMode = "local" | "remote";

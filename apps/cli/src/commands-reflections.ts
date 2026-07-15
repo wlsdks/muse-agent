@@ -10,15 +10,11 @@ import { randomUUID } from "node:crypto";
 
 import { buildGroundingReverifyPrompt, filterReflectionsAgainstStore, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
-import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile, resolveReflectionsFile as sharedResolveReflectionsFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile, resolveReflectionsFile as sharedResolveReflectionsFile } from "@muse/autoconfigure";
 import { addReflections, decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, listReflections, readEpisodes, readReflections, type NewReflection, type StoredReflection } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 export function resolveReflectionsFile(env: Record<string, string | undefined> = process.env): string {
   return sharedResolveReflectionsFile(env);
@@ -148,7 +144,7 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
       // followable (verifiable), not an opaque id. Fail-soft: no episodes → ids.
       let sources: Map<string, ReflectionSource> | undefined;
       try {
-        const episodes = await readEpisodes(resolveEpisodesFile(environment()));
+        const episodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
         sources = new Map(episodes.map((ep) => [ep.id, { startedAt: ep.startedAt, summary: ep.summary }]));
       } catch { /* no episodes — fall back to bare ids */ }
       io.stdout(`${renderReflections(entries, sources)}\n`);
@@ -215,7 +211,7 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
         return;
       }
       const limit = Math.max(2, Math.trunc(Number.parseInt(options.limit, 10) || 30));
-        const episodes = (await readEpisodes(resolveEpisodesFile(environment()))).slice(-limit);
+      const episodes = (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).slice(-limit);
       const inputs = episodes.map((ep) => ({ id: ep.id, text: ep.summary }));
       if (inputs.filter((i) => i.text.trim().length > 0).length < 2) {
         io.stdout("Not enough past sessions to reflect over yet — keep using Muse and try again.\n");

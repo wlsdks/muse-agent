@@ -20,7 +20,6 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import type { PersistedEpisode } from "@muse/stores";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
@@ -69,8 +68,8 @@ export async function loadEpisodeIndex(file: string): Promise<EpisodeIndex | und
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed)) return undefined;
-  const candidate = parsed;
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<EpisodeIndex>;
   if (candidate.version !== EPISODE_INDEX_SCHEMA_VERSION) {
     await backupVersionMismatchedStore(file, candidate.version);
     return undefined;
@@ -82,15 +81,16 @@ export async function loadEpisodeIndex(file: string): Promise<EpisodeIndex | und
 }
 
 function isValidEpisodeIndexEntry(raw: unknown): raw is EpisodeIndexEntry {
-  if (!isRecord(raw)) return false;
-  if (typeof raw.id !== "string" || raw.id.length === 0) return false;
-  if (typeof raw.userId !== "string") return false;
-  if (typeof raw.summary !== "string") return false;
-  if (typeof raw.startedAt !== "string") return false;
-  if (typeof raw.endedAt !== "string") return false;
-  if (!Array.isArray(raw.embedding)) return false;
-  if (raw.importance !== undefined && typeof raw.importance !== "number") return false;
-  return raw.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
+  if (!raw || typeof raw !== "object") return false;
+  const e = raw as Partial<EpisodeIndexEntry>;
+  if (typeof e.id !== "string" || e.id.length === 0) return false;
+  if (typeof e.userId !== "string") return false;
+  if (typeof e.summary !== "string") return false;
+  if (typeof e.startedAt !== "string") return false;
+  if (typeof e.endedAt !== "string") return false;
+  if (!Array.isArray(e.embedding)) return false;
+  if (e.importance !== undefined && typeof e.importance !== "number") return false;
+  return e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
 export async function saveEpisodeIndex(file: string, index: EpisodeIndex): Promise<void> {
@@ -98,7 +98,7 @@ export async function saveEpisodeIndex(file: string, index: EpisodeIndex): Promi
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(index, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**

@@ -2,11 +2,9 @@ import { readFile } from "node:fs/promises";
 
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { demoteStaleHits } from "@muse/recall";
-import { isRecord, parseBooleanFromEnv } from "@muse/shared";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
-import { withBestEffort } from "./async-promises.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
 //
@@ -150,7 +148,7 @@ function hitsToMatches(hits: readonly RecallHit[]): KnowledgeMatch[] {
  * this is what lets it answer from a note the user just added.
  */
 export function chatAutoReindexEnabled(env: Record<string, string | undefined>): boolean {
-  return parseBooleanFromEnv(env.MUSE_CHAT_AUTO_REINDEX, true);
+  return env.MUSE_CHAT_AUTO_REINDEX !== "0";
 }
 
 /**
@@ -178,12 +176,7 @@ export function notesIndexNeedsModelMigration(existingModel: string | undefined,
 
 async function defaultReadIndexModel(indexPath: string): Promise<string | undefined> {
   try {
-    const parsed = JSON.parse(await readFile(indexPath, "utf8"));
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
-    const model = parsed.model;
-    return typeof model === "string" && model.trim().length > 0 ? model.trim() : undefined;
+    return (JSON.parse(await readFile(indexPath, "utf8")) as { model?: string }).model;
   } catch {
     return undefined;
   }
@@ -253,8 +246,8 @@ export function buildQueryRewritePrompt(
 export function parseQueryRewrite(output: string, fallback: string): string {
   try {
     const parsed: unknown = JSON.parse(output.trim());
-    if (isRecord(parsed) && "query" in parsed) {
-      const query = parsed.query;
+    if (parsed && typeof parsed === "object" && "query" in parsed) {
+      const query = (parsed as { query: unknown }).query;
       if (typeof query === "string" && query.trim().length > 0 && query.length <= 200) {
         return query.trim();
       }
@@ -277,15 +270,15 @@ export async function retrieveChatGrounding(
 ): Promise<ChatGrounding> {
   const trimmed = message.trim();
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
-  const env = opts.env ?? (process.env);
-  if (!parseBooleanFromEnv(env.MUSE_CHAT_GROUNDING, true)) return { block: "", matches: [] };
+  const env = opts.env ?? (process.env as Record<string, string | undefined>);
+  if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
   const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`
   // already extends. The desktop companion only ever calls `chat`, so without
   // this a note the user just added is unreachable until they remember to run
   // `muse notes reindex`. Fail-soft: search whatever index exists.
   if (chatAutoReindexEnabled(env)) {
-    await withBestEffort(refreshStaleNotesIndexForChat(env, embedModel), undefined);
+    await refreshStaleNotesIndexForChat(env, embedModel).catch(() => undefined);
   }
   try {
     const hits = await (opts.searchRecall ?? searchRecall)({

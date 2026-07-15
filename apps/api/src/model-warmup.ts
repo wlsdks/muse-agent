@@ -1,5 +1,3 @@
-import { parseBooleanFromEnv, withBestEffort } from "@muse/shared";
-
 import type { ModelProvider } from "@muse/model";
 
 export interface ModelWarmupOptions {
@@ -25,15 +23,19 @@ export function warmUpModelIfConfigured(
   env: Record<string, string | undefined>,
   options: ModelWarmupOptions
 ): void {
-  const enabled = parseBooleanFromEnv(env.MUSE_WARMUP_MODEL, false);
+  const enabled = env.MUSE_WARMUP_MODEL === "1" || env.MUSE_WARMUP_MODEL?.toLowerCase() === "true";
   if (!enabled || !options.modelProvider || !options.defaultModel) {
     return;
   }
   const provider = options.modelProvider;
   const model = options.defaultModel;
-  void withBestEffort(provider.generate({
-    messages: [{ content: "ok", role: "user" }],
-    maxOutputTokens: 1,
-    model
-  }), undefined);
+  void (async (): Promise<void> => {
+    await provider.generate({
+      messages: [{ content: "ok", role: "user" }],
+      maxOutputTokens: 1,
+      model
+    });
+  })().catch(() => {
+    /* warmup is best-effort — never block or fail server start */
+  });
 }

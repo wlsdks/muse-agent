@@ -10,16 +10,9 @@
 
 import { parseBoolean } from "@muse/autoconfigure";
 
-
-
 import { resolveSkillRewardsFile } from "./commands-skills.js";
-import { withBestEffort } from "./async-promises.js";
 
 type GenerateCapableProvider = { readonly generate: unknown };
-type UmbrellaConsolidation = { readonly umbrella: string; readonly merged: readonly string[] };
-type SessionPreferenceInferenceResult = { readonly added: readonly string[]; readonly status: "no-model" };
-
-const noModelPreferences = (): SessionPreferenceInferenceResult => ({ added: [], status: "no-model" });
 
 export async function runEndOfSessionPipeline(args: {
   readonly modelProvider: unknown;
@@ -37,18 +30,14 @@ export async function runEndOfSessionPipeline(args: {
   if (!(modelProvider && "generate" in (modelProvider as GenerateCapableProvider))) return;
 
   const { captureEndOfSessionEpisode } = await import("./chat-end-session.js");
-  await withBestEffort(
-    captureEndOfSessionEpisode({
-      model,
-      modelProvider: modelProvider as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"],
-      userId,
-      // Mark the episode trusted:false when this session ever grounded on
-      // untrusted-only sources (episode-laundering defense, MemoryGraft).
-      untrustedSession: sessionUntrusted
-    }),
-    undefined
-  );
-
+  await captureEndOfSessionEpisode({
+    model,
+    modelProvider: modelProvider as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"],
+    userId,
+    // Mark the episode trusted:false when this session ever grounded on
+    // untrusted-only sources (episode-laundering defense, MemoryGraft).
+    untrustedSession: sessionUntrusted
+  }).catch(() => undefined);
 
   // End-of-session auto-distillation: turn any correction the user made this
   // session into a generalised [Learned Strategies] entry (ReasoningBank,
@@ -60,17 +49,14 @@ export async function runEndOfSessionPipeline(args: {
     // Sleep daemon to distill later behind the brakes — no exit-time LLM
     // call, no manual step. Mutually exclusive with MUSE_PLAYBOOK_DISTILL.
     const { enqueueSessionCorrections } = await import("./chat-enqueue-corrections.js");
-    await withBestEffort(enqueueSessionCorrections({ userId }), undefined);
+    await enqueueSessionCorrections({ userId }).catch(() => undefined);
   } else if (parseBoolean(process.env.MUSE_PLAYBOOK_DISTILL_ENABLED, true)) {
     const { distillSessionCorrections, sessionCorrectionTexts } = await import("./chat-distill-corrections.js");
-    const result = await withBestEffort(
-      distillSessionCorrections({
-        model,
-        modelProvider: modelProvider as Parameters<typeof distillSessionCorrections>[0]["modelProvider"],
-        userId
-      }),
-      undefined
-    );
+    const result = await distillSessionCorrections({
+      model,
+      modelProvider: modelProvider as Parameters<typeof distillSessionCorrections>[0]["modelProvider"],
+      userId
+    }).catch(() => undefined);
     if (result?.status === "recorded") {
       for (const s of result.strategies) {
         process.stderr.write(`💾 Learned strategy: ${s.text}\n`);
@@ -91,18 +77,15 @@ export async function runEndOfSessionPipeline(args: {
     // observation count as if the user had taught the same thing twice.
     const { distillQueuedCorrections, resolveLearningPauseFile, resolvePlaybookFile } = await import("@muse/autoconfigure");
     const { resolveLearnQueueFile } = await import("@muse/stores");
-    const sessionSaid = await withBestEffort(sessionCorrectionTexts(userId), new Set<string>());
-    const drained = await withBestEffort(
-      distillQueuedCorrections({
-        model,
-        modelProvider: modelProvider as Parameters<typeof distillQueuedCorrections>[0]["modelProvider"],
-        pauseFile: resolveLearningPauseFile(process.env),
-        playbookFile: resolvePlaybookFile(process.env),
-        queueFile: resolveLearnQueueFile(process.env),
-        skipCorrection: (correction) => sessionSaid.has(correction.trim())
-      }),
-      0
-    );
+    const sessionSaid = await sessionCorrectionTexts(userId).catch(() => new Set<string>());
+    const drained = await distillQueuedCorrections({
+      model,
+      modelProvider: modelProvider as Parameters<typeof distillQueuedCorrections>[0]["modelProvider"],
+      pauseFile: resolveLearningPauseFile(process.env),
+      playbookFile: resolvePlaybookFile(process.env),
+      queueFile: resolveLearnQueueFile(process.env),
+      skipCorrection: (correction) => sessionSaid.has(correction.trim())
+    }).catch(() => 0);
     if (drained > 0) {
       process.stderr.write(`💾 Learned ${drained} lesson(s) you taught me elsewhere.\n`);
     }
@@ -114,13 +97,10 @@ export async function runEndOfSessionPipeline(args: {
   // never blocks exit.
   if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, true)) {
     const { authorSkillsFromSession, applySkillRewardsFromSession } = await import("./chat-author-skills.js");
-    const result = await withBestEffort(
-      authorSkillsFromSession({
-        model,
-        modelProvider: modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
-      }),
-      undefined
-    );
+    const result = await authorSkillsFromSession({
+      model,
+      modelProvider: modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
+    }).catch(() => undefined);
     if (result?.status === "authored") {
       for (const name of result.skills) {
         process.stderr.write(`💾 Learned skill: ${name}\n`);
@@ -128,12 +108,9 @@ export async function runEndOfSessionPipeline(args: {
     }
     // RL over skills: decay the skill that applied to a corrected request,
     // reinforce one for an approved request (deterministic + fail-soft).
-    const reward = await withBestEffort(
-      applySkillRewardsFromSession({
-        rewardsFile: resolveSkillRewardsFile(process.env)
-      }),
-      undefined
-    );
+    const reward = await applySkillRewardsFromSession({
+      rewardsFile: resolveSkillRewardsFile(process.env)
+    }).catch(() => undefined);
     for (const d of reward?.decayed ?? []) process.stderr.write(`↓ skill reward: ${d.name} (${d.reward.toString()})\n`);
     for (const r of reward?.reinforced ?? []) process.stderr.write(`↑ skill reward: ${r.name} (+${r.reward.toString()})\n`);
   }
@@ -150,8 +127,8 @@ export async function runEndOfSessionPipeline(args: {
     // SkillOpt held-out gate, same as the daemon: a coverage-losing umbrella is
     // rejected (originals kept), never committed unverified on session end.
     const gateEmbed = createGateEmbedder(process.env);
-    const merged = await withBestEffort(
-      store.consolidate(
+    const merged = await store
+      .consolidate(
         (cluster) => mergeSkillsIntoUmbrella(cluster, {
           model,
           modelProvider: modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
@@ -159,9 +136,8 @@ export async function runEndOfSessionPipeline(args: {
         {
           validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed: gateEmbed }).then((v) => v.accept)
         }
-      ),
-      [] as readonly UmbrellaConsolidation[]
-    );
+      )
+      .catch(() => [] as readonly { umbrella: string; merged: readonly string[] }[]);
     for (const m of merged) {
       process.stderr.write(`🧹 Consolidated ${m.merged.length.toString()} skills → ${m.umbrella}\n`);
     }
@@ -173,7 +149,7 @@ export async function runEndOfSessionPipeline(args: {
   // Opt-in + fail-soft. Deterministic (no model).
   if (parseBoolean(process.env.MUSE_CHECKINS_AUTOSCAN_ENABLED, false)) {
     const { scanSessionCheckins } = await import("./commands-checkins.js");
-    const scheduled = await withBestEffort(scanSessionCheckins(), []);
+    const scheduled = await scanSessionCheckins().catch(() => []);
     for (const c of scheduled) {
       process.stderr.write(`📌 Check-in scheduled: ${c.question}\n`);
     }
@@ -185,7 +161,7 @@ export async function runEndOfSessionPipeline(args: {
   // Opt-in + fail-soft. LLM path (local model); never fabricates (NONE-aware).
   if (parseBoolean(process.env.MUSE_PREFERENCE_AUTOINFER_ENABLED, false)) {
     const { inferSessionPreferences } = await import("./commands-user.js");
-    const result = await withBestEffort(inferSessionPreferences(), noModelPreferences());
+    const result = await inferSessionPreferences().catch(() => ({ added: [] as readonly string[], status: "no-model" as const }));
     for (const p of result.added) {
       process.stderr.write(`🧠 Learned preference: ${p}\n`);
     }

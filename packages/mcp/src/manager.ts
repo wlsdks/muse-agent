@@ -25,7 +25,6 @@ import { delimiter, join as joinPath } from "node:path";
 import type { MuseTool } from "@muse/tools";
 
 import { toErrorMessage } from "./error-utils.js";
-import { isRecord } from "@muse/shared";
 import {
   InMemoryMcpServerStore,
   MCP_EXTERNAL_TRANSPORT_BLOCKED,
@@ -740,16 +739,16 @@ export function verifyServerFingerprint(server: McpServer): { matched: boolean; 
 }
 
 function readPinnedFingerprint(config: unknown): string | undefined {
-  if (!isRecord(config)) return undefined;
-  const value = config.fingerprintSha256;
+  if (!config || typeof config !== "object") return undefined;
+  const value = (config as { fingerprintSha256?: unknown }).fingerprintSha256;
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim().toLowerCase();
   return /^[a-f0-9]{64}$/u.test(trimmed) ? trimmed : undefined;
 }
 
 function readCommandPath(config: unknown): string | undefined {
-  if (!isRecord(config)) return undefined;
-  const c = config.command;
+  if (!config || typeof config !== "object") return undefined;
+  const c = (config as { command?: unknown }).command;
   return typeof c === "string" && c.length > 0 ? c : undefined;
 }
 
@@ -801,14 +800,14 @@ function isExecutableFile(path: string): boolean {
 }
 
 function readNodeEntrypointPath(config: unknown): string | undefined {
-  if (!isRecord(config)) return undefined;
+  if (!config || typeof config !== "object") return undefined;
   const cmd = readCommandPath(config);
   if (!cmd) return undefined;
   // For `node script.js` style invocations the entrypoint script is
   // the real surface — fold it into the hash so a swapped script
   // (same node binary) still trips the pin.
   if (!/(^|\/)(?:node|deno|bun|python|python3)$/u.test(cmd)) return undefined;
-  const args = isRecord(config) ? config.args : undefined;
+  const args = (config as { args?: unknown }).args;
   if (!Array.isArray(args)) return undefined;
   const first = args.find((value: unknown) => typeof value === "string" && !value.startsWith("-"));
   return typeof first === "string" ? first : undefined;

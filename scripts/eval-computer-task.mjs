@@ -21,7 +21,6 @@ import { pathToFileURL } from "node:url";
 
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
-import { readTextOrDefault, runBestEffort } from "./best-effort.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -75,7 +74,7 @@ let dir;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
     // A fresh project per run so a prior run's fix can't leak terminal state.
-    if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "previous run directory cleanup");
+    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
     dir = await mkdtemp(join(tmpdir(), "muse-computer-task-"));
     const src = join(dir, "src");
     const { mkdir } = await import("node:fs/promises");
@@ -116,7 +115,7 @@ try {
 
     // TERMINAL STATE: re-import the edited module and run it. Cache-bust the
     // ESM loader with a per-run query so a prior import can't mask the result.
-    const fixed = await readTextOrDefault(() => readFile(mathFile, "utf8"));
+    const fixed = await readFile(mathFile, "utf8").catch(() => "");
     let addWorks = false;
     let multiplyIntact = false;
     try {
@@ -126,7 +125,7 @@ try {
     } catch {
       addWorks = false;
     }
-    const noiseIntact = (await readTextOrDefault(() => readFile(join(src, "string-utils.mjs"), "utf8")) === NOISE_STRING);
+    const noiseIntact = (await readFile(join(src, "string-utils.mjs"), "utf8").catch(() => "")) === NOISE_STRING;
     const ok = addWorks && multiplyIntact && noiseIntact;
     if (!ok) failures += 1;
     console.log(
@@ -137,7 +136,7 @@ try {
     if (!ok) console.log(`  edited file:\n${fixed.split("\n").map((l) => `    ${l}`).join("\n")}`);
   }
 } finally {
-  if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "temporary eval directory cleanup");
+  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
 }
 
 if (failures > 0) {

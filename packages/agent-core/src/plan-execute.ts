@@ -136,7 +136,7 @@ function toPlanSteps(entries: readonly unknown[]): readonly PlanStep[] | null {
     steps.push({
       // entries come from JSON.parse of the model's plan text, so a record
       // here is already JSON-safe data — narrow to JsonObject accordingly.
-      args: toJsonObject(argsValue),
+      args: (argsValue as JsonObject | undefined) ?? {},
       description: typeof descriptionValue === "string" ? descriptionValue : "",
       tool: toolValue
     });
@@ -175,31 +175,6 @@ export const MAX_PLAN_STEPS = 64;
 /** Stable key for a plan step used by duplicate detection and deduplication. */
 function stepKey(step: PlanStep): string {
   return `${step.tool}::${stableStringify(step.args)}`;
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const normalized = toJsonValue(raw);
-    if (normalized !== undefined) {
-      out[key] = normalized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 /** JSON.stringify with sorted keys so {b:1,a:2} and {a:2,b:1} produce the same key. */

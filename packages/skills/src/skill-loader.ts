@@ -11,8 +11,6 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { withBestEffort } from "@muse/shared";
-
 
 import { parseSkillFile, SkillParseError } from "./skill-parser.js";
 import type { Skill, SkillSource } from "./skill-contract.js";
@@ -71,7 +69,7 @@ export async function loadSkillsFromDirectory(
   for (const entry of entries) {
     const skillPath = join(root, entry, "SKILL.md");
     try {
-    const stat = await withBestEffort(fs.stat(skillPath), undefined);
+      const stat = await fs.stat(skillPath).catch(() => undefined);
       if (!stat || !stat.isFile()) {
         continue;
       }

@@ -1,4 +1,4 @@
-import { createRunId, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
 import type { DebugReplayCaptureTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
@@ -187,7 +187,7 @@ function jsonArray(value: unknown): JsonValue[] {
   }
   if (typeof value === "string" && value.trim().length > 0) {
     try {
-      return jsonArray(JSON.parse(value));
+      return jsonArray(JSON.parse(value) as unknown);
     } catch {
       return [];
     }
@@ -196,27 +196,17 @@ function jsonArray(value: unknown): JsonValue[] {
 }
 
 function jsonObject(value: unknown): JsonObject {
-  if (isRecord(value)) {
-    return toJsonObject(value);
+  if (value && typeof value === "object" && !Array.isArray(value) && isJsonValue(value)) {
+    return value as JsonObject;
   }
   if (typeof value === "string" && value.trim().length > 0) {
     try {
-      return jsonObject(JSON.parse(value));
+      return jsonObject(JSON.parse(value) as unknown);
     } catch {
       return {};
     }
   }
   return {};
-}
-
-function toJsonObject(value: Record<string, unknown>): JsonObject {
-  const out: JsonObject = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (isJsonValue(item)) {
-      out[key] = item;
-    }
-  }
-  return out;
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

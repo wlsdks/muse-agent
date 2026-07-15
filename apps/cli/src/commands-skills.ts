@@ -15,13 +15,10 @@ import { join } from "node:path";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/stores";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
-import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { authorSkillsFromSession } from "./chat-author-skills.js";
 import type { ProgramIO } from "./program.js";
-import { pathExists } from "./path-exists.js";
-import { withBestEffort } from "./async-promises.js";
 
 export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
@@ -71,7 +68,7 @@ Examples:
     .description("List installed skills")
     .action(async () => {
       const dir = resolveSkillsDir();
-      const loaded = await withBestEffort(loadSkillsFromDirectory(dir, "user"), []);
+      const loaded = await loadSkillsFromDirectory(dir, "user").catch(() => []);
       if (loaded.length === 0) {
         io.stdout(`No skills yet. Add one with \`muse skills add <name>\` (dir: ${dir}).\n`);
         return;
@@ -120,21 +117,15 @@ Examples:
     .action(async () => {
       const dir = resolveAuthoredSkillsDir();
       const store = new AuthoredSkillStore({ dir });
-      const authored = await withBestEffort(store.listAuthored(), []);
+      const authored = await store.listAuthored().catch(() => []);
       if (authored.length === 0) {
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
         return;
       }
-      const rewards = await (async () => {
-        try {
-          return await readSkillRewards(resolveSkillRewardsFile());
-        } catch {
-          return {};
-        }
-      })();
+      const rewards = await readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>));
       io.stdout(`Authored skills (${authored.length.toString()}) in ${dir}:\n`);
       for (const skill of authored) {
-        const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata["muse"] : {};
+        const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
         const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt.slice(0, 10) : "unknown";
         const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt.slice(0, 10) : "never";
         const reward = rewards[skill.name];
@@ -157,7 +148,7 @@ Examples:
       if (!Number.isInteger(amount) || amount <= 0) {
         throw new Error("skills reward <amount> must be a positive integer");
       }
-      const authored = await withBestEffort(new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored(), []);
+      const authored = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []);
       if (!authored.some((s) => s.name === name)) {
         io.stdout(`(no authored skill named "${name}" — see \`muse skills authored\`)\n`);
         return;
@@ -181,7 +172,7 @@ Examples:
       }
       const dir = resolveAuthoredSkillsDir();
       const store = new AuthoredSkillStore({ dir });
-      const archived = await store.curate(days).catch((): readonly string[] => []);
+      const archived = await store.curate(days).catch(() => [] as readonly string[]);
       if (archived.length === 0) {
         io.stdout(`No authored skills idle beyond ${days.toString()} days — nothing archived.\n`);
         return;
@@ -281,7 +272,7 @@ Examples:
       }
       const dir = join(resolveSkillsDir(), name);
       const file = join(dir, "SKILL.md");
-      if (await pathExists(file)) {
+      if (await stat(file).then(() => true).catch(() => false)) {
         io.stderr(`error: a skill already exists at ${file}\n`);
         process.exitCode = 1;
         return;

@@ -15,7 +15,6 @@
  */
 
 import type { ModelToolCall } from "@muse/model";
-import { isRecord } from "@muse/shared";
 
 import { stableJson } from "./tool-call-deduplicator.js";
 
@@ -31,9 +30,9 @@ function stripVolatile(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripVolatile(item));
   }
-  if (isRecord(value)) {
+  if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       if (VOLATILE_KEYS.has(key)) continue;
       out[key] = stripVolatile(val);
     }

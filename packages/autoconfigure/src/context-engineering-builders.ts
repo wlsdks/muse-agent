@@ -25,7 +25,7 @@ import {
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 
 import { createGateEmbedder, createOllamaEmbedder } from "./embedder-base.js";
-import { isRecord, type JsonObject, type JsonValue, withBestEffort } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/stores";
 import { hashQuery, type ConversationSummaryStore, type TaskMemoryStore, type UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
@@ -62,10 +62,10 @@ export function buildActiveContextProvider(
   taskMemoryStore?: TaskMemoryStore,
   calendarRegistry?: CalendarProviderRegistry
 ): ActiveContextProvider | undefined {
-  if (!parseBoolean(env.MUSE_ACTIVE_CONTEXT_ENABLED, true)) {
+  if (env.MUSE_ACTIVE_CONTEXT_ENABLED?.trim().toLowerCase() === "false") {
     return undefined;
   }
-  const calendarEventsResolver = calendarRegistry && parseBoolean(env.MUSE_ACTIVE_CONTEXT_CALENDAR_ENABLED, true)
+  const calendarEventsResolver = calendarRegistry && env.MUSE_ACTIVE_CONTEXT_CALENDAR_ENABLED?.trim().toLowerCase() !== "false"
     ? {
         async resolve(options: { readonly nowIso: string; readonly timezone: string; readonly userId?: string }) {
           try {
@@ -120,8 +120,9 @@ export function buildActiveContextProvider(
   // to remind you about X at 3 — it's 2:55" without an extra tool
   // call. Opt-out via `MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED=false`.
   const remindersResolver: RemindersResolver | undefined =
-    parseBoolean(env.MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED, true)
-      ? {
+    env.MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED?.trim().toLowerCase() === "false"
+      ? undefined
+      : {
         async resolve(): Promise<readonly ReminderHint[] | undefined> {
           try {
             const reminders = await readReminders(resolveRemindersFile(env));
@@ -132,8 +133,7 @@ export function buildActiveContextProvider(
             return undefined;
           }
         }
-      }
-      : undefined;
+      };
   return new DefaultActiveContextProvider({
     ...(activeTaskResolver ? { activeTaskResolver } : {}),
     ...(calendarEventsResolver ? { calendarEventsResolver } : {}),
@@ -158,7 +158,7 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
   if (isLocalOnlyEnabled(env)) {
     return undefined;
   }
-  if (!parseBoolean(env.MUSE_INBOX_CONTEXT_ENABLED, true)) {
+  if (env.MUSE_INBOX_CONTEXT_ENABLED?.trim().toLowerCase() === "false") {
     return undefined;
   }
   const sources: InboxSourceConfig[] = [];
@@ -225,7 +225,7 @@ export function buildEpisodicRecallProvider(
   env: MuseEnvironment,
   summaryStore: ConversationSummaryStore | undefined
 ): EpisodicRecallProvider | undefined {
-  if (!parseBoolean(env.MUSE_EPISODIC_RECALL_ENABLED, true)) {
+  if (env.MUSE_EPISODIC_RECALL_ENABLED?.trim().toLowerCase() === "false") {
     return undefined;
   }
   if (!summaryStore || typeof summaryStore.listAll !== "function") {
@@ -241,7 +241,7 @@ export function buildEpisodicRecallProvider(
   // Embedding recall on by default (zero-cost local Ollama;
   // fail-open to Jaccard if unreachable). Opt out with
   // MUSE_EPISODIC_RECALL_EMBED=false.
-  const embedEnabled = parseBoolean(env.MUSE_EPISODIC_RECALL_EMBED, true);
+  const embedEnabled = env.MUSE_EPISODIC_RECALL_EMBED?.trim().toLowerCase() !== "false";
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe";
   // ACT-R activation fuel: the recall-hits ledger this same provider already
   // writes (withRecallHitRecording below) feeds frequency × recency ranking —
@@ -250,11 +250,11 @@ export function buildEpisodicRecallProvider(
   const recallHitsFile = resolveRecallHitsFile(env);
   const fadedMemoriesFile = resolveFadedMemoriesFile(env);
   const provider = new StoreBackedEpisodicRecallProvider({
-    fadedKeys: () => withBestEffort(readFadedMemoryKeys(fadedMemoriesFile), new Set()),
+    fadedKeys: () => readFadedMemoryKeys(fadedMemoriesFile).catch(() => new Set()),
     maxFetched,
     minScore,
     recallStats: async () => {
-      const records = await withBestEffort(readRecallHits(recallHitsFile), []);
+      const records = await readRecallHits(recallHitsFile).catch(() => []);
       return new Map(records.map((record) => [record.key, { hits: record.hits, lastHitMs: record.lastHitMs }]));
     },
     store: summaryStore,
@@ -285,7 +285,7 @@ export function withRecallHitRecording(
         .filter((match) => typeof match.sessionId === "string" && match.sessionId.length > 0)
         .map((match) => ({ key: match.sessionId, queryHash, summary: match.narrative }));
       if (entries.length > 0) {
-        void withBestEffort(recordRecallHits(hitsFile, entries, Date.now()), undefined);
+        void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
       }
       return snapshot;
     }
@@ -308,7 +308,7 @@ export function recordFactRecallHits(hitsFile: string, memoryKeys: readonly stri
   if (uniqueKeys.length === 0) return;
   const queryHash = hashQuery(query);
   const entries = uniqueKeys.map((key) => ({ key, queryHash }));
-  void withBestEffort(recordRecallHits(hitsFile, entries, Date.now()), undefined);
+  void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
 }
 
 /**
@@ -387,7 +387,7 @@ export function buildBackgroundReviewHooks(
  * Default off so existing setups see no behavioural change.
  */
 export function buildToolFilter(env: MuseEnvironment): ToolFilter | undefined {
-  if (!parseBoolean(env.MUSE_TOOL_FILTER_ENABLED, false)) {
+  if (env.MUSE_TOOL_FILTER_ENABLED?.trim().toLowerCase() !== "true") {
     return undefined;
   }
   return new DefaultToolFilter();
@@ -406,7 +406,7 @@ export function buildToolFilter(env: MuseEnvironment): ToolFilter | undefined {
  * accesses the same `TelemetryAggregator` interface.
  */
 export function buildTelemetryAggregator(env: MuseEnvironment): TelemetryAggregator | undefined {
-  if (!parseBoolean(env.MUSE_TELEMETRY_AGGREGATOR_ENABLED, true)) {
+  if (env.MUSE_TELEMETRY_AGGREGATOR_ENABLED?.trim().toLowerCase() === "false") {
     return undefined;
   }
   const capacityRaw = env.MUSE_TELEMETRY_AGGREGATOR_CAPACITY?.trim();
@@ -505,7 +505,7 @@ export function buildPlanCacheProvider(env: MuseEnvironment): PlanCacheProvider 
       const entries = (await queryPlanCache(file, userId)).map((entry) => ({
         prompt: entry.prompt,
         // Store args are JSON-sourced; narrow Record<string,unknown> → JsonObject at the boundary.
-        steps: entry.steps.map((step) => ({ args: toJsonObject(step.args), description: step.description, tool: step.tool }))
+        steps: entry.steps.map((step) => ({ args: step.args as JsonObject, description: step.description, tool: step.tool }))
       }));
       // Embedding-blended reuse so a paraphrased / Korean-particle prompt
       // still hits a cached plan; degrades to the lexical selector when the
@@ -522,29 +522,4 @@ export function buildPlanCacheProvider(env: MuseEnvironment): PlanCacheProvider 
       });
     }
   };
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }

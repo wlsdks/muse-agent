@@ -5,12 +5,7 @@ import { App } from "./app/App.js";
 
 import "./theme.css";
 
-const root = document.getElementById("root");
-if (!root) {
-  throw new Error("Unable to initialize Muse web app: #root container not found");
-}
-
-createRoot(root).render(
+createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
     <App />
   </StrictMode>

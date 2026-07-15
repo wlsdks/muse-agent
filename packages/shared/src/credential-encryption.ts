@@ -20,7 +20,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
-import { parseBooleanFromEnv } from "./env-boolean.js";
 
 export interface EncryptedCredentialEnvelope {
   readonly version: 1;
@@ -48,16 +47,13 @@ export function credentialEncryptionSecret(env: NodeJS.ProcessEnv = process.env)
 }
 
 export function isEncryptedCredentialEnvelope(value: unknown): value is EncryptedCredentialEnvelope {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  return value.version === 1 && value.algorithm === "aes-256-gcm"
-    && typeof value.data === "string" && typeof value.iv === "string"
-    && typeof value.salt === "string" && typeof value.tag === "string";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+  const e = value as Partial<EncryptedCredentialEnvelope>;
+  return e.version === 1 && e.algorithm === "aes-256-gcm"
+    && typeof e.data === "string" && typeof e.iv === "string"
+    && typeof e.salt === "string" && typeof e.tag === "string";
 }
 
 export function encryptCredentialEnvelope(
@@ -108,7 +104,7 @@ export function decryptCredentialEnvelope(
 
 /** Opt-in write gate — mirrors `MUSE_CALENDAR_ENCRYPT` for the credential stores. */
 export function credentialEncryptionEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return parseBooleanFromEnv(env.MUSE_CREDENTIALS_ENCRYPT, false);
+  return ["true", "1", "yes", "on"].includes((env.MUSE_CREDENTIALS_ENCRYPT ?? "").trim().toLowerCase());
 }
 
 /**

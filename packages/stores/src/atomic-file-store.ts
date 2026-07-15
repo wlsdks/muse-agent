@@ -29,7 +29,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES, serializePerKey, sleep, withBestEffort } from "@muse/shared";
+import { sleep } from "@muse/shared";
 
 export interface AtomicWriteOptions {
   /** fsync the tmp file before rename (durable against a crash mid-rename). Default true. */
@@ -65,13 +65,14 @@ export async function atomicWriteFile(file: string, contents: string | Uint8Arra
         await fs.rename(tmp, file);
         break;
       } catch (cause) {
-        if (process.platform !== "win32" || attempt >= 20 || !hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.EPERM, NODE_ERROR_CODES.EACCES)) {
+        const code = (cause as NodeJS.ErrnoException).code;
+        if (process.platform !== "win32" || attempt >= 20 || (code !== "EPERM" && code !== "EACCES")) {
           throw cause;
         }
         await sleep(5 + attempt * 5);
       }
     }
-    await withBestEffort(fs.chmod(file, mode), undefined);
+    await fs.chmod(file, mode).catch(() => undefined);
     // Best-effort: fsync the PARENT directory so the rename's directory-entry
     // update is itself durable. Without this, a crash between rename() and the
     // dirent hitting disk can lose the rename even though the file's own
@@ -97,13 +98,13 @@ export async function atomicWriteFile(file: string, contents: string | Uint8Arra
     // A write/fsync/rename failure must not leave the tmp as an orphan — it
     // would accumulate as `*.tmp-*` litter in the sidecar store dir. Best-effort
     // cleanup, then surface the original error.
-    await withBestEffort(fs.rm(tmp, { force: true }), undefined);
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
     throw error;
   }
 }
 
-
 const mutationQueues = new Map<string, Promise<unknown>>();
+const resolvedPromise = async (): Promise<unknown> => undefined;
 
 /**
  * Serialise a read-modify-write `op` against `file` so concurrent callers run
@@ -112,5 +113,8 @@ const mutationQueues = new Map<string, Promise<unknown>>();
  * rejection for sequencing while still rejecting the returned promise.
  */
 export async function withFileMutationQueue<T>(file: string, op: () => Promise<T>): Promise<T> {
-  return serializePerKey(mutationQueues, file, op);
+  const prior = mutationQueues.get(file) ?? resolvedPromise();
+  const next = prior.then(op, op);
+  mutationQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
 }

@@ -11,11 +11,8 @@ import { readTasks } from "@muse/stores";
 import { OpenMeteoWeatherProvider, type DailyForecast, type WeatherProvider } from "@muse/domain-tools";
 import type { Command } from "commander";
 
-
-
 import { readLocalEvents, readUpcomingBirthdays } from "./commands-today.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -87,23 +84,17 @@ export function registerWeekCommand(program: Command, io: ProgramIO): void {
     .description("Your next 7 days at a glance — events, due tasks, birthdays, and the daily weather forecast grouped by day (read-only, local)")
     .option("--json", "Emit the agenda as JSON")
     .action(async (options: { readonly json?: boolean }) => {
-      const env = process.env;
+      const env = process.env as Env;
       const now = new Date();
       const weekEnd = new Date(now.getTime() + 7 * DAY_MS);
-      const events = await withBestEffort(readLocalEvents(resolveLocalCalendarFile(env), now, weekEnd), []);
-      const allTasks = await withBestEffort(readTasks(resolveTasksFile(env)), []);
-      const tasks = allTasks.flatMap((task) => {
-        if (task.status !== "open" || typeof task.dueAt !== "string") {
-          return [];
-        }
-        const due = Date.parse(task.dueAt);
-        if (!Number.isFinite(due) || due < now.getTime() || due >= weekEnd.getTime()) {
-          return [];
-        }
-        return [{ dueAt: task.dueAt, title: task.title }];
-      });
-      const birthdays = await withBestEffort(readUpcomingBirthdays(resolveContactsFile(env), now), []);
-      const forecasts = await withBestEffort(resolveWeekForecasts(env), []);
+      const events = await readLocalEvents(resolveLocalCalendarFile(env), now, weekEnd).catch(() => []);
+      const allTasks = await readTasks(resolveTasksFile(env)).catch(() => []);
+      const tasks = allTasks
+        .filter((task) => task.status === "open" && typeof task.dueAt === "string"
+          && Date.parse(task.dueAt) >= now.getTime() && Date.parse(task.dueAt) < weekEnd.getTime())
+        .map((task) => ({ dueAt: task.dueAt as string, title: task.title }));
+      const birthdays = await readUpcomingBirthdays(resolveContactsFile(env), now).catch(() => []);
+      const forecasts = await resolveWeekForecasts(env).catch(() => []);
       const week = groupWeekAgenda({ birthdays, events, forecasts, tasks }, now);
       if (options.json) {
         io.stdout(`${JSON.stringify(week, null, 2)}\n`);

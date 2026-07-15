@@ -25,7 +25,6 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 
 import type { Command } from "commander";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import { activityPath } from "./commands-routine.js";
@@ -154,8 +153,8 @@ export function planTimestampedLinePrune(
 export function planActivityPrune(lines: readonly string[], nowMs: number, keepDays: number): ActivityPrunePlan {
   return planTimestampedLinePrune(lines, nowMs, keepDays, (line) => {
     try {
-      const parsed = JSON.parse(line);
-      if (isRecord(parsed) && typeof parsed.tsIso === "string") {
+      const parsed = JSON.parse(line) as { tsIso?: unknown };
+      if (parsed && typeof parsed === "object" && typeof parsed.tsIso === "string") {
         return Date.parse(parsed.tsIso);
       }
     } catch { /* malformed → undateable */ }
@@ -253,7 +252,7 @@ export function registerMaintenanceCommand(program: Command, io: ProgramIO): voi
     try {
       raw = await readFile(file, "utf8");
     } catch (cause) {
-      if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
         io.stdout(options.json ? `${JSON.stringify({ dropped: 0, file, kept: 0 }, null, 2)}\n` : `${missingLine}\n`);
         return;
       }

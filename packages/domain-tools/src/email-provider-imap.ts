@@ -21,7 +21,6 @@ import { ImapFlow, type FetchMessageObject, type FetchOptions, type FetchQueryOb
 import { createTransport } from "nodemailer";
 
 import type { EmailMessage, EmailProvider, EmailReader, EmailSearcher, EmailSender, EmailSummary } from "./email-provider.js";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 const GMAIL_IMAP_HOST = "imap.gmail.com";
 const GMAIL_IMAP_PORT = 993;
@@ -108,20 +107,20 @@ function defaultSmtpClientFactory(config: { readonly host: string; readonly port
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-
-  const timeout = new Promise<never>((_, reject) => {
-    const timeoutError = new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`);
-    timeoutHandle = setTimeout(() => {
-      reject(timeoutError);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`));
     }, timeoutMs);
-    timeoutHandle.unref?.();
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutHandle !== undefined) {
-      clearTimeout(timeoutHandle);
-    }
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (cause: unknown) => {
+        clearTimeout(timer);
+        reject(cause);
+      }
+    );
   });
 }
 
@@ -130,9 +129,9 @@ function redact(message: string, appPassword: string): string {
 }
 
 function isAuthFailure(cause: unknown): boolean {
-  if (!(cause instanceof Error) || !isRecord(cause)) return false;
-  if (readBooleanField(cause, "authenticationFailed") === true) return true;
-  if (readStringField(cause, "code") === "EAUTH") return true;
+  if (!(cause instanceof Error)) return false;
+  if ((cause as { readonly authenticationFailed?: boolean }).authenticationFailed === true) return true;
+  if ((cause as { readonly code?: string }).code === "EAUTH") return true;
   return /invalid credentials|authentication failed|auth\w*\s*fail/iu.test(cause.message);
 }
 
@@ -144,7 +143,7 @@ function isAuthFailure(cause: unknown): boolean {
  */
 function serverRejectionDetail(cause: unknown, appPassword: string): string {
   if (!(cause instanceof Error)) return "";
-  const responseText = readStringField(cause, "responseText");
+  const responseText = (cause as { readonly responseText?: unknown }).responseText;
   const raw = typeof responseText === "string" && responseText.trim().length > 0 ? responseText : cause.message;
   const trimmed = redact(raw, appPassword).replace(/\s+/gu, " ").trim().slice(0, 200);
   return trimmed.length > 0 ? ` Server said: "${trimmed}".` : "";
@@ -154,16 +153,6 @@ function webLoginBlockHint(detail: string): string {
   return /web browser|web login/iu.test(detail)
     ? " Google is blocking this sign-in (not a wrong password) — open https://accounts.google.com/DisplayUnlockCaptcha, click Continue, then retry within a few minutes."
     : "";
-}
-
-function readBooleanField(record: Record<string, unknown>, key: string): boolean | undefined {
-  const value = record[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function readStringField(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
 }
 
 function classifyImapError(cause: unknown, email: string, appPassword: string): Error {
@@ -314,7 +303,7 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
         const mailbox = await client.mailboxOpen("INBOX", { readOnly: true });
         return await fn(client, mailbox);
       } finally {
-        await withBestEffort(client.logout(), undefined);
+        await client.logout().catch(() => undefined);
       }
     };
     try {
@@ -355,7 +344,7 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
 
   /** The wizard's immediate-verification step: a real IMAP login + INBOX open, reporting the message count on success. Reuses `withMailbox` so a bad app password / network failure comes back through the same typed, redacted errors as every other call. */
   async verifyConnection(): Promise<{ readonly messageCount: number }> {
-    return this.withMailbox(async (_client, mailbox) => ({ messageCount: mailbox.exists }));
+    return this.withMailbox((_client, mailbox) => Promise.resolve({ messageCount: mailbox.exists }));
   }
 
   async listRecent(limit: number): Promise<readonly EmailSummary[]> {

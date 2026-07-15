@@ -25,71 +25,16 @@ import { isMemoryInjection } from "@muse/agent-core";
 import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { decryptFileAtRest, encryptFileAtRest, readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/stores";
-import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { formatMemoryShow } from "./human-formatters.js";
 import { isApiUnreachable, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 function envValue(key: string): string | undefined {
   const v = process.env[key]?.trim();
   return v && v.length > 0 ? v : undefined;
-}
-
-type StringKVTable = Record<string, string> | readonly { readonly key: string; readonly value: string }[];
-
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function parseStringList(value: unknown): readonly string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-}
-
-function parseStringKVTable(value: unknown): StringKVTable | undefined {
-  const entries = toRecord(value);
-  if (entries) {
-    const out: Record<string, string> = {};
-    let hasAny = false;
-    for (const [key, rawValue] of Object.entries(entries)) {
-      if (typeof rawValue === "string") {
-        hasAny = true;
-        out[key] = rawValue;
-      }
-    }
-    if (hasAny) {
-      return out;
-    }
-  }
-  if (Array.isArray(value)) {
-    const asList = value
-      .filter((item): item is Record<string, unknown> => isRecord(item) && typeof item.key === "string" && typeof item.value === "string")
-      .map((item) => ({ key: item.key, value: item.value }));
-    return asList.length > 0 ? asList : undefined;
-  }
-  return undefined;
-}
-
-function parseMemoryRecord(raw: unknown, userId: string): {
-  readonly userId: string;
-  readonly facts?: StringKVTable;
-  readonly preferences?: StringKVTable;
-  readonly recentTopics?: readonly string[];
-  readonly recentlyLearned?: readonly string[];
-  readonly recentlyForgotten?: readonly string[];
-} {
-  const payload = toRecord(raw) ?? {};
-  return {
-    userId,
-    facts: parseStringKVTable(payload.facts),
-    preferences: parseStringKVTable(payload.preferences),
-    recentTopics: parseStringList(payload.recentTopics),
-    recentlyLearned: parseStringList(payload.recentlyLearned),
-    recentlyForgotten: parseStringList(payload.recentlyForgotten)
-  };
 }
 
 /**
@@ -332,7 +277,7 @@ Examples:
         payload = await readLocalMemory();
       } else {
         try {
-          payload = toRecord(await helpers.apiRequest(io, command, `/api/user-memory/${userId}`));
+          payload = (await helpers.apiRequest(io, command, `/api/user-memory/${userId}`)) as Record<string, unknown> | undefined;
         } catch (cause) {
           if (!isApiUnreachable(cause)) {
             throw cause;
@@ -345,7 +290,8 @@ Examples:
         helpers.writeOutput(io, payload ?? {});
         return;
       }
-      io.stdout(formatMemoryShow(parseMemoryRecord(payload, userId)));
+      const merged = { userId, ...(payload ?? {}) };
+      io.stdout(formatMemoryShow(merged as Parameters<typeof formatMemoryShow>[0]));
     });
 
   memory
@@ -353,7 +299,7 @@ Examples:
     .description("Sleep consolidation: promotes salient recalled memories, down-ranks fading ones in recall (never deletes)")
     .option("--json", "Print the raw plan")
     .action(async (options: { readonly json?: boolean }) => {
-      const env = process.env;
+      const env = process.env as Record<string, string | undefined>;
       const file = resolveRecallHitsFile(env);
       const records = await readRecallHits(file);
       const nowMs = Date.now();
@@ -644,7 +590,7 @@ Examples:
         // Encrypt the belief-PROVENANCE (where each fact came from) alongside the facts
         // — they're one subsystem; protecting the values but leaking their sources/history
         // would be half a guarantee. Best-effort (a fresh setup may have no provenance yet).
-        await withBestEffort(encryptFileAtRest(defaultBeliefProvenanceFile()), undefined);
+        await encryptFileAtRest(defaultBeliefProvenanceFile()).catch(() => undefined);
         if (alreadyEncrypted) {
           io.stdout("Your user-memory is already encrypted at rest.\n");
           return;
@@ -665,7 +611,7 @@ Examples:
       const store = new FileUserMemoryStore();
       try {
         const { alreadyPlaintext } = await store.decryptAtRest();
-        await withBestEffort(decryptFileAtRest(defaultBeliefProvenanceFile()), undefined); // keep provenance in lock-step with the facts
+        await decryptFileAtRest(defaultBeliefProvenanceFile()).catch(() => undefined); // keep provenance in lock-step with the facts
         io.stdout(alreadyPlaintext ? "Your user-memory is already plaintext.\n" : "🔓 Rewrote your user-memory + its belief-provenance as plaintext.\n");
       } catch (cause) {
         io.stderr(`muse memory decrypt: ${cause instanceof Error ? cause.message : String(cause)}\n`);
@@ -713,7 +659,7 @@ export async function promoteRecalledMemories(options: {
   readonly maxPromoted?: number;
 }): Promise<PromoteMemoriesResult> {
   const nowMs = (options.now ? options.now() : new Date()).getTime();
-  const hits = await withBestEffort(options.readHits(), []);
+  const hits = await options.readHits().catch(() => []);
   const promotable = selectPromotableMemories(hits, {
     nowMs,
     useActrRanking: true,
@@ -723,7 +669,7 @@ export async function promoteRecalledMemories(options: {
 
   // Clear prior promoted facts so promotion is idempotent (today's top set
   // fully replaces yesterday's — a faded-out memory doesn't linger).
-  const current = await withBestEffort(options.store.findByUserId(options.userId), undefined);
+  const current = await options.store.findByUserId(options.userId).catch(() => undefined);
   for (const key of Object.keys(current?.facts ?? {})) {
     if (key.startsWith(PROMOTED_FACT_PREFIX)) {
       await options.store.forget(options.userId, key);

@@ -17,8 +17,7 @@ import {
   recordRetraction,
   type BeliefProvenance
 } from "@muse/memory";
-import { resolveAuthoredSkillsDir, resolvePlaybookFile, type MuseEnvironment } from "@muse/autoconfigure";
-import { isRecord } from "@muse/shared";
+import { resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
 import { AuthoredSkillStore } from "@muse/skills";
 import {
   factRecordsFromProvenance,
@@ -36,31 +35,24 @@ import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
-import { withBestEffort } from "./async-promises.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
-const JOURNEY_KIND_SET = new Set<string>(JOURNEY_KINDS);
-const EMPTY_BELIEF_PROVENANCE: readonly BeliefProvenance[] = [];
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 function isJourneyStoreKind(value: string): value is JourneyStoreKind {
-  return JOURNEY_KIND_SET.has(value);
+  return (JOURNEY_KINDS as readonly string[]).includes(value);
 }
 
 async function loadFactRecords(userId: string): Promise<readonly JourneyFactRecord[]> {
   const store = new FileBeliefProvenanceStore(defaultBeliefProvenanceFile());
-  const records = await withBestEffort(store.query(userId), EMPTY_BELIEF_PROVENANCE);
+  const records = await store.query(userId).catch(() => [] as readonly BeliefProvenance[]);
   return factRecordsFromProvenance(records);
 }
 
 async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
-  const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(environment()) });
-  const skills = await withBestEffort(store.listAuthored(), []);
+  const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
+  const skills = await store.listAuthored().catch(() => []);
   return skills.map((skill) => {
-    const muse = isRecord(skill.frontmatter.metadata?.["muse"]) ? skill.frontmatter.metadata["muse"] : {};
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt : undefined;
     const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
     return {
@@ -73,7 +65,7 @@ async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
 }
 
 async function loadStrategyRecords(userId: string): Promise<readonly JourneyStrategyRecord[]> {
-  const entries = await withBestEffort(queryPlaybook(resolvePlaybookFile(environment()), userId), []);
+  const entries = await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userId).catch(() => []);
   return entries.map((entry) => ({
     createdAt: entry.createdAt,
     id: entry.id,
@@ -196,7 +188,7 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           return;
         }
         if (target.storeKind === "strategy") {
-          await removePlaybookStrategy(resolvePlaybookFile(environment()), target.ref);
+          await removePlaybookStrategy(resolvePlaybookFile(process.env as Record<string, string | undefined>), target.ref);
           io.stdout(`Removed strategy [${target.ref.slice(0, 12)}]\n`);
           return;
         }

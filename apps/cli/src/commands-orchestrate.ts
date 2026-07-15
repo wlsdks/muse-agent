@@ -14,13 +14,7 @@ import { closestCommandName } from "./closest-command.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { ProgramIO } from "./program.js";
 
-const ORCHESTRATE_MODES = ["sequential", "parallel", "race"] as const;
-const ORCHESTRATE_MODES_SET = new Set<string>(ORCHESTRATE_MODES);
-type OrchestrateMode = (typeof ORCHESTRATE_MODES)[number];
-
-function isOrchestrateMode(value: string): value is OrchestrateMode {
-  return ORCHESTRATE_MODES_SET.has(value);
-}
+const ORCHESTRATE_MODES: readonly string[] = ["sequential", "parallel", "race"];
 
 // `race` is accepted for wire compat but currently resolves to `sequential`
 // (MultiAgentOrchestrator.run) — a single local GPU serializes the workers
@@ -72,7 +66,7 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
       // value also rides into the request body so the server
       // doesn't see mixed casing.
       const mode = options.mode.trim().toLowerCase();
-      if (!isOrchestrateMode(mode)) {
+      if (!ORCHESTRATE_MODES.includes(mode)) {
         const suggestion = closestCommandName(mode, ORCHESTRATE_MODES);
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         throw new Error(`--mode must be 'sequential', 'parallel', or 'race' (got '${options.mode}')${hint}`);

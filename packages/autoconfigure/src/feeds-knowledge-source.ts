@@ -1,7 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import { isRecord } from "@muse/shared";
-
 import type { FeedEntryLike } from "./knowledge-corpus.js";
 
 /**
@@ -27,32 +25,27 @@ export async function readFeedKnowledgeEntries(file: string, limit: number): Pro
   } catch {
     return [];
   }
-  const feeds = isRecord(parsed) ? parsed.feeds : undefined;
+  const feeds = (parsed as { feeds?: unknown })?.feeds;
   if (!Array.isArray(feeds)) {
     return [];
   }
   const out: FeedEntryLike[] = [];
   for (const feed of feeds) {
-    if (!isRecord(feed)) {
-      continue;
-    }
-    const feedName = typeof feed.name === "string" ? feed.name : undefined;
-    const entries = feed.entries;
+    const feedName = typeof (feed as { name?: unknown })?.name === "string" ? (feed as { name: string }).name : undefined;
+    const entries = (feed as { entries?: unknown })?.entries;
     if (!Array.isArray(entries)) {
       continue;
     }
     for (const entry of entries) {
-      if (!isRecord(entry)) {
-        continue;
-      }
-      if (typeof entry.id !== "string" || typeof entry.title !== "string") {
+      const e = entry as { id?: unknown; title?: unknown; summary?: unknown; publishedAt?: unknown };
+      if (typeof e.id !== "string" || typeof e.title !== "string") {
         continue;
       }
       out.push({
-        id: entry.id,
-        summary: typeof entry.summary === "string" ? entry.summary : "",
-        title: entry.title,
-        ...(typeof entry.publishedAt === "string" ? { publishedAt: entry.publishedAt } : {}),
+        id: e.id,
+        summary: typeof e.summary === "string" ? e.summary : "",
+        title: e.title,
+        ...(typeof e.publishedAt === "string" ? { publishedAt: e.publishedAt } : {}),
         ...(feedName ? { feedName } : {})
       });
     }

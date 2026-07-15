@@ -80,7 +80,7 @@ export function createA2AHandler(options: A2AHandlerOptions): (request: A2AReque
 
       // Council request? (separate, bounded compute path — never quarantine.)
       let parsedBody: unknown = null;
-      try { parsedBody = JSON.parse(request.body); } catch { /* not JSON → fall through */ }
+      try { parsedBody = JSON.parse(request.body) as unknown; } catch { /* not JSON → fall through */ }
       const council = parseCouncilRequest(parsedBody);
       if (council) {
         const empty: CouncilResponse = { fromPeerId: options.selfPeerId ?? "", kind: "council-reasoning", reasoning: "" };

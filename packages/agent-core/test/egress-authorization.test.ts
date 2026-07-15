@@ -326,10 +326,7 @@ describe("egress authorization — ATTACKS (each must produce ZERO HTTP calls)",
       "Coral reef ecosystems depend on delicate temperature balances.",
       "Antique clock mechanisms rely on precise gear ratios."
     ];
-    const responsesByUrl: Record<string, string> = {};
-    for (let i = 0; i < candidateLinks.length; i++) {
-      responsesByUrl[candidateLinks[i]] = unrelatedTopics[i];
-    }
+    const responsesByUrl = Object.fromEntries(candidateLinks.map((url, i) => [url, unrelatedTopics[i]]));
 
     const responses: ModelResponse[] = [
       toolTurn("browser_open", { url: "https://trusted-portal.example/board" }, "tc-0"),

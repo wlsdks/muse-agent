@@ -17,7 +17,6 @@
 import { promises as fs } from "node:fs";
 
 import type { JsonObject } from "@muse/shared";
-import { isRecord } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
@@ -82,27 +81,18 @@ export async function readConsents(file: string): Promise<readonly ScopedConsent
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const consents = readRecordArrayField(parsed, "consents");
-  if (consents === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { consents?: unknown }).consents)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return consents.flatMap((entry): readonly ScopedConsent[] =>
+  return (parsed as { consents: unknown[] }).consents.flatMap((entry): readonly ScopedConsent[] =>
     isScopedConsent(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeConsents(file: string, consents: readonly ScopedConsent[]): Promise<void> {

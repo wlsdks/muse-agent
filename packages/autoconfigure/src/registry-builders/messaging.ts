@@ -20,7 +20,6 @@ import {
 import { isLocalOnlyEnabled } from "@muse/model";
 
 import type { MuseEnvironment } from "../index.js";
-import { parseBoolean } from "../env-parsers.js";
 import {
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
@@ -129,7 +128,7 @@ function registerLocalMessagingProviders(registry: MessagingProviderRegistry, en
   // `MUSE_MESSAGING_LOG_FILE`). On by default so the proactive daemon
   // works end-to-end without any external chat-bot setup; opt out
   // with `MUSE_MESSAGING_LOG_ENABLED=false`.
-  if (parseBoolean(env.MUSE_MESSAGING_LOG_ENABLED, true)) {
+  if (env.MUSE_MESSAGING_LOG_ENABLED !== "false") {
     const logFile = env.MUSE_MESSAGING_LOG_FILE?.trim();
     registry.register(new LogMessagingProvider(logFile ? { file: logFile } : {}));
   }
@@ -138,7 +137,7 @@ function registerLocalMessagingProviders(registry: MessagingProviderRegistry, en
   // Only registers on darwin; the provider constructor throws when
   // the host isn't macOS, so the try/catch leaves the registry intact
   // on Linux / Windows where the env var would be a no-op.
-  if (parseBoolean(env.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED, false)) {
+  if (env.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED === "true") {
     try {
       const title = env.MUSE_MESSAGING_MACOS_NOTIFICATION_TITLE?.trim();
       registry.register(new MacosNotificationProvider(title ? { title } : {}));
@@ -150,7 +149,7 @@ function registerLocalMessagingProviders(registry: MessagingProviderRegistry, en
   }
   // Linux parallel of the macOS notification provider — opt-in,
   // skips on wrong OS via the provider's own constructor guard.
-  if (parseBoolean(env.MUSE_MESSAGING_LIBNOTIFY_ENABLED, false)) {
+  if (env.MUSE_MESSAGING_LIBNOTIFY_ENABLED === "true") {
     try {
       const title = env.MUSE_MESSAGING_LIBNOTIFY_TITLE?.trim();
       const urgencyRaw = env.MUSE_MESSAGING_LIBNOTIFY_URGENCY?.trim().toLowerCase();

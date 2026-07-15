@@ -20,8 +20,6 @@
 
 import type { Readable } from "node:stream";
 
-
-
 import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -44,7 +42,6 @@ import { closestCommandName } from "./closest-command.js";
 import { isTaskCompletionReport, matchCompletedTask } from "./task-completion.js";
 import { resolveChatFastPath } from "./chat-fast-path.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 // The deterministic fast-path renderers moved to a sibling module; re-export the
 // public ones so chat-repl's surface (and its tests) stay stable.
@@ -63,8 +60,6 @@ import { chatRepeatWeaknessNudge, chatResolveWeakness, looksLikeRefusal, recordC
 export { chatRepeatWeaknessNudge, chatResolveWeakness, recordChatWeaknessForTurn, recordChatTurnWeakness, type ChatRepeatNudgeDeps, type RecordChatWeaknessDeps, type ResolveChatWeaknessDeps } from "./chat-weakness-ledger.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
-type GroundingResult = Awaited<ReturnType<typeof retrieveChatGrounding>>;
-const EMPTY_GROUNDING_RESULT: GroundingResult = { block: "", matches: [] };
 
 export type AgentMode = "react" | "plan_execute";
 
@@ -142,41 +137,34 @@ export async function readPipedStdin(options: ReadPipedStdinOptions = {}): Promi
   }
   const firstByteTimeoutMs = options.firstByteTimeoutMs ?? 200;
   stream.setEncoding("utf8");
-  const { promise, resolve } = Promise.withResolvers<string>();
-  let raw = "";
-  let gotData = false;
-  let done = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  const onData = (chunk: string | Buffer): void => {
-    gotData = true;
-    raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-  };
-
-  const finish = (): void => {
-    if (done) return;
-    done = true;
-    if (timer !== undefined) {
+  return await new Promise<string>((resolve) => {
+    let raw = "";
+    let gotData = false;
+    let done = false;
+    const onData = (chunk: string | Buffer): void => {
+      gotData = true;
+      raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    };
+    const finish = (): void => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
-    }
-    stream.off("data", onData);
-    stream.off("end", finish);
-    stream.off("error", finish);
-    stream.pause();
-    resolve(raw.trim());
-  };
-
-  // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
-  // but once data is flowing we wait for the real EOF.
-  timer = setTimeout(() => {
-    if (!gotData) finish();
-  }, firstByteTimeoutMs);
-  stream.on("data", onData);
-  stream.once("end", finish);
-  stream.once("error", finish);
-  stream.resume();
-
-  return promise;
+      stream.off("data", onData);
+      stream.off("end", finish);
+      stream.off("error", finish);
+      stream.pause();
+      resolve(raw.trim());
+    };
+    // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
+    // but once data is flowing we wait for the real EOF.
+    const timer = setTimeout(() => {
+      if (!gotData) finish();
+    }, firstByteTimeoutMs);
+    stream.on("data", onData);
+    stream.once("end", finish);
+    stream.once("error", finish);
+    stream.resume();
+  });
 }
 
 export function createTuiChatSubmitter(
@@ -198,15 +186,12 @@ export function createTuiChatSubmitter(
     } catch (error) {
       // A FAILED chat run must still leave a `success:false` trace — error-analysis
       // fuel that previously vanished (the run-log was happy-path only).
-      await withBestEffort(
-        writeRunLog(io.workspaceDir ?? process.cwd(), {
-          message,
-          ...(options.model !== undefined ? { model: options.model } : {}),
-          response: { error: error instanceof Error ? error.message : String(error), success: false },
-          source
-        }),
-        undefined
-      ); // best-effort: a logging failure must not mask the original error
+      await writeRunLog(io.workspaceDir ?? process.cwd(), {
+        message,
+        ...(options.model !== undefined ? { model: options.model } : {}),
+        response: { error: error instanceof Error ? error.message : String(error), success: false },
+        source
+      }).catch(() => undefined); // best-effort: a logging failure must not mask the original error
       throw error;
     }
     const apiOptions = await readApiOptions(io, command, { includeStoredToken: false });
@@ -246,7 +231,7 @@ export async function recordChatTurnTrace(
   // Same two-detector refusal check the single-turn path uses (isChatAbstention
   // catches the gate's own phrasing; REFUSAL_RE catches the model's).
   const refusal = isChatAbstention(args.answer) || looksLikeRefusal(args.answer);
-  await withBestEffort(write(args.workspaceDir ?? process.cwd(), {
+  await write(args.workspaceDir ?? process.cwd(), {
     message: args.question,
     ...(args.model !== undefined ? { model: args.model } : {}),
     response: {
@@ -255,7 +240,7 @@ export async function recordChatTurnTrace(
       success: true
     },
     source: args.source
-  }), undefined);
+  }).catch(() => undefined);
 }
 
 export async function runLocalChat(
@@ -342,7 +327,7 @@ export async function runLocalChat(
   const userId = resolveDefaultUserKey({});
   const userMemoryStore = assembly.userMemoryStore;
   const userMemory = userMemoryStore
-    ? await withBestEffort(userMemoryStore.findByUserId(userId), undefined)
+    ? await Promise.resolve(userMemoryStore.findByUserId(userId)).catch(() => undefined)
     : undefined;
   // qwen3:8b free-associates remembered ENTITY facts into unrelated turns —
   // it volunteered the user's dog in a hydration answer and a "good morning"
@@ -385,7 +370,7 @@ export async function runLocalChat(
   // (also empty) must be allowed to run rather than skipped (no hole).
   if (userMemoryBlock.length > 0) metadata.personaPreinjected = true;
   const hasMetadata = Object.keys(metadata).length > 0;
-  const personaPreamble = (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
+  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained
   // retrieval query (one constrained inference, fail-open to the raw turn).
   // ONLY the retrieval query is rewritten — the model still answers the
@@ -411,7 +396,7 @@ export async function runLocalChat(
     }
   }
   const { block: groundingBlock, matches } = isCasual
-    ? EMPTY_GROUNDING_RESULT
+    ? { block: "", matches: [] as Awaited<ReturnType<typeof retrieveChatGrounding>>["matches"] }
     : await retrieveChatGrounding(retrievalQuery);
   // Reply in the user's language: without this the local model drifts to English
   // for "assistant-y" replies — a Korean "회의 취소해줘" got an English "sir,
@@ -556,7 +541,7 @@ export async function runLocalChat(
   let finalResponse = response;
   let finalResponseForHistory = responseForHistory;
   if (isTaskCompletionReport(message) && !toolsUsed.some((tool) => tool.includes("tasks.complete"))) {
-    const done = await withBestEffort(autoCompleteReportedTask(message), null);
+    const done = await autoCompleteReportedTask(message).catch(() => null);
     if (done) {
       toolsUsed = [...toolsUsed, "muse.tasks.complete"];
       // Real conversational content (a completion confirmation) — append to BOTH tracks.
@@ -650,7 +635,7 @@ export async function runLocalChat(
  */
 async function autoCompleteReportedTask(message: string): Promise<string | null> {
   const { readTasks, writeTasks } = await import("@muse/stores");
-  const file = resolveTasksFile(process.env);
+  const file = resolveTasksFile(process.env as Record<string, string | undefined>);
   const tasks = await readTasks(file);
   const openTasks = tasks.filter((task) => task.status === "open");
   const index = matchCompletedTask(message, openTasks.map((task) => task.title));

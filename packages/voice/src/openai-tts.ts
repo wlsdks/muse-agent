@@ -58,9 +58,8 @@ export class OpenAITtsProvider implements TextToSpeechProvider {
     this.model = options.model ?? DEFAULT_MODEL;
     this.defaultVoice = options.defaultVoice ?? DEFAULT_VOICE;
     this.defaultFormat = options.defaultFormat ?? "mp3";
-    const defaultFetch = globalThis.fetch;
-    this.fetchImpl = options.fetchImpl ?? defaultFetch;
-    if (typeof this.fetchImpl !== "function") {
+    this.fetchImpl = options.fetchImpl ?? ((globalThis as { fetch?: FetchLike }).fetch as FetchLike);
+    if (!this.fetchImpl) {
       throw new VoiceValidationError("NO_FETCH", "global fetch is unavailable; pass fetchImpl");
     }
   }

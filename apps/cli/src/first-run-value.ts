@@ -237,7 +237,7 @@ export function buildFirstValueLine(ctx: FirstValueContext): FirstValueResult {
     }
   }
   const pool = contentFreeWelcomePool();
-  const rotation = Number.isFinite(ctx.rotation) ? ctx.rotation : 0;
+  const rotation = Number.isFinite(ctx.rotation) ? (ctx.rotation as number) : 0;
   const line = pool[((rotation % pool.length) + pool.length) % pool.length]!;
   return { grounded: false, line };
 }

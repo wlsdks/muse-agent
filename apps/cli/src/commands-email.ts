@@ -18,7 +18,6 @@ import type { Command } from "commander";
 import { syncEmailsToNotes } from "./email-sync.js";
 import type { ProgramIO } from "./program.js";
 import { resolveGmailProvider, type ResolvedEmailProvider } from "./resolve-gmail-provider.js";
-import { confirmBoolean } from "./confirm-boolean.js";
 
 interface SendOptions {
   readonly to?: string;
@@ -72,10 +71,12 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         return;
       }
       const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
-      const gate: EmailApprovalGate = deps.approvalGate ?? (async (draft) => {
+      const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
         io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
-        const approved = await confirmBoolean(confirm, isCancel, "Send this email?");
-        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
+        return confirm({ message: "Send this email?" }).then((answer) =>
+          isCancel(answer) || answer !== true
+            ? { approved: false, reason: "user did not confirm" }
+            : { approved: true });
       });
 
       const outcome = await sendEmailWithApproval({
@@ -133,10 +134,12 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         return;
       }
       const subject = replySubject(message.subject);
-      const gate: EmailApprovalGate = deps.approvalGate ?? (async (draft) => {
+      const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
         io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
-        const approved = await confirmBoolean(confirm, isCancel, "Send this reply?");
-        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
+        return confirm({ message: "Send this reply?" }).then((answer) =>
+          isCancel(answer) || answer !== true
+            ? { approved: false, reason: "user did not confirm" }
+            : { approved: true });
       });
       const outcome = await replyEmailWithApproval({
         actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
@@ -181,10 +184,12 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       }
       const { body, subject } = composeForward(message, options.note);
       const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
-      const gate: EmailApprovalGate = deps.approvalGate ?? (async (draft) => {
+      const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
         io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
-        const approved = await confirmBoolean(confirm, isCancel, "Forward this email?");
-        return approved ? { approved: true } : { approved: false, reason: "user did not confirm" };
+        return confirm({ message: "Forward this email?" }).then((answer) =>
+          isCancel(answer) || answer !== true
+            ? { approved: false, reason: "user did not confirm" }
+            : { approved: true });
       });
       const outcome = await sendEmailWithApproval({
         actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),

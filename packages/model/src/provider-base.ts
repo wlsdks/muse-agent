@@ -11,7 +11,7 @@
  * cycle when the base class lived in index.ts.
  */
 
-import { truncateErrorBody, withBestEffort } from "@muse/shared";
+import { truncateErrorBody } from "@muse/shared";
 
 import {
   defaultRemoteModelCapabilities,
@@ -194,7 +194,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     }, request.signal);
 
     if (!response.ok) {
-      const body = await withBestEffort(response.text(), "");
+      const body = await response.text().catch(() => "");
       throw new ModelProviderError(
         this.id,
         `OpenAI-compatible request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
@@ -202,7 +202,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       );
     }
 
-    const rawBody = await withBestEffort(response.text(), "");
+    const rawBody = await response.text().catch(() => "");
     const payload = parseJson(rawBody);
     if (payload === undefined) {
       // A 200 with a non-JSON body is a transport anomaly (captive
@@ -239,7 +239,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     }
 
     if (!response.ok) {
-      const body = await withBestEffort(response.text(), "");
+      const body = await response.text().catch(() => "");
       yield {
         error: new ModelProviderError(
           this.id,

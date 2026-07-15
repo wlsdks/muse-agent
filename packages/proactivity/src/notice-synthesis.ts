@@ -166,7 +166,7 @@ function looksLikeToolCallJson(text: string): boolean {
   const stripped = trimmed.replace(/^[^\w{[]+/, "");
   if (!stripped.startsWith("{") && !stripped.startsWith("[")) return false;
   try {
-    const parsed = JSON.parse(stripped);
+    const parsed = JSON.parse(stripped) as unknown;
     // Any JSON parse success on a synthesized reply is a tool-call leak.
     return parsed !== null && typeof parsed === "object";
   } catch {

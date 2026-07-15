@@ -8,7 +8,7 @@ import {
   resolveCapabilityProfile
 } from "./capability-profile.js";
 
-export const APPROVAL_RECEIPT_VERSION: 1 = 1;
+export const APPROVAL_RECEIPT_VERSION = 1 as const;
 
 export type ApprovalReceiptRisk = "local-write" | "external-action" | "external-send";
 
@@ -131,9 +131,9 @@ function normalizeJsonValue(value: unknown): JsonValue {
     throw new TypeError("Approval receipt arguments must be plain JSON objects");
   }
 
-  const normalized: Record<string, JsonValue> = Object.create(null);
-  for (const [key, raw] of Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) {
-    normalized[key] = normalizeJsonValue(raw);
+  const normalized: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+  for (const key of Object.keys(value).sort()) {
+    normalized[key] = normalizeJsonValue((value as Record<string, unknown>)[key]);
   }
   return normalized;
 }

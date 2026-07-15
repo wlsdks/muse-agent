@@ -23,7 +23,6 @@ import {
   resolveOAuthStoreDir
 } from "@muse/autoconfigure";
 import { runMcpOAuthLogin } from "@muse/mcp";
-import { asRecord, isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
 
 import { closestCommandName } from "./closest-command.js";
 import { firstNonEmpty } from "./program-helpers.js";
@@ -38,17 +37,6 @@ export interface McpHelpers {
     method?: "GET" | "POST"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
-}
-
-function isNamedMcpServer(value: unknown): value is { readonly name: string } {
-  return isRecord(value) && typeof value.name === "string" && value.name.length > 0;
-}
-
-function asMcpServerNames(raw: unknown): readonly string[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.filter(isNamedMcpServer).map((server) => server.name);
 }
 
 export function registerMcpCommands(program: Command, io: ProgramIO, helpers: McpHelpers): void {
@@ -308,29 +296,21 @@ Examples:
     .description("Show per-server health, including reconnect schedule")
     .option("--json", "Print the raw health payload from /api/mcp/servers/:name/health")
     .action(async (options: { readonly json?: boolean }, command) => {
-      const serverNames = asMcpServerNames(await apiRequest(io, command, "/api/mcp/servers"));
-      if (serverNames.length === 0) {
+      const servers = (await apiRequest(io, command, "/api/mcp/servers")) as Array<{ name: string }>;
+      if (!Array.isArray(servers) || servers.length === 0) {
         io.stdout("(no MCP servers registered)\n");
         return;
       }
       const now = Date.now();
       const rows: Array<Record<string, unknown>> = [];
-      for (const serverName of serverNames) {
-        const health = asRecord(
-          await apiRequest(io, command, `/api/mcp/servers/${encodeURIComponent(serverName)}/health`)
-        );
-        const status = typeof health.status === "string" ? health.status : "?";
-        const reconnectAttempts = typeof health.reconnectAttempts === "number" && Number.isFinite(health.reconnectAttempts)
-          ? health.reconnectAttempts
-          : 0;
-        const nextReconnectAt = typeof health.nextReconnectAt === "string" ? health.nextReconnectAt : undefined;
-        rows.push({
-          name: serverName,
-          status,
-          error: typeof health.error === "string" ? health.error : undefined,
-          reconnectAttempts,
-          nextReconnectAt
-        });
+      for (const server of servers) {
+        const health = await apiRequest(io, command, `/api/mcp/servers/${encodeURIComponent(server.name)}/health`) as {
+          status?: string;
+          error?: string;
+          reconnectAttempts?: number;
+          nextReconnectAt?: string;
+        };
+        rows.push({ name: server.name, ...health });
       }
       if (options.json) {
         writeOutput(io, rows);
@@ -418,18 +398,18 @@ Examples:
 }
 
 function parseJsonObject(value: string, flag: string): Record<string, unknown> {
-  let parsed: Record<string, unknown> | undefined;
+  let parsed: unknown;
   try {
-    parsed = asRecord(JSON.parse(value));
+    parsed = JSON.parse(value) as unknown;
   } catch {
     throw new Error(
       `invalid JSON for ${flag}: ${value} — pass valid JSON, e.g. ${flag} '{"command":"echo"}'`
     );
   }
-  if (!parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${flag} must be a JSON object, e.g. ${flag} '{"command":"echo"}'`);
   }
-  return parsed;
+  return parsed as Record<string, unknown>;
 }
 
 function stringify(value: unknown): string {
@@ -569,12 +549,12 @@ function readMcpConfigFile(path: string): McpConfigShape | undefined {
   try {
     raw = nodeReadFileSync(path, "utf8");
   } catch (cause) {
-    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
       return undefined;
     }
     throw cause;
   }
-  const parsed = JSON.parse(raw);
+  const parsed = JSON.parse(raw) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`MCP config at ${path} is not a JSON object`);
   }

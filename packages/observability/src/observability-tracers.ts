@@ -13,7 +13,7 @@
  */
 
 import type { MuseDatabase, TraceEventTable } from "@muse/db";
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import type {
   MuseTracer,
@@ -272,7 +272,7 @@ function spanToTraceEvent(span: MutableRecordedSpan): TraceEventInput {
   };
 
   return {
-    attributes: cloneAttributes(attributes),
+    attributes: attributes as JsonObject,
     endedAt: span.endedAt,
     name: span.name,
     parentSpanId: readStringAttribute(span.attributes, "parentSpanId"),
@@ -305,13 +305,12 @@ function traceEventLogPayload(event: TraceEventInput): JsonObject {
 }
 
 function primitiveSpanAttributes(attributes: JsonObject): SpanAttributes {
-  const out: SpanAttributes = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      out[key] = value;
-    }
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(attributes).filter((entry): entry is [string, string | number | boolean] => {
+      const value = entry[1];
+      return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    })
+  );
 }
 
 function readStringAttribute(attributes: SpanAttributes, key: string): string | undefined {
@@ -320,49 +319,7 @@ function readStringAttribute(attributes: SpanAttributes, key: string): string | 
 }
 
 function toJsonObject(value: object): JsonObject {
-  const out: JsonObject = {};
-  const raw = isRecord(value) ? value : {};
-  for (const [key, entry] of Object.entries(raw)) {
-    if (entry === undefined) {
-      continue;
-    }
-    if (entry === null || typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
-      out[key] = entry;
-      continue;
-    }
-    if (Array.isArray(entry)) {
-      out[key] = toJsonArray(entry);
-      continue;
-    }
-    if (isRecord(entry)) {
-      out[key] = toJsonObject(entry);
-    }
-  }
-  return out;
-}
-
-function toJsonArray(values: unknown[]): JsonValue[] {
-  return values.flatMap((value) => {
-    if (value === null || value === undefined) {
-      return [];
-    }
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return [value];
-    }
-    if (Array.isArray(value)) {
-      return toJsonArray(value);
-    }
-    if (isRecord(value)) {
-      return [toJsonObject(value)];
-    }
-    return [String(value)];
-  });
-}
-
-function cloneAttributes(attributes: SpanAttributes): JsonObject {
-  const out: JsonObject = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    out[key] = value;
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== undefined)
+  ) as JsonObject;
 }

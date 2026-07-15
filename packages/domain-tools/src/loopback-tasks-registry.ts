@@ -13,7 +13,7 @@
  * overhead.
  */
 
-import { assertNoSecretInPersistedFields, type JsonObject } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString, readStringArray } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -25,9 +25,6 @@ import {
   type TaskSearchHit,
   type TasksProviderRegistry
 } from "./tasks-providers.js";
-
-const EMPTY_TASKS: readonly Task[] = [];
-const EMPTY_TASK_SEARCH_HITS: readonly TaskSearchHit[] = [];
 
 export interface TasksRegistryMcpServerOptions {
   readonly registry: TasksProviderRegistry;
@@ -50,7 +47,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
             displayName: info.displayName,
             id: info.id,
             local: info.local
-          }))
+          })) as JsonValue
         }),
         inputSchema: {
           additionalProperties: false,
@@ -75,13 +72,13 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
                     try {
                       return await provider.list(status);
                     } catch {
-                      return EMPTY_TASKS;
+                      return [] as readonly Task[];
                     }
                   })
                 )).flat();
             return {
               status,
-              tasks: tasks.map(serializeTask),
+              tasks: tasks.map(serializeTask) as JsonValue,
               total: tasks.length
             };
           } catch (error) {
@@ -111,10 +108,10 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
             return { error: "title is required" };
           }
           const notes = readString(args, "notes") ?? undefined;
-      const guard = assertNoSecretInPersistedFields({ title, notes });
-      if (!guard.safe) {
-        return { blocked: true, error: guard.notice, kinds: [...guard.kinds] };
-      }
+          const guard = assertNoSecretInPersistedFields({ title, notes });
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           const tags = readStringArray(args, "tags") ?? undefined;
           const input: TaskInput = {
             title,
@@ -123,7 +120,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
           };
           try {
             const created = await registry.requireOrPrimary(providerId).add(input);
-            return { task: serializeTask(created) };
+            return { task: serializeTask(created) as JsonValue };
           } catch (error) {
             return errorBody(error);
           }
@@ -155,7 +152,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
             if (!completed) {
               return { error: `task not found: ${providerId}:${id}`, found: false };
             }
-            return { task: serializeTask(completed) };
+            return { task: serializeTask(completed) as JsonValue };
           } catch (error) {
             return errorBody(error);
           }
@@ -194,12 +191,12 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
                     try {
                       return await provider.search(query, limit);
                     } catch {
-                      return EMPTY_TASK_SEARCH_HITS;
+                      return [] as readonly TaskSearchHit[];
                     }
                   })
                 )).flat();
             return {
-              hits: hits.map(serializeHit),
+              hits: hits.map(serializeHit) as JsonValue,
               total: hits.length
             };
           } catch (error) {
@@ -239,7 +236,7 @@ function serializeTask(task: Task): JsonObject {
     title: task.title,
     ...(task.completedAt ? { completedAt: task.completedAt.toISOString() } : {}),
     ...(task.notes ? { notes: task.notes } : {}),
-    ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] } : {})
+    ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] as JsonValue } : {})
   };
 }
 

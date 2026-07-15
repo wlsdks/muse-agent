@@ -1,7 +1,7 @@
 import type { AgentRunInput, AgentRunResult } from "@muse/agent-core";
 import { neutralizeInjectionSpans } from "@muse/agent-core";
 import type { ModelMessage } from "@muse/model";
-import { clamp, createRunId, type JsonObject, withBestEffort } from "@muse/shared";
+import { clamp, createRunId, type JsonObject } from "@muse/shared";
 import type { AgentMessage, AgentMessageBus } from "./agent-message-bus.js";
 import type { OrchestrationHistoryEntry, OrchestrationHistoryStore } from "./orchestration-history.js";
 import {
@@ -242,9 +242,8 @@ export class MultiAgentOrchestrator {
     const subtaskCount = selectedWorkers.length;
     const workerIds = selectedWorkers.map((worker) => worker.id);
 
-    void (async () => {
-      try {
-        const result = await this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt);
+    void this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt)
+      .then((result) => {
         store?.complete({
           finishedAt: this.clock(),
           orchestrationId: runId,
@@ -254,7 +253,8 @@ export class MultiAgentOrchestrator {
           subtaskCount,
           workerIds
         });
-      } catch (error: unknown) {
+      })
+      .catch((error: unknown) => {
         store?.complete({
           error: errorMessage(error),
           finishedAt: this.clock(),
@@ -263,8 +263,7 @@ export class MultiAgentOrchestrator {
           subtaskCount,
           workerIds
         });
-      }
-    })();
+      });
 
     return { orchestrationId: runId, subtaskCount };
   }
@@ -497,25 +496,25 @@ export class MultiAgentOrchestrator {
       const parsed = parseWorkerResult(raw);
       if (!parsed.ok) {
         const failure = new Error(parsed.reason);
-        await withBestEffort(this.publishWorkerFailure(worker.id, failure), undefined);
+        await this.publishWorkerFailure(worker.id, failure).catch(() => undefined);
         return { failure, step: { error: parsed.reason, status: "failed", workerId: worker.id } };
       }
       const result = parsed.result;
       const handoff = validateWorkerHandoff(worker.id, result.response.output);
       if (!handoff.ok) {
         const failure = new Error(handoff.reason);
-        await withBestEffort(this.publishWorkerFailure(worker.id, failure), undefined);
+        await this.publishWorkerFailure(worker.id, failure).catch(() => undefined);
         return { failure, step: { error: handoff.reason, status: "failed", workerId: worker.id } };
       }
       // A bus-publish failure must NOT re-trigger the catch (it would
       // double-push a `failed` entry for this worker and, for the sequential
       // caller, corrupt the pipeline input) — only worker.run decides status.
       // Same stance as runRace.
-      await withBestEffort(this.publishWorkerResult(worker.id, result), undefined);
+      await this.publishWorkerResult(worker.id, result).catch(() => undefined);
       return { handoffOutput: handoff.output, step: { result, status: "completed", workerId: worker.id } };
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(errorMessage(error));
-      await withBestEffort(this.publishWorkerFailure(worker.id, error), undefined);
+      await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
       return { failure, step: { error: errorMessage(error), status: "failed", workerId: worker.id } };
     }
   }

@@ -8,8 +8,7 @@ import {
   type ScheduledJobStore,
   type ScheduledJobType
 } from "@muse/scheduler";
-import type { FastifyInstance, FastifyRequest } from "fastify";
-import { readQueryString, readRouteParam } from "./compat-parsers.js";
+import type { FastifyInstance } from "fastify";
 
 import { hasOwn, isRecord, readBoolean, readJsonObject, readNullableString, readNumber, readString, readStringArray } from "./server-input-utils.js";
 
@@ -48,12 +47,17 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
       }
 
       const jobs = await (options.scheduler.service?.list() ?? options.scheduler.store.list());
-      const tag = readQueryString(request, "tag");
+      const query = request.query as {
+        readonly limit?: number | string;
+        readonly offset?: number | string;
+        readonly tag?: string;
+      };
+      const tag = typeof query.tag === "string" && query.tag.trim().length > 0 ? query.tag.trim() : undefined;
       const filtered = tag ? jobs.filter((job) => job.tags.includes(tag)) : jobs;
       return paginate(
         filtered.map(toScheduledJobResponse),
-        parseOffset(readQueryString(request, "offset")),
-        parseLimit(readQueryString(request, "limit"), 50, 200)
+        parseOffset(query.offset),
+        parseLimit(query.limit, 50, 200)
       );
     });
 
@@ -66,12 +70,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return sendSchedulerUnavailable(reply);
       }
 
-      const jobId = readRouteParam(request, "jobId");
-
-      if (!jobId) {
-        return reply.status(400).send(errorResponse("jobId is required"));
-      }
-
+      const { jobId } = request.params as { readonly jobId: string };
       const job = await (options.scheduler.service?.findById(jobId) ?? options.scheduler.store.findById(jobId));
 
       if (!job) {
@@ -108,7 +107,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return reply;
       }
 
-      return updateScheduledJob(request, request.body, options, reply);
+      return updateScheduledJob(request.params, request.body, options, reply);
     });
 
     server.patch(`${prefix}/jobs/:jobId`, async (request, reply) => {
@@ -116,7 +115,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return reply;
       }
 
-      return updateScheduledJob(request, request.body, options, reply);
+      return updateScheduledJob(request.params, request.body, options, reply);
     });
 
     server.delete(`${prefix}/jobs/:jobId`, async (request, reply) => {
@@ -128,10 +127,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return sendSchedulerServiceUnavailable(reply);
       }
 
-      const jobId = readRouteParam(request, "jobId");
-      if (!jobId) {
-        return reply.status(400).send(errorResponse("jobId is required"));
-      }
+      const { jobId } = request.params as { readonly jobId: string };
 
       if (!(await options.scheduler.service.findById(jobId))) {
         return sendSchedulerJobNotFound(reply, jobId);
@@ -146,7 +142,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return reply;
       }
 
-      return runScheduledJob(request, options, reply, false);
+      return runScheduledJob(request.params, options, reply, false);
     });
 
     server.post(`${prefix}/jobs/:jobId/dry-run`, async (request, reply) => {
@@ -154,7 +150,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return reply;
       }
 
-      return runScheduledJob(request, options, reply, true);
+      return runScheduledJob(request.params, options, reply, true);
     });
 
     server.get(`${prefix}/jobs/:jobId/executions`, async (request, reply) => {
@@ -166,31 +162,32 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
         return [];
       }
 
-      const jobId = readRouteParam(request, "jobId");
-
-      if (!jobId) {
-        return reply.status(400).send(errorResponse("jobId is required"));
-      }
+      const { jobId } = request.params as { readonly jobId: string };
 
       if (options.scheduler.service && !(await options.scheduler.service.findById(jobId))) {
         return sendSchedulerJobNotFound(reply, jobId);
       }
 
-      const executionLimit = parseLimit(readQueryString(request, "limit"), 20);
+      const query = request.query as {
+        readonly limit?: number | string;
+        readonly offset?: number | string;
+        readonly pageLimit?: number | string;
+      };
+      const executionLimit = parseLimit(query.limit, 20);
       const executions = await (options.scheduler.service?.getExecutions(jobId, executionLimit)
         ?? options.scheduler.executionStore?.findByJobId(jobId, executionLimit)
         ?? []);
       return paginate(
         executions.map(toScheduledJobExecutionResponse),
-        parseOffset(readQueryString(request, "offset")),
-        parseLimit(readQueryString(request, "pageLimit"), 50, 200)
+        parseOffset(query.offset),
+        parseLimit(query.pageLimit, 50, 200)
       );
     });
   }
 }
 
 async function updateScheduledJob(
-  request: FastifyRequest,
+  params: unknown,
   body: unknown,
   options: SchedulerRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError): void } }
@@ -199,12 +196,7 @@ async function updateScheduledJob(
     return sendSchedulerServiceUnavailable(reply);
   }
 
-  const jobId = readRouteParam(request, "jobId");
-
-  if (!jobId) {
-    return reply.status(400).send(errorResponse("jobId is required"));
-  }
-
+  const { jobId } = params as { readonly jobId: string };
   const existing = await options.scheduler.service.findById(jobId);
 
   if (!existing) {
@@ -226,7 +218,7 @@ async function updateScheduledJob(
 }
 
 async function runScheduledJob(
-  request: FastifyRequest,
+  params: unknown,
   options: SchedulerRouteOptions,
   reply: { status(statusCode: number): { send(payload: ApiError): void } },
   dryRun: boolean
@@ -235,11 +227,7 @@ async function runScheduledJob(
     return sendSchedulerServiceUnavailable(reply);
   }
 
-  const jobId = readRouteParam(request, "jobId");
-
-  if (!jobId) {
-    return reply.status(400).send(errorResponse("jobId is required"));
-  }
+  const { jobId } = params as { readonly jobId: string };
 
   if (!(await options.scheduler.service.findById(jobId))) {
     return sendSchedulerJobNotFound(reply, jobId);
@@ -499,4 +487,5 @@ function readNullableNumber(
 
   return typeof value[key] === "number" && Number.isFinite(value[key]) ? value[key] : undefined;
 }
+
 

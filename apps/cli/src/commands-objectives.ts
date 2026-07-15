@@ -8,52 +8,27 @@
 
 import { randomUUID } from "node:crypto";
 
-import { resolveObjectivesFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveObjectivesFile } from "@muse/autoconfigure";
 import { addObjective, patchObjective, readObjectives, serializeObjective, type ObjectiveKind, type ObjectiveStatus } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
-function environment(): MuseEnvironment {
-  return process.env;
-}
-
 const KINDS = ["watch", "until", "notify"] as const;
-type ObjectiveKindValue = (typeof KINDS)[number];
-const KINDS_SET = new Set<string>(KINDS);
 const STATUS_FILTERS = ["active", "done", "escalated", "cancelled", "all"] as const;
-type ObjectiveStatusValue = (typeof STATUS_FILTERS)[number];
-const STATUS_FILTERS_SET = new Set<string>(STATUS_FILTERS);
-
-function isObjectiveKind(raw: string): raw is ObjectiveKindValue {
-  return KINDS_SET.has(raw);
-}
-
-function isObjectiveStatusFilter(raw: string): raw is ObjectiveStatusValue {
-  return STATUS_FILTERS_SET.has(raw);
-}
 
 function objectivesFile(): string {
-  return resolveObjectivesFile(environment());
+  return resolveObjectivesFile(process.env as Record<string, string | undefined>);
 }
 
-function assertObjectiveKind(raw: string): asserts raw is ObjectiveKindValue {
+function assertOneOf(raw: string, allowed: readonly string[], flag: string): void {
   const v = raw.trim().toLowerCase();
-  if (isObjectiveKind(v)) {
+  if (allowed.includes(v)) {
     return;
   }
-  const hint = closestCommandName(v, KINDS);
-  throw new Error(`--kind must be one of: ${KINDS.join(", ")} (got '${raw}')${hint ? ` — did you mean '${hint}'?` : ""}`);
-}
-
-function assertObjectiveStatus(raw: string): asserts raw is ObjectiveStatusValue {
-  const v = raw.trim().toLowerCase();
-  if (isObjectiveStatusFilter(v)) {
-    return;
-  }
-  const hint = closestCommandName(v, STATUS_FILTERS);
-  throw new Error(`--status must be one of: ${STATUS_FILTERS.join(", ")} (got '${raw}')${hint ? ` — did you mean '${hint}'?` : ""}`);
+  const hint = closestCommandName(v, allowed);
+  throw new Error(`${flag} must be one of: ${allowed.join(", ")} (got '${raw}')${hint ? ` — did you mean '${hint}'?` : ""}`);
 }
 
 type ResolvedObjectiveId =
@@ -97,8 +72,7 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
     .option("--user <id>", "owner bucket", "local")
     .action(async (spec: string[], options: { readonly kind: string; readonly user: string }, command: Command) => {
       try {
-        const kind = options.kind.trim().toLowerCase();
-        assertObjectiveKind(kind);
+        assertOneOf(options.kind, KINDS, "--kind");
         const text = spec.join(" ").trim();
         if (text.length === 0) {
           throw new Error("objective spec must not be empty");
@@ -107,7 +81,7 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
         await addObjective(objectivesFile(), {
           createdAt: new Date().toISOString(),
           id,
-          kind,
+          kind: options.kind.trim().toLowerCase() as ObjectiveKind,
           spec: text,
           status: "active",
           userId: options.user.trim() || "local"
@@ -127,11 +101,11 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
     .option("--json", "Print the raw payload instead of the formatted list")
     .action(async (options: { readonly status: string; readonly user: string; readonly json?: boolean }, command: Command) => {
       try {
+        assertOneOf(options.status, STATUS_FILTERS, "--status");
         const filter = options.status.trim().toLowerCase();
-        assertObjectiveStatus(filter);
         const ownerBucket = options.user.trim() || "local";
         const all = (await readObjectives(objectivesFile())).filter((o) => o.userId === ownerBucket);
-        const shown = filter === "all" ? all : all.filter((o) => o.status === filter);
+        const shown = filter === "all" ? all : all.filter((o) => o.status === (filter as ObjectiveStatus));
         if (options.json) {
           const payload = {
             objectives: shown.map(serializeObjective),

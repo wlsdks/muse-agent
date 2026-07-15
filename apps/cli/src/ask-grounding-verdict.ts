@@ -229,7 +229,7 @@ export async function runGroundingVerdict(params: {
                   { content: query, role: "user" }
                 ],
                 model,
-                temperature: resolveAnswerTemperature(process.env)
+                temperature: resolveAnswerTemperature(process.env as MuseEnvironment)
               });
               return drawn.output ?? "";
             },

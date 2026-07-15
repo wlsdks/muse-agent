@@ -32,22 +32,13 @@ export interface DigestQueueItem {
   readonly sourceId?: string;
 }
 
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (typeof key === "string") record[key] = nestedValue;
-  }
-  return record;
-}
-
 function normalizeDigestText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
 function isDigestQueueItem(value: unknown): value is DigestQueueItem {
-  const item = toRecord(value);
-  if (!item) return false;
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
   return (
     typeof item.at === "string"
     && !Number.isNaN(new Date(item.at).getTime())
@@ -66,15 +57,14 @@ export async function readDigestQueue(file: string): Promise<readonly DigestQueu
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const parsedRecord = toRecord(parsed);
-  if (!parsedRecord || !Array.isArray(parsedRecord.queued)) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { queued?: unknown }).queued)) {
     return [];
   }
-  return parsedRecord.queued.flatMap((item): readonly DigestQueueItem[] =>
+  return (parsed as { queued: unknown[] }).queued.flatMap((item): readonly DigestQueueItem[] =>
     isDigestQueueItem(item) ? [item] : []
   );
 }

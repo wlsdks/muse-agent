@@ -21,7 +21,6 @@ import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { runBestEffort } from "../../scripts/best-effort.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const distEntry = path.join(scriptDir, "..", "dist", "index.js");
@@ -54,13 +53,7 @@ writeFileSync(
 );
 
 function definedEnv(source) {
-  const output = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (value !== undefined) {
-      output[key] = value;
-    }
-  }
-  return output;
+  return Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined));
 }
 
 let failures = 0;
@@ -89,7 +82,7 @@ try {
   await client.connect(transport);
 } catch (error) {
   console.log(`SKIP: could not spawn muse mcp serve (${error instanceof Error ? error.message : String(error)})`);
-  await runBestEffort(() => rmSync(tmpHome, { force: true, recursive: true }), "cleanup failed mcp stdio test home");
+  rmSync(tmpHome, { force: true, recursive: true });
   process.exit(0);
 }
 pass("real subprocess spawned and completed the MCP initialize handshake over stdio");
@@ -129,8 +122,8 @@ try {
 } catch (error) {
   fail(`unexpected error mid-contract: ${error instanceof Error ? error.message : String(error)}`);
 } finally {
-  await runBestEffort(() => client.close(), "close mcp stdio transport");
-  await runBestEffort(() => rmSync(tmpHome, { force: true, recursive: true }), "cleanup temporary mcp stdio test home");
+  await client.close().catch(() => {});
+  rmSync(tmpHome, { force: true, recursive: true });
 }
 
 console.log(failures === 0 ? "\nverify-mcp-stdio-contract: ALL PASS" : `\nverify-mcp-stdio-contract: ${failures} FAILURE(S)`);

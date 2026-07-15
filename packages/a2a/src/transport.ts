@@ -23,7 +23,6 @@ import {
   type A2AOutbound,
   type InboundDecision
 } from "@muse/agent-core";
-import { isRecord } from "@muse/shared";
 
 import { envelopeToSendRequest, extractEnvelopeFromA2ABody } from "./a2a-message.js";
 import type { A2APeer, PeerRegistry } from "./peer-registry.js";
@@ -95,7 +94,7 @@ export function receiveFromPeer(options: ReceiveFromPeerOptions): InboundDecisio
   }
   let body: unknown;
   try {
-    body = JSON.parse(options.rawBody);
+    body = JSON.parse(options.rawBody) as unknown;
   } catch {
     return { disposition: "reject", reason: "unparseable A2A body" };
   }
@@ -105,8 +104,7 @@ export function receiveFromPeer(options: ReceiveFromPeerOptions): InboundDecisio
   if (!envelope) {
     return { disposition: "reject", reason: "no know-how DataPart in the A2A message" };
   }
-  const envelopeRecord = isRecord(envelope) ? envelope : {};
-  const fromPeerId = envelopeRecord.fromPeerId;
+  const fromPeerId = (envelope as { fromPeerId?: unknown }).fromPeerId;
   const peer = typeof fromPeerId === "string" ? options.registry.get(fromPeerId) : undefined;
   if (!peer) {
     return { disposition: "reject", reason: `unknown peer '${String(fromPeerId)}' — not in the allowlist` };

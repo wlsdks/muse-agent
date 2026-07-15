@@ -7,7 +7,6 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "module": "NodeNext",
-    "moduleDetection": "force",
     "moduleResolution": "NodeNext",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,

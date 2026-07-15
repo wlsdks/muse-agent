@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ModelRequest, ModelResponse } from "@muse/model";
-import { isRecord, escapeRegex, type JsonObject, type JsonValue } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
+import { escapeRegex } from "@muse/shared";
 
 export {
   cacheUnknownModel,
@@ -215,13 +216,14 @@ export class AnthropicPromptCache implements PromptCache {
   }
 
   extractCacheMetrics(nativeUsage: unknown): PromptCacheMetrics | undefined {
-    if (!isRecord(nativeUsage)) {
+    if (!nativeUsage || typeof nativeUsage !== "object") {
       return undefined;
     }
 
-    const cacheCreationInputTokens = numberValue(nativeUsage.cache_creation_input_tokens);
-    const cacheReadInputTokens = numberValue(nativeUsage.cache_read_input_tokens);
-    const regularInputTokens = numberValue(nativeUsage.input_tokens);
+    const usage = nativeUsage as Record<string, unknown>;
+    const cacheCreationInputTokens = numberValue(usage.cache_creation_input_tokens);
+    const cacheReadInputTokens = numberValue(usage.cache_read_input_tokens);
+    const regularInputTokens = numberValue(usage.input_tokens);
 
     if (cacheCreationInputTokens === 0 && cacheReadInputTokens === 0 && regularInputTokens === 0) {
       return undefined;
@@ -295,20 +297,10 @@ export function cachedResponseFromModelResponse(response: ModelResponse, toolsUs
   return {
     cachedAt: Date.now(),
     content: response.output,
-    metadata: response.usage ? { usage: normalizeModelUsage(response.usage) } : {},
+    metadata: response.usage ? { usage: response.usage as JsonValue } : {},
     model: response.model,
     toolsUsed: [...toolsUsed]
   };
-}
-
-function normalizeModelUsage(usage: NonNullable<ModelResponse["usage"]>): JsonObject {
-  const out: Record<string, JsonValue> = {};
-  for (const [name, value] of Object.entries(usage)) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      out[name] = value;
-    }
-  }
-  return out;
 }
 
 export function cacheableModelRequest(request: ModelRequest): AgentCacheCommand {

@@ -2,7 +2,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
-import { errorMessage } from "../lib/error-message.js";
 import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
@@ -135,7 +134,7 @@ export function MessagingView({ client }: { client: ApiClient }) {
                   {t("common.cancel")}
                 </Button>
               </div>
-              {send.error && <div className="banner err" style={{ marginTop: 10 }}>{errorMessage(send.error)}</div>}
+              {send.error && <div className="banner err" style={{ marginTop: 10 }}>{(send.error as Error).message}</div>}
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>

@@ -21,12 +21,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { readFollowups, readObjectives, readProactiveHistory, readReminders, readTasks } from "@muse/stores";
-import { isRecord } from "@muse/shared";
 import type { Command } from "commander";
 
 import { findJobsByIdPrefix } from "./commands-jobs.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 interface OpenOptions {
   readonly json?: boolean;
@@ -52,7 +50,7 @@ function envOr(key: string, fallbackName: string): string {
 async function safeReadJson(path: string): Promise<unknown | undefined> {
   try {
     const raw = await fs.readFile(path, "utf8");
-    return JSON.parse(raw);
+    return JSON.parse(raw) as unknown;
   } catch {
     return undefined;
   }
@@ -61,66 +59,50 @@ async function safeReadJson(path: string): Promise<unknown | undefined> {
 async function scanAll(prefix: string): Promise<readonly Hit[]> {
   const hits: Hit[] = [];
 
-  for (const r of await withBestEffort(readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")), [])) {
+  for (const r of await readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")).catch(() => [])) {
     if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: toRecord(r) });
   }
 
-  for (const f of await withBestEffort(readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")), [])) {
+  for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
     if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: toRecord(f) });
   }
 
   // Objectives (standing delegated-autonomy items — `obj_<uuid>`)
-  for (const o of await withBestEffort(readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")), [])) {
+  for (const o of await readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")).catch(() => [])) {
     if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: toRecord(o) });
   }
 
-  const episodeRows = await readRecordArray(envOr("MUSE_EPISODES_FILE", "episodes.json"), "episodes");
-  for (const e of episodeRows) {
-    const id = readString(e, "id");
+  const episodesDoc = await safeReadJson(envOr("MUSE_EPISODES_FILE", "episodes.json")) as { episodes?: readonly Record<string, unknown>[] } | undefined;
+  for (const e of episodesDoc?.episodes ?? []) {
+    const id = e["id"];
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "episode", id, record: e });
   }
 
   // Patterns fired (sidecar)
-  const firedPatterns = await readRecordArray(envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"), "fired");
-  for (const p of firedPatterns) {
-    const id = readString(p, "patternId");
+  const patternsDoc = await safeReadJson(envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json")) as { fired?: readonly Record<string, unknown>[] } | undefined;
+  for (const p of patternsDoc?.fired ?? []) {
+    const id = p["patternId"];
     if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "pattern", id, record: p });
   }
 
-  for (const entry of await withBestEffort(readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")), [])) {
+  for (const entry of await readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")).catch(() => [])) {
     if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: toRecord(entry) });
   }
 
-  for (const t of await withBestEffort(readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")), [])) {
+  for (const t of await readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")).catch(() => [])) {
     if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: toRecord(t) });
   }
 
   // Jobs (background-task records — `muse job run` → ~/.muse/jobs/<id>.jsonl)
-  for (const j of await withBestEffort(findJobsByIdPrefix(prefix), [])) {
+  for (const j of await findJobsByIdPrefix(prefix).catch(() => [])) {
     hits.push({ kind: "job", id: j.id, record: j.record });
   }
 
   return hits;
 }
 
-async function readRecordArray(path: string, key: string): Promise<readonly Record<string, unknown>[]> {
-  const doc = await safeReadJson(path);
-  if (!isRecord(doc)) return [];
-  const raw = doc[key];
-  return Array.isArray(raw) ? raw.filter(isRecord) : [];
-}
-
-function readString(value: Record<string, unknown>, key: string): string | undefined {
-  const candidate = value[key];
-  return typeof candidate === "string" ? candidate : undefined;
-}
-
 function toRecord<T extends object>(value: T): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    out[key] = item;
-  }
-  return out;
+  return { ...value } as Record<string, unknown>;
 }
 
 export function registerOpenCommand(program: Command, io: ProgramIO): void {

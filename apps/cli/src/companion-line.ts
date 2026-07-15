@@ -53,10 +53,9 @@ import {
   sourceKey,
   type PersistedTask
 } from "@muse/stores";
-import { isRecord, sleep } from "@muse/shared";
+import { sleep } from "@muse/shared";
 import { isQuietHour, parseQuietHours, readCheckins, selectDueCheckins } from "@muse/proactivity";
 import type { Command } from "commander";
-import { withBestEffort } from "./async-promises.js";
 
 import { checkinsFile } from "./commands-checkins.js";
 import { collectNotesRecursive, readDueFollowups, readDueReminders, readLocalEvents } from "./today-local-sources.js";
@@ -392,16 +391,12 @@ function trustFile(env: NodeJS.ProcessEnv): string {
 
 async function readCompanionState(file: string): Promise<CompanionState> {
   try {
-    const parsed = JSON.parse(await fs.readFile(file, "utf8"));
-    const recent = isRecord(parsed) && Array.isArray(parsed.recent)
-      ? parsed.recent.filter((r): r is string => typeof r === "string")
-      : [];
-    const modes = isRecord(parsed) && Array.isArray(parsed.recentModes)
+    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Partial<CompanionState>;
+    const recent = Array.isArray(parsed.recent) ? parsed.recent.filter((r): r is string => typeof r === "string") : [];
+    const modes = Array.isArray(parsed.recentModes)
       ? parsed.recentModes.filter((m): m is CompanionMode => typeof m === "string")
       : [];
-    const rotation = isRecord(parsed) && Number.isFinite(parsed.rotation) && typeof parsed.rotation === "number"
-      ? Math.trunc(parsed.rotation)
-      : 0;
+    const rotation = Number.isFinite(parsed.rotation) ? Math.trunc(parsed.rotation as number) : 0;
     return { recent, recentModes: modes, rotation };
   } catch {
     return { recent: [], recentModes: [], rotation: 0 };
@@ -567,23 +562,7 @@ export interface CompanionModelFns {
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
-  return Promise.race([
-    withBestEffort(p, undefined),
-    (async () => {
-      await sleep(ms);
-      return undefined;
-    })()
-  ]);
-}
-
-function toMuseEnvironment(processEnv: NodeJS.ProcessEnv): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(processEnv)) {
-    if (typeof value === "string") {
-      env[key] = value;
-    }
-  }
-  return env;
+  return Promise.race([p.catch(() => undefined), sleep(ms).then(() => undefined)]);
 }
 
 /**
@@ -617,13 +596,12 @@ export async function applyCompanionVoice(
 function resolveCompanionModel(env: NodeJS.ProcessEnv): CompanionModelFns | undefined {
   if ((env.MUSE_COMPANION_NO_MODEL ?? "").trim().length > 0) return undefined;
   let provider: ReturnType<typeof createModelProvider>;
-  const museEnvironment = toMuseEnvironment(env);
   try {
-    provider = createModelProvider(museEnvironment);
+    provider = createModelProvider(env as never);
   } catch {
     return undefined;
   }
-  const modelId = resolveDefaultModel(museEnvironment);
+  const modelId = resolveDefaultModel(env as never);
   if (!provider || !modelId) return undefined;
   const call = async ({ system, prompt }: { system: string; prompt: string }): Promise<string> => {
     const res = await provider.generate({
@@ -655,7 +633,7 @@ export function registerCompanionLineCommand(program: Command, io: ProgramIO): v
 
       const [candidates, trust] = await Promise.all([
         gatherCompanionCandidates(env, now, lang, rotation),
-        withBestEffort(readTrustLedger(trustFile(env)), [])
+        readTrustLedger(trustFile(env)).catch(() => [])
       ]);
 
       const plan = selectCompanionLine({

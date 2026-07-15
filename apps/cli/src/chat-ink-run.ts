@@ -19,8 +19,6 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import React from "react";
 
-
-
 import { createModelDroppedContextSummarizer, detectUserCommitments } from "@muse/agent-core";
 
 import { activeConversationId, appendActivity, appendLastChatTurn, appendSessionBoundary, listConversations, maybeCompactLastChatHistory, readLastChatHistory, resumeConversation, startNewConversation, type LastChatLine } from "./chat-history.js";
@@ -75,7 +73,6 @@ import { resolveDefaultUserKey } from "./user-id.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { runEndOfSessionPipeline } from "./chat-end-session-pipeline.js";
 import { beginSessionWithCrashCheck, endSessionClean, sessionMarkerPath } from "./session-recovery.js";
-import { withBestEffort } from "./async-promises.js";
 
 const h = React.createElement;
 
@@ -130,7 +127,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // Episodic memory in the persona: the most recent episodes for this user
   // ride into the system prompt so Muse recalls past sessions, not just the
   // last-chat tail. Best-effort (missing/corrupt episodes file → none).
-  const personaEpisodes = await withBestEffort(loadPersonaEpisodes(userId), []);
+  const personaEpisodes = await loadPersonaEpisodes(userId).catch(() => []);
   const recurringThreads = recurringEpisodeThreads(personaEpisodes);
   const personaPrompt = (): string | undefined =>
     memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes, recurringThreads }, userId, { contestedKeys: contestedHolder.current }) : undefined;
@@ -154,7 +151,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // open-commitment detection below wants the full window, not just the
   // last 20 the model context keeps.
   const seedChatHistory = async (): Promise<{ readonly lines: readonly LastChatLine[]; readonly messages: ChatTurnMessage[] }> => {
-    const lines = await withBestEffort(readLastChatHistory(), []);
+    const lines = await readLastChatHistory().catch(() => []);
     const messages = lines
       .filter((l) => l.role === "user" || l.role === "assistant")
       .map((l) => ({ content: l.content, role: l.role as "user" | "assistant" }))
@@ -166,37 +163,26 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const history: ChatTurnMessage[] = bootSeed.messages;
 
   // Shell-style ↑/↓ input history across sessions.
-  const inputHistorySeed = await withBestEffort(loadInputHistory(), [] as string[]);
+  const inputHistorySeed = await loadInputHistory().catch(() => [] as string[]);
 
   // Mark the session start: an activity event (routine learning) + a boundary
   // sentinel in last-chat.jsonl. The boundary tells the end-of-session episode
   // extractor which turns belong to THIS session (read on exit, below).
-  await withBestEffort(appendActivity({ kind: "repl-start", userId }), undefined);
-  await withBestEffort(appendSessionBoundary({ tsIso: new Date().toISOString(), userId }), undefined);
+  await appendActivity({ kind: "repl-start", userId }).catch(() => undefined);
+  await appendSessionBoundary({ tsIso: new Date().toISOString(), userId }).catch(() => undefined);
   // SES crash-recovery: detect a prior session that never reached its clean
   // end (marker survived) and record this start. The turns are already
   // durable in last-chat.jsonl, so a prior crash is a notice, not data loss.
   const sesMarker = sessionMarkerPath();
-  const priorCrash = await withBestEffort(beginSessionWithCrashCheck(sesMarker, { pid: process.pid, startedAt: new Date().toISOString() }), undefined);
+  const priorCrash = await beginSessionWithCrashCheck(sesMarker, { pid: process.pid, startedAt: new Date().toISOString() }).catch(() => undefined);
   if (priorCrash) {
     process.stderr.write("(note: the previous Muse session didn't close cleanly — your last messages were preserved)\n");
   }
 
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
-  type ProviderMessage = {
-    readonly role: ChatTurnMessage["role"];
-    readonly content: string;
-    readonly attachments?: { readonly mimeType: string; readonly dataBase64: string }[];
-  };
-  const toProviderMessages = (messages: readonly ChatTurnMessage[]): readonly ProviderMessage[] =>
-    messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-      ...(message.attachments ? { attachments: [...message.attachments] } : {})
-    }));
   const stream = (messages: readonly ChatTurnMessage[], useModel: string): ChatStream =>
-    provider.stream({ messages: toProviderMessages(messages), model: useModel });
+    provider.stream({ messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[], model: useModel });
 
   // Privacy-tiered routing parity with `runLocalChat`: the routing decision +
   // cloud leg live in `createChatCloudTurn` (chat-repl.ts) — MuseChatApp calls
@@ -223,7 +209,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   ): ChatStream => {
     if (!agentRuntime) return stream(messages, useModel);
     const events = agentRuntime.stream({
-      messages: toProviderMessages(messages),
+      messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[],
       // `localMode` exposes execute-risk tools (email/web/home actuators, shell)
       // to the chat model; the fail-closed gate below is what keeps them safe —
       // every write/execute call must be confirmed by the user with its content
@@ -245,7 +231,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     // end-of-session reward step credits an actually-injected strategy
     // (fail-soft: a failed append never disturbs the stream).
     return forwardRecordingInjections(events, (ids) => {
-      void withBestEffort(appendPlaybookInjection({ ids, tsIso: new Date().toISOString(), userId }), undefined);
+      void appendPlaybookInjection({ ids, tsIso: new Date().toISOString(), userId }).catch(() => undefined);
     }) as ChatStream;
   };
 
@@ -279,20 +265,20 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const copyToClipboard = (text: string): Promise<boolean> => {
     const cmd = process.platform === "darwin" ? "pbcopy" : process.platform === "win32" ? "clip" : "xclip";
     const args = process.platform === "linux" ? ["-selection", "clipboard"] : [];
-    const { promise, resolve } = Promise.withResolvers<boolean>();
-    try {
-      const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-      proc.on("error", () => resolve(false));
-      proc.on("close", (code) => resolve(code === 0));
-      proc.stdin.end(text);
-    } catch {
-      resolve(false);
-    }
-    return promise;
+    return new Promise<boolean>((resolve) => {
+      try {
+        const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
+        proc.on("error", () => resolve(false));
+        proc.on("close", (code) => resolve(code === 0));
+        proc.stdin.end(text);
+      } catch {
+        resolve(false);
+      }
+    });
   };
 
   const onCommit = (user: string, assistant: string, untrusted?: boolean): void => {
-    void withBestEffort(appendLastChatTurn({ message: user, response: assistant, responseUntrusted: untrusted }), undefined);
+    void appendLastChatTurn({ message: user, response: assistant, responseUntrusted: untrusted }).catch(() => undefined);
   };
 
   // Background auto-memory: after a turn, quietly learn durable facts the user
@@ -301,7 +287,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // the chat can surface it (the user sees it + can /forget). Opt out with
   // MUSE_USER_MEMORY_AUTO_EXTRACT=false.
   const autoMemoryEnabled = memoryStore !== undefined
-    && parseBoolean(process.env.MUSE_USER_MEMORY_AUTO_EXTRACT, true)
+    && process.env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase() !== "false"
     && "generate" in provider;
   const lastExtract = { current: undefined as number | undefined };
   const autoLearn = async (user: string, assistant: string): Promise<string | undefined> => {
@@ -334,7 +320,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     // A new conversation starts fresh — don't carry a prior conversation's verdict
     // onto the new one (the capture summarises turns since the boundary).
     sessionUntrusted = false;
-    void withBestEffort(startNewConversation(), undefined);
+    void startNewConversation().catch(() => undefined);
   };
 
   // `/sessions`: the numbered picker list, newest first.
@@ -460,7 +446,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // non-empty (no "nothing stands out" nag at session open).
   const reflectInsight = async (): Promise<string> => {
     try {
-      const all = await withBestEffort(readEpisodes(resolveEpisodesFile(process.env)), []);
+      const all = await readEpisodes(resolveEpisodesFile(process.env)).catch(() => []);
       const mine = all.filter((episode) => episode.userId === userId);
       const reflectionProvider = provider as ReflectionProvider;
       return await synthesizeReflection({
@@ -480,7 +466,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // /today — the morning briefing composed locally (tasks/events/weather/
   // headlines/reminders) so the small model never chains four tool calls.
   const todayBrief = (): Promise<string> =>
-    withBestEffort(buildLocalTodayText(process.env, parseLookaheadHours(undefined)), "Couldn't compose today's briefing.");
+    buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "Couldn't compose today's briefing.");
 
   // /job — fire off a long-running task in a detached worker (same machinery
   // as `muse job run`) so the user keeps chatting; /jobs reads recent statuses.
@@ -530,11 +516,11 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // open-commitment counts. Only when resuming a continuous session; fail-soft
   // to no recap if any store is missing/unreadable.
   const oneLineRecap = continueHistory
-    ? await withBestEffort((async (): Promise<string> => {
+    ? await (async (): Promise<string> => {
         const [episodes, tasks, followups] = await Promise.all([
-          withBestEffort(readEpisodes(resolveEpisodesFile(process.env)), []),
-          withBestEffort(readTasks(resolveTasksFile(process.env)), []),
-          withBestEffort(readFollowups(resolveFollowupsFile(process.env)), [])
+          readEpisodes(resolveEpisodesFile(process.env)).catch(() => []),
+          readTasks(resolveTasksFile(process.env)).catch(() => []),
+          readFollowups(resolveFollowupsFile(process.env)).catch(() => [])
         ]);
         const latest = [...episodes].sort((a, b) => a.endedAt.localeCompare(b.endedAt)).at(-1);
         const openCommitments = detectUserCommitments(
@@ -546,7 +532,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
           pendingFollowups: followups.filter((f) => f.status === "scheduled").length,
           openCommitments
         });
-      })(), "")
+      })().catch(() => "")
     : "";
 
   // The chat opens INSTANTLY — no auto-briefing at startup. Composing the morning
@@ -561,7 +547,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // while you were away (probation strategies), open with a one-line beat so
   // the growth is perceived — deterministic, fail-soft, silent when nothing.
   if (continueHistory) {
-    const idleNotice = await withBestEffort(idleLearnedNoticeForUser(userId), undefined);
+    const idleNotice = await idleLearnedNoticeForUser(userId).catch(() => undefined);
     if (idleNotice) {
       recap = recap ? `${idleNotice}\n${recap}` : idleNotice;
     }
@@ -573,10 +559,9 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const skillsDir = process.env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
   const authoredSkillsDir =
     process.env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
-  const userSkills = await withBestEffort(loadSkillsFromDirectory(skillsDir, "user"), [] as readonly Skill[]);
-  const authoredSkills = await withBestEffort(
-    loadSkillsFromDirectory(authoredSkillsDir, "authored"),
-    [] as readonly Skill[]
+  const userSkills = await loadSkillsFromDirectory(skillsDir, "user").catch(() => [] as readonly Skill[]);
+  const authoredSkills = await loadSkillsFromDirectory(authoredSkillsDir, "authored").catch(
+    () => [] as readonly Skill[]
   );
   // User skills override authored on name collision (authored = lowest precedence, mirrors buildSkillRegistry)
   const skillMap = new Map<string, Skill>();
@@ -587,7 +572,9 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // RL over skills (from prior sessions): a skill corrected into the avoid
   // floor is dropped from this session's prompt entirely; a reinforced one
   // wins the limited body slots. Loaded once at start.
-  const skillRewards = await withBestEffort(readSkillRewards(resolveSkillRewardsFile(process.env)), {});
+  const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch(
+    () => ({}) as Record<string, number>
+  );
   const skillsPromptFor = (prompt: string): string =>
     buildSkillsPrompt(
       skills,
@@ -602,11 +589,11 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   // Manually-defined agents (`~/.muse/agents/<name>/AGENT.md`). `/agent <name>`
   // switches the active one in chat; its body becomes the system prompt.
-  const agents = await withBestEffort(loadAgents(resolveAgentsDir(process.env)), [] as readonly AgentDef[]);
+  const agents = await loadAgents(resolveAgentsDir(process.env)).catch(() => [] as readonly AgentDef[]);
 
   // Models the provider can serve (for the `/model` picker). Always include
   // the current one even if listing fails or omits it.
-  const modelInfos = await withBestEffort(provider.listModels(), []);
+  const modelInfos = await provider.listModels().catch(() => []);
   const models = [...new Set([model, ...modelInfos.map((m) => `${m.providerId}/${m.modelId}`)])];
 
   // Just the art + tagline — the model and status live in the bottom HUD.
@@ -631,10 +618,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     const now = new Date();
     const horizon = new Date(now.getTime() + PROACTIVE_LEAD_MS);
     const [reminders, followups, tasks, events] = await Promise.all([
-      withBestEffort(readDueReminders(remindersFile, horizon), []),
-      withBestEffort(readDueFollowups(followupsFile, horizon), []),
-      withBestEffort(readTasks(resolveTasksFile(process.env)), []),
-      withBestEffort(new LocalCalendarProvider({ file: calendarFile }).listEvents({ from: now, to: horizon }), [])
+      readDueReminders(remindersFile, horizon).catch(() => []),
+      readDueFollowups(followupsFile, horizon).catch(() => []),
+      readTasks(resolveTasksFile(process.env)).catch(() => []),
+      new LocalCalendarProvider({ file: calendarFile }).listEvents({ from: now, to: horizon }).catch(() => [])
     ]);
     return [
       ...reminders.map((r) => ({ dueAt: r.dueAt, id: r.id, text: r.text })),
@@ -659,7 +646,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const patternsInChat = parseBoolean(process.env.MUSE_PROACTIVE_PATTERN_ENABLED, false);
   const proactiveNudges = async (): Promise<readonly ProactiveItem[]> => {
     const now = Date.now();
-    const checkins = await withBestEffort(readCheckins(checkinsStore), []);
+    const checkins = await readCheckins(checkinsStore).catch(() => []);
     const items: ProactiveItem[] = [...checkinItems(checkins, now)];
     if (patternsInChat) {
       try {
@@ -723,7 +710,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     skillsDir,
     skillsPromptFor,
     finalizeAnswer: async (args) => {
-      const snap = await withBestEffort(memorySnapshot(), undefined);
+      const snap = await memorySnapshot().catch(() => undefined);
       const judge = assembly.modelProvider && "generate" in assembly.modelProvider
         ? createQwenReverify(assembly.modelProvider, assembly.defaultModel ?? "default")
         : undefined;
@@ -804,7 +791,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   });
   // Clean shutdown reached — clear the crash marker so the next boot doesn't
   // misreport this session as a crash.
-  await withBestEffort(endSessionClean(sesMarker), undefined);
+  await endSessionClean(sesMarker).catch(() => undefined);
 }
 
 /**

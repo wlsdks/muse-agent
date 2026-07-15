@@ -1,8 +1,6 @@
 import { homedir } from "node:os";
 import path from "node:path";
 
-
-
 import type { AgentRuntime } from "@muse/agent-core";
 import { Command, Option } from "commander";
 import {
@@ -20,7 +18,6 @@ import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import { cliContextFromGlobals, setCliContext } from "./cli-context.js";
 import { formatUnknownSubcommand } from "./unknown-subcommand.js";
-import { withBestEffort } from "./async-promises.js";
 import {
   activeConversationId,
   appendLastChatTurn,
@@ -353,7 +350,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // under --json so scripted callers never see stray non-JSON output.
       if (!options.json) {
         const { maybeOfferDaemonInstall } = await import("./daemon-offer.js");
-        await withBestEffort(maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }), false);
+        await maybeOfferDaemonInstall({ env: process.env, print: (line) => io.stderr(`${line}\n`) }).catch(() => false);
       }
       if (options.resume) {
         const { resumeConversation } = await import("./chat-history.js");
@@ -430,7 +427,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // an empty (default-persona) value so the request is unchanged.
       const personaPreamble = options.local
         ? ""
-        : (await withBestEffort(loadActivePersonaPreamble(), "")).trim();
+        : (await loadActivePersonaPreamble().catch(() => "")).trim();
 
       // Remote continuity (AC4): --continue or --resume (already applied to
       // the pointer above) sends the ACTIVE conversation id so the server
@@ -532,10 +529,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       if (options.user) { params.set("userId", options.user); }
       if (options.session) { params.set("sessionId", options.session); }
       const qs = params.toString();
-      const snapshot = await apiRequest(io, command, `/api/active-context${qs ? `?${qs}` : ""}`);
-      if (!isRecord(snapshot)) {
-        command.error("active-context API returned an invalid payload", { exitCode: 1 });
-      }
+      const snapshot = await apiRequest(io, command, `/api/active-context${qs ? `?${qs}` : ""}`) as Record<string, unknown>;
       if (options.json) {
         writeOutput(io, snapshot);
         return;
@@ -573,8 +567,8 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
   // One shared dependency bag handed to every lazily-loaded registrar; each
   // destructures the subset it needs and ignores the rest, so a single object
-  // serves all of them. `todayShells` is present only when the test harness
-  // injects TTS/speaker fakes for `today --brief --speak`.
+  // serves all of them. `shells` is present only when the test harness injects
+  // TTS/speaker fakes for `today --brief --speak`.
   const lazyDeps: LazyDeps = {
     apiRequest,
     writeOutput,
@@ -588,7 +582,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     deleteStoredToken,
     readStoredToken,
     writeStoredToken,
-    ...(io.todayShells ? { todayShells: io.todayShells } : {})
+    ...(io.todayShells ? { shells: io.todayShells } : {})
   };
 
   // Register a lightweight STUB (name + description + help term + subcommand
@@ -627,7 +621,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
           shouldRunFirstRunSetup
         } = await import("./first-run.js");
         let cliConfig = await readConfigStore(io);
-        const noSetupFlag = program.getOptionValue("setup") === false;
+        const noSetupFlag = (program.opts() as { setup?: boolean }).setup === false;
         const home = io.configDir ? path.dirname(configPath(io)) : homedir();
         if (shouldRunFirstRunSetup({
           configuredModel: cliConfig.defaultModel,
@@ -679,15 +673,8 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       effectiveArgv,
       parseOptions?.from ?? "node"
     );
-    const normalizedArgv = argv === undefined ? undefined : [...argv];
-    const normalizedParseOptions =
-      parseOptions === undefined
-        ? undefined
-        : {
-            from: parseOptions.from
-          };
     try {
-      return await originalParseAsync(normalizedArgv, normalizedParseOptions);
+      return await originalParseAsync(argv as string[] | undefined, parseOptions as never);
     } catch (error) {
       // The default-subcommand guard aborts via this sentinel AFTER writing its
       // own grounded guidance + setting exitCode; swallow it so the top-level
@@ -833,14 +820,15 @@ function attachDefaultSubcommandGuard(
   groupName: string,
   knownSubs: readonly string[]
 ): void {
-  const defaultName = typeof Reflect.get(group, "_defaultCommandName") === "string" ? Reflect.get(group, "_defaultCommandName") : undefined;
-  if (typeof defaultName !== "string") return;
+  const defaultName = (group as { _defaultCommandName?: string })._defaultCommandName;
+  if (!defaultName) return;
   const defaultCommand = group.commands.find((command) => command.name() === defaultName);
   if (!defaultCommand) return;
-  const registeredArguments = Reflect.get(defaultCommand, "registeredArguments");
-  const fallbackArgs = Reflect.get(defaultCommand, "_args");
   const declaredArgs =
-    (Array.isArray(registeredArguments) ? registeredArguments : Array.isArray(fallbackArgs) ? fallbackArgs : []);
+    (defaultCommand as { registeredArguments?: readonly unknown[]; _args?: readonly unknown[] })
+      .registeredArguments ??
+    (defaultCommand as { _args?: readonly unknown[] })._args ??
+    [];
   if (declaredArgs.length > 0) return;
   const knownSet = new Set(knownSubs);
   defaultCommand.hook("preAction", (_thisCommand, actionCommand) => {
@@ -914,3 +902,5 @@ export function formatUnknownCommand(attempted: string, known: readonly string[]
   }
   return `${lines.join("\n")}\n`;
 }
+
+

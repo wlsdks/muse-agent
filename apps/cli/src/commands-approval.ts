@@ -24,7 +24,6 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { Command } from "commander";
-import { isRecord } from "@muse/shared";
 
 import { closestCommandName } from "./closest-command.js";
 import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
@@ -40,13 +39,6 @@ interface PendingRequest {
   readonly status: "pending" | "approved" | "denied" | "expired";
   readonly decidedAtIso?: string;
   readonly decidedBy?: string;
-}
-const APPROVAL_STATUSES = ["pending", "approved", "denied", "expired"] as const;
-const APPROVAL_STATUS_SET = new Set<string>(APPROVAL_STATUSES);
-type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
-
-function isApprovalStatus(value: string): value is ApprovalStatus {
-  return APPROVAL_STATUS_SET.has(value);
 }
 
 export function approvalsPath(): string {
@@ -64,54 +56,11 @@ async function readApprovals(): Promise<readonly PendingRequest[]> {
     for (const line of raw.split("\n")) {
       if (line.trim().length === 0) continue;
       try {
-        const parsed = JSON.parse(line);
-        if (isPendingRequest(parsed)) {
-          out.push(parsed);
-        }
+        out.push(JSON.parse(line) as PendingRequest);
       } catch { /* skip */ }
     }
     return out;
   } catch { return []; }
-}
-
-function isPendingRequest(value: unknown): value is PendingRequest {
-  if (!isRecord(value)) return false;
-  if (typeof value.id !== "string" || value.id.length === 0) return false;
-  if (typeof value.toolName !== "string" || value.toolName.length === 0) return false;
-  if (typeof value.userKey !== "string" || value.userKey.length === 0) return false;
-  if (typeof value.askedAtIso !== "string" || value.askedAtIso.length === 0) return false;
-  if (typeof value.status !== "string" || !isApprovalStatus(value.status)) return false;
-  if (value.decidedAtIso !== undefined && typeof value.decidedAtIso !== "string") return false;
-  if (value.decidedBy !== undefined && typeof value.decidedBy !== "string") return false;
-  if (value.reason !== undefined && typeof value.reason !== "string") return false;
-  return true;
-}
-
-function isTrustUser(value: unknown): value is { trustedTools: string[]; blockedTools: string[] } {
-  if (!isRecord(value)) return false;
-  return (
-    Array.isArray(value.trustedTools) &&
-    value.trustedTools.every((tool: unknown) => typeof tool === "string") &&
-    Array.isArray(value.blockedTools) &&
-    value.blockedTools.every((tool: unknown) => typeof tool === "string")
-  );
-}
-
-function parseTrustDocument(raw: string): { version: 1; users: Record<string, { trustedTools: string[]; blockedTools: string[] }> } | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.users)) return undefined;
-  const users: Record<string, { trustedTools: string[]; blockedTools: string[] }> = {};
-  for (const [userKey, value] of Object.entries(parsed.users)) {
-    if (isTrustUser(value)) {
-      users[userKey] = { blockedTools: [...value.blockedTools], trustedTools: [...value.trustedTools] };
-    }
-  }
-  return { version: 1, users };
 }
 
 async function appendApproval(entry: PendingRequest): Promise<void> {
@@ -223,9 +172,9 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       let trustDoc: { version: 1; users: Record<string, { trustedTools: string[]; blockedTools: string[] }> } = { users: {}, version: 1 };
       try {
         const raw = await readFile(trustFilePath, "utf8");
-        const parsed = parseTrustDocument(raw);
-        if (parsed) {
-          trustDoc = parsed;
+        const parsed = JSON.parse(raw) as Partial<typeof trustDoc>;
+        if (parsed && parsed.version === 1 && parsed.users) {
+          trustDoc = parsed as typeof trustDoc;
         }
       } catch { /* empty */ }
       const entry = trustDoc.users[target.userKey] ?? { blockedTools: [], trustedTools: [] };

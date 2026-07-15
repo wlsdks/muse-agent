@@ -19,7 +19,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord, type JsonObject } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
@@ -59,17 +59,16 @@ export async function readObjectives(file: string): Promise<readonly StandingObj
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const objectives = readRecordArrayField(parsed, "objectives");
-  if (objectives === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { objectives?: unknown }).objectives)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return objectives.flatMap((entry): readonly StandingObjective[] =>
+  return (parsed as { objectives: unknown[] }).objectives.flatMap((entry): readonly StandingObjective[] =>
     isStandingObjective(entry) ? [entry] : []
   );
 }
@@ -139,10 +138,10 @@ export function serializeObjective(objective: StandingObjective): JsonObject {
 }
 
 function isStandingObjective(value: unknown): value is StandingObjective {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value;
+  const candidate = value as StandingObjective;
   if (
     typeof candidate.id !== "string" ||
     typeof candidate.userId !== "string" ||
@@ -160,12 +159,4 @@ function isStandingObjective(value: unknown): value is StandingObjective {
     candidate.status === "escalated" ||
     candidate.status === "cancelled"
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }

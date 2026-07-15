@@ -14,7 +14,6 @@ import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
-import { readRouteParam } from "./compat-parsers.js";
 
 /**
  * `/api/swarm` — the web half of the swarm's "inbound is inert"
@@ -65,11 +64,7 @@ export function registerSwarmRoutes(server: FastifyInstance, gate: SwarmRoutesGa
     if (!authed(request, reply)) {
       return reply;
     }
-    const id = readRouteParam(request, "id");
-
-    if (!id) {
-      return reply.status(400).send({ reason: "Invalid swarm id" });
-    }
+    const { id } = request.params as { id: string };
     const entry = findPending(await readQuarantine(file()), id);
     if (!entry) {
       return reply.status(404).send({ reason: `no pending entry "${id}"` });
@@ -78,7 +73,7 @@ export function registerSwarmRoutes(server: FastifyInstance, gate: SwarmRoutesGa
       return reply.status(409).send({ reason: `'${entry.kind}' promotion isn't supported — only 'skill'` });
     }
     const store = new AuthoredSkillStore({
-      dir: gate.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env)
+      dir: gate.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>)
     });
     const result = await store.writeOrPatch(buildSwarmSkillDraft(entry));
     await setQuarantineStatus(file(), entry.id, "promoted", Date.now());
@@ -89,11 +84,7 @@ export function registerSwarmRoutes(server: FastifyInstance, gate: SwarmRoutesGa
     if (!authed(request, reply)) {
       return reply;
     }
-    const id = readRouteParam(request, "id");
-
-    if (!id) {
-      return reply.status(400).send({ reason: "Invalid swarm id" });
-    }
+    const { id } = request.params as { id: string };
     const entry = findPending(await readQuarantine(file()), id);
     if (!entry) {
       return reply.status(404).send({ reason: `no pending entry "${id}"` });

@@ -19,7 +19,6 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord, withBestEffort, type JsonObject } from "@muse/shared";
 import type { ConversationSummaryTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 import type {
@@ -53,12 +52,7 @@ interface RequiredConversationSummary {
 const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 1_000;
 
-interface SerializedStructuredFact extends JsonObject {
-  readonly key: string;
-  readonly value: string;
-  readonly category: FactCategory;
-  readonly extractedAt: string;
-}
+type SerializedStructuredFact = Readonly<Record<string, string>>;
 
 export class InMemoryConversationSummaryStore implements ConversationSummaryStore {
   private readonly summaries = new Map<string, RequiredConversationSummary>();
@@ -103,7 +97,7 @@ export class InMemoryConversationSummaryStore implements ConversationSummaryStor
 interface SerializedConversationSummary {
   readonly sessionId: string;
   readonly narrative: string;
-  readonly facts: readonly SerializedStructuredFact[];
+  readonly facts: readonly { readonly key: string; readonly value: string; readonly category: FactCategory; readonly extractedAt: string }[];
   readonly summarizedUpToIndex: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -124,12 +118,12 @@ function serializeSummary(s: RequiredConversationSummary): SerializedConversatio
 
 function deserializeSummary(r: SerializedConversationSummary): RequiredConversationSummary {
   return {
-    createdAt: toRequiredDate(r.createdAt),
-    facts: r.facts.map(deserializeStructuredFact),
+    createdAt: new Date(r.createdAt),
+    facts: (r.facts ?? []).map((f) => ({ category: f.category, extractedAt: new Date(f.extractedAt), key: f.key, value: f.value })),
     narrative: r.narrative,
     sessionId: r.sessionId,
     summarizedUpToIndex: r.summarizedUpToIndex,
-    updatedAt: toRequiredDate(r.updatedAt),
+    updatedAt: new Date(r.updatedAt),
     ...(r.userId ? { userId: r.userId } : {})
   };
 }
@@ -165,11 +159,19 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     } catch {
       return new Map();
     }
-    const list = parseConversationSummariesPayload(raw);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      return new Map(); // corrupt ⇒ degrade to empty, never throw (recall is best-effort)
+    }
+    const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { summaries?: unknown }).summaries)
+      ? (parsed as { summaries: SerializedConversationSummary[] }).summaries
+      : [];
     const map = new Map<string, RequiredConversationSummary>();
     for (const entry of list) {
-      if (entry.sessionId.length > 0) {
-        map.set(entry.sessionId, entry);
+      if (entry && typeof entry.sessionId === "string" && entry.sessionId.length > 0) {
+        map.set(entry.sessionId, deserializeSummary(entry));
       }
     }
     return map;
@@ -187,7 +189,7 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
       await handle.close();
     }
     await fs.rename(tmp, this.file);
-    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
+    await fs.chmod(this.file, 0o600).catch(() => undefined);
   }
 
   async get(sessionId: string): Promise<ConversationSummary | undefined> {
@@ -323,12 +325,12 @@ export function createConversationSummaryInsert(
 
 export function mapConversationSummaryRow(row: ConversationSummaryRow): ConversationSummary {
   return {
-    createdAt: toRequiredDate(row.created_at),
-    facts: parseJsonArray(row.facts_json, isSerializedStructuredFact).map(deserializeStructuredFact),
+    createdAt: dateValue(row.created_at),
+    facts: jsonArray<SerializedStructuredFact>(row.facts_json).map(deserializeStructuredFact),
     narrative: row.narrative,
     sessionId: row.session_id,
     summarizedUpToIndex: row.summarized_up_to,
-    updatedAt: toRequiredDate(row.updated_at),
+    updatedAt: dateValue(row.updated_at),
     userId: typeof row.user_id === "string" ? row.user_id : undefined
   };
 }
@@ -369,7 +371,7 @@ function serializeStructuredFact(fact: RequiredStructuredFact): SerializedStruct
 function deserializeStructuredFact(fact: SerializedStructuredFact): RequiredStructuredFact {
   return {
     category: factCategoryValue(fact.category),
-    extractedAt: toRequiredDate(fact.extractedAt),
+    extractedAt: dateValue(fact.extractedAt),
     key: stringValue(fact.key),
     value: stringValue(fact.value)
   };
@@ -390,167 +392,19 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function toRequiredDate(value: unknown): Date {
-  if (value instanceof Date) {
-    return Number.isFinite(value.getTime()) ? value : new Date(0);
-  }
-
-  if (typeof value === "string" || typeof value === "number") {
-    const parsed = new Date(value);
-    return Number.isFinite(parsed.getTime()) ? parsed : new Date(0);
-  }
-
-  return new Date(0);
+function dateValue(value: unknown): Date {
+  return value instanceof Date ? value : new Date(typeof value === "string" ? value : 0);
 }
 
-function parseConversationSummariesPayload(raw: string): readonly RequiredConversationSummary[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-
-  if (!isRecord(parsed)) {
-    return [];
-  }
-
-  const summaries = parsed["summaries"];
-  if (!Array.isArray(summaries)) {
-    return [];
-  }
-
-  const out: RequiredConversationSummary[] = [];
-  for (const entry of summaries) {
-    const parsedEntry = parseConversationSummary(entry);
-    if (parsedEntry) {
-      out.push(parsedEntry);
-    }
-  }
-
-  return out;
-}
-
-function parseConversationSummary(value: unknown): RequiredConversationSummary | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const sessionId = toText(value.sessionId);
-  if (sessionId.length === 0) {
-    return undefined;
-  }
-
-  const summary = parseConversationSummaryCore(value);
-  if (!summary) {
-    return undefined;
-  }
-
-  return deserializeSummary({
-    ...summary,
-    sessionId
-  });
-}
-
-function parseConversationSummaryCore(value: unknown): Omit<SerializedConversationSummary, "sessionId"> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const narrative = toText(value.narrative);
-  const createdAt = toText(value.createdAt);
-  const updatedAt = toText(value.updatedAt);
-  if (createdAt.length === 0 || updatedAt.length === 0) {
-    return undefined;
-  }
-
-  const summarizedUpToIndex = toFiniteInteger(value.summarizedUpToIndex) ?? 0;
-  const facts = parseStructuredFacts(value.facts);
-  if (!facts) {
-    return undefined;
-  }
-
-  const userId = toOptionalText(value.userId);
-
-  return {
-    facts,
-    narrative,
-    summarizedUpToIndex,
-    createdAt,
-    updatedAt,
-    ...(userId ? { userId } : {})
-  };
-}
-
-function parseStructuredFacts(
-  value: unknown
-): readonly SerializedStructuredFact[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const facts: SerializedStructuredFact[] = [];
-  for (const item of value) {
-    const parsed = parseStructuredFact(item);
-    if (parsed) {
-      facts.push(parsed);
-    }
-  }
-
-  return facts;
-}
-
-function parseStructuredFact(value: unknown): SerializedStructuredFact | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const key = toText(value.key);
-  const extractedAt = toText(value.extractedAt);
-  const factValue = toText(value.value);
-  if (key.length === 0 || extractedAt.length === 0 || factValue.length === 0) {
-    return undefined;
-  }
-
-  return {
-    category: factCategoryValue(value.category),
-    extractedAt,
-    key,
-    value: factValue
-  };
-}
-
-function toFiniteInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
-}
-
-function toText(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function toOptionalText(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function isSerializedStructuredFact(value: unknown): value is SerializedStructuredFact {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.category === "string"
-    && typeof value.extractedAt === "string"
-    && typeof value.key === "string"
-    && typeof value.value === "string";
-}
-
-function parseJsonArray<T>(value: unknown, isEntry: (value: unknown) => value is T): readonly T[] {
+function jsonArray<T>(value: unknown): readonly T[] {
   if (Array.isArray(value)) {
-    return value.filter(isEntry);
+    return value as readonly T[];
   }
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.filter(isEntry) : [];
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) ? parsed as readonly T[] : [];
     } catch {
       return [];
     }

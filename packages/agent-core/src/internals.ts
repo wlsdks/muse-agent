@@ -80,8 +80,8 @@ export function parseJsonObjectFromText(text: string): Record<string, unknown> |
     try {
       const parsed: unknown = JSON.parse(candidate);
 
-      if (isRecord(parsed)) {
-        return parsed;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
       }
     } catch {
       // Continue through fallback candidates.

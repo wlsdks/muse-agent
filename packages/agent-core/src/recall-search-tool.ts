@@ -7,7 +7,6 @@
  */
 
 import type { MuseTool } from "@muse/tools";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 import { cosineSimilarity } from "./episodic-recall.js";
 import { type KnowledgeChunk, rankKnowledgeChunks } from "./knowledge-ranking.js";
@@ -35,10 +34,7 @@ export function createCachingEmbedder(
       return hit;
     }
     const pending = (async () => embed(text))();
-    pending.catch((error: unknown) => {
-      cache.delete(text);
-      throw error;
-    });
+    pending.catch(() => cache.delete(text));
     cache.set(text, pending);
     if (cache.size > maxEntries) {
       const oldest = cache.keys().next().value;
@@ -80,8 +76,7 @@ export function createKnowledgeSearchTool(options: KnowledgeSearchToolOptions): 
       risk: "read"
     },
     execute: async (args) => {
-      const querySource = isRecord(args) ? args : {};
-      const query = typeof querySource.query === "string" ? querySource.query : "";
+      const query = typeof (args as { query?: unknown }).query === "string" ? (args as { query: string }).query : "";
       const matches = await rankKnowledgeChunks(query, options.corpus, {
         diversify: true,
         embed: options.embed,
@@ -128,7 +123,7 @@ export async function detectRedundantPairs(
 
   let embeddings: Array<readonly number[] | null>;
   try {
-    embeddings = await Promise.all(texts.map((t) => withBestEffort(embed(t), null)));
+    embeddings = await Promise.all(texts.map((t) => embed(t).catch(() => null)));
   } catch {
     return [];
   }

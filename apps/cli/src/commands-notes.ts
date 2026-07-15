@@ -11,10 +11,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
 
-import { resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer, deriveMirrorNoteTitle, fetchReadableUrl } from "@muse/domain-tools";
 import { isInteractiveWebEgressAllowed, isLocalOnlyEnabled } from "@muse/model";
-import { isRecord } from "@muse/shared";
 import { mirrorNoteToApple } from "@muse/macos";
 import type { Command } from "commander";
 
@@ -29,7 +28,6 @@ import {
 import { auditNoteGraph, buildNoteLinkGraph, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 export interface NotesCommandHelpers {
   readonly apiRequest: (
@@ -42,123 +40,27 @@ export interface NotesCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
-function environment(): MuseEnvironment {
-  return process.env;
-}
-
-type NoteProviderRow = {
-  readonly id: string;
-  readonly local?: boolean;
-  readonly displayName?: string;
-  readonly description?: string;
-};
-
 interface SharedOptions {
   readonly local?: boolean;
   readonly json?: boolean;
 }
 
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 async function callLocalTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const notesDir = resolveNotesDir(environment());
+  const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
   const server = createNotesMcpServer({ notesDir });
   const tool = server.tools.find((entry) => entry.name === name);
   if (!tool) {
     throw new Error(`local notes tool not found: ${name}`);
   }
   const raw = await tool.execute(args as Parameters<typeof tool.execute>[0]);
-  const result = toRecord(raw);
-  if (result && typeof result.error === "string") {
-    throw new Error(result.error);
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const result = raw as Record<string, unknown>;
+    if (typeof result.error === "string") {
+      throw new Error(result.error);
+    }
+    return result;
   }
-  return result ?? { result: raw };
-}
-
-function parseNotesPayloadRecord(v: unknown): Record<string, unknown> {
-  return toRecord(v) ?? {};
-}
-
-function parseNotesProviders(raw: unknown): readonly NoteProviderRow[] {
-  const payload = parseNotesPayloadRecord(raw);
-  const rawProviders = payload.providers;
-  if (!Array.isArray(rawProviders)) {
-    return [];
-  }
-  return rawProviders
-    .map((entry) => toRecord(entry))
-    .filter((entry): entry is Record<string, unknown> => entry !== undefined)
-    .map((entry) => ({
-      id: typeof entry.id === "string" ? entry.id : "unknown",
-      local: entry.local === true ? true : undefined,
-      displayName: typeof entry.displayName === "string" ? entry.displayName : undefined,
-      description: typeof entry.description === "string" ? entry.description : undefined
-    }))
-    .filter((provider) => provider.id.length > 0);
-}
-
-function parseNotesListPayload(raw: unknown): {
-  readonly dir: string;
-  readonly entries: readonly { readonly name: string; readonly isDirectory: boolean; readonly sizeBytes?: number }[];
-  readonly truncated?: boolean;
-} {
-  const payload = parseNotesPayloadRecord(raw);
-  const rawEntries = payload.entries;
-  const entries = Array.isArray(rawEntries)
-    ? rawEntries
-      .filter((entry): entry is Record<string, unknown> => isRecord(entry))
-      .map((entry) => ({
-        name: typeof entry.name === "string" ? entry.name : "",
-        isDirectory: entry.isDirectory === true,
-        sizeBytes: typeof entry.sizeBytes === "number" ? entry.sizeBytes : undefined
-      }))
-    : [];
-  return {
-    dir: typeof payload.dir === "string" ? payload.dir : "",
-    entries,
-    ...(payload.truncated === true ? { truncated: true } : {})
-  };
-}
-
-function parseNotesReadPayload(raw: unknown): { readonly content: string } {
-  const payload = parseNotesPayloadRecord(raw);
-  return {
-    content: typeof payload.content === "string" ? payload.content : ""
-  };
-}
-
-function parseNotesSearchPayload(raw: unknown): { readonly matches: readonly { readonly path: string; readonly line: number; readonly snippet: string }[] } {
-  const payload = parseNotesPayloadRecord(raw);
-  const rawMatches = Array.isArray(payload.matches) ? payload.matches : [];
-  return {
-    matches: rawMatches
-      .filter((entry): entry is Record<string, unknown> => isRecord(entry))
-      .map((entry) => ({
-        path: typeof entry.path === "string" ? entry.path : "",
-        line: typeof entry.line === "number" && Number.isFinite(entry.line) ? entry.line : 0,
-        snippet: typeof entry.snippet === "string" ? entry.snippet : ""
-      }))
-  };
-}
-
-function parseNotesSavePayload(raw: unknown): { readonly path: string; readonly sizeBytes?: number; readonly created?: boolean; readonly mirrorNote?: string } {
-  const payload = parseNotesPayloadRecord(raw);
-  return {
-    path: typeof payload.path === "string" ? payload.path : "",
-    sizeBytes: typeof payload.sizeBytes === "number" ? payload.sizeBytes : undefined,
-    ...(payload.created === true ? { created: true } : {}),
-    ...(typeof payload.mirrorNote === "string" ? { mirrorNote: payload.mirrorNote } : {})
-  };
-}
-
-function parseNotesAppendPayload(raw: unknown): { readonly path: string; readonly sizeBytes?: number } {
-  const payload = parseNotesPayloadRecord(raw);
-  return {
-    path: typeof payload.path === "string" ? payload.path : "",
-    sizeBytes: typeof payload.sizeBytes === "number" ? payload.sizeBytes : undefined
-  };
+  return { result: raw };
 }
 
 // Absent → undefined (let the server/tool use its own default).
@@ -377,7 +279,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, result);
         return;
       }
-      const providers = parseNotesProviders(result);
+      const providers = (result as { providers?: Parameters<typeof formatProvidersList>[1] })?.providers ?? [];
       io.stdout(formatProvidersList("Notes providers", providers));
     });
 
@@ -398,7 +300,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
           ? `/api/notes/list?subdir=${encodeURIComponent(options.subdir)}`
           : "/api/notes/list";
         try {
-          payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, path));
+          payload = (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
         } catch (cause) {
           if (!isApiUnreachable(cause)) {
             throw cause;
@@ -411,7 +313,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatNotesList(parseNotesListPayload(payload)));
+      io.stdout(formatNotesList(payload as Parameters<typeof formatNotesList>[0]));
     });
 
   notes
@@ -426,13 +328,13 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         payload = await callLocalTool("read", { path: notePath });
       } else {
         const url = `/api/notes/read?path=${encodeURIComponent(notePath)}`;
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, url));
+        payload = (await helpers.apiRequest(io, command, url)) as Record<string, unknown>;
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatNoteRead(parseNotesReadPayload(payload)));
+      io.stdout(formatNoteRead(payload as Parameters<typeof formatNoteRead>[0]));
     });
 
   notes
@@ -464,13 +366,13 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         if (limit !== undefined) {
           params.set("limit", limit.toString());
         }
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, `/api/notes/search?${params.toString()}`));
+        payload = (await helpers.apiRequest(io, command, `/api/notes/search?${params.toString()}`)) as Record<string, unknown>;
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatNoteSearch(parseNotesSearchPayload(payload)));
+      io.stdout(formatNoteSearch(payload as Parameters<typeof formatNoteSearch>[0]));
     });
 
   notes
@@ -513,7 +415,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         if (options.overwrite === true) {
           body.overwrite = true;
         }
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, "/api/notes/save", body, "POST"));
+        payload = (await helpers.apiRequest(io, command, "/api/notes/save", body, "POST")) as Record<string, unknown>;
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
@@ -525,7 +427,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       if (typeof payload.mirrorNote === "string" && payload.mirrorNote.length > 0) {
         io.stderr(`muse: ${payload.mirrorNote}\n`);
       }
-      io.stdout(formatNoteSaved(parseNotesSavePayload(payload)));
+      io.stdout(formatNoteSaved(payload as Parameters<typeof formatNoteSaved>[0]));
     });
 
   notes
@@ -574,7 +476,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       } else {
         const body: Record<string, unknown> = { content, path: notePath };
         if (options.overwrite === true) body.overwrite = true;
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, "/api/notes/save", body, "POST"));
+        payload = (await helpers.apiRequest(io, command, "/api/notes/save", body, "POST")) as Record<string, unknown>;
       }
       // Record external provenance for a URL-ingested note so recall tags its
       // grounding evidence trusted:false (the note-veracity half of GROUNDED≠TRUE —
@@ -584,7 +486,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         try {
           const { resolveNoteProvenanceFile } = await import("@muse/autoconfigure");
           const { recordIngestedNote } = await import("./note-provenance.js");
-          await recordIngestedNote(resolveNoteProvenanceFile(process.env), {
+          await recordIngestedNote(resolveNoteProvenanceFile(process.env as Parameters<typeof resolveNoteProvenanceFile>[0]), {
             ingestedAt: new Date().toISOString(),
             path: notePath,
             sourceUrl: url
@@ -595,7 +497,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatNoteSaved(parseNotesSavePayload(payload)));
+      io.stdout(formatNoteSaved(payload as Parameters<typeof formatNoteSaved>[0]));
     });
 
   notes
@@ -616,13 +518,13 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       if (options.local) {
         payload = await callLocalTool("append", { content, path: notePath });
       } else {
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, "/api/notes/append", { content, path: notePath }, "POST"));
+        payload = (await helpers.apiRequest(io, command, "/api/notes/append", { content, path: notePath }, "POST")) as Record<string, unknown>;
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatNoteAppended(parseNotesAppendPayload(payload)));
+      io.stdout(formatNoteAppended(payload as Parameters<typeof formatNoteAppended>[0]));
     });
 
   notes
@@ -638,10 +540,10 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       // counterpart of `rename`'s link-preservation). Best-effort, never blocks.
       let backlinks: readonly string[] = [];
       if (options.local) {
-        backlinks = await withBestEffort(notesLinkingTo(resolveNotesDir(environment()), notePath), []);
+        backlinks = await notesLinkingTo(resolveNotesDir(process.env as Record<string, string | undefined>), notePath).catch(() => []);
         payload = await callLocalTool("delete", { path: notePath });
       } else {
-        payload = parseNotesPayloadRecord(await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE"));
+        payload = (await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE")) as Record<string, unknown>;
       }
       if (typeof payload.error === "string") {
         io.stderr(`muse notes delete: ${payload.error}\n`);
@@ -670,7 +572,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--dry-run", "Show how many links would be rewritten without changing anything")
     .option("--json", "Print the raw result")
     .action(async (from: string, to: string, options: { readonly dryRun?: boolean; readonly json?: boolean }) => {
-      const notesDir = resolveNotesDir(environment());
+      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
       const result = await renameNoteWithLinkRewrite(notesDir, from, to, options.dryRun === true);
       if (options.json) {
         helpers.writeOutput(io, result);
@@ -697,7 +599,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--max-distance <n>", "Max edit distance to treat a typo as the same note (default 2)")
     .option("--json", "Print the raw result")
     .action(async (options: { readonly dryRun?: boolean; readonly maxDistance?: string; readonly json?: boolean }) => {
-      const notesDir = resolveNotesDir(environment());
+      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
       const maxDistance = options.maxDistance !== undefined && Number.isFinite(Number(options.maxDistance))
         ? Math.max(1, Math.trunc(Number(options.maxDistance)))
         : 2;

@@ -24,12 +24,9 @@ import {
   type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
-  type PersonalThread,
-  type PersonalThreadKind,
-  type ContinuityDelivery
+  type PersonalThread
 } from "@muse/attunement";
-import { isNodeErrorCode, NODE_ERROR_CODES } from "@muse/shared";
-import { resolveAttunementFile, resolveNotesDir, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import { readTaskById, readTasks } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
@@ -44,17 +41,9 @@ import {
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-type ThreadKind = (typeof THREAD_KINDS)[number];
-const THREAD_KIND_SET = new Set<string>(THREAD_KINDS);
 const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
-type ArtifactType = (typeof ARTIFACT_TYPES)[number];
-const ARTIFACT_TYPE_SET = new Set<string>(ARTIFACT_TYPES);
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
-type ArtifactRole = (typeof ARTIFACT_ROLES)[number];
-const ARTIFACT_ROLE_SET = new Set<string>(ARTIFACT_ROLES);
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
-type Outcome = (typeof OUTCOMES)[number];
-const OUTCOME_SET = new Set<string>(OUTCOMES);
 
 export interface AttunementCommandDeps {
   /**
@@ -66,8 +55,8 @@ export interface AttunementCommandDeps {
   readonly mcpResourceCaller?: McpToolCaller;
 }
 
-function environment(): MuseEnvironment {
-  return process.env;
+function environment(): Record<string, string | undefined> {
+  return process.env as Record<string, string | undefined>;
 }
 
 function attunementFile(): string {
@@ -82,11 +71,8 @@ function notesDir(): string {
   return resolveNotesDir(environment());
 }
 
-function assertChoice<T extends string>(value: string, allowed: readonly T[], allowedSet: ReadonlySet<string>, name: string): asserts value is T {
-  if (allowedSet.has(value)) {
-    return;
-  }
-  throw new AttunementStoreError(`${name} must be one of: ${allowed.join(", ")}`);
+function assertChoice(value: string, allowed: readonly string[], name: string): void {
+  if (!allowed.includes(value)) throw new AttunementStoreError(`${name} must be one of: ${allowed.join(", ")}`);
 }
 
 function assertNoDotDotPath(value: string): void {
@@ -123,7 +109,7 @@ async function readCanonicalLocalNote(rawId: string): Promise<LocalNote | undefi
     vaultRoot = await fs.realpath(notesDir());
     target = await fs.realpath(resolve(vaultRoot, id));
   } catch (cause) {
-    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) return undefined;
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw cause;
   }
   const artifactId = containedRelative(vaultRoot, target);
@@ -246,7 +232,7 @@ function defaultMcpResourceCaller(): McpToolCaller {
         `connect the MCP server '${server}' first — tool '${toolName}' is not available (run \`muse mcp connect ${server}\`)`
       );
     }
-    return tool.execute(args, { runId: `attunement_resource_${Date.now().toString()}`, userId: "owner" });
+    return tool.execute(args as never, { runId: `attunement_resource_${Date.now().toString()}`, userId: "owner" });
   };
 }
 
@@ -280,7 +266,7 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
 
 const KILL_CRITERION_FIRST_PACKS = 20;
 
-export interface ContinuityKindStats {
+export interface ContinuityStats {
   readonly totalDeliveries: number;
   readonly withOutcome: number;
   readonly outcomes: Record<ContinuityOutcome, number>;
@@ -289,19 +275,6 @@ export interface ContinuityKindStats {
     readonly used: number;
     readonly rejected: number;
   };
-  /**
-   * This is deliberately a release gate, not an automation switch. Passing
-   * the outcome threshold never enables proactive delivery by itself.
-   */
-  readonly automationGate: {
-    readonly reasons: readonly string[];
-    readonly status: "hold" | "manual-only";
-  };
-}
-
-export interface ContinuityStats extends ContinuityKindStats {
-  /** Never aggregate life/work results into a single apparent success. */
-  readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindStats>>;
 }
 
 /**
@@ -310,60 +283,26 @@ export interface ContinuityStats extends ContinuityKindStats {
  * usefulness before more automation). Reads only persisted deliveries; empty
  * state yields zeros, not a crash.
  */
-function computeContinuityKindStats(deliveries: readonly ContinuityDelivery[]): ContinuityKindStats {
+export function computeContinuityStats(state: AttunementState): ContinuityStats {
   const outcomes: Record<ContinuityOutcome, number> = { adjusted: 0, ignored: 0, rejected: 0, used: 0 };
   let withOutcome = 0;
-  for (const delivery of deliveries) {
+  for (const delivery of state.deliveries) {
     if (delivery.outcome) {
       outcomes[delivery.outcome.outcome] += 1;
       withOutcome += 1;
     }
   }
-  const firstDeliveries = [...deliveries]
+  const firstDeliveries = [...state.deliveries]
     .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
     .slice(0, KILL_CRITERION_FIRST_PACKS);
   const used = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "used").length;
   const rejected = firstDeliveries.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
-  const reasons: string[] = [];
-  if (firstDeliveries.length < KILL_CRITERION_FIRST_PACKS) {
-    reasons.push(`need ${String(KILL_CRITERION_FIRST_PACKS - firstDeliveries.length)} more eligible deliveries before evaluating automation`);
-  } else {
-    if (used * 100 < 20 * firstDeliveries.length) reasons.push("used rate is below the 20% kill criterion");
-    if (rejected * 100 > 30 * firstDeliveries.length) reasons.push("rejection rate exceeds the 30% kill criterion");
-  }
   return {
     totalDeliveries: state.deliveries.length,
     withOutcome,
     outcomes,
-    firstPacks: { considered: firstDeliveries.length, rejected, used },
-    automationGate: reasons.length > 0
-      ? { reasons, status: "hold" }
-      : {
-          reasons: ["outcome threshold passed; proactive delivery remains disabled pending the separate Slice B consent and timing gate"],
-          status: "manual-only"
-        }
+    firstPacks: { considered: firstDeliveries.length, rejected, used }
   };
-}
-
-export function computeContinuityStats(state: AttunementState): ContinuityStats {
-  const kindByThreadId = new Map(state.threads.map((thread) => [thread.id, thread.kind]));
-  const deliveriesFor = (kind: PersonalThreadKind): ContinuityDelivery[] =>
-    state.deliveries.filter((delivery) => kindByThreadId.get(delivery.threadId) === kind);
-  return {
-    ...computeContinuityKindStats(state.deliveries),
-    byKind: {
-      life: computeContinuityKindStats(deliveriesFor("life")),
-      work: computeContinuityKindStats(deliveriesFor("work"))
-    }
-  };
-}
-
-function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
-  const { outcomes, firstPacks } = stats;
-  return [
-    `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
-    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`
-  ];
 }
 
 export function formatContinuityStats(stats: ContinuityStats): string {
@@ -371,11 +310,7 @@ export function formatContinuityStats(stats: ContinuityStats): string {
   const lines = [
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
-    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
-    `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
-    "By thread kind:",
-    ...formatKindStats("life", stats.byKind.life),
-    ...formatKindStats("work", stats.byKind.work)
+    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -441,11 +376,6 @@ async function runContinue(io: ProgramIO, threadId: string | undefined, resolveE
   const chosenId = await resolveContinueThreadId(threadId);
   const state = await readAttunementState(file);
   const pack = await buildContinuityPack(state, chosenId, resolveExactArtifact);
-  if (!pack.evidence.some((entry) => entry.status === "available")) {
-    throw new AttunementStoreError(
-      `thread '${chosenId}' has no currently available linked evidence; no delivery was recorded. Inspect its links with \`muse thread inspect ${chosenId}\` and relink an available local source.`
-    );
-  }
   const delivery = await openContinuityDelivery(file, {
     evidenceRefs: pack.evidenceRefs,
     expectedPolicyVersion: pack.deliveryPolicyVersion,
@@ -476,8 +406,8 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
     .action(async (titleParts: string[], options: { readonly kind: string }, command: Command) => {
       await commandAction(command, io, "thread start", async () => {
         const kind = options.kind.trim().toLowerCase();
-        assertChoice(kind, THREAD_KINDS, THREAD_KIND_SET, "--kind");
-        const created = await createPersonalThread(attunementFile(), { kind, title: titleParts.join(" ") });
+        assertChoice(kind, THREAD_KINDS, "--kind");
+        const created = await createPersonalThread(attunementFile(), { kind: kind as PersonalThread["kind"], title: titleParts.join(" ") });
         io.stdout(`Started ${created.kind} thread ${created.id}: ${created.title}\n`);
       });
     });
@@ -514,14 +444,14 @@ Examples:
       await commandAction(command, io, "thread link", async () => {
         const type = artifactType.trim().toLowerCase();
         const role = options.role.trim().toLowerCase();
-        assertChoice(type, ARTIFACT_TYPES, ARTIFACT_TYPE_SET, "artifact type");
-        assertChoice(role, ARTIFACT_ROLES, ARTIFACT_ROLE_SET, "--role");
+        assertChoice(type, ARTIFACT_TYPES, "artifact type");
+        assertChoice(role, ARTIFACT_ROLES, "--role");
         const input = type === "resource"
-          ? buildResourceLinkInput(artifactId, role, threadId.trim())
+          ? buildResourceLinkInput(artifactId, role as ArtifactLink["role"], threadId.trim())
           : {
               artifactId,
-              artifactType: type,
-              role,
+              artifactType: type as ArtifactLink["artifactType"],
+              role: role as ArtifactLink["role"],
               threadId: threadId.trim()
             };
         const result = await linkArtifact(attunementFile(), input, { validateArtifact });
@@ -535,8 +465,8 @@ Examples:
     .action(async (threadId: string, artifactType: string, artifactId: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread unlink", async () => {
         const type = artifactType.trim().toLowerCase();
-        assertChoice(type, ARTIFACT_TYPES, ARTIFACT_TYPE_SET, "artifact type");
-        const removed = await unlinkArtifact(attunementFile(), { artifactId: artifactId.trim(), artifactType: type, threadId: threadId.trim() });
+        assertChoice(type, ARTIFACT_TYPES, "artifact type");
+        const removed = await unlinkArtifact(attunementFile(), { artifactId: artifactId.trim(), artifactType: type as ArtifactLink["artifactType"], threadId: threadId.trim() });
         if (!removed) throw new AttunementStoreError(`no ${type} link '${artifactId}' on thread '${threadId}'`);
         io.stdout(`Unlinked ${type}:${artifactId}\n`);
       });
@@ -587,8 +517,8 @@ Examples:
     .action(async (deliveryId: string, outcome: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread outcome", async () => {
         const canonicalOutcome = outcome.trim().toLowerCase();
-        assertChoice(canonicalOutcome, OUTCOMES, OUTCOME_SET, "outcome");
-        const recorded = await recordContinuityOutcome(attunementFile(), deliveryId.trim(), canonicalOutcome);
+        assertChoice(canonicalOutcome, OUTCOMES, "outcome");
+        const recorded = await recordContinuityOutcome(attunementFile(), deliveryId.trim(), canonicalOutcome as (typeof OUTCOMES)[number]);
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
       });
     });

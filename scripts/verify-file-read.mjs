@@ -18,7 +18,6 @@ import { join } from "node:path";
 import puppeteer from "../packages/browser/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js";
 
 import { createFileReadTool, extractDocxTextWithMammoth, extractPdfTextWithPdfjs } from "../packages/fs/dist/index.js";
-import { runBestEffort } from "./best-effort.mjs";
 
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
@@ -88,7 +87,7 @@ function buildDocx(text) {
 
 const dir = await mkdtemp(join(tmpdir(), "muse-file-read-"));
 const downloads = join(dir, "Downloads");
-await runBestEffort(() => writeFile(join(dir, "outside-secret.txt"), "must never be readable"), "seed outside-root fixture file");
+await writeFile(join(dir, "outside-secret.txt"), "must never be readable").catch(() => {});
 
 let browser;
 try {
@@ -144,14 +143,10 @@ try {
   console.log("2e) REAL symlink escape — a link under Downloads pointing outside the roots is refused");
   const { symlink, writeFile: wf } = await import("node:fs/promises");
   const secret = join(dir, "outside-secret.txt"); // already written, outside `downloads`
-  await runBestEffort(() => wf(secret, "TOP SECRET — must never be read via file_read"), "seed symlink payload outside root");
+  await wf(secret, "TOP SECRET — must never be read via file_read").catch(() => {});
   const linkPath = join(downloads, "innocent.txt");
   let linkMade = true;
-  try {
-    await symlink(secret, linkPath);
-  } catch {
-    linkMade = false;
-  }
+  await symlink(secret, linkPath).catch(() => { linkMade = false; });
   if (linkMade) {
     const escapeOut = await tool.execute({ path: "innocent" }, ctx);
     assert(escapeOut.read === false, "a symlink escaping the roots is refused (realpath guard)");
@@ -182,6 +177,6 @@ try {
 
   console.log("\neval:file-read PASS");
 } finally {
-  if (browser) await runBestEffort(() => browser.close(), "close puppeteer instance");
+  if (browser) await browser.close().catch(() => {});
   await rm(dir, { force: true, recursive: true });
 }

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
-import { isRecord, parseJson, readOptionalString } from "./safe-json.js";
 
 import type { ProactiveNotice } from "./types.js";
 
@@ -57,9 +56,10 @@ export function useNoticeStream(
           for (const frame of frames) {
             const { data, eventName } = parseSseFrame(frame);
             if (eventName === "notice" && data) {
-              const payload = parseProactiveNotice(parseJson(data));
-              if (payload) {
-                onNoticeRef.current(payload);
+              try {
+                onNoticeRef.current(JSON.parse(data) as ProactiveNotice);
+              } catch {
+                /* ignore malformed notice */
               }
             }
           }
@@ -82,25 +82,4 @@ export function useNoticeStream(
       }
     };
   }, [baseUrl, token, userId]);
-}
-
-function parseProactiveNotice(value: unknown): ProactiveNotice | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const id = readOptionalString(value.id);
-  const message = readOptionalString(value.message);
-  const text = readOptionalString(value.text);
-  const kind = readOptionalString(value.kind);
-  const createdAt = readOptionalString(value.createdAt);
-  if (id === undefined && message === undefined && text === undefined && kind === undefined && createdAt === undefined) {
-    return undefined;
-  }
-  return {
-    ...(id !== undefined ? { id } : {}),
-    ...(message !== undefined ? { message } : {}),
-    ...(text !== undefined ? { text } : {}),
-    ...(kind !== undefined ? { kind } : {}),
-    ...(createdAt !== undefined ? { createdAt } : {})
-  };
 }

@@ -11,8 +11,6 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { withBestEffort } from "@muse/shared";
-
 
 import type { UserMemoryStore } from "@muse/memory";
 import type { FastifyInstance } from "fastify";
@@ -25,7 +23,6 @@ import {
   type TaglineLang,
   type TaglineModelFn
 } from "./identity-tagline.js";
-import { isRecord, readQueryString } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server-options.js";
 
@@ -55,14 +52,9 @@ function resolveStateFile(options: IdentityTaglineRoutesOptions): string {
 
 async function readState(file: string): Promise<TaglineState> {
   try {
-    const parsed = JSON.parse(await fs.readFile(file, "utf8"));
-    const safeParsed = isRecord(parsed) ? parsed : {};
-    const recent = Array.isArray(safeParsed.recent)
-      ? safeParsed.recent.filter((r): r is string => typeof r === "string")
-      : [];
-    const rotation = typeof safeParsed.rotation === "number" && Number.isFinite(safeParsed.rotation)
-      ? Math.trunc(safeParsed.rotation)
-      : 0;
+    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Partial<TaglineState>;
+    const recent = Array.isArray(parsed.recent) ? parsed.recent.filter((r): r is string => typeof r === "string") : [];
+    const rotation = Number.isFinite(parsed.rotation) ? Math.trunc(parsed.rotation as number) : 0;
     return { recent, rotation };
   } catch {
     return { recent: [], rotation: 0 };
@@ -92,13 +84,12 @@ export function registerIdentityTaglineRoutes(
     if (!requireAuthenticated(request, reply, Boolean(options.authService))) {
       return reply;
     }
-    const lang = resolveLang(readQueryString(request, "lang"));
+    const query = request.query as { readonly lang?: string; readonly userId?: string } | undefined;
+    const lang = resolveLang(query?.lang);
 
     try {
-      const userId = readQueryString(request, "userId") || options.defaultUserId || "me";
-      const memory = options.userMemoryStore
-        ? await withBestEffort(options.userMemoryStore.findByUserId(userId), undefined)
-        : undefined;
+      const userId = query?.userId?.trim() || options.defaultUserId || "me";
+      const memory = await Promise.resolve(options.userMemoryStore?.findByUserId(userId)).catch(() => undefined);
       const atoms = gatherIdentityFacts(memory);
 
       const state = await readState(stateFile);

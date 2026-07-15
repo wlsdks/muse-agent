@@ -15,7 +15,6 @@ import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import { parseHistoryLimit } from "./server-input-utils.js";
-import { readQueryString } from "./compat-parsers.js";
 import type { ServerOptions } from "./server.js";
 
 interface ProactiveRoutesGate {
@@ -28,7 +27,8 @@ export function registerProactiveRoutes(server: FastifyInstance, gate: Proactive
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const limit = parseHistoryLimit(readQueryString(request, "limit"), 500);
+    const query = (request.query as { readonly limit?: string } | undefined) ?? {};
+    const limit = parseHistoryLimit(query.limit, 500);
     const entries = await readProactiveHistory(gate.proactiveHistoryFile, limit);
     return { entries, total: entries.length };
   });

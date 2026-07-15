@@ -13,7 +13,7 @@
  * across every provider.
  */
 
-import { isRecord, stripUntrustedTerminalChars } from "@muse/shared";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 
 import type { AgentRunContext, AgentRunInput } from "./types.js";
 import { appendSystemSection } from "./runtime-helpers.js";
@@ -47,10 +47,10 @@ const MAX_ATTACHMENT_ENTRIES = 16;
 const MAX_PARSE_ATTACHMENTS = 64;
 
 export function parseAttachmentsFromMetadata(metadata: unknown): readonly AttachmentHint[] {
-  if (!isRecord(metadata)) {
+  if (!metadata || typeof metadata !== "object") {
     return [];
   }
-  const raw = metadata.attachments;
+  const raw = (metadata as { attachments?: unknown }).attachments;
   if (!Array.isArray(raw)) {
     return [];
   }
@@ -72,8 +72,7 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
     if (!entry || typeof entry !== "object") {
       continue;
     }
-    if (!isRecord(entry)) continue;
-    const record = entry;
+    const record = entry as Record<string, unknown>;
     // EVERY user-supplied string gets the same inline-sanitisation
     // pass before the bound check. Sanitising only `description`
     // would leave a CRLF or `\n[System Override]\n` injection vector

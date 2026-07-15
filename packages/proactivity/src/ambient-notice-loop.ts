@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 
 import { avoidedSourceKeys, readTrustLedger } from "@muse/stores";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
@@ -162,10 +161,10 @@ export class FileAmbientSignalSource implements AmbientSignalSource {
     } catch {
       return undefined;
     }
-    if (!isRecord(parsed)) {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return undefined;
     }
-    const obj = parsed;
+    const obj = parsed as Record<string, unknown>;
     const signal: Record<string, string> = {};
     for (const field of SIGNAL_FIELDS) {
       const value = stringField(obj, field);
@@ -196,17 +195,17 @@ export function parseAmbientNoticeRules(raw: string): AmbientNoticeRule[] {
   }
   const out: AmbientNoticeRule[] = [];
   for (const entry of parsed) {
-    if (!isRecord(entry)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
-    const e = entry;
+    const e = entry as Record<string, unknown>;
     if (typeof e.id !== "string" || e.id.length === 0 || typeof e.title !== "string" || typeof e.message !== "string") {
       continue;
     }
-    if (!isRecord(e.match)) {
+    if (!e.match || typeof e.match !== "object" || Array.isArray(e.match)) {
       continue;
     }
-    const matchObj = e.match;
+    const matchObj = e.match as Record<string, unknown>;
     const match: Record<string, string> = {};
     for (const field of SIGNAL_FIELDS) {
       const value = stringField(matchObj, field);
@@ -360,8 +359,8 @@ export function createAmbientNoticeRunner(options: {
       }
       // Read once per tick — a veto recorded mid-tick still waits for the
       // NEXT tick, matching the edge-trigger state's own tick granularity.
-  const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
+      const avoidedSources = options.interruptionBudget?.trustLedgerFile
+        ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
         : undefined;
 
       let ruleDelivered = 0;

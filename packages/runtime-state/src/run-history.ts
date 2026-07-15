@@ -1,5 +1,5 @@
 import type { AgentRunTable, ConversationMessageTable, ToolCallTable } from "@muse/db";
-import { isRecord, toDate, type JsonObject, type JsonValue, type RunStatus } from "@muse/shared";
+import { toDate, type JsonObject, type RunStatus } from "@muse/shared";
 import type { Insertable, Selectable } from "kysely";
 
 import type { Awaitable } from "./index.js";
@@ -356,24 +356,9 @@ export function compareToolCalls(left: ToolCallRecord, right: ToolCallRecord): n
 }
 
 function toJsonObject(value: unknown): JsonObject {
-  if (!isRecord(value)) {
-    return {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as JsonObject;
   }
-  const out: JsonObject = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (isJsonValue(item)) {
-      out[key] = item;
-    }
-  }
-  return out;
-}
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-  return isRecord(value) && Object.values(value).every(isJsonValue);
+  return {};
 }

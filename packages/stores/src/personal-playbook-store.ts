@@ -19,7 +19,6 @@ import { withFileMutationQueue } from "./atomic-file-store.js";
 import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
 import { PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, retainPlaybookEntries } from "./playbook-rewards.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
-import { isRecord } from "@muse/shared";
 
 export {
   clampReward,
@@ -129,27 +128,18 @@ export async function readPlaybook(file: string, env: NodeJS.ProcessEnv = proces
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(text) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const entries = readRecordArrayField(parsed, "entries");
-  if (entries === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return entries.flatMap((entry): readonly PlaybookEntry[] =>
+  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly PlaybookEntry[] =>
     isPlaybookEntry(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
@@ -315,8 +305,8 @@ export async function decayStalePlaybookRewards(
 }
 
 function isPlaybookEntry(value: unknown): value is PlaybookEntry {
-  if (!isRecord(value)) return false;
-  const e = value;
+  if (!value || typeof value !== "object") return false;
+  const e = value as Partial<PlaybookEntry>;
   if (typeof e.id !== "string" || e.id.length === 0) return false;
   if (typeof e.userId !== "string" || e.userId.length === 0) return false;
   if (typeof e.text !== "string" || e.text.trim().length === 0) return false;

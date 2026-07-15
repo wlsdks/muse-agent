@@ -18,16 +18,10 @@ import {
   userMemoryNotFound,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
-import { readRouteParam } from "./compat-parsers.js";
 
 export function registerUserMemoryCompatRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/user-memory/:userId", async (request, reply) => {
-    const userId = readRouteParam(request, "userId");
-
-    if (!userId) {
-      return reply.status(400).send({ message: "userId is required", reason: "userId is required" });
-    }
-
+    const { userId } = request.params as { readonly userId: string };
     if (!(await canAccessUserMemory(request, options, userId))) {
       return userForbidden(reply);
     }
@@ -36,30 +30,21 @@ export function registerUserMemoryCompatRoutes(server: FastifyInstance, options:
     return memory ? toUserMemoryResponse(memory) : userMemoryNotFound(reply, userId);
   });
   server.put("/api/user-memory/:userId/facts", async (request, reply) => {
-    const userId = readRouteParam(request, "userId");
-
-    if (!userId || !(await canAccessUserMemory(request, options, userId))) {
+    if (!(await canAccessUserMemory(request, options, (request.params as { readonly userId: string }).userId))) {
       return userForbidden(reply);
     }
 
     return updateUserMemory(request, reply, "facts", options);
   });
   server.put("/api/user-memory/:userId/preferences", async (request, reply) => {
-    const userId = readRouteParam(request, "userId");
-
-    if (!userId || !(await canAccessUserMemory(request, options, userId))) {
+    if (!(await canAccessUserMemory(request, options, (request.params as { readonly userId: string }).userId))) {
       return userForbidden(reply);
     }
 
     return updateUserMemory(request, reply, "preferences", options);
   });
   server.delete("/api/user-memory/:userId", async (request, reply) => {
-    const userId = readRouteParam(request, "userId");
-
-    if (!userId) {
-      return reply.status(400).send({ message: "userId is required", reason: "userId is required" });
-    }
-
+    const { userId } = request.params as { readonly userId: string };
     if (!(await canAccessUserMemory(request, options, userId))) {
       return userForbidden(reply);
     }

@@ -19,8 +19,6 @@
 import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { createStringSetGuard, withBestEffort } from "@muse/shared";
-
 
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import { InMemoryPromptLayerRegistry } from "@muse/prompts";
@@ -32,8 +30,6 @@ export const PERSONA_REGISTERS: readonly PersonaRegister[] = ["존댓말", "반�
 export const PERSONA_MAX_WORDS_MIN = 1;
 export const PERSONA_MAX_WORDS_MAX = 500;
 export const PERSONA_LANGUAGE_MAX_LENGTH = 64;
-
-const isPersonaRegister = createStringSetGuard(PERSONA_REGISTERS);
 
 export interface PersonaFrontmatter {
   readonly register?: PersonaRegister;
@@ -65,10 +61,10 @@ export function validatePersonaFrontmatter(input: PersonaFrontmatterInput): Pers
 
   if (input.register !== undefined) {
     const value = String(input.register);
-    if (!isPersonaRegister(value)) {
+    if (!PERSONA_REGISTERS.includes(value as PersonaRegister)) {
       return { ok: false, reason: `persona frontmatter "register" must be one of ${PERSONA_REGISTERS.join(", ")} — got "${value}"` };
     }
-    frontmatter.register = value;
+    frontmatter.register = value as PersonaRegister;
   }
 
   if (input.language !== undefined) {
@@ -393,5 +389,5 @@ export async function writePersonaFile(filePath: string, frontmatter: PersonaFro
   await fs.mkdir(dirname(filePath), { recursive: true });
   await fs.writeFile(tmp, rendered, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, filePath);
-  await withBestEffort(fs.chmod(filePath, 0o600), undefined);
+  await fs.chmod(filePath, 0o600).catch(() => undefined);
 }

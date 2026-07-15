@@ -20,8 +20,6 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
 interface PersistedShape {
   readonly version: 1;
   readonly after: Readonly<Record<string, string>>;
@@ -60,19 +58,19 @@ async function readMap(file: string): Promise<Readonly<Record<string, string>>> 
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return {};
   }
-  if (!isRecord(parsed)) {
+  if (!parsed || typeof parsed !== "object") {
     return {};
   }
-  const candidate = parsed.after;
-  if (!isRecord(candidate)) {
+  const candidate = (parsed as { after?: unknown }).after;
+  if (!candidate || typeof candidate !== "object") {
     return {};
   }
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(candidate)) {
+  for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
     if (typeof value === "string" && value.length > 0) {
       out[key] = value;
     }

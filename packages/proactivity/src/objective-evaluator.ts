@@ -29,7 +29,6 @@ import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "@muse/stores";
 import { proposeMessageAction } from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
-import { isRecord } from "@muse/shared";
 import {
   checkObjectiveMet,
   resolveObjectiveEvidence,
@@ -40,7 +39,6 @@ import {
 } from "./objective-evidence.js";
 
 const EVIDENCE_STORES: readonly EvidenceStore[] = ["actionLog", "calendar", "notes", "reminders", "tasks"];
-const EVIDENCE_STORE_SET: ReadonlySet<string> = new Set(EVIDENCE_STORES);
 
 const PROPOSAL_SYSTEM_PROMPT =
   `You decide HOW to check whether a standing objective is currently `
@@ -225,36 +223,17 @@ interface RawProposalShape {
   readonly reason?: unknown;
 }
 
-function isRawProposalShape(value: unknown): value is RawProposalShape {
-  if (!isRecord(value)) return false;
-  if ("store" in value && typeof value.store !== "string") return false;
-  if ("keywords" in value && !Array.isArray(value.keywords)) return false;
-  if ("windowDays" in value && (typeof value.windowDays !== "number" || !Number.isFinite(value.windowDays))) return false;
-  if (
-    "expectedCount" in value &&
-    (typeof value.expectedCount !== "number" || !Number.isFinite(value.expectedCount))
-  ) return false;
-  if ("unmeetable" in value && typeof value.unmeetable !== "boolean") return false;
-  if ("reason" in value && typeof value.reason !== "string") return false;
-  return true;
-}
-
-function isEvidenceStore(value: string): value is EvidenceStore {
-  return EVIDENCE_STORE_SET.has(value);
-}
-
 export function parseObjectiveProposal(raw: string): ObjectiveProposal {
   const cleaned = stripThinkBlocks(raw)
     .replace(/```[a-zA-Z]*\n?|```/gu, " ");
   let proposal: ObjectiveProposal = { store: "none" };
   for (const candidate of balancedJsonCandidates(cleaned)) {
-    let parsed: unknown;
+    let parsed: RawProposalShape;
     try {
-      parsed = JSON.parse(candidate);
+      parsed = JSON.parse(candidate) as RawProposalShape;
     } catch {
       continue;
     }
-    if (!isRawProposalShape(parsed)) continue;
     if (parsed.store === "none") {
       if (parsed.unmeetable === true) {
         const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0
@@ -267,8 +246,8 @@ export function parseObjectiveProposal(raw: string): ObjectiveProposal {
       continue;
     }
     if (
-      typeof parsed.store === "string" &&
-      isEvidenceStore(parsed.store)
+      typeof parsed.store === "string"
+      && (EVIDENCE_STORES as readonly string[]).includes(parsed.store)
       && Array.isArray(parsed.keywords)
       && parsed.keywords.every((k): k is string => typeof k === "string")
     ) {
@@ -284,7 +263,7 @@ export function parseObjectiveProposal(raw: string): ObjectiveProposal {
         : undefined;
       proposal = {
         keywords,
-        store: parsed.store,
+        store: parsed.store as EvidenceStore,
         ...(windowDays !== undefined ? { windowDays } : {}),
         ...(expectedCount !== undefined ? { expectedCount } : {})
       };

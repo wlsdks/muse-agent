@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
 /**
@@ -128,37 +128,12 @@ export async function extractStructuredFromImage(
   }
   // parsed is the result of JSON.parse on the model's raw output, so it is
   // already JSON-safe data — narrow to JsonObject accordingly.
-  const parsedObject = toJsonObject(parsed);
+  const parsedObject = parsed as JsonObject;
   const validation = validateExtraction(parsedObject, input.schema);
   if (!validation.ok) {
     return { error: `extraction omitted required field(s): ${validation.missing.join(", ")}`, ok: false, raw };
   }
   return { data: parsedObject, ok: true, raw };
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 export interface VisionDescribeInput {

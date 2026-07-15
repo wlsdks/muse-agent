@@ -8,8 +8,6 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile } from "./atomic-file-store.js";
 
 export type ProactiveFiredKind = "calendar" | "task";
@@ -73,8 +71,8 @@ export async function readSessionLock(file: string, nowDate: Date): Promise<stri
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed)) return undefined;
-  const until = parsed.until;
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const until = (parsed as { until?: unknown }).until;
   if (typeof until !== "string") return undefined;
   const expiresAt = new Date(until);
   if (Number.isNaN(expiresAt.getTime())) return undefined;
@@ -91,15 +89,14 @@ export async function readProactiveFired(file: string): Promise<readonly Proacti
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const fired = readRecordArrayField(parsed, "fired");
-  if (fired === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { fired?: unknown }).fired)) {
     return [];
   }
-  return fired.flatMap((entry): readonly ProactiveFiredEntry[] =>
+  return (parsed as { fired: unknown[] }).fired.flatMap((entry): readonly ProactiveFiredEntry[] =>
     isProactiveFiredEntry(entry) ? [entry] : []
   );
 }
@@ -119,8 +116,8 @@ export async function writeProactiveFired(file: string, entries: readonly Proact
 }
 
 function isProactiveFiredEntry(value: unknown): value is ProactiveFiredEntry {
-  if (!isRecord(value)) return false;
-  const candidate = value;
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProactiveFiredEntry>;
   return (candidate.kind === "calendar" || candidate.kind === "task")
     && typeof candidate.id === "string"
     && typeof candidate.startIso === "string"
@@ -133,12 +130,4 @@ export function firedKey(entry: { readonly kind: string; readonly id: string; re
   // distinct {kind,id,startIso} tuples collide on one key — the dedup would then
   // silently SUPPRESS a legitimate second notice. JSON escapes the field boundaries.
   return JSON.stringify([entry.kind, entry.id, entry.startIso]);
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }

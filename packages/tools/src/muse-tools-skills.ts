@@ -18,7 +18,7 @@
 
 import { spawn } from "node:child_process";
 
-import { redactSecretsInText, runCommandWithTimeout, type JsonObject } from "@muse/shared";
+import { redactSecretsInText, runCommandWithTimeout, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import { readOptionalNumber, readOptionalString } from "./muse-tools-helpers.js";
@@ -73,7 +73,7 @@ export function createSkillListTool(registry: SkillRegistryView): MuseTool {
         name: skill.name,
         ...(skill.requiresBins ? { requiresBins: [...skill.requiresBins] } : {}),
         ...(skill.requiresAnyBins ? { requiresAnyBins: [...skill.requiresAnyBins] } : {})
-      }))
+      })) as JsonValue
     })
   };
 }
@@ -275,8 +275,7 @@ function runChild(
   args: readonly string[],
   options: RunChildOptions
 ): Promise<RunChildResult> {
-  return (async (): Promise<RunChildResult> => {
-    const result = await runCommandWithTimeout({
+  return runCommandWithTimeout({
     command: bin,
     args: [...args],
     stdin: options.stdin,
@@ -286,15 +285,13 @@ function runChild(
     maxStderrBytes: MAX_STREAM_BYTES,
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.env ? { env: options.env } : {})
-    });
-    return {
-      exitCode: result.exitCode,
-      signal: result.signal,
-      stderr: decodeCapped(result.stderr),
-      stdout: decodeCapped(result.stdout),
-      timedOut: result.timedOut
-    };
-  })();
+  }).then((result) => ({
+    exitCode: result.exitCode,
+    signal: result.signal,
+    stderr: decodeCapped(result.stderr),
+    stdout: decodeCapped(result.stdout),
+    timedOut: result.timedOut
+  }));
 }
 
 function decodeCapped(value: string): string {

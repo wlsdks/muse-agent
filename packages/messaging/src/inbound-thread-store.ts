@@ -1,10 +1,6 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
-import { serializePerFile } from "./file-mutation-queue.js";
-
 /**
  * DEPRECATED (S3b) production backend — the API server now wires Telegram/
  * Matrix through `FileConversationStore` (`apps/api/src/threaded-conversation-
@@ -36,39 +32,15 @@ interface PersistedShape {
   readonly threads: Readonly<Record<string, readonly ThreadTurn[]>>;
 }
 
-type ThreadStore = Record<string, ThreadTurn[]>;
-
-function normalizePersistedThreads(threads: unknown): ThreadStore {
-  if (!isRecord(threads)) {
-    return {};
-  }
-
-  const normalized: ThreadStore = {};
-  for (const [key, value] of Object.entries(threads)) {
-    if (Array.isArray(value)) {
-      normalized[key] = value.filter(isTurn);
-    }
-  }
-  return normalized;
-}
-
 function isTurn(value: unknown): value is ThreadTurn {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  return (value.role === "user" || value.role === "assistant") && typeof value.content === "string";
+  const turn = value as ThreadTurn;
+  return (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string";
 }
 
-function isPersistedThreadStore(value: unknown): value is PersistedShape {
-  return (
-    isRecord(value) &&
-    value.version === 1 &&
-    isRecord(value.threads) &&
-    Object.values(value.threads).every((thread) => Array.isArray(thread) && thread.every(isTurn))
-  );
-}
-
-async function readAll(file: string): Promise<ThreadStore> {
+async function readAll(file: string): Promise<Record<string, ThreadTurn[]>> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -76,12 +48,15 @@ async function readAll(file: string): Promise<ThreadStore> {
     return {};
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (isPersistedThreadStore(parsed)) {
-      return normalizePersistedThreads(parsed.threads);
-    }
-    if (isRecord(parsed) && parsed.version === 1 && isRecord(parsed.threads)) {
-      return normalizePersistedThreads(parsed.threads);
+    const parsed = JSON.parse(raw) as { version?: unknown; threads?: unknown };
+    if (parsed && parsed.version === 1 && parsed.threads && typeof parsed.threads === "object") {
+      const out: Record<string, ThreadTurn[]> = {};
+      for (const [key, value] of Object.entries(parsed.threads as Record<string, unknown>)) {
+        if (Array.isArray(value)) {
+          out[key] = value.filter(isTurn);
+        }
+      }
+      return out;
     }
   } catch {
     // malformed → treat as no history (the chat just starts fresh)
@@ -100,6 +75,7 @@ export async function readAllThreads(file: string): Promise<Readonly<Record<stri
 }
 
 const writeQueues = new Map<string, Promise<unknown>>();
+const resolvedPromise = async (): Promise<unknown> => undefined;
 
 export async function appendThreadTurns(
   file: string,
@@ -109,7 +85,13 @@ export async function appendThreadTurns(
   if (turns.length === 0) {
     return;
   }
-  return serializePerFile(writeQueues, file, () => doAppendThreadTurns(file, key, turns));
+  const prior = writeQueues.get(file) ?? resolvedPromise();
+  const next = prior.then(
+    () => doAppendThreadTurns(file, key, turns),
+    () => doAppendThreadTurns(file, key, turns)
+  );
+  writeQueues.set(file, next.catch(() => undefined));
+  return next;
 }
 
 async function doAppendThreadTurns(

@@ -17,7 +17,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { isRecord, stripUntrustedTerminalChars, withBestEffort } from "@muse/shared";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import { XMLParser } from "fast-xml-parser";
 
 import { roundVectorForStore } from "./browsing-store.js";
@@ -87,37 +87,25 @@ export async function readFeedsStore(file: string): Promise<FeedsStore> {
   } catch {
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  if (!isRecord(parsed)) {
+  if (!parsed || typeof parsed !== "object") {
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  if (parsed.version !== FEEDS_STORE_SCHEMA_VERSION) {
-    await backupVersionMismatchedStore(file, parsed.version);
+  const candidate = parsed as Partial<FeedsStore>;
+  if (candidate.version !== FEEDS_STORE_SCHEMA_VERSION) {
+    await backupVersionMismatchedStore(file, candidate.version);
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  const feeds = (Array.isArray(parsed.feeds) ? parsed.feeds : [])
-    .flatMap((f) => {
-      const feed = normalizeFeedRecord(f);
-      return feed ? [feed] : [];
-    });
+  const feeds = (candidate.feeds ?? [])
+    .filter((f) => f && typeof f === "object" && typeof f.id === "string" && typeof f.url === "string")
+    .map((f) => normalizeFeedRecord(f));
   return { version: FEEDS_STORE_SCHEMA_VERSION, feeds };
 }
 
-function normalizeFeedRecord(raw: unknown): FeedRecord | undefined {
-  if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.url !== "string") {
-    return undefined;
-  }
-  const entries = Array.isArray(raw.entries)
-    ? raw.entries.flatMap((entry) => {
-      const item = normalizeFeedEntry(entry);
-      return item ? [item] : [];
-    })
-    : [];
+function normalizeFeedRecord(raw: FeedRecord): FeedRecord {
   return {
-    id: raw.id,
-    url: raw.url,
+    ...raw,
     name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : raw.id,
-    entries,
-    ...(typeof raw.lastFetchedAt === "string" ? { lastFetchedAt: raw.lastFetchedAt } : {})
+    entries: Array.isArray(raw.entries) ? raw.entries.map(normalizeFeedEntry) : []
   };
 }
 
@@ -128,30 +116,17 @@ function normalizeFeedRecord(raw: unknown): FeedRecord | undefined {
  * entry — it just falls back to lexical/recency matching. Mirrors the browsing
  * store's tolerant read.
  */
-function normalizeFeedEntry(entry: unknown): FeedEntry | undefined {
-  if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.url !== "string" || typeof entry.title !== "string") {
-    return undefined;
-  }
-  const link = typeof entry.link === "string" ? entry.link : "";
-  const publishedAt = typeof entry.publishedAt === "string" ? entry.publishedAt : "";
-  const summary = typeof entry.summary === "string" ? entry.summary : "";
-  if (!("embedding" in entry)) {
-    return { id: entry.id, title: entry.title, link, publishedAt, summary };
-  }
-  const embeddingRaw = entry.embedding;
-  const hasValidEmbedding = Array.isArray(embeddingRaw)
-    && embeddingRaw.length > 0
-    && embeddingRaw.every((n) => typeof n === "number" && Number.isFinite(n));
-  if (hasValidEmbedding) {
-    return { id: entry.id, title: entry.title, link, publishedAt, summary, embedding: embeddingRaw };
-  }
-  return {
-    id: entry.id,
-    title: entry.title,
-    link,
-    publishedAt,
-    summary
-  };
+function normalizeFeedEntry(entry: FeedEntry): FeedEntry {
+  if (!entry || typeof entry !== "object") return entry;
+  const e = entry as FeedEntry & { embedding?: unknown };
+  if (!("embedding" in e)) return entry;
+  const valid =
+    Array.isArray(e.embedding) &&
+    e.embedding.length > 0 &&
+    e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
+  if (valid) return entry;
+  const { embedding: _drop, ...rest } = e;
+  return rest as FeedEntry;
 }
 
 export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
@@ -159,7 +134,7 @@ export async function writeFeedsStore(file: string, store: FeedsStore): Promise<
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**
@@ -188,23 +163,19 @@ export function parseFeedBody(body: string): readonly FeedEntry[] {
   });
   let doc: Record<string, unknown>;
   try {
-    const parsed = parser.parse(body);
-    if (!isRecord(parsed)) {
-      return [];
-    }
-    doc = parsed;
+    doc = parser.parse(body) as Record<string, unknown>;
   } catch {
     return [];
   }
   // RSS 2.0
-  const rss = isRecord(doc.rss) ? doc.rss : undefined;
-  if (isRecord(rss) && isRecord(rss.channel)) {
+  const rss = (doc as { rss?: { channel?: { item?: unknown } } }).rss;
+  if (rss && rss.channel) {
     const items = toArray(rss.channel.item);
     return items.flatMap((item) => toRssEntry(item));
   }
   // Atom
-  const atom = isRecord(doc.feed) ? doc.feed : undefined;
-  if (isRecord(atom) && atom.entry !== undefined) {
+  const atom = (doc as { feed?: { entry?: unknown } }).feed;
+  if (atom) {
     const entries = toArray(atom.entry);
     return entries.flatMap((entry) => toAtomEntry(entry));
   }
@@ -218,8 +189,7 @@ function toArray<T>(value: T | T[] | undefined): readonly T[] {
 
 function toRssEntry(item: unknown): readonly FeedEntry[] {
   if (!item || typeof item !== "object") return [];
-  if (!isRecord(item)) return [];
-  const raw = item;
+  const raw = item as Record<string, unknown>;
   const title = sanitizeFeedText(readScalar(raw.title));
   const link = sanitizeFeedText(readScalar(raw.link));
   const id = sanitizeFeedText(readScalar(raw.guid)) || link || title;
@@ -235,8 +205,7 @@ function toRssEntry(item: unknown): readonly FeedEntry[] {
 
 function toAtomEntry(entry: unknown): readonly FeedEntry[] {
   if (!entry || typeof entry !== "object") return [];
-  if (!isRecord(entry)) return [];
-  const raw = entry;
+  const raw = entry as Record<string, unknown>;
   const title = sanitizeFeedText(readScalar(raw.title));
   const link = sanitizeFeedText(pickAtomLinkHref(raw.link));
   const id = sanitizeFeedText(readScalar(raw.id)) || link || title;
@@ -262,8 +231,8 @@ function toAtomEntry(entry: unknown): readonly FeedEntry[] {
  */
 function pickAtomLinkHref(linkRaw: unknown): string {
   if (typeof linkRaw === "string") return linkRaw;
-  const candidates = (Array.isArray(linkRaw) ? linkRaw : [linkRaw]).filter((l): l is Record<string, unknown> =>
-    isRecord(l)
+  const candidates = (Array.isArray(linkRaw) ? linkRaw : [linkRaw]).filter(
+    (l): l is Record<string, unknown> => Boolean(l) && typeof l === "object"
   );
   let firstHref = "";
   for (const candidate of candidates) {
@@ -279,8 +248,8 @@ function pickAtomLinkHref(linkRaw: unknown): string {
 function readScalar(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (isRecord(value) && "#text" in value) {
-    const inner = value["#text"];
+  if (value && typeof value === "object" && "#text" in value) {
+    const inner = (value as { "#text"?: unknown })["#text"];
     if (typeof inner === "string") return inner;
   }
   return undefined;

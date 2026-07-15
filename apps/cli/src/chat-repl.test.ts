@@ -5,7 +5,6 @@ import { join } from "node:path";
 import type { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { withBestEffort } from "./async-promises.js";
 import { readWeaknesses, recordWeakness } from "@muse/stores";
 import type { KnowledgeMatch } from "@muse/agent-core";
 
@@ -156,7 +155,7 @@ describe("chat misgrounding weakness fuel (GROUNDED != TRUE parity with ASK)", (
       { recordWeakness, weaknessesFile: file }
     );
     expect(count).toBeUndefined();
-    const ledger = await withBestEffort(readWeaknesses(file), []);
+    const ledger = await readWeaknesses(file).catch(() => []);
     expect(ledger).toHaveLength(0);
   });
 
@@ -211,7 +210,7 @@ describe("recordChatTurnWeakness — Ink-chat parity with runLocalChat's inline 
     const file = tempWeaknessesFile();
     const nudge = await recordChatTurnWeakness({ answer: "Hey! Not much, just here to help.", matches: [], question: "hey, what's up?" });
     expect(nudge).toBeUndefined();
-    const ledger = await withBestEffort(readWeaknesses(file), []);
+    const ledger = await readWeaknesses(file).catch(() => []);
     expect(ledger).toHaveLength(0);
   });
 
@@ -221,7 +220,7 @@ describe("recordChatTurnWeakness — Ink-chat parity with runLocalChat's inline 
       { cosine: 0.9, score: 0.9, source: "office_vpn.md", text: "the office vpn mtu is 1500 bytes for the seoul gateway" }
     ];
     await recordChatTurnWeakness({ answer: "The office vpn mtu is 1500 bytes.", matches: supportingMatches, question: "what is the office vpn mtu?" });
-    const ledger = await withBestEffort(readWeaknesses(file), []);
+    const ledger = await readWeaknesses(file).catch(() => []);
     expect(ledger).toHaveLength(0);
   });
 });

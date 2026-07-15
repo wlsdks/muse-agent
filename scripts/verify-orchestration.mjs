@@ -59,10 +59,7 @@ async function runTerminationCase() {
   const startedAt = Date.now();
   const result = await orchestrator.run(instructionInput, { mode: "sequential" });
   const elapsedMs = Date.now() - startedAt;
-  const steps = Object.create(null);
-  for (const step of result.results) {
-    steps[step.workerId] = step;
-  }
+  const steps = Object.fromEntries(result.results.map((step) => [step.workerId, step]));
 
   const failures = [];
   if (steps.hung?.status !== "failed") failures.push(`hung worker was not terminated (status=${String(steps.hung?.status)})`);
@@ -146,10 +143,7 @@ const startedAt = Date.now();
 const result = await orchestrator.run(instructionInput, { mode: "sequential" });
 const elapsedMs = Date.now() - startedAt;
 
-const statuses = Object.create(null);
-for (const step of result.results) {
-  statuses[step.workerId] = step.status;
-}
+const statuses = Object.fromEntries(result.results.map((step) => [step.workerId, step.status]));
 const failures = [];
 if (statuses.broken !== "failed") failures.push(`injected failure NOT propagated (broken=${statuses.broken})`);
 if (statuses.draft !== "completed" || statuses.critic !== "completed") failures.push(`real workers did not complete (${JSON.stringify(statuses)})`);

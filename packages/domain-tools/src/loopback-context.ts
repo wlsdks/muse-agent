@@ -74,7 +74,7 @@ export function createContextReferenceMcpServer(
             if (!snapshot) {
               return { found: false };
             }
-            return { found: true, snapshot: sanitizeJsonValue(snapshot) };
+            return { found: true, snapshot: snapshot as JsonValue };
           },
           inputSchema: {
             additionalProperties: false,
@@ -143,7 +143,7 @@ export function createContextReferenceMcpServer(
             ...(entry.source ? { source: entry.source } : {})
           }));
           return {
-            refs,
+            refs: refs as JsonValue,
             total: refs.length
           };
         },
@@ -159,40 +159,4 @@ export function createContextReferenceMcpServer(
       ...activeTool
     ]
   };
-}
-
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, entryValue] of Object.entries(value)) {
-    if (typeof key === "string") record[key] = entryValue;
-  }
-  return record;
-}
-
-function sanitizeJsonValue(value: unknown): JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (value === undefined || typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
-    return null;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(sanitizeJsonValue);
-  }
-  if (typeof value === "object") {
-    const out: JsonObject = {};
-    const record = toRecord(value);
-    if (!record) {
-      return null;
-    }
-    for (const [key, entryValue] of Object.entries(record)) {
-      out[key] = sanitizeJsonValue(entryValue);
-    }
-    return out;
-  }
-  return String(value);
 }

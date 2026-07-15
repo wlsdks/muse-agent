@@ -21,7 +21,6 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord, withBestEffort } from "@muse/shared";
 import type { MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely } from "kysely";
 import type {
@@ -40,6 +39,7 @@ import type {
 } from "./index.js";
 import { DEFAULT_TASK_MEMORY_RETENTION_MS } from "./index.js";
 
+type TaskMemoryRow = Record<string, unknown>;
 type TaskMemoryInsert = Insertable<MuseDatabase["task_memories"]>;
 
 type RequiredTaskState = Omit<
@@ -154,7 +154,9 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
 
   private trimOldest(): void {
     while (this.tasks.size > this.maxTasks) {
-      const oldest = findOldestTaskState(this.tasks.values());
+      const oldest = [...this.tasks.values()].sort((left, right) =>
+        left.updatedAt.getTime() - right.updatedAt.getTime()
+      )[0];
 
       if (!oldest) {
         return;
@@ -171,16 +173,6 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
       }
     }
   }
-}
-
-function findOldestTaskState(states: Iterable<RequiredTaskState>): RequiredTaskState | undefined {
-  let oldest: RequiredTaskState | undefined;
-  for (const state of states) {
-    if (!oldest || state.updatedAt < oldest.updatedAt) {
-      oldest = state;
-    }
-  }
-  return oldest;
 }
 
 export class TaskMemoryQualityError extends Error {
@@ -201,31 +193,13 @@ interface SerializedTaskState {
   readonly sessionId: string;
   readonly goal: string;
   readonly userId?: string;
-  readonly status?: TaskStatus;
-  readonly plan: readonly SerializedTaskPlanItem[];
-  readonly decisions: readonly SerializedTaskDecision[];
-  readonly blockers: readonly SerializedTaskBlocker[];
+  readonly status?: string;
+  readonly plan: readonly { readonly step: string; readonly status?: string; readonly updatedAt?: string }[];
+  readonly decisions: readonly { readonly summary: string; readonly reason?: string; readonly decidedAt?: string }[];
+  readonly blockers: readonly { readonly description: string; readonly owner?: string; readonly createdAt?: string }[];
   readonly metadata: Readonly<Record<string, string>>;
-  readonly createdAt?: string;
-  readonly updatedAt?: string;
-}
-
-interface SerializedTaskPlanItem {
-  readonly step: string;
-  readonly status?: TaskPlanItem["status"];
-  readonly updatedAt?: string;
-}
-
-interface SerializedTaskDecision {
-  readonly summary: string;
-  readonly reason?: string;
-  readonly decidedAt?: string;
-}
-
-interface SerializedTaskBlocker {
-  readonly description: string;
-  readonly owner?: string;
-  readonly createdAt?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 function serializeTaskState(s: TaskState): SerializedTaskState {
@@ -245,20 +219,18 @@ function serializeTaskState(s: TaskState): SerializedTaskState {
 }
 
 function deserializeTaskState(r: SerializedTaskState): TaskState {
-  const createdAt = parseTaskDate(r.createdAt);
-  const updatedAt = parseTaskDate(r.updatedAt);
   return {
-    blockers: (r.blockers ?? []).map(deserializeTaskBlocker),
-    decisions: (r.decisions ?? []).map(deserializeTaskDecision),
+    blockers: (r.blockers ?? []).map((b): TaskBlocker => ({ description: b.description, ...(b.owner ? { owner: b.owner } : {}), ...(b.createdAt ? { createdAt: new Date(b.createdAt) } : {}) })),
+    decisions: (r.decisions ?? []).map((d): TaskDecision => ({ summary: d.summary, ...(d.reason ? { reason: d.reason } : {}), ...(d.decidedAt ? { decidedAt: new Date(d.decidedAt) } : {}) })),
     goal: r.goal,
-    plan: (r.plan ?? []).map(deserializeTaskPlanItem),
+    plan: (r.plan ?? []).map((p): TaskPlanItem => ({ step: p.step, ...(p.status ? { status: p.status as TaskPlanItem["status"] } : {}), ...(p.updatedAt ? { updatedAt: new Date(p.updatedAt) } : {}) })),
     sessionId: r.sessionId,
     taskId: r.taskId,
     ...(r.metadata ? { metadata: r.metadata } : {}),
-    ...(r.status ? { status: r.status } : {}),
+    ...(r.status ? { status: r.status as TaskStatus } : {}),
     ...(r.userId ? { userId: r.userId } : {}),
-    ...(createdAt ? { createdAt } : {}),
-    ...(updatedAt ? { updatedAt } : {})
+    ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
+    ...(r.updatedAt ? { updatedAt: new Date(r.updatedAt) } : {})
   };
 }
 
@@ -275,8 +247,16 @@ async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   } catch {
     return [];
   }
-  const list = parseTaskStatesFromFilePayload(raw);
-  return list.map(deserializeTaskState);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return []; // corrupt ⇒ empty, never throw (task recall is best-effort)
+  }
+  const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { tasks?: unknown }).tasks)
+    ? (parsed as { tasks: SerializedTaskState[] }).tasks
+    : [];
+  return list.filter((entry) => entry && typeof entry.taskId === "string" && entry.taskId.length > 0).map(deserializeTaskState);
 }
 
 async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promise<void> {
@@ -291,7 +271,7 @@ async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promi
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**
@@ -395,7 +375,7 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
       ]))
       .executeTakeFirst();
 
-    return row ? mapTaskMemoryRow(row) : undefined;
+    return row ? mapTaskMemoryRow(row as TaskMemoryRow) : undefined;
   }
 
   async findActiveBySession(sessionId: string, userId?: string): Promise<TaskState | undefined> {
@@ -404,11 +384,11 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
       : undefined;
 
     if (userScoped) {
-      return mapTaskMemoryRow(userScoped);
+      return mapTaskMemoryRow(userScoped as TaskMemoryRow);
     }
 
     const sessionScoped = await buildActiveTaskMemoryQuery(this.db, sessionId).executeTakeFirst();
-    return sessionScoped ? mapTaskMemoryRow(sessionScoped) : undefined;
+    return sessionScoped ? mapTaskMemoryRow(sessionScoped as TaskMemoryRow) : undefined;
   }
 
   async clear(taskId: string): Promise<void> {
@@ -581,23 +561,20 @@ export function assertTaskMemoryQuality(state: TaskState): void {
   }
 }
 
-export function mapTaskMemoryRow(row: unknown): TaskState {
-  const source = isRecord(row) ? row : {};
-  const userId = nullableString(source.user_id);
-  const createdAt = parseTaskDate(source.created_at);
-  const updatedAt = parseTaskDate(source.updated_at);
+export function mapTaskMemoryRow(row: TaskMemoryRow): TaskState {
+  const userId = nullableString(row.user_id);
 
   return {
-    blockers: parseTaskArray(source.blockers_json, parseTaskBlocker).map(deserializeTaskBlocker),
-    ...(createdAt ? { createdAt } : {}),
-    decisions: parseTaskArray(source.decisions_json, parseTaskDecision).map(deserializeTaskDecision),
-    goal: stringValue(source.goal),
-    metadata: parseTaskMetadataRecord(source.metadata_json),
-    plan: parseTaskArray(source.plan_json, parseTaskPlanItem).map(deserializeTaskPlanItem),
-    sessionId: stringValue(source.session_id),
-    status: taskStatusValue(source.status),
-    taskId: stringValue(source.task_id),
-    ...(updatedAt ? { updatedAt } : {}),
+    blockers: jsonArray<TaskBlocker>(row.blockers_json),
+    createdAt: dateValue(row.created_at),
+    decisions: jsonArray<TaskDecision>(row.decisions_json),
+    goal: stringValue(row.goal),
+    metadata: jsonRecord(row.metadata_json),
+    plan: jsonArray<TaskPlanItem>(row.plan_json),
+    sessionId: stringValue(row.session_id),
+    status: taskStatusValue(row.status),
+    taskId: stringValue(row.task_id),
+    updatedAt: dateValue(row.updated_at),
     ...(userId ? { userId } : {})
   };
 }
@@ -647,91 +624,23 @@ function nullableString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function dateValue(value: unknown): Date {
+  return value instanceof Date ? value : new Date(typeof value === "string" ? value : 0);
+}
+
 function taskStatusValue(value: unknown): TaskStatus {
   return value === "blocked" || value === "completed" || value === "cancelled" ? value : "active";
 }
 
-function parseTaskStatesFromFilePayload(raw: string): readonly SerializedTaskState[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-
-  if (!isRecord(parsed) || !Array.isArray(parsed.tasks)) {
-    return [];
-  }
-
-  const out: SerializedTaskState[] = [];
-  for (const entry of parsed.tasks) {
-    const parsedEntry = parseSerializedTaskState(entry);
-    if (parsedEntry) {
-      out.push(parsedEntry);
-    }
-  }
-
-  return out;
-}
-
-function parseSerializedTaskState(value: unknown): SerializedTaskState | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const taskId = toNonEmptyString(value.taskId);
-  const sessionId = toNonEmptyString(value.sessionId);
-  const goal = toNonEmptyString(value.goal);
-  if (!taskId || !sessionId || !goal) {
-    return undefined;
-  }
-
-  const userId = toOptionalString(value.userId);
-  const plan = parseTaskArray(value.plan, parseTaskPlanItem);
-  const decisions = parseTaskArray(value.decisions, parseTaskDecision);
-  const blockers = parseTaskArray(value.blockers, parseTaskBlocker);
-  const metadata = parseTaskMetadataRecord(value.metadata);
-  const createdAt = toOptionalString(value.createdAt);
-  const updatedAt = toOptionalString(value.updatedAt);
-
-  return {
-    taskId,
-    sessionId,
-    goal,
-    ...(userId ? { userId } : {}),
-    status: parseTaskStatus(value.status),
-    plan,
-    decisions,
-    blockers,
-    metadata,
-    ...(createdAt ? { createdAt } : {}),
-    ...(updatedAt ? { updatedAt } : {})
-  };
-}
-
-function parseTaskStatus(value: unknown): TaskStatus | undefined {
-  if (value === "active" || value === "blocked" || value === "completed" || value === "cancelled") {
-    return value;
-  }
-  return undefined;
-}
-
-function parseTaskArray<T>(value: unknown, parseEntry: (entry: unknown) => T | undefined): readonly T[] {
+function jsonArray<T>(value: unknown): readonly T[] {
   if (Array.isArray(value)) {
-    const out: T[] = [];
-    for (const entry of value) {
-      const parsed = parseEntry(entry);
-      if (parsed !== undefined) {
-        out.push(parsed);
-      }
-    }
-    return out;
+    return value as readonly T[];
   }
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
-      return parseTaskArray(parsed, parseEntry);
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) ? parsed as readonly T[] : [];
     } catch {
       return [];
     }
@@ -740,14 +649,14 @@ function parseTaskArray<T>(value: unknown, parseEntry: (entry: unknown) => T | u
   return [];
 }
 
-function parseTaskMetadataRecord(value: unknown): Readonly<Record<string, string>> {
+function jsonRecord(value: unknown): Readonly<Record<string, string>> {
   if (isStringRecord(value)) {
     return value;
   }
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
+      const parsed = JSON.parse(value) as unknown;
       return isStringRecord(parsed) ? parsed : {};
     } catch {
       return {};
@@ -755,112 +664,6 @@ function parseTaskMetadataRecord(value: unknown): Readonly<Record<string, string
   }
 
   return {};
-}
-
-function parseTaskBlocker(value: unknown): SerializedTaskBlocker | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const description = toNonEmptyString(value.description);
-  if (!description) {
-    return undefined;
-  }
-
-  const owner = toOptionalString(value.owner);
-  const createdAt = toOptionalString(value.createdAt);
-  return {
-    description,
-    ...(owner ? { owner } : {}),
-    ...(createdAt ? { createdAt } : {})
-  };
-}
-
-function deserializeTaskBlocker(blocker: SerializedTaskBlocker): TaskBlocker {
-  const createdAt = parseTaskDate(blocker.createdAt);
-  return {
-    description: blocker.description,
-    ...(blocker.owner ? { owner: blocker.owner } : {}),
-    ...(createdAt ? { createdAt } : {})
-  };
-}
-
-function parseTaskDecision(value: unknown): SerializedTaskDecision | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const summary = toNonEmptyString(value.summary);
-  if (!summary) {
-    return undefined;
-  }
-
-  const reason = toOptionalString(value.reason);
-  const decidedAt = toOptionalString(value.decidedAt);
-  return {
-    summary,
-    ...(reason ? { reason } : {}),
-    ...(decidedAt ? { decidedAt } : {})
-  };
-}
-
-function deserializeTaskDecision(decision: SerializedTaskDecision): TaskDecision {
-  const decidedAt = parseTaskDate(decision.decidedAt);
-  return {
-    summary: decision.summary,
-    ...(decision.reason ? { reason: decision.reason } : {}),
-    ...(decidedAt ? { decidedAt } : {})
-  };
-}
-
-function parseTaskPlanItem(value: unknown): SerializedTaskPlanItem | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const step = toNonEmptyString(value.step);
-  if (!step) {
-    return undefined;
-  }
-
-  const updatedAt = toOptionalString(value.updatedAt);
-  return {
-    step,
-    ...(parseTaskPlanStatus(value.status) ? { status: value.status } : {}),
-    ...(updatedAt ? { updatedAt } : {})
-  };
-}
-
-function deserializeTaskPlanItem(item: SerializedTaskPlanItem): TaskPlanItem {
-  const updatedAt = parseTaskDate(item.updatedAt);
-  return {
-    step: item.step,
-    ...(item.status ? { status: item.status } : {}),
-    ...(updatedAt ? { updatedAt } : {})
-  };
-}
-
-function parseTaskDate(value: unknown): Date | undefined {
-  if (value instanceof Date) {
-    return Number.isFinite(value.getTime()) ? value : undefined;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    const parsed = new Date(value);
-    return Number.isFinite(parsed.getTime()) ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function parseTaskPlanStatus(value: unknown): value is TaskPlanItem["status"] {
-  return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled";
-}
-
-function toNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {

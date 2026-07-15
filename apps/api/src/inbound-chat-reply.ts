@@ -131,10 +131,9 @@ export function createComposeChatReply(
     }
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const fallbackTimeoutController = new AbortController();
-    const timeout = (async () => {
-      await sleepWithTimer(timeoutMs, null, { ref: false, signal: fallbackTimeoutController.signal });
+    const timeout = sleepWithTimer(timeoutMs, null, { ref: false, signal: fallbackTimeoutController.signal }).then(() => {
       return null;
-    })();
+    });
     try {
       const response = await Promise.race([
         deps.modelProvider.generate({

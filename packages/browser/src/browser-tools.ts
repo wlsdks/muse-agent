@@ -12,7 +12,6 @@
  * gate + controller are INJECTED so the wiring lives at the CLI boundary.
  */
 
-import { createStringSetGuard } from "@muse/shared";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -177,7 +176,7 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
       // Return the candidates so the model re-targets by ordinal.
       return {
         error: {
-          ambiguous: [...result.candidates],
+          ambiguous: result.candidates as unknown as JsonValue,
           reason: `"${target}" matches ${result.candidates.length.toString()} elements — which one? Re-target with an ordinal, e.g. "the first ${target}" or "the second ${target}".`
         }
       };
@@ -190,7 +189,7 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
       const hint = fieldNames.length > 0 ? ` — type into one of these fields instead: ${fieldNames.join(", ")}` : " — there is no text field on this page";
       return {
         error: {
-          fields: [...result.fields],
+          fields: result.fields as unknown as JsonValue,
           reason: `"${target}" is not a text field${hint}.`
         }
       };
@@ -380,9 +379,6 @@ export function createBrowserLookTool(deps: BrowserLookToolDeps): MuseTool {
 }
 
 const SCROLL_DIRECTIONS = ["down", "up", "top", "bottom"] as const;
-const isScrollDirection = createStringSetGuard(SCROLL_DIRECTIONS);
-
-const isBrowserKey = createStringSetGuard(BROWSER_KEYS);
 
 export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
   return {
@@ -408,11 +404,11 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
     },
     execute: async (args): Promise<JsonObject> => {
       const direction = typeof args["direction"] === "string" ? args["direction"].trim() : "";
-      if (!isScrollDirection(direction)) {
+      if (!SCROLL_DIRECTIONS.includes(direction as (typeof SCROLL_DIRECTIONS)[number])) {
         return { error: `direction must be one of: ${SCROLL_DIRECTIONS.join(", ")}` };
       }
       try {
-        return snapshotToJson(await deps.controller.scroll(direction));
+        return snapshotToJson(await deps.controller.scroll(direction as (typeof SCROLL_DIRECTIONS)[number]));
       } catch (cause) {
         return errorResult(cause);
       }
@@ -508,7 +504,7 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
     },
     execute: async (args): Promise<JsonObject> => {
       const key = typeof args["key"] === "string" ? args["key"].trim() : "";
-      if (!isBrowserKey(key)) {
+      if (!BROWSER_KEYS.includes(key as BrowserKey)) {
         return { error: `key must be one of: ${BROWSER_KEYS.join(", ")}` };
       }
       // Enter confirms/submits the focused control — a state-changing act that
@@ -524,7 +520,7 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
         }
       }
       try {
-        const snapshot = await deps.controller.pressKey(key);
+        const snapshot = await deps.controller.pressKey(key as BrowserKey);
         return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);
@@ -727,10 +723,6 @@ interface FillFieldInput {
   readonly value: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 /**
  * Parse + validate the `fields` argument into typed {target, value} pairs.
  * Returns an error envelope (never a partial list) if the shape is wrong or
@@ -743,9 +735,9 @@ function parseFillFields(raw: JsonValue | undefined): { readonly fields: readonl
   }
   const parsed: FillFieldInput[] = [];
   for (let i = 0; i < raw.length; i += 1) {
-    const entry = isRecord(raw[i]) ? raw[i] : undefined;
-    const target = typeof entry?.target === "string" ? entry.target.trim() : "";
-    const value = typeof entry?.value === "string" ? entry.value : "";
+    const entry = raw[i];
+    const target = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["target"] === "string" ? ((entry as JsonObject)["target"] as string).trim() : "";
+    const value = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["value"] === "string" ? ((entry as JsonObject)["value"] as string) : "";
     if (target.length === 0) {
       return { error: { reason: `field ${i.toString()} is missing a 'target' (the field label, e.g. 'Email')` } };
     }

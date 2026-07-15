@@ -7,10 +7,16 @@
  */
 
 import { isPermissionError, type MacOsascriptRunner } from "./macos-exec.js";
-import { parseBooleanFromEnv } from "@muse/shared";
 
+// Matches @muse/autoconfigure's parseBoolean truthy set (env-parsers.ts). Kept
+// local so @muse/macos stays dependency-free (autoconfigure depends on macos —
+// importing it back would be a cycle).
+export const TRUTHY_ENV_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
+
+/** Whether the env var named `key` is set to one of {@link TRUTHY_ENV_VALUES}. */
 export function isMirrorEnvEnabled(env: Record<string, string | undefined>, key: string): boolean {
-  return parseBooleanFromEnv(env[key], false);
+  const raw = env[key]?.trim().toLowerCase();
+  return raw !== undefined && TRUTHY_ENV_VALUES.has(raw);
 }
 
 export interface MirrorScriptLabels {

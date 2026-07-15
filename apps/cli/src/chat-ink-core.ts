@@ -180,7 +180,7 @@ export function chatHelp(topic: string, commands: readonly { readonly cmd: strin
     return `Commands: ${commands.map((c) => `/${c.cmd}`).join(" · ")}\n` +
       `Tips: @file to attach · ↑↓ for history · /help <topic> for any command`;
   }
-  if (t in HELP_TOPICS) return HELP_TOPICS[t];
+  if (HELP_TOPICS[t]) return HELP_TOPICS[t] as string;
   // Fall back to the command's own one-line description so `/help <cmd>`
   // always answers, even for commands without a dedicated topic blurb.
   const command = commands.find((c) => c.cmd === t);
@@ -241,14 +241,9 @@ export function matchAgentNames(value: string, names: readonly string[]): readon
  */
 export function extractAttachmentPaths(message: string): string[] {
   const out: string[] = [];
-  const seen = new Set<string>();
   for (const match of message.matchAll(/(?:^|\s)@([^\s]+)/gu)) {
     const path = match[1];
-    if (!path || seen.has(path)) {
-      continue;
-    }
-    seen.add(path);
-    out.push(path);
+    if (path && !out.includes(path)) out.push(path);
   }
   return out;
 }
@@ -678,7 +673,7 @@ export interface FocusedCompactionResult {
 
 function findLastIndexBy<T>(items: readonly T[], predicate: (item: T) => boolean): number {
   for (let index = items.length - 1; index >= 0; index--) {
-    if (predicate(items[index])) return index;
+    if (predicate(items[index] as T)) return index;
   }
   return -1;
 }
@@ -849,7 +844,7 @@ export function resolveForgetKey(keys: readonly string[], query: string): Forget
   if (keys.includes(q)) return { key: q, kind: "exact" };
   const lower = q.toLowerCase();
   const matches = keys.filter((k) => k.toLowerCase().includes(lower));
-  if (matches.length === 1) return { key: matches[0], kind: "unique" };
+  if (matches.length === 1) return { key: matches[0] as string, kind: "unique" };
   if (matches.length > 1) return { kind: "ambiguous", matches };
   return { kind: "none" };
 }
@@ -876,8 +871,7 @@ export function birdIdleFrame(tick: number, animate = true): FrameName {
   if (!animate) return "stand";
   const len = BIRD_IDLE_CYCLE.length;
   const idx = ((Math.trunc(tick) % len) + len) % len;
-  const frame = BIRD_IDLE_CYCLE[idx];
-  return frame ?? "stand";
+  return BIRD_IDLE_CYCLE[idx] as FrameName;
 }
 
 function envFlagOn(value: string | undefined): boolean {
@@ -924,23 +918,12 @@ function parseHudSegmentList(raw: string): HudSegmentId[] {
   const out: HudSegmentId[] = [];
   for (const token of raw.split(",")) {
     const id = token.trim().toLowerCase();
-    if (isHudSegmentId(id) && !seen.has(id)) {
+    if (HUD_SEGMENT_SET.has(id) && !seen.has(id)) {
       seen.add(id);
-      out.push(id);
+      out.push(id as HudSegmentId);
     }
   }
   return out;
-}
-
-function isHudSegmentId(value: string): value is HudSegmentId {
-  return value === "model"
-    || value === "locality"
-    || value === "proactive"
-    || value === "agent"
-    || value === "tools"
-    || value === "skills"
-    || value === "ctx"
-    || value === "tokens";
 }
 
 /**

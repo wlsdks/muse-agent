@@ -19,8 +19,7 @@
  * persona rendering, CLI surface — those live in steps 2–5.
  */
 
-import type { JsonObject } from "@muse/shared";
-import { isRecord } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
 import {
@@ -102,27 +101,18 @@ export async function readEpisodes(
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(text) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const episodes = readRecordArrayField(parsed, "episodes");
-  if (episodes === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { episodes?: unknown }).episodes)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return episodes.flatMap((entry): readonly PersistedEpisode[] =>
+  return (parsed as { episodes: unknown[] }).episodes.flatMap((entry): readonly PersistedEpisode[] =>
     isPersistedEpisode(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeEpisodes(
@@ -150,7 +140,7 @@ export function serializeEpisode(episode: PersistedEpisode): JsonObject {
     summary: episode.summary,
     userId: episode.userId,
     ...(episode.topics && episode.topics.length > 0
-      ? { topics: [...episode.topics] }
+      ? { topics: episode.topics as JsonValue }
       : {}),
     ...(typeof episode.importance === "number" && Number.isFinite(episode.importance)
       ? { importance: episode.importance }
@@ -268,10 +258,10 @@ export async function vacuumEpisodes(
 }
 
 function isPersistedEpisode(value: unknown): value is PersistedEpisode {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value;
+  const candidate = value as PersistedEpisode;
   if (
     typeof candidate.id !== "string" ||
     typeof candidate.userId !== "string" ||

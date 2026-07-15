@@ -32,7 +32,7 @@
  *     opt-in flag once macOS Sonoma+ AppleScript surface is stable.
  */
 
-import { parseBooleanFromEnv, runCommandWithTimeout } from "@muse/shared";
+import { runCommandWithTimeout } from "@muse/shared";
 
 import {
   TasksProviderError,
@@ -285,7 +285,7 @@ function parseListOutput(output: string, providerId: string): readonly Task[] {
       if (!id || !title) {
         return [];
       }
-      const isDone = parseBooleanFromEnv(completedStr, false);
+      const isDone = completedStr === "true";
       return [{
         createdAt: toDateOrNow(createdIso),
         id,
@@ -309,7 +309,7 @@ function parseSearchOutput(output: string, query: string, providerId: string): r
       if (!id || !title) {
         return [];
       }
-      const status = parseBooleanFromEnv(completedStr, false) ? "done" : "open";
+      const status = completedStr === "true" ? "done" : "open";
       const lowerBody = (body ?? "").toLowerCase();
       const snippet = body && lowerBody.includes(needle) ? body.slice(0, 200) : undefined;
       return [{

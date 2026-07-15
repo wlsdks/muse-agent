@@ -16,8 +16,6 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile } from "./atomic-file-store.js";
 
 /** Shared pause-file path so the CLI toggle and the daemon agree. Override with MUSE_SCHEDULER_PAUSE_FILE. */
@@ -39,9 +37,9 @@ export async function readSchedulerPauseState(file: string): Promise<SchedulerPa
     return { paused: false };
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && parsed.paused === true) {
-      const since = parsed.since;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && (parsed as { paused?: unknown }).paused === true) {
+      const since = (parsed as { since?: unknown }).since;
       return { paused: true, ...(typeof since === "string" ? { since } : {}) };
     }
   } catch {

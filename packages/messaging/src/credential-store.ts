@@ -7,12 +7,7 @@ import {
   decodeMaybeEncryptedCredentialsJson,
   encryptCredentialEnvelope,
   isCredentialsFileEncryptedAtRest,
-  isNodeErrorCode,
-  isRecord,
-  NODE_ERROR_CODES,
-  type JsonObject,
-  type JsonValue,
-  withBestEffort
+  type JsonObject
 } from "@muse/shared";
 
 export type MessagingCredentials = JsonObject;
@@ -97,15 +92,13 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
       return { providers: emptyProviderMap(), version: 1 };
     }
     parsed = decodeMaybeEncryptedCredentialsJson(parsed, this.env); // THROWS fail-closed on a wrong key
-    if (!isRecord(parsed) || !isRecord(parsed.providers)) {
+    const shape = parsed as Partial<PersistedShape>;
+    if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
       return { providers: emptyProviderMap(), version: 1 };
     }
-    const providersRecord = parsed.providers;
     const providers = emptyProviderMap();
-    for (const [id, value] of Object.entries(providersRecord)) {
-      if (isMessagingCredentials(value)) {
-        providers[id] = value;
-      }
+    for (const [id, value] of Object.entries(shape.providers)) {
+      providers[id] = value as MessagingCredentials;
     }
     return { providers, version: 1 };
   }
@@ -122,7 +115,7 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(this.file);
     const shouldEncrypt = credentialEncryptionEnabled(this.env) || alreadyEncrypted;
     if (shouldEncrypt && !alreadyEncrypted) {
-      const existing = await withBestEffort(fs.readFile(this.file, "utf8"), undefined);
+      const existing = await fs.readFile(this.file, "utf8").catch(() => undefined);
       if (existing !== undefined) {
         await backupPlaintextCredentialsFile(this.file, existing);
       }
@@ -131,12 +124,12 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
     await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
-    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
+    await fs.chmod(this.file, 0o600).catch(() => undefined);
   }
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return isNodeErrorCode(error, NODE_ERROR_CODES.ENOENT);
+  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
 }
 
 // Null-prototype so a providerId like `toString` / `__proto__` /
@@ -144,22 +137,5 @@ function isFileNotFound(error: unknown): boolean {
 // otherwise `load` returns a bogus truthy value and `remove`'s `in`
 // check false-hits. Mirrors FileCalendarCredentialStore.
 function emptyProviderMap(): Record<string, MessagingCredentials> {
-  return Object.create(null);
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return Array.isArray(value) && value.every(isJsonValue);
-  }
-  if (isRecord(value)) {
-    return Object.values(value).every(isJsonValue);
-  }
-  return false;
-}
-
-function isMessagingCredentials(value: unknown): value is MessagingCredentials {
-  return isRecord(value) && Object.values(value).every(isJsonValue);
+  return Object.create(null) as Record<string, MessagingCredentials>;
 }

@@ -11,7 +11,6 @@ import { readFile } from "node:fs/promises";
 import { classifyCorpusOverview } from "@muse/agent-core";
 import { resolveNotesDir, resolveNotesIndexFile } from "@muse/autoconfigure";
 import { corpusOnboardingHint, formatCorpusOverview, queryHasAdHocGrounding, type FileEntry } from "@muse/recall";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
 
 import type { AskOptions } from "./ask-command-options.js";
 import { listNoteFiles, notesCorpusFileCount } from "./ask-corpus-helpers.js";
@@ -30,7 +29,7 @@ export interface NotesIndex {
 }
 
 export function notesIndexPath(): string {
-  return resolveNotesIndexFile(process.env);
+  return resolveNotesIndexFile(process.env as Record<string, string | undefined>);
 }
 
 function defaultUserKey(user: string | undefined, persona: string | undefined): string {
@@ -79,15 +78,14 @@ export async function prepareAskContext(
   // Auto-stale check + incremental reindex (default on). JARVIS
   // shouldn't make the user remember to run reindex; if a note
   // file is newer than the index, just refresh before search.
-  const notesDir = resolveNotesDir(process.env);
+  const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
   // Preserve the model the index was built with: a stale
   // refresh must NOT silently re-embed a custom-model index
   // with the default just because --embed-model was omitted.
   // The mismatch is still surfaced by the explicit guard below.
   let existingIndexModel: string | undefined;
   try {
-    const existingIndex = parseNotesIndex(await readFile(notesIndexPath(), "utf8"));
-    existingIndexModel = existingIndex?.model;
+    existingIndexModel = (JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex).model;
   } catch {
     existingIndexModel = undefined;
   }
@@ -120,12 +118,9 @@ export async function prepareAskContext(
   let index: NotesIndex | undefined;
   try {
     const raw = await readFile(notesIndexPath(), "utf8");
-    index = parseNotesIndex(raw);
-    if (!index) {
-      throw new Error("notes index is malformed");
-    }
+    index = JSON.parse(raw) as NotesIndex;
   } catch (cause) {
-    if (isNodeErrorCode(cause, NODE_ERROR_CODES.ENOENT)) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
       io.stderr("No notes index at ~/.muse/notes-index.json. Run `muse notes reindex` first.\n");
       return { kind: "error" };
     }
@@ -140,11 +135,7 @@ export async function prepareAskContext(
       io.stderr(`(embedding default upgraded '${index.model}' → '${embedModel}' — re-indexing your notes once)\n`);
       try {
         await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
-        const refreshed = parseNotesIndex(await readFile(notesIndexPath(), "utf8"));
-        if (!refreshed) {
-          throw new Error("notes index is malformed after reindex");
-        }
-        index = refreshed;
+        index = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex;
       } catch (cause) {
         io.stderr(`Re-index failed (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}\n`);
         return { kind: "error" };
@@ -186,7 +177,7 @@ export async function prepareAskContext(
   // source was given (the only case the hint could fire) — so a notes-having
   // or source-supplying user pays no extra reads.
   const hasOtherPersonalData = !hasAdHocGrounding && noteFileCount === 0
-    ? await userHasOtherPersonalData(userKey, process.env)
+    ? await userHasOtherPersonalData(userKey, process.env as Record<string, string | undefined>)
     : false;
   const onboardingHint = corpusOnboardingHint(noteFileCount, hasOtherPersonalData || hasAdHocGrounding);
   if (onboardingHint) {
@@ -194,21 +185,4 @@ export async function prepareAskContext(
   }
 
   return { kind: "ready", userKey, topK, embedModel, notesDir, index, noteFileCount };
-}
-
-function parseNotesIndex(raw: string): NotesIndex | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  return isNotesIndex(parsed) ? parsed : undefined;
-}
-
-function isNotesIndex(value: unknown): value is NotesIndex {
-  return isRecord(value)
-    && value.version === 1
-    && typeof value.model === "string"
-    && Array.isArray(value.files);
 }

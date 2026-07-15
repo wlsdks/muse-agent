@@ -3,7 +3,7 @@
  * "repair" half of tool-calling for a small local model. Split out of index.ts.
  */
 
-import { isRecord, parseBooleanTriStateFromEnv, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 
 export interface ToolArgumentValidation {
   readonly ok: boolean;
@@ -26,7 +26,7 @@ export interface ToolArgumentValidation {
  * (Structured Reflection, arXiv:2509.18847: a right value in the wrong JSON
  * type invalidates an otherwise-correct call). Only safe, reversible cases:
  *   - number/integer param + clean numeric string → number ("5" → 5)
- *   - boolean param + "true/1/yes/on" / "false/0/no/off" string → boolean
+ *   - boolean param + "true"/"false" string → boolean
  *   - string param + number/boolean value → its string form
  * Everything else (objects, arrays, non-numeric strings, partial parses) is
  * left untouched, so a genuine mismatch still surfaces rather than being
@@ -73,44 +73,10 @@ function coerceStructured(value: JsonValue, declared: string): JsonValue | undef
   } catch {
     return undefined;
   }
-  const repaired = toJsonValue(parsed);
-  if (repaired === undefined) return undefined;
   if (declared === "array") {
-    return Array.isArray(repaired) ? repaired : undefined;
+    return Array.isArray(parsed) ? (parsed as JsonValue) : undefined;
   }
-  return isRecord(repaired) ? repaired : undefined;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const next: JsonValue[] = [];
-    for (const item of value) {
-      const repaired = toJsonValue(item);
-      if (repaired === undefined) {
-        return undefined;
-      }
-      next.push(repaired);
-    }
-    return next;
-  }
-
-  if (isRecord(value)) {
-    const next: Record<string, JsonValue> = {};
-    for (const [key, nested] of Object.entries(value)) {
-      const repaired = toJsonValue(nested);
-      if (repaired === undefined) {
-        return undefined;
-      }
-      next[key] = repaired;
-    }
-    return next;
-  }
-
-  return undefined;
+  return isRecord(parsed) ? (parsed as JsonValue) : undefined;
 }
 
 function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined {
@@ -124,7 +90,10 @@ function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined
     return undefined;
   }
   if (declared === "boolean" && typeof value === "string") {
-    return parseBooleanTriStateFromEnv(value);
+    const lower = value.trim().toLowerCase();
+    if (lower === "true") return true;
+    if (lower === "false") return false;
+    return undefined;
   }
   if (declared === "string" && (typeof value === "number" || typeof value === "boolean")) {
     return String(value);

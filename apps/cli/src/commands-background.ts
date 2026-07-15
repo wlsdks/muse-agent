@@ -12,8 +12,6 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-
-
 import type { Command } from "commander";
 
 import { classifyDangerousCommand } from "@muse/tools";
@@ -31,7 +29,6 @@ import {
 import { commandErrorLine } from "./format-cli-error.js";
 import { waitForChildProcessResult } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 export function backgroundStoreFile(): string {
   return defaultBackgroundProcessesFile();
@@ -128,7 +125,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       // Crash-recovery: a 'running' record whose PID is gone (the process
       // died while Muse was off, so its exit handler never ran) is corrected
       // to exited before display, so the list reflects reality.
-      await withBestEffort(reconcileBackgroundProcesses(backgroundStoreFile(), isProcessAlive, () => new Date(), readProcessStartTime), undefined);
+      await reconcileBackgroundProcesses(backgroundStoreFile(), isProcessAlive, () => new Date(), readProcessStartTime).catch(() => undefined);
       const records = await readBackgroundProcesses(backgroundStoreFile());
       if (options.json) {
         io.stdout(`${JSON.stringify({ processes: records }, null, 2)}\n`);
@@ -191,7 +188,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       const removed = await pruneTerminalBackgroundProcesses(backgroundStoreFile());
       for (const record of removed) {
         if (record.logFile) {
-          await withBestEffort(fs.rm(record.logFile, { force: true }), undefined);
+          await fs.rm(record.logFile, { force: true }).catch(() => undefined);
         }
       }
       io.stdout(`Pruned ${removed.length.toString()} finished background process(es).\n`);

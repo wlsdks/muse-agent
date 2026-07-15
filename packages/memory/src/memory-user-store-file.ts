@@ -20,7 +20,7 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { hasNodeErrorCodeIn, isRecord, NODE_ERROR_CODES, serializePerKey, sleep, withBestEffort } from "@muse/shared";
+import { sleep } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -33,15 +33,7 @@ import {
   type UserModel,
   type UserModelSlot
 } from "./index.js";
-import {
-  appendFactHistory,
-  collectFactSupersessions,
-  mergeRecordTouchLast,
-  normalizeMemoryKey,
-  parseUserModelJson,
-  resolveForgetTarget,
-  sanitizeUserMemoryValue
-} from "./memory-user-store.js";
+import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, normalizeMemoryKey, resolveForgetTarget, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -70,15 +62,7 @@ type StoredMemory = {
   readonly recentTopics: readonly string[];
   readonly updatedAt: string;
   readonly userModel?: UserModel;
-  readonly factHistory?: readonly StoredFactHistoryEntry[];
-};
-
-type StoredFactHistoryEntry = {
-  readonly key: string;
-  readonly previousValue: string;
-  readonly replacedAt: string;
-  readonly kind?: "refine" | "contradict";
-  readonly scope?: "fact" | "preference";
+  readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string; readonly kind?: "refine" | "contradict"; readonly scope?: "fact" | "preference" }[];
 };
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
@@ -110,84 +94,14 @@ function emptyFile(): StoredFile {
 }
 
 function coerceStoredFile(parsed: unknown): StoredFile {
-  if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.users)) {
+  if (!parsed || typeof parsed !== "object") {
     return emptyFile();
   }
-  const users: Record<string, StoredMemory> = {};
-  for (const [userId, rawUser] of Object.entries(parsed.users)) {
-    const stored = coerceStoredMemory(rawUser, userId);
-    if (stored !== undefined) {
-      users[userId] = stored;
-    }
+  const root = parsed as { version?: number; users?: Record<string, StoredMemory> };
+  if (root.version !== 1 || !root.users) {
+    return emptyFile();
   }
-  return { users, version: 1 };
-}
-
-function coerceStoredMemory(raw: unknown, fallbackUserId: string): StoredMemory | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  const userId = typeof raw.userId === "string" && raw.userId.length > 0 ? raw.userId : fallbackUserId;
-  if (!userId) {
-    return undefined;
-  }
-  const userModel = parseUserModelJson(raw.userModel);
-  return {
-    facts: coerceStringRecord(raw.facts),
-    preferences: coerceStringRecord(raw.preferences),
-    recentTopics: coerceStringArray(raw.recentTopics),
-    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : new Date(0).toISOString(),
-    userId,
-    ...(userModel ? { userModel } : {}),
-    ...(Array.isArray(raw.factHistory) ? { factHistory: coerceFactHistory(raw.factHistory) } : {})
-  };
-}
-
-function coerceStringRecord(raw: unknown): Record<string, string> {
-  if (!isRecord(raw)) {
-    return {};
-  }
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (typeof key === "string" && typeof value === "string") {
-      out[key] = value;
-    }
-  }
-  return out;
-}
-
-function coerceStringArray(raw: unknown): readonly string[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.filter((value): value is string => typeof value === "string");
-}
-
-function coerceFactHistory(raw: readonly unknown[]): StoredFactHistoryEntry[] {
-  const out: StoredFactHistoryEntry[] = [];
-  for (const entry of raw) {
-    if (!isRecord(entry)) {
-      continue;
-    }
-    if (
-      typeof entry.key !== "string"
-      || entry.key.length === 0
-      || typeof entry.previousValue !== "string"
-      || typeof entry.replacedAt !== "string"
-      || (entry.kind !== undefined && entry.kind !== "refine" && entry.kind !== "contradict")
-      || (entry.scope !== undefined && entry.scope !== "fact" && entry.scope !== "preference")
-    ) {
-      continue;
-    }
-    out.push({
-      key: entry.key,
-      previousValue: entry.previousValue,
-      replacedAt: entry.replacedAt,
-      ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}),
-      ...(entry.scope === "preference" ? { scope: entry.scope } : {})
-    });
-  }
-  return out;
+  return { users: root.users, version: 1 };
 }
 
 function memoryToStored(memory: UserMemory): StoredMemory {
@@ -199,7 +113,7 @@ function memoryToStored(memory: UserMemory): StoredMemory {
     userId: memory.userId,
     ...(memory.userModel ? { userModel: memory.userModel } : {}),
     ...(memory.factHistory
-      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}), ...(entry.scope ? { scope: entry.scope } : {}) })) }
+      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }
@@ -211,10 +125,7 @@ function memoryToStored(memory: UserMemory): StoredMemory {
 // memory file is the user's own (`Tell it everything`), so degrade to the epoch
 // sentinel instead of throwing; a valid date is untouched (no false correction).
 function parseStoredDate(value: unknown): Date {
-  if (!(value instanceof Date) && typeof value !== "string" && typeof value !== "number") {
-    return new Date(0);
-  }
-  const date = new Date(value);
+  const date = new Date(value as string | number | Date);
   return Number.isFinite(date.getTime()) ? date : new Date(0);
 }
 
@@ -229,7 +140,7 @@ function storedToMemory(stored: StoredMemory): UserMemory {
     userId: stored.userId,
     ...(stored.userModel ? { userModel: stored.userModel } : {}),
     ...(stored.factHistory
-      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope ? { scope: entry.scope } : {}) })) }
+      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }
@@ -247,6 +158,8 @@ function legacyDefaultEntry(data: StoredFile, userId: string): StoredMemory | un
   }
   return data.users["default"];
 }
+
+const resolvedPromise = async (): Promise<unknown> => undefined;
 
 export class FileUserMemoryStore implements UserMemoryStore {
   private static readonly writeQueues = new Map<string, Promise<unknown>>();
@@ -391,7 +304,10 @@ export class FileUserMemoryStore implements UserMemoryStore {
   }
 
   private async serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
-    return serializePerKey(FileUserMemoryStore.writeQueues, this.file, fn);
+    const prior = FileUserMemoryStore.writeQueues.get(this.file) ?? resolvedPromise();
+    const next = prior.then(fn, fn);
+    FileUserMemoryStore.writeQueues.set(this.file, next.catch(() => undefined));
+    return next;
   }
 
   // Returns the parsed file AND whether it was encrypted at rest, so a write can
@@ -435,7 +351,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     try {
       return await readFile(this.file, "utf8");
     } catch (cause) {
-      if (hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.ENOENT)) {
+      if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
         return undefined;
       }
       throw cause;
@@ -556,11 +472,11 @@ export class FileUserMemoryStore implements UserMemoryStore {
       try {
         handle = await open(lockPath, "wx");
       } catch (cause) {
-        if (!hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.EEXIST)) {
+        if (!(cause instanceof Error) || (cause as NodeJS.ErrnoException).code !== "EEXIST") {
           throw cause;
         }
         if (await lockIsStale(lockPath)) {
-          await withBestEffort(unlink(lockPath), undefined); // steal a dead holder's lock
+          await unlink(lockPath).catch(() => undefined); // steal a dead holder's lock
           continue;
         }
         if (attempt >= LOCK_MAX_ATTEMPTS) {
@@ -572,8 +488,8 @@ export class FileUserMemoryStore implements UserMemoryStore {
     try {
       return await fn();
     } finally {
-      await withBestEffort(handle.close(), undefined);
-      await withBestEffort(unlink(lockPath), undefined);
+      await handle.close().catch(() => undefined);
+      await unlink(lockPath).catch(() => undefined);
     }
   }
 }

@@ -29,9 +29,6 @@ import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { isRecord } from "@muse/shared";
-
-import { withBestEffort } from "./async-promises.js";
 
 interface PreviousSecretEntry {
   readonly secret: string;
@@ -70,15 +67,15 @@ export async function readJwtRotationState(file: string): Promise<JwtRotationSta
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed)) return undefined;
-  const candidate = parsed;
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<JwtRotationState>;
   if (typeof candidate.current !== "string" || candidate.current.length < 32) return undefined;
   if (typeof candidate.rotatedAt !== "string") return undefined;
   const previousArr = Array.isArray(candidate.previous) ? candidate.previous : [];
   const previous: PreviousSecretEntry[] = [];
   for (const entry of previousArr) {
-    if (!isRecord(entry)) continue;
-    const e = entry;
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Partial<PreviousSecretEntry>;
     if (typeof e.secret !== "string" || e.secret.length < 32) continue;
     if (typeof e.rotatedAt !== "string" || typeof e.validUntil !== "string") continue;
     previous.push({ secret: e.secret, rotatedAt: e.rotatedAt, validUntil: e.validUntil });
@@ -147,5 +144,5 @@ export async function writeJwtRotationState(file: string, state: JwtRotationStat
   await fs.mkdir(dirname(file), { recursive: true });
   await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }

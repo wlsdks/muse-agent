@@ -86,14 +86,11 @@ describe("proposed-action store under concurrency — draft-first proposals must
     expect(await readProposedActions(file)).toHaveLength(50);
   }, 30_000);
 
-    it("works sequentially too (patch + read round-trip)", async () => {
-      const file = join(dir, "seq.json");
-      await writeProposedActions(file, [seed(0), seed(1)]);
-      await patchProposedActionStatus(file, "x0", "declined", "2026-01-02T00:00:00Z");
-      const byId: Record<string, string> = {};
-      for (const proposed of await readProposedActions(file)) {
-        byId[proposed.id] = proposed.status;
-      }
-      expect(byId).toEqual({ x0: "declined", x1: "pending" });
-    });
+  it("works sequentially too (patch + read round-trip)", async () => {
+    const file = join(dir, "seq.json");
+    await writeProposedActions(file, [seed(0), seed(1)]);
+    await patchProposedActionStatus(file, "x0", "declined", "2026-01-02T00:00:00Z");
+    const byId = Object.fromEntries((await readProposedActions(file)).map((p) => [p.id, p.status]));
+    expect(byId).toEqual({ x0: "declined", x1: "pending" });
+  });
 });

@@ -176,12 +176,8 @@ describe("T2-B1 setup-status containment", () => {
         reads.push(String(args[0]));
         return originalReadFile(...args);
       }) as typeof fs.readFile;
-      const hiddenIntegrations: Record<string, string> = {};
-      for (const key of SNAPSHOT_HIDDEN_INTEGRATION_KEYS) {
-        hiddenIntegrations[key] = join(root, `${key}.ambient`);
-      }
       process.env = throwingIntegrationEnv({
-        ...hiddenIntegrations,
+        ...Object.fromEntries([...SNAPSHOT_HIDDEN_INTEGRATION_KEYS].map((key) => [key, join(root, `${key}.ambient`)])),
         HOME: root,
         // This is the normal/frozen-false compatibility control. Ambient
         // strictness is covered separately below and must now win there.

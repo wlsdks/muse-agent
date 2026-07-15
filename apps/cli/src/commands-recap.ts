@@ -238,7 +238,7 @@ export async function gatherNoteFamilyActivity(
   const events: NoteActivityEvent[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || entry.name.startsWith(".")) continue;
-    const parent = readDirentParentPath(entry) ?? notesDir;
+    const parent = (entry as { parentPath?: string; path?: string }).parentPath ?? (entry as { path?: string }).path ?? notesDir;
     const full = join(parent, entry.name);
     const segments = relative(notesDir, full).split(sep);
     const familyName = segments.length > 1 ? segments[0]! : "general";
@@ -249,15 +249,6 @@ export async function gatherNoteFamilyActivity(
     } catch { /* skip an unreadable file */ }
   }
   return events;
-}
-
-function readDirentParentPath(entry: Dirent): string | undefined {
-  const parentPath = Reflect.get(entry, "parentPath");
-  if (typeof parentPath === "string" && parentPath.length > 0) {
-    return parentPath;
-  }
-  const fallbackPath = Reflect.get(entry, "path");
-  return typeof fallbackPath === "string" && fallbackPath.length > 0 ? fallbackPath : undefined;
 }
 
 /**
@@ -467,7 +458,7 @@ export function registerRecapCommand(program: Command, io: ProgramIO): void {
     .description("Evening recap — what you got done today + what's coming up (the retrospective sibling of `muse brief`)")
     .option("--json", "Emit the structured recap as JSON instead of the digest")
     .action(async (options: { readonly json?: boolean }) => {
-      const input = await gatherEveningRecap(process.env, new Date());
+      const input = await gatherEveningRecap(process.env as Record<string, string | undefined>, new Date());
       if (options.json === true) {
         io.stdout(`${JSON.stringify({ comingUp: input.comingUp, goneQuiet: input.goneQuiet, openFollowups: input.openFollowups, performedToday: input.performedToday, sessionsToday: input.sessionsToday, slipping: input.slipping })}\n`);
         return;

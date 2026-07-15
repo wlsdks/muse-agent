@@ -49,7 +49,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { PuppeteerBrowserController, matchElement, statusFields } from "../packages/browser/dist/index.js";
-import { runBestEffort } from "./best-effort.mjs";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -524,5 +523,5 @@ try {
   // close() terminates the detached Chrome over CDP, but the OS process releases
   // its profile file handles a beat later — retry the temp cleanup so the race
   // never turns a green smoke into a non-zero exit (and never fail on cleanup).
-  await runBestEffort(() => rm(dir, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 }), "smoke-browser temporary directory cleanup");
+  await rm(dir, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 }).catch(() => { /* temp dir; OS reaps it */ });
 }

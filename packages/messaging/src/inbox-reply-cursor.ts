@@ -2,10 +2,6 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord } from "@muse/shared";
-
-import { serializePerFile } from "./file-mutation-queue.js";
-
 /**
  * Persisted set of inbound message keys (`${providerId}:${messageId}`)
  * the conversational reply loop has already answered, so a restart
@@ -26,10 +22,6 @@ interface PersistedShape {
   readonly handled: readonly string[];
 }
 
-function isPersistedReplyCursor(value: unknown): value is PersistedShape {
-  return isRecord(value) && value.version === 1 && Array.isArray(value.handled) && value.handled.every((item) => typeof item === "string");
-}
-
 export async function readReplyCursor(file: string): Promise<ReadonlySet<string>> {
   let raw: string;
   try {
@@ -38,9 +30,9 @@ export async function readReplyCursor(file: string): Promise<ReadonlySet<string>
     return new Set();
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (isPersistedReplyCursor(parsed)) {
-      return new Set(parsed.handled);
+    const parsed = JSON.parse(raw) as { version?: unknown; handled?: unknown };
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.handled)) {
+      return new Set(parsed.handled.filter((k): k is string => typeof k === "string"));
     }
   } catch {
     // malformed → treat as empty; the loop just re-answers (idempotent enough)
@@ -56,11 +48,13 @@ export async function readReplyCursor(file: string): Promise<ReadonlySet<string>
 // same-process concurrent writers shared the identical tmp path (interleaved
 // write / ENOENT rename). Fix: a per-file mutation queue + a randomUUID tmp.
 const appendQueues = new Map<string, Promise<unknown>>();
+const resolvedPromise = async (): Promise<unknown> => undefined;
 
 export async function appendReplyCursor(file: string, newKeys: readonly string[]): Promise<void> {
   if (newKeys.length === 0) {
     return;
   }
+  const prior = appendQueues.get(file) ?? resolvedPromise();
   const op = async (): Promise<void> => {
     const merged = new Set(await readReplyCursor(file));
     for (const key of newKeys) {
@@ -74,5 +68,7 @@ export async function appendReplyCursor(file: string, newKeys: readonly string[]
     await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
     await fs.rename(tmp, file);
   };
-  return serializePerFile(appendQueues, file, op);
+  const next = prior.then(op, op);
+  appendQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
 }

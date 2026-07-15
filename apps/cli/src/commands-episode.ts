@@ -16,11 +16,9 @@
  */
 
 import { clearEpisodes, decryptEpisodesAtRest, encryptEpisodesAtRest, isEpisodesEncrypted, planEpisodeConsolidation, readEpisodes, recurringThemes, removeEpisode, serializeEpisode, writeEpisodes, type PersistedEpisode } from "@muse/stores";
-import { resolveEpisodesFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveEpisodesFile } from "@muse/autoconfigure";
 import { copyFile } from "node:fs/promises";
 import type { Command } from "commander";
-
-
 
 import { embed } from "./embed.js";
 import {
@@ -32,18 +30,13 @@ import {
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
-import { withBestEffort } from "./async-promises.js";
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 interface SharedOptions {
   readonly json?: boolean;
 }
 
 function localEpisodesFile(): string {
-  return resolveEpisodesFile(environment());
+  return resolveEpisodesFile(process.env as Record<string, string | undefined>);
 }
 
 export interface EpisodeSinceOptions {
@@ -297,7 +290,7 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         return;
       }
       const drop = new Set(plan.map((pair) => pair.archived));
-      await withBestEffort(copyFile(file, `${file}.bak`), undefined);
+      await copyFile(file, `${file}.bak`).catch(() => undefined);
       await writeEpisodes(file, all.filter((entry) => !drop.has(entry.id)));
       io.stdout(`\nArchived ${drop.size.toString()} duplicate(s). Backup: ${file}.bak\n`);
     });
@@ -543,7 +536,7 @@ function parseLlmJudgeIds(raw: string): readonly string[] {
   }
   if (!body) return [];
   let parsed: unknown;
-  try { parsed = JSON.parse(body); } catch { return []; }
+  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
 }

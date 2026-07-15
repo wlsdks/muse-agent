@@ -11,7 +11,7 @@
  * the (caller-supplied) approval gate is the confirmation point.
  */
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { extractEmailAddress, type EmailProvider, type EmailReader, type EmailSearcher, type EmailSender } from "./email-provider.js";
@@ -242,13 +242,13 @@ export function createEmailReadTool(deps: EmailReadToolDeps): MuseTool {
       const filtered = unreadOnly ? messages.filter((m) => m.unread) : messages;
       return {
         count: filtered.length,
-        messages: filtered.map((m) => toJsonObject({
+        messages: filtered.map((m) => ({
           from: m.from,
           id: m.id,
           subject: m.subject,
           unread: m.unread,
           ...(m.snippet ? { snippet: m.snippet } : {})
-        }))
+        })) as JsonObject[]
       };
     }
   };
@@ -294,42 +294,17 @@ export function createEmailSearchTool(deps: EmailSearchToolDeps): MuseTool {
       }
       return {
         count: messages.length,
-        messages: messages.map((m) => toJsonObject({
+        messages: messages.map((m) => ({
           from: m.from,
           id: m.id,
           subject: m.subject,
           unread: m.unread,
           ...(m.snippet ? { snippet: m.snippet } : {})
-        })),
+        })) as JsonObject[],
         query
       };
     }
   };
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 export interface EmailReadMessageToolDeps {

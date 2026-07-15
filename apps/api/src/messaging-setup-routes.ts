@@ -23,7 +23,6 @@ import {
   removePairingCode
 } from "./channel-owner-store.js";
 import { requireAuthenticated } from "./server-helpers.js";
-import { readRouteParam, toBody } from "./compat-parsers.js";
 
 import type { ServerOptions } from "./server.js";
 import type { FastifyInstance } from "fastify";
@@ -127,15 +126,14 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     const store = new FileMessagingCredentialStore(gate.integrationEnv.messaging.credentialsFile);
     const fromFile = new Set(await store.list());
     const { ownersFile, pairingCodesFile } = gate.integrationEnv.messaging;
-    const ownerPairs = await Promise.all(
-      CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)] as const)
-    );
-    const owners = new Map(ownerPairs);
+    const owners = Object.fromEntries(
+      await Promise.all(CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)]))
+    ) as Record<string, string | undefined>;
     return {
       providers: await Promise.all(CONNECTABLE.map(async (provider) => {
         const source = pathsFor(gate.integrationEnv, provider.id).envConfigured ? "env" : fromFile.has(provider.id) ? "file" : null;
         const configured = source !== null;
-        const pairedOwner = owners.get(provider.id);
+        const pairedOwner = owners[provider.id];
         // A pairing code is only meaningful once the provider is connected
         // AND no owner has claimed it yet — this is the code the owner
         // reads here and sends to the bot to complete pairing (P2 #9: TOFU
@@ -158,18 +156,19 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
   });
 
   server.post("/api/messaging/setup/:providerId", async (request, reply) => {
-  if (!authed(request, reply)) {
+    if (!authed(request, reply)) {
       return reply;
     }
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const provider = findProviderByRoute(request);
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
     if (!provider) {
-      return reply.status(404).send({ reason: `unknown messaging provider` });
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
-    const body = toBody(request.body);
-    const token = typeof body.token === "string" ? body.token.trim() : "";
+    const body = request.body as { token?: string; homeserverUrl?: string } | undefined;
+    const token = (body?.token ?? "").trim();
     if (token.length === 0) {
       return reply.status(400).send({ message: "token is required", reason: "token is required" });
     }
@@ -198,9 +197,10 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const provider = findProviderByRoute(request);
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
     if (!provider) {
-      return reply.status(404).send({ reason: `unknown messaging provider` });
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
     // Pairing reset: clear the owner AND the in-flight pairing code, so the
     // next GET mints a fresh code and pairing must go through it again —
@@ -219,9 +219,10 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const provider = findProviderByRoute(request);
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
     if (!provider) {
-      return reply.status(404).send({ reason: `unknown messaging provider` });
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
     // The test goes to the PAIRED owner chat only — never a guessed or
     // user-typed recipient, so this stays on outbound-safety's low-risk
@@ -254,9 +255,10 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     if (gate.integrationEnv.localOnly) {
       return reply.status(403).send(LOCAL_ONLY_REMOTE_INTEGRATIONS_DISABLED);
     }
-    const provider = findProviderByRoute(request);
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
     if (!provider) {
-      return reply.status(404).send({ reason: `unknown messaging provider` });
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
     if (pathsFor(gate.integrationEnv, provider.id).envConfigured) {
       // An env-sourced credential outlives this process's file store —
@@ -269,12 +271,4 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     gate.registry.unregister(provider.id);
     return { ok: true };
   });
-
-  function findProviderByRoute(request: Parameters<typeof requireAuthenticated>[0]): ConnectableProvider | undefined {
-    const providerId = readRouteParam(request, "providerId");
-    if (!providerId) {
-      return undefined;
-    }
-    return CONNECTABLE.find((entry) => entry.id === providerId);
-  }
 }

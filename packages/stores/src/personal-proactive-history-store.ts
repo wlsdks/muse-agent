@@ -18,7 +18,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord, redactSecretsInText, withBestEffort } from "@muse/shared";
+import { redactSecretsInText } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
@@ -131,7 +131,7 @@ export async function rotateProactiveHistoryFiles(file: string, archiveMaxFiles:
   const max = Math.max(1, Math.trunc(archiveMaxFiles));
   // Drop anything past the retention budget.
   for (let i = max + 1; i <= max + 5; i += 1) {
-    await withBestEffort(fs.unlink(`${file}.${i.toString()}`), undefined);
+    await fs.unlink(`${file}.${i.toString()}`).catch(() => undefined);
   }
   // Shift archives upward starting from the top so we don't
   // clobber a target that still holds the previous slot's data.
@@ -161,27 +161,18 @@ async function readRaw(file: string): Promise<readonly ProactiveHistoryEntry[]> 
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const entries = readRecordArrayField(parsed, "entries");
-  if (entries === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return entries.flatMap((entry): readonly ProactiveHistoryEntry[] =>
+  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly ProactiveHistoryEntry[] =>
     isHistoryEntry(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 function clampReadLimit(raw: number | undefined): number {
@@ -199,10 +190,10 @@ function clampCapacity(raw: number | undefined): number {
 }
 
 function isHistoryEntry(value: unknown): value is ProactiveHistoryEntry {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value;
+  const candidate = value as ProactiveHistoryEntry;
   return (candidate.kind === "calendar" || candidate.kind === "task")
     && typeof candidate.itemId === "string"
     && typeof candidate.startIso === "string"

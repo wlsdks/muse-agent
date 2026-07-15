@@ -149,10 +149,9 @@ describe("composeSurfacePrompt — Phase 2+3 migrated surfaces", () => {
   });
 
   it("golden snapshot per migrated surface", () => {
-    const rendered: Record<string, string> = {};
-    for (const surface of MIGRATED_SURFACES) {
-      rendered[surface] = composeSurfacePrompt(surface, {});
-    }
+    const rendered = Object.fromEntries(
+      MIGRATED_SURFACES.map((surface) => [surface, composeSurfacePrompt(surface, {})])
+    );
     expect(rendered).toMatchSnapshot();
   });
 });

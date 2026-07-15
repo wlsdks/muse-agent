@@ -14,7 +14,6 @@
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import { canonicalizeLocalOnlyRootLoopbackHttpBaseUrl, isLocalOnlyEnabled } from "@muse/model";
 import { performWebActionWithApproval, type WebActionApprovalGate, type WebActionOutcome, type WebActionRequest } from "./web-action.js";
-import { isRecord } from "@muse/shared";
 
 /** The stable operator-facing reason for a local-only Home Assistant refusal. */
 export const HOME_ASSISTANT_LOCAL_ONLY_REASON = "Home Assistant remote paths are disabled while MUSE_LOCAL_ONLY=true; canonical loopback remains available";
@@ -142,12 +141,15 @@ export async function readHomeAssistantState(query: HomeStateQuery): Promise<Hom
   } catch {
     return undefined;
   }
-  const obj = toJsonRecord(body);
-  if (obj === undefined || typeof obj.state !== "string") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return undefined;
+  }
+  const obj = body as Record<string, unknown>;
+  if (typeof obj.state !== "string") {
     return undefined;
   }
   const attributes = obj.attributes && typeof obj.attributes === "object" && !Array.isArray(obj.attributes)
-    ? toJsonRecord(obj.attributes) ?? {}
+    ? obj.attributes as Record<string, unknown>
     : {};
   return { attributes, entityId: query.entityId, state: obj.state };
 }
@@ -200,10 +202,10 @@ export async function listHomeAssistantStates(query: HomeEntitiesQuery): Promise
   const prefix = domain && domain.length > 0 ? `${domain}.` : undefined;
   const out: HomeState[] = [];
   for (const item of body) {
-    const o = toJsonRecord(item);
-    if (o === undefined) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
       continue;
     }
+    const o = item as Record<string, unknown>;
     if (typeof o.entity_id !== "string" || typeof o.state !== "string") {
       continue;
     }
@@ -211,7 +213,7 @@ export async function listHomeAssistantStates(query: HomeEntitiesQuery): Promise
       continue;
     }
     const attributes = o.attributes && typeof o.attributes === "object" && !Array.isArray(o.attributes)
-      ? toJsonRecord(o.attributes) ?? {}
+      ? o.attributes as Record<string, unknown>
       : {};
     out.push({ attributes, entityId: o.entity_id, state: o.state });
   }
@@ -259,10 +261,10 @@ export function parseHomeAlertChecks(raw: string): HomeAlertCheck[] {
   }
   const out: HomeAlertCheck[] = [];
   for (const entry of parsed) {
-    const e = toJsonRecord(entry);
-    if (e === undefined) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
+    const e = entry as Record<string, unknown>;
     if (typeof e.entityId !== "string" || e.entityId.length === 0 || typeof e.label !== "string" || e.label.length === 0) {
       continue;
     }
@@ -276,13 +278,6 @@ export function parseHomeAlertChecks(raw: string): HomeAlertCheck[] {
     out.push({ alertStates, entityId: e.entityId, label: e.label });
   }
   return out;
-}
-
-function toJsonRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  return value;
 }
 
 export interface HomeAlertConnection extends HomeAssistantTransportPolicy {

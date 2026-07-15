@@ -32,18 +32,9 @@ export interface LastProactiveDeliveryEntry {
 
 const MAX_ENTRIES = 20;
 
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (typeof key === "string") record[key] = nestedValue;
-  }
-  return record;
-}
-
 function isLastProactiveDeliveryEntry(value: unknown): value is LastProactiveDeliveryEntry {
-  const entry = toRecord(value);
-  if (!entry) return false;
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
   return (
     typeof entry.at === "string"
     && !Number.isNaN(new Date(entry.at).getTime())
@@ -62,15 +53,14 @@ export async function readLastProactiveDeliveries(file: string): Promise<readonl
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const parsedRecord = toRecord(parsed);
-  if (!parsedRecord || !Array.isArray(parsedRecord.deliveries)) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { deliveries?: unknown }).deliveries)) {
     return [];
   }
-  return parsedRecord.deliveries.flatMap((entry): readonly LastProactiveDeliveryEntry[] =>
+  return (parsed as { deliveries: unknown[] }).deliveries.flatMap((entry): readonly LastProactiveDeliveryEntry[] =>
     isLastProactiveDeliveryEntry(entry) ? [entry] : []
   );
 }

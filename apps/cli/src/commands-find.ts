@@ -8,18 +8,11 @@
  */
 
 import { queryContacts, readReminders, readTasks } from "@muse/stores";
-import { findAcrossDomains, resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile, type FindDomain, type MuseEnvironment } from "@muse/autoconfigure";
+import { findAcrossDomains, resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile, type FindDomain } from "@muse/autoconfigure";
 import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import type { Command } from "commander";
 
-
-
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 const DOMAIN_LABELS: Record<FindDomain, string> = {
   task: "Tasks",
@@ -50,7 +43,7 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
       if (query.length === 0) {
         throw new Error("find needs a query, e.g. `muse find dentist`");
       }
-      const env = environment();
+      const env = process.env as Record<string, string | undefined>;
       const now = Date.now();
       const readLocalEvents = async (): Promise<readonly CalendarEvent[]> =>
         new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) }).listEvents({
@@ -58,10 +51,10 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
           to: new Date(now + 365 * 86_400_000)
         });
       const [tasks, reminders, contacts, events] = await Promise.all([
-        withBestEffort(readTasks(resolveTasksFile(env)), []),
-        withBestEffort(readReminders(resolveRemindersFile(env)), []),
-        withBestEffort(queryContacts(resolveContactsFile(env)), []),
-        withBestEffort(readLocalEvents(), [])
+        readTasks(resolveTasksFile(env)).catch(() => []),
+        readReminders(resolveRemindersFile(env)).catch(() => []),
+        queryContacts(resolveContactsFile(env)).catch(() => []),
+        readLocalEvents().catch(() => [])
       ]);
       const hits = findAcrossDomains({ contacts, events, reminders, tasks }, query);
       if (options.json) {

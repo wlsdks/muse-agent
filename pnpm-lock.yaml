@@ -814,10 +814,6 @@ importers:
   packages/shared: {}
 
   packages/skills:
-    dependencies:
-      '@muse/shared':
-        specifier: workspace:*
-        version: link:../shared
     devDependencies:
       vitest:
         specifier: ^4.1.9

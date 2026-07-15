@@ -16,22 +16,12 @@
  */
 
 import type { MuseDatabase } from "@muse/db";
-import { isRecord, redactSecretsInText, type JsonObject, type JsonValue } from "@muse/shared";
+import { redactSecretsInText, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import { classifyValueChange } from "./belief-provenance-store.js";
-import {
-  EMPTY_USER_MODEL,
-  type FactSupersession,
-  type UserGoalSlot,
-  type UserMemory,
-  type UserMemoryStore,
-  type UserModel,
-  type UserModelSlot,
-  type UserPreferenceSlot,
-  type UserScheduleSlot,
-  type UserVetoSlot
-} from "./index.js";
+import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
+type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
 
 /**
@@ -309,7 +299,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
 
   async findByUserId(userId: string): Promise<UserMemory | undefined> {
     const row = await this.db.selectFrom("user_memories").selectAll().where("user_id", "=", userId).executeTakeFirst();
-    return row ? mapUserMemoryRow(row) : undefined;
+    return row ? mapUserMemoryRow(row as UserMemoryRow) : undefined;
   }
 
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
@@ -374,7 +364,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    return mapUserMemoryRow(row);
+    return mapUserMemoryRow(row as UserMemoryRow);
   }
 }
 
@@ -392,17 +382,16 @@ export function createUserMemoryInsert(memory: UserMemory): UserMemoryInsert {
   };
 }
 
-export function mapUserMemoryRow(row: unknown): UserMemory {
-  const source = isRecord(row) ? row : {};
-  const userModel = parseUserModelJson(source.user_model);
+export function mapUserMemoryRow(row: UserMemoryRow): UserMemory {
+  const userModel = parseUserModelJson(row.user_model);
   return {
-    facts: jsonStringRecord(source.facts),
-    preferences: jsonStringRecord(source.preferences),
-    recentTopics: typeof source.recent_topics === "string"
-      ? source.recent_topics.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean)
+    facts: jsonStringRecord(row.facts),
+    preferences: jsonStringRecord(row.preferences),
+    recentTopics: typeof row.recent_topics === "string"
+      ? row.recent_topics.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean)
       : [],
-    updatedAt: dateValue(source.updated_at),
-    userId: stringValue(source.user_id),
+    updatedAt: dateValue(row.updated_at),
+    userId: stringValue(row.user_id),
     ...(userModel ? { userModel } : {})
   };
 }
@@ -412,20 +401,20 @@ export function mapUserMemoryRow(row: unknown): UserMemory {
  * as ISO strings so the column round-trips through JSON.parse
  * cleanly — `parseUserModelJson` rehydrates the Dates on read.
  */
-function serializeUserModel(model: UserModel): JsonObject {
+function serializeUserModel(model: UserModel): JsonValue {
   return {
     goals: model.goals.map((slot) => slotToJson(slot)),
     preferences: model.preferences.map((slot) => slotToJson(slot)),
     schedule: model.schedule.map((slot) => slotToJson(slot)),
     vetoes: model.vetoes.map((slot) => slotToJson(slot))
-  };
+  } as JsonValue;
 }
 
-function slotToJson(slot: UserModelSlot): JsonObject {
+function slotToJson(slot: UserModelSlot): JsonValue {
   // Drop optional Date fields when undefined and serialize present
-  // ones to ISO strings. Keep this boundary narrow and explicit;
-  // runtime checks still enforce the discriminated-union invariants
-  // when hydrating `UserModelSlot`s.
+  // ones to ISO strings. Cast through Record<string, JsonValue> at
+  // the boundary; the runtime enforces the discriminated-union
+  // invariants on read.
   const base: Record<string, JsonValue> = {
     id: slot.id,
     kind: slot.kind,
@@ -447,28 +436,22 @@ function slotToJson(slot: UserModelSlot): JsonObject {
       base.progress = slot.progress;
     }
   }
-  return base;
+  return base as JsonValue;
 }
 
-type RawJsonRecord = Record<string, unknown>;
-
-function asRawJsonRecord(value: unknown): RawJsonRecord | undefined {
-  return isRecord(value) ? (value as RawJsonRecord) : undefined;
-}
-
-export function parseUserModelJson(raw: unknown): UserModel | undefined {
-  const record = asRawJsonRecord(raw);
-  if (!record) {
+function parseUserModelJson(raw: unknown): UserModel | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
   }
-
+  const record = raw as Record<string, unknown>;
   const result: UserModel = {
-    goals: parseUserModelSlots(record.goals, parseUserGoalSlot),
-    preferences: parseUserModelSlots(record.preferences, parseUserPreferenceSlot),
-    schedule: parseUserModelSlots(record.schedule, parseUserScheduleSlot),
-    vetoes: parseUserModelSlots(record.vetoes, parseUserVetoSlot)
+    goals: parseSlotArray(record.goals, "goal") as UserModel["goals"],
+    preferences: parseSlotArray(record.preferences, "preference") as UserModel["preferences"],
+    schedule: parseSlotArray(record.schedule, "schedule") as UserModel["schedule"],
+    vetoes: parseSlotArray(record.vetoes, "veto") as UserModel["vetoes"]
   };
-
+  // Any kind populated → return; otherwise undefined so callers see
+  // legacy (no-userModel) shape for users who never wrote one.
   if (
     result.goals.length === 0 &&
     result.preferences.length === 0 &&
@@ -480,107 +463,61 @@ export function parseUserModelJson(raw: unknown): UserModel | undefined {
   return result;
 }
 
-function parseUserModelSlots<T>(raw: unknown, parseSlot: (slot: unknown) => T | undefined): readonly T[] {
+function parseSlotArray(raw: unknown, expectedKind: UserModelSlot["kind"]): readonly UserModelSlot[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  const out: T[] = [];
+  const out: UserModelSlot[] = [];
   for (const entry of raw) {
-    const parsed = parseSlot(entry);
-    if (parsed !== undefined) {
-      out.push(parsed);
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const slot = entry as Record<string, unknown>;
+    if (slot.kind !== expectedKind) {
+      continue;
+    }
+    if (typeof slot.id !== "string" || typeof slot.value !== "string") {
+      continue;
+    }
+    const updatedAt = typeof slot.updatedAt === "string" ? new Date(slot.updatedAt) : undefined;
+    if (!updatedAt || Number.isNaN(updatedAt.getTime())) {
+      continue;
+    }
+    const base = {
+      id: slot.id,
+      updatedAt,
+      value: slot.value,
+      ...(typeof slot.confidence === "number" ? { confidence: slot.confidence } : {})
+    };
+    if (expectedKind === "preference") {
+      out.push({
+        ...base,
+        kind: "preference",
+        ...(typeof slot.category === "string" ? { category: slot.category } : {})
+      });
+    } else if (expectedKind === "schedule") {
+      out.push({
+        ...base,
+        kind: "schedule",
+        ...(typeof slot.recurrence === "string" ? { recurrence: slot.recurrence } : {})
+      });
+    } else if (expectedKind === "veto") {
+      out.push({
+        ...base,
+        kind: "veto",
+        ...(typeof slot.scope === "string" ? { scope: slot.scope } : {})
+      });
+    } else if (expectedKind === "goal") {
+      const dueAt = typeof slot.dueAt === "string" ? new Date(slot.dueAt) : undefined;
+      out.push({
+        ...base,
+        kind: "goal",
+        ...(dueAt && !Number.isNaN(dueAt.getTime()) ? { dueAt } : {}),
+        ...(typeof slot.progress === "number" ? { progress: slot.progress } : {})
+      });
     }
   }
   return out;
-}
-
-function parseUserModelSlotBase(value: unknown): { readonly id: string; readonly updatedAt: Date; readonly value: string; readonly confidence?: number } | undefined {
-  const record = asRawJsonRecord(value);
-  if (!record) {
-    return undefined;
-  }
-  if (typeof record.id !== "string" || typeof record.value !== "string" || typeof record.kind !== "string") {
-    return undefined;
-  }
-  const updatedAt = parseUserModelDate(record.updatedAt);
-  if (!updatedAt) {
-    return undefined;
-  }
-  return {
-    id: record.id,
-    updatedAt,
-    value: record.value,
-    ...(typeof record.confidence === "number" && Number.isFinite(record.confidence) ? { confidence: record.confidence } : {})
-  };
-}
-
-function parseUserPreferenceSlot(entry: unknown): UserPreferenceSlot | undefined {
-  const record = asRawJsonRecord(entry);
-  const base = parseUserModelSlotBase(entry);
-  if (!base || !record || record.kind !== "preference") {
-    return undefined;
-  }
-  const category = typeof record.category === "string" && record.category.trim().length > 0 ? record.category : undefined;
-  return {
-    ...base,
-    kind: "preference",
-    ...(category ? { category } : {})
-  };
-}
-
-function parseUserScheduleSlot(entry: unknown): UserScheduleSlot | undefined {
-  const record = asRawJsonRecord(entry);
-  const base = parseUserModelSlotBase(entry);
-  if (!base || !record || record.kind !== "schedule") {
-    return undefined;
-  }
-  const recurrence = typeof record.recurrence === "string" && record.recurrence.trim().length > 0 ? record.recurrence : undefined;
-  return {
-    ...base,
-    kind: "schedule",
-    ...(recurrence ? { recurrence } : {})
-  };
-}
-
-function parseUserVetoSlot(entry: unknown): UserVetoSlot | undefined {
-  const record = asRawJsonRecord(entry);
-  const base = parseUserModelSlotBase(entry);
-  if (!base || !record || record.kind !== "veto") {
-    return undefined;
-  }
-  const scope = typeof record.scope === "string" && record.scope.trim().length > 0 ? record.scope : undefined;
-  return {
-    ...base,
-    kind: "veto",
-    ...(scope ? { scope } : {})
-  };
-}
-
-function parseUserGoalSlot(entry: unknown): UserGoalSlot | undefined {
-  const record = asRawJsonRecord(entry);
-  const base = parseUserModelSlotBase(entry);
-  if (!base || !record || record.kind !== "goal") {
-    return undefined;
-  }
-  const dueAt = parseUserModelDate(record.dueAt);
-  const progress = typeof record.progress === "number" && Number.isFinite(record.progress) ? record.progress : undefined;
-  return {
-    ...base,
-    kind: "goal",
-    ...(dueAt ? { dueAt } : {}),
-    ...(progress !== undefined ? { progress } : {})
-  };
-}
-
-function parseUserModelDate(value: unknown): Date | undefined {
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return value;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    const date = new Date(value);
-    return Number.isFinite(date.getTime()) ? date : undefined;
-  }
-  return undefined;
 }
 
 function cloneUserMemory(memory: UserMemory | undefined): UserMemory | undefined {
@@ -651,7 +588,7 @@ function dateValue(value: unknown): Date {
 }
 
 function jsonStringRecord(value: unknown): Readonly<Record<string, string>> {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     if (typeof value === "string") {
       try {
         return jsonStringRecord(JSON.parse(value));
@@ -662,7 +599,7 @@ function jsonStringRecord(value: unknown): Readonly<Record<string, string>> {
     return {};
   }
   const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
     if (typeof entry === "string") {
       result[key] = entry;
     }

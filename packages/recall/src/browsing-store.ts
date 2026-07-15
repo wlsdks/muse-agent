@@ -17,7 +17,6 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 export const BROWSING_STORE_SCHEMA_VERSION = 1;
 
@@ -114,30 +113,34 @@ export async function readBrowsingStore(file: string): Promise<BrowsingStore> {
   } catch {
     return emptyStore();
   }
-  if (!isRecord(parsed)) {
+  if (!parsed || typeof parsed !== "object") {
     return emptyStore();
   }
-  const candidate = parsed;
+  const candidate = parsed as Partial<BrowsingStore>;
   if (candidate.version !== BROWSING_STORE_SCHEMA_VERSION) {
     await backupVersionMismatchedStore(file, candidate.version);
     return emptyStore();
   }
   const visits: BrowsingVisit[] = [];
-  for (const v of Array.isArray(candidate.visits) ? candidate.visits : []) {
-    if (!isRecord(v)) continue;
+  for (const v of candidate.visits ?? []) {
+    if (!v || typeof v !== "object") continue;
+    const c = v as Partial<BrowsingVisit>;
     if (
-      typeof v.id !== "string" ||
-      typeof v.url !== "string" ||
-      typeof v.title !== "string" ||
-      typeof v.visitedAt !== "string"
+      typeof c.id !== "string" ||
+      typeof c.url !== "string" ||
+      typeof c.title !== "string" ||
+      typeof c.visitedAt !== "string"
     ) {
       continue;
     }
-    const base: BrowsingVisit = { id: v.id, url: v.url, title: v.title, visitedAt: v.visitedAt };
+    const base: BrowsingVisit = { id: c.id, url: c.url, title: c.title, visitedAt: c.visitedAt };
     // Tolerate BOTH shapes: a valid embedding is preserved; a v1 entry without one
     // (or with a malformed one) keeps every other field and stays lexically matchable.
-    const embedding = isReadonlyNumberArray(v.embedding) ? v.embedding : undefined;
-    visits.push(embedding ? { ...base, embedding } : base);
+    const hasValidEmbedding =
+      Array.isArray(c.embedding) &&
+      c.embedding.length > 0 &&
+      c.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
+    visits.push(hasValidEmbedding ? { ...base, embedding: c.embedding } : base);
   }
   const cursor =
     typeof candidate.lastVisitTimeCursor === "number" && Number.isFinite(candidate.lastVisitTimeCursor)
@@ -146,16 +149,12 @@ export async function readBrowsingStore(file: string): Promise<BrowsingStore> {
   return { version: BROWSING_STORE_SCHEMA_VERSION, visits, lastVisitTimeCursor: cursor };
 }
 
-function isReadonlyNumberArray(value: unknown): value is readonly number[] {
-  return Array.isArray(value) && value.length > 0 && value.every((n) => typeof n === "number" && Number.isFinite(n));
-}
-
 export async function writeBrowsingStore(file: string, store: BrowsingStore): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**

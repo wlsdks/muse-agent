@@ -38,13 +38,12 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
 import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, parseAmbientNoticeRules, resolveEffectiveQuietHours, MacOsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHoursOption, type WebWatchRunner } from "@muse/proactivity";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
-import { withBestEffort } from "./async-promises.js";
 
 // node:child_process has no /promises submodule (unlike fs/timers) — a
 // phantom import of it has now broken the build twice; the regression
@@ -94,7 +93,6 @@ import type { ProgramIO } from "./program.js";
 import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
-import { isRecord, resolveAmbientSourceMode } from "@muse/shared";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -120,7 +118,7 @@ export function liveQuietHours(
   io: ProgramIO,
   perLoopVar: string | undefined,
   baseVar: string | undefined
-): QuietHoursOption {
+): () => QuietHourRange | undefined {
   const settingsFile = resolveDaemonSettingsFile(e);
   let warned = false;
   return () => resolveEffectiveQuietHours({
@@ -327,8 +325,7 @@ const defaultRunLaunchctl = async (args: readonly string[]): Promise<{ code: num
 };
 
 function normalizeExecFileCode(cause: unknown): number {
-  if (!isRecord(cause)) return 1;
-  const rawCode = cause.code;
+  const rawCode = (cause as { code?: number | string } | undefined)?.code;
   if (typeof rawCode === "number") return rawCode;
   if (typeof rawCode === "string") {
     const parsed = Number(rawCode);
@@ -338,8 +335,8 @@ function normalizeExecFileCode(cause: unknown): number {
 }
 
 function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): string | Buffer {
-  if (isRecord(cause)) {
-    const value = cause[key];
+  if (cause && typeof cause === "object" && key in cause) {
+    const value = (cause as Record<"stdout" | "stderr", string | Buffer | undefined>)[key];
     if (value !== undefined) return value;
   }
   return "";
@@ -647,18 +644,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ambientRules = [];
         }
         if (ambientRules.length > 0) {
-          const ambientSourceMode = resolveAmbientSourceMode(e.MUSE_AMBIENT_SOURCE, {
-            platform: process.platform,
-            windowsEnabled: true
-          });
-          const ambientSourceFile = e.MUSE_AMBIENT_FILE?.trim();
-          const hasAmbientFile = ambientSourceFile !== undefined && ambientSourceFile.length > 0;
           // Real macOS active-window perception when opted in on darwin
           // (or whenever a test injects the osascript runner); otherwise
           // the file source an external OS helper writes.
-          const useMacos = ambientSourceMode === "macos"
+          const useMacos = e.MUSE_AMBIENT_SOURCE?.trim() === "macos"
             && (helpers.ambientMacosRun !== undefined || process.platform === "darwin");
-          const useWindows = ambientSourceMode === "windows"
+          const useWindows = e.MUSE_AMBIENT_SOURCE?.trim() === "windows"
             && (helpers.ambientMacosRun !== undefined || process.platform === "win32");
           let ambientSource;
           if (useMacos) {
@@ -674,7 +665,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             });
             io.stdout(`  ambient source: Windows active window\n`);
           } else {
-            const ambientFile = hasAmbientFile ? ambientSourceFile : join(homedir(), ".muse", "ambient.json");
+            const ambientFile = e.MUSE_AMBIENT_FILE?.trim()?.length
+              ? e.MUSE_AMBIENT_FILE.trim()
+              : join(homedir(), ".muse", "ambient.json");
             ambientSource = new FileAmbientSignalSource(ambientFile);
           }
           ambientRunner = createAmbientNoticeRunner({
@@ -1152,7 +1145,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
       const runTick = async (): Promise<void> => {
-        await withBestEffort(recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop"), false);
+        await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();

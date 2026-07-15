@@ -19,7 +19,6 @@ import { randomUUID } from "node:crypto";
 import { addContact, queryActionLog, queryContacts, queryVetoes, readObjectives, removeContact, serializeActionLogEntry, serializeContact, serializeObjective, serializeVeto, type Contact } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
-import { readBodyString, readQueryInteger, readQueryString, readRouteParam, toBody } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -31,6 +30,18 @@ interface AccountabilityRoutesGate {
   readonly vetoesFile: string;
 }
 
+function readString(request: { query?: unknown }, key: string): string {
+  const query = (request.query as Record<string, unknown> | undefined) ?? {};
+  const value = query[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readLimit(request: { query?: unknown }, fallback: number): number {
+  const raw = readString(request, "limit");
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 500) : fallback;
+}
+
 export function registerAccountabilityRoutes(server: FastifyInstance, gate: AccountabilityRoutesGate): void {
   const authed = (request: Parameters<typeof requireAuthenticated>[0], reply: Parameters<typeof requireAuthenticated>[1]) =>
     requireAuthenticated(request, reply, Boolean(gate.authService));
@@ -39,7 +50,7 @@ export function registerAccountabilityRoutes(server: FastifyInstance, gate: Acco
     if (!authed(request, reply)) {
       return reply;
     }
-    const status = readQueryString(request, "status");
+    const status = readString(request, "status");
     const all = await readObjectives(gate.objectivesFile);
     const filtered = status ? all.filter((o) => o.status === status) : all;
     return { objectives: filtered.map(serializeObjective), total: filtered.length };
@@ -49,9 +60,8 @@ export function registerAccountabilityRoutes(server: FastifyInstance, gate: Acco
     if (!authed(request, reply)) {
       return reply;
     }
-    const userId = readQueryString(request, "userId");
-    const parsedLimit = readQueryInteger(request, "limit", 100);
-    const limit = parsedLimit > 0 ? Math.min(parsedLimit, 500) : 100;
+    const userId = readString(request, "userId");
+    const limit = readLimit(request, 100);
     const all = await queryActionLog(gate.actionLogFile, userId ? { userId } : {});
     // Most recent first — the log is append-order on disk.
     const ordered = [...all].sort((a, b) => b.when.localeCompare(a.when)).slice(0, limit);
@@ -73,35 +83,27 @@ export function registerAccountabilityRoutes(server: FastifyInstance, gate: Acco
     if (!authed(request, reply)) {
       return reply;
     }
-    const body = toBody(request.body);
-    const name = readBodyString(body, "name") ?? "";
-    const email = readBodyString(body, "email");
-    const handle = readBodyString(body, "handle");
-    const phone = readBodyString(body, "phone");
+    const body = (request.body as Partial<Contact> | undefined) ?? {};
+    const name = typeof body.name === "string" ? body.name.trim() : "";
     if (name.length === 0) {
       return reply.status(400).send({ error: "name is required" });
     }
     const contact: Contact = {
       id: randomUUID(),
       name,
-      ...(email ? { email } : {}),
-      ...(handle ? { handle } : {}),
-      ...(phone ? { phone } : {})
+      ...(typeof body.email === "string" && body.email.trim() ? { email: body.email.trim() } : {}),
+      ...(typeof body.handle === "string" && body.handle.trim() ? { handle: body.handle.trim() } : {}),
+      ...(typeof body.phone === "string" && body.phone.trim() ? { phone: body.phone.trim() } : {})
     };
     await addContact(gate.contactsFile, contact);
     return serializeContact(contact);
   });
 
-  server.delete<{ Params: { readonly id: string } }>(
-    "/api/contacts/:id",
-    async (request, reply) => {
+  server.delete("/api/contacts/:id", async (request, reply) => {
     if (!authed(request, reply)) {
       return reply;
     }
-    const id = readRouteParam(request, "id");
-    if (id === undefined) {
-      return reply.status(400).send({ error: "id is required" });
-    }
+    const { id } = request.params as { id: string };
     const removed = await removeContact(gate.contactsFile, id);
     return { id, removed };
   });
@@ -110,7 +112,7 @@ export function registerAccountabilityRoutes(server: FastifyInstance, gate: Acco
     if (!authed(request, reply)) {
       return reply;
     }
-    const userId = readQueryString(request, "userId");
+    const userId = readString(request, "userId");
     const all = await queryVetoes(gate.vetoesFile, userId ? { userId } : {});
     const ordered = [...all].sort((a, b) => b.vetoedAt.localeCompare(a.vetoedAt));
     return { total: ordered.length, vetoes: ordered.map(serializeVeto) };

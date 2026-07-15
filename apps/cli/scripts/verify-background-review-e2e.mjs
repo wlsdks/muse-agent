@@ -25,7 +25,6 @@ import path from "node:path";
 
 import { createMuseRuntimeAssembly, resolveCheckinsFile } from "@muse/autoconfigure";
 import { readCheckins } from "@muse/proactivity";
-import { readTextOrDefault } from "./best-effort.mjs";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -62,7 +61,7 @@ await turn("Also, I need to email Bob about the Q3 report tomorrow.");
 
 const memory = await store.findByUserId(userId);
 const factBlob = JSON.stringify({ ...(memory?.facts ?? {}), ...(memory?.preferences ?? {}) }).toLowerCase();
-const checkins = await readTextOrDefault(() => readCheckins(resolveCheckinsFile(process.env)), []);
+const checkins = await readCheckins(resolveCheckinsFile(process.env)).catch(() => []);
 const checkinBlob = checkins.map((c) => c.question).join(" | ").toLowerCase();
 
 const cases = [

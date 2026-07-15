@@ -4,7 +4,7 @@
  * exec helper — no AppleScript escaping, so they share no state with the osascript tools.
  */
 
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { runChild, type MacCommandResult } from "./macos-exec.js";
@@ -144,7 +144,7 @@ export function createMacSpotlightSearchTool(deps: MacSpotlightSearchToolDeps = 
       const all = result.stdout.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0);
       const matched = imagesOnly ? all.filter(isImagePath) : all;
       return {
-        paths: [...matched.slice(0, SPOTLIGHT_MAX_RESULTS)],
+        paths: matched.slice(0, SPOTLIGHT_MAX_RESULTS) as JsonValue,
         query,
         total: matched.length,
         ...(imagesOnly ? { imagesOnly: true } : {}),

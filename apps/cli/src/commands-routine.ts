@@ -23,7 +23,6 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES } from "@muse/shared";
 import type { Command } from "commander";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
@@ -52,34 +51,30 @@ async function readActivity(file: string): Promise<readonly ActivityRow[]> {
   try {
     raw = await readFile(file, "utf8");
   } catch (error) {
-    if (isNodeErrorCode(error, NODE_ERROR_CODES.ENOENT)) return [];
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
   const rows: ActivityRow[] = [];
   for (const line of raw.split("\n")) {
     if (line.trim().length === 0) continue;
     try {
-      const parsed = JSON.parse(line);
-      if (isActivityRow(parsed)) {
-        rows.push(parsed);
+      const parsed = JSON.parse(line) as unknown;
+      if (typeof parsed === "object" && parsed && "tsIso" in parsed && "userId" in parsed) {
+        const row = parsed as ActivityRow;
+        if (typeof row.tsIso === "string" && typeof row.userId === "string") {
+          rows.push(row);
+        }
       }
     } catch { /* skip malformed */ }
   }
   return rows;
 }
 
-function isActivityRow(value: unknown): value is ActivityRow {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.tsIso === "string" && typeof value.userId === "string";
-}
-
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function computeRoutine(rows: readonly ActivityRow[]) {
-  const hourCounts = new Array<number>(24).fill(0);
-  const dowCounts = new Array<number>(7).fill(0);
+  const hourCounts = new Array(24).fill(0) as number[];
+  const dowCounts = new Array(7).fill(0) as number[];
   const days = new Set<string>();
   // Count only rows whose timestamp parsed — otherwise a malformed
   // activity.jsonl line would inflate the average vs. daysObserved

@@ -6,8 +6,6 @@
  * extractors that were previously hand-duplicated in each provider file.
  */
 
-import { isRecord } from "@muse/shared";
-
 export const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
 export const NOTION_DEFAULT_VERSION = "2022-06-28";
 export const NOTION_DEFAULT_TITLE_PROPERTY = "Name";
@@ -31,42 +29,18 @@ export function mapNotionStatus(status: number): string {
 }
 
 export function isRecordArray(body: unknown, key: string): readonly unknown[] {
-  if (!isRecord(body)) {
+  if (!body || typeof body !== "object") {
     return [];
   }
-  const value = body[key];
+  const value = (body as Record<string, unknown>)[key];
   return Array.isArray(value) ? value : [];
 }
 
-export function toRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-export function readRecordField(record: unknown, key: string): Record<string, unknown> | undefined {
-  const value = toRecord(record)?.[key];
-  return isRecord(value) ? value : undefined;
-}
-
-export function readStringField(record: unknown, key: string): string | undefined {
-  const value = toRecord(record)?.[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-export function readBooleanField(record: unknown, key: string): boolean | undefined {
-  const value = toRecord(record)?.[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-export function readArrayField(record: unknown, key: string): readonly unknown[] | undefined {
-  const value = toRecord(record)?.[key];
-  return Array.isArray(value) ? value : undefined;
-}
-
 export function extractTitleString(value: unknown): string | undefined {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return undefined;
   }
-  const titleArr = value.title;
+  const titleArr = (value as { title?: unknown }).title;
   if (!Array.isArray(titleArr)) {
     return undefined;
   }
@@ -75,15 +49,12 @@ export function extractTitleString(value: unknown): string | undefined {
       if (!entry || typeof entry !== "object") {
         return "";
       }
-      if (!isRecord(entry)) {
-        return "";
-      }
-      const plain = readStringField(entry, "plain_text");
-      if (plain !== undefined) {
+      const plain = (entry as { plain_text?: string }).plain_text;
+      if (typeof plain === "string") {
         return plain;
       }
-      const textBlock = readRecordField(entry, "text");
-      return typeof textBlock?.content === "string" ? textBlock.content : "";
+      const inner = (entry as { text?: { content?: string } }).text?.content;
+      return typeof inner === "string" ? inner : "";
     })
     .join("");
   return text.length > 0 ? text : undefined;

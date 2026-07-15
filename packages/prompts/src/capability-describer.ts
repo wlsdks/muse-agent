@@ -1,5 +1,3 @@
-import { parseBooleanFromEnv } from "@muse/shared";
-
 /**
  * Deterministic, env-aware "here's what I can actually DO" describer — the ONE
  * honest capability answer every meta surface ("뭐 할 수 있어?" / "what can you
@@ -36,7 +34,8 @@ function present(value?: string): boolean {
 }
 
 function enabled(value?: string): boolean {
-  return parseBooleanFromEnv(value, false);
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 /**

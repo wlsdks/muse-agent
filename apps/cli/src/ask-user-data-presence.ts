@@ -12,20 +12,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveContactsFile, resolveEpisodesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
-import { isRecord } from "@muse/shared";
 import { readContacts, readEpisodes, readReminders, readTasks } from "@muse/stores";
 
 /** Whether the persistent user-memory file holds any fact/preference for `userId`. */
-async function userMemoryHasFacts(userId: string, env: MuseEnvironment): Promise<boolean> {
+async function userMemoryHasFacts(userId: string, env: Record<string, string | undefined>): Promise<boolean> {
   try {
     const file = env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
-    const raw = JSON.parse(await readFile(file, "utf8"));
-    const users = isRecord(raw.users) ? raw.users : undefined;
-    if (!users) return false;
-    const persona = isRecord(users[userId]) ? users[userId] : undefined;
-    const facts = isRecord(persona?.facts) ? persona.facts : undefined;
-    const preferences = isRecord(persona?.preferences) ? persona.preferences : undefined;
-    return Boolean((facts && Object.keys(facts).length > 0) || (preferences && Object.keys(preferences).length > 0));
+    const raw = JSON.parse(await readFile(file, "utf8")) as { users?: Record<string, { facts?: Record<string, string>; preferences?: Record<string, string> }> };
+    const persona = raw.users?.[userId];
+    return Boolean(persona && (Object.keys(persona.facts ?? {}).length > 0 || Object.keys(persona.preferences ?? {}).length > 0));
   } catch {
     return false;
   }
@@ -39,21 +34,21 @@ async function userMemoryHasFacts(userId: string, env: MuseEnvironment): Promise
  */
 export async function userHasOtherPersonalData(
   userId: string,
-  env: MuseEnvironment
+  env: Record<string, string | undefined>
 ): Promise<boolean> {
   if (await userMemoryHasFacts(userId, env)) return true;
   try {
-    if ((await readContacts(resolveContactsFile(env))).length > 0) return true;
+    if ((await readContacts(resolveContactsFile(env as MuseEnvironment))).length > 0) return true;
   } catch { /* skip */ }
   try {
-    if ((await readTasks(resolveTasksFile(env))).length > 0) return true;
+    if ((await readTasks(resolveTasksFile(env as MuseEnvironment))).length > 0) return true;
   } catch { /* skip */ }
   try {
-    if ((await readReminders(resolveRemindersFile(env))).length > 0) return true;
+    if ((await readReminders(resolveRemindersFile(env as MuseEnvironment))).length > 0) return true;
   } catch { /* skip */ }
   try {
     // A continuous-companion user with past sessions (but no notes) isn't "empty".
-    if ((await readEpisodes(resolveEpisodesFile(env))).some((e) => e.userId === userId)) return true;
+    if ((await readEpisodes(resolveEpisodesFile(env as MuseEnvironment))).some((e) => e.userId === userId)) return true;
   } catch { /* skip */ }
   return false;
 }

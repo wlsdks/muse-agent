@@ -42,10 +42,7 @@ describe("MultiAgentOrchestrator per-worker deadline — explicit termination of
         { mode }
       );
 
-      const byId: Record<string, (typeof result.results)[number]> = {};
-      for (const step of result.results) {
-        byId[step.workerId] = step;
-      }
+      const byId = Object.fromEntries(result.results.map((step) => [step.workerId, step]));
       expect(byId.alive?.status).toBe("completed");
       expect(byId.stuck?.status).toBe("failed");
       expect(byId.stuck?.error).toMatch(/deadline/u);
@@ -83,10 +80,7 @@ describe("MultiAgentOrchestrator parallel + bus interactions", () => {
 
     const conversation = messageBus.getConversation();
     expect(conversation).toHaveLength(3);
-    const bySource: Record<string, (typeof conversation)[number]> = {};
-    for (const message of conversation) {
-      bySource[message.sourceAgentId] = message;
-    }
+    const bySource = Object.fromEntries(conversation.map((message) => [message.sourceAgentId, message]));
     expect(bySource.alpha?.content).toBe("alpha-output");
     expect(bySource.beta?.content).toBe("beta failed deliberately");
     expect(bySource.beta?.metadata).toMatchObject({ status: "failed" });

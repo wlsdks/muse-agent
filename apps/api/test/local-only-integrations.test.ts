@@ -260,25 +260,21 @@ describe.sequential("T2-B1 API local-only integration containment", () => {
 
   it("keeps explicit normal setup status isolated from a throwing ambient integration environment", async () => {
     const root = await mkdtemp(join(tmpdir(), "muse-api-status-snapshot-"));
-      const previousEnv = process.env;
-      const ambientCredentials = join(root, "ambient-messaging.json");
-      const ambientModels = join(root, "ambient-models.json");
-      const explicitCredentials = join(root, "explicit-messaging.json");
-      const integrationEnvDefaults: Record<string, string> = {};
-      for (const key of STATUS_INTEGRATION_KEYS) {
-        integrationEnvDefaults[key] = "";
-      }
-      const ambientEnv: NodeJS.ProcessEnv = {
-        ...integrationEnvDefaults,
-        HOME: root,
-        MUSE_LOCAL_ONLY: "false",
-        MUSE_MCP_CONFIG: join(root, "mcp.json"),
-        MUSE_MESSAGING_CREDENTIALS_FILE: ambientCredentials,
-        MUSE_MODEL_KEYS_FILE: ambientModels,
-        MUSE_NOTES_DIR: join(root, "notes"),
-        MUSE_TASKS_FILE: join(root, "tasks.json"),
-        MUSE_TELEGRAM_BOT_TOKEN: "ambient-telegram-token"
-      };
+    const previousEnv = process.env;
+    const ambientCredentials = join(root, "ambient-messaging.json");
+    const ambientModels = join(root, "ambient-models.json");
+    const explicitCredentials = join(root, "explicit-messaging.json");
+    const ambientEnv: NodeJS.ProcessEnv = {
+      ...Object.fromEntries([...STATUS_INTEGRATION_KEYS].map((key) => [key, ""])),
+      HOME: root,
+      MUSE_LOCAL_ONLY: "false",
+      MUSE_MCP_CONFIG: join(root, "mcp.json"),
+      MUSE_MESSAGING_CREDENTIALS_FILE: ambientCredentials,
+      MUSE_MODEL_KEYS_FILE: ambientModels,
+      MUSE_NOTES_DIR: join(root, "notes"),
+      MUSE_TASKS_FILE: join(root, "tasks.json"),
+      MUSE_TELEGRAM_BOT_TOKEN: "ambient-telegram-token"
+    };
     try {
       process.env = ambientEnv;
       await writeFile(ambientModels, JSON.stringify({ providers: { openai: { suggestedModel: "openai/gpt-4.1-mini", token: "model-key" } } }));

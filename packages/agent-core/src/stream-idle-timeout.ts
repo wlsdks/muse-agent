@@ -6,8 +6,6 @@
 
 import { ModelProviderError } from "@muse/model";
 import { setTimeout as sleepWithTimer } from "node:timers/promises";
-import { withBestEffort } from "@muse/shared";
-
 
 /**
  * Default idle cut for the streaming path (3 min). Overridable per-run via
@@ -38,14 +36,13 @@ export async function* withStreamIdleTimeout<T>(
   try {
     for (;;) {
       const timerController = new AbortController();
-      const idle = (async () => {
-        await sleepWithTimer(idleMs, undefined, { signal: timerController.signal });
+      const idle = sleepWithTimer(idleMs, undefined, { signal: timerController.signal }).then(() => {
         throw new ModelProviderError(
           providerId,
           `model stream idle for >${idleMs.toString()}ms — provider stalled`,
           false
         );
-      })();
+      });
       let step: IteratorResult<T>;
       try {
         step = await Promise.race([iterator.next(), idle]);
@@ -59,8 +56,6 @@ export async function* withStreamIdleTimeout<T>(
     // Close the underlying stream/fetch on idle-abort OR normal completion —
     // FIRE-AND-FORGET: awaiting `.return()` on a HUNG stream would block until its
     // own stalled await resolves, re-introducing the very hang we're cutting.
-    if (typeof iterator.return === "function") {
-      void withBestEffort(iterator.return(), undefined);
-    }
+    void iterator.return?.()?.catch(() => undefined);
   }
 }

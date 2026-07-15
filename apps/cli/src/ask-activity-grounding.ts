@@ -22,7 +22,7 @@ export async function buildActivityGrounding(
 ): Promise<ActivityGrounding> {
   return buildActivityGroundingCore({
     ...params,
-    actionLogFile: resolveActionLogFile(process.env),
+    actionLogFile: resolveActionLogFile(process.env as Record<string, string | undefined>),
     embedFn: embed
   });
 }

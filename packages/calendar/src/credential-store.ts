@@ -1,8 +1,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
-import { isNodeErrorCode, isRecord, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -80,18 +79,15 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     }
 
     try {
-      const parsed = JSON.parse(raw);
-      if (!isRecord(parsed) || !isRecord(parsed.providers)) {
+      const parsed = JSON.parse(raw) as Partial<PersistedShape>;
+      if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
         await quarantineCorruptStore(this.file);
         return { providers: emptyProviderMap(), version: 1 };
       }
 
       const providers = emptyProviderMap();
       for (const [id, value] of Object.entries(parsed.providers)) {
-        const credentials = parseProviderCredentials(value);
-        if (credentials !== undefined) {
-          providers[id] = credentials;
-        }
+        providers[id] = value as ProviderCredentials;
       }
       return { providers, version: 1 };
     } catch {
@@ -105,7 +101,7 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     await fs.mkdir(dirname(this.file), { recursive: true });
     await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tmp, this.file);
-    await withBestEffort(fs.chmod(this.file, 0o600), undefined);
+    await fs.chmod(this.file, 0o600).catch(() => undefined);
   }
 }
 
@@ -113,26 +109,9 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
 // can't index an inherited Object.prototype member (load would
 // otherwise return a bogus truthy {} and `in` would false-hit).
 function emptyProviderMap(): Record<string, ProviderCredentials> {
-  return Object.create(null);
+  return Object.create(null) as Record<string, ProviderCredentials>;
 }
 
 function isFileNotFound(error: unknown): boolean {
-  return isNodeErrorCode(error, NODE_ERROR_CODES.ENOENT);
-}
-
-function parseProviderCredentials(value: unknown): ProviderCredentials | undefined {
-  if (!isRecord(value) || !Object.values(value).every(isJsonValue)) {
-    return undefined;
-  }
-  return value as ProviderCredentials;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return Array.isArray(value) && value.every(isJsonValue);
-  }
-  return isRecord(value) && Object.values(value).every(isJsonValue);
+  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
 }

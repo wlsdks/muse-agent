@@ -12,7 +12,6 @@
  */
 
 import { canonicalizeLocalOnlyModelBaseUrl, isLocalOnlyEnabled, LocalOnlyViolationError } from "@muse/model";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 export { cosineSimilarity } from "@muse/agent-core";
 
@@ -61,9 +60,8 @@ export interface EmbedOptions {
 export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const baseUrl = resolveEmbedTransportBaseUrl((options.baseUrlResolver ?? envOllamaUrl)(), options.requireLocalOnly);
-  const timeoutMsCandidate = options.timeoutMs ?? Number.NaN;
-  const timeoutMs = Number.isFinite(timeoutMsCandidate) && timeoutMsCandidate > 0
-    ? Math.trunc(timeoutMsCandidate)
+  const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+    ? (options.timeoutMs as number)
     : DEFAULT_EMBED_TIMEOUT_MS;
   const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
   let resp: Response;
@@ -81,28 +79,16 @@ export async function embed(text: string, model: string, options: EmbedOptions =
     throw cause;
   }
   if (!resp.ok) {
-    throw new Error(`embeddings ${resp.status.toString()}: ${await withBestEffort(resp.text(), "")}`);
+    throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
   }
-  const body = await resp.json();
+  const body = await resp.json() as { embedding?: number[] };
   // An empty or non-finite vector (wrong model, empty prompt on
   // some backends) silently makes cosineSimilarity return 0/NaN
   // for every hit — garbage RAG ranking with no error. Reject it.
-  if (!hasValidEmbedding(body)) {
+  if (!Array.isArray(body.embedding)
+    || body.embedding.length === 0
+    || !body.embedding.every((n) => typeof n === "number" && Number.isFinite(n))) {
     throw new Error("embedding response missing a valid numeric 'embedding' vector");
   }
-  return [...body.embedding];
-}
-
-type EmbeddingResponse = {
-  readonly embedding: readonly number[];
-};
-
-function hasValidEmbedding(body: unknown): body is EmbeddingResponse {
-  if (!isRecord(body)) {
-    return false;
-  }
-  if (!Array.isArray(body.embedding) || body.embedding.length === 0) {
-    return false;
-  }
-  return body.embedding.every((value) => typeof value === "number" && Number.isFinite(value));
+  return body.embedding;
 }

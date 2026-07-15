@@ -83,14 +83,6 @@ interface FetchFeedWithPublicRedirectsOptions {
   readonly timeoutMs: number;
 }
 
-function parseIntegerOption(value: number | undefined, fallback: number, min: number): number {
-  if (value === undefined || !Number.isFinite(value)) {
-    return fallback;
-  }
-  const next = Math.trunc(value);
-  return next >= min ? next : fallback;
-}
-
 function feedTimeoutError(url: string, timeoutMs: number, cause: unknown): Error {
   return new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
 }
@@ -143,12 +135,16 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
     return readFile(fileURLToPath(url), "utf8");
   }
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const timeoutMs = parseIntegerOption(options.timeoutMs, DEFAULT_FEED_FETCH_TIMEOUT_MS, 1);
-  const maxBodyBytes = parseIntegerOption(options.maxBodyBytes, DEFAULT_FEED_MAX_BODY_BYTES, 1);
+  const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+    ? (options.timeoutMs as number)
+    : DEFAULT_FEED_FETCH_TIMEOUT_MS;
+  const maxBodyBytes = Number.isFinite(options.maxBodyBytes) && (options.maxBodyBytes ?? 0) > 0
+    ? (options.maxBodyBytes as number)
+    : DEFAULT_FEED_MAX_BODY_BYTES;
   // Retry a transient 429/5xx (a feed server hiccup) with backoff, bounded by
   // the single wall-clock timeout below. Network rejections stay fail-fast.
-  const retries = parseIntegerOption(options.retries, 2, 0);
-  const baseDelayMs = parseIntegerOption(options.baseDelayMs, 250, 0);
+  const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
+  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
   const optionsSleep = options.sleep ?? sleep;
   const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
   const fetched = await fetchFeedWithPublicRedirects(url, {

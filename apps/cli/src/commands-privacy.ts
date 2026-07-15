@@ -11,8 +11,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-
-
 import {
   resolveActionLogFile,
   resolveContactsFile,
@@ -25,7 +23,6 @@ import {
 } from "@muse/autoconfigure";
 import { isFileEncryptedAtRest } from "@muse/stores";
 import type { Command } from "commander";
-import { withBestEffort } from "./async-promises.js";
 
 import type { ProgramIO } from "./program.js";
 
@@ -88,7 +85,7 @@ function storeDefs(env: Env, runtime: PrivacyPostureRuntime = {}): readonly { na
 export async function collectPrivacyPosture(env: Env, runtime: PrivacyPostureRuntime = {}): Promise<PrivacyPosture> {
   const stores = await Promise.all(storeDefs(env, runtime).map(async (def) => {
     const exists = existsSync(def.path);
-    const encrypted = exists && def.encryptable ? await withBestEffort(isFileEncryptedAtRest(def.path), false) : false;
+    const encrypted = exists && def.encryptable ? await isFileEncryptedAtRest(def.path).catch(() => false) : false;
     return {
       encryptable: def.encryptable,
       encrypted,
@@ -155,7 +152,7 @@ export function registerPrivacyCommand(program: Command, io: ProgramIO): void {
     .description("Inventory your confided data at rest — which personal stores are encrypted vs plaintext, and whether the key is strong (read-only)")
     .option("--json", "Emit the posture as JSON")
     .action(async (options: { readonly json?: boolean }) => {
-      const posture = await collectPrivacyPosture(process.env);
+      const posture = await collectPrivacyPosture(process.env as Env);
       if (options.json) {
         io.stdout(`${JSON.stringify(posture, null, 2)}\n`);
         return;

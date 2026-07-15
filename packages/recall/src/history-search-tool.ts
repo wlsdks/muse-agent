@@ -1,5 +1,4 @@
 import type { MuseTool } from "@muse/tools";
-import { isRecord } from "@muse/shared";
 
 import { searchHistoryHybrid, type HistoryRecord, type HistorySearchHit } from "./history-search.js";
 
@@ -70,7 +69,7 @@ export function createHistorySearchTool(options: HistorySearchToolOptions): Muse
       risk: "read"
     },
     execute: async (args) => {
-      const raw = isRecord(args) ? args : {};
+      const raw = args as { query?: unknown; topK?: unknown };
       const query = typeof raw.query === "string" ? raw.query : "";
       const topK = typeof raw.topK === "number" && Number.isFinite(raw.topK) ? clampTopK(raw.topK) : defaultTopK;
       let records: readonly HistoryRecord[];

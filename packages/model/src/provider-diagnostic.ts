@@ -6,7 +6,6 @@
  */
 
 import { escapeRegex } from "@muse/shared";
-import { isRecord } from "@muse/shared";
 import type { ModelCapabilities } from "./index.js";
 import { localModelCapabilities } from "./provider-shared.js";
 
@@ -71,10 +70,11 @@ interface DiagnosticPlanStep {
 }
 
 function isDiagnosticPlanStep(value: unknown): value is DiagnosticPlanStep {
-  if (!isRecord(value)) return false;
-  if (typeof value.tool !== "string" || value.tool.length === 0) return false;
-  if (typeof value.description !== "string") return false;
-  return !!value.args && isRecord(value.args) && !Array.isArray(value.args);
+  if (!value || typeof value !== "object") return false;
+  const step = value as Partial<DiagnosticPlanStep>;
+  return typeof step.tool === "string" && step.tool.length > 0
+    && typeof step.description === "string"
+    && !!step.args && typeof step.args === "object" && !Array.isArray(step.args);
 }
 
 /**
@@ -90,7 +90,7 @@ function extractDiagnosticPlanDirective(userPrompt: string): readonly Diagnostic
   try {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every(isDiagnosticPlanStep)) {
-      return parsed;
+      return parsed as readonly DiagnosticPlanStep[];
     }
   } catch {
     // not a well-formed directive — fall through to default planning

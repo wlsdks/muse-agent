@@ -15,7 +15,6 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
-import { isRecord, withBestEffort } from "@muse/shared";
 
 import { withFileLock } from "./encrypted-file.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -92,22 +91,13 @@ export async function readProposedActions(file: string): Promise<ProposedAction[
     await quarantineCorruptStore(file);
     return [];
   }
-  const proposals = readRecordArrayField(parsed, "proposals");
-  if (proposals === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { proposals?: unknown }).proposals)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return proposals.flatMap((entry) =>
+  return (parsed as { proposals: unknown[] }).proposals.flatMap((entry) =>
     isProposedAction(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeProposedActions(file: string, proposals: readonly ProposedAction[]): Promise<void> {
@@ -125,7 +115,7 @@ export async function writeProposedActions(file: string, proposals: readonly Pro
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**

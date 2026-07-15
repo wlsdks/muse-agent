@@ -23,18 +23,13 @@ import {
   sanitizeFilename,
   type CompatibilityRouteOptions
 } from "./compat-routes.js";
-import { readRouteParam } from "./compat-parsers.js";
 
 export async function sessionDetail(
   request: FastifyRequest,
   reply: FastifyReply,
   options: CompatibilityRouteOptions
 ) {
-  const sessionId = readRouteParam(request, "sessionId");
-
-  if (!sessionId) {
-    return reply.status(400).send(errorResponse("Invalid sessionId"));
-  }
+  const { sessionId } = request.params as { readonly sessionId: string };
 
   if (!options.historyStore) {
     return reply.status(404).send({
@@ -64,11 +59,7 @@ export async function compatSessionDetail(
   reply: FastifyReply,
   options: CompatibilityRouteOptions
 ) {
-  const sessionId = readRouteParam(request, "sessionId");
-
-  if (!sessionId) {
-    return reply.status(400).send(errorResponse("Invalid sessionId"));
-  }
+  const { sessionId } = request.params as { readonly sessionId: string };
   const userId = readAuthUserId(request);
 
   if (!userId) {
@@ -150,11 +141,6 @@ export async function exportSession(
   const detail = mode === "compat"
     ? await compatSessionDetail(request, reply, options)
     : await sessionDetail(request, reply, options);
-  const sessionId = readRouteParam(request, "sessionId");
-
-  if (!sessionId) {
-    return reply.status(400).send(errorResponse("Invalid sessionId"));
-  }
 
   if (!isRecord(detail) || !("messages" in detail)) {
     return detail;
@@ -163,6 +149,7 @@ export async function exportSession(
   const format = readQueryString(request, "format")?.toLowerCase();
 
   if (format === "markdown" || format === "md") {
+    const sessionId = (request.params as { readonly sessionId: string }).sessionId;
     const messages = Array.isArray(detail.messages) ? detail.messages : [];
     reply.header("content-disposition", `attachment; filename="${sanitizeFilename(sessionId)}.md"`);
     reply.header("content-type", "text/markdown; charset=utf-8");
@@ -198,13 +185,13 @@ export async function exportSession(
 
   reply.header(
     "content-disposition",
-    `attachment; filename="${sanitizeFilename(sessionId)}.json"`
+    `attachment; filename="${sanitizeFilename((request.params as { readonly sessionId: string }).sessionId)}.json"`
   );
 
   return {
     exportedAt: mode === "compat" ? Date.now() : nowIso(),
     ...detail,
-    sessionId
+    sessionId: (request.params as { readonly sessionId: string }).sessionId
   };
 }
 

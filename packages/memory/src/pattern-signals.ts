@@ -27,7 +27,6 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { isRecord } from "@muse/shared";
 
 export interface ActivityEventSignal {
   readonly kind: string;
@@ -108,12 +107,17 @@ async function readActivityEvents(file: string, sinceMs?: number): Promise<reado
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    const candidate = parseActivityEvent(trimmed);
-    if (!candidate) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(trimmed) as unknown; } catch { continue; }
+    if (!parsed || typeof parsed !== "object") continue;
+    const candidate = parsed as { kind?: unknown; userId?: unknown; tsIso?: unknown };
+    if (typeof candidate.kind !== "string" || typeof candidate.userId !== "string" || typeof candidate.tsIso !== "string") {
       continue;
     }
-    if (sinceMs !== undefined && candidate.tsMs < sinceMs) continue;
-    out.push(candidate);
+    const tsMs = Date.parse(candidate.tsIso);
+    if (!Number.isFinite(tsMs)) continue;
+    if (sinceMs !== undefined && tsMs < sinceMs) continue;
+    out.push({ kind: candidate.kind, tsIso: candidate.tsIso, tsMs, userId: candidate.userId });
   }
   return out;
 }
@@ -126,94 +130,51 @@ async function readTaskSignals(file: string, sinceMs?: number): Promise<readonly
     return [];
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { return []; }
-  if (!isRecord(parsed) || !Array.isArray(parsed.tasks)) return [];
+  try { parsed = JSON.parse(raw) as unknown; } catch { return []; }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) return [];
   const out: TaskSignal[] = [];
-  for (const entry of parsed.tasks) {
-    const candidate = parseTaskSignal(entry);
-    if (!candidate) {
+  for (const entry of (parsed as { tasks: unknown[] }).tasks) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as {
+      id?: unknown;
+      title?: unknown;
+      status?: unknown;
+      createdAt?: unknown;
+      completedAt?: unknown;
+      dueAt?: unknown;
+    };
+    if (
+      typeof candidate.id !== "string"
+      || typeof candidate.title !== "string"
+      || typeof candidate.createdAt !== "string"
+      || (candidate.status !== "open" && candidate.status !== "done")
+    ) {
       continue;
     }
-    if (sinceMs !== undefined && candidate.createdAtMs < sinceMs) {
+    const createdAtMs = Date.parse(candidate.createdAt);
+    if (!Number.isFinite(createdAtMs)) continue;
+    if (sinceMs !== undefined && createdAtMs < sinceMs) {
       // A long-overdue task that was created before the window but
       // completed inside it is still interesting for category 3 (the
       // future sequence detector). Keep it if the completion is in
       // window; otherwise drop. The conservative behaviour for v0
       // is to drop — only category 1 ships now and that consumes
       // note mtimes, not task lifecycles.
-      const completedAtMs = candidate.completedAtMs;
-      if (completedAtMs === undefined || completedAtMs < sinceMs) continue;
+      const completedAtMs = typeof candidate.completedAt === "string" ? Date.parse(candidate.completedAt) : NaN;
+      if (!Number.isFinite(completedAtMs) || completedAtMs < sinceMs) continue;
     }
+    const completedAtMs = typeof candidate.completedAt === "string" ? Date.parse(candidate.completedAt) : undefined;
+    const dueAtMs = typeof candidate.dueAt === "string" ? Date.parse(candidate.dueAt) : undefined;
     out.push({
-      createdAtMs: candidate.createdAtMs,
+      createdAtMs,
       id: candidate.id,
       status: candidate.status,
       title: candidate.title,
-      ...(candidate.completedAtMs !== undefined ? { completedAtMs: candidate.completedAtMs } : {}),
-      ...(candidate.dueAtMs !== undefined ? { dueAtMs: candidate.dueAtMs } : {})
+      ...(completedAtMs !== undefined && Number.isFinite(completedAtMs) ? { completedAtMs } : {}),
+      ...(dueAtMs !== undefined && Number.isFinite(dueAtMs) ? { dueAtMs } : {})
     });
   }
   return out;
-}
-
-function parseActivityEvent(raw: string): ActivityEventSignal | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-
-  if (!isRecord(parsed) || typeof parsed.kind !== "string" || typeof parsed.userId !== "string" || typeof parsed.tsIso !== "string") {
-    return undefined;
-  }
-
-  const tsMs = parseFiniteIsoTimestamp(parsed.tsIso);
-  if (tsMs === undefined) {
-    return undefined;
-  }
-
-  return { kind: parsed.kind, tsIso: parsed.tsIso, tsMs, userId: parsed.userId };
-}
-
-function parseTaskSignal(raw: unknown): TaskSignal | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  const id = typeof raw.id === "string" ? raw.id : "";
-  const title = typeof raw.title === "string" ? raw.title : "";
-  const status = raw.status;
-  if (
-    !id
-    || !title
-    || (status !== "open" && status !== "done")
-  ) {
-    return undefined;
-  }
-  const createdAtMs = parseFiniteIsoTimestamp(raw.createdAt);
-  if (createdAtMs === undefined) {
-    return undefined;
-  }
-  const completedAtMs = parseFiniteIsoTimestamp(raw.completedAt);
-  const dueAtMs = parseFiniteIsoTimestamp(raw.dueAt);
-
-  return {
-    createdAtMs,
-    id,
-    status,
-    title,
-    ...(completedAtMs !== undefined ? { completedAtMs } : {}),
-    ...(dueAtMs !== undefined ? { dueAtMs } : {})
-  };
-}
-
-function parseFiniteIsoTimestamp(value: unknown): number | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 async function readNoteMtimes(notesDir: string, sinceMs?: number): Promise<readonly NoteMtimeSignal[]> {

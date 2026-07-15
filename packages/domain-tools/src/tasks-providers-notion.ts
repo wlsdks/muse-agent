@@ -43,9 +43,6 @@ import {
   NOTION_LIST_MAX_PAGES,
   extractTitleString,
   isRecordArray,
-  readBooleanField,
-  readRecordField,
-  readStringField,
   isTransientNotionStatus,
   mapNotionStatus
 } from "./notion-shared.js";
@@ -108,11 +105,11 @@ export class NotionTasksProvider implements TasksProvider {
     this.statusDoneValue = options.statusDoneValue ?? NOTION_DEFAULT_STATUS_DONE;
     this.endpoint = options.endpoint ?? NOTION_DEFAULT_ENDPOINT;
     this.notionVersion = options.notionVersion ?? NOTION_DEFAULT_VERSION;
-    const fetchImpl = createNotionFetch(options.fetchImpl);
-    if (!fetchImpl) {
+    const globalFetch = (globalThis as { fetch?: NotionFetch }).fetch;
+    this.fetchImpl = options.fetchImpl ?? (globalFetch as NotionFetch);
+    if (!this.fetchImpl) {
       throw new TasksValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
-    this.fetchImpl = fetchImpl;
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
     this.sleep = options.retry?.sleep ?? sleep;
@@ -146,8 +143,8 @@ export class NotionTasksProvider implements TasksProvider {
           all.push(task);
         }
       }
-      const hasMore = readBooleanField(body, "has_more") === true;
-      const nextCursor = readStringField(body, "next_cursor");
+      const hasMore = (body as { has_more?: unknown }).has_more === true;
+      const nextCursor = (body as { next_cursor?: unknown }).next_cursor;
       if (!hasMore || typeof nextCursor !== "string" || nextCursor.length === 0) {
         break;
       }
@@ -208,7 +205,7 @@ export class NotionTasksProvider implements TasksProvider {
     }, true);
     const results = isRecordArray(body, "results");
     return results.flatMap((result): readonly TaskSearchHit[] => {
-      const parent = readRecordField(result, "parent");
+      const parent = (result as { parent?: { database_id?: string } }).parent;
       if (parent?.database_id !== this.databaseId) {
         // Notion's /search is workspace-wide; only surface hits that
         // belong to the configured tasks database so unrelated pages
@@ -240,18 +237,18 @@ export class NotionTasksProvider implements TasksProvider {
     if (!raw || typeof raw !== "object") {
       return undefined;
     }
-    const id = readStringField(raw, "id");
+    const id = (raw as { id?: string }).id;
     if (typeof id !== "string" || id.length === 0) {
       return undefined;
     }
-    const properties = readRecordField(raw, "properties") ?? {};
+    const properties = (raw as { properties?: Record<string, unknown> }).properties ?? {};
     const title = extractTitleString(properties[this.titleProperty]) ?? "(untitled)";
     const statusName = extractSelectName(properties[this.statusProperty]);
     const status: "open" | "done" = statusName === this.statusDoneValue ? "done" : "open";
-    const createdRaw = readStringField(raw, "created_time");
+    const createdRaw = (raw as { created_time?: string }).created_time;
     const createdAt = parseDate(createdRaw) ?? new Date();
     const completedAt = status === "done"
-      ? parseDate(readStringField(raw, "last_edited_time"))
+      ? parseDate((raw as { last_edited_time?: string }).last_edited_time)
       : undefined;
     return {
       createdAt,
@@ -327,12 +324,14 @@ export class NotionTasksProvider implements TasksProvider {
 }
 
 function extractSelectName(value: unknown): string | undefined {
-  const selectRecord = readRecordField(value, "select");
-  if (!selectRecord) {
+  if (!value || typeof value !== "object") {
     return undefined;
   }
-  const name = readStringField(selectRecord, "name");
-  return name;
+  const select = (value as { select?: { name?: unknown } }).select;
+  if (!select || typeof select !== "object") {
+    return undefined;
+  }
+  return typeof select.name === "string" ? select.name : undefined;
 }
 
 function parseDate(raw: unknown): Date | undefined {
@@ -349,15 +348,4 @@ async function safeReadText(response: Response): Promise<string> {
   } catch {
     return `<status ${response.status}>`;
   }
-}
-
-function createNotionFetch(fetchImpl?: NotionFetch): NotionFetch | undefined {
-  if (fetchImpl) {
-    return fetchImpl;
-  }
-  const globalFetch = globalThis.fetch;
-  if (typeof globalFetch !== "function") {
-    return undefined;
-  }
-  return (input, init) => globalFetch(input, init);
 }

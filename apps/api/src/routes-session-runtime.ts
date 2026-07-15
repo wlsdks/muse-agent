@@ -4,7 +4,6 @@ import type { RuntimeSettings } from "@muse/runtime-settings";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated, parseRuntimeSettingInput } from "./server-helpers.js";
-import { readRouteParam, toBody } from "./compat-parsers.js";
 import type { AdminGate } from "./routes-admin-run.js";
 import type { ServerOptions } from "./server.js";
 
@@ -23,10 +22,7 @@ export function registerSessionSummaryRoutes(
         message: "Conversation summary store is not configured"
       });
     }
-    const sessionId = readRouteParam(request, "sessionId");
-    if (!sessionId) {
-      return reply.status(400).send({ code: "INVALID_SESSION_ID", message: "sessionId is required" });
-    }
+    const { sessionId } = request.params as { readonly sessionId: string };
     const summary = await options.conversationSummaryStore.get(sessionId);
     if (!summary) {
       return reply.status(404).send({
@@ -47,20 +43,17 @@ export function registerSessionSummaryRoutes(
         message: "Conversation summary store is not configured"
       });
     }
-    const sessionId = readRouteParam(request, "sessionId");
-    if (!sessionId) {
-      return reply.status(400).send({ code: "INVALID_SESSION_ID", message: "sessionId is required" });
-    }
-    const body = toBody(request.body);
-    const narrative = typeof body.narrative === "string" ? body.narrative.trim() : "";
+    const { sessionId } = request.params as { readonly sessionId: string };
+    const body = request.body as { readonly narrative?: unknown; readonly summarizedUpToIndex?: unknown } | null | undefined;
+    const narrative = typeof body?.narrative === "string" ? body.narrative.trim() : "";
     if (narrative.length === 0) {
       return reply.status(400).send({
         code: "INVALID_CONVERSATION_SUMMARY",
         message: "narrative must be a non-empty string"
       });
     }
-    const summarizedUpToIndex = typeof body.summarizedUpToIndex === "number" && Number.isInteger(body.summarizedUpToIndex)
-      ? body.summarizedUpToIndex
+    const summarizedUpToIndex = Number.isInteger(body?.summarizedUpToIndex)
+      ? (body!.summarizedUpToIndex as number)
       : 0;
     if (summarizedUpToIndex < 0) {
       return reply.status(400).send({
@@ -85,10 +78,7 @@ export function registerSessionSummaryRoutes(
         message: "Conversation summary store is not configured"
       });
     }
-    const sessionId = readRouteParam(request, "sessionId");
-    if (!sessionId) {
-      return reply.status(400).send({ code: "INVALID_SESSION_ID", message: "sessionId is required" });
-    }
+    const { sessionId } = request.params as { readonly sessionId: string };
     const deleted = await options.conversationSummaryStore.delete(sessionId);
     return reply.status(deleted ? 204 : 404).send();
   });
@@ -101,10 +91,7 @@ export function registerRuntimeSettingsRoutes(
   server.get("/settings", async () => runtimeSettings.list());
 
   server.get("/settings/:key", async (request, reply) => {
-    const key = readRouteParam(request, "key");
-    if (!key) {
-      return reply.status(400).send({ code: "INVALID_SETTING_KEY", message: "setting key is required" });
-    }
+    const { key } = request.params as { readonly key: string };
     const setting = await runtimeSettings.find(key);
 
     if (!setting) {
@@ -118,10 +105,7 @@ export function registerRuntimeSettingsRoutes(
   });
 
   server.put("/settings/:key", async (request, reply) => {
-    const key = readRouteParam(request, "key");
-    if (!key) {
-      return reply.status(400).send({ code: "INVALID_SETTING_KEY", message: "setting key is required" });
-    }
+    const { key } = request.params as { readonly key: string };
     const parsed = parseRuntimeSettingInput(key, request.body);
 
     if (!parsed.ok) {
@@ -132,10 +116,7 @@ export function registerRuntimeSettingsRoutes(
   });
 
   server.delete("/settings/:key", async (request) => {
-    const key = readRouteParam(request, "key");
-    if (!key) {
-      return { deleted: false, reason: "invalid setting key" };
-    }
+    const { key } = request.params as { readonly key: string };
 
     await runtimeSettings.delete(key);
     return { deleted: true, key };

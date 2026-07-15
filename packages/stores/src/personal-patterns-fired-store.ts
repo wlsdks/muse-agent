@@ -18,8 +18,6 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface PatternFiredRecord {
@@ -44,15 +42,14 @@ export async function readPatternsFired(file: string): Promise<readonly PatternF
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const fired = readRecordArrayField(parsed, "fired");
-  if (fired === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { fired?: unknown }).fired)) {
     return [];
   }
-  return fired.flatMap((entry): readonly PatternFiredRecord[] =>
+  return (parsed as { fired: unknown[] }).fired.flatMap((entry): readonly PatternFiredRecord[] =>
     isPatternFiredRecord(entry) ? [entry] : []
   );
 }
@@ -141,17 +138,9 @@ export function isPatternOnCooldown(
 }
 
 function isPatternFiredRecord(value: unknown): value is PatternFiredRecord {
-  if (!isRecord(value)) return false;
-  const candidate = value;
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PatternFiredRecord>;
   return typeof candidate.patternId === "string"
     && typeof candidate.firedAtMs === "number"
     && Number.isFinite(candidate.firedAtMs);
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }

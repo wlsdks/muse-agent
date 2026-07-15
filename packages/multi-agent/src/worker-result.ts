@@ -1,7 +1,6 @@
 import type { AgentRunInput, AgentRunResult } from "@muse/agent-core";
 import { INJECTION_SPAN_PLACEHOLDER } from "@muse/agent-core";
 import { createRunId, type JsonObject } from "@muse/shared";
-import { isRecord } from "@muse/shared";
 
 export type ParsedWorkerResult =
   | { readonly ok: true; readonly result: AgentRunResult }
@@ -15,21 +14,20 @@ export type ParsedWorkerResult =
  * failure, never consumed.
  */
 export function parseWorkerResult(value: unknown): ParsedWorkerResult {
-  if (!isWorkerResult(value)) {
+  if (!value || typeof value !== "object") {
     return { ok: false, reason: "worker result is not an object" };
   }
-  if (!value.runId || typeof value.runId !== "string" || value.runId.length === 0) {
+  const candidate = value as { response?: { output?: unknown }; runId?: unknown };
+  if (!candidate.response || typeof candidate.response !== "object") {
+    return { ok: false, reason: "worker result has no response object" };
+  }
+  if (typeof candidate.response.output !== "string") {
+    return { ok: false, reason: "worker response.output is not a string" };
+  }
+  if (typeof candidate.runId !== "string" || candidate.runId.length === 0) {
     return { ok: false, reason: "worker result has no runId" };
   }
-  return { ok: true, result: value };
-}
-
-function isWorkerResult(value: unknown): value is AgentRunResult {
-  return isRecord(value)
-    && isRecord(value.response)
-    && typeof value.response.output === "string"
-    && typeof value.runId === "string"
-    && value.runId.length > 0;
+  return { ok: true, result: value as AgentRunResult };
 }
 
 export type WorkerHandoff =
@@ -78,30 +76,27 @@ export type ParsedHandoffPart =
  * and MUST NOT reach the synthesizer / conflict / redundancy fan-in.
  */
 export function parseHandoffPart(value: unknown): ParsedHandoffPart {
-  if (!isHandoffPart(value)) {
+  if (!value || typeof value !== "object") {
     return { ok: false, reason: "hand-off part is not an object" };
   }
-  if (value.output.length === 0) {
-    return { ok: false, reason: `hand-off part '${value.workerId}' has a blank output (fail-close)` };
+  const candidate = value as { workerId?: unknown; output?: unknown };
+  if (typeof candidate.workerId !== "string" || candidate.workerId.trim().length === 0) {
+    return { ok: false, reason: "hand-off part has no workerId" };
   }
-  const trimmed = value.output.trim();
+  if (typeof candidate.output !== "string") {
+    return { ok: false, reason: `hand-off part '${candidate.workerId}' output is not a string` };
+  }
+  const trimmed = candidate.output.trim();
   if (trimmed.length === 0) {
-    return { ok: false, reason: `hand-off part '${value.workerId}' has a blank output (fail-close)` };
+    return { ok: false, reason: `hand-off part '${candidate.workerId}' has a blank output (fail-close)` };
   }
   if (trimmed === INJECTION_SPAN_PLACEHOLDER) {
     return {
       ok: false,
-      reason: `hand-off part '${value.workerId}' collapsed to the injection placeholder — no substantive content (fail-close)`
+      reason: `hand-off part '${candidate.workerId}' collapsed to the injection placeholder — no substantive content (fail-close)`
     };
   }
-  return { ok: true, part: { output: value.output, workerId: value.workerId } };
-}
-
-function isHandoffPart(value: unknown): value is { readonly workerId: string; readonly output: string } {
-  return isRecord(value)
-    && typeof value.workerId === "string"
-    && value.workerId.trim().length > 0
-    && typeof value.output === "string";
+  return { ok: true, part: { output: candidate.output, workerId: candidate.workerId } };
 }
 
 export function createWorkerResult(

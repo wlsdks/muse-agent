@@ -16,8 +16,6 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord } from "@muse/shared";
-
 import { atomicWriteFile } from "./atomic-file-store.js";
 
 export interface SessionStartInfo {
@@ -46,10 +44,7 @@ export async function detectUncleanShutdown(markerPath: string): Promise<Session
     return undefined;
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    const parsed = JSON.parse(raw) as Partial<SessionStartInfo>;
     if (typeof parsed.startedAt === "string" && typeof parsed.pid === "number") {
       return { pid: parsed.pid, startedAt: parsed.startedAt };
     }

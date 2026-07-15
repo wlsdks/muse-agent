@@ -117,16 +117,14 @@ function countCorpusFiles(dir: string, cap = 1_000): number {
   const stack = [dir];
   while (stack.length > 0 && count < cap) {
     let entries;
-    let currentDir = dir;
     try {
-      currentDir = stack.pop()!;
-      entries = readdirSync(currentDir, { withFileTypes: true });
+      entries = readdirSync(stack.pop()!, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
-      const full = join(currentDir, e.name);
+      const full = join((e as unknown as { parentPath?: string; path?: string }).parentPath ?? (e as unknown as { path: string }).path ?? dir, e.name);
       if (e.isDirectory()) stack.push(full);
       else if (e.isFile() && /\.(md|markdown|txt|pdf)$/iu.test(e.name)) count += 1;
       if (count >= cap) break;
@@ -148,10 +146,10 @@ async function gatherState(io: ProgramIO): Promise<OnboardingState> {
   }
   const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL).replace(/^ollama\//u, "");
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
-  const notesDir = resolveNotesDir(env);
+  const notesDir = resolveNotesDir(env as Record<string, string | undefined>);
   const noteFileCount = countCorpusFiles(notesDir);
   const indexFile = env.MUSE_NOTES_INDEX_FILE?.trim() || join(homedir(), ".muse", "notes-index.json");
-  const { browsingVisitCount, contactsCount } = await countPersonalData(env);
+  const { browsingVisitCount, contactsCount } = await countPersonalData(env as Record<string, string | undefined>);
   return { browsingVisitCount, chatModel, contactsCount, embedModel, indexBuilt: existsSync(indexFile), installedModels, notesDir, noteFileCount, ollamaReachable };
 }
 

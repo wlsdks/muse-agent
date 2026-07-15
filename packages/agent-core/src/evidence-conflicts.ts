@@ -8,8 +8,6 @@ import { cosineSimilarity } from "./episodic-recall.js";
 import type { KnowledgeMatch } from "./knowledge-ranking.js";
 import { lexicalTokens } from "./recall-lexical.js";
 import { comparableScript } from "./script-family.js";
-import { withBestEffort } from "@muse/shared";
-
 
 /**
  * A flagged pair of evidence notes that state the SAME THING but with a
@@ -208,7 +206,7 @@ export async function detectPairwiseContradictions(
 
   let embeddings: Array<readonly number[] | null>;
   try {
-    embeddings = await Promise.all(texts.map((t) => withBestEffort(embed(t), null)));
+    embeddings = await Promise.all(texts.map((t) => embed(t).catch(() => null)));
   } catch {
     return [];
   }

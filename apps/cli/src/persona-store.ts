@@ -20,9 +20,6 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { isRecord } from "@muse/shared";
-import { withBestEffort } from "./async-promises.js";
-
 export interface PersonaTemplate {
   readonly id: string;
   readonly description: string;
@@ -94,18 +91,20 @@ export async function readPersonaStore(file: string): Promise<PersonaStoreShape>
   if (!parsed || typeof parsed !== "object") {
     return { activeId: "default", custom: {} };
   }
-  const candidate = isRecord(parsed) ? parsed : {};
+  const candidate = parsed as Partial<PersonaStoreShape>;
   const activeId = typeof candidate.activeId === "string" && candidate.activeId.length > 0
     ? candidate.activeId
     : "default";
-  const customRaw = isRecord(candidate.custom) ? candidate.custom : {};
+  const customRaw = (candidate.custom && typeof candidate.custom === "object")
+    ? candidate.custom as Record<string, unknown>
+    : {};
   // Null-prototype: a hand-edited file with a `__proto__` /
   // `constructor` key can't mutate a real prototype or leak an
   // inherited member through later bracket access.
-  const custom: Record<string, { preamble: string }> = Object.create(null);
+  const custom: Record<string, { preamble: string }> = Object.create(null) as Record<string, { preamble: string }>;
   for (const [id, value] of Object.entries(customRaw)) {
-    if (!isRecord(value)) continue;
-    const preamble = value.preamble;
+    if (!value || typeof value !== "object") continue;
+    const preamble = (value as { preamble?: unknown }).preamble;
     if (typeof preamble !== "string") continue;
     custom[id] = { preamble };
   }
@@ -117,7 +116,7 @@ export async function writePersonaStore(file: string, store: PersonaStoreShape):
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 /**

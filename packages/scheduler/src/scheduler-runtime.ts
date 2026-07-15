@@ -158,11 +158,10 @@ export class ScheduledJobDispatcher {
     throw lastError instanceof Error ? lastError : new SchedulerExecutionError(`Job '${job.name}' failed`);
   }
 
-  private async dispatchByType(job: ScheduledJob): Promise<string> {
-    if (job.jobType === "mcp_tool") {
-      return await this.mcpInvoker.invoke(job);
-    }
-    return await this.agentExecutor.execute(job);
+  private dispatchByType(job: ScheduledJob): Promise<string> {
+    return job.jobType === "mcp_tool"
+      ? Promise.resolve(this.mcpInvoker.invoke(job))
+      : Promise.resolve(this.agentExecutor.execute(job));
   }
 }
 

@@ -14,7 +14,6 @@ import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES, withBestEffort } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { fetchPublicHttpWithRedirects } from "./public-http-redirect.js";
@@ -66,7 +65,7 @@ export async function writeNonClobbering(dir: string, name: string, bytes: Buffe
       await writeFile(path, bytes, { flag: "wx" });
       return { name: candidate, path };
     } catch (cause) {
-      if (hasNodeErrorCodeIn(cause, NODE_ERROR_CODES.EEXIST)) continue; // taken — try the next dedupe suffix
+      if ((cause as { code?: string }).code === "EEXIST") continue; // taken — try the next dedupe suffix
       throw cause;
     }
   }
@@ -145,7 +144,7 @@ export function createWebDownloadTool(deps: WebDownloadToolDeps): MuseTool {
             if (done) break;
             total += value.byteLength;
             if (total > maxBytes) {
-              await withBestEffort(reader.cancel(), undefined);
+              await reader.cancel().catch(() => undefined);
               return tooLarge(total);
             }
             chunks.push(Buffer.from(value));

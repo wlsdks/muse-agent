@@ -20,7 +20,7 @@
 import { promises as fs } from "node:fs";
 import { dirname, basename } from "node:path";
 
-import { isRecord, type JsonObject } from "@muse/shared";
+import type { JsonObject } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -75,27 +75,18 @@ export async function readFollowups(file: string): Promise<readonly PersistedFol
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const followups = readRecordArrayField(parsed, "followups");
-  if (followups === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { followups?: unknown }).followups)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return followups.flatMap((entry): readonly PersistedFollowup[] =>
+  return (parsed as { followups: unknown[] }).followups.flatMap((entry): readonly PersistedFollowup[] =>
     isPersistedFollowup(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 export async function writeFollowups(file: string, followups: readonly PersistedFollowup[]): Promise<void> {
@@ -273,10 +264,10 @@ export async function snoozeFollowup(
 }
 
 function isPersistedFollowup(value: unknown): value is PersistedFollowup {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value;
+  const candidate = value as PersistedFollowup;
   if (
     typeof candidate.id !== "string" ||
     typeof candidate.userId !== "string" ||

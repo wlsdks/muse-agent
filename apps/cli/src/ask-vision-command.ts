@@ -11,7 +11,6 @@
 import { extractStructuredFromImage } from "@muse/agent-core";
 import { buildCalendarRegistry, resolveContactsFile, resolveNotesDir, resolveVisionModel, type MuseEnvironment } from "@muse/autoconfigure";
 import type { ModelProvider } from "@muse/model";
-import { isRecord } from "@muse/shared";
 
 import type { ProgramIO } from "./program.js";
 
@@ -32,11 +31,8 @@ export async function resolveSessionVisionModel(sessionModel: string, env: MuseE
   const baseUrl = env.OLLAMA_BASE_URL ?? "http://localhost:11434";
   try {
     const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    const body = await res.json();
-    const models = isRecord(body) && Array.isArray(body.models) ? body.models : [];
-    const availableModels = models
-      .filter((value): value is { name: string } => isRecord(value) && typeof value.name === "string")
-      .map((entry) => entry.name);
+    const body = (await res.json()) as { models?: ReadonlyArray<{ name?: string }> };
+    const availableModels = (body.models ?? []).map((m) => m.name ?? "").filter(Boolean);
     return resolveVisionModel({ availableModels, env, sessionModel });
   } catch {
     return desired;
@@ -98,7 +94,7 @@ export async function runVisionCommandAction(params: {
       act = dropUnverifiedOptional(act, droppable);
       io.stdout(`\nℹ dropped unverified optional field(s) — applying the grounded core only: ${droppable.join(", ")}\n`);
     }
-    const env = process.env;
+    const env = process.env as MuseEnvironment;
     let result: unknown;
     if (act.route === "calendar") {
       const { createCalendarMcpServer } = await import("@muse/domain-tools");
@@ -120,7 +116,7 @@ export async function runVisionCommandAction(params: {
       const addContactTool = createContactsAddTool({ contacts: () => readContacts(file, env), save: (c) => addContact(file, c, env) });
       result = await addContactTool.execute(act.fields, { runId: "vision-auto", userId: userKey });
     }
-    io.stdout(errorText(result) ? `\n❌ ${String(errorText(result))}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
+    io.stdout(result && typeof result === "object" && "error" in result ? `\n❌ ${String((result as { error: unknown }).error)}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
     return;
   }
   if (options.toCalendar) {
@@ -143,7 +139,7 @@ export async function runVisionCommandAction(params: {
       return;
     }
     const { createCalendarMcpServer } = await import("@muse/domain-tools");
-    const registry = buildCalendarRegistry(process.env);
+    const registry = buildCalendarRegistry(process.env as MuseEnvironment);
     const addTool = createCalendarMcpServer({ registry }).tools.find((t) => t.name === "add");
     if (!addTool) { io.stderr("no calendar provider configured\n"); process.exitCode = 1; return; }
     const res = await addTool.execute({
@@ -152,7 +148,7 @@ export async function runVisionCommandAction(params: {
       ...(typeof ev.location === "string" ? { location: ev.location } : {}),
       ...(typeof ev.notes === "string" ? { notes: ev.notes } : {})
     });
-    io.stdout(errorText(res) ? `\n❌ ${String(errorText(res))}\n` : `\n✅ Created: ${JSON.stringify(res)}\n`);
+    io.stdout(res && typeof res === "object" && "error" in res ? `\n❌ ${String((res as { error: unknown }).error)}\n` : `\n✅ Created: ${JSON.stringify(res)}\n`);
     return;
   }
   const fields = (options.extract ?? "").split(",").map((f) => f.trim()).filter(Boolean);
@@ -161,16 +157,12 @@ export async function runVisionCommandAction(params: {
     process.exitCode = 1;
     return;
   }
-  const schemaProperties: Record<string, { readonly type: "string" }> = {};
-  for (const field of fields) {
-    schemaProperties[field] = { type: "string" };
-  }
   const ex = await extractStructuredFromImage(modelProvider, {
     imageBase64: img.dataBase64,
     instruction: `Extract these fields from the image: ${fields.join(", ")}.`,
     mimeType: img.mimeType,
     model,
-    schema: { properties: schemaProperties, type: "object" }
+    schema: { properties: Object.fromEntries(fields.map((f) => [f, { type: "string" }])), type: "object" }
   });
   if (!ex.ok) {
     io.stderr(`muse ask --extract: ${ex.error}\n`);
@@ -178,10 +170,4 @@ export async function runVisionCommandAction(params: {
     return;
   }
   io.stdout(`${JSON.stringify(ex.data, null, options.json === true ? 0 : 2)}\n`);
-}
-
-function errorText(value: unknown): string | undefined {
-  if (!isRecord(value) || !("error" in value)) return undefined;
-  const next = value.error;
-  return typeof next === "string" ? next : undefined;
 }

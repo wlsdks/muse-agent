@@ -15,11 +15,8 @@
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-
-
 import { isRecord } from "./credential-store.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
 
 export interface RunLogInput {
   readonly apiUrl?: string;
@@ -136,9 +133,10 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
  * and `undefined` when there's no usable string (caller skips the write). Pure.
  */
 export function chatTurnPersistText(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  if (typeof body.responseForHistory === "string") return body.responseForHistory;
-  if (typeof body.response === "string") return body.response;
+  if (!body || typeof body !== "object") return undefined;
+  const rec = body as Record<string, unknown>;
+  if (typeof rec["responseForHistory"] === "string") return rec["responseForHistory"];
+  if (typeof rec["response"] === "string") return rec["response"];
   return undefined;
 }
 
@@ -152,13 +150,7 @@ export function writeOutput(io: ProgramIO, value: unknown, textField?: string): 
 }
 
 export function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
-  const output: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (entry !== undefined) {
-      output[key] = entry;
-    }
-  }
-  return output;
+  return Object.fromEntries(Object.entries(value).filter((entry) => entry[1] !== undefined));
 }
 
 export function renderActiveContext(snapshot: Record<string, unknown>): string {
@@ -172,7 +164,9 @@ export function renderActiveContext(snapshot: Record<string, unknown>): string {
   const weekday = typeof snapshot.weekday === "string" ? snapshot.weekday : "?";
   const timezone = typeof snapshot.timezone === "string" ? snapshot.timezone : "?";
   lines.push(`now=${nowIso ?? "?"} (${weekday}, ${timezone})`);
-  const workingHours = isRecord(snapshot.workingHours) ? snapshot.workingHours : undefined;
+  const workingHours = isRecord(snapshot.workingHours)
+    ? snapshot.workingHours as { start?: number; end?: number }
+    : undefined;
   if (workingHours && typeof workingHours.start === "number" && typeof workingHours.end === "number") {
     const inWindow = snapshot.isWorkingHours === undefined
       ? "unknown"
@@ -258,7 +252,7 @@ export async function pruneRunLogDir(runDir: string, maxFiles: number): Promise<
   }));
   withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
   const toPrune = withMtime.slice(Math.trunc(maxFiles));
-  await Promise.all(toPrune.map((entry) => withBestEffort(rm(path.join(runDir, entry.name), { force: true }), undefined)));
+  await Promise.all(toPrune.map((entry) => rm(path.join(runDir, entry.name), { force: true }).catch(() => undefined)));
   return toPrune.length;
 }
 

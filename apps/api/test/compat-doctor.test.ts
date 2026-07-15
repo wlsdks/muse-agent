@@ -37,10 +37,7 @@ describe("adminDiagnostic — report mode (json)", () => {
     const { headers, reply } = fakeReply();
     const report = (await adminDiagnostic(request(), reply, options(), "report")) as { sections: { name: string; status: string }[]; generatedAt: string };
     expect(report.sections).toHaveLength(6);
-    const byName: Record<string, string> = {};
-    for (const section of report.sections) {
-      byName[section.name] = section.status;
-    }
+    const byName = Object.fromEntries(report.sections.map((s) => [s.name, s.status]));
     expect(byName).toEqual({
       Database: "OK",
       "Dynamic Scheduler": "SKIPPED",

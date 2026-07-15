@@ -15,7 +15,6 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isRecord, withBestEffort } from "@muse/shared";
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 
 /** Newest entries kept; bounds the file so a chatty extractor can't grow it without limit. */
@@ -130,11 +129,7 @@ export function refinementAwareDistinctValueCount(values: readonly string[]): nu
   const tokenSets = unique.map((v) => valueTokens(v));
   let count = 0;
   for (let i = 0; i < unique.length; i++) {
-    const ti = tokenSets[i];
-    if (ti === undefined) {
-      continue;
-    }
-
+    const ti = tokenSets[i] as Set<string>;
     // A value is a refinement (absorbed) iff its tokens are a STRICT subset of another's.
     const absorbed = ti.size > 0 && tokenSets.some((tj, j) => j !== i && ti.size < tj.size && isTokenSubset(ti, tj));
     if (!absorbed) count++;
@@ -204,9 +199,8 @@ export function deriveFactProvenance(entries: readonly BeliefProvenance[]): read
   const out: FactProvenance[] = [];
   for (const [key, group] of byKey) {
     const sorted = [...group].sort((a, b) => Date.parse(a.learnedAt) - Date.parse(b.learnedAt));
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    if (!first || !last) continue;
+    const first = sorted[0] as BeliefProvenance;
+    const last = sorted[sorted.length - 1] as BeliefProvenance;
     out.push({
       confirmCount: group.length,
       distinctValueCount: refinementAwareDistinctValueCount(group.map((e) => e.value)),
@@ -605,7 +599,7 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
@@ -621,11 +615,11 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
       return [];
     }
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return parsed.entries.flatMap((entry): readonly BeliefProvenance[] =>
+  return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly BeliefProvenance[] =>
     isBeliefProvenance(entry) ? [entry] : []
   );
 }
@@ -648,7 +642,7 @@ export async function writeBeliefProvenance(file: string, entries: readonly Beli
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 function compareNewestFirst(a: BeliefProvenance, b: BeliefProvenance): number {
@@ -684,8 +678,8 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
 }
 
 function isBeliefProvenance(value: unknown): value is BeliefProvenance {
-  if (!isRecord(value)) return false;
-  const e = value;
+  if (!value || typeof value !== "object") return false;
+  const e = value as Partial<BeliefProvenance>;
   if (typeof e.userId !== "string" || e.userId.length === 0) return false;
   if (typeof e.key !== "string" || e.key.length === 0) return false;
   if (e.kind !== "fact" && e.kind !== "preference") return false;

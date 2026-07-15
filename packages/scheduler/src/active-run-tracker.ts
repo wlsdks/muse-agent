@@ -9,7 +9,7 @@
  * without real timers.
  */
 
-import { sleep as defaultSleep, withBestEffort } from "@muse/shared";
+import { sleep as defaultSleep } from "@muse/shared";
 
 export type DrainOutcome = "drained" | "timeout";
 
@@ -19,9 +19,11 @@ export class ActiveRunTracker {
   /** Register an in-flight run; it is auto-removed when it settles. Returns the same promise. */
   track<T>(run: Promise<T>): Promise<T> {
     this.active.add(run);
-    void withBestEffort(run, undefined).finally(() => {
-      this.active.delete(run);
-    });
+    void run
+      .catch(() => undefined)
+      .finally(() => {
+        this.active.delete(run);
+      });
     return run;
   }
 
@@ -41,16 +43,13 @@ export class ActiveRunTracker {
     if (this.active.size === 0) {
       return "drained";
     }
-    const timeout = (async () => {
-      await sleep(timeoutMs);
-      return "timeout";
-    })();
-    const outcome = await Promise.race<
-      readonly PromiseSettledResult<unknown>[] | "timeout"
-    >([
+    let timedOut = false;
+    await Promise.race([
       Promise.allSettled([...this.active]),
-      timeout
+      sleep(timeoutMs).then(() => {
+        timedOut = true;
+      })
     ]);
-    return outcome === "timeout" ? "timeout" : "drained";
+    return timedOut ? "timeout" : "drained";
   }
 }

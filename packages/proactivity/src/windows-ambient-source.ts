@@ -75,14 +75,12 @@ export class WindowsActiveWindowSource implements AmbientSignalSource {
   private readonly maxClipboardChars: number;
 
   constructor(options: WindowsActiveWindowSourceOptions = {}) {
-    const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs)
-      ? Math.max(1, Math.trunc(options.timeoutMs))
-      : 5_000;
+    const timeoutMs = options.timeoutMs ?? 5_000;
     this.run = options.run ?? ((script) => defaultPowerShellRun(script, timeoutMs));
     this.includeClipboard = options.includeClipboard ?? false;
     this.readClipboard = options.readClipboard ?? (() => defaultPowerShellRun("Get-Clipboard", timeoutMs));
-    this.maxClipboardChars = typeof options.maxClipboardChars === "number" && Number.isFinite(options.maxClipboardChars)
-      ? Math.max(1, Math.trunc(options.maxClipboardChars))
+    this.maxClipboardChars = Number.isFinite(options.maxClipboardChars)
+      ? Math.max(1, Math.trunc(options.maxClipboardChars as number))
       : 2_000;
   }
 
@@ -114,16 +112,7 @@ export class WindowsActiveWindowSource implements AmbientSignalSource {
 }
 
 function defaultPowerShellRun(script: string, timeoutMs: number): Promise<string | undefined> {
-  return (async (): Promise<string | undefined> => {
-    try {
-      const { stdout } = await execFile(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", script],
-        { timeout: timeoutMs, encoding: "utf8" }
-      );
-      return stdout;
-    } catch {
-      return undefined;
-    }
-  })();
+  return execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: timeoutMs, encoding: "utf8" })
+    .then(({ stdout }) => stdout)
+    .catch(() => undefined);
 }

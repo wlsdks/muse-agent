@@ -101,11 +101,7 @@ describe("muse bg (read-only command)", () => {
     ] }), "utf8");
     const h = harness(file);
     await h.program.parseAsync(["bg", "list", "--json"], { from: "user" });
-    const parsed = JSON.parse(h.out.join("")) as { processes: { id: string; status: string }[] };
-    const byId: Record<string, string> = {};
-    for (const process of parsed.processes) {
-      byId[process.id] = process.status;
-    }
+    const byId = Object.fromEntries((JSON.parse(h.out.join("")) as { processes: { id: string; status: string }[] }).processes.map((p) => [p.id, p.status]));
     expect(byId.dead).toBe("exited"); // PID gone -> reconciled
     expect(byId.live).toBe("running"); // our own PID is alive
   });

@@ -4,80 +4,70 @@ import {
   PlanExecutionError,
   PlanValidationFailedError
 } from "@muse/agent-core";
-import { isRecord, redactSecretsInText } from "@muse/shared";
+import { redactSecretsInText } from "@muse/shared";
+
+import type { ApiError } from "./server-helpers.js";
 
 export function sendAgentError(
-  reply: { status(statusCode: number): { send(payload: unknown): void } },
+  reply: { status(statusCode: number): { send(payload: ApiError): void } },
   error: unknown,
   responseMode: "extended" | "compat"
 ) {
   if (error instanceof GuardBlockedError) {
-    return reply.status(403).send(
-      chatErrorResponse({
+    return reply.status(403).send(chatErrorResponse({
       blockReason: error.message,
       code: error.code ?? "GUARD_BLOCKED",
       errorCode: error.code ?? "GUARD_BLOCKED",
       errorMessage: error.message,
       message: error.message
-      }, responseMode)
-    );
+    }, responseMode) as ApiError);
   }
 
   if (error instanceof OutputGuardBlockedError) {
-    return reply.status(422).send(
-      chatErrorResponse({
+    return reply.status(422).send(chatErrorResponse({
       blockReason: error.message,
       code: error.code ?? "OUTPUT_GUARD_BLOCKED",
       errorCode: error.code ?? "OUTPUT_GUARD_BLOCKED",
       errorMessage: error.message,
       message: error.message
-      }, responseMode)
-    );
+    }, responseMode) as ApiError);
   }
 
   if (error instanceof PlanExecutionError) {
-    return reply.status(422).send(
-      chatErrorResponse({
+    return reply.status(422).send(chatErrorResponse({
       code: error.code,
       errorCode: error.code,
       errorMessage: error.message,
       message: error.message
-      }, responseMode)
-    );
+    }, responseMode) as ApiError);
   }
 
   if (error instanceof PlanValidationFailedError) {
-    return reply.status(422).send(
-      chatErrorResponse({
+    return reply.status(422).send(chatErrorResponse({
       code: "PLAN_VALIDATION_FAILED",
       errorCode: "PLAN_VALIDATION_FAILED",
       errorMessage: error.message,
       message: error.message
-      }, responseMode)
-    );
+    }, responseMode) as ApiError);
   }
 
   if (isRetryableUpstreamError(error)) {
     const upstreamMessage = unwrapErrorMessage(error);
-    return reply.status(503).send(
-      chatErrorResponse({
+    return reply.status(503).send(chatErrorResponse({
       code: "UPSTREAM_UNAVAILABLE",
       errorCode: "UPSTREAM_UNAVAILABLE",
       errorMessage: upstreamMessage,
       message: upstreamMessage
-      }, responseMode)
-    );
+    }, responseMode) as ApiError);
   }
 
   const message = unwrapErrorMessage(error);
-  return reply.status(500).send(
-    chatErrorResponse({
+  return reply.status(500).send(chatErrorResponse({
     code: "AGENT_RUN_FAILED",
     errorCode: "AGENT_RUN_FAILED",
     errorMessage: message,
     message
-  }, responseMode)
-  );
+  }, responseMode) as ApiError);
 }
 
 /**
@@ -92,12 +82,13 @@ export function sendAgentError(
 function isRetryableUpstreamError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
-  while (isRecord(current) && !seen.has(current)) {
+  while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    if (current.name === "ModelProviderError" && current.retryable === true) {
+    const candidate = current as { name?: unknown; retryable?: unknown; cause?: unknown };
+    if (candidate.name === "ModelProviderError" && candidate.retryable === true) {
       return true;
     }
-    current = current.cause;
+    current = candidate.cause;
   }
   return false;
 }
@@ -127,7 +118,7 @@ export function unwrapErrorMessage(error: unknown): string {
   while (current instanceof Error && !seen.has(current)) {
     seen.add(current);
     segments.push(current.message);
-    current = current.cause;
+    current = (current as Error & { readonly cause?: unknown }).cause;
   }
 
   return redactSecretsInText(segments.join(" — "));

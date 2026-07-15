@@ -127,30 +127,35 @@ export function routeMethods(method: string | readonly string[]): readonly strin
 }
 
 export function createOpenApiDocument(apiRouteMethods: ReadonlyMap<string, ReadonlySet<string>>): JsonObject {
-  const paths: Record<string, Record<string, JsonObject>> = {};
-  for (const [path, methods] of [...apiRouteMethods.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-    const methodResponses: Record<string, JsonObject> = {};
-    for (const method of [...methods]
-      .filter((method) => method !== "head" && method !== "options")
-      .sort()) {
-      methodResponses[method] = {
-        responses: {
-          "200": {
-            description: "OK"
-          }
-        },
-        summary: `${method.toUpperCase()} ${path}`
-      };
-    }
-    paths[path] = methodResponses;
-  }
   return {
     info: {
       title: "Muse API",
       version: "0.0.0"
     },
     openapi: "3.1.0",
-    paths
+    paths: Object.fromEntries(
+      [...apiRouteMethods.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([path, methods]) => [
+          path,
+          Object.fromEntries(
+            [...methods]
+              .filter((method) => method !== "head" && method !== "options")
+              .sort()
+              .map((method) => [
+                method,
+                {
+                  responses: {
+                    "200": {
+                      description: "OK"
+                    }
+                  },
+                  summary: `${method.toUpperCase()} ${path}`
+                }
+              ])
+          )
+        ])
+    )
   };
 }
 

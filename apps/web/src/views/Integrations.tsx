@@ -5,7 +5,6 @@ import { AsyncBlock, Badge, Button, Card, Icon, Tooltip } from "../components/ui
 import { useI18n } from "../i18n/index.js";
 import { severityTone, sortChecks, worstSeverity } from "./doctor-logic.js";
 import { canDisconnect, daemonBadge, emailStatusView, providerStatus, requiresHomeserver, schedulerDeliveryValue } from "./integrations-logic.js";
-import { errorMessage } from "../lib/error-message.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { Translate } from "../i18n/index.js";
@@ -374,8 +373,8 @@ function ProviderCard({
           </Tooltip>
         </div>
 
-        {connect.error && <div className="banner err">{errorMessage(connect.error)}</div>}
-        {disconnect.error && <div className="banner err">{errorMessage(disconnect.error)}</div>}
+        {connect.error && <div className="banner err">{(connect.error as Error).message}</div>}
+        {disconnect.error && <div className="banner err">{(disconnect.error as Error).message}</div>}
 
         {provider.configured && provider.registered && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -387,7 +386,7 @@ function ProviderCard({
             {testSend.data && <Badge tone="ok">{t("int.testSent", { destination: testSend.data.destination })}</Badge>}
           </div>
         )}
-        {testSend.error && <div className="banner err">{errorMessage(testSend.error)}</div>}
+        {testSend.error && <div className="banner err">{(testSend.error as Error).message}</div>}
 
         {provider.configured && (
           <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -418,7 +417,7 @@ function ProviderCard({
           </div>
         )}
         {pairingReset && !provider.pairedOwner && <div className="banner">{t("int.pairing.resetDone")}</div>}
-        {resetPairing.error && <div className="banner err">{errorMessage(resetPairing.error)}</div>}
+        {resetPairing.error && <div className="banner err">{(resetPairing.error as Error).message}</div>}
         {provider.configured && (
           <div>
             {canDisconnect(provider) ? (

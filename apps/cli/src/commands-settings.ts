@@ -6,17 +6,10 @@
 
 import type { Command } from "commander";
 
-import { parseBooleanTriState } from "@muse/autoconfigure";
 import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
-const SETTING_TYPES = ["string", "number", "boolean", "json"] as const;
-type SettingType = (typeof SETTING_TYPES)[number];
-const SETTING_TYPES_SET = new Set<string>(SETTING_TYPES);
-
-function isSettingType(raw: string): raw is SettingType {
-  return SETTING_TYPES_SET.has(raw);
-}
+const SETTING_TYPES: readonly string[] = ["string", "number", "boolean", "json"];
 
 export interface SettingsCommandHelpers {
   readonly apiRequest: (
@@ -31,7 +24,7 @@ export interface SettingsCommandHelpers {
 
 export function inferSettingType(value: string): "boolean" | "number" | "json" | "string" {
   const trimmed = value.trim();
-  if (parseBooleanTriState(trimmed) !== undefined) {
+  if (trimmed === "true" || trimmed === "false") {
     return "boolean";
   }
   if (/^-?\d+(\.\d+)?$/u.test(trimmed)) {
@@ -82,10 +75,10 @@ export function registerSettingsCommands(program: Command, io: ProgramIO, helper
       options: { readonly type?: string; readonly category?: string },
       command: Command
     ) => {
-      let type: SettingType;
+      let type: string;
       if (options.type !== undefined) {
         const normalized = options.type.trim().toLowerCase();
-        if (!isSettingType(normalized)) {
+        if (!SETTING_TYPES.includes(normalized)) {
           const suggestion = closestCommandName(normalized, SETTING_TYPES);
           const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
           throw new Error(`--type must be one of string | number | boolean | json (got '${options.type}')${hint}`);

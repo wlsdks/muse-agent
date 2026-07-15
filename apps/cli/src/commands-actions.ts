@@ -7,32 +7,22 @@
  * is required.
  */
 
-import { resolveActionLogFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveActionLogFile } from "@muse/autoconfigure";
 import { decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
-function environment(): MuseEnvironment {
-  return process.env;
-}
-
 const RESULT_FILTERS = ["performed", "refused", "failed", "noted", "all"] as const;
-type ResultFilter = (typeof RESULT_FILTERS)[number];
-const RESULT_FILTER_SET = new Set<string>(RESULT_FILTERS);
-
-function isResultFilter(raw: string): raw is ResultFilter {
-  return RESULT_FILTER_SET.has(raw);
-}
 
 function actionLogFile(): string {
-  return resolveActionLogFile(environment());
+  return resolveActionLogFile(process.env as Record<string, string | undefined>);
 }
 
 function assertResult(raw: string): void {
   const v = raw.trim().toLowerCase();
-  if (isResultFilter(v)) {
+  if (RESULT_FILTERS.includes(v as (typeof RESULT_FILTERS)[number])) {
     return;
   }
   const hint = closestCommandName(v, RESULT_FILTERS);

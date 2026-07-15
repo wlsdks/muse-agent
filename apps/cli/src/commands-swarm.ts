@@ -6,17 +6,17 @@
  * the user-facing half of the personal swarm's "inbound is inert" guarantee.
  */
 
-import { createServer, type IncomingHttpHeaders } from "node:http";
+import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
+
 import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import { addToQuarantine, buildSwarmSkillDraft, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
-import { parseBooleanFromEnv } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";
 
@@ -24,17 +24,6 @@ import { councilCorpusMatches, defaultEmbedModel, isCouncilGroundedMode } from "
 import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 import { readRequestBody, waitForShutdownSignal } from "./async-promises.js";
-import { withBestEffort } from "./async-promises.js";
-
-function normalizeA2ARequestHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string | undefined>> {
-  const normalized: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    if (typeof value === "string") {
-      normalized[key] = value;
-    }
-  }
-  return normalized;
-}
 
 /**
  * Read an inbound A2A request body with a hard size cap so an unbounded
@@ -223,7 +212,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       const config = await loadPeerConfig(peersFile());
       const pendingCount = listPending(await readQuarantine(quarantineFile())).length;
       io.stdout(`${renderSwarmStatus({
-        councilEnabled: parseBooleanFromEnv(env.MUSE_A2A_COUNCIL, false),
+        councilEnabled: ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase()),
         councilGrounded: isCouncilGroundedMode(env),
         enabled: isA2AEnabled(env),
         pendingCount,
@@ -261,7 +250,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env) });
+      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
       const result = await store.writeOrPatch(buildSwarmSkillDraft(entry));
       await setQuarantineStatus(file, entry.id, "promoted", Date.now());
       io.stdout(`✅ Promoted ${entry.id.slice(0, 8)} from ${entry.fromPeerId} → authored skill (${result.action}, execute-gated).\n`);
@@ -298,14 +287,14 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       }
       let content: string | undefined;
       if (options.file) {
-        content = await withBestEffort(readFile(options.file, "utf8"), undefined);
+        content = await readFile(options.file, "utf8").catch(() => undefined);
         if (content === undefined) {
           io.stderr(`muse swarm share: cannot read --file '${options.file}'.\n`);
           process.exitCode = 1;
           return;
         }
       } else {
-        const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env) });
+        const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env as Record<string, string | undefined>) });
         const skill = (await store.listAuthored()).find((s) => s.name === skillName);
         if (!skill) {
           io.stderr(`muse swarm share: no authored skill named '${skillName}' (see \`muse skills authored\`, or pass --file <path>).\n`);
@@ -358,7 +347,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       // notes can't ground — an ignorant peer stays silent instead of injecting a
       // confident-but-ungrounded opinion (only the abstain/speak decision crosses
       // the wire; the corpus never does).
-      const councilOn = parseBooleanFromEnv(env.MUSE_A2A_COUNCIL, false);
+      const councilOn = ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase());
       let councilReason: ((question: string) => Promise<string>) | undefined;
       if (councilOn) {
         const assembly = createMuseRuntimeAssembly();
@@ -378,24 +367,25 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         ...(councilReason ? { councilReason } : {})
       });
       const server = createServer((req, res) => {
-        void (async (): Promise<void> => {
-          try {
-            const body = await readSwarmBody(req);
-            const r = await handler({
+        void readSwarmBody(req)
+          .then((body) =>
+            handler({
               body,
-              headers: normalizeA2ARequestHeaders(req.headers),
+              headers: req.headers as Record<string, string | undefined>,
               method: req.method ?? "GET",
               path: req.url ?? "/"
-            });
+            })
+          )
+          .then((r) => {
             res.writeHead(r.status, { "content-type": r.contentType });
             res.end(r.body);
-          } catch {
+          })
+          .catch(() => {
             if (!res.headersSent) {
               res.writeHead(413, { "content-type": "text/plain" });
             }
             res.end("payload too large");
-          }
-        })();
+          });
       });
       server.listen(port, options.host, () => {
         io.stdout(

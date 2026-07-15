@@ -12,7 +12,7 @@
  * (NO arbitrary code execution: the plan is a closed, interpreted schema, not `eval`).
  */
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 export interface ToolPlanStep {
   /** Binding name this step's output is stored under, referenceable by LATER steps as `$as`. */
@@ -140,7 +140,7 @@ export function parseToolPlan(raw: unknown, options: ParseToolPlanOptions = {}):
       }
     }
     priorBindings.add(as);
-    parsedSteps.push({ args: toJsonObject(args), as, tool });
+    parsedSteps.push({ args: args as JsonObject, as, tool });
   }
 
   const resultRef = parseRef(result.trim());
@@ -164,31 +164,6 @@ function getPath(value: unknown, path: readonly string[]): unknown {
     }
   }
   return cursor;
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => toJsonValue(item)).filter((item): item is JsonValue => item !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 function resolveArgs(args: Record<string, unknown>, bindings: ReadonlyMap<string, unknown>): Record<string, unknown> {

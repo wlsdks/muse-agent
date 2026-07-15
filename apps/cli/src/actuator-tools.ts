@@ -62,11 +62,9 @@ import {
 } from "@muse/browser";
 import type { MuseTool } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
-import { parseBooleanFromEnv } from "@muse/shared";
 
 import { resolveBrowserMaxActions } from "./browser-action-budget-config.js";
 import type { ProgramIO } from "./program.js";
-import { confirmBoolean } from "./confirm-boolean.js";
 import { isGmailConfigured, resolveGmailProvider } from "./resolve-gmail-provider.js";
 
 export interface ActuatorSummary {
@@ -141,12 +139,14 @@ export function summarizeActuators(env: MuseEnvironment, io: ProgramIO): Actuato
  * env-gated posture of the email / smart-home actuators.
  */
 function macActuatorsEnabled(env: MuseEnvironment): boolean {
-  return parseBooleanFromEnv(env.MUSE_MACOS_ACTUATORS, false);
+  const value = env.MUSE_MACOS_ACTUATORS?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 /** The Windows-actuator opt-in — same dark-by-default posture as macOS. */
 function windowsActuatorsEnabled(env: MuseEnvironment): boolean {
-  return parseBooleanFromEnv(env.MUSE_WINDOWS_ACTUATORS, false);
+  const value = env.MUSE_WINDOWS_ACTUATORS?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 export function formatActuatorBanner(summary: ActuatorSummary): string {
@@ -414,7 +414,7 @@ export interface BrowserToolsDeps {
 export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
   const confirmAction =
     deps.confirmAction ??
-    ((message: string) => confirmBoolean(confirm, isCancel, message));
+    ((message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true));
   const controller = new PuppeteerBrowserController();
   // One-shot callers (muse ask) MUST disconnect after the run: the open CDP
   // socket pins the Node event loop, so without this the process never exits
@@ -459,7 +459,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const fetchImpl = deps.fetchImpl ?? io.fetch ?? globalThis.fetch;
   const confirmAction =
     deps.confirmAction ??
-    ((message: string) => confirmBoolean(confirm, isCancel, message));
+    ((message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true));
   const actionLogFile = resolveActionLogFile(env);
   const tools: MuseTool[] = [];
 

@@ -148,18 +148,8 @@ export async function applyTurnLearnings(
   const changes = selectNewSupersessions(before, after?.factHistory ?? []);
   const changedKeys = new Set(changes.map((entry) => entry.key));
   const confirmation = after ? formatLearnedConfirmation(changes, after) : undefined;
-  const newFacts: Record<string, string> = {};
-  for (const [key, value] of Object.entries(wroteFacts)) {
-    if (!changedKeys.has(key)) {
-      newFacts[key] = value;
-    }
-  }
-  const newPrefs: Record<string, string> = {};
-  for (const [key, value] of Object.entries(wrotePrefs)) {
-    if (!changedKeys.has(key)) {
-      newPrefs[key] = value;
-    }
-  }
+  const newFacts = Object.fromEntries(Object.entries(wroteFacts).filter(([key]) => !changedKeys.has(key)));
+  const newPrefs = Object.fromEntries(Object.entries(wrotePrefs).filter(([key]) => !changedKeys.has(key)));
   const summary = formatLearnedSummary(newFacts, newPrefs);
   return { ...(summary ? { summary } : {}), ...(confirmation ? { confirmation } : {}) };
 }

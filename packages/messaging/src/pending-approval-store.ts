@@ -19,10 +19,6 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { isRecord, withBestEffort } from "@muse/shared";
-
-import { serializePerFile } from "./file-mutation-queue.js";
-
 export interface PendingApproval {
   readonly id: string;
   /** Tool the agent attempted (e.g. "email_send"). */
@@ -44,10 +40,10 @@ export interface PendingApproval {
 const PENDING_APPROVAL_MAX_ENTRIES = 200;
 
 function isPendingApproval(value: unknown): value is PendingApproval {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const e = value;
+  const e = value as Record<string, unknown>;
   return (
     typeof e["id"] === "string"
     && typeof e["tool"] === "string"
@@ -78,16 +74,16 @@ export async function readPendingApprovals(file: string): Promise<readonly Pendi
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorrupt(file);
     return [];
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.pending)) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { pending?: unknown }).pending)) {
     await quarantineCorrupt(file);
     return [];
   }
-  return parsed.pending.filter(isPendingApproval);
+  return (parsed as { pending: unknown[] }).pending.filter(isPendingApproval);
 }
 
 async function writePendingApprovals(file: string, pending: readonly PendingApproval[]): Promise<void> {
@@ -106,7 +102,7 @@ async function writePendingApprovals(file: string, pending: readonly PendingAppr
     await handle.close();
   }
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 // Per-file mutation queue: record/clear are read-modify-write, so two
@@ -115,6 +111,13 @@ async function writePendingApprovals(file: string, pending: readonly PendingAppr
 // approval — i.e. a refused action lost). Serialising the WHOLE op per file
 // makes the store lossless under concurrency, mirroring the inbox write-queue.
 const mutationQueues = new Map<string, Promise<unknown>>();
+const resolvedPromise = async (): Promise<unknown> => undefined;
+function serializePerFile<T>(file: string, op: () => Promise<T>): Promise<T> {
+  const prior = mutationQueues.get(file) ?? resolvedPromise();
+  const next = prior.then(op, op);
+  mutationQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
+}
 
 /**
  * Append a pending approval, capped to the most recent
@@ -122,7 +125,7 @@ const mutationQueues = new Map<string, Promise<unknown>>();
  * the file without bound. Serialised per file (lossless under concurrency).
  */
 export async function recordPendingApproval(file: string, entry: PendingApproval): Promise<void> {
-  await serializePerFile(mutationQueues, file, async () => {
+  await serializePerFile(file, async () => {
     const existing = await readPendingApprovals(file);
     const combined = [...existing, entry];
     const capped = combined.length > PENDING_APPROVAL_MAX_ENTRIES
@@ -164,7 +167,7 @@ export async function listPendingApprovals(
  * expired entries while rewriting, keeping the file lean.
  */
 export async function clearPendingApproval(file: string, id: string, now: () => Date = () => new Date()): Promise<boolean> {
-  return serializePerFile(mutationQueues, file, async () => {
+  return serializePerFile(file, async () => {
     const existing = await readPendingApprovals(file);
     const cutoff = now().getTime();
     const kept = existing.filter((entry) => entry.id !== id && Date.parse(entry.expiresAt) > cutoff);

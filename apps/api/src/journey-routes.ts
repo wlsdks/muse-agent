@@ -23,21 +23,26 @@ import {
 } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
-import { readQueryInteger, readQueryString, isRecord } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
 const JOURNEY_KINDS: readonly JourneyStoreKind[] = ["fact", "skill", "strategy"];
-const JOURNEY_KINDS_LIST = [...JOURNEY_KINDS];
 
-function parseJourneyKind(value: string | undefined): JourneyStoreKind | undefined {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return undefined;
-  const matched = JOURNEY_KINDS_LIST.find((kind) => kind === normalized);
-  if (matched === undefined) {
-    return undefined;
-  }
-  return matched;
+function isJourneyStoreKind(value: string): value is JourneyStoreKind {
+  return (JOURNEY_KINDS as readonly string[]).includes(value);
+}
+
+function readString(request: { query?: unknown }, key: string): string {
+  const query = (request.query as Record<string, unknown> | undefined) ?? {};
+  const value = query[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readLimit(request: { query?: unknown }, fallback: number): number | undefined {
+  const raw = readString(request, "limit");
+  if (raw === "") return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 500) : fallback;
 }
 
 export interface JourneyRoutesGate {
@@ -55,12 +60,11 @@ export function registerJourneyRoutes(server: FastifyInstance, gate: JourneyRout
     if (!authed(request, reply)) {
       return reply;
     }
-    const kindRaw = readQueryString(request, "kind");
-    const kind = parseJourneyKind(kindRaw);
-    if (kindRaw !== undefined && kind === undefined) {
+    const kindRaw = readString(request, "kind");
+    if (kindRaw && !isJourneyStoreKind(kindRaw)) {
       return reply.status(400).send({ error: `kind must be one of: ${JOURNEY_KINDS.join(", ")}` });
     }
-    const since = readQueryString(request, "since");
+    const since = readString(request, "since");
     if (since && !Number.isFinite(Date.parse(since))) {
       return reply.status(400).send({ error: "since must be a valid ISO date" });
     }
@@ -77,8 +81,7 @@ export function registerJourneyRoutes(server: FastifyInstance, gate: JourneyRout
       ...(e.lastReinforcedAt ? { lastReinforcedAt: e.lastReinforcedAt } : {})
     }));
     const skillRecords: readonly JourneySkillRecord[] = skills.map((s) => {
-      const rawMuse = s.frontmatter.metadata?.["muse"];
-      const muse = isRecord(rawMuse) ? rawMuse : {};
+      const muse = (s.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
       const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt : undefined;
       const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
       return {
@@ -88,12 +91,12 @@ export function registerJourneyRoutes(server: FastifyInstance, gate: JourneyRout
         ...(lastUsedAt ? { lastUsedAt } : {})
       };
     });
-    const limit = readQueryInteger(request, "limit", 50);
+    const limit = readLimit(request, 50);
     const events = mergeJourneyEvents({
       facts,
       skills: skillRecords,
       strategies,
-      ...(kind ? { kind } : {}),
+      ...(kindRaw ? { kind: kindRaw as JourneyStoreKind } : {}),
       ...(since ? { since } : {}),
       ...(limit !== undefined ? { limit } : {})
     });

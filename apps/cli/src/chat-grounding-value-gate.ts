@@ -1,4 +1,4 @@
-import { monthDayKeys, stripCitationMarkers, type KnowledgeMatch } from "@muse/agent-core";
+import { monthDayKeys, type KnowledgeMatch } from "@muse/agent-core";
 
 // The deterministic anti-fabrication value guards for the conversational
 // surface: pure, sync, no-model-call checks that a number / email / URL /
@@ -22,17 +22,6 @@ function valueNumbers(text: string): Set<string> {
   return out;
 }
 
-function buildQuestionAndEvidenceText(question: string, matches: readonly KnowledgeMatch[]): string {
-  if (matches.length === 0) {
-    return stripCitationMarkers(question);
-  }
-  return stripCitationMarkers(`${question} ${matches.map((match) => match.text).join(" ")}`);
-}
-
-function citedText(text: string): string {
-  return stripCitationMarkers(text);
-}
-
 /**
  * Does the answer assert a substantive NUMBER present in neither the retrieved
  * evidence nor the question? `muse ask` catches this wrong-VALUE drift with a
@@ -51,9 +40,12 @@ export function answerAssertsUnsupportedNumber(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const answerNumbers = valueNumbers(citedText(answer));
+  const answerNumbers = valueNumbers(answer.replace(/\[[^\]]*\]/gu, " "));
   if (answerNumbers.size === 0) return false;
-  const supported = valueNumbers(buildQuestionAndEvidenceText(question, matches));
+  const supported = new Set<string>(valueNumbers(question));
+  for (const match of matches) {
+    for (const number of valueNumbers(match.text)) supported.add(number);
+  }
   for (const number of answerNumbers) {
     if (!supported.has(number)) return true;
   }
@@ -78,18 +70,10 @@ export function answerAssertsUnsupportedEmail(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const assertedEmails = citedText(answer)
-    .match(EMAIL_RE) ?? [];
-  if (assertedEmails.length === 0) return false;
-  const assertedEmailSet = new Set<string>(assertedEmails.map((address) => address.toLowerCase()));
-  const evidenceEmails = new Set<string>();
-  for (const address of buildQuestionAndEvidenceText(question, matches).toLowerCase().match(EMAIL_RE) ?? []) {
-    evidenceEmails.add(address);
-  }
-  for (const address of assertedEmailSet) {
-    if (!evidenceEmails.has(address)) return true;
-  }
-  return false;
+  const emails = answer.replace(/\[[^\]]*\]/gu, " ").match(EMAIL_RE) ?? [];
+  if (emails.length === 0) return false;
+  const haystack = `${question} ${matches.map((match) => match.text).join(" ")}`.toLowerCase();
+  return emails.some((address) => !haystack.includes(address.toLowerCase()));
 }
 
 // A bare host or http(s) URL the answer asserts. The first alternative matches an
@@ -159,9 +143,9 @@ export function answerAssertsUnsupportedUrl(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const hosts = answerHosts(citedText(answer));
+  const hosts = answerHosts(answer.replace(/\[[^\]]*\]/gu, " "));
   if (hosts.size === 0) return false;
-  const supported = answerHosts(buildQuestionAndEvidenceText(question, matches));
+  const supported = answerHosts(`${question} ${matches.map((match) => match.text).join(" ")}`);
   for (const host of hosts) {
     if (!supported.has(host)) return true;
   }
@@ -184,10 +168,10 @@ function canonicalIdentifier(token: string): string {
 }
 
 // The mixed letter+digit identifier tokens an answer asserts, in canonical form.
-function answerIdentifiers(text: string): ReadonlySet<string> {
-  const out = new Set<string>();
+function answerIdentifiers(text: string): string[] {
+  const out: string[] = [];
   for (const token of text.match(/[a-z0-9]+(?:-[a-z0-9]+)*/giu) ?? []) {
-    if (/[a-z]/iu.test(token) && /\d/u.test(token)) out.add(canonicalIdentifier(token));
+    if (/[a-z]/iu.test(token) && /\d/u.test(token)) out.push(canonicalIdentifier(token));
   }
   return out;
 }
@@ -210,16 +194,13 @@ export function answerAssertsUnsupportedIdentifier(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const answerIds = answerIdentifiers(citedText(answer));
-  if (answerIds.size === 0) return false;
+  const answerIds = answerIdentifiers(answer.replace(/\[[^\]]*\]/gu, " "));
+  if (answerIds.length === 0) return false;
   // Substring (not token-equality) against the canonical evidence+question so a
   // separator-variant rendering of a SUPPORTED identifier still matches; only an
   // identifier absent from the evidence in any form is flagged.
-  const haystack = canonicalIdentifier(buildQuestionAndEvidenceText(question, matches));
-  for (const id of answerIds) {
-    if (!haystack.includes(id)) return true;
-  }
-  return false;
+  const haystack = canonicalIdentifier(`${question} ${matches.map((match) => match.text).join(" ")}`);
+  return answerIds.some((id) => !haystack.includes(id));
 }
 
 // Each octet is constrained to 0-255, so the pattern matches a real IPv4 and
@@ -248,16 +229,13 @@ export function answerAssertsUnsupportedIpAddress(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const answerIps = citedText(answer).match(IPV4_RE) ?? [];
+  const answerIps = (answer.replace(/\[[^\]]*\]/gu, " ").match(IPV4_RE) ?? []).map(canonicalIp);
   if (answerIps.length === 0) return false;
   const supported = new Set<string>([
-    ...(buildQuestionAndEvidenceText(question, matches).match(IPV4_RE) ?? []).map(canonicalIp)
+    ...(question.match(IPV4_RE) ?? []).map(canonicalIp),
+    ...matches.flatMap((match) => (match.text.match(IPV4_RE) ?? []).map(canonicalIp))
   ]);
-  for (const rawIp of answerIps) {
-    const ip = canonicalIp(rawIp);
-    if (!supported.has(ip)) return true;
-  }
-  return false;
+  return answerIps.some((ip) => !supported.has(ip));
 }
 
 // `monthDayKeys` now lives in @muse/agent-core (one shared copy across the chat date gate
@@ -281,9 +259,9 @@ export function answerAssertsUnsupportedDate(
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const answerDates = monthDayKeys(citedText(answer));
+  const answerDates = monthDayKeys(answer.replace(/\[[^\]]*\]/gu, " "));
   if (answerDates.size === 0) return false;
-  const supported = monthDayKeys(buildQuestionAndEvidenceText(question, matches));
+  const supported = monthDayKeys(`${question} ${matches.map((match) => match.text).join(" ")}`);
   if (supported.size === 0) return false;
   return [...answerDates].some((date) => !supported.has(date));
 }

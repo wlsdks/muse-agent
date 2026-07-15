@@ -37,7 +37,6 @@ import {
 } from "@muse/recall";
 import type { FastifyInstance } from "fastify";
 
-import { readBodyString, readQueryString } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server-options.js";
 
@@ -52,10 +51,10 @@ export interface PromptRoutesOptions {
 }
 
 const PERSONALITY_LAYER_ID = "personality";
-const SURFACES = Object.keys(SURFACE_ROLES);
+const SURFACES = Object.keys(SURFACE_ROLES) as readonly MuseSurface[];
 
 function isMuseSurface(value: unknown): value is MuseSurface {
-  return typeof value === "string" && SURFACES.includes(value);
+  return typeof value === "string" && (SURFACES as readonly string[]).includes(value);
 }
 
 function findPersonalityLayer(registry: InMemoryPromptLayerRegistry | undefined): PromptLayer | undefined {
@@ -94,7 +93,7 @@ interface PreviewLayer {
 function buildPreviewLayers(surface: MuseSurface, personality: PromptLayer | undefined): readonly PreviewLayer[] {
   return [
     { layer: "identity-core", readOnly: true, section: "stable", text: MUSE_IDENTITY_CORE },
-    ...(hasContent(personality) ? [{ layer: PERSONALITY_LAYER_ID, section: "stable", text: personality.content }] : []),
+    ...(hasContent(personality) ? [{ layer: PERSONALITY_LAYER_ID, section: "stable" as const, text: personality.content }] : []),
     { layer: `surface-role:${surface}`, readOnly: true, section: "stable", text: SURFACE_ROLES[surface] },
     { layer: "boundary", readOnly: true, section: "dynamic", text: MUSE_CACHE_BOUNDARY_MARKER },
     {
@@ -130,12 +129,12 @@ export function registerPromptRoutes(server: FastifyInstance, options: PromptRou
   server.put("/api/prompt/persona", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(options.authService))) return reply;
 
-    const raw = readBodyString(request.body, "raw");
-    if (raw === undefined) {
+    const payload = request.body as { readonly raw?: unknown } | undefined;
+    if (typeof payload?.raw !== "string") {
       return reply.status(400).send({ message: "raw must be a string" });
     }
 
-    const parsed = parsePersonaContent(raw);
+    const parsed = parsePersonaContent(payload.raw);
     if (!parsed.ok) {
       return reply.status(400).send({ message: parsed.reason });
     }
@@ -153,11 +152,11 @@ export function registerPromptRoutes(server: FastifyInstance, options: PromptRou
   server.get("/api/prompt/preview", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(options.authService))) return reply;
 
-    const surfaceQuery = readQueryString(request, "surface");
-    if (surfaceQuery !== undefined && !isMuseSurface(surfaceQuery)) {
+    const query = request.query as { readonly surface?: string } | undefined;
+    if (query?.surface !== undefined && !isMuseSurface(query.surface)) {
       return reply.status(400).send({ message: `surface must be one of: ${SURFACES.join(", ")}` });
     }
-    const surface: MuseSurface = isMuseSurface(surfaceQuery) ? surfaceQuery : "chat";
+    const surface: MuseSurface = isMuseSurface(query?.surface) ? query.surface : "chat";
 
     const personality = findPersonalityLayer(options.promptLayerRegistry);
     const layers = hasContent(personality) ? [personality] : [];
@@ -179,18 +178,17 @@ export function registerPromptRoutes(server: FastifyInstance, options: PromptRou
       });
     }
 
-    const question = readBodyString(request.body, "question");
-    if (question === undefined) {
+    const payload = request.body as { readonly question?: unknown; readonly draftPersonaRaw?: unknown } | undefined;
+    if (typeof payload?.question !== "string" || payload.question.trim().length === 0) {
       return reply.status(400).send({ message: "question must be a non-empty string" });
     }
-    const draftPersonaRaw = readBodyString(request.body, "draftPersonaRaw");
-    if (draftPersonaRaw === undefined) {
+    if (typeof payload.draftPersonaRaw !== "string") {
       return reply.status(400).send({ message: "draftPersonaRaw must be a string" });
     }
 
     // Scanned before use, per the persona contract — this endpoint never
     // persists the draft; it is a disposable A/B probe.
-    const draft = parsePersonaContent(draftPersonaRaw);
+    const draft = parsePersonaContent(payload.draftPersonaRaw);
     if (!draft.ok) {
       return reply.status(400).send({ message: draft.reason });
     }
@@ -206,14 +204,14 @@ export function registerPromptRoutes(server: FastifyInstance, options: PromptRou
       modelProvider.generate({
         messages: [
           { content: currentPrompt, role: "system" },
-          { content: question, role: "user" }
+          { content: payload.question, role: "user" }
         ],
         model: defaultModel
       }),
       modelProvider.generate({
         messages: [
           { content: draftPrompt, role: "system" },
-          { content: question, role: "user" }
+          { content: payload.question, role: "user" }
         ],
         model: defaultModel
       })

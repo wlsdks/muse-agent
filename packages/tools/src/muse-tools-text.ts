@@ -258,26 +258,17 @@ function toSummaryValue(value: unknown): JsonValue {
   if (value === null) {
     return null;
   }
-  if (isJsonValue(value)) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return value;
   }
+  // flattenIntoKv re-derives shape at each recursion step (Array.isArray /
+  // isRecord guards), so a container value only needs to be narrowed to
+  // "array or record" here — the deep JsonValue shape is validated lazily
+  // as flattenIntoKv walks each child.
+  if (Array.isArray(value) || isRecord(value)) {
+    return value as JsonValue;
+  }
   return null;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  if (isRecord(value)) {
-    return Object.values(value).every(isJsonValue);
-  }
-
-  return false;
 }
 
 function deriveMarkdownTableColumns(rows: readonly Record<string, unknown>[]): string[] {

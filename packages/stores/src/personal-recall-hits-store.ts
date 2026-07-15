@@ -18,9 +18,6 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
-import { isRecord } from "@muse/shared";
-
-import { withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface RecallHitRecord {
   /** Stable key of the recalled memory — an episode `sessionId`. */
@@ -77,15 +74,14 @@ export async function readRecallHits(file: string): Promise<readonly RecallHitRe
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return [];
   }
-  const hits = readRecordArrayField(parsed, "hits");
-  if (hits === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { hits?: unknown }).hits)) {
     return [];
   }
-  return hits.flatMap((entry): readonly RecallHitRecord[] =>
+  return (parsed as { hits: unknown[] }).hits.flatMap((entry): readonly RecallHitRecord[] =>
     isRecallHitRecord(entry) ? [normalizeRecord(entry)] : []
   );
 }
@@ -113,6 +109,8 @@ export async function writeRecallHits(file: string, records: readonly RecallHitR
 // increment — exactly the lost-write seen under parallel test load. Serialise
 // the whole read-modify-write per file (same posture as action-log /
 // pending-approval).
+const recordQueues = new Map<string, Promise<unknown>>();
+const resolvedPromise = async (): Promise<unknown> => undefined;
 
 /**
  * Read → increment-each → write, serialised per file. `entries` may repeat
@@ -127,6 +125,7 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
     byInputKey.set(key, entry); // de-dupe within a single recall; latest summary wins
   }
   if (byInputKey.size === 0) return;
+  const prior = recordQueues.get(file) ?? resolvedPromise();
   const op = async (): Promise<void> => {
     const existing = await readRecallHits(file);
     const byKey = new Map(existing.map((record) => [record.key, record]));
@@ -149,7 +148,9 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
     }
     await writeRecallHits(file, [...byKey.values()]);
   };
-  return withFileMutationQueue(file, op);
+  const next = prior.then(op, op);
+  recordQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
 }
 
 // --- Ebbinghaus fade sidecar (arXiv:2305.10250, MemoryBank) ---
@@ -179,27 +180,15 @@ export async function readFadedMemoryKeys(file: string): Promise<ReadonlySet<str
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return new Set();
   }
-  const keys = readStringArrayField(parsed, "keys");
-  if (keys === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { keys?: unknown }).keys)) {
     return new Set();
   }
-  return new Set(keys.filter((k): k is string => typeof k === "string" && k.length > 0));
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
-}
-
-function readStringArrayField(value: unknown, key: string): unknown[] | undefined {
-  return readRecordArrayField(value, key);
+  const keys = (parsed as { keys: unknown[] }).keys.filter((k): k is string => typeof k === "string" && k.length > 0);
+  return new Set(keys);
 }
 
 function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
@@ -207,9 +196,9 @@ function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
 }
 
 function normalizeRecentAccessMs(record: RecallHitRecord): RecallHitRecord {
-  const raw = record.recentAccessMs;
+  const raw = (record as { recentAccessMs?: unknown }).recentAccessMs;
   if (!Array.isArray(raw)) return record;
-  const cleaned = raw.filter((v): v is number => Number.isFinite(v));
+  const cleaned = (raw as unknown[]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (cleaned.length === 0) {
     const { recentAccessMs: _omit, ...out } = record;
     return out;
@@ -218,9 +207,9 @@ function normalizeRecentAccessMs(record: RecallHitRecord): RecallHitRecord {
 }
 
 function normalizeQueryHashes(record: RecallHitRecord): RecallHitRecord {
-  const raw = record.queryHashes;
+  const raw = (record as { queryHashes?: unknown }).queryHashes;
   if (!Array.isArray(raw)) return record;
-  const cleaned = raw.filter((v) => typeof v === "string" && v.length > 0);
+  const cleaned = (raw as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0);
   if (cleaned.length === 0) {
     const { queryHashes: _omit, ...out } = record;
     return out;
@@ -229,8 +218,9 @@ function normalizeQueryHashes(record: RecallHitRecord): RecallHitRecord {
 }
 
 function isRecallHitRecord(value: unknown): value is RecallHitRecord {
-  if (!isRecord(value)) return false;
-  return typeof value.key === "string"
-    && typeof value.hits === "number" && Number.isFinite(value.hits)
-    && typeof value.lastHitMs === "number" && Number.isFinite(value.lastHitMs);
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RecallHitRecord>;
+  return typeof candidate.key === "string"
+    && typeof candidate.hits === "number" && Number.isFinite(candidate.hits)
+    && typeof candidate.lastHitMs === "number" && Number.isFinite(candidate.lastHitMs);
 }

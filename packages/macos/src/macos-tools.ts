@@ -27,7 +27,7 @@
  */
 
 
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";
@@ -277,7 +277,7 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
         if (resolution.status === "ambiguous") {
           const names = resolution.candidates ?? [];
           return {
-            ...(names.length > 0 ? { candidates: [...names] } : {}),
+            ...(names.length > 0 ? { candidates: names as JsonValue } : {}),
             detail: names.length > 0
               ? `'${recipientName}' matches ${names.length.toString()} contacts: ${names.join(", ")}. Which one — a more specific name, or the number?`
               : `'${recipientName}' matches ${(resolution.matchCount ?? 0).toString()} contacts — which one? Tell me the number or a more specific name.`,

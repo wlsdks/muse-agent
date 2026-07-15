@@ -11,8 +11,6 @@ import { readFile, readdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 
-import { isRecord } from "@muse/shared";
-
 import { decodeHeaderValue, extractBody, parseHeaders } from "./mime.js";
 
 export interface PdfParsed {
@@ -20,35 +18,22 @@ export interface PdfParsed {
   readonly pageCount: number;
 }
 
-type PdfParserConstructor = new (opts: { data: Buffer }) => {
-  getText: () => Promise<unknown>;
-};
-
-function isPdfParserConstructor(candidate: unknown): candidate is PdfParserConstructor {
-  return typeof candidate === "function";
-}
-
 /**
  * pdf-parse v2 exposes a `PDFParse` class. Build, extract text, normalise to a
  * tiny `{ text, pageCount }` subset the CLI cares about. Exported for testing.
  */
 export async function parsePdfBuffer(buffer: Buffer): Promise<PdfParsed> {
-  const mod = await import("pdf-parse");
-  const parserCtor = isRecord(mod) ? mod.PDFParse : undefined;
-  if (!isPdfParserConstructor(parserCtor)) {
-    throw new Error("pdf-parse module did not expose expected PDFParse constructor");
-  }
-  const parser = new parserCtor({ data: buffer });
+  const mod = await import("pdf-parse") as {
+    PDFParse: new (opts: { data: Buffer }) => {
+      getText(): Promise<{ text?: string; total?: number; pages?: unknown[] }>;
+    };
+  };
+  const parser = new mod.PDFParse({ data: buffer });
   const result = await parser.getText();
-  if (!isRecord(result)) {
-    return { pageCount: 0, text: "" };
-  }
-  const text = typeof result.text === "string" ? result.text : "";
-  const totalPages = typeof result.total === "number" ? result.total : undefined;
-  const pageCount = typeof totalPages === "number"
-    ? totalPages
+  const pageCount = typeof result.total === "number"
+    ? result.total
     : Array.isArray(result.pages) ? result.pages.length : 0;
-  return { text, pageCount };
+  return { text: result.text ?? "", pageCount };
 }
 
 /** A file is treated as PDF by its `.pdf` extension OR a `%PDF-` magic header. */

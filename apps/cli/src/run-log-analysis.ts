@@ -7,8 +7,6 @@
  * behaviorally testable with fixtures — the caller globs the `.jsonl` files.
  */
 
-import { isRecord } from "@muse/shared";
-
 export interface RunLogEvent {
   readonly message?: string;
   /** The model's answer text (from `response.response`), if captured. */
@@ -61,8 +59,8 @@ const NOT_GROUNDED = new Set(["ungrounded", "weak", "misgrounded", "contested"])
 function groundingVerdict(grounded: unknown): string | undefined {
   if (typeof grounded === "string") return grounded.toLowerCase();
   if (typeof grounded === "boolean") return grounded ? "grounded" : "ungrounded";
-  if (isRecord(grounded) && "verdict" in grounded) {
-    const verdict = grounded.verdict;
+  if (grounded && typeof grounded === "object" && "verdict" in grounded) {
+    const verdict = (grounded as { verdict: unknown }).verdict;
     return typeof verdict === "string" ? verdict.toLowerCase() : undefined;
   }
   return undefined;

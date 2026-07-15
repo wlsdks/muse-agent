@@ -12,10 +12,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-
-
 import type { ToolApprovalGate } from "@muse/agent-core";
-import { createMuseRuntimeAssembly, resolveObjectivesFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
 import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, latestOutput, planParallelSubtasks, reclaimStaleTasks, removeTask, resolveBoardMaxDepth, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
@@ -23,11 +21,6 @@ import type { Command } from "commander";
 import { budgetAndSpillOutputs, formatSpillNote } from "./board-synthesis-budget.js";
 import { firstNonEmpty } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
-
-function environment(): MuseEnvironment {
-  return process.env;
-}
 
 const OUTBOUND_RE = /\b(send|email|e-mail|reply|forward|post|dm|message|text|publish|submit|book|order|tweet|slack)\b/iu;
 
@@ -74,15 +67,6 @@ export function selectObjectiveSpecsToSeed(
 }
 
 const MOVABLE: readonly TaskStatus[] = ["todo", "in_progress", "review", "blocked", "done", "failed"];
-const MOVABLE_SET: ReadonlySet<string> = new Set(["todo", "in_progress", "review", "blocked", "done", "failed"]);
-
-function parseTaskStatus(value: string): TaskStatus | undefined {
-  if (MOVABLE_SET.has(value) === false) return undefined;
-  if (value === "todo" || value === "in_progress" || value === "review" || value === "blocked" || value === "done" || value === "failed") {
-    return value;
-  }
-  return undefined;
-}
 
 /** Human-readable board grouped by column. Pure. */
 export function formatBoard(tasks: readonly AgentTask[]): string {
@@ -215,11 +199,7 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     .command("seed")
     .description("Seed the board from your ACTIVE standing objectives (skips objectives already on the board)")
     .action(async () => {
-      const objectives = await withBestEffort(readObjectives(resolveObjectivesFile(environment())), undefined);
-      if (objectives === undefined) {
-        io.stdout("No new active objectives to seed (none active, or all already on the board).\n");
-        return;
-      }
+      const objectives = await readObjectives(resolveObjectivesFile(process.env as Record<string, string | undefined>)).catch(() => [] as const);
       const store = new FileAgentTaskBoard();
       const existing = new Set((await store.list()).map((t) => t.title.trim()));
       const specs = selectObjectiveSpecsToSeed(objectives, existing);
@@ -253,8 +233,8 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
           const r = await assembly.modelProvider.generate({ maxOutputTokens: 256, messages: [{ content: p, role: "user" }], model: assembly.defaultModel, temperature: 0 });
           return r.output ?? "";
         };
-        const parallel = await withBestEffort(planParallelSubtasks(parent.title, { generate }), undefined);
-        if (parallel !== undefined && parallel.length >= 2) {
+        const parallel = await planParallelSubtasks(parent.title, { generate }).catch(() => [] as string[]);
+        if (parallel.length >= 2) {
           subs = parallel.map((title) => ({ id: randomUUID(), title }));
           mode = "parallel";
         } else {
@@ -264,7 +244,7 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
       }
 
       if (subs.length < 2) { io.stdout(`"${parent.title}" isn't decomposable into multiple steps — leaving it as a single task.\n`); return; }
-      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode, resolveBoardMaxDepth(environment())));
+      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode, resolveBoardMaxDepth(process.env as Record<string, string | undefined>)));
       io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} ${mode} sub-tasks${mode === "parallel" ? " (combined by a synthesis step when done)" : ""}:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
     });
 
@@ -272,13 +252,8 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     .command("move <id> <status>")
     .description(`Move a task to a column (${MOVABLE.join(" | ")})`)
     .action(async (id: string, status: string) => {
-      const nextStatus = parseTaskStatus(status);
-      if (nextStatus === undefined) {
-        io.stderr(`muse board move: status must be one of ${MOVABLE.join(", ")}\n`);
-        process.exitCode = 1;
-        return;
-      }
-      const tasks = await new FileAgentTaskBoard().mutate((ts) => transitionTask(ts, id, nextStatus, new Date().toISOString()));
+      if (!MOVABLE.includes(status as TaskStatus)) { io.stderr(`muse board move: status must be one of ${MOVABLE.join(", ")}\n`); process.exitCode = 1; return; }
+      const tasks = await new FileAgentTaskBoard().mutate((ts) => transitionTask(ts, id, status as TaskStatus, new Date().toISOString()));
       io.stdout(tasks.some((t) => t.id.startsWith(id)) ? `Moved ${id.slice(0, 8)} → ${status}\n` : `No task ${id}\n`);
     });
 

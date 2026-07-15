@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
-import { isRecord, parseJson, readOptionalString, readStringArray } from "./safe-json.js";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
 
@@ -42,10 +41,8 @@ const CONVERSATION_ID_KEY = "muse.chat.conversationId";
 function loadTranscript(): readonly ChatTurn[] {
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
-    const parsed = raw ? parseJson(raw) : undefined;
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeChatTurn).filter((turn): turn is ChatTurn => turn !== undefined)
-      : [];
+    const parsed = raw ? (JSON.parse(raw) as ChatTurn[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -64,128 +61,6 @@ function loadConversationId(): string | undefined {
  *  continues the same conversation; omitted entirely on a fresh chat. */
 export function chatStreamRequestBody(message: string, conversationId?: string): { readonly message: string; readonly conversationId?: string } {
   return { message, ...(conversationId ? { conversationId } : {}) };
-}
-
-function normalizeChatTurn(value: unknown): ChatTurn | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  if (value.role !== "user" && value.role !== "assistant") {
-    return undefined;
-  }
-  if (typeof value.text !== "string") {
-    return undefined;
-  }
-  const pendingApprovals = readPendingApprovals(value.pendingApprovals);
-  const citations = readStringArray(value.citations);
-  const tools = readStringArray(value.tools);
-  const turn: ChatTurn = {
-    role: value.role,
-    text: value.text
-  };
-  if (pendingApprovals) {
-    turn.pendingApprovals = pendingApprovals;
-  }
-  if (citations) {
-    turn.citations = citations;
-  }
-  if (tools) {
-    turn.tools = tools;
-  }
-  return turn;
-}
-
-function readPendingApprovals(value: unknown): readonly PendingApproval[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const result: PendingApproval[] = [];
-  for (const candidate of value) {
-    if (isPendingApproval(candidate)) {
-      result.push(candidate);
-    }
-  }
-  return result;
-}
-
-function isPendingApproval(value: unknown): value is PendingApproval {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.id === "string" && typeof value.tool === "string" && typeof value.draft === "string";
-}
-
-function parseChatResponse(value: unknown): ChatResponse | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const response = readOptionalString(value.response);
-  const content = readOptionalString(value.content);
-  const runId = readOptionalString(value.runId);
-  const model = readOptionalString(value.model);
-  const conversationId = readOptionalString(value.conversationId);
-  const pendingApprovals = readPendingApprovals(value.pendingApprovals);
-  const citations = readStringArray(value.citations);
-  const toolsUsed = readStringArray(value.toolsUsed);
-  return {
-    ...(response !== undefined ? { response } : {}),
-    ...(content !== undefined ? { content } : {}),
-    ...(runId !== undefined ? { runId } : {}),
-    ...(model !== undefined ? { model } : {}),
-    ...(conversationId !== undefined ? { conversationId } : {}),
-    ...(pendingApprovals !== undefined ? { pendingApprovals } : {}),
-    ...(citations !== undefined ? { citations } : {}),
-    ...(toolsUsed !== undefined ? { toolsUsed } : {})
-  };
-}
-
-function parseCitations(value: unknown): readonly Citation[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const result: Citation[] = [];
-  for (const item of value) {
-    if (isRecord(item) && typeof item.url === "string" && typeof item.title === "string") {
-      result.push({ title: item.title, url: item.url });
-    }
-  }
-  return result;
-}
-
-function parseGroundingText(value: unknown): { readonly answer?: string; readonly conversationId?: string } | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const answer = readOptionalString(value.answer);
-  const conversationId = readOptionalString(value.conversationId);
-  if (answer === undefined && conversationId === undefined) {
-    return undefined;
-  }
-  return {
-    ...(answer !== undefined ? { answer } : {}),
-    ...(conversationId !== undefined ? { conversationId } : {})
-  };
-}
-
-function parseToolCall(value: unknown): { phase?: string; name?: string } | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const phase = readOptionalString(value.phase);
-  const name = readOptionalString(value.name);
-  return {
-    ...(phase !== undefined ? { phase } : {}),
-    ...(name !== undefined ? { name } : {})
-  };
-}
-
-function parseDeltaChunk(value: unknown): string {
-  if (!isRecord(value)) {
-    return "";
-  }
-  const delta = readOptionalString(value.delta);
-  const content = readOptionalString(value.content);
-  return delta ?? content ?? "";
 }
 
 function approvePath(id: string): string {
@@ -388,19 +263,15 @@ export function useChatStream(baseUrl: string, token: string) {
 
         const contentType = res.headers.get("content-type") ?? "";
         if (!contentType.includes("text/event-stream")) {
-          const raw = await res.text();
-          const parsed = parseChatResponse(parseJson(raw));
-          if (parsed) {
-            commit((t) => {
-              t.text = parsed.response ?? parsed.content ?? "";
-              t.citations = parsed.citations ?? [];
-              t.tools = parsed.toolsUsed ?? [];
-              t.pendingApprovals = parsed.pendingApprovals;
-            });
-            if (parsed.conversationId) {
-              setConversationId(parsed.conversationId);
-            }
-          }
+          const body = (await res.json()) as ChatResponse;
+          commit((t) => {
+            t.text = body.response ?? body.content ?? "";
+            t.citations = body.citations ?? [];
+            t.tools = body.toolsUsed ?? [];
+            t.pendingApprovals = readPendingApprovals(body);
+          });
+          if (body.conversationId) {
+            setConversationId(body.conversationId);
           }
           return;
         }
@@ -496,11 +367,15 @@ export function handleEvent(
   }
 
   if (eventName === "pending-approvals") {
-    const payload = parsePendingApprovalsPayload(dataLine);
-    if (payload.length > 0) {
+    try {
+      const payload = JSON.parse(dataLine) as { pendingApprovals?: readonly PendingApproval[] };
+      if (Array.isArray(payload.pendingApprovals) && payload.pendingApprovals.length > 0) {
         commit((t) => {
-          t.pendingApprovals = payload;
+          t.pendingApprovals = payload.pendingApprovals;
         });
+      }
+    } catch {
+      /* ignore malformed pending-approvals frame */
     }
     return;
   }
@@ -508,14 +383,18 @@ export function handleEvent(
   // The gated answer is AUTHORITATIVE: the grounding gate may have replaced
   // a fabricated/uncited claim after the raw tokens streamed by.
   if (eventName === "grounding") {
-    const grounding = parseGroundingText(parseJson(dataLine));
-    if (grounding?.answer !== undefined && grounding.answer.length > 0) {
-      commit((t) => {
-        t.text = grounding.answer;
-      });
-    }
-    if (grounding?.conversationId) {
-      onConversationId?.(grounding.conversationId);
+    try {
+      const payload = JSON.parse(dataLine) as { answer?: string; conversationId?: string };
+      if (typeof payload.answer === "string" && payload.answer.length > 0) {
+        commit((t) => {
+          t.text = payload.answer!;
+        });
+      }
+      if (typeof payload.conversationId === "string" && payload.conversationId.length > 0) {
+        onConversationId?.(payload.conversationId);
+      }
+    } catch {
+      /* ignore malformed grounding frame */
     }
     setThinking(false);
     return;
@@ -523,8 +402,11 @@ export function handleEvent(
 
   if (eventName === "done") {
     setThinking(false);
-    const payload = parseChatResponse(parseJson(dataLine));
-    if (payload) {
+    try {
+      const payload = JSON.parse(dataLine) as ChatResponse;
+      if (payload.conversationId) {
+        onConversationId?.(payload.conversationId);
+      }
       commit((t) => {
         const finalText = payload.response ?? payload.content;
         if (finalText) {
@@ -537,16 +419,21 @@ export function handleEvent(
           t.tools = payload.toolsUsed;
         }
       });
-      if (payload.conversationId) {
-        onConversationId?.(payload.conversationId);
-      }
+    } catch {
+      /* ignore non-JSON done payload */
     }
     return;
   }
 
   if (eventName === "delta" || eventName === "message") {
     setThinking(false);
-    const chunk = parseDeltaChunk(parseJson(dataLine)) || dataLine;
+    let chunk = dataLine;
+    try {
+      const payload = JSON.parse(dataLine) as { delta?: string; content?: string };
+      chunk = payload.delta ?? payload.content ?? "";
+    } catch {
+      /* plain-text delta */
+    }
     if (chunk) {
       commit((t) => {
         t.text += chunk;
@@ -570,23 +457,25 @@ export function handleEvent(
   }
 
   if (eventName === "tool_call") {
-    const payload = parseToolCall(parseJson(dataLine));
-    if (payload) {
+    try {
+      const payload = JSON.parse(dataLine) as { phase?: string; name?: string };
       setActiveTool(payload.phase === "started" ? payload.name ?? "working" : "");
+    } catch {
+      /* ignore */
     }
     return;
   }
 
   if (eventName === "citations") {
-    const payload = parseCitations(parseJson(dataLine));
-    if (Array.isArray(payload) && payload.length > 0) {
+    try {
+      const payload = JSON.parse(dataLine) as readonly Citation[];
+      if (Array.isArray(payload) && payload.length > 0) {
         commit((t) => {
           t.citations = payload;
         });
+      }
+    } catch {
+      /* ignore */
     }
   }
-}
-
-function parsePendingApprovalsPayload(line: string): readonly PendingApproval[] {
-  return readPendingApprovals(parseJson(line)) ?? [];
 }

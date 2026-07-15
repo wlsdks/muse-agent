@@ -27,8 +27,8 @@
 import { promises as fs } from "node:fs";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { isRecord, redactSecretsInText, withBestEffort } from "@muse/shared";
 import { sendWithRetry } from "@muse/mcp-shared";
+import { redactSecretsInText } from "@muse/shared";
 import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
@@ -53,8 +53,8 @@ export async function readBackgroundExitNotified(file: string): Promise<Readonly
     return new Set();
   }
   try {
-    const parsed = JSON.parse(raw);
-    if (isRecord(parsed) && Array.isArray(parsed.notifiedIds)) {
+    const parsed = JSON.parse(raw) as Partial<BackgroundExitNotifiedSidecar>;
+    if (Array.isArray(parsed.notifiedIds)) {
       return new Set(parsed.notifiedIds.filter((id): id is string => typeof id === "string"));
     }
   } catch {
@@ -153,7 +153,7 @@ export async function runDueBackgroundExitNotices(
   let delivered = 0;
 
   const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
     : undefined;
 
   for (const record of pending) {
@@ -195,9 +195,7 @@ export async function runDueBackgroundExitNotices(
         const messagingRegistry = options.messagingRegistry;
         const providerId = options.providerId;
         const destination = options.destination;
-        const deliver = async (): Promise<void> => {
-          await sendWithRetry(messagingRegistry, providerId, { destination, text });
-        };
+        const deliver = (): Promise<void> => sendWithRetry(messagingRegistry, providerId, { destination, text }).then(() => undefined);
         if (options.interruptionBudget) {
           const budget = options.interruptionBudget;
           const result = await applyInterruptionBudget({

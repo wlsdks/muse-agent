@@ -17,8 +17,6 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-import { hasNodeErrorCodeIn, NODE_ERROR_CODES } from "@muse/shared";
-
 export type PathSafetyDenyReason = "outside_roots" | "denied_path" | "denied_pattern";
 
 export class PathSafetyError extends Error {
@@ -113,7 +111,7 @@ async function canonicalize(input: string, baseDir: string): Promise<string> {
       const real = await realpath(current);
       return tail.length > 0 ? join(real, ...tail.reverse()) : real;
     } catch (error) {
-      if (!hasNodeErrorCodeIn(error, NODE_ERROR_CODES.ENOENT)) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
       const parent = dirname(current);

@@ -33,7 +33,7 @@ import {
   type SelectFireablePatternsOptions
 } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { errorMessage, withBestEffort } from "@muse/shared";
+import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired, withProcessLock } from "@muse/stores";
@@ -138,7 +138,7 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
   // waits for the NEXT tick, matching the cooldown sidecar's own tick-
   // granularity freshness.
   const avoidedSources = options.interruptionBudget?.trustLedgerFile
-    ? avoidedSourceKeys(await withBestEffort(readTrustLedger(options.interruptionBudget.trustLedgerFile), []))
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
     : undefined;
 
   // The orchestrator already filtered cooldown ones out, but a
@@ -162,15 +162,13 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
       // fallback) so a model glitch never drops the suggestion.
       let text = match.suggestion;
       if (options.composeSuggestion) {
-      const composed = await withBestEffort(options.composeSuggestion(match), undefined);
+        const composed = await options.composeSuggestion(match).catch(() => undefined);
         if (composed && composed.trim().length > 0) text = composed.trim();
       }
-      const deliver = async (): Promise<void> => {
-        await sendWithRetry(options.registry, options.providerId, {
-          destination: options.destination,
-          text
-        });
-      };
+      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
+        destination: options.destination,
+        text
+      }).then(() => undefined);
       let outcome: "delivered" | "digested" | "skipped" = "delivered";
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;

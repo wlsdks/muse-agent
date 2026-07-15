@@ -18,21 +18,6 @@ interface PersistedShape {
   readonly owners: Readonly<Record<string, string>>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(value)) return undefined;
-  const record: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (typeof key === "string") {
-      record[key] = nestedValue;
-    }
-  }
-  return record;
-}
-
 export function resolveChannelOwnersFile(env: { readonly [key: string]: string | undefined }): string {
   const override = env.MUSE_CHANNEL_OWNERS_FILE?.trim();
   if (override && override.length > 0) {
@@ -103,19 +88,15 @@ async function readAll(file: string): Promise<Readonly<Record<string, string>>> 
     return {};
   }
   try {
-    const parsed = JSON.parse(text);
-    if (!isRecord(parsed) || !isRecord(parsed.owners)) {
+    const parsed = JSON.parse(text) as { owners?: unknown };
+    if (!parsed || typeof parsed !== "object" || !parsed.owners || typeof parsed.owners !== "object") {
       return {};
     }
-    const owners = toRecord(parsed.owners);
-    if (!owners) return {};
-    const output: Record<string, string> = {};
-    for (const [key, value] of Object.entries(owners)) {
-      if (typeof value === "string") {
-        output[key] = value;
-      }
-    }
-    return output;
+    return Object.fromEntries(
+      Object.entries(parsed.owners as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string"
+      )
+    );
   } catch {
     return {};
   }
@@ -240,29 +221,28 @@ async function readAllPairingCodes(file: string): Promise<Readonly<Record<string
     return {};
   }
   try {
-    const parsed = JSON.parse(text);
-    if (!isRecord(parsed) || !isRecord(parsed.codes)) {
+    const parsed = JSON.parse(text) as { codes?: unknown };
+    if (!parsed || typeof parsed !== "object" || !parsed.codes || typeof parsed.codes !== "object") {
       return {};
     }
-    const codes = toRecord(parsed.codes);
-    if (!codes) return {};
-    const output: Record<string, PairingCodeEntry> = {};
-    for (const [key, value] of Object.entries(codes)) {
-      if (isPairingCodeEntry(value)) {
-        output[key] = value;
-      }
-    }
-    return output;
+    return Object.fromEntries(
+      Object.entries(parsed.codes as Record<string, unknown>).filter(
+        (entry): entry is [string, PairingCodeEntry] => isPairingCodeEntry(entry[1])
+      )
+    );
   } catch {
     return {};
   }
 }
 
 function isPairingCodeEntry(value: unknown): value is PairingCodeEntry {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.code === "string" && typeof value.attempts === "number" && typeof value.createdAt === "string";
+  return (
+    typeof value === "object"
+    && value !== null
+    && typeof (value as { code?: unknown }).code === "string"
+    && typeof (value as { attempts?: unknown }).attempts === "number"
+    && typeof (value as { createdAt?: unknown }).createdAt === "string"
+  );
 }
 
 async function writePairingCodes(file: string, codes: Readonly<Record<string, PairingCodeEntry>>): Promise<void> {

@@ -11,16 +11,7 @@ import { resolveActionLogFile, resolveEpisodesFile, resolveRemindersFile, resolv
 import { readActionLog, readEpisodes, readReminders, readTasks } from "@muse/stores";
 import type { Command } from "commander";
 
-
-
 import type { ProgramIO } from "./program.js";
-import { withBestEffort } from "./async-promises.js";
-
-type ActionLogEnvironment = NodeJS.ProcessEnv;
-
-function environment(): ActionLogEnvironment {
-  return process.env;
-}
 
 const parseMs = (iso: string | undefined): number => (iso ? Date.parse(iso) : Number.NaN);
 
@@ -31,12 +22,12 @@ const parseMs = (iso: string | undefined): number => (iso ? Date.parse(iso) : Nu
  * median is 0 and "your busiest day" degenerates into "any day you did anything".
  * Fail-soft per store.
  */
-export async function gatherActivityTimestamps(env: ActionLogEnvironment): Promise<number[]> {
+export async function gatherActivityTimestamps(env: Record<string, string | undefined>): Promise<number[]> {
   const [tasks, episodes, reminders, actions] = await Promise.all([
-    withBestEffort(readTasks(resolveTasksFile(env)), []),
-    withBestEffort(readEpisodes(resolveEpisodesFile(env)), []),
-    withBestEffort(readReminders(resolveRemindersFile(env)), []),
-    withBestEffort(readActionLog(resolveActionLogFile(env), env), [])
+    readTasks(resolveTasksFile(env)).catch(() => []),
+    readEpisodes(resolveEpisodesFile(env)).catch(() => []),
+    readReminders(resolveRemindersFile(env)).catch(() => []),
+    readActionLog(resolveActionLogFile(env), env as NodeJS.ProcessEnv).catch(() => [])
   ]);
   return [
     ...tasks.map((task) => parseMs(task.createdAt)),
@@ -70,7 +61,7 @@ export function registerAnomalyCommand(program: Command, io: ProgramIO): void {
     .description("Spot your most unusual days — activity that stands out against your own history (local, robust, draft-first)")
     .option("--json", "Print the raw anomalies")
     .action(async (options: { readonly json?: boolean }) => {
-      const stamps = await gatherActivityTimestamps(environment());
+      const stamps = await gatherActivityTimestamps(process.env as Record<string, string | undefined>);
       const days = dailyCounts(stamps);
       const anomalies = mostAnomalousDays(days);
       if (options.json) {

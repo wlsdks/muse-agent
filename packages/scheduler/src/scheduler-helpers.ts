@@ -268,11 +268,9 @@ function scheduledJobToRow(job: ScheduledJob): ScheduledJobInsert {
 }
 
 export function resolveTemplateJson(value: JsonObject, job: ScheduledJob): JsonObject {
-  const next: JsonObject = {};
-  for (const [key, entry] of Object.entries(value)) {
-    next[key] = resolveTemplateValue(entry, job);
-  }
-  return next;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, resolveTemplateValue(entry, job)])
+  ) as JsonObject;
 }
 
 function resolveTemplateValue(value: JsonValue, job: ScheduledJob): JsonValue {
@@ -355,10 +353,7 @@ function dateParts(date: Date, rawTimeZone: string): {
     timeZone,
     year: "numeric"
   });
-  const parts: Record<string, string> = {};
-  for (const part of dateFormatter.formatToParts(date)) {
-    parts[part.type] = part.value;
-  }
+  const parts = Object.fromEntries(dateFormatter.formatToParts(date).map((part) => [part.type, part.value]));
   const dayOfWeek = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(date);
 
   return {

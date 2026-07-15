@@ -34,10 +34,6 @@ import { formatRelativeTime } from "./human-formatters.js";
 import { pluralize } from "./pluralize.js";
 import type { ProgramIO } from "./program.js";
 
-function isActivityKind(value: string): value is ActivityKind {
-  return ACTIVITY_KINDS.has(value as ActivityKind);
-}
-
 interface HistoryOptions {
   readonly kind?: string;
   readonly since?: string;
@@ -115,12 +111,7 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
     .option("--json", "Emit a structured array instead of the formatted feed")
     .action(async (options: HistoryOptions) => {
       const kindFilter = options.kind?.trim().toLowerCase();
-      const requestedKind = kindFilter === undefined || kindFilter.length === 0
-        ? undefined
-        : isActivityKind(kindFilter)
-          ? kindFilter
-          : undefined;
-      if (kindFilter !== undefined && requestedKind === undefined) {
+      if (kindFilter && !ACTIVITY_KINDS.has(kindFilter as ActivityKind)) {
         const suggestion = closestCommandName(kindFilter, [...ACTIVITY_KINDS]);
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         throw new Error(`--kind must be one of: reminder, proactive, followup, pattern, episode (got '${kindFilter}')${hint}`);
@@ -144,7 +135,7 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
       const candidates = await readActivityFeed({
         episodesFile: envOr("MUSE_EPISODES_FILE", "episodes.json"),
         followupsFile: envOr("MUSE_FOLLOWUPS_FILE", "followups.json"),
-        ...(requestedKind ? { kind: requestedKind } : {}),
+        ...(kindFilter ? { kind: kindFilter as ActivityKind } : {}),
         limit: fetchLimit,
         patternsFiredFile: envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"),
         proactiveHistoryFile: envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json"),

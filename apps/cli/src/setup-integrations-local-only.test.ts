@@ -5,10 +5,7 @@ import { runCalendarSetup } from "./setup-calendar.js";
 import { runMessagingSetup } from "./setup-messaging.js";
 
 const ENV_KEYS = ["MUSE_LOCAL_ONLY"] as const;
-const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
-for (const key of ENV_KEYS) {
-  originalEnv[key] = process.env[key];
-}
+const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
   for (const key of ENV_KEYS) {

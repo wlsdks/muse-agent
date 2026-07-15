@@ -14,7 +14,6 @@
 
 import { promises as fs } from "node:fs";
 
-import { isRecord } from "@muse/shared";
 import { createPeerRegistry, type A2APeer, type PeerRegistry } from "./peer-registry.js";
 
 export interface PeerConfig {
@@ -25,17 +24,18 @@ export interface PeerConfig {
 
 /** Resolve one config entry to a peer, reading `secret` inline or from `secretEnv`. */
 function resolvePeer(value: unknown, env: Record<string, string | undefined>): A2APeer | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.id !== "string" || value.id.length === 0 || typeof value.url !== "string" || value.url.length === 0) return null;
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.id !== "string" || p.id.length === 0 || typeof p.url !== "string" || p.url.length === 0) return null;
   let secret: string | undefined;
-  if (typeof value.secret === "string" && value.secret.length > 0) {
-    secret = value.secret;
-  } else if (typeof value.secretEnv === "string") {
-    const fromEnv = env[value.secretEnv];
+  if (typeof p.secret === "string" && p.secret.length > 0) {
+    secret = p.secret;
+  } else if (typeof p.secretEnv === "string") {
+    const fromEnv = env[p.secretEnv];
     if (typeof fromEnv === "string" && fromEnv.length > 0) secret = fromEnv;
   }
   if (secret === undefined) return null;
-  return { id: value.id, secret, url: value.url, ...(typeof value.label === "string" ? { label: value.label } : {}) };
+  return { id: p.id, secret, url: p.url, ...(typeof p.label === "string" ? { label: p.label } : {}) };
 }
 
 export async function loadPeerConfig(file: string, env: Record<string, string | undefined> = process.env): Promise<PeerConfig> {
@@ -47,16 +47,14 @@ export async function loadPeerConfig(file: string, env: Record<string, string | 
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return { peers: [], registry: createPeerRegistry([]), selfId: "" };
   }
-  if (!isRecord(parsed)) {
-    return { peers: [], registry: createPeerRegistry([]), selfId: "" };
-  }
-  const selfId = typeof parsed.selfId === "string" ? parsed.selfId : "";
-  const peers = Array.isArray(parsed.peers)
-    ? parsed.peers.flatMap((p): readonly A2APeer[] => { const r = resolvePeer(p, env); return r ? [r] : []; })
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as { selfId?: unknown; peers?: unknown };
+  const selfId = typeof obj.selfId === "string" ? obj.selfId : "";
+  const peers = Array.isArray(obj.peers)
+    ? obj.peers.flatMap((p): readonly A2APeer[] => { const r = resolvePeer(p, env); return r ? [r] : []; })
     : [];
   return { peers, registry: createPeerRegistry(peers), selfId };
 }

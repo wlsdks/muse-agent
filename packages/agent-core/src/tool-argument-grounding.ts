@@ -1,6 +1,5 @@
 import { normalizeForRecall } from "./recall-lexical.js";
 import { contentTokens } from "./provenance-tokens.js";
-import { isRecord } from "@muse/shared";
 
 export interface ToolArgumentGrounding {
   /** A NEW arguments object with ungrounded designated args removed. */
@@ -208,8 +207,8 @@ export function groundToolArguments(
     // removed entirely. So the fabrication gate is total over value shapes, not
     // string-only — a fabricated `meta.note` can no longer ride a nested object
     // past the gate and get persisted.
-    if (isRecord(value)) {
-      const obj = value;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const obj = value as Record<string, unknown>;
       const cleaned: Record<string, unknown> = {};
       for (const [leafKey, leafValue] of Object.entries(obj)) {
         if (typeof leafValue === "string" && leafValue.trim().length > 0 && !isGrounded(leafValue)) {

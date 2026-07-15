@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { ModelMessage } from "@muse/model";
-import { isRecord, redactSecretsInText, type JsonObject } from "@muse/shared";
+import { redactSecretsInText, type JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
 import type { AgentRunInput } from "./types.js";
 
@@ -46,13 +46,10 @@ function checkpointMetadata(metadata: JsonObject | undefined): JsonObject | unde
   if (!metadata) {
     return undefined;
   }
-  const durable: JsonObject = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    if (!NON_DURABLE_AUTHORITY_METADATA_KEYS.has(key.replace(/[-_]/gu, "").toLowerCase())) {
-      durable[key] = value;
-    }
-  }
-  return isRecord(durable) && Object.keys(durable).length > 0 ? durable : undefined;
+  const durableEntries = Object.entries(metadata).filter(([key]) =>
+    !NON_DURABLE_AUTHORITY_METADATA_KEYS.has(key.replace(/[-_]/gu, "").toLowerCase())
+  );
+  return durableEntries.length > 0 ? Object.fromEntries(durableEntries) as JsonObject : undefined;
 }
 
 export function createAgentCheckpointState(input: {
@@ -112,7 +109,7 @@ export function decodeCheckpointMessages(encoded: readonly string[]): readonly M
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
+      parsed = JSON.parse(Buffer.from(payload, "base64").toString("utf8")) as unknown;
     } catch {
       // `Buffer.from(_, "base64")` is lenient and silently ignores non-
       // base64 chars, so a corrupt payload yields garbled bytes that
@@ -131,10 +128,10 @@ export function decodeCheckpointMessages(encoded: readonly string[]): readonly M
 }
 
 function isModelMessage(value: unknown): value is ModelMessage {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
-  const record = value;
+  const record = value as Record<string, unknown>;
   if (typeof record.content !== "string") {
     return false;
   }

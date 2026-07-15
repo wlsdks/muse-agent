@@ -17,10 +17,9 @@ import {
 import type { Celebration } from "./desk-pet-controller.js";
 import type { PetState } from "./desk-pet-machine.js";
 
-const FRAME_SHADOWS: Record<string, string> = {};
-for (const [name, frame] of Object.entries(FRAMES)) {
-  FRAME_SHADOWS[name] = frameToBoxShadow(frame);
-}
+const FRAME_SHADOWS: Record<string, string> = Object.fromEntries(
+  Object.entries(FRAMES).map(([name, frame]) => [name, frameToBoxShadow(frame)])
+);
 const CHIRP_SHADOW = chirpBoxShadow();
 const ZZZ_SHADOW = zzzBoxShadow();
 const NOTE_SHADOW = noteBoxShadow();

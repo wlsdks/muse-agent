@@ -8,10 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { registerMessagingCommands } from "./commands-messaging.js";
 
 const KEYS = ["MUSE_LOCAL_ONLY", "MUSE_MESSAGING_CREDENTIALS_FILE", "MUSE_TELEGRAM_BOT_TOKEN"] as const;
-const original: Partial<Record<(typeof KEYS)[number], string | undefined>> = {};
-for (const key of KEYS) {
-  original[key] = process.env[key];
-}
+const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
   for (const key of KEYS) {

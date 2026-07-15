@@ -65,7 +65,7 @@ export function createMuseToolsMcpServer(options: MuseToolsMcpServerOptions): Se
 
     // MCP tool arguments arrive over the wire as JSON, so a record here is
     // already JSON-safe data — narrow to JsonObject accordingly.
-    const args: JsonObject = toJsonObject(request.params.arguments);
+    const args: JsonObject = isRecord(request.params.arguments) ? (request.params.arguments as JsonObject) : {};
     const missing = missingRequiredArgs(tool.definition.inputSchema, args);
     if (missing.length > 0) {
       return errorResult(`'${tool.definition.name}' is missing required argument(s): ${missing.join(", ")}`);
@@ -113,7 +113,7 @@ export async function runStdioMcpServer(server: Server, onListening?: () => void
  * content, so a tool's real schema reaches the client byte-identical.
  */
 function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
-  const properties = isObjectRecord(schema.properties) ? schema.properties : undefined;
+  const properties = isRecord(schema.properties) ? (schema.properties as Record<string, object>) : undefined;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((entry): entry is string => typeof entry === "string")
     : undefined;
@@ -124,38 +124,6 @@ function toMcpInputSchema(schema: JsonObject): Tool["inputSchema"] {
     ...(schema.additionalProperties !== undefined ? { additionalProperties: schema.additionalProperties } : {})
   } satisfies Tool["inputSchema"];
   return inputSchema;
-}
-
-function isObjectRecord(value: unknown): value is Record<string, object> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.values(value).every((candidate): candidate is object => typeof candidate === "object" && candidate !== null);
-}
-
-function toJsonObject(value: unknown): JsonObject {
-  const source = isRecord(value) ? value : undefined;
-  if (source === undefined) {
-    return {};
-  }
-  const out: JsonObject = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const sanitized = toJsonValue(raw);
-    if (sanitized !== undefined) {
-      out[key] = sanitized;
-    }
-  }
-  return out;
-}
-
-function toJsonValue(value: unknown): JsonValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => toJsonValue(entry)).filter((entry): entry is JsonValue => entry !== undefined);
-  }
-  return isRecord(value) ? toJsonObject(value) : undefined;
 }
 
 function missingRequiredArgs(schema: JsonObject, args: JsonObject): readonly string[] {

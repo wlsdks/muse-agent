@@ -1,11 +1,5 @@
 import type { AuthIdentity, LoginResult } from "@muse/auth";
 
-type MutableAuthRequest = Record<string, unknown> & { auth?: AuthIdentity };
-
-function isAuthRequest(value: unknown): value is MutableAuthRequest {
-  return typeof value === "object" && value !== null;
-}
-
 /**
  * Auth-identity helpers extracted from `server-helpers.ts`.
  *
@@ -21,17 +15,11 @@ function isAuthRequest(value: unknown): value is MutableAuthRequest {
  */
 
 export function attachAuthIdentity(request: unknown, identity: AuthIdentity | undefined): void {
-  if (!isAuthRequest(request)) {
-    return;
-  }
-  request.auth = identity;
+  (request as { auth?: AuthIdentity }).auth = identity;
 }
 
 export function getAuthIdentity(request: unknown): AuthIdentity | undefined {
-  if (!isAuthRequest(request)) {
-    return undefined;
-  }
-  return request.auth;
+  return (request as { auth?: AuthIdentity }).auth;
 }
 
 export function toLoginResponse(login: LoginResult) {

@@ -153,7 +153,9 @@ export async function performConsentedAction(
   // Strip any caller-supplied authorization header (case-insensitively) so the
   // consent-gated credential is the ONLY Bearer token that ever leaves — a
   // request.headers spread must never override or corrupt the code-owned token.
-  const callerHeaders = removeAuthorizationHeader(options.request.headers);
+  const callerHeaders = Object.fromEntries(
+    Object.entries(options.request.headers ?? {}).filter(([key]) => key.toLowerCase() !== "authorization")
+  );
   try {
     response = await options.fetchImpl(options.request.url, {
       body: options.request.body,
@@ -189,18 +191,5 @@ export async function performConsentedAction(
     return { performed: false, reason };
   }
   await log("performed", `HTTP ${response.status.toString()}`);
-    return { performed: true, status: response.status };
-  }
-
-function removeAuthorizationHeader(headers: Record<string, string> | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headers) {
-    return out;
-  }
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() !== "authorization") {
-      out[key] = value;
-    }
-  }
-  return out;
+  return { performed: true, status: response.status };
 }

@@ -15,7 +15,8 @@
  * expects — only the capabilities get rewritten to `localModelCapabilities`.
  */
 
-import { isRecord, parseBooleanFromEnv, truncateErrorBody, withBestEffort, type JsonObject } from "@muse/shared";
+import { truncateErrorBody } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 
 import { isWellFormedBase64 } from "./base64-image.js";
 import {
@@ -183,7 +184,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     if (!resp.ok) {
       throw await this.buildNativeError(request, resp, "/api/chat");
     }
-    const rawBody = await withBestEffort(resp.text(), "");
+    const rawBody = await resp.text().catch(() => "");
     const parsed = parseJson(rawBody);
     if (parsed === undefined) {
       // A non-JSON 200 is a transport anomaly (proxy/portal HTML,
@@ -396,17 +397,14 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     // Opt-in latency trace (MUSE_MODEL_TRACE=1): one line per chat call with a
     // sequence id + start/end + duration, so a turn's call pattern (how many,
     // sequential vs overlapping) is visible without a profiler.
-    const trace = parseBooleanFromEnv(process.env.MUSE_MODEL_TRACE, false);
+    const trace = process.env.MUSE_MODEL_TRACE === "1";
     let id = 0;
     let t0 = 0;
     if (trace) {
       id = ++OllamaProvider.traceSeq;
       t0 = Date.now();
       let model = "";
-      const body = parseJson(String(init.body));
-      if (isRecord(body) && typeof body.model === "string") {
-        model = body.model;
-      }
+      try { model = (JSON.parse(String(init.body)) as { model?: string }).model ?? ""; } catch { /* ignore */ }
       process.stderr.write(`[modeltrace] #${id.toString()} START t=${new Date(t0).toISOString()} model=${model}\n`);
     }
     try {
@@ -446,7 +444,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     resp: { status: number; statusText: string; text(): Promise<string> },
     label: string
   ): Promise<ModelProviderError> {
-    const bodyText = (await withBestEffort(resp.text(), "")) || resp.statusText;
+    const bodyText = (await resp.text().catch(() => "")) || resp.statusText;
     // Name the model in EVERY failure — when several local models are
     // installed, "which model failed?" is the first debugging question, and
     // a bare status+body doesn't answer it. Mirrors the embed-model hints.
@@ -605,7 +603,7 @@ export async function probeOllamaContextWindow(
     if (!resp.ok) {
       return undefined;
     }
-    const raw = await withBestEffort(resp.text(), "");
+    const raw = await resp.text().catch(() => "");
     const parsed = parseJson(raw);
     if (!isRecord(parsed)) {
       return undefined;

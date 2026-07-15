@@ -33,10 +33,7 @@ describe("shapeDaemonFlags", () => {
       MUSE_HOME_WATCH_ENABLED: "1"
     };
     const { flags } = shapeDaemonFlags(env);
-    const byKey: Record<string, boolean> = {};
-    for (const flag of flags) {
-      byKey[flag.key] = flag.enabled;
-    }
+    const byKey = Object.fromEntries(flags.map((f: DaemonFlagView) => [f.key, f.enabled]));
     // Both "true" and "1" are in parseBoolean's TRUTHY_ENV_VALUES set
     expect(byKey["MUSE_EPISODIC_MEMORY_ENABLED"]).toBe(true);
     expect(byKey["MUSE_HOME_WATCH_ENABLED"]).toBe(true);

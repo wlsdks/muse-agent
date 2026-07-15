@@ -73,29 +73,6 @@ function abortError(reason: unknown): Error {
     );
 }
 
-function createRunCommandResult(
-  exitCode: number | null,
-  signal: string | null,
-  stdout: string,
-  stderr: string,
-  timedOut: boolean
-): RunCommandResult {
-  return { exitCode, signal, stdout, stderr, timedOut };
-}
-
-function exitCodePayload(child: ChildProcess, stdout: StreamAccumulator, stderr: StreamAccumulator, encoding: BufferEncoding): Promise<RunCommandResult> {
-  return (async (): Promise<RunCommandResult> => {
-    const [exitCode, signal] = await once(child, "close");
-    return createRunCommandResult(
-      exitCode,
-      signal ?? null,
-      Buffer.concat(stdout.chunks).toString(encoding),
-      Buffer.concat(stderr.chunks).toString(encoding),
-      false
-    );
-  })();
-}
-
 export async function runCommandWithTimeout(options: RunCommandOptions): Promise<RunCommandResult> {
   const {
     command,
@@ -138,24 +115,29 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   const onStderrData = (chunk: unknown): void => {
     appendChunk(stderr, chunk);
   };
-  const onIoError = (): void => undefined;
   child.stdout.on("data", onStdoutData);
   child.stderr.on("data", onStderrData);
-  child.stdout.on("error", onIoError);
-  child.stderr.on("error", onIoError);
-  child.stdin.on("error", onIoError);
+  child.stdout.on("error", () => undefined);
+  child.stderr.on("error", () => undefined);
+  child.stdin.on("error", () => undefined);
 
   if (stdin !== undefined) {
     child.stdin.write(stdin);
   }
   child.stdin.end();
 
-  const closeResult = exitCodePayload(child, stdout, stderr, encoding);
-  const errorResult = (async (): Promise<RunCommandResult> => {
-    const [error] = await once(child, "error");
-    throw asError(error);
-  })();
-  const outcome = Promise.race([closeResult, errorResult]);
+  const outcome = Promise.race([
+    once(child, "close").then(([exitCode, signal]) => ({
+      exitCode,
+      signal: signal ?? null,
+      stderr: Buffer.concat(stderr.chunks).toString(encoding),
+      stdout: Buffer.concat(stdout.chunks).toString(encoding),
+      timedOut: false
+    }) as RunCommandResult),
+    once(child, "error").then(([error]) => {
+      throw asError(error);
+    })
+  ]);
 
   const hasFiniteTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
 
@@ -187,39 +169,27 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   // intercept timers/promises, and downstream watchdog tests drive this
   // timeout with fake timers.
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeout = Promise.withResolvers<RunCommandResult>();
-  const { promise: timeoutResult, resolve: resolveTimeout } = timeout;
-
-  timeoutHandle = setTimeout(() => {
-    child.kill(killSignal);
-    resolveTimeout({
-      exitCode: null,
-      signal: typeof killSignal === "string" ? killSignal : null,
-      stderr: Buffer.concat(stderr.chunks).toString(encoding),
-      stdout: Buffer.concat(stdout.chunks).toString(encoding),
-      timedOut: true
-    });
-  }, timeoutMs);
-  timeoutHandle.unref?.();
-
-  // Keep cleanup in one place: both timeout and outcome paths clear pending timer.
-  const clearTimeoutHandle = (): void => {
-    if (timeoutHandle !== undefined) {
-      clearTimeout(timeoutHandle);
-      timeoutHandle = undefined;
-    }
-  };
+  const timeout = new Promise<RunCommandResult>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      child.kill(killSignal);
+      resolve({
+        exitCode: null,
+        signal: typeof killSignal === "string" ? killSignal : null,
+        stderr: Buffer.concat(stderr.chunks).toString(encoding),
+        stdout: Buffer.concat(stdout.chunks).toString(encoding),
+        timedOut: true
+      });
+    }, timeoutMs);
+    timeoutHandle.unref?.();
+  });
 
   try {
     return abortPromise
-      ? await Promise.race([outcome, timeoutResult, abortPromise])
-      : await Promise.race([outcome, timeoutResult]);
+      ? await Promise.race([outcome, timeout, abortPromise])
+      : await Promise.race([outcome, timeout]);
   } finally {
-    clearTimeoutHandle();
     child.stdout.off("data", onStdoutData);
     child.stderr.off("data", onStderrData);
-    child.stdout.off("error", onIoError);
-    child.stderr.off("error", onIoError);
-    child.stdin.off("error", onIoError);
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
 }

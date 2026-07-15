@@ -14,8 +14,13 @@ import { homedir } from "node:os";
 import { dirname, join as pathJoin } from "node:path";
 
 import { isCancel, multiselect, password, text } from "@clack/prompts";
-import { backupPlaintextCredentialsFile, credentialEncryptionEnabled, decodeMaybeEncryptedCredentialsJson, encryptCredentialEnvelope, isCredentialsFileEncryptedAtRest, isRecord } from "@muse/shared";
-import { withBestEffort } from "./async-promises.js";
+import {
+  backupPlaintextCredentialsFile,
+  credentialEncryptionEnabled,
+  decodeMaybeEncryptedCredentialsJson,
+  encryptCredentialEnvelope,
+  isCredentialsFileEncryptedAtRest
+} from "@muse/shared";
 
 interface SetupModelIO {
   readonly stdout: (message: string) => void;
@@ -276,8 +281,9 @@ async function readPersisted(file: string, env: NodeJS.ProcessEnv = process.env)
     return { providers: {}, version: 1 };
   }
   parsed = decodeMaybeEncryptedCredentialsJson(parsed, env); // THROWS fail-closed on a wrong key
-  if (isRecord(parsed) && parsed.providers && isRecord(parsed.providers)) {
-    return { providers: { ...parsed.providers }, version: 1 };
+  const shape = parsed as Partial<PersistedShape>;
+  if (shape && typeof shape === "object" && shape.providers && typeof shape.providers === "object") {
+    return { providers: { ...shape.providers }, version: 1 };
   }
   return { providers: {}, version: 1 };
 }
@@ -296,7 +302,7 @@ async function writePersisted(file: string, value: PersistedShape, env: NodeJS.P
   const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
   const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
   if (shouldEncrypt && !alreadyEncrypted) {
-    const existing = await withBestEffort(fs.readFile(file, "utf8"), undefined);
+    const existing = await fs.readFile(file, "utf8").catch(() => undefined);
     if (existing !== undefined) {
       await backupPlaintextCredentialsFile(file, existing);
     }
@@ -305,5 +311,6 @@ async function writePersisted(file: string, value: PersistedShape, env: NodeJS.P
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
-  await withBestEffort(fs.chmod(file, 0o600), undefined);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
+

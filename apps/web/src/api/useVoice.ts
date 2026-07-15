@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 
-import { isRecord, parseJson, readOptionalString } from "./safe-json.js";
-
 interface SttResponse {
   readonly text?: string;
 }
@@ -77,9 +75,9 @@ export function useVoice(baseUrl: string, token: string) {
           if (!res.ok) {
             throw new Error(res.status === 503 ? "No speech-to-text provider is configured." : `STT failed (${res.status})`);
           }
-          const parsed = parseSttResponse(parseJson(await res.text()));
-          if (parsed?.text?.trim()) {
-            onTranscript(parsed.text.trim());
+          const body = (await res.json()) as SttResponse;
+          if (body.text?.trim()) {
+            onTranscript(body.text.trim());
           }
         } catch (cause) {
           setError(cause instanceof Error ? cause.message : "Transcription failed.");
@@ -144,12 +142,4 @@ function blobToBase64(blob: Blob): Promise<string> {
 
     return btoa(binary);
   });
-}
-
-function parseSttResponse(value: unknown): SttResponse | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const text = readOptionalString(value.text);
-  return { text };
 }

@@ -5029,12 +5029,7 @@ describe("muse.reminders loopback server", () => {
 
     const dueByText = async (): Promise<Record<string, string>> => {
       const all = await connection.callTool!("list", { status: "all" });
-      const reminders = all.reminders as Array<{ text: string; dueAt: string }>;
-      const byText: Record<string, string> = {};
-      for (const reminder of reminders) {
-        byText[reminder.text] = reminder.dueAt;
-      }
-      return byText;
+      return Object.fromEntries((all.reminders as Array<{ text: string; dueAt: string }>).map((r) => [r.text, r.dueAt]));
     };
     const original = {
       "dentist appointment": "2026-05-12T09:00:00.000Z",
@@ -5070,12 +5065,7 @@ describe("muse.reminders loopback server", () => {
 
     const statusByText = async (): Promise<Record<string, string>> => {
       const all = await connection.callTool!("list", { status: "all" });
-      const reminders = all.reminders as Array<{ text: string; status: string }>;
-      const byText: Record<string, string> = {};
-      for (const reminder of reminders) {
-        byText[reminder.text] = reminder.status;
-      }
-      return byText;
+      return Object.fromEntries((all.reminders as Array<{ text: string; status: string }>).map((r) => [r.text, r.status]));
     };
     const allPending = { "dentist appointment": "pending", "dentist follow-up": "pending", "buy milk": "pending" };
     expect(await statusByText()).toEqual(allPending);
@@ -8952,10 +8942,7 @@ describe("muse.status loopback server", () => {
       const connection = createLoopbackMcpConnection(createStatusMcpServer({}));
       const out = (await connection.callTool!("notes_index", {})) as { files: { name: string; size: number }[]; total: number };
       expect(out.total).toBe(2);
-      const bySize: Record<string, number> = {};
-      for (const file of out.files) {
-        bySize[file.name] = file.size;
-      }
+      const bySize = Object.fromEntries(out.files.map((f) => [f.name, f.size]));
       expect(bySize["a.md"]).toBe(5);
       expect(bySize["b.md"]).toBe(6); // the size field is the contract the description promises
     } finally {

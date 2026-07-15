@@ -251,7 +251,7 @@ async function readConversationsFile(file: string): Promise<readonly Conversatio
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];

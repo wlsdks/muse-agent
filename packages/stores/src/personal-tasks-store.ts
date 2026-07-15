@@ -15,7 +15,7 @@ import { atomicWriteFile } from "./atomic-file-store.js";
 
 import { promises as fs } from "node:fs";
 
-import { isRecord, type JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { formatDueLocal } from "@muse/mcp-shared";
 import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "@muse/mcp-shared";
@@ -59,27 +59,18 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
   }
-  const tasks = readRecordArrayField(parsed, "tasks");
-  if (tasks === undefined) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
     await quarantineCorruptStore(file);
     return [];
   }
-  return tasks.flatMap((entry): readonly PersistedTask[] =>
+  return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>
     isPersistedTask(entry) ? [entry] : []
   );
-}
-
-function readRecordArrayField(value: unknown, key: string): unknown[] | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const candidate = value[key];
-  return Array.isArray(candidate) ? candidate : undefined;
 }
 
 /** Exact local-task lookup. Callers that need a known ID should not fall back
@@ -122,7 +113,7 @@ export function serializeTask(task: PersistedTask): JsonObject {
     ...(task.completedAt ? { completedAt: task.completedAt } : {}),
     ...(task.dueAt ? { dueAt: task.dueAt } : {}),
     ...(task.notes ? { notes: task.notes } : {}),
-    ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] } : {}),
+    ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] as JsonValue } : {}),
     ...(task.proactive === false ? { proactive: false } : {}),
     ...(task.urgent === true ? { urgent: true } : {})
   };
@@ -210,8 +201,7 @@ export function selectTasksDueWithin(
   options: { readonly now?: Date; readonly withinDays?: number } = {}
 ): DueTask[] {
   const now = options.now ?? new Date();
-  const configuredDays = options.withinDays ?? 1;
-  const withinDays = Number.isFinite(configuredDays) ? Math.max(0, Math.trunc(configuredDays)) : 1;
+  const withinDays = Number.isFinite(options.withinDays) ? Math.max(0, Math.trunc(options.withinDays as number)) : 1;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const due: DueTask[] = [];
   for (const task of tasks) {
@@ -356,10 +346,10 @@ export function compareTasksByDueDate(left: PersistedTask, right: PersistedTask)
 }
 
 function isPersistedTask(value: unknown): value is PersistedTask {
-  if (!isRecord(value)) {
+  if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value;
+  const candidate = value as PersistedTask;
   if (typeof candidate.id !== "string"
     || typeof candidate.title !== "string"
     || typeof candidate.createdAt !== "string"

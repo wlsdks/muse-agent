@@ -1,7 +1,4 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { withBestEffort } from "./async-promises.js";
-
-
 
 /**
  * `muse daemon`'s default `--interval` (seconds → ms). Kept in this small,
@@ -43,7 +40,7 @@ export class DaemonStopSignal {
     };
     this.wakers.add(wake);
     try {
-      await withBestEffort(sleep(ms, "done", { signal: signal.signal }), undefined);
+      await sleep(ms, "done", { signal: signal.signal }).catch(() => undefined);
     } finally {
       this.wakers.delete(wake);
     }

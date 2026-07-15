@@ -28,7 +28,6 @@ import { join } from "node:path";
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createRustRunnerTool } from "../packages/tools/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
-import { readTextOrDefault, runBestEffort } from "./best-effort.mjs";
 
 import { gradeMultifileFix } from "./lib/grade-multifile-fix.mjs";
 
@@ -117,7 +116,7 @@ let failures = 0;
 let dir;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "previous run directory cleanup");
+    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
     dir = await mkdtemp(join(tmpdir(), "muse-multifile-fix-"));
     await mkdir(join(dir, "src"), { recursive: true });
     const mathPath = join(dir, "src", "math.mjs");
@@ -155,10 +154,10 @@ try {
     });
     const toolsUsed = result.toolsUsed ?? [];
     const testPasses = await runTest(testPath);
-    const math = await readTextOrDefault(() => readFile(mathPath, "utf8"));
+    const math = await readFile(mathPath, "utf8").catch(() => "");
     // Collateral: `add` and the noise file must be untouched; only multiply changed.
     const addIntact = /export function add\(a, b\) \{\s*return a \+ b;/u.test(math);
-    const stringsIntact = (await readTextOrDefault(() => readFile(join(dir, "src", "strings.mjs"), "utf8")) === STRINGS);
+    const stringsIntact = (await readFile(join(dir, "src", "strings.mjs"), "utf8").catch(() => "")) === STRINGS;
     // Grade the OUTCOME (bug fixed + no collateral), not whether the model
     // self-ran the test — the harness verifies `testPasses` itself (agent-testing.md).
     const { ok, ranTest: modelRanTest } = gradeMultifileFix({ addIntact, ranTest: toolsUsed.includes("run_command"), stringsIntact, testPasses });
@@ -171,7 +170,7 @@ try {
     if (!ok) console.log(`  math.mjs multiply now: ${JSON.stringify((math.match(/function multiply[\s\S]*?\}/u) ?? [""])[0])}`);
   }
 } finally {
-  if (dir) await runBestEffort(() => rm(dir, { force: true, recursive: true }), "temporary eval directory cleanup");
+  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
 }
 
 if (failures > 0) {

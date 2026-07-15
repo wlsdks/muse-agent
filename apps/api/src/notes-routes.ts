@@ -27,8 +27,6 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
-import { isJsonObject, isJsonValue } from "./server-input-utils.js";
-import { readBodyString, readQueryInteger, readQueryString, toBody } from "./compat-parsers.js";
 import type { ServerOptions } from "./server.js";
 
 interface NotesRoutesGate {
@@ -62,23 +60,16 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     mcp.tools.map((tool) => [tool.name, tool.execute])
   );
 
-  function normalizeToolResult(raw: unknown): JsonObject {
-    if (isJsonObject(raw)) {
-      return raw;
-    }
-    if (isJsonValue(raw)) {
-      return { result: raw };
-    }
-    return { result: null };
-  }
-
   async function callTool(name: string, args: JsonObject): Promise<JsonObject> {
     const execute = tools.get(name);
     if (!execute) {
       throw new Error(`notes tool not found: ${name}`);
     }
     const raw = await execute(args);
-    return normalizeToolResult(raw);
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as JsonObject;
+    }
+    return { result: raw as JsonValue };
   }
 
   function sendToolResult(
@@ -95,7 +86,7 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const subdir = readQueryString(request, "subdir");
+    const { subdir } = (request.query as { subdir?: string } | undefined) ?? {};
     const result = await callTool("list", subdir ? { subdir } : {});
     return sendToolResult(reply, result);
   });
@@ -104,7 +95,7 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const path = readQueryString(request, "path");
+    const { path } = (request.query as { path?: string } | undefined) ?? {};
     if (!path) {
       return reply.status(400).send({ error: "path is required" });
     }
@@ -116,12 +107,12 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const query = readQueryString(request, "query");
-    if (!query) {
+    const query = (request.query as { query?: string } | undefined)?.query;
+    if (!query || query.trim().length === 0) {
       return reply.status(400).send({ error: "query is required" });
     }
-    const limitRaw = readQueryInteger(request, "limit", Number.NaN);
-    const limitNum = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limitRaw = (request.query as { limit?: string } | undefined)?.limit;
+    const limitNum = limitRaw ? Number(limitRaw) : undefined;
     const args: JsonObject = {
       query,
       ...(limitNum !== undefined && Number.isFinite(limitNum) ? { limit: limitNum } : {})
@@ -134,15 +125,13 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = toBody(request.body);
-    const path = readBodyString(body, "path");
-    const content = typeof body.content === "string" ? body.content : undefined;
-    if (!path || content === undefined) {
+    const body = (request.body as { path?: string; content?: string; overwrite?: boolean } | null) ?? null;
+    if (!body || typeof body.path !== "string" || typeof body.content !== "string") {
       return reply.status(400).send({ error: "path and content are required" });
     }
     const args: JsonObject = {
-      content,
-      path,
+      content: body.content,
+      path: body.path,
       ...(body.overwrite === true ? { overwrite: true } : {})
     };
     const result = await callTool("save", args);
@@ -153,13 +142,11 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = toBody(request.body);
-    const path = typeof body.path === "string" ? body.path : undefined;
-    const content = typeof body.content === "string" ? body.content : undefined;
-    if (!path || content === undefined) {
+    const body = (request.body as { path?: string; content?: string } | null) ?? null;
+    if (!body || typeof body.path !== "string" || typeof body.content !== "string") {
       return reply.status(400).send({ error: "path and content are required" });
     }
-    const result = await callTool("append", { content, path });
+    const result = await callTool("append", { content: body.content, path: body.path });
     return sendToolResult(reply, result);
   });
 
@@ -167,7 +154,7 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const path = readQueryString(request, "path");
+    const { path } = (request.query as { path?: string } | undefined) ?? {};
     if (!path) {
       return reply.status(400).send({ error: "path is required" });
     }

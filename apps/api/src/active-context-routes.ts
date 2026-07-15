@@ -12,7 +12,6 @@
 import type { ActiveContextProvider } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
-import { readQueryString } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -36,11 +35,10 @@ export function registerActiveContextRoutes(
         timestamp: new Date().toISOString()
       });
     }
-    const userId = readQueryString(request, "userId");
-    const sessionId = readQueryString(request, "sessionId");
+    const query = request.query as { readonly userId?: string; readonly sessionId?: string } | undefined;
     const snapshot = await provider.resolve({
-      ...(userId ? { userId } : {}),
-      ...(sessionId ? { sessionId } : {})
+      ...(query?.userId ? { userId: query.userId } : {}),
+      ...(query?.sessionId ? { sessionId: query.sessionId } : {})
     });
     if (!snapshot) {
       return reply.status(404).send({

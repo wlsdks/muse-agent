@@ -16,11 +16,10 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
 import { computeAvailability } from "@muse/mcp-shared";
 import { readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/stores";
-import { isRecord } from "@muse/shared";
 import { detectCalendarConflicts, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 export { removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 import type { Command } from "commander";
@@ -56,10 +55,6 @@ import { parseIcsEvents } from "./ics-parser.js";
 import { withApiLocalFallback } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
-function environment(): MuseEnvironment {
-  return process.env;
-}
-
 export interface CalendarCommandHelpers {
   readonly apiRequest: (
     io: ProgramIO,
@@ -76,76 +71,8 @@ interface SharedOptions {
   readonly json?: boolean;
 }
 
-type CalendarProviderRow = {
-  readonly id: string;
-  readonly local?: boolean;
-  readonly displayName?: string;
-  readonly description?: string;
-};
-
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function parseApiRecord(payload: unknown): Record<string, unknown> {
-  return toRecord(payload) ?? {};
-}
-
-function parseCalendarProviders(payload: unknown): readonly CalendarProviderRow[] {
-  const root = parseApiRecord(payload);
-  const rawProviders = root.providers;
-  if (!Array.isArray(rawProviders)) {
-    return [];
-  }
-  return rawProviders
-    .filter((entry): entry is Record<string, unknown> => isRecord(entry))
-    .map((provider) => ({
-      id: typeof provider.id === "string" ? provider.id : "unknown",
-      local: provider.local === true ? true : undefined,
-      displayName: typeof provider.displayName === "string" ? provider.displayName : undefined,
-      description: typeof provider.description === "string" ? provider.description : undefined
-    }))
-    .filter((provider) => provider.id.length > 0);
-}
-
-function parseCalendarEventsPayload(payload: unknown): {
-  readonly events: readonly {
-    readonly id: string;
-    readonly title: string;
-    readonly startsAtIso: string;
-    readonly endsAtIso: string;
-    readonly providerId?: string;
-    readonly location?: string;
-    readonly allDay?: boolean;
-  }[];
-  readonly total?: number;
-} {
-  const root = parseApiRecord(payload);
-  const rawEvents = Array.isArray(root.events) ? root.events : [];
-  return {
-    events: rawEvents
-      .filter((entry): entry is Record<string, unknown> => isRecord(entry))
-      .map((entry) => ({
-        id: typeof entry.id === "string" ? entry.id : "",
-        title: typeof entry.title === "string" ? entry.title : "",
-        startsAtIso: typeof entry.startsAtIso === "string" ? entry.startsAtIso : "",
-        endsAtIso: typeof entry.endsAtIso === "string" ? entry.endsAtIso : "",
-        providerId: typeof entry.providerId === "string" ? entry.providerId : undefined,
-        location: typeof entry.location === "string" ? entry.location : undefined,
-        allDay: entry.allDay === true
-      })),
-    ...(typeof root.total === "number" ? { total: root.total } : {})
-  };
-}
-
-function parseCalendarRows(payload: unknown): readonly Record<string, unknown>[] {
-  const root = parseApiRecord(payload);
-  const rows = root.events;
-  return Array.isArray(rows) ? rows.filter((entry): entry is Record<string, unknown> => isRecord(entry)) : [];
-}
-
 function localCalendarProvider(): LocalCalendarProvider {
-  const file = resolveLocalCalendarFile(environment());
+  const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
   return new LocalCalendarProvider({ file });
 }
 
@@ -167,15 +94,15 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       const payload = await withApiLocalFallback(
         io,
         Boolean(options.local),
-        async () => ({ providers: [localCalendarProvider().describe()] }),
-        async () => parseApiRecord(await helpers.apiRequest(io, command, "/api/calendar/providers")),
+        async () => ({ providers: [localCalendarProvider().describe()] }) as Record<string, unknown>,
+        async () => (await helpers.apiRequest(io, command, "/api/calendar/providers")) as Record<string, unknown>,
         "calendar"
       );
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
       }
-      const providers = parseCalendarProviders(payload);
+      const providers = (payload as { providers?: Parameters<typeof formatProvidersList>[1] }).providers ?? [];
       io.stdout(formatProvidersList("Calendar providers", providers));
     });
 
@@ -236,14 +163,14 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         }
         const query = params.toString();
         const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
-        return parseApiRecord(await helpers.apiRequest(io, command, path));
+        return (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
       };
       const payload = await withApiLocalFallback(io, Boolean(options.local), readLocal, readApi, "calendar");
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
       }
-      io.stdout(formatCalendarEvents(parseCalendarEventsPayload(payload)));
+      io.stdout(formatCalendarEvents(payload as Parameters<typeof formatCalendarEvents>[0]));
     });
 
   calendar
@@ -279,8 +206,8 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           if (options.provider) params.set("providerId", options.provider);
           const query = params.toString();
           const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
-          const events = parseCalendarRows(await helpers.apiRequest(io, command, path));
-          return events.map((raw) => ({
+          const payload = (await helpers.apiRequest(io, command, path)) as { readonly events?: readonly Record<string, unknown>[] };
+          return (payload.events ?? []).map((raw) => ({
             id: typeof raw.id === "string" ? raw.id : "",
             title: typeof raw.title === "string" ? raw.title : "(untitled)",
             startsAt: new Date(String(raw.startsAtIso ?? raw.startsAt)),
@@ -338,7 +265,8 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         async () => {
           const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
           if (options.provider) params.set("providerId", options.provider);
-          return parseCalendarRows(await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`));
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
         },
         "calendar"
       );
@@ -394,7 +322,8 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         })),
         async () => {
           const params = new URLSearchParams({ fromIso: rangeFrom.toISOString(), toIso: rangeTo.toISOString() });
-          return parseCalendarRows(await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`));
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
         },
         "calendar"
       );
@@ -494,7 +423,8 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         async () => {
           const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
           if (options.provider) params.set("providerId", options.provider);
-          return parseCalendarRows(await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`));
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
         },
         "calendar"
       );
@@ -535,10 +465,10 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         // time phrase — record the previously-dead `time-parse` weakness so a recurring
         // misread surfaces for remediation. Fail-soft: never mask the user-facing error.
         try {
-            await recordTimeParseWeakness(options.at, true, {
-              recordWeakness,
-              weaknessesFile: resolveWeaknessesFile(environment())
-            });
+          await recordTimeParseWeakness(options.at, true, {
+            recordWeakness,
+            weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
+          });
         } catch { /* ledger write must never surface as a command error */ }
         throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm', 'in 2 hours'), got '${options.at}'`);
       }
@@ -583,7 +513,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           throw new Error("--remind must be a non-negative number of minutes");
         }
         reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`, event.id);
-        const remindersFile = resolveRemindersFile(environment());
+        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
         await writeReminders(remindersFile, [...await readReminders(remindersFile), reminder]);
       }
       if (options.json) {
@@ -629,7 +559,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       // NOT abort the event deletion (the primary action already succeeded).
       let clearedReminders = 0;
       try {
-            const remindersFile = resolveRemindersFile(environment());
+        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
         const { kept, removed } = removeRemindersForEvent(await readReminders(remindersFile), match.id);
         if (removed > 0) {
           await writeReminders(remindersFile, kept);
@@ -687,7 +617,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           try {
             await recordTimeParseWeakness(options.at, true, {
               recordWeakness,
-            weaknessesFile: resolveWeaknessesFile(environment())
+              weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
             });
           } catch { /* ledger write must never surface as a command error */ }
           throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm'), got '${options.at}'`);
@@ -721,7 +651,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       let shiftedReminders = 0;
       if (options.at !== undefined) {
         try {
-          const remindersFile = resolveRemindersFile(environment());
+          const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
           const { next, shifted } = rescheduleRemindersForEvent(await readReminders(remindersFile), match.id, match.startsAt, updated.startsAt);
           if (shifted > 0) {
             await writeReminders(remindersFile, next);
@@ -774,14 +704,14 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
             }));
             return { events, total: events.length };
           },
-          async () => parseApiRecord(await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)),
+          async () => (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as Record<string, unknown>,
           "calendar"
         );
         if (options.json) {
           helpers.writeOutput(io, payload);
           return;
         }
-        io.stdout(formatCalendarEvents(parseCalendarEventsPayload(payload)));
+        io.stdout(formatCalendarEvents(payload as Parameters<typeof formatCalendarEvents>[0]));
       });
   };
 

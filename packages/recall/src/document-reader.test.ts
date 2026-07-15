@@ -223,10 +223,7 @@ describe("walkDocuments + extractDirectoryDocuments — `--file <dir>` grounding
 
   it("extracts text from every readable doc (incl. .org/.rst/.adoc/.mdx) and SKIPS the binary one", async () => {
     const { documents: docs } = await extractDirectoryDocuments(dir);
-    const byName: Record<string, string> = {};
-    for (const doc of docs) {
-      byName[doc.path.slice(dir.length + 1).replaceAll("\\", "/")] = doc.text;
-    }
+    const byName = Object.fromEntries(docs.map((d) => [d.path.slice(dir.length + 1).replaceAll("\\", "/"), d.text]));
     expect(byName["budget.txt"]).toContain("$42,000");
     expect(byName["launch.md"]).toContain("August 14");
     expect(byName["sub/notes.log"]).toContain("nested log");

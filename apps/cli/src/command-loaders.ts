@@ -6,65 +6,9 @@
 // command-manifest.drift.test.ts.
 import type { Command } from "commander";
 
-import type { AuthCommandHelpers } from "./commands-auth.js";
-import type { ConfigCommandHelpers } from "./commands-config.js";
-import type { CostCommandHelpers } from "./commands-cost.js";
-import type { OrchestrateHelpers } from "./commands-orchestrate.js";
-import type { CalendarCommandHelpers } from "./commands-calendar.js";
-import type { DebugCommandHelpers } from "./commands-debug.js";
-import type { DoctorCommandHelpers } from "./commands-doctor.js";
-import type { AgentNoticesCommandHelpers } from "./commands-agent-notices.js";
-import type { ListenHelpers } from "./commands-listen.js";
-import type { MemoryCommandHelpers } from "./commands-memory.js";
-import type { MessagingCommandHelpers } from "./commands-messaging.js";
-import type { MetricsCommandHelpers } from "./commands-metrics.js";
-import type { McpHelpers } from "./commands-mcp.js";
-import type { RunsCommandHelpers } from "./commands-runs.js";
-import type { RemindCommandHelpers } from "./commands-remind.js";
-import type { SchedulerSetupHelpers } from "./commands-scheduler-setup.js";
-import type { SpecsHelpers } from "./commands-specs.js";
-import type { SettingsCommandHelpers } from "./commands-settings.js";
-import type { SetupCloudHelpers } from "./commands-setup-cloud.js";
-import type { SetupLocalHelpers } from "./commands-setup-local.js";
-import type { TasksCommandHelpers } from "./commands-tasks.js";
-import type { TodayCommandHelpers, TodayCommandShells } from "./commands-today.js";
-import type { ToolsAdminCommandHelpers } from "./commands-tools-admin.js";
-import type { TracesCommandHelpers } from "./commands-traces.js";
-import type { TelemetryHelpers } from "./commands-telemetry.js";
-import type { VoiceCommandHelpers } from "./commands-voice.js";
 import type { ProgramIO } from "./program.js";
 
-export type LazyDeps = SetupLocalHelpers
-  & SetupCloudHelpers
-  & ConfigCommandHelpers
-  & AuthCommandHelpers
-  & Omit<ListenHelpers, "shells" | "buildVoiceProviders">
-  & McpHelpers
-  & SpecsHelpers
-  & OrchestrateHelpers
-  & CalendarCommandHelpers
-  & MemoryCommandHelpers
-  & MessagingCommandHelpers
-  & RemindCommandHelpers
-  & SchedulerSetupHelpers
-  & MetricsCommandHelpers
-  & AgentNoticesCommandHelpers
-  & TasksCommandHelpers
-  & RunsCommandHelpers
-  & DoctorCommandHelpers
-  & CostCommandHelpers
-  & TracesCommandHelpers
-  & SettingsCommandHelpers
-  & ToolsAdminCommandHelpers
-  & DebugCommandHelpers
-  & TelemetryHelpers
-  & Omit<TodayCommandHelpers, "shells">
-  & VoiceCommandHelpers
-  & { readonly todayShells?: TodayCommandShells };
-
-function withTodayShells(deps: LazyDeps): TodayCommandHelpers {
-  return deps.todayShells ? { ...deps, shells: deps.todayShells } : deps;
-}
+export type LazyDeps = Record<string, unknown>;
 
 export interface LazyCommandLoader {
   readonly id: string;
@@ -84,8 +28,8 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     const m4 = await import("./commands-setup-data.js");
     const m5 = await import("./commands-setup-briefing.js");
     m0.registerSetupCommands(program, io);
-    m1.registerSetupLocalCommand(program, io, _deps);
-    m2.registerSetupCloudCommand(program, io, _deps);
+    m1.registerSetupLocalCommand(program, io, _deps as never);
+    m2.registerSetupCloudCommand(program, io, _deps as never);
     m3.registerSetupVoiceCommand(program, io);
     m4.registerSetupDataCommand(program, io);
     m5.registerSetupBriefingCommand(program, io, _deps as never);
@@ -99,7 +43,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     load: async (program, io, _deps) => {
     const m0 = await import("./commands-notes.js");
     const m1 = await import("./commands-notes-rag.js");
-    m0.registerNotesCommands(program, io, _deps);
+    m0.registerNotesCommands(program, io, _deps as never);
     m1.registerNotesRagCommands(program, io);
     },
   },
@@ -116,7 +60,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["config"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-config.js");
-    m.registerConfigCommands(program, io, _deps);
+    m.registerConfigCommands(program, io, _deps as never);
     },
   },
   {
@@ -124,7 +68,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["auth"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-auth.js");
-    m.registerAuthCommands(program, io, _deps);
+    m.registerAuthCommands(program, io, _deps as never);
     },
   },
   {
@@ -132,7 +76,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["listen"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-listen.js");
-    m.registerListenCommand(program, io, _deps);
+    m.registerListenCommand(program, io, _deps as never);
     },
   },
   {
@@ -140,7 +84,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["mcp"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-mcp.js");
-    m.registerMcpCommands(program, io, _deps);
+    m.registerMcpCommands(program, io, _deps as never);
     },
   },
   {
@@ -268,7 +212,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["specs"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-specs.js");
-    m.registerSpecsCommands(program, io, _deps);
+    m.registerSpecsCommands(program, io, _deps as never);
     },
   },
   {
@@ -276,7 +220,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["orchestrate"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-orchestrate.js");
-    m.registerOrchestrateCommands(program, io, _deps);
+    m.registerOrchestrateCommands(program, io, _deps as never);
     },
   },
   {
@@ -284,7 +228,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["calendar"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-calendar.js");
-    m.registerCalendarCommands(program, io, _deps);
+    m.registerCalendarCommands(program, io, _deps as never);
     },
   },
   {
@@ -292,7 +236,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["memory"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-memory.js");
-    m.registerMemoryCommands(program, io, _deps);
+    m.registerMemoryCommands(program, io, _deps as never);
     },
   },
   {
@@ -300,7 +244,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["messaging"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-messaging.js");
-    m.registerMessagingCommands(program, io, _deps);
+    m.registerMessagingCommands(program, io, _deps as never);
     },
   },
   {
@@ -308,7 +252,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["remind"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-remind.js");
-    m.registerRemindCommands(program, io, _deps);
+    m.registerRemindCommands(program, io, _deps as never);
     },
   },
   {
@@ -452,7 +396,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["scheduler"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-scheduler-setup.js");
-    m.registerSchedulerCommands(program, io, _deps);
+    m.registerSchedulerCommands(program, io, _deps as never);
     },
   },
   {
@@ -548,7 +492,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["metrics"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-metrics.js");
-    m.registerMetricsCommands(program, io, _deps);
+    m.registerMetricsCommands(program, io, _deps as never);
     },
   },
   {
@@ -700,7 +644,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["agent-notices"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-agent-notices.js");
-    m.registerAgentNoticesCommands(program, io, _deps);
+    m.registerAgentNoticesCommands(program, io, _deps as never);
     },
   },
   {
@@ -708,7 +652,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["tasks"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-tasks.js");
-    m.registerTasksCommands(program, io, _deps);
+    m.registerTasksCommands(program, io, _deps as never);
     },
   },
   {
@@ -804,7 +748,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["runs"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-runs.js");
-    m.registerRunsCommands(program, io, _deps);
+    m.registerRunsCommands(program, io, _deps as never);
     },
   },
   {
@@ -812,7 +756,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["doctor"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-doctor.js");
-    m.registerDoctorCommand(program, io, _deps);
+    m.registerDoctorCommand(program, io, _deps as never);
     },
   },
   {
@@ -820,7 +764,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["cost"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-cost.js");
-    m.registerCostCommands(program, io, _deps);
+    m.registerCostCommands(program, io, _deps as never);
     },
   },
   {
@@ -852,7 +796,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["traces"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-traces.js");
-    m.registerTracesCommands(program, io, _deps);
+    m.registerTracesCommands(program, io, _deps as never);
     },
   },
   {
@@ -860,7 +804,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["settings"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-settings.js");
-    m.registerSettingsCommands(program, io, _deps);
+    m.registerSettingsCommands(program, io, _deps as never);
     },
   },
   {
@@ -868,7 +812,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["tools"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-tools-admin.js");
-    m.registerToolsAdminCommands(program, io, _deps);
+    m.registerToolsAdminCommands(program, io, _deps as never);
     },
   },
   {
@@ -876,7 +820,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["debug"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-debug.js");
-    m.registerDebugCommands(program, io, _deps);
+    m.registerDebugCommands(program, io, _deps as never);
     },
   },
   {
@@ -884,7 +828,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["telemetry"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-telemetry.js");
-    m.registerTelemetryCommands(program, io, _deps);
+    m.registerTelemetryCommands(program, io, _deps as never);
     },
   },
   {
@@ -892,7 +836,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["today"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-today.js");
-    m.registerTodayCommands(program, io, withTodayShells(_deps));
+    m.registerTodayCommands(program, io, _deps as never);
     },
   },
   {
@@ -900,7 +844,7 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     names: ["voice"],
     load: async (program, io, _deps) => {
       const m = await import("./commands-voice.js");
-    m.registerVoiceCommands(program, io, _deps);
+    m.registerVoiceCommands(program, io, _deps as never);
     },
   },
   {

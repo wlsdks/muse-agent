@@ -7,9 +7,9 @@
  * — deterministic code, never a prompt instruction.
  */
 
-import { parseBooleanFromEnv } from "@muse/shared";
-
 export type ProviderLocality = "local" | "cloud";
+
+const LOCAL_ONLY_TRUE_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
 const LOCAL_ONLY_OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
 
 /**
@@ -56,7 +56,8 @@ export function isLoopbackUrl(raw: string | undefined): boolean {
 
 /** `MUSE_LOCAL_ONLY` is enabled only by its established explicit truthy spellings. */
 export function isLocalOnlyEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
-  return parseBooleanFromEnv(env["MUSE_LOCAL_ONLY"], false);
+  const raw = env["MUSE_LOCAL_ONLY"];
+  return raw !== undefined && LOCAL_ONLY_TRUE_VALUES.has(raw.trim().toLowerCase());
 }
 
 /**

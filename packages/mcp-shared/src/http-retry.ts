@@ -90,14 +90,6 @@ export function isRetriableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
 }
 
-function coerceNonNegativeInteger(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) {
-    return fallback;
-  }
-  const truncated = Math.trunc(value);
-  return truncated < 0 ? 0 : truncated;
-}
-
 /**
  * `fetch` with retry-with-backoff for transient failures (429 / 5xx /
  * network reject). Permanent responses (2xx, or a non-429 4xx) return
@@ -109,11 +101,11 @@ export async function fetchWithRetry(
   url: string,
   options: RetryOptions = {}
 ): Promise<Response> {
-  const retries = coerceNonNegativeInteger(options.retries, 2);
-  const baseDelayMs = coerceNonNegativeInteger(options.baseDelayMs, 250);
+  const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
+  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
   const delay = options.sleep ?? sleep;
-  const timeoutMs = coerceNonNegativeInteger(options.timeoutMs, 15_000);
-  const maxRetryAfterMs = coerceNonNegativeInteger(options.maxRetryAfterMs, 30_000);
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(0, options.timeoutMs as number) : 15_000;
+  const maxRetryAfterMs = Number.isFinite(options.maxRetryAfterMs) ? Math.max(0, options.maxRetryAfterMs as number) : 30_000;
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {

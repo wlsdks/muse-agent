@@ -106,8 +106,8 @@ export class InMemoryCacheMetricsRecorder implements CacheMetricsRecorder {
     return {
       ...stats,
       estimatedCostSavedUsd: this.estimatedCostSavedUsd,
-      hitsByProvider: mapToJsonObject(this.hitsByProvider),
-      missesByProvider: mapToJsonObject(this.missesByProvider),
+      hitsByProvider: Object.fromEntries(this.hitsByProvider),
+      missesByProvider: Object.fromEntries(this.missesByProvider),
       semanticSimilarityScores: [...this.semanticSimilarityScores]
     };
   }
@@ -129,14 +129,6 @@ const LOCAL_PROVIDERS: ReadonlySet<string> = new Set(["ollama", "lmstudio"]);
 export function isLocalProvider(model: string): boolean {
   const provider = resolveProvider(model);
   return LOCAL_PROVIDERS.has(provider);
-}
-
-function mapToJsonObject(values: ReadonlyMap<string, number>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [key, value] of values.entries()) {
-    out[key] = value;
-  }
-  return out;
 }
 
 export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number {

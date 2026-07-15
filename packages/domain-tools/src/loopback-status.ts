@@ -16,7 +16,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { isRecord, type JsonObject, withBestEffort } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "@muse/mcp";
 import { readFollowups } from "@muse/stores";
@@ -74,7 +74,7 @@ function homeMuse(name: string): string {
 async function safeReadJson(path: string): Promise<unknown | undefined> {
   try {
     const raw = await readFile(path, "utf8");
-    return JSON.parse(raw);
+    return JSON.parse(raw) as unknown;
   } catch { return undefined; }
 }
 
@@ -91,6 +91,11 @@ interface PersistedTask {
   readonly status?: string;
   readonly dueAt?: string;
   readonly urgent?: boolean;
+}
+
+interface TrustEntry {
+  readonly trustedTools?: readonly string[];
+  readonly blockedTools?: readonly string[];
 }
 
 export function createStatusMcpServer(options: StatusMcpServerOptions = {}): LoopbackMcpServer {
@@ -118,20 +123,26 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       "the user's current state — what they're working on, what's queued, what Muse just notified them about.",
     execute: async (args: Record<string, unknown>): Promise<JsonObject> => {
       const userId = typeof args["user_id"] === "string" && args["user_id"].length > 0
-        ? args["user_id"]
+        ? args["user_id"] as string
         : (process.env.MUSE_USER_ID?.trim() || process.env.USER?.trim() || "default");
 
-      const memoryDoc = await safeReadJson(userMemoryFile);
-      const users = isRecord(memoryDoc) && isRecord(memoryDoc.users) ? memoryDoc.users : {};
-      const persona = isRecord(users[userId]) ? users[userId] : undefined;
-      const facts = isRecord(persona?.facts) ? persona.facts : {};
-      const preferences = isRecord(persona?.preferences) ? persona.preferences : {};
-      const factCount = Object.keys(facts).length;
-      const preferenceCount = Object.keys(preferences).length;
-      const vetoCount = Object.keys(preferences).filter((k) => k.startsWith("veto:")).length;
-      const goalCount = Object.keys(preferences).filter((k) => k.startsWith("goal:")).length;
+      const memoryDoc = await safeReadJson(userMemoryFile) as
+        | { users?: Record<string, unknown> }
+        | undefined;
+      const persona = (memoryDoc?.users?.[userId] ?? undefined) as
+        | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
+        | undefined;
+      const factCount = persona?.facts ? Object.keys(persona.facts).length : 0;
+      const preferenceCount = persona?.preferences ? Object.keys(persona.preferences).length : 0;
+      const vetoCount = persona?.preferences
+        ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
+        : 0;
+      const goalCount = persona?.preferences
+        ? Object.keys(persona.preferences).filter((k) => k.startsWith("goal:")).length
+        : 0;
 
-      const allTasks = parsePersistedTasks(await safeReadJson(tasksFile));
+      const tasksDoc = await safeReadJson(tasksFile) as { tasks?: readonly PersistedTask[] } | undefined;
+      const allTasks = tasksDoc?.tasks ?? [];
       const now = Date.now();
       const due24h = allTasks.filter((task) => {
         if (task.status !== "open" || !task.dueAt) return false;
@@ -139,28 +150,27 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
         return Number.isFinite(due) && due >= now && due <= now + 86_400_000;
       });
 
-      const history = await withBestEffort(readProactiveHistory(historyFile, 1), []);
+      const history = await readProactiveHistory(historyFile, 1).catch(() => []);
       const lastNotice = history[history.length - 1];
 
       const logBytes = await fileSize(logFile);
 
-      const trustDoc = await safeReadJson(trustFile);
-      const trustedUsers = isRecord(trustDoc) && isRecord(trustDoc.users) ? trustDoc.users : {};
-      const trust = isRecord(trustedUsers[userId]) ? trustedUsers[userId] : undefined;
-      const trustedTools = readStringArray(trust?.trustedTools);
-      const blockedTools = readStringArray(trust?.blockedTools);
+      const trustDoc = await safeReadJson(trustFile) as
+        | { users?: Record<string, TrustEntry> }
+        | undefined;
+      const trust = trustDoc?.users?.[userId];
 
       // Dashboard summarizers — same shape `muse status` CLI uses,
       // shared via `personal-status-summary.ts`. Each load is
       // fail-soft (missing file → empty rows → empty summary)
       // because a fresh install hasn't written any of these yet.
       const [reminders, followups, objectives, episodesDoc, patternsDoc] = await Promise.all([
-        withBestEffort(readReminders(remindersFile), []),
-        withBestEffort(readFollowups(followupsFile), []),
-        withBestEffort(readObjectives(objectivesFile), []),
-      withBestEffort(safeReadJson(episodesFile), undefined),
-      withBestEffort(safeReadJson(patternsFiredFile), undefined)
-    ]);
+        readReminders(remindersFile).catch(() => [] as const),
+        readFollowups(followupsFile).catch(() => [] as const),
+        readObjectives(objectivesFile).catch(() => [] as const),
+        safeReadJson(episodesFile).catch(() => undefined),
+        safeReadJson(patternsFiredFile).catch(() => undefined)
+      ]);
       const remindersSummary = summariseRemindersRows(reminders, now);
       const followupsSummary = summariseFollowupsRows(followups, userId);
       const objectivesSummary = summariseObjectivesRows(objectives, userId);
@@ -168,10 +178,10 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       // lock holds, so an agent reasoning about the user's state (or
       // whether to surface something) must see it. Active → `until`
       // string; expired/missing/corrupt → undefined.
-      const sessionLockUntil = await withBestEffort(readSessionLock(sessionLockFile, new Date(now)), undefined);
-      const episodesRows = readArrayField(episodesDoc, "episodes");
+      const sessionLockUntil = await readSessionLock(sessionLockFile, new Date(now)).catch(() => undefined);
+      const episodesRows = (episodesDoc as { episodes?: readonly unknown[] } | undefined)?.episodes ?? [];
       const episodesSummary = summariseEpisodesRows(episodesRows, userId);
-      const patternsRows = readArrayField(patternsDoc, "fired");
+      const patternsRows = (patternsDoc as { fired?: readonly unknown[] } | undefined)?.fired ?? [];
       const patternsSummary = summarisePatternsFiredRows(patternsRows);
 
       const snapshot: JsonObject = {
@@ -179,7 +189,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           last_ended_at: episodesSummary.lastEndedAt ?? null,
           last_summary: episodesSummary.lastSummary ?? null,
           total: episodesSummary.total
-        },
+        } as JsonValue,
         followups: {
           cancelled: followupsSummary.cancelled,
           fired: followupsSummary.fired,
@@ -187,7 +197,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           next_scheduled_summary: followupsSummary.nextScheduledSummary ?? null,
           scheduled: followupsSummary.scheduled,
           total: followupsSummary.total
-        },
+        } as JsonValue,
         objectives: {
           active: objectivesSummary.active,
           cancelled: objectivesSummary.cancelled,
@@ -195,15 +205,15 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           escalated: objectivesSummary.escalated,
           escalated_sample: objectivesSummary.escalatedSample ?? null,
           total: objectivesSummary.total
-        },
+        } as JsonValue,
         session: {
           dnd: sessionLockUntil !== undefined,
           until: sessionLockUntil ?? null
-        },
+        } as JsonValue,
         patterns: {
           last_fired_at: patternsSummary.lastFiredAtIso ?? null,
           total: patternsSummary.total
-        },
+        } as JsonValue,
         reminders: {
           fired: remindersSummary.fired,
           next_due_at: remindersSummary.nextDueAt ?? null,
@@ -211,7 +221,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           overdue: remindersSummary.overdue,
           pending: remindersSummary.pending,
           total: remindersSummary.total
-        },
+        } as JsonValue,
         log: {
           bytes: logBytes ?? null,
           file: logFile
@@ -223,8 +233,8 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           status: lastNotice.status,
           text: lastNotice.text,
           title: lastNotice.title
-        }) : null,
-        model: options.model?.trim() || process.env.MUSE_MODEL?.trim() || null,
+        } as JsonValue) : null,
+        model: (options.model?.trim() || process.env.MUSE_MODEL?.trim() || null) as JsonValue,
         persona: {
           fact_count: factCount,
           goal_count: goalCount,
@@ -232,21 +242,21 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
           updated_at: persona?.updatedAt ?? null,
           user_id: userId,
           veto_count: vetoCount
-        },
+        } as JsonValue,
         tasks: {
           due_next_24h: due24h.slice(0, 5).map((task) => ({
             due_at: task.dueAt ?? null,
             id: task.id ?? null,
             title: task.title ?? null,
             urgent: task.urgent === true
-          })),
+          })) as JsonValue,
           total_open: allTasks.filter((task) => task.status === "open").length
-        },
+        } as JsonValue,
         trust: {
-          blocked_count: blockedTools.length,
-          trusted_count: trustedTools.length,
-          trusted_sample: trustedTools.slice(0, 3)
-        }
+          blocked_count: trust?.blockedTools?.length ?? 0,
+          trusted_count: trust?.trustedTools?.length ?? 0,
+          trusted_sample: (trust?.trustedTools ?? []).slice(0, 3) as JsonValue
+        } as JsonValue
       };
       return snapshot;
     },
@@ -283,7 +293,7 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
         );
         return {
           dir,
-          files,
+          files: files as JsonValue,
           total: files.length
         };
       } catch (cause) {
@@ -303,33 +313,4 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
     name: "muse.status",
     tools: [snapshotTool, notesIndexTool]
   };
-}
-
-function parsePersistedTasks(value: unknown): readonly PersistedTask[] {
-  if (!isRecord(value) || !Array.isArray(value.tasks)) {
-    return [];
-  }
-  return value.tasks.filter(isPersistedTask);
-}
-
-function readArrayField(value: unknown, key: string): readonly unknown[] {
-  if (!isRecord(value)) {
-    return [];
-  }
-  const field = value[key];
-  return Array.isArray(field) ? field : [];
-}
-
-function readStringArray(value: unknown): readonly string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function isPersistedTask(value: unknown): value is PersistedTask {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.id === "string"
-    && typeof value.title === "string"
-    && typeof value.createdAt === "string"
-    && (value.status === "open" || value.status === "done");
 }

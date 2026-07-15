@@ -15,7 +15,6 @@ import type { ToolExecutionResult } from "@muse/tools";
 import type { Awaitable } from "@muse/cache";
 import type { HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import type { AgentRunContext, HookStage } from "./types.js";
-import { isRecord } from "@muse/shared";
 import { setTimeout as sleepWithTimer } from "node:timers/promises";
 
 /** Mirror of the runtime's pluggable hook registry surface. */
@@ -41,23 +40,16 @@ interface InvokeHooksDeps {
 /** Default per-hook timeout — generous, so only a pathological hang is cut. */
 const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
 
-async function awaitHook(invoke: () => Awaitable<void>): Promise<void> {
-  await invoke();
-}
-
-async function hookTimeoutError(timeoutMs: number, signal: AbortSignal): Promise<never> {
-  await sleepWithTimer(timeoutMs, undefined, { signal, ref: false });
-  throw new Error(`hook exceeded ${timeoutMs.toString()}ms timeout`);
-}
-
 async function invokeWithTimeout(invoke: () => Awaitable<void>, timeoutMs: number): Promise<void> {
-  const work = awaitHook(invoke);
+  const work = (async () => { await invoke(); })();
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     await work;
     return;
   }
   const timeoutController = new AbortController();
-  const timeout = hookTimeoutError(timeoutMs, timeoutController.signal);
+  const timeout = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal, ref: false }).then(() => {
+    throw new Error(`hook exceeded ${timeoutMs.toString()}ms timeout`);
+  });
   try {
     // A late rejection of `work` after the timeout wins is still observed by
     // race's attached handler, so it never surfaces as an unhandled rejection.
@@ -73,43 +65,6 @@ type InvokeHookValue<Name extends keyof HookStage> =
   Name extends "afterComplete" ? ModelResponse :
   Name extends "onError" ? unknown :
   never;
-
-type InvokeHookAfterToolValue = Extract<InvokeHookValue<"afterTool">, unknown>;
-
-const isToolExecutionResult = (value: unknown): value is ToolExecutionResult =>
-  isRecord(value)
-  && typeof value.id === "string"
-  && value.id.length > 0
-  && typeof value.name === "string"
-  && value.name.length > 0
-  && typeof value.status === "string"
-  && typeof value.output === "string"
-  && (value.error === undefined || typeof value.error === "string")
-  && (value.sanitized === undefined || isRecord(value.sanitized));
-
-const isModelToolCall = (value: unknown): value is ModelToolCall =>
-  isRecord(value)
-  && typeof value.id === "string"
-  && value.id.length > 0
-  && typeof value.name === "string"
-  && value.name.length > 0
-  && isRecord(value.arguments);
-
-const isModelResponse = (value: unknown): value is ModelResponse =>
-  isRecord(value)
-  && typeof value.id === "string"
-  && value.id.length > 0
-  && typeof value.model === "string"
-  && typeof value.output === "string"
-  && (value.citations === undefined || Array.isArray(value.citations))
-  && (value.toolCalls === undefined || Array.isArray(value.toolCalls))
-  && (value.usage === undefined || isRecord(value.usage))
-  && (value.reasoning === undefined || typeof value.reasoning === "string");
-
-const isHookAfterToolValue = (value: unknown): value is InvokeHookAfterToolValue =>
-  isRecord(value)
-  && isToolExecutionResult(value.result)
-  && isModelToolCall(value.toolCall);
 
 /**
  * Fires the named lifecycle on every registered HookStage. Static `hooks` and
@@ -185,24 +140,16 @@ export function hookInvocation(
   }
 
   if (name === "beforeTool" && beforeTool) {
-    if (!isModelToolCall(value)) {
-      return undefined;
-    }
-    return () => beforeTool(context, value);
+    return () => beforeTool(context, value as ModelToolCall);
   }
 
   if (name === "afterTool" && afterTool) {
-    if (!isHookAfterToolValue(value)) {
-      return undefined;
-    }
-    return () => afterTool(context, value.toolCall, value.result);
+    const toolValue = value as { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall };
+    return () => afterTool(context, toolValue.toolCall, toolValue.result);
   }
 
   if (name === "afterComplete" && afterComplete) {
-    if (!isModelResponse(value)) {
-      return undefined;
-    }
-    return () => afterComplete(context, value);
+    return () => afterComplete(context, value as ModelResponse);
   }
 
   if (name === "onError" && onError) {

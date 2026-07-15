@@ -14,7 +14,7 @@ import {
   type ModelUsage,
   type WebSearchCitation
 } from "./index.js";
-import { isRecord, sanitizeToolCallName } from "./provider-shared.js";
+import { sanitizeToolCallName } from "./provider-shared.js";
 import { parseToolArguments } from "./provider-openai-parse.js";
 
 export function toOpenAIResponsesRequest(
@@ -57,49 +57,60 @@ export function fromOpenAIResponsesResponse(
   requestedModel: string,
   payload: unknown
 ): ModelResponse {
-  const obj = isRecord(payload) ? payload : {};
+  const obj = (payload ?? {}) as {
+    id?: string;
+    model?: string;
+    output?: unknown[];
+    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  };
 
   let text = "";
   const citations: WebSearchCitation[] = [];
   const toolCalls: ModelToolCall[] = [];
 
-  for (const item of Array.isArray(obj.output) ? obj.output : []) {
-    if (!isRecord(item)) {
+  for (const item of obj.output ?? []) {
+    if (!item || typeof item !== "object") {
       continue;
     }
 
-    if (item.type === "function_call") {
+    const it = item as { type?: string; content?: unknown[]; call_id?: string; name?: string; arguments?: string };
+
+    if (it.type === "function_call") {
       // Function tool call output item: extract into ModelToolCall
-      if (typeof item.name === "string" && typeof item.call_id === "string") {
-        toolCalls.push({ id: item.call_id, name: sanitizeToolCallName(item.name), arguments: parseToolArguments(item.arguments) });
+      if (typeof it.name === "string" && typeof it.call_id === "string") {
+        toolCalls.push({ id: it.call_id, name: sanitizeToolCallName(it.name), arguments: parseToolArguments(it.arguments) });
       }
       continue;
     }
 
-    if (item.type !== "message") {
+    if (it.type !== "message") {
       continue;
     }
 
-    for (const c of Array.isArray(item.content) ? item.content : []) {
-      if (!isRecord(c)) {
+    for (const c of it.content ?? []) {
+      if (!c || typeof c !== "object") {
         continue;
       }
 
-      if (c.type !== "output_text") {
+      const block = c as { type?: string; text?: string; annotations?: unknown[] };
+
+      if (block.type !== "output_text") {
         continue;
       }
 
-      if (typeof c.text === "string") {
-        text += c.text;
+      if (typeof block.text === "string") {
+        text += block.text;
       }
 
-      for (const a of Array.isArray(c.annotations) ? c.annotations : []) {
-        if (!isRecord(a)) {
+      for (const a of block.annotations ?? []) {
+        if (!a || typeof a !== "object") {
           continue;
         }
 
-        if (a.type === "url_citation" && typeof a.url === "string" && typeof a.title === "string") {
-          citations.push({ url: a.url, title: a.title, providerRaw: a });
+        const ann = a as { type?: string; url?: string; title?: string };
+
+        if (ann.type === "url_citation" && typeof ann.url === "string" && typeof ann.title === "string") {
+          citations.push({ url: ann.url, title: ann.title, providerRaw: a });
         }
       }
     }
@@ -112,11 +123,11 @@ export function fromOpenAIResponsesResponse(
     output: text,
     raw: payload,
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-    usage: isRecord(obj.usage)
+    usage: obj.usage
       ? {
-        inputTokens: typeof obj.usage.input_tokens === "number" ? obj.usage.input_tokens : 0,
-        outputTokens: typeof obj.usage.output_tokens === "number" ? obj.usage.output_tokens : 0
-      }
+          inputTokens: typeof obj.usage.input_tokens === "number" ? obj.usage.input_tokens : 0,
+          outputTokens: typeof obj.usage.output_tokens === "number" ? obj.usage.output_tokens : 0
+        }
       : undefined
   };
 }

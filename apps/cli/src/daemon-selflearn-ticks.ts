@@ -31,7 +31,6 @@ import { FileUserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
 import { isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
-import { isRecord } from "@muse/shared";
 
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -350,8 +349,7 @@ export function makeRecapTick(deps: MakeRecapTickDeps): () => Promise<void> {
     if (!parseBoolean(e.MUSE_RECAP_ENABLED, false)) return;
     let lastFiredISO: string | undefined;
     try {
-      const parsed = JSON.parse(readFileSync(recapSidecar, "utf8"));
-      lastFiredISO = isRecord(parsed) && typeof parsed.lastFired === "string" ? parsed.lastFired : undefined;
+      lastFiredISO = (JSON.parse(readFileSync(recapSidecar, "utf8")) as { lastFired?: string }).lastFired;
     } catch { /* no sidecar yet ⇒ never fired */ }
     try {
       const outcome = await deliverEveningRecapIfDue({

@@ -6,7 +6,6 @@
  */
 
 import type { ExtractionPayload } from "./memory-auto-extract.js";
-import { isRecord } from "@muse/shared";
 
 export function extractJsonObject(raw: string): ExtractionPayload | undefined {
   const trimmed = raw.trim();
@@ -36,67 +35,11 @@ export function extractJsonObject(raw: string): ExtractionPayload | undefined {
 
 function tryParseObject(input: string): ExtractionPayload | undefined {
   try {
-    const parsed = JSON.parse(input);
-    return parseExtractionPayload(parsed);
+    const parsed = JSON.parse(input) as ExtractionPayload;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
-}
-
-function parseExtractionPayload(value: unknown): ExtractionPayload | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const facts = parseStringRecord(value.facts);
-  const preferences = parseStringRecord(value.preferences);
-  const vetoes = parseExtractedSlotArray(value.vetoes);
-  const goals = parseExtractedSlotArray(value.goals);
-
-  return {
-    ...(facts ? { facts } : {}),
-    ...(preferences ? { preferences } : {}),
-    ...(vetoes ? { vetoes } : {}),
-    ...(goals ? { goals } : {})
-  };
-}
-
-function parseStringRecord(value: unknown): Readonly<Record<string, string>> | undefined {
-  if (!isRecord(value) || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const out: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof key === "string" && typeof entry === "string") {
-      out[key] = entry;
-    }
-  }
-
-  return out;
-}
-
-function parseExtractedSlotArray(
-  value: unknown
-): readonly { readonly id: string; readonly value: string; readonly scope?: string }[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const out: { id: string; value: string; scope?: string }[] = [];
-  for (const entry of value) {
-    if (!isRecord(entry)) {
-      continue;
-    }
-    const id = typeof entry.id === "string" ? entry.id : "";
-    const slotValue = typeof entry.value === "string" ? entry.value : "";
-    if (!id || !slotValue) {
-      continue;
-    }
-    const scope = typeof entry.scope === "string" ? entry.scope : undefined;
-    out.push(scope ? { id, scope, value: slotValue } : { id, value: slotValue });
-  }
-  return out;
 }
 
 function findBalancedBraceBlocks(input: string): readonly string[] {

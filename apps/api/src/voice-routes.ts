@@ -9,7 +9,6 @@ import {
 } from "@muse/voice";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
-import { toBody } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 
 /**
@@ -55,7 +54,9 @@ export function registerVoiceRoutes(server: FastifyInstance, gate: VoiceRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = toBody(request.body);
+    const body = request.body as
+      | { audioBase64?: string; mimeType?: string; language?: string; providerId?: string }
+      | undefined;
 
     const audioBase64 = typeof body?.audioBase64 === "string" ? body.audioBase64 : "";
     const mimeType = typeof body?.mimeType === "string" ? body.mimeType : "";
@@ -99,7 +100,9 @@ export function registerVoiceRoutes(server: FastifyInstance, gate: VoiceRoutesGa
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
-    const body = toBody(request.body);
+    const body = request.body as
+      | { text?: string; voice?: string; format?: TtsFormat; providerId?: string }
+      | undefined;
 
     const text = typeof body?.text === "string" ? body.text : "";
     if (text.trim().length === 0) {

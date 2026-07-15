@@ -13,8 +13,6 @@ export interface FallbackCommand {
   readonly metadata?: JsonObject;
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
-  /** Propagate turn cancellation into a fallback call; a fallback must never outlive its caller. */
-  readonly signal?: AbortSignal;
 }
 
 export interface FallbackStrategy {
@@ -67,7 +65,6 @@ export class ModelFallbackStrategy implements FallbackStrategy {
           messages: command.messages,
           metadata: command.metadata,
           model,
-          signal: command.signal,
           temperature: command.temperature
         });
 
@@ -108,5 +105,5 @@ export class ModelFallbackStrategy implements FallbackStrategy {
 function isProviderMap(
   providers: ReadonlyMap<string, ModelProvider> | readonly ModelProvider[]
 ): providers is ReadonlyMap<string, ModelProvider> {
-  return providers instanceof Map;
+  return typeof (providers as ReadonlyMap<string, ModelProvider>).get === "function";
 }
