@@ -285,6 +285,44 @@ export function levenshteinDistance(a: string, b: string): number {
   return previous[b.length] ?? 0;
 }
 
+function closestNameLengthAwareCap(len: number): number {
+  if (len <= 3) return 1;
+  if (len <= 7) return 2;
+  return 3;
+}
+
+/**
+ * Pick the closest candidate to `input` within `maxDistance` edits. Ties
+ * broken by candidate order (caller supplies a stable list). Returns
+ * `undefined` when nothing is close enough — a "did you mean" prompt with a
+ * random-looking guess is worse than no prompt at all.
+ *
+ * `maxDistance` defaults to a length-aware threshold: 1 edit for 1-3
+ * character inputs, 2 for 4-7, 3 for 8+. Shared (not CLI-only) so any
+ * surface needing a typo/close-miss suggestion — CLI subcommands
+ * (`apps/cli/src/closest-command.ts` re-exports this), the `/model <name>`
+ * channel switch — uses the identical algorithm; two independent
+ * implementations would risk one surface suggesting a name the other
+ * rejects.
+ */
+export function closestCommandName(
+  input: string,
+  candidates: readonly string[],
+  maxDistance?: number
+): string | undefined {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return undefined;
+  const cap = maxDistance ?? closestNameLengthAwareCap(trimmed.length);
+
+  let best: { name: string; distance: number } | undefined;
+  for (const candidate of candidates) {
+    const d = levenshteinDistance(trimmed.toLowerCase(), candidate.toLowerCase());
+    if (d > cap) continue;
+    if (!best || d < best.distance) best = { name: candidate, distance: d };
+  }
+  return best?.name;
+}
+
 /** Type guard for a non-null, non-array object (the canonical shape-inspection helper). */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

@@ -120,6 +120,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "model",
+    names: ["model"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-model.js");
+    m.registerModelCommand(program, io);
+    },
+  },
+  {
     id: "board",
     names: ["board"],
     load: async (program, io, _deps) => {

@@ -80,6 +80,7 @@ export {
   resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
+  resolveMuseCliConfigFilePath,
   resolveOAuthStoreDir,
   resolveNotesDir,
   resolveNotesIndexFile,

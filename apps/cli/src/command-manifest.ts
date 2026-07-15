@@ -555,6 +555,16 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "model",
+    "description": "Show/switch Muse's default model among installed Ollama models (offline catalog across all providers: `muse models`)",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "list",
+      "use"
+    ]
+  },
+  {
     "name": "models",
     "description": "List the models Muse can use + their capabilities (vision/tools/local). Filter: --vision/--tools/--local/--provider",
     "argsTerm": "",

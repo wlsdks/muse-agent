@@ -16,11 +16,8 @@
  * append `/api/embeddings` directly without producing a `//`.
  */
 
-import { mergeModelKeysFromFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { resolveOllamaBaseUrl, type MuseEnvironment } from "@muse/autoconfigure";
 
 export function resolveOllamaUrl(env: MuseEnvironment = process.env): string {
-  const merged = mergeModelKeysFromFile(env);
-  const raw = merged.OLLAMA_BASE_URL?.trim();
-  const base = raw && raw.length > 0 ? raw : "http://127.0.0.1:11434";
-  return base.replace(/\/+$/u, "");
+  return resolveOllamaBaseUrl(env);
 }

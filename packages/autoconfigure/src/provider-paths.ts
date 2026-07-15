@@ -337,3 +337,42 @@ export function resolveModelKeysFile(env: MuseEnvironment): string {
 export function resolveOAuthStoreDir(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_MCP_OAUTH_DIR", "mcp-oauth");
 }
+
+/**
+ * Same test-isolation contract as `resolveDotMusePath`, but joins
+ * `.config/muse/<name>` — the CLI's OWN config-file convention
+ * (`~/.config/muse/config.json`, written by `muse config set` /
+ * `muse setup local` / `muse setup cloud`), a different tree from the
+ * `~/.muse/` personal-data files the rest of this file resolves.
+ */
+function resolveDotConfigMusePath(env: MuseEnvironment, envKey: string, defaultName: string): string {
+  const override = env[envKey]?.trim();
+  if (override && override.length > 0) {
+    return expandLeadingTilde(override);
+  }
+  const home = env.HOME?.trim() || process.env.HOME?.trim();
+  const resolvedHome = home && home.length > 0 ? home : homedir();
+  if (runningUnderVitest() && resolvedHome === genuineHomeDir) {
+    throw new Error(
+      `[muse test isolation] ${envKey} config path would fall back to the REAL home ` +
+        `(${pathJoin(resolvedHome, ".config", "muse", defaultName)}) under vitest. ` +
+        `Isolate the test: pass an explicit env.HOME=<tmpdir>, or set ${envKey} to a temp path. ` +
+        `Refusing to write to the owner's real ~/.config/muse.`
+    );
+  }
+  return pathJoin(resolvedHome, ".config", "muse", defaultName);
+}
+
+/**
+ * `~/.config/muse/config.json` — the SAME file `apps/cli/src/program-config.ts`'s
+ * `defaultConfigPath`/`readConfigStore`/`writeConfigStore` resolve to by
+ * default (that module has no env-override key for this path; it exists
+ * only here so a non-CLI surface can point a test at an isolated temp
+ * file). Exists so `apps/api`'s `/model <name>` channel switch — which
+ * cannot import apps/cli, a separate app, not a shared package — writes
+ * the identical file the next `muse chat`/`muse tui` invocation reads
+ * (R3-3, model-registry.ts).
+ */
+export function resolveMuseCliConfigFilePath(env: MuseEnvironment): string {
+  return resolveDotConfigMusePath(env, "MUSE_CLI_CONFIG_FILE", "config.json");
+}
