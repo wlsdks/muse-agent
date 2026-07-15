@@ -75,6 +75,12 @@ describe("eventId round-trip + read-boundary (calendar add --remind link)", () =
     await writeFile(file, JSON.stringify({ reminders: [{ ...base, eventId: 42 }] }), "utf8");
     expect(await readReminders(file)).toEqual([]); // the malformed reminder is rejected at load
   });
+
+  it("drops a reminder with a blank delivery route", async () => {
+    const file = await tmp();
+    await writeFile(file, JSON.stringify({ reminders: [{ ...base, via: { destination: " ", providerId: "slack" } }] }), "utf8");
+    expect(await readReminders(file)).toEqual([]);
+  });
 });
 
 describe("formatReminderDueLocal — renders the due time in the SERVER's local timezone (the bug: the model echoed the UTC ISO hour)", () => {
