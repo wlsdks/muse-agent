@@ -316,9 +316,10 @@ function buildMuseRecallTool(deps: McpServeDependencies): MuseTool {
 
 const USER_MODEL_READ_KINDS = ["facts", "preferences", "all"] as const;
 type UserModelReadKind = (typeof USER_MODEL_READ_KINDS)[number];
+const USER_MODEL_READ_KIND_SET = new Set<string>(USER_MODEL_READ_KINDS);
 
 function isUserModelReadKind(value: unknown): value is UserModelReadKind {
-  return typeof value === "string" && (USER_MODEL_READ_KINDS as readonly string[]).includes(value);
+  return typeof value === "string" && USER_MODEL_READ_KIND_SET.has(value);
 }
 
 function factEntry(key: string, value: string): JsonObject {
@@ -466,9 +467,10 @@ function buildCalendarReadTool(deps: McpServeDependencies): MuseTool {
 
 const TASKS_READ_STATUSES = ["open", "done", "all"] as const;
 type TasksReadStatus = (typeof TASKS_READ_STATUSES)[number];
+const TASKS_READ_STATUS_SET = new Set<string>(TASKS_READ_STATUSES);
 
 function isTasksReadStatus(value: unknown): value is TasksReadStatus {
-  return typeof value === "string" && (TASKS_READ_STATUSES as readonly string[]).includes(value);
+  return typeof value === "string" && TASKS_READ_STATUS_SET.has(value);
 }
 
 function serializeTask(task: Task): JsonObject {

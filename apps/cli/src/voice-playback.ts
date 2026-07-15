@@ -25,6 +25,11 @@ import { closestCommandName } from "./closest-command.js";
 
 export const AUDIO_FORMATS = ["mp3", "wav", "opus", "aac", "flac"] as const;
 export type AudioFormat = (typeof AUDIO_FORMATS)[number];
+const AUDIO_FORMAT_SET = new Set<string>(AUDIO_FORMATS);
+
+function isAudioFormat(value: string): value is AudioFormat {
+  return AUDIO_FORMAT_SET.has(value);
+}
 
 export interface SpeakerShells {
   readonly playAudio: (filePath: string) => Promise<void>;
@@ -76,8 +81,8 @@ export function parseAudioFormat(raw: string | undefined): AudioFormat {
     return "mp3";
   }
   const trimmed = raw.trim().toLowerCase();
-  if ((AUDIO_FORMATS as readonly string[]).includes(trimmed)) {
-    return trimmed as AudioFormat;
+  if (isAudioFormat(trimmed)) {
+    return trimmed;
   }
   const suggestion = closestCommandName(trimmed, AUDIO_FORMATS);
   const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";

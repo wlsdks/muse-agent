@@ -23,6 +23,7 @@ import type { ProgramIO } from "./program.js";
 import { withBestEffort } from "./async-promises.js";
 
 const CHECKIN_STATUS_VALUES = ["scheduled", "fired", "all"] as const;
+const CHECKIN_STATUS_SET = new Set<string>(CHECKIN_STATUS_VALUES);
 
 export function checkinsFile(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_CHECKINS_FILE?.trim() || join(homedir(), ".muse", "checkins.json");
@@ -139,7 +140,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
       const status = options.status.trim().toLowerCase();
       // Validate like `tasks list` — a typo'd --status must error loudly, not
       // silently filter to an empty (misleading-as-"no check-ins") result.
-      if (!(CHECKIN_STATUS_VALUES as readonly string[]).includes(status)) {
+      if (!CHECKIN_STATUS_SET.has(status)) {
         const suggestion = closestCommandName(status, CHECKIN_STATUS_VALUES);
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         io.stderr(`muse checkins list: --status must be one of: ${CHECKIN_STATUS_VALUES.join(", ")} (got '${options.status}')${hint}\n`);

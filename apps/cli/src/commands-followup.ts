@@ -30,6 +30,7 @@ function environment(): MuseEnvironment {
 }
 
 const FOLLOWUP_STATUS_VALUES = ["scheduled", "fired", "cancelled", "all"] as const;
+const FOLLOWUP_STATUS_SET = new Set<string>(FOLLOWUP_STATUS_VALUES);
 
 interface SharedOptions {
   readonly json?: boolean;
@@ -59,7 +60,7 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       // lenient (any typo silently → "scheduled"), so a typo'd --status would
       // otherwise show the WRONG set with no signal.
       const raw = options.status.trim().toLowerCase();
-      if (!(FOLLOWUP_STATUS_VALUES as readonly string[]).includes(raw)) {
+      if (!FOLLOWUP_STATUS_SET.has(raw)) {
         const suggestion = closestCommandName(raw, FOLLOWUP_STATUS_VALUES);
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         io.stderr(`muse followup list: --status must be one of: ${FOLLOWUP_STATUS_VALUES.join(", ")} (got '${options.status}')${hint}\n`);

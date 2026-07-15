@@ -46,6 +46,11 @@ import type { ProgramIO } from "./program.js";
  */
 export const JOB_STATUS_FILTER_VALUES = ["all", "running", "done", "error", "unknown"] as const;
 export type JobStatusFilter = (typeof JOB_STATUS_FILTER_VALUES)[number];
+const JOB_STATUS_FILTER_SET = new Set<string>(JOB_STATUS_FILTER_VALUES);
+
+function isJobStatusFilter(value: string): value is JobStatusFilter {
+  return JOB_STATUS_FILTER_SET.has(value);
+}
 
 /**
  * Case-insensitive validation. Returns `"all"` when
@@ -57,8 +62,8 @@ export function resolveJobStatusFilter(input: string | undefined): JobStatusFilt
   if (input === undefined) return "all";
   const trimmed = input.trim().toLowerCase();
   if (trimmed.length === 0) return "all";
-  if ((JOB_STATUS_FILTER_VALUES as readonly string[]).includes(trimmed)) {
-    return trimmed as JobStatusFilter;
+  if (isJobStatusFilter(trimmed)) {
+    return trimmed;
   }
   return "invalid";
 }
