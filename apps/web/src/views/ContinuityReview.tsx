@@ -33,6 +33,7 @@ interface ReviewResponse {
     readonly id: string;
     readonly kind: Kind;
     readonly linkCount: number;
+    readonly links: readonly { readonly artifactId: string; readonly artifactType: string; readonly providerId: string; readonly role: string }[];
     readonly policy: { readonly detail: string; readonly nextStep: string; readonly suppression: string; readonly version: number };
     readonly title: string;
   }[];
@@ -148,6 +149,9 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                       <Badge tone="neutral">v{thread.policy.version}</Badge>
                     </div>
                     <div className="row-meta" style={{ marginTop: 10 }}>{thread.policy.detail} · {thread.policy.nextStep} · {thread.policy.suppression}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                      {thread.links.map((link) => <Badge key={`${link.providerId}:${link.artifactType}:${link.artifactId}:${link.role}`} tone="neutral">{link.artifactType}:{link.artifactId}</Badge>)}
+                    </div>
                   </Card>
                 ))}
               </div>

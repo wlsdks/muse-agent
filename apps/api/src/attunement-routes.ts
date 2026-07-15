@@ -45,6 +45,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
           id: thread.id,
           kind: thread.kind,
           linkCount: thread.links.length,
+          links: thread.links.map(({ artifactId, artifactType, providerId, role }) => ({ artifactId, artifactType, providerId, role })),
           policy: thread.policy,
           title: thread.title
         }))
