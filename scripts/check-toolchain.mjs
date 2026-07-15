@@ -29,6 +29,7 @@ import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
+import { resolveTscBinary } from "./run-tsc-fast.mjs";
 
 export const EXPECTED_ROOT_SCRIPTS = {
   build: "pnpm run build:ts7-fast",
@@ -114,7 +115,7 @@ export const EXPECTED_MODULE_MAJOR = 6;
 export const EXPECTED_TYPESCRIPT_PACKAGE_PREFIX = "npm:@typescript/typescript6";
 export const EXPECTED_NATIVE_PACKAGE_PREFIX = "npm:typescript";
 const ROOT_PACKAGE_URL = new URL("../package.json", import.meta.url);
-const TS_BINARY_PATH = "node_modules/.bin/tsc";
+const TS_BINARY_PATH = resolveTscBinary();
 
 export function readTscBinaryVersion() {
   return execFileSync(TS_BINARY_PATH, ["--version"], { encoding: "utf8" })
@@ -165,7 +166,9 @@ function main() {
     }
     process.exit(1);
   }
-  console.log(`✓ toolchain: build tsc v${binVersion.trim()} (native) · typescript module v${moduleVersion} (compiler API for eslint/knip)`);
+  console.log(
+    `✓ toolchain: build tsc ${TS_BINARY_PATH} v${binVersion.trim()} (native) · typescript module v${moduleVersion} (compiler API for eslint/knip)`
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

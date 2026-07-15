@@ -66,6 +66,12 @@ const ok = (s) => console.log(`  ✓ ${s}`);
 const note = (s) => console.log(`  · ${s}`);
 const warn = (s) => console.log(`  ! ${s}`);
 
+const TS_BOOLEAN_TRUE_VALUES = new Set(["1", "on", "true", "yes"]);
+function isDemoNativeNotificationEnabled() {
+  const raw = process.env.MUSE_DEMO_NATIVE_NOTIFICATION?.trim().toLowerCase();
+  return raw !== undefined && TS_BOOLEAN_TRUE_VALUES.has(raw);
+}
+
 console.log("");
 console.log("Muse JARVIS demo — 5-step end-to-end walkthrough");
 console.log("");
@@ -173,7 +179,7 @@ if (summary.fired > 0) {
 
 // ── Step 3: optional macOS notification ──────────────────────────────
 step(3, TOTAL_STEPS, "macOS Notification Center (opt-in)");
-if (process.platform === "darwin" && process.env.MUSE_DEMO_NATIVE_NOTIFICATION === "true") {
+if (process.platform === "darwin" && isDemoNativeNotificationEnabled()) {
   try {
     const provider = new messaging.MacosNotificationProvider({ title: "Muse demo" });
     await provider.send({ destination: "@demo", text: "JARVIS surface end-to-end — chat + memory + proactive verified." });
@@ -184,7 +190,7 @@ if (process.platform === "darwin" && process.env.MUSE_DEMO_NATIVE_NOTIFICATION =
 } else if (process.platform !== "darwin") {
   note(`skipped — non-darwin host (${process.platform})`);
 } else {
-  note("opt-in via MUSE_DEMO_NATIVE_NOTIFICATION=true to see a real popup");
+  note("opt-in via MUSE_DEMO_NATIVE_NOTIFICATION=true|on|yes|1 to see a real popup");
 }
 
 // ── Step 4: setup status ─────────────────────────────────────────────

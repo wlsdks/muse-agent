@@ -10,6 +10,7 @@ import { getTscFastArgs, SUPPORTED_TS7_MODES } from "./tsc-fast-flags.mjs";
 const USAGE = "usage: node scripts/run-tsc-fast.mjs <build|typecheck> [--single-threaded]";
 const PROFILE_ENV = "TS7_TSC_FAST_PROFILE";
 const PROFILE_SLOW_MS_ENV = "TS7_TSC_FAST_SLOW_MS";
+const TS7_TSC_BINARY = "TS7_TSC_BINARY";
 const PROFILE_ALIASES = new Set(["1", "true", "yes", "on"]);
 
 export function isTscFastProfilingEnabled(rawValue = process.env[PROFILE_ENV]) {
@@ -40,6 +41,10 @@ export function formatProfileLine(mode, singleThreaded, elapsedMs) {
 
 export function formatSlowMsAlertLine(elapsedMs, thresholdMs) {
   return `tsc-fast perf alert: elapsedMs=${elapsedMs} exceeded threshold ${thresholdMs}ms`;
+}
+
+export function resolveTscBinary() {
+  return process.env[TS7_TSC_BINARY] ?? "node_modules/.bin/tsc";
 }
 
 export function parseRunTscFastArgs(cliArgs) {
@@ -88,7 +93,7 @@ function main() {
   const { mode, singleThreaded } = parsed;
   const args = getTscFastArgs(mode, { singleThreaded });
   const startedAt = performance.now();
-  const result = spawnSync("node_modules/.bin/tsc", args, {
+  const result = spawnSync(resolveTscBinary(), args, {
     stdio: "inherit",
   });
   const elapsedMs = Math.round(performance.now() - startedAt);
