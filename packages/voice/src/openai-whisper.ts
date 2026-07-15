@@ -1,6 +1,6 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
 import { safeReadText } from "./http-utils.js";
-import { isRecord } from "@muse/shared";
+import { createStringSetGuard, isRecord } from "@muse/shared";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -19,6 +19,7 @@ const SUPPORTED_FORMATS = [
   "audio/ogg",
   "audio/flac"
 ] as const;
+const isSupportedFormat = createStringSetGuard(SUPPORTED_FORMATS);
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -80,7 +81,7 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     // 400 back. Strip any `; codecs=…` parameter before matching.
     // Same gate the local Whisper.cpp adapter applies.
     const baseMime = request.mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!SUPPORTED_FORMATS.includes(baseMime as (typeof SUPPORTED_FORMATS)[number])) {
+    if (!isSupportedFormat(baseMime)) {
       throw new VoiceValidationError(
         "UNSUPPORTED_FORMAT",
         `unsupported audio format "${request.mimeType}"; supported: ${SUPPORTED_FORMATS.join(", ")}`

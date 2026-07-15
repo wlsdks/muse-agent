@@ -1,10 +1,14 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStringSetGuard } from "@muse/shared";
 import type { JsonObject } from "@muse/shared";
 
 import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "@muse/mcp";
 import { readString } from "@muse/mcp";
+
+const SUPPORTED_ALGORITHMS = ["md5", "sha1", "sha256", "sha512"] as const;
+const isSupportedAlgorithm = createStringSetGuard(SUPPORTED_ALGORITHMS);
 
 /**
  * Decode bytes to a UTF-8 string, but ERROR (not silently U+FFFD-corrupt) when the
@@ -38,7 +42,6 @@ function decodeBytesAsUtf8(buf: Buffer, label: "base64" | "hex"): { output: stri
  *     `randomUUID` fallback
  */
 export function createCryptoMcpServer(options: BuiltinLoopbackOptions = {}): LoopbackMcpServer {
-  const supportedAlgorithms = ["md5", "sha1", "sha256", "sha512"] as const;
   return {
     description: "Built-in crypto digest and encoding utilities (loopback MCP).",
     name: "muse.crypto",
@@ -52,8 +55,8 @@ export function createCryptoMcpServer(options: BuiltinLoopbackOptions = {}): Loo
             return { error: "text is required" };
           }
           const algorithm = (readString(args, "algorithm") ?? "sha256").toLowerCase();
-          if (!supportedAlgorithms.includes(algorithm as (typeof supportedAlgorithms)[number])) {
-            return { error: `algorithm must be one of ${supportedAlgorithms.join(", ")}` };
+          if (!isSupportedAlgorithm(algorithm)) {
+            return { error: `algorithm must be one of ${SUPPORTED_ALGORITHMS.join(", ")}` };
           }
           const encoding = readString(args, "encoding") ?? "hex";
           if (encoding !== "hex" && encoding !== "base64") {
@@ -69,7 +72,7 @@ export function createCryptoMcpServer(options: BuiltinLoopbackOptions = {}): Loo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            algorithm: { enum: [...supportedAlgorithms], type: "string" },
+            algorithm: { enum: [...SUPPORTED_ALGORITHMS], type: "string" },
             encoding: { enum: ["hex", "base64"], type: "string" },
             text: { type: "string" }
           },

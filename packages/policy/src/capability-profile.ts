@@ -103,7 +103,11 @@ export function isToolAllowedForCapabilityProfile(profileId: string, toolName: s
 
 /** Checks an approval receipt's operation against the profile's positive allowlist. */
 export function isApprovalOperationAllowedForCapabilityProfile(profileId: string, operation: string): boolean {
-  return resolveCapabilityProfile(profileId)?.allowedApprovalOperations.includes(operation as PersonalWorkApprovalOperation) ?? false;
+  const profile = resolveCapabilityProfile(profileId);
+  if (!profile) {
+    return false;
+  }
+  return profile.allowedApprovalOperations.some((candidate) => candidate === operation);
 }
 
 /** Validates that a receipt target stays within the capability profile's local boundary. */
@@ -115,10 +119,10 @@ export function isApprovalBindingAllowedForCapabilityProfile(
   if (!profile) {
     return false;
   }
-  if (!profile.allowedApprovalOperations.includes(binding.operation as PersonalWorkApprovalOperation)) {
+  if (!profile.allowedApprovalOperations.some((candidate) => candidate === binding.operation)) {
     return false;
   }
-  if (!profile.allowedApprovalRisks.includes(binding.risk as PersonalWorkApprovalRisk)) {
+  if (!profile.allowedApprovalRisks.some((candidate) => candidate === binding.risk)) {
     return false;
   }
   return profile.allowsRemoteTarget || (binding.destination === null && binding.host === null);

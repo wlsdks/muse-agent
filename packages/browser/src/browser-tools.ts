@@ -12,6 +12,7 @@
  * gate + controller are INJECTED so the wiring lives at the CLI boundary.
  */
 
+import { createStringSetGuard } from "@muse/shared";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -379,6 +380,9 @@ export function createBrowserLookTool(deps: BrowserLookToolDeps): MuseTool {
 }
 
 const SCROLL_DIRECTIONS = ["down", "up", "top", "bottom"] as const;
+const isScrollDirection = createStringSetGuard(SCROLL_DIRECTIONS);
+
+const isBrowserKey = createStringSetGuard(BROWSER_KEYS);
 
 export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
   return {
@@ -404,11 +408,11 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
     },
     execute: async (args): Promise<JsonObject> => {
       const direction = typeof args["direction"] === "string" ? args["direction"].trim() : "";
-      if (!SCROLL_DIRECTIONS.includes(direction as (typeof SCROLL_DIRECTIONS)[number])) {
+      if (!isScrollDirection(direction)) {
         return { error: `direction must be one of: ${SCROLL_DIRECTIONS.join(", ")}` };
       }
       try {
-        return snapshotToJson(await deps.controller.scroll(direction as (typeof SCROLL_DIRECTIONS)[number]));
+        return snapshotToJson(await deps.controller.scroll(direction));
       } catch (cause) {
         return errorResult(cause);
       }
@@ -504,7 +508,7 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
     },
     execute: async (args): Promise<JsonObject> => {
       const key = typeof args["key"] === "string" ? args["key"].trim() : "";
-      if (!BROWSER_KEYS.includes(key as BrowserKey)) {
+      if (!isBrowserKey(key)) {
         return { error: `key must be one of: ${BROWSER_KEYS.join(", ")}` };
       }
       // Enter confirms/submits the focused control — a state-changing act that
@@ -520,7 +524,7 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
         }
       }
       try {
-        const snapshot = await deps.controller.pressKey(key as BrowserKey);
+        const snapshot = await deps.controller.pressKey(key);
         return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);

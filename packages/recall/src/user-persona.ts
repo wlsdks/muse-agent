@@ -19,7 +19,7 @@
 import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { withBestEffort } from "@muse/shared";
+import { createStringSetGuard, withBestEffort } from "@muse/shared";
 
 
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
@@ -32,6 +32,8 @@ export const PERSONA_REGISTERS: readonly PersonaRegister[] = ["존댓말", "반�
 export const PERSONA_MAX_WORDS_MIN = 1;
 export const PERSONA_MAX_WORDS_MAX = 500;
 export const PERSONA_LANGUAGE_MAX_LENGTH = 64;
+
+const isPersonaRegister = createStringSetGuard(PERSONA_REGISTERS);
 
 export interface PersonaFrontmatter {
   readonly register?: PersonaRegister;
@@ -63,10 +65,10 @@ export function validatePersonaFrontmatter(input: PersonaFrontmatterInput): Pers
 
   if (input.register !== undefined) {
     const value = String(input.register);
-    if (!PERSONA_REGISTERS.includes(value as PersonaRegister)) {
+    if (!isPersonaRegister(value)) {
       return { ok: false, reason: `persona frontmatter "register" must be one of ${PERSONA_REGISTERS.join(", ")} — got "${value}"` };
     }
-    frontmatter.register = value as PersonaRegister;
+    frontmatter.register = value;
   }
 
   if (input.language !== undefined) {

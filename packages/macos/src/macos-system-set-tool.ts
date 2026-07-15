@@ -1,5 +1,6 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
+import { createStringSetGuard } from "@muse/shared";
 
 import { defaultOsascriptRunner, escapeAppleScript, NETWORKSETUP_PATH, OSASCRIPT_TIMEOUT_MS, parseWifiDevice, PMSET_PATH, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 import { defaultShortcutsRunner, type ShortcutsRunner } from "./macos-shortcut-tool.js";
@@ -7,7 +8,7 @@ import { defaultShortcutsRunner, type ShortcutsRunner } from "./macos-shortcut-t
 // ── Tier 1: mac_system_set (volume / mute / sleep / Wi-Fi / Focus / quit app) ─────
 
 const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off", "focus_on", "focus_off", "bluetooth_on", "bluetooth_off", "quit_app", "dark_mode_on", "dark_mode_off", "brightness"] as const;
-type SystemSetting = (typeof SYSTEM_SETTINGS)[number];
+const isSystemSetting = createStringSetGuard(SYSTEM_SETTINGS);
 
 /**
  * macOS has NO official CLI to toggle a Focus / Do-Not-Disturb mode, so the
@@ -155,7 +156,7 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
     },
     execute: async (args): Promise<JsonObject> => {
       const setting = typeof args["setting"] === "string" ? args["setting"].trim() : "";
-      if (!SYSTEM_SETTINGS.includes(setting as SystemSetting)) {
+      if (!isSystemSetting(setting)) {
         return { set: false, reason: `setting must be one of: ${SYSTEM_SETTINGS.join(", ")}` };
       }
       if (setting === "focus_on" || setting === "focus_off") {
