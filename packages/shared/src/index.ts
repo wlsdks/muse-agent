@@ -43,6 +43,7 @@ export { isNodeError, isNodeErrorCode, hasNodeErrorCodeIn, NODE_ERROR_CODES, typ
 export { serializePerKey } from "./serialize-per-key.js";
 export { withBestEffort } from "./best-effort.js";
 export { createStringSetGuard } from "./string-set-guard.js";
+export { resolveAmbientSourceMode, type AmbientSourceMode, type AmbientSourceResolveOptions } from "./ambient-source.js";
 export {
   runCommandWithTimeout,
   type RunCommandOptions,

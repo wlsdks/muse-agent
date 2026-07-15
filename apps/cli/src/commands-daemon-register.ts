@@ -94,7 +94,7 @@ import type { ProgramIO } from "./program.js";
 import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
-import { isRecord } from "@muse/shared";
+import { isRecord, resolveAmbientSourceMode } from "@muse/shared";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -618,15 +618,18 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ambientRules = [];
         }
         if (ambientRules.length > 0) {
-          const ambientSourceRaw = e.MUSE_AMBIENT_SOURCE?.trim().toLowerCase() ?? "";
+          const ambientSourceMode = resolveAmbientSourceMode(e.MUSE_AMBIENT_SOURCE, {
+            platform: process.platform,
+            windowsEnabled: true
+          });
           const ambientSourceFile = e.MUSE_AMBIENT_FILE?.trim();
           const hasAmbientFile = ambientSourceFile !== undefined && ambientSourceFile.length > 0;
           // Real macOS active-window perception when opted in on darwin
           // (or whenever a test injects the osascript runner); otherwise
           // the file source an external OS helper writes.
-          const useMacos = ambientSourceRaw === "macos"
+          const useMacos = ambientSourceMode === "macos"
             && (helpers.ambientMacosRun !== undefined || process.platform === "darwin");
-          const useWindows = ambientSourceRaw === "windows"
+          const useWindows = ambientSourceMode === "windows"
             && (helpers.ambientMacosRun !== undefined || process.platform === "win32");
           let ambientSource;
           if (useMacos) {

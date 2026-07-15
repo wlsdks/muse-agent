@@ -23,6 +23,7 @@ import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, pars
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
+import { resolveAmbientSourceMode } from "@muse/shared";
 
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
@@ -57,13 +58,6 @@ function stopOnClose(server: FastifyInstance, handle: { stop(): void }): void {
 
 function optionalNumber(raw: string | undefined): number | undefined {
   return raw ? Number(raw) : undefined;
-}
-
-type AmbientSourceMode = "macos" | "file";
-
-function resolveAmbientSourceMode(env: NodeJS.ProcessEnv): AmbientSourceMode {
-  const source = env.MUSE_AMBIENT_SOURCE?.trim().toLowerCase();
-  return source === "macos" && process.platform === "darwin" ? "macos" : "file";
 }
 
 /**
@@ -668,7 +662,7 @@ export function startAmbientDaemonIfConfigured(
   const quietHours = liveQuietHours(env, server, env.MUSE_AMBIENT_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
-  const sourceMode = resolveAmbientSourceMode(env);
+  const sourceMode = resolveAmbientSourceMode(env.MUSE_AMBIENT_SOURCE, { platform: process.platform });
   const source = sourceMode === "macos"
     ? new MacOsActiveWindowSource({ includeClipboard: parseBoolean(env.MUSE_AMBIENT_CLIPBOARD, false) })
     : new FileAmbientSignalSource(resolveAmbientSignalFile(env));
