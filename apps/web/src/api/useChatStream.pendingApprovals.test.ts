@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyApprove,
   applyApproveOutcome,
+  applyDeny,
+  applyDenyOutcome,
   handleEvent,
   readPendingApprovals
 } from "./useChatStream.js";
@@ -79,6 +81,83 @@ describe("applyApproveOutcome — pure transcript transition", () => {
   it("returns turns unchanged when no turn owns the id", () => {
     const turns = [assistantTurn([A1])];
     expect(applyApproveOutcome(turns, "missing", { ran: true, tool: "x" })).toEqual(turns);
+  });
+});
+
+describe("applyDenyOutcome — pure transcript transition", () => {
+  it("on denied:true drops the approval and appends the denied note to that turn only", () => {
+    const turns: readonly ChatTurn[] = [
+      { role: "user", text: "tell Sam I'm late" },
+      assistantTurn([A1, A2])
+    ];
+
+    const next = applyDenyOutcome(turns, "a1", { denied: true, tool: "send_message" });
+
+    expect(next[1]!.pendingApprovals).toEqual([A2]);
+    expect(next[1]!.text).toContain("🚫 Denied send_message.");
+    expect(next[0]).toBe(turns[0]);
+  });
+
+  it("returns turns unchanged when no turn owns the id", () => {
+    const turns = [assistantTurn([A1])];
+    expect(applyDenyOutcome(turns, "missing", { denied: true, tool: "x" })).toEqual(turns);
+  });
+});
+
+describe("applyDeny — the injectable confirm flow", () => {
+  it("POSTs the deny endpoint and, on 2xx, removes the approval from the transcript", async () => {
+    let capturedPath = "";
+    let calls = 0;
+    const post = async <T,>(path: string): Promise<T> => {
+      calls += 1;
+      capturedPath = path;
+      return { denied: true, tool: "send_message" } as T;
+    };
+    let turns: readonly ChatTurn[] = [assistantTurn([A1, A2])];
+    const setTurns = (update: (prev: readonly ChatTurn[]) => readonly ChatTurn[]) => {
+      turns = update(turns);
+    };
+    const setError = vi.fn();
+
+    await applyDeny(post, "a1", setTurns, setError);
+
+    expect(calls).toBe(1);
+    expect(capturedPath).toBe("/api/chat/approvals/a1/deny");
+    expect(turns[0]!.pendingApprovals).toEqual([A2]);
+    expect(turns[0]!.text).toContain("🚫 Denied send_message.");
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it("on denied:false LEAVES the card and reports it", async () => {
+    const post = async <T,>(_path: string): Promise<T> => ({ denied: false, tool: "send_message" }) as T;
+    const setTurns = vi.fn();
+    let error: string | null = null;
+    const setError = (m: string) => {
+      error = m;
+    };
+
+    await applyDeny(post, "a1", setTurns, setError);
+
+    expect(setTurns).not.toHaveBeenCalled();
+    expect(error).toContain("not denied");
+  });
+
+  it("on a thrown confirm (404/403/network) surfaces the message and LEAVES the approval", async () => {
+    const post = async <T,>(_path: string): Promise<T> => {
+      throw new Error("404 Not Found: unknown or expired approval");
+    };
+    const before: readonly ChatTurn[] = [assistantTurn([A1])];
+    const setTurns = vi.fn();
+    let error: string | null = null;
+    const setError = (m: string) => {
+      error = m;
+    };
+
+    await applyDeny(post, "a1", setTurns, setError);
+
+    expect(error).toContain("404");
+    expect(setTurns).not.toHaveBeenCalled();
+    expect(before[0]!.pendingApprovals).toEqual([A1]);
   });
 });
 

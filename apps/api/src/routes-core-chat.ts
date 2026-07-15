@@ -1,9 +1,10 @@
 // Health/spec/openapi + chat (incl. rate-limit) registrars — split out of server-routes.ts (domain cohesion).
 
-import { parseBoolean, resolvePendingApprovalsFile } from "@muse/autoconfigure";
+import { parseBoolean, resolveActionLogFile, resolvePendingApprovalsFile } from "@muse/autoconfigure";
 import type { FastifyInstance } from "fastify";
 
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
+import { denyChatApproval } from "./chat-approval-deny.js";
 import { executeChatApproval } from "./chat-approval-execute.js";
 import { ChatRateLimiter, clientKeyFromRequest } from "./chat-rate-limiter.js";
 import {
@@ -86,6 +87,22 @@ export function registerChatRoutes(server: FastifyInstance, options: ServerOptio
       pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
       ...(requestUserId ? { requestUserId } : {}),
       ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
+    });
+    return reply.status(result.statusCode).send(result.body);
+  });
+  // Confirm-deny for a draft-first chat write (outbound-safety fail-close
+  // symmetry with approve): clears the pending entry and records a rationale-
+  // bearing `refused` action-log entry, but never executes the tool — there is
+  // no tool resolver on this path at all.
+  server.post("/api/chat/approvals/:id/deny", async (request, reply) => {
+    if (!enforce(request, reply)) return reply;
+    const id = (request.params as { id?: string }).id ?? "";
+    const requestUserId = getAuthIdentity(request)?.userId;
+    const result = await denyChatApproval({
+      actionLogFile: resolveActionLogFile(options.env ?? {}),
+      id,
+      pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
+      ...(requestUserId ? { requestUserId } : {})
     });
     return reply.status(result.statusCode).send(result.body);
   });

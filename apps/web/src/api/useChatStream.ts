@@ -25,6 +25,13 @@ export interface ApproveOutcome {
   readonly result?: unknown;
 }
 
+/** Confirm-endpoint result for a deny. A 404/403/network error THROWS
+ * through the api client instead of returning here — mirroring `ApproveOutcome`. */
+export interface DenyOutcome {
+  readonly denied: boolean;
+  readonly tool: string;
+}
+
 const STORE_KEY = "muse.chat.transcript";
 // S3b: the shared-conversation-store id this transcript continues. Kept as
 // its own key (not folded into the transcript blob) so "clear" can drop it
@@ -58,6 +65,10 @@ export function chatStreamRequestBody(message: string, conversationId?: string):
 
 function approvePath(id: string): string {
   return `/api/chat/approvals/${encodeURIComponent(id)}/approve`;
+}
+
+function denyPath(id: string): string {
+  return `/api/chat/approvals/${encodeURIComponent(id)}/deny`;
 }
 
 /** Reads the `pendingApprovals` array off a non-streaming JSON chat body,
@@ -110,6 +121,48 @@ export async function applyApprove(
     }
   } catch (cause) {
     setError(cause instanceof Error ? cause.message : "approval failed");
+  }
+}
+
+/** Pure transition for a SUCCESSFUL deny (`denied:true`): on the turn that
+ * owns `id`, drop that approval (its card vanishes) and append a denied note.
+ * Every other turn is returned untouched by identity. Mirrors `applyApproveOutcome`. */
+export function applyDenyOutcome(
+  turns: readonly ChatTurn[],
+  id: string,
+  outcome: DenyOutcome
+): readonly ChatTurn[] {
+  return turns.map((turn) => {
+    const list = turn.pendingApprovals;
+    if (!list?.some((a) => a.id === id)) {
+      return turn;
+    }
+    return {
+      ...turn,
+      pendingApprovals: list.filter((a) => a.id !== id),
+      text: `${turn.text}\n\n🚫 Denied ${outcome.tool}.`
+    };
+  });
+}
+
+/** The whole deny flow behind one injectable seam: POST the confirm endpoint
+ * through `post`. A `denied:true` result clears the card; a throw
+ * (404/403/network) leaves the card and reports it. Mirrors `applyApprove`. */
+export async function applyDeny(
+  post: <T>(path: string) => Promise<T>,
+  id: string,
+  setTurns: (update: (prev: readonly ChatTurn[]) => readonly ChatTurn[]) => void,
+  setError: (message: string) => void
+): Promise<void> {
+  try {
+    const outcome = await post<DenyOutcome>(denyPath(id));
+    if (outcome.denied) {
+      setTurns((prev) => applyDenyOutcome(prev, id, outcome));
+    } else {
+      setError(`${outcome.tool} was not denied — try again.`);
+    }
+  } catch (cause) {
+    setError(cause instanceof Error ? cause.message : "deny failed");
   }
 }
 
@@ -281,7 +334,23 @@ export function useChatStream(baseUrl: string, token: string) {
     [approving, client]
   );
 
-  return { activeTool, approve, approving, conversationId, error, pending, reset, send, thinking, turns };
+  const deny = useCallback(
+    async (id: string) => {
+      if (approving.includes(id)) {
+        return;
+      }
+      setError(null);
+      setApproving((ids) => [...ids, id]);
+      try {
+        await applyDeny(client.post, id, setTurns, setError);
+      } finally {
+        setApproving((ids) => ids.filter((x) => x !== id));
+      }
+    },
+    [approving, client]
+  );
+
+  return { activeTool, approve, approving, conversationId, deny, error, pending, reset, send, thinking, turns };
 }
 
 export function handleEvent(
