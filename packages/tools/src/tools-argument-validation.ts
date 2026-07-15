@@ -3,7 +3,7 @@
  * "repair" half of tool-calling for a small local model. Split out of index.ts.
  */
 
-import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, parseBooleanTriStateFromEnv, type JsonObject, type JsonValue } from "@muse/shared";
 
 export interface ToolArgumentValidation {
   readonly ok: boolean;
@@ -26,7 +26,7 @@ export interface ToolArgumentValidation {
  * (Structured Reflection, arXiv:2509.18847: a right value in the wrong JSON
  * type invalidates an otherwise-correct call). Only safe, reversible cases:
  *   - number/integer param + clean numeric string → number ("5" → 5)
- *   - boolean param + "true"/"false" string → boolean
+ *   - boolean param + "true/1/yes/on" / "false/0/no/off" string → boolean
  *   - string param + number/boolean value → its string form
  * Everything else (objects, arrays, non-numeric strings, partial parses) is
  * left untouched, so a genuine mismatch still surfaces rather than being
@@ -124,10 +124,7 @@ function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined
     return undefined;
   }
   if (declared === "boolean" && typeof value === "string") {
-    const lower = value.trim().toLowerCase();
-    if (lower === "true") return true;
-    if (lower === "false") return false;
-    return undefined;
+    return parseBooleanTriStateFromEnv(value);
   }
   if (declared === "string" && (typeof value === "number" || typeof value === "boolean")) {
     return String(value);
