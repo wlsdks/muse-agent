@@ -20,6 +20,7 @@ import type { Command } from "commander";
 
 import { authorSkillsFromSession } from "./chat-author-skills.js";
 import type { ProgramIO } from "./program.js";
+import { pathExists } from "./path-exists.js";
 
 export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
@@ -279,7 +280,7 @@ Examples:
       }
       const dir = join(resolveSkillsDir(), name);
       const file = join(dir, "SKILL.md");
-      if (await stat(file).then(() => true).catch(() => false)) {
+      if (await pathExists(file)) {
         io.stderr(`error: a skill already exists at ${file}\n`);
         process.exitCode = 1;
         return;

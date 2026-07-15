@@ -140,7 +140,7 @@ export async function buildAskToolWiring(params: {
       checkEditIntegrity: true,
       checkpointStore: new FileCheckpointStore({ dir: defaultCheckpointsDir(process.env) }),
       approvalGate: actuatorMod.buildFsWriteApprovalGate({
-        confirmAction: (message: string) => fsConfirm({ message }).then((answer) => !fsIsCancel(answer) && answer === true),
+        confirmAction: (message: string) => confirmThen(message, fsConfirm, fsIsCancel),
         io,
         stagePendingApproval: actuatorMod.buildCliPendingApprovalStager({ file: resolvePendingApprovalsFile(process.env) })
       })
@@ -163,10 +163,18 @@ export async function buildAskToolWiring(params: {
     const actuatorMod = await import("./actuator-tools.js");
     const { confirm, isCancel } = await import("@clack/prompts");
     messagingApprovalGate = actuatorMod.buildMessagingApprovalGate({
-      confirmAction: (message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true),
+      confirmAction: (message: string) => confirmThen(message, confirm, isCancel),
       io
     });
   }
 
   return { browserControllerToRelease, extraTools, messagingApprovalGate, screenVision, useActuators };
+}
+
+type ConfirmFunction = (input: { readonly message: string }) => Promise<unknown>;
+type CancelPredicate = (value: unknown) => boolean;
+
+async function confirmThen(message: string, confirm: ConfirmFunction, isCancel: CancelPredicate): Promise<boolean> {
+  const answer = await confirm({ message });
+  return !isCancel(answer) && answer === true;
 }

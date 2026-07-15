@@ -18,6 +18,7 @@ import type { Command } from "commander";
 
 import { isSafeSkillName } from "./commands-skills.js";
 import type { ProgramIO } from "./program.js";
+import { pathExists } from "./path-exists.js";
 
 export interface AgentDef {
   readonly name: string;
@@ -119,7 +120,7 @@ export function registerAgentsCommands(program: Command, io: ProgramIO): void {
         return;
       }
       const file = join(resolveAgentsDir(), name, "AGENT.md");
-      if (await stat(file).then(() => true).catch(() => false)) {
+      if (await pathExists(file)) {
         io.stderr(`error: an agent already exists at ${file}\n`);
         process.exitCode = 1;
         return;

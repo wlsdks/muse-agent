@@ -369,11 +369,14 @@ export function startSituationalBriefingDaemonIfConfigured(
   // refreshes the snapshot.
   let knownContactEmails = new Set<string>();
   if (gmailToken && gmailToken.length > 0) {
-    void queryContacts(resolveContactsFile(env))
-      .then((contacts) => {
+    void (async () => {
+      try {
+        const contacts = await queryContacts(resolveContactsFile(env));
         knownContactEmails = new Set(contacts.flatMap((c) => (c.email ? [c.email.toLowerCase()] : [])));
-      })
-      .catch(() => undefined);
+      } catch {
+        // no-op: this is best-effort enrichment and telemetry does not depend on it
+      }
+    })();
   }
   const inboxKnownSenderOpt = gmailToken && gmailToken.length > 0
     ? {
