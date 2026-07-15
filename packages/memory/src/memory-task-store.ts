@@ -53,6 +53,15 @@ type RequiredTaskState = Omit<
   readonly userId?: string;
 };
 
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
+}
+
 export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenance {
   private readonly tasks = new Map<string, RequiredTaskState>();
   private readonly activeTaskBySession = new Map<string, string>();
@@ -60,8 +69,8 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
   private readonly retentionMs: number;
 
   constructor(options: { readonly maxTasks?: number; readonly retentionMs?: number } = {}) {
-    this.maxTasks = Math.max(1, options.maxTasks ?? 10_000);
-    this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_TASK_MEMORY_RETENTION_MS);
+    this.maxTasks = requirePositiveSafeInteger(options.maxTasks, 10_000, "maxTasks");
+    this.retentionMs = requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs");
   }
 
   save(state: TaskState): void {
@@ -292,8 +301,8 @@ export class FileTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenan
   constructor(options: { readonly file?: string; readonly maxTasks?: number; readonly retentionMs?: number } = {}) {
     this.file = options.file && options.file.trim().length > 0 ? options.file : defaultTaskMemoryFile();
     this.options = {
-      ...(options.maxTasks !== undefined ? { maxTasks: options.maxTasks } : {}),
-      ...(options.retentionMs !== undefined ? { retentionMs: options.retentionMs } : {})
+      maxTasks: requirePositiveSafeInteger(options.maxTasks, 10_000, "maxTasks"),
+      retentionMs: requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs")
     };
   }
 
@@ -362,7 +371,7 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
     options: KyselyTaskMemoryStoreOptions = {}
   ) {
     this.now = options.now ?? (() => new Date());
-    this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_TASK_MEMORY_RETENTION_MS);
+    this.retentionMs = requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs");
   }
 
   async save(state: TaskState): Promise<void> {

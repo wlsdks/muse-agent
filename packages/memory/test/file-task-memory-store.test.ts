@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { TaskState } from "../src/index.js";
-import { FileTaskMemoryStore } from "../src/memory-task-store.js";
+import { FileTaskMemoryStore, InMemoryTaskMemoryStore, KyselyTaskMemoryStore } from "../src/memory-task-store.js";
 
 describe("FileTaskMemoryStore — cross-session task persistence (CLI default-store fix)", () => {
   let dirs: string[] = [];
@@ -18,6 +18,16 @@ describe("FileTaskMemoryStore — cross-session task persistence (CLI default-st
   afterAll(async () => {
     await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
     dirs = [];
+  });
+
+  it("rejects invalid retention and capacity settings in every task store implementation", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new InMemoryTaskMemoryStore({ maxTasks: value })).toThrow(RangeError);
+      expect(() => new InMemoryTaskMemoryStore({ retentionMs: value })).toThrow(RangeError);
+      expect(() => new FileTaskMemoryStore({ file: freshFile(), maxTasks: value })).toThrow(RangeError);
+      expect(() => new FileTaskMemoryStore({ file: freshFile(), retentionMs: value })).toThrow(RangeError);
+      expect(() => new KyselyTaskMemoryStore({} as never, { retentionMs: value })).toThrow(RangeError);
+    }
   });
 
   it("a task saved by one instance is found by a FRESH instance on the same file, with nested Dates round-tripped", async () => {

@@ -29,6 +29,14 @@ describe("InMemoryConversationSummaryStore", () => {
     expect(saved.updatedAt.getTime()).toBe(1000);
   });
 
+  it("normalizes non-finite or negative summary indexes before persistence", () => {
+    const store = new InMemoryConversationSummaryStore({ now: () => new Date(1000) });
+
+    expect(store.save(summary("nan", { summarizedUpToIndex: Number.NaN })).summarizedUpToIndex).toBe(0);
+    expect(store.save(summary("infinite", { summarizedUpToIndex: Number.POSITIVE_INFINITY })).summarizedUpToIndex).toBe(0);
+    expect(store.save(summary("negative", { summarizedUpToIndex: -5 })).summarizedUpToIndex).toBe(0);
+  });
+
   it("preserves the original createdAt on re-save but advances updatedAt", () => {
     let t = 1000;
     const store = new InMemoryConversationSummaryStore({ now: () => new Date(t) });

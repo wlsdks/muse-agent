@@ -363,10 +363,14 @@ function normalizeConversationSummary(
     facts: (summary.facts ?? []).map(normalizeStructuredFact),
     narrative: summary.narrative.trim(),
     sessionId: summary.sessionId,
-    summarizedUpToIndex: Math.max(0, Math.trunc(summary.summarizedUpToIndex)),
+    summarizedUpToIndex: normalizeNonNegativeInteger(summary.summarizedUpToIndex),
     updatedAt: options.updatedAt,
     userId: summary.userId && summary.userId.trim().length > 0 ? summary.userId.trim() : undefined
   };
+}
+
+function normalizeNonNegativeInteger(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function normalizeStructuredFact(fact: StructuredFact): RequiredStructuredFact {
