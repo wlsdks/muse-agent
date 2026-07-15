@@ -5,10 +5,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
-import { getTscFastArgs } from "./tsc-fast-flags.mjs";
+import { getTscFastArgs, SUPPORTED_TS7_MODES } from "./tsc-fast-flags.mjs";
 
 const [, , mode, ...flags] = process.argv;
-const validModes = new Set(["build", "typecheck"]);
 const singleThreaded = flags.includes("--single-threaded");
 
 function usage() {
@@ -16,7 +15,7 @@ function usage() {
   process.exit(64);
 }
 
-if (!validModes.has(mode)) {
+if (!SUPPORTED_TS7_MODES.has(mode)) {
   usage();
 }
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { EXPECTED_BUILD_MAJOR, EXPECTED_MODULE_MAJOR, parseMajor, readRootScripts } from "./check-toolchain.mjs";
-import { getTscFastArgs } from "./tsc-fast-flags.mjs";
+import { getTscFastArgs, getTscFastCommand } from "./tsc-fast-flags.mjs";
 
 test("parseMajor reads the major from tsc's version output and from a semver", () => {
   assert.equal(parseMajor("7.0.2"), 7);
@@ -24,14 +24,14 @@ test("root scripts keep TS7-fast build/typecheck paths", () => {
   const scripts = readRootScripts();
   assert.equal(scripts.build, "pnpm run build:ts7-fast");
   assert.equal(scripts.typecheck, "pnpm run typecheck:ts7-fast && pnpm --filter @muse/web typecheck");
-  assert.equal(scripts["typecheck:fast"], "node scripts/run-tsc-fast.mjs typecheck");
-  assert.equal(scripts["build:ts7-single-thread"], "node scripts/run-tsc-fast.mjs build --single-threaded");
+  assert.equal(scripts["typecheck:fast"], getTscFastCommand("typecheck"));
+  assert.equal(scripts["build:ts7-single-thread"], getTscFastCommand("build", { singleThreaded: true }));
 });
 
 test("ts7-fast scripts use the shared runner contract", () => {
   const scripts = readRootScripts();
-  assert.equal(scripts["build:ts7-fast"], "node scripts/run-tsc-fast.mjs build");
-  assert.equal(scripts["typecheck:ts7-fast"], "node scripts/run-tsc-fast.mjs typecheck");
+  assert.equal(scripts["build:ts7-fast"], getTscFastCommand("build"));
+  assert.equal(scripts["typecheck:ts7-fast"], getTscFastCommand("typecheck"));
   assert.equal(getTscFastArgs("build").includes("--noEmit"), false);
   assert.equal(getTscFastArgs("typecheck").includes("--noEmit"), true);
 });
