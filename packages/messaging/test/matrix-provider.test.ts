@@ -89,6 +89,17 @@ describe("MatrixProvider.send", () => {
     });
     await expect(provider.send({ destination: "!room:hs.test", text: "hi" })).rejects.toThrow(/not in room/u);
   });
+
+  it("uses a retry-scoped idempotency key as the native Matrix transaction id", async () => {
+    const calls: RecordedCall[] = [];
+    const provider = new MatrixProvider({
+      accessToken: "t",
+      fetch: recordingFetch(() => jsonResponse(200, { event_id: "$sent" }), calls),
+      homeserverUrl: HOMESERVER
+    });
+    await provider.send({ destination: "!room:hs.test", idempotencyKey: "retry-key-1", text: "hi" });
+    expect(calls[0]!.url).toMatch(/\/send\/m\.room\.message\/retry-key-1$/u);
+  });
 });
 
 describe("MatrixProvider.pollUpdates", () => {
@@ -194,6 +205,24 @@ describe("MatrixProvider.pollUpdates", () => {
     expect(inbound.map((m) => m.messageId)).toEqual(["$text"]);
   });
 
+  it("skips malformed nested sync entries without losing valid events or the next_batch token", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-mx-malformed-"));
+    const sinceFile = join(dir, "since.json");
+    const provider = new MatrixProvider({
+      accessToken: "t",
+      fetch: recordingFetch((url) => {
+        if (url.includes("/account/whoami")) return jsonResponse(200, { user_id: "@muse:hs.test" });
+        return new Response('{"next_batch":"s1","rooms":{"join":{"!null:hs.test":null,"!bad:hs.test":{"timeline":{"events":{}}},"!good:hs.test":{"timeline":{"events":[null,{"type":"m.room.message","content":null},{"type":"m.room.message","event_id":"$bad-time","origin_server_ts":1e400,"sender":"@jinan:hs.test","content":{"msgtype":"m.text","body":"time fallback"}},{"type":"m.room.message","event_id":"$valid","origin_server_ts":1751000000000,"sender":"@jinan:hs.test","content":{"msgtype":"m.text","body":"valid"}}]}}}}}', { status: 200 });
+      }, []),
+      homeserverUrl: HOMESERVER,
+      sinceFile
+    });
+    const inbound = await provider.pollUpdates();
+    expect(inbound.map((message) => message.messageId)).toEqual(["$bad-time", "$valid"]);
+    expect(inbound[0]!.receivedAtIso).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expect(await readMatrixSince(sinceFile)).toBe("s1");
+  });
+
   it("surfaces a sync failure as a MessagingProviderError and leaves the since token unchanged", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-mx-poll-"));
     const sinceFile = join(dir, "since.json");
@@ -206,6 +235,31 @@ describe("MatrixProvider.pollUpdates", () => {
     });
     await expect(provider.pollUpdates()).rejects.toThrow(/Invalid access token/u);
     expect(await readMatrixSince(sinceFile)).toBe("s0");
+  });
+
+  it("rejects an empty next_batch as an upstream failure and leaves the since token unchanged", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-mx-poll-"));
+    const sinceFile = join(dir, "since.json");
+    await writeMatrixSince(sinceFile, "s0");
+    const provider = new MatrixProvider({
+      accessToken: "t",
+      fetch: (async () => jsonResponse(200, syncBody({ nextBatch: "" }))) as unknown as typeof globalThis.fetch,
+      homeserverUrl: HOMESERVER,
+      sinceFile
+    });
+    await expect(provider.pollUpdates()).rejects.toThrow(/Matrix sync failed/u);
+    expect(await readMatrixSince(sinceFile)).toBe("s0");
+  });
+
+  it("retains Matrix's body retry_after_ms after an exhausted sync rate limit", async () => {
+    const provider = new MatrixProvider({
+      accessToken: "t",
+      fetch: (async () => jsonResponse(429, { errcode: "M_LIMIT_EXCEEDED", retry_after_ms: 2000 })) as unknown as typeof globalThis.fetch,
+      homeserverUrl: HOMESERVER
+    });
+    const err = await provider.pollUpdates().catch((cause: unknown) => cause) as import("../src/errors.js").MessagingProviderError;
+    expect(err.status).toBe(429);
+    expect(err.retryAfterMs).toBe(2_000);
   });
 });
 

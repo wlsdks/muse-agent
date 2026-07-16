@@ -36,6 +36,12 @@ export interface OutboundMessage {
    */
   readonly destination: string;
   readonly text: string;
+  /**
+   * Internal retry-scoped idempotency key. Delivery coordinators set this once
+   * before retrying an otherwise ambiguous write; providers that support
+   * idempotency must forward it to their native request identity.
+   */
+  readonly idempotencyKey?: string;
 }
 
 export interface OutboundReceipt {

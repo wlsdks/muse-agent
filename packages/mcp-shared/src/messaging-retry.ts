@@ -33,10 +33,14 @@ export interface SendWithRetryOptions {
 export async function sendWithRetry(
   registry: Pick<MessagingProviderRegistry, "send">,
   providerId: string,
-  message: { readonly destination: string; readonly text: string },
+  message: { readonly destination: string; readonly text: string; readonly idempotencyKey?: string },
   options: SendWithRetryOptions = {}
 ): Promise<OutboundReceipt> {
   const delay = options.sleep ?? sleep;
+  const retryMessage = {
+    ...message,
+    idempotencyKey: message.idempotencyKey ?? randomUUID()
+  };
   let lastError: unknown;
   for (let attempt = 0; attempt < BACKOFFS_MS.length; attempt += 1) {
     if (attempt > 0) {
@@ -50,7 +54,7 @@ export async function sendWithRetry(
       await delay(serverHint ?? BACKOFFS_MS[attempt] ?? 0);
     }
     try {
-      return await registry.send(providerId, message);
+      return await registry.send(providerId, retryMessage);
     } catch (cause) {
       lastError = cause;
       if (cause instanceof MessagingProviderError && !cause.retryable) {
@@ -60,3 +64,4 @@ export async function sendWithRetry(
   }
   throw lastError;
 }
+import { randomUUID } from "node:crypto";

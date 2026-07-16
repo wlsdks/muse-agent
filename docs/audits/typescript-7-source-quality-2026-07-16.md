@@ -223,3 +223,12 @@ the TypeScript 7 announcement and release-notes links.
 - **Decision:** one Telegram-local request/body boundary normalizes every Bot API operation. Only safe update IDs advance offsets; malformed message dates are skipped while valid updates still progress. A missing valid message ID may safely fall back to the update ID for snapshot compatibility.
 - **Evidence:** focused tests cover ambiguous outbound failure, unreadable success body, mixed malformed/valid update progression, and body-supplied retry-after preservation.
 - **Follow-up:** Telegram result entries are now runtime-narrowed as arrays and records before any field access. Null, non-object, malformed chat, and malformed date entries are skipped without blocking a valid later update or corrupting its offset.
+
+## Matrix request and sync-token boundary
+
+- **Area:** `packages/messaging` Matrix Client-Server REST provider.
+- **Finding:** request/body failures could escape as raw exceptions; an empty `next_batch` reached persistence as a raw writer error; Matrix's body retry-after uses milliseconds and must not be scaled twice.
+- **Decision:** Matrix REST calls now share a provider-local request/body boundary, reject empty sync tokens before persistence, and preserve Matrix retry-after values in their native millisecond unit for direct errors while converting only at the shared HTTP fallback boundary.
+- **Evidence:** focused tests cover empty next_batch token preservation and exhausted Matrix 429 retry_after_ms handling.
+- **Follow-up:** `sendWithRetry` now creates one retry-scoped idempotency key and passes it through the registry; Matrix forwards it as the encoded native transaction ID, so retryable failures cannot turn a retry into a duplicate event.
+- **Follow-up:** Matrix `/sync` nested rooms, timelines, and events are now parsed as untrusted records/arrays. Malformed entries and invalid timestamps are isolated while a valid later text event and `next_batch` continue normally.
