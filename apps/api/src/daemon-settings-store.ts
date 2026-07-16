@@ -3,6 +3,7 @@ import {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
   resolveDaemonSettingsFile,
+  UnsupportedDaemonSettingsFormatError,
   writeDaemonSetting,
   writeQuietHoursSetting,
   type DaemonSettings,
@@ -19,6 +20,7 @@ export {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
   resolveDaemonSettingsFile,
+  UnsupportedDaemonSettingsFormatError,
   writeDaemonSetting,
   writeQuietHoursSetting
 };

@@ -26,7 +26,17 @@ export interface PersistedQuietHours {
 interface DaemonSettingsFile {
   readonly flags?: Record<string, unknown>;
   readonly quietHours?: unknown;
-  readonly version?: number;
+  readonly version?: unknown;
+}
+
+const DAEMON_SETTINGS_VERSION = 1;
+const UNSUPPORTED_DAEMON_SETTINGS_FILE = Symbol("unsupported-daemon-settings-file");
+
+export class UnsupportedDaemonSettingsFormatError extends Error {
+  constructor() {
+    super("Daemon settings use an unsupported format; upgrade Muse before changing them.");
+    this.name = "UnsupportedDaemonSettingsFormatError";
+  }
 }
 
 export function resolveDaemonSettingsFile(env: { readonly [key: string]: string | undefined }): string {
@@ -37,7 +47,7 @@ export function resolveDaemonSettingsFile(env: { readonly [key: string]: string 
   return join(homedir(), ".muse", "daemon-settings.json");
 }
 
-function readDaemonSettingsFileSync(file: string): DaemonSettingsFile {
+function readDaemonSettingsFileSync(file: string): DaemonSettingsFile | typeof UNSUPPORTED_DAEMON_SETTINGS_FILE {
   let raw: string;
   try {
     raw = readFileSync(file, "utf8");
@@ -46,10 +56,9 @@ function readDaemonSettingsFileSync(file: string): DaemonSettingsFile {
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return {};
-    }
-    return parsed as DaemonSettingsFile;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as DaemonSettingsFile
+      : UNSUPPORTED_DAEMON_SETTINGS_FILE;
   } catch {
     return {};
   }
@@ -57,6 +66,7 @@ function readDaemonSettingsFileSync(file: string): DaemonSettingsFile {
 
 export function readDaemonSettingsSync(file: string): DaemonSettings {
   const parsed = readDaemonSettingsFileSync(file);
+  if (parsed === UNSUPPORTED_DAEMON_SETTINGS_FILE) return {};
   if (!parsed.flags || typeof parsed.flags !== "object") {
     return {};
   }
@@ -71,7 +81,9 @@ export function readDaemonSettingsSync(file: string): DaemonSettings {
  * identically to "no persisted setting", never a crash.
  */
 export function readQuietHoursSettingSync(file: string): PersistedQuietHours | undefined {
-  const raw = readDaemonSettingsFileSync(file).quietHours;
+  const parsed = readDaemonSettingsFileSync(file);
+  if (parsed === UNSUPPORTED_DAEMON_SETTINGS_FILE) return undefined;
+  const raw = parsed.quietHours;
   if (!raw || typeof raw !== "object") {
     return undefined;
   }
@@ -87,12 +99,23 @@ async function writeDaemonSettingsFile(file: string, next: DaemonSettingsFile): 
   await atomicWriteFile(file, `${JSON.stringify(next)}\n`, { mode: 0o600 });
 }
 
+function assertWritableDaemonSettingsFile(current: DaemonSettingsFile): void {
+  if (current.version === undefined || current.version === DAEMON_SETTINGS_VERSION) return;
+
+  throw new UnsupportedDaemonSettingsFormatError();
+}
+
 async function updateDaemonSettingsFile(
   file: string,
   update: (current: DaemonSettingsFile) => DaemonSettingsFile
 ): Promise<void> {
   await withFileMutationQueue(file, () => withFileLock(file, async () => {
-    await writeDaemonSettingsFile(file, update(readDaemonSettingsFileSync(file)));
+    const current = readDaemonSettingsFileSync(file);
+    if (current === UNSUPPORTED_DAEMON_SETTINGS_FILE) {
+      throw new UnsupportedDaemonSettingsFormatError();
+    }
+    assertWritableDaemonSettingsFile(current);
+    await writeDaemonSettingsFile(file, update(current));
   }));
 }
 
@@ -100,7 +123,7 @@ export async function writeDaemonSetting(file: string, key: string, enabled: boo
   await updateDaemonSettingsFile(file, (current) => ({
     ...(current.quietHours !== undefined ? { quietHours: current.quietHours } : {}),
     flags: { ...(current.flags ?? {}), [key]: enabled },
-    version: 1
+    version: DAEMON_SETTINGS_VERSION
   }));
 }
 
@@ -109,6 +132,6 @@ export async function writeQuietHoursSetting(file: string, setting: PersistedQui
   await updateDaemonSettingsFile(file, (current) => ({
     flags: current.flags ?? {},
     quietHours: setting,
-    version: 1
+    version: DAEMON_SETTINGS_VERSION
   }));
 }

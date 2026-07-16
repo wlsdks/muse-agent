@@ -16,7 +16,7 @@
 import type { Command } from "commander";
 
 import { parseQuietHours } from "@muse/proactivity";
-import { readQuietHoursSettingSync, resolveDaemonSettingsFile, writeQuietHoursSetting } from "@muse/stores";
+import { readQuietHoursSettingSync, resolveDaemonSettingsFile, UnsupportedDaemonSettingsFormatError, writeQuietHoursSetting, type PersistedQuietHours } from "@muse/stores";
 
 import { resolveCliLanguage, t } from "./cli-i18n.js";
 import { readConfigStore } from "./program-config.js";
@@ -40,6 +40,24 @@ function describeEffective(
     return { source: "persisted", text: persisted.range };
   }
   return { source: "none", text: "" };
+}
+
+async function persistQuietHoursSetting(
+  io: ProgramIO,
+  settingsFile: string,
+  setting: PersistedQuietHours | null
+): Promise<boolean> {
+  try {
+    await writeQuietHoursSetting(settingsFile, setting);
+    return true;
+  } catch (error) {
+    if (error instanceof UnsupportedDaemonSettingsFormatError) {
+      io.stderr(`${error.message}\n`);
+      process.exitCode = 1;
+      return false;
+    }
+    throw error;
+  }
 }
 
 export function registerQuietCommand(program: Command, io: ProgramIO, helpers: QuietCommandHelpers = {}): void {
@@ -73,7 +91,7 @@ export function registerQuietCommand(program: Command, io: ProgramIO, helpers: Q
 
       if (range.trim().toLowerCase() === "off") {
         const current = readQuietHoursSettingSync(settingsFile);
-        await writeQuietHoursSetting(settingsFile, current ? { enabled: false, range: current.range } : null);
+        if (!(await persistQuietHoursSetting(io, settingsFile, current ? { enabled: false, range: current.range } : null))) return;
         io.stdout(`quiet hours: disabled\n`);
         return;
       }
@@ -84,7 +102,7 @@ export function registerQuietCommand(program: Command, io: ProgramIO, helpers: Q
         return;
       }
 
-      await writeQuietHoursSetting(settingsFile, { enabled: true, range: range.trim() });
+      if (!(await persistQuietHoursSetting(io, settingsFile, { enabled: true, range: range.trim() }))) return;
       io.stdout(`quiet hours: set to ${range.trim()} and enabled\n`);
     });
 }

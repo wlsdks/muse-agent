@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
   resolveDaemonSettingsFile,
+  UnsupportedDaemonSettingsFormatError,
   writeDaemonSetting,
   writeQuietHoursSetting
 } from "./daemon-settings-store.js";
@@ -48,6 +49,42 @@ describe("readDaemonSettingsSync / writeDaemonSetting", () => {
     await writeDaemonSetting(file, "MUSE_FOO_ENABLED", true);
     await writeDaemonSetting(file, "MUSE_BAR_ENABLED", false);
     expect(readDaemonSettingsSync(file)).toEqual({ MUSE_BAR_ENABLED: false, MUSE_FOO_ENABLED: true });
+  });
+
+  it("upgrades a legacy unversioned settings file without losing its flags", async () => {
+    writeFileSync(file, JSON.stringify({ flags: { MUSE_FOO_ENABLED: true } }), "utf8");
+
+    await writeDaemonSetting(file, "MUSE_BAR_ENABLED", false);
+
+    expect(readDaemonSettingsSync(file)).toEqual({ MUSE_BAR_ENABLED: false, MUSE_FOO_ENABLED: true });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+  });
+
+  it("refuses to mutate a newer settings format through either writer", async () => {
+    const original = JSON.stringify({
+      extension: { preserve: true },
+      flags: { MUSE_FOO_ENABLED: true },
+      quietHours: { enabled: true, range: "23:00-08:00" },
+      version: 2
+    });
+    writeFileSync(file, original, "utf8");
+
+    await expect(writeDaemonSetting(file, "MUSE_BAR_ENABLED", false)).rejects.toBeInstanceOf(UnsupportedDaemonSettingsFormatError);
+    await expect(writeQuietHoursSetting(file, { enabled: false, range: "22:00-07:00" })).rejects.toBeInstanceOf(UnsupportedDaemonSettingsFormatError);
+
+    expect(readFileSync(file, "utf8")).toBe(original);
+  });
+
+  it("refuses to overwrite an unsupported JSON root through either writer", async () => {
+    const original = "[]";
+    writeFileSync(file, original, "utf8");
+
+    await expect(writeDaemonSetting(file, "MUSE_BAR_ENABLED", false)).rejects.toBeInstanceOf(UnsupportedDaemonSettingsFormatError);
+    await expect(writeQuietHoursSetting(file, { enabled: false, range: "22:00-07:00" })).rejects.toBeInstanceOf(UnsupportedDaemonSettingsFormatError);
+
+    expect(readDaemonSettingsSync(file)).toEqual({});
+    expect(readQuietHoursSettingSync(file)).toBeUndefined();
+    expect(readFileSync(file, "utf8")).toBe(original);
   });
 });
 

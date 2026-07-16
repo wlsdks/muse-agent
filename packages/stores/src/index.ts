@@ -8,6 +8,7 @@ export {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
   resolveDaemonSettingsFile,
+  UnsupportedDaemonSettingsFormatError,
   writeDaemonSetting,
   writeQuietHoursSetting
 } from "./daemon-settings-store.js";

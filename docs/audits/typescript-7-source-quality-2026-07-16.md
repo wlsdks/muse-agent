@@ -576,3 +576,11 @@ the TypeScript 7 announcement and release-notes links.
 - `adopt` now makes replacement transitions explicit, treats duplicate adoption of the same live handle as idempotent, and rejects registrations attempted by a retiring handle. `stopAll` is explicitly terminal because its sole call site is Fastify's `onClose` hook: it rejects both re-entrant and late asynchronous registrations after shutdown begins.
 - Cleanup is also handle-identity re-entrant safe, and replacement state retains the candidate identity so callbacks that re-adopt the same candidate neither recursively stop it nor publish an already-stopped handle.
 - Added regressions for retiring-handle re-entry, same-candidate re-adoption, duplicate adoption, re-entry during complete shutdown, shutdown-time sibling adoption, self-adoption during cleanup, and a post-shutdown registration.
+
+### Stores: daemon-settings schema compatibility
+
+- Audited the shared daemon-settings file, its API compatibility re-export, CLI/API mutation callers, lock-backed read-modify-write path, and existing cross-process durability tests against secure configuration and restoration guidance.
+- Fixed a forward-compatibility data-loss path: a settings file marked with a newer or unsupported schema version was accepted and then rewritten as version 1 by either flags or quiet-hours mutation, discarding unknown top-level data.
+- Legacy unversioned object files remain writable and are upgraded to v1. Any other version marker, or any non-object JSON root, now fails closed while the file lock is held, so both writers leave the original file byte-for-byte intact until the user upgrades Muse.
+- The shared typed format error is mapped to HTTP `409` for both web settings PATCH endpoints and to a concise stderr/nonzero result for `muse quiet`, rather than a generic server failure or raw CLI rejection.
+- Added coverage for legacy migration, future versions, non-object JSON roots, both mutation APIs, HTTP conflict responses, and the CLI diagnostic path.
