@@ -419,3 +419,11 @@ the TypeScript 7 announcement and release-notes links.
 - Non-unique database failures remain unmodified and follow the generic server-error path.
 - Verified with `pnpm --filter @muse/mcp exec vitest run test/server-stores.test.ts` (2 passed) and `pnpm --filter @muse/mcp build`.
 - Independent architecture review: PASS.
+### MCP: OAuth credential corruption boundary
+
+- Inspected the OAuth file store, callback flow, existing persistence tests, and shared credential-encryption contract against MCP and OWASP guidance.
+- Added strict persisted-record validation: malformed plaintext JSON is quarantined before a later write can overwrite its only copy.
+- Preserved the stronger encrypted-credential contract: wrong keys, unsupported encrypted envelopes, and authenticated ciphertext whose decrypted payload has an unsupported shape now fail closed without modifying the credential file.
+- Kept envelope recognition narrow so a malformed plaintext record with an incidental `data` field still follows the recoverable plaintext path.
+- Verified with `pnpm --filter @muse/mcp exec vitest run test/oauth-store.test.ts` (17 passed) and `pnpm --filter @muse/mcp build`.
+- Independent architecture review: PASS after two security findings and one boundary-classification finding were addressed.

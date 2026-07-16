@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { OAuthClientInformationFull, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { encryptCredentialEnvelope } from "@muse/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -129,6 +130,46 @@ describe("oauth-store corruption handling", () => {
     // A subsequent write succeeds on the fresh file.
     await saveTokens(dir, SERVER, TOKENS);
     expect(await loadTokens(dir, SERVER)).toEqual(TOKENS);
+  });
+
+  it("quarantines valid JSON that does not match the persisted OAuth record shape", async () => {
+    const file = oauthRecordPath(dir, SERVER);
+    const malformedRecord = JSON.stringify({ oauth: null, version: 1 });
+    writeFileSync(file, malformedRecord, { mode: 0o600 });
+
+    expect(await loadOAuthRecord(dir, SERVER)).toEqual({});
+    const quarantined = readdirSync(dir).find((entry) => entry.startsWith(`${SERVER}-`) && entry.includes(".json.corrupt-"));
+    expect(quarantined).toBeDefined();
+    expect(readFileSync(join(dir, quarantined!), "utf8")).toBe(malformedRecord);
+  });
+
+  it("still quarantines malformed plaintext that happens to have a data field", async () => {
+    const file = oauthRecordPath(dir, SERVER);
+    writeFileSync(file, JSON.stringify({ data: "junk", oauth: null, version: 1 }), { mode: 0o600 });
+
+    expect(await loadOAuthRecord(dir, SERVER)).toEqual({});
+    expect(readdirSync(dir).some((entry) => entry.includes(".json.corrupt-"))).toBe(true);
+  });
+
+  it("fails closed without altering an encrypted record whose decrypted shape is unsupported", async () => {
+    const encEnv: NodeJS.ProcessEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "test-key-abcdef" };
+    const file = oauthRecordPath(dir, SERVER);
+    const encryptedRecord = JSON.stringify(encryptCredentialEnvelope(JSON.stringify({ oauth: null, version: 1 }), encEnv));
+    writeFileSync(file, encryptedRecord, { mode: 0o600 });
+
+    await expect(loadOAuthRecord(dir, SERVER, encEnv)).rejects.toThrow(/unsupported record shape/i);
+    expect(readFileSync(file, "utf8")).toBe(encryptedRecord);
+  });
+
+  it("fails closed without altering an unrecognized encrypted-envelope variant", async () => {
+    const encEnv: NodeJS.ProcessEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "test-key-abcdef" };
+    const file = oauthRecordPath(dir, SERVER);
+    const encrypted = encryptCredentialEnvelope(JSON.stringify({ oauth: {}, version: 1 }), encEnv);
+    const unsupportedEnvelope = JSON.stringify({ ...encrypted, version: 2 });
+    writeFileSync(file, unsupportedEnvelope, { mode: 0o600 });
+
+    await expect(loadOAuthRecord(dir, SERVER, encEnv)).rejects.toThrow(/unsupported encrypted envelope/i);
+    expect(readFileSync(file, "utf8")).toBe(unsupportedEnvelope);
   });
 });
 
