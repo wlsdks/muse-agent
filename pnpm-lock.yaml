@@ -137,6 +137,9 @@ importers:
       '@muse/attunement':
         specifier: workspace:*
         version: link:../../packages/attunement
+      '@muse/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@muse/autoconfigure':
         specifier: workspace:*
         version: link:../../packages/autoconfigure

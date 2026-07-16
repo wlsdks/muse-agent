@@ -30,19 +30,10 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
+import { parseJwtRotationState, type JwtRotationState } from "@muse/auth";
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
-interface PreviousSecretEntry {
-  readonly secret: string;
-  readonly rotatedAt: string;
-  readonly validUntil: string;
-}
-
-export interface JwtRotationState {
-  readonly current: string;
-  readonly rotatedAt: string;
-  readonly previous: readonly PreviousSecretEntry[];
-}
+export type { JwtRotationState } from "@muse/auth";
 
 export function defaultAuthSecretsFile(): string {
   const fromEnv = process.env.MUSE_AUTH_SECRETS_FILE?.trim();
@@ -69,20 +60,7 @@ export async function readJwtRotationState(file: string): Promise<JwtRotationSta
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<JwtRotationState>;
-  if (typeof candidate.current !== "string" || candidate.current.length < 32) return undefined;
-  if (typeof candidate.rotatedAt !== "string") return undefined;
-  const previousArr = Array.isArray(candidate.previous) ? candidate.previous : [];
-  const previous: PreviousSecretEntry[] = [];
-  for (const entry of previousArr) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Partial<PreviousSecretEntry>;
-    if (typeof e.secret !== "string" || e.secret.length < 32) continue;
-    if (typeof e.rotatedAt !== "string" || typeof e.validUntil !== "string") continue;
-    previous.push({ secret: e.secret, rotatedAt: e.rotatedAt, validUntil: e.validUntil });
-  }
-  return { current: candidate.current, rotatedAt: candidate.rotatedAt, previous };
+  return parseJwtRotationState(parsed);
 }
 
 /**
@@ -135,7 +113,7 @@ export function rotateJwtState(args: {
     return { current: generate(), rotatedAt: nowIso, previous: [] };
   }
   const prunedPrev = args.state ? pruneExpiredPreviousSecrets(args.state, args.now).previous : [];
-  const newPrevious: PreviousSecretEntry = {
+  const newPrevious: JwtRotationState["previous"][number] = {
     secret: existingCurrent,
     rotatedAt: args.state?.rotatedAt ?? nowIso,
     validUntil

@@ -36,6 +36,7 @@
     "@muse/proactivity": "workspace:*",
     "@muse/prompts": "workspace:*",
     "@muse/recall": "workspace:*",
+    "@muse/auth": "workspace:*",
     "@muse/scheduler": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/skills": "workspace:*",

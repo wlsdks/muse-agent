@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { pruneExpiredPreviousSecrets, readJwtRotationState, rotateAndPersistJwtState, rotateJwtState, type JwtRotationState } from "./jwt-rotation-store.js";
 
 const NOW = new Date("2026-05-26T00:00:00.000Z");
+const NOW_ISO = NOW.toISOString();
 const prev = (secret: string, validUntilIso: string) => ({ secret, rotatedAt: "2026-05-01T00:00:00.000Z", validUntil: validUntilIso });
 let directory: string | undefined;
 
@@ -65,6 +66,24 @@ describe("rotateJwtState", () => {
     const out = rotateJwtState({ state: undefined, fallbackCurrent: "ENVSECRET", now: NOW, graceMs: 1000, secretFactory });
     expect(out.current).toBe("NEWSECRET");
     expect(out.previous[0]?.secret).toBe("ENVSECRET");
+  });
+
+  it("rejects malformed timestamps and omits malformed previous entries from persisted input", async () => {
+    directory = await mkdtemp(join(tmpdir(), "muse-jwt-rotation-"));
+    const file = join(directory, "auth-secrets.json");
+    await writeFile(file, JSON.stringify({
+      current: "a".repeat(64),
+      rotatedAt: NOW_ISO,
+      previous: [
+        prev("b".repeat(64), "invalid"),
+        { secret: "c".repeat(64), rotatedAt: NOW_ISO, validUntil: "2026-05-27T00:00:00.000Z" }
+      ]
+    }));
+    await expect(readJwtRotationState(file)).resolves.toEqual({
+      current: "a".repeat(64),
+      rotatedAt: NOW_ISO,
+      previous: [{ secret: "c".repeat(64), rotatedAt: NOW_ISO, validUntil: "2026-05-27T00:00:00.000Z" }]
+    });
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(

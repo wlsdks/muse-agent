@@ -10,6 +10,7 @@ import type {
 
 export { AuthError } from "./auth-error.js";
 export { JwtTokenProvider } from "./jwt.js";
+export { parseJwtRotationState, type JwtPreviousSecret, type JwtRotationState } from "./jwt-rotation-state.js";
 export {
   InMemoryUserStore,
   KyselyUserStore,
@@ -379,4 +380,3 @@ function isValidLogoutToken(jwt: JwtTokenProvider, token: string | undefined): b
 
   return Boolean(jwt.parseToken(token));
 }
-

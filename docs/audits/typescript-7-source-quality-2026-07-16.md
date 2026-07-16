@@ -279,3 +279,15 @@ the TypeScript 7 announcement and release-notes links.
 - Decision: validate only at `rotateJwtState`, the persistence-domain owner of the `now + graceMs` calculation. A shared duration abstraction would have one consumer and would not improve the contract. The CLI continues to reject malformed text; the store rejects invalid programmatic input with a domain-specific `RangeError` before state construction.
 - External basis: TypeScript erases types at runtime (TypeScript Handbook), JWT expiry processing is time-bound (RFC 7519), and invalid dates fail when converted to ISO form (MDN). OWASP's cryptographic-storage guidance also treats rotation procedures as a security boundary that should be ready before an incident.
 - Verification: `pnpm --filter @muse/cli exec vitest run src/jwt-rotation-store.test.ts src/commands-auth.test.ts` (15 passed); `pnpm --filter @muse/cli build` passed.
+
+### TypeScript representation decision (2026-07-16)
+
+- Research basis: the TypeScript Handbook confirms that `enum` emits a runtime object, while literal discriminants support narrowing without a second runtime representation. Google’s TypeScript guide likewise cautions against `const enum` in shared code.
+- Decision for Muse: do not mass-convert serialized strings into enums and do not create a global constants bucket. Keep finite wire-state values as literal unions plus discriminated object shapes unless a runtime registry is genuinely needed. Co-locate constants and errors with their owning boundary; extract only when at least two independent consumers share the same semantic contract.
+
+### Shared JWT rotation-state contract (2026-07-16)
+
+- Inspected the CLI file reader/writer and the autoconfigure boot reader. Both consumed `auth-secrets.json` independently, with materially different validation for `rotatedAt` and prior-key records.
+- Decision: place the pure persisted-state parser in `@muse/auth`, which owns JWT semantics. CLI and autoconfigure retain their own file I/O and their fail-open fallback behavior. The CLI now declares its direct package dependency rather than reaching through an unrelated shared module.
+- Contract: current key and timestamps must be canonical ISO values emitted by the writer; malformed top-level state falls back to the configured environment secret, while malformed historical entries are omitted. This avoids provider coupling and prevents a permissive boot parser from accepting state the CLI would later reject.
+- Verification: `pnpm --filter @muse/auth exec vitest run test/jwt-rotation-state.test.ts` (2 passed); `pnpm --filter @muse/autoconfigure exec vitest run test/auth-wiring.test.ts` (9 passed); `pnpm --filter @muse/cli exec vitest run src/jwt-rotation-store.test.ts` (13 passed); builds for `@muse/auth`, `@muse/autoconfigure`, and `@muse/cli` passed.
