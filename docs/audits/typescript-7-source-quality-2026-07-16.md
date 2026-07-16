@@ -404,3 +404,11 @@ the TypeScript 7 announcement and release-notes links.
 - Kept the PostgreSQL detail inside `KyselyUserMemoryStore`; provider-neutral memory interfaces remain unchanged. The injected lock seam is private to construction options for deterministic storage tests.
 - Verified with `pnpm --filter @muse/memory exec vitest run test/memory-user-store-kysely.test.ts` (17 passed) and `pnpm --filter @muse/memory build`.
 - Independent architecture review: PASS.
+
+### Memory: encrypted belief-provenance recovery
+
+- Inspected belief-provenance file storage, encryption handling, validation, user-scoped query behavior, concurrent append tests, and external-lock test coverage.
+- Fixed an encrypted-corruption recovery defect: when an envelope authenticated and decrypted but its plaintext was not valid JSON, a later record could overwrite the unrecoverable history without preserving it.
+- Such envelopes are now quarantined before the best-effort empty recovery path. Wrong-key and authentication-tag failures still throw before quarantine or overwrite.
+- Verified with `pnpm --filter @muse/memory exec vitest run test/belief-provenance-store.test.ts src/belief-provenance-store.test.ts` (61 passed) and `pnpm --filter @muse/memory build`.
+- Independent architecture review: PASS.

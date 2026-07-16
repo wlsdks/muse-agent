@@ -606,6 +606,10 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
     try {
       parsed = JSON.parse(plaintext);
     } catch {
+      // The key authenticated successfully, so this is not a wrong-key case:
+      // preserve the damaged envelope before a later append would otherwise
+      // replace it with an empty fresh history.
+      await quarantineCorruptFile(file);
       return [];
     }
   }
