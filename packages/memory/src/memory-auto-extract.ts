@@ -27,6 +27,7 @@ export { extractJsonObject } from "./memory-extract-json.js";
 import { sanitizeEntries, sanitizeSlotArray, type ExtractedSlot } from "./memory-auto-extract-sanitize.js";
 import { extractDeterministicFactCandidates, mergeFactBackstop } from "./memory-fact-backstop.js";
 import { dropEphemeralFacts } from "./memory-ephemeral-value-guard.js";
+import { dropExistingPetBindingConflicts, resolvePetBindingCandidates } from "./memory-pet-binding-guard.js";
 import type {
   FactSupersession,
   UserGoalSlot,
@@ -306,8 +307,13 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // A fact VALUE that reads as a same-day-relative, time-decaying
         // phrase ("오늘 저녁 7시") is rejected from durable fact promotion — it
         // belongs to a followup, not permanent memory (memory-ephemeral-value-guard.ts).
+        // Key-BINDING fabrication guard: the value may be genuinely user-stated
+        // while the model invents which key it belongs to (보리 incident: one
+        // dog turn bound the name to dog/cat/pet_* keys at once). Resolved
+        // deterministically against the user's own words, drop-not-guess
+        // (memory-pet-binding-guard.ts).
         const finalFacts = !factsIsArray && (groundedFacts !== undefined || Object.keys(backstopCandidates).length > 0)
-          ? dropEphemeralFacts(mergeFactBackstop(groundedFacts, backstopCandidates))
+          ? resolvePetBindingCandidates(dropEphemeralFacts(mergeFactBackstop(groundedFacts, backstopCandidates)), boundedUser)
           : undefined;
         const groundedPayload: ExtractionPayload = {
           ...payload,
@@ -697,7 +703,13 @@ async function persist(
     writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));
     collectProvenance(kind, key, value);
   };
-  for (const [key, value] of factEntries) {
+  // Store-aware binding guard: an extraction can't quietly rebind a value
+  // that already lives under another key of the pet-name family — the first
+  // binding holds until the user corrects it explicitly.
+  const guardedFactEntries = Object.entries(
+    dropExistingPetBindingConflicts(Object.fromEntries(factEntries), existing?.facts)
+  );
+  for (const [key, value] of guardedFactEntries) {
     applyOp("fact", key, value, existing?.facts?.[normalizeMemoryKey(key)]);
   }
   for (const [key, value] of preferenceEntries) {
