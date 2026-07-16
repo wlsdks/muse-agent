@@ -247,3 +247,9 @@ the TypeScript 7 announcement and release-notes links.
 - Inspected the background process store, spawn orchestration, Node spawner, and focused lifecycle tests. Fixed two process-boundary invariants: invalid/non-positive PIDs are rejected before persistence or later signalling, and an exit observed while async launch bookkeeping is pending is persisted after registration rather than leaving a stale `running` record.
 - The Node adapter now consumes rejected async exit listeners, preventing a registry-write failure from becoming an unhandled rejection. Focused stores tests: 11 passed. `pnpm --filter @muse/stores build`: passed. Independent contract review: pending.
 - Follow-up review extended the PID boundary to persisted JSON: only positive safe-integer PIDs are accepted by reads, registrations, and PID updates, so corrupt negative/fractional values are dropped before reaching liveness or signal APIs. An exit captured before launch bookkeeping completes now propagates its persistence failure rather than silently returning a stale running record. Focused stores tests: 29 passed; build passed. Final independent review: pending.
+
+### 2026-07-16 - API process lifecycle
+
+- Inspected `apps/api/src/parent-watch.ts`, `graceful-shutdown.ts`, production signal wiring, and shutdown tests. Parent-watch currently validates a numeric parent PID, uses an unrefed interval, and performs only existence probes; no evidence-backed change was made in that path.
+- Fixed graceful shutdown close-failure handling: `closeServer()` rejection is logged and resolved instead of becoming an unhandled rejection from the production `void shutdown()` signal handler. The forced-exit deadline intentionally remains armed when close fails; successful close still clears it.
+- Focused API shutdown tests: 8 passed. `pnpm --filter @muse/api build`: passed. Independent review: pending.
