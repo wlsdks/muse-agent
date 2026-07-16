@@ -246,6 +246,65 @@ describe("SubAgentRunRegistry", () => {
     }).toThrow();
   });
 
+  it("returned timestamps are snapshots and cannot rewrite registry lifecycle state", () => {
+    const registry = fresh();
+    clock = 100;
+    registry.register({ runId: "r" });
+
+    const running = registry.get("r")!;
+    running.startedAt.setTime(1);
+    running.lastHeartbeatAt.setTime(2);
+    expect(registry.get("r")).toMatchObject({
+      lastHeartbeatAt: new Date(100),
+      startedAt: new Date(100)
+    });
+
+    clock = 200;
+    registry.complete("r");
+    const completed = registry.list()[0]!;
+    completed.finishedAt!.setTime(3);
+    expect(registry.get("r")?.finishedAt).toEqual(new Date(200));
+  });
+
+  it("captures timestamps from a mutable injected clock at every state transition", () => {
+    const sharedClockDate = new Date(100);
+    const registry = new SubAgentRunRegistry({ now: () => sharedClockDate });
+
+    registry.register({ runId: "r" });
+    sharedClockDate.setTime(200);
+    expect(registry.get("r")).toMatchObject({
+      lastHeartbeatAt: new Date(100),
+      startedAt: new Date(100)
+    });
+
+    registry.heartbeat("r");
+    sharedClockDate.setTime(300);
+    expect(registry.get("r")?.lastHeartbeatAt).toEqual(new Date(200));
+
+    registry.complete("r");
+    sharedClockDate.setTime(400);
+    expect(registry.get("r")?.finishedAt).toEqual(new Date(300));
+
+    const orphanRegistry = new SubAgentRunRegistry({ now: () => sharedClockDate });
+    orphanRegistry.register({ runId: "parent" });
+    orphanRegistry.register({ parentRunId: "parent", runId: "child" });
+    orphanRegistry.complete("parent");
+    orphanRegistry.recoverOrphaned();
+    sharedClockDate.setTime(500);
+    expect(orphanRegistry.get("child")?.finishedAt).toEqual(new Date(400));
+  });
+
+  it("rejects malformed positive stall timeout configuration instead of disabling detection", () => {
+    for (const defaultTimeoutMs of [Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(() => new SubAgentRunRegistry({ defaultTimeoutMs })).toThrow(RangeError);
+    }
+
+    const registry = fresh();
+    for (const timeoutMs of [Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(() => registry.register({ runId: `r-${String(timeoutMs)}`, timeoutMs })).toThrow(RangeError);
+    }
+  });
+
   it("list returns all records in insertion order", () => {
     const registry = fresh();
     registry.register({ runId: "z" });
