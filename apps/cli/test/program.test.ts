@@ -7641,9 +7641,16 @@ describe("cli program", () => {
     process.env.MUSE_LOCAL_ONLY = "false";
     process.env.MUSE_MODEL_KEYS_FILE = modelKeysFile;
     try {
+      const doctorFetch = async (input: RequestInfo | URL): Promise<Response> => {
+        const url = String(input);
+        if (url.endsWith("/api/generate")) {
+          return new Response(JSON.stringify({ prompt_eval_count: 17, prompt_eval_duration: 10_000_000 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ models: [{ name: "gemma4:12b" }] }), { status: 200 });
+      };
       // No env, no file, no key → ok, falls back to the local default model.
       const { io: io1, output: out1 } = captureOutput();
-      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("api fetch off"); } });
+      const program1 = createProgram({ ...io1, fetch: doctorFetch });
       await program1.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r1 = JSON.parse(out1.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe1 = r1.checks.find((c) => c.name === "model env");
@@ -7658,7 +7665,7 @@ describe("cli program", () => {
         }
       }), "utf8");
       const { io: io2, output: out2 } = captureOutput();
-      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api fetch off"); } });
+      const program2 = createProgram({ ...io2, fetch: doctorFetch });
       await program2.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r2 = JSON.parse(out2.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe2 = r2.checks.find((c) => c.name === "model env");
@@ -7673,7 +7680,7 @@ describe("cli program", () => {
         providers: { gemini: { token: "gem-from-file" } }
       }), "utf8");
       const { io: io3, output: out3 } = captureOutput();
-      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("api fetch off"); } });
+      const program3 = createProgram({ ...io3, fetch: doctorFetch });
       await program3.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r3 = JSON.parse(out3.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe3 = r3.checks.find((c) => c.name === "model env");

@@ -582,6 +582,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     deleteStoredToken,
     readStoredToken,
     writeStoredToken,
+    ...(io.fetch ? { localRuntime: { fetchImpl: io.fetch } } : {}),
     ...(io.todayShells ? { shells: io.todayShells } : {})
   };
 
@@ -902,5 +903,4 @@ export function formatUnknownCommand(attempted: string, known: readonly string[]
   }
   return `${lines.join("\n")}\n`;
 }
-
 

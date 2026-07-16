@@ -15,7 +15,7 @@ function recEmitting(wav: Buffer | null) {
   rec.kill = () => undefined;
   setImmediate(() => {
     if (wav) rec.stdout.emit("data", wav);
-    rec.emit("close");
+    rec.emit("close", 0, null);
   });
   return rec;
 }
