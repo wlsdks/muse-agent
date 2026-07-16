@@ -58,6 +58,8 @@ export interface InMemoryAgentMessageBusOptions {
 export class InMemoryAgentMessageBus implements AgentMessageBus {
   private readonly allMessages: AgentMessage[] = [];
   private readonly subscribers = new Map<string, AgentMessageHandler[]>();
+  private deliveryTail: Promise<void> = Promise.resolve();
+  private deliveryGeneration = 0;
   private readonly maxSubscribers: number;
   private readonly maxMessages: number;
   private readonly maxHandlersPerSubscriber: number;
@@ -73,7 +75,16 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
     if (this.allMessages.length > this.maxMessages) {
       this.allMessages.splice(0, this.allMessages.length - this.maxMessages);
     }
-    await this.notifySubscribers(message);
+    const generation = this.deliveryGeneration;
+    const delivery = this.deliveryTail.then(async () => {
+      if (generation === this.deliveryGeneration) {
+        await this.notifySubscribers(message);
+      }
+    });
+    // Keep later publishes live even if a future implementation adds a
+    // failing bus-level operation; subscriber failures already fail open.
+    this.deliveryTail = delivery.catch(() => {});
+    await delivery;
   }
 
   subscribe(agentId: string, handler: AgentMessageHandler): void {
@@ -104,6 +115,7 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
   clear(): void {
     this.allMessages.length = 0;
     this.subscribers.clear();
+    this.deliveryGeneration += 1;
   }
 
   private async notifySubscribers(message: AgentMessage): Promise<void> {

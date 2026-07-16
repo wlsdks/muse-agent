@@ -113,6 +113,29 @@ describe("InMemoryAgentMessageBus", () => {
     expect(bus.getConversation().map((message) => message.content)).toEqual(["1", "2", "3"]);
   });
 
+  it("delivers concurrent publishes to a subscriber in publish order", async () => {
+    const bus = new InMemoryAgentMessageBus();
+    const seen: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    const firstHandlerStarted = new Promise<void>((resolve) => {
+      bus.subscribe("agent", async (message) => {
+        if (message.content === "first") {
+          resolve();
+          await new Promise<void>((release) => { releaseFirst = release; });
+        }
+        seen.push(message.content);
+      });
+    });
+
+    const first = bus.publish({ content: "first", sourceAgentId: "x", targetAgentId: "agent", timestamp: new Date() });
+    await firstHandlerStarted;
+    const second = bus.publish({ content: "second", sourceAgentId: "x", targetAgentId: "agent", timestamp: new Date() });
+    releaseFirst?.();
+    await Promise.all([first, second]);
+
+    expect(seen).toEqual(["first", "second"]);
+  });
+
   it("clear() empties messages and subscribers", async () => {
     const bus = new InMemoryAgentMessageBus();
     let calls = 0;
