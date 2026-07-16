@@ -38,6 +38,27 @@ describe("InMemoryConversationSummaryStore", () => {
     expect(store.save(summary("negative", { summarizedUpToIndex: -5 })).summarizedUpToIndex).toBe(0);
   });
 
+  it("normalizes invalid runtime timestamps before a later persistence boundary can throw", () => {
+    const now = new Date(1000);
+    const invalid = new Date("not-a-date");
+    const input = summary("invalid-dates", {
+      createdAt: invalid,
+      facts: [{ category: "GENERAL", extractedAt: invalid, key: "k", value: "v" }],
+      updatedAt: invalid
+    });
+    const store = new InMemoryConversationSummaryStore({ now: () => now });
+
+    const saved = store.save(input);
+    const insert = createConversationSummaryInsert(input, { now: () => now });
+
+    expect(saved.createdAt.getTime()).toBe(1000);
+    expect(saved.updatedAt.getTime()).toBe(1000);
+    expect(saved.facts[0]?.extractedAt.getTime()).toBe(1000);
+    expect(insert.created_at.getTime()).toBe(1000);
+    expect(insert.updated_at.getTime()).toBe(1000);
+    expect((insert.facts_json as Array<{ extractedAt: string }>)[0]?.extractedAt).toBe(now.toISOString());
+  });
+
   it("preserves the original createdAt on re-save but advances updatedAt", () => {
     let t = 1000;
     const store = new InMemoryConversationSummaryStore({ now: () => new Date(t) });
@@ -112,6 +133,22 @@ describe("createConversationSummaryInsert / mapConversationSummaryRow", () => {
     } as Parameters<typeof mapConversationSummaryRow>[0]);
     expect(mapped.facts).toEqual([{ category: "GENERAL", extractedAt: new Date("2026-01-01T00:00:00Z"), key: "k", value: "v" }]);
     expect(mapped.userId).toBe("u");
+  });
+
+  it("maps corrupt persisted timestamps to epoch dates instead of exposing invalid Date values", () => {
+    const mapped = mapConversationSummaryRow({
+      created_at: "not-a-date",
+      facts_json: '[{"key":"k","value":"v","category":"GENERAL","extractedAt":"not-a-date"}]',
+      narrative: "n",
+      session_id: "s",
+      summarized_up_to: 0,
+      updated_at: "not-a-date",
+      user_id: null
+    } as Parameters<typeof mapConversationSummaryRow>[0]);
+
+    expect(mapped.createdAt.getTime()).toBe(0);
+    expect(mapped.updatedAt.getTime()).toBe(0);
+    expect(mapped.facts[0]?.extractedAt.getTime()).toBe(0);
   });
 });
 
@@ -209,6 +246,60 @@ describe("FileConversationSummaryStore — cross-session persistence (the CLI de
     expect(quarantined).toBeDefined();
     expect(await import("node:fs/promises").then(({ readFile }) => readFile(join(dirname(file), quarantined!), "utf8"))).toBe(corrupt);
     expect(await new FileConversationSummaryStore({ file }).get("recovered")).toMatchObject({ narrative: "fresh summary" });
+  });
+
+  it("skips malformed summaries and facts so a later save can recover the valid entries", async () => {
+    const file = freshFile();
+    await writeFile(file, JSON.stringify({
+      summaries: [
+        {
+          createdAt: "not-a-date",
+          facts: [],
+          narrative: "broken",
+          sessionId: "broken-summary",
+          summarizedUpToIndex: 0,
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        },
+        {
+          createdAt: "2026-01-01T00:00:00.000Z",
+          facts: [
+            { category: "GENERAL", extractedAt: "not-a-date", key: "broken", value: "fact" },
+            { category: "ENTITY", extractedAt: "2026-01-01T00:00:00.000Z", key: "valid", value: "fact" }
+          ],
+          narrative: "valid",
+          sessionId: "valid-summary",
+          summarizedUpToIndex: 1,
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    }), "utf8");
+
+    const store = new FileConversationSummaryStore({ file });
+    await store.save(summary("recovered-summary", { narrative: "safe to persist" }));
+
+    const recovered = await new FileConversationSummaryStore({ file }).listAll({ limit: 10 });
+    expect(recovered.map((entry) => entry.sessionId).sort()).toEqual(["recovered-summary", "valid-summary"]);
+    expect(recovered.find((entry) => entry.sessionId === "valid-summary")?.facts).toEqual([
+      expect.objectContaining({ key: "valid", value: "fact" })
+    ]);
+  });
+
+  it("persists invalid runtime timestamps with its clock fallback", async () => {
+    const file = freshFile();
+    const now = new Date(1000);
+    const invalid = new Date("not-a-date");
+    const store = new FileConversationSummaryStore({ file, now: () => now });
+
+    await expect(store.save(summary("invalid-runtime-date", {
+      createdAt: invalid,
+      facts: [{ category: "GENERAL", extractedAt: invalid, key: "k", value: "v" }],
+      updatedAt: invalid
+    }))).resolves.toMatchObject({ createdAt: now, updatedAt: now });
+
+    await expect(new FileConversationSummaryStore({ file }).get("invalid-runtime-date")).resolves.toMatchObject({
+      createdAt: now,
+      updatedAt: now
+    });
   });
 
   afterAll(async () => {

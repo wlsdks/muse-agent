@@ -69,10 +69,10 @@ export class InMemoryConversationSummaryStore implements ConversationSummaryStor
 
   save(summary: ConversationSummary): ConversationSummary {
     const existing = this.summaries.get(summary.sessionId);
-    const now = this.now();
+    const now = validDateOrFallback(this.now(), new Date());
     const normalized = normalizeConversationSummary(summary, {
-      createdAt: existing?.createdAt ?? summary.createdAt ?? now,
-      updatedAt: summary.updatedAt ?? now
+      createdAt: validDateOrFallback(existing?.createdAt ?? summary.createdAt, now),
+      updatedAt: validDateOrFallback(summary.updatedAt, now)
     });
 
     this.summaries.set(normalized.sessionId, normalized);
@@ -117,16 +117,41 @@ function serializeSummary(s: RequiredConversationSummary): SerializedConversatio
   };
 }
 
-function deserializeSummary(r: SerializedConversationSummary): RequiredConversationSummary {
-  return {
-    createdAt: new Date(r.createdAt),
-    facts: (r.facts ?? []).map((f) => ({ category: f.category, extractedAt: new Date(f.extractedAt), key: f.key, value: f.value })),
-    narrative: r.narrative,
-    sessionId: r.sessionId,
-    summarizedUpToIndex: r.summarizedUpToIndex,
-    updatedAt: new Date(r.updatedAt),
-    ...(r.userId ? { userId: r.userId } : {})
-  };
+function deserializeSummary(value: unknown): RequiredConversationSummary | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const createdAt = parseValidDate(record.createdAt);
+  const updatedAt = parseValidDate(record.updatedAt);
+  if (
+    typeof record.sessionId !== "string" ||
+    record.sessionId.trim().length === 0 ||
+    typeof record.narrative !== "string" ||
+    typeof record.summarizedUpToIndex !== "number" ||
+    !Number.isFinite(record.summarizedUpToIndex) ||
+    !createdAt ||
+    !updatedAt
+  ) {
+    return undefined;
+  }
+
+  const facts = Array.isArray(record.facts)
+    ? record.facts.flatMap(deserializeStoredStructuredFact)
+    : [];
+  return normalizeConversationSummary(
+    {
+      createdAt,
+      facts,
+      narrative: record.narrative,
+      sessionId: record.sessionId,
+      summarizedUpToIndex: record.summarizedUpToIndex,
+      updatedAt,
+      ...(typeof record.userId === "string" ? { userId: record.userId } : {})
+    },
+    { createdAt, updatedAt }
+  );
 }
 
 /**
@@ -174,8 +199,9 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     const list = (parsed as { summaries: SerializedConversationSummary[] }).summaries;
     const map = new Map<string, RequiredConversationSummary>();
     for (const entry of list) {
-      if (entry && typeof entry.sessionId === "string" && entry.sessionId.length > 0) {
-        map.set(entry.sessionId, deserializeSummary(entry));
+      const summary = deserializeSummary(entry);
+      if (summary) {
+        map.set(summary.sessionId, summary);
       }
     }
     return map;
@@ -204,10 +230,10 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     return this.serializeWrite(async () => {
       const map = await this.readMap();
       const existing = map.get(summary.sessionId);
-      const now = this.now();
+      const now = validDateOrFallback(this.now(), new Date());
       const normalized = normalizeConversationSummary(summary, {
-        createdAt: existing?.createdAt ?? summary.createdAt ?? now,
-        updatedAt: summary.updatedAt ?? now
+        createdAt: validDateOrFallback(existing?.createdAt ?? summary.createdAt, now),
+        updatedAt: validDateOrFallback(summary.updatedAt, now)
       });
       map.set(normalized.sessionId, normalized);
       await this.writeMap(map);
@@ -318,10 +344,10 @@ export function createConversationSummaryInsert(
   summary: ConversationSummary,
   options: { readonly now: () => Date }
 ): ConversationSummaryInsert {
-  const now = options.now();
+  const now = validDateOrFallback(options.now(), new Date());
   const normalized = normalizeConversationSummary(summary, {
-    createdAt: summary.createdAt ?? now,
-    updatedAt: summary.updatedAt ?? now
+    createdAt: validDateOrFallback(summary.createdAt, now),
+    updatedAt: validDateOrFallback(summary.updatedAt, now)
   });
 
   return {
@@ -353,7 +379,7 @@ function normalizeConversationSummary(
 ): RequiredConversationSummary {
   return {
     createdAt: options.createdAt,
-    facts: (summary.facts ?? []).map(normalizeStructuredFact),
+    facts: (summary.facts ?? []).map((fact) => normalizeStructuredFact(fact, options.updatedAt)),
     narrative: summary.narrative.trim(),
     sessionId: summary.sessionId,
     summarizedUpToIndex: normalizeNonNegativeInteger(summary.summarizedUpToIndex),
@@ -366,10 +392,10 @@ function normalizeNonNegativeInteger(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
-function normalizeStructuredFact(fact: StructuredFact): RequiredStructuredFact {
+function normalizeStructuredFact(fact: StructuredFact, fallbackDate: Date): RequiredStructuredFact {
   return {
     category: fact.category ?? "GENERAL",
-    extractedAt: fact.extractedAt ?? new Date(),
+    extractedAt: validDateOrFallback(fact.extractedAt, fallbackDate),
     key: fact.key.trim(),
     value: fact.value.trim()
   };
@@ -393,6 +419,25 @@ function deserializeStructuredFact(fact: SerializedStructuredFact): RequiredStru
   };
 }
 
+function deserializeStoredStructuredFact(value: unknown): readonly RequiredStructuredFact[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const extractedAt = parseValidDate(record.extractedAt);
+  if (typeof record.key !== "string" || typeof record.value !== "string" || !extractedAt) {
+    return [];
+  }
+
+  return [{
+    category: factCategoryValue(record.category),
+    extractedAt,
+    key: record.key,
+    value: record.value
+  }];
+}
+
 function factCategoryValue(value: unknown): FactCategory {
   return value === "ENTITY" ||
     value === "DECISION" ||
@@ -409,7 +454,16 @@ function stringValue(value: unknown): string {
 }
 
 function dateValue(value: unknown): Date {
-  return value instanceof Date ? value : new Date(typeof value === "string" ? value : 0);
+  return parseValidDate(value) ?? new Date(0);
+}
+
+function parseValidDate(value: unknown): Date | undefined {
+  const date = value instanceof Date ? value : new Date(typeof value === "string" ? value : "");
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function validDateOrFallback(value: unknown, fallback: Date): Date {
+  return parseValidDate(value) ?? parseValidDate(fallback) ?? new Date(0);
 }
 
 function jsonArray<T>(value: unknown): readonly T[] {

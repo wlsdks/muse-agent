@@ -369,3 +369,29 @@ the TypeScript 7 announcement and release-notes links.
 - Retained the string-literal `RuntimeSettingType` union. No enum or global constant is warranted because this serialized value set has no shared runtime registry behavior.
 - Verified with `pnpm --filter @muse/runtime-settings exec vitest run test/runtime-settings.test.ts` (8 passed) and `pnpm --filter @muse/runtime-settings build`.
 - Independent architecture review: PASS.
+
+### Observability: persisted trace-event boundary (no code change)
+
+- Inspected `packages/observability/src/observability-tracers.ts`, the model-loop span creation path, trace-event migration, factory wiring, and focused observability tests.
+- Confirmed the DB foreign-key invariant is satisfied on the production model-loop path: it always supplies `context.runId` as `run.id`, which the persisted tracer resolves before the defensive `unknown` fallback.
+- Did not broaden the tracer API or relax the database foreign key: no reachable persistence failure or DB/in-memory contract divergence was evidenced.
+
+### API: orchestration-history file persistence (no code change)
+
+- Inspected the file store, its restart/corruption tests, and API-server construction path.
+- The store is created once per API server, and synchronous `record`/`clear` complete the in-memory mutation and atomic rename in one event-loop turn.
+- A cross-process merge protocol would require an explicit multi-writer product contract; changing only the temporary filename would not prevent last-writer-wins loss. No evidence-backed change was made.
+
+### Memory: file-backed task persistence (no code change)
+
+- Inspected `FileTaskMemoryStore`, its in-memory/Kysely parity, file-lock and mutation-queue boundaries, and focused quality/persistence tests.
+- Confirmed every mutation hydrates under the shared file lock, applies the in-memory invariant, then writes atomically; focused tests cover independent-instance concurrent saves, external lock waiting, corrupt-data quarantine, retention, and nested date round trips.
+- No duplication or unsafe shared-contract extraction was evidenced.
+
+### Memory: conversation-summary persistence recovery
+
+- Inspected in-memory, file-backed, and Kysely conversation-summary paths plus factory wiring and focused persistence tests.
+- Hardened file deserialization so malformed summaries or facts are skipped while valid summaries remain writable and recoverable; a malformed entry can no longer make a later save fail in `toISOString()`.
+- Normalized invalid runtime `Date` inputs to the store clock across in-memory saves, file saves, and Kysely inserts; corrupted database dates map to epoch instead of leaking invalid dates into a later serialization path.
+- Verified with `pnpm --filter @muse/memory exec vitest run test/conversation-summary-store.test.ts` (17 passed) and `pnpm --filter @muse/memory build`.
+- Independent architecture review: PASS after a follow-up correction for caller-supplied invalid dates.
