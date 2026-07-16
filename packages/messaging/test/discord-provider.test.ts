@@ -79,6 +79,33 @@ describe("DiscordProvider.send — outbound (contract-faithful fake)", () => {
     expect((err as MessagingProviderError).code).toBe("UPSTREAM_FAILED");
     expect((err as Error).message).toContain("missing message id");
   });
+
+  it("normalizes a timeout-shaped send rejection without making the POST retryable", async () => {
+    const fetchImpl = (async () => { throw new Error("request to Discord timed out after 30000ms"); }) as unknown as typeof globalThis.fetch;
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "c", text: "hi" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.code).toBe("UPSTREAM_FAILED");
+    expect(err.retryable).toBe(false);
+    expect(err.message).toContain("timed out");
+  });
+
+  it("normalizes an unreadable successful response body instead of creating a fake receipt", async () => {
+    const unreadableResponse = {
+      headers: new Headers(),
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async (): Promise<string> => { throw new Error("body stream failed"); }
+    } as unknown as Response;
+    const { fetchImpl } = recordingFetch(() => unreadableResponse);
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "c", text: "hi" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.status).toBe(200);
+    expect(err.retryable).toBe(false);
+    expect(err.message).toContain("body stream failed");
+  });
 });
 
 describe("DiscordProvider.fetchInbound — inbound (snapshot mode)", () => {
@@ -112,5 +139,47 @@ describe("DiscordProvider.fetchInbound — inbound (snapshot mode)", () => {
     const err = await provider.fetchInbound({ source: "c" }).catch((e: unknown) => e);
     expect((err as MessagingProviderError).code).toBe("UPSTREAM_FAILED");
     expect((err as MessagingProviderError & { status?: number }).status).toBe(500);
+  });
+
+  it("retries a rate-limited inbound GET using the server delay before returning messages", async () => {
+    let attempts = 0;
+    const { fetchImpl } = recordingFetch(() => {
+      attempts += 1;
+      return attempts === 1
+        ? new Response(JSON.stringify({ message: "rate limited" }), { headers: { "retry-after": "0" }, status: 429 })
+        : json([{ author: { username: "alice" }, content: "after retry", id: "1001" }]);
+    });
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const inbound = await provider.fetchInbound({ source: "c" });
+    expect(attempts).toBe(2);
+    expect(inbound).toMatchObject([{ messageId: "1001", text: "after retry" }]);
+  });
+
+  it("retains Retry-After when an inbound rate limit remains exhausted", async () => {
+    const { fetchImpl } = recordingFetch(() => new Response(JSON.stringify({ message: "rate limited" }), {
+      headers: { "retry-after": "0" },
+      status: 429
+    }));
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.fetchInbound({ source: "c" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.status).toBe(429);
+    expect(err.retryAfterMs).toBe(0);
+  });
+
+  it("normalizes an unreadable inbound error body while preserving its HTTP status", async () => {
+    const unreadableResponse = {
+      headers: new Headers(),
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async (): Promise<string> => { throw new Error("body stream failed"); }
+    } as unknown as Response;
+    const { fetchImpl } = recordingFetch(() => unreadableResponse);
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.fetchInbound({ source: "c" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.status).toBe(400);
+    expect(err.message).toContain("body stream failed");
   });
 });

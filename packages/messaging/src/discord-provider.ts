@@ -1,4 +1,4 @@
-import { truncateErrorBody } from "@muse/shared";
+import { errorMessage, truncateErrorBody } from "@muse/shared";
 
 import { readDiscordAfter, writeDiscordAfter } from "./discord-after-store.js";
 import { MessagingProviderError } from "./errors.js";
@@ -146,18 +146,24 @@ export class DiscordProvider implements MessagingProvider {
       : undefined;
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(channelId)}/messages?limit=${limit.toString()}`
       + (cursor !== undefined ? `&after=${encodeURIComponent(cursor)}` : "");
-    const response = await fetchReadWithRetry(this.fetchImpl, url, {
-      headers: { authorization: `Bot ${this.token}` },
-      method: "GET"
-    }, { timeoutMs: this.timeoutMs });
-    const text = await response.text();
+    let response: Response;
+    try {
+      response = await fetchReadWithRetry(this.fetchImpl, url, {
+        headers: { authorization: `Bot ${this.token}` },
+        method: "GET"
+      }, { timeoutMs: this.timeoutMs });
+    } catch (cause) {
+      throw this.transportError("Discord channels.messages request", cause);
+    }
+    const text = await this.readResponseText(response, "Discord channels.messages");
     if (!response.ok) {
       const errorPayload = tryParseJson<DiscordErrorResponse>(text);
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Discord channels.messages failed: ${errorPayload?.message ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response)
       );
     }
     const parsed = tryParseJson<readonly DiscordChannelMessage[]>(text);
@@ -201,23 +207,28 @@ export class DiscordProvider implements MessagingProvider {
     const outboundText = clampOutboundText(message.text, 2000);
     validateOutboundMessage({ ...message, text: outboundText });
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(message.destination)}/messages`;
-    const response = await fetchWithTimeout(this.fetchImpl, url, {
-      // `parse: []` suppresses ALL mention resolution: a literal
-      // `@everyone` / `@here` / `<@id>` in agent output (a quote, a
-      // code snippet) would otherwise ping the whole server. The
-      // text still shows verbatim; it just doesn't notify.
-      // `flags: 4` (SUPPRESS_EMBEDS) stops Discord's server-side
-      // crawler from fetching any URL in the reply to build a
-      // preview — a passive-fetch exfiltration path for a URL an
-      // indirect prompt injection planted (EchoLeak/CamoLeak class).
-      body: JSON.stringify({ allowed_mentions: { parse: [] }, content: outboundText, flags: 4 }),
-      headers: {
-        authorization: `Bot ${this.token}`,
-        "content-type": "application/json"
-      },
-      method: "POST"
-    }, this.timeoutMs);
-    const text = await response.text();
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(this.fetchImpl, url, {
+        // `parse: []` suppresses ALL mention resolution: a literal
+        // `@everyone` / `@here` / `<@id>` in agent output (a quote, a
+        // code snippet) would otherwise ping the whole server. The
+        // text still shows verbatim; it just doesn't notify.
+        // `flags: 4` (SUPPRESS_EMBEDS) stops Discord's server-side
+        // crawler from fetching any URL in the reply to build a
+        // preview — a passive-fetch exfiltration path for a URL an
+        // indirect prompt injection planted (EchoLeak/CamoLeak class).
+        body: JSON.stringify({ allowed_mentions: { parse: [] }, content: outboundText, flags: 4 }),
+        headers: {
+          authorization: `Bot ${this.token}`,
+          "content-type": "application/json"
+        },
+        method: "POST"
+      }, this.timeoutMs);
+    } catch (cause) {
+      throw this.transportError("Discord sendMessage request", cause);
+    }
+    const text = await this.readResponseText(response, "Discord sendMessage");
     const parsed = tryParseJson<DiscordMessageResponse>(text);
     if (!response.ok) {
       throw new MessagingProviderError(
@@ -237,6 +248,28 @@ export class DiscordProvider implements MessagingProvider {
       providerId: this.id,
       raw: parsed
     };
+  }
+
+  private transportError(operation: string, cause: unknown): MessagingProviderError {
+    return new MessagingProviderError(
+      this.id,
+      "UPSTREAM_FAILED",
+      `${operation} failed: ${errorMessage(cause, "network request failed")}`
+    );
+  }
+
+  private async readResponseText(response: Response, operation: string): Promise<string> {
+    try {
+      return await response.text();
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `${operation} failed with ${response.status.toString()}: unable to read response body: ${errorMessage(cause, "unknown response body failure")}`,
+        response.status,
+        retryAfterMsFromResponse(response)
+      );
+    }
   }
 }
 
@@ -266,4 +299,3 @@ function pickNewestId(messages: readonly DiscordChannelMessage[]): string | unde
   }
   return bestStr;
 }
-

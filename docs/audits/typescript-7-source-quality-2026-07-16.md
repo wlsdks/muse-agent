@@ -199,3 +199,11 @@ the TypeScript 7 announcement and release-notes links.
 - **Decision:** normalize every LINE push transport rejection as `UPSTREAM_FAILED`, retaining the safe causal message while preserving HTTP status and Retry-After handling for actual responses.
 - **Evidence:** focused provider coverage now distinguishes validation-before-network, HTTP failure mapping, and rejected transport normalization.
 - **Follow-up:** unreadable non-OK response bodies are also normalized while retaining the HTTP status and Retry-After metadata; focused tests cover 429, a rejected body stream, and timeout-shaped transport rejection.
+
+## Discord request and response boundary
+
+- **Area:** `packages/messaging` Discord REST provider, outbound sends and inbound channel reads.
+- **Finding:** timeout/transport rejections and failed response-body reads could escape as raw exceptions. For an outbound POST this obscured retry safety; for reads it discarded the provider status contract.
+- **Decision:** Discord now normalizes request and body-read failures to `UPSTREAM_FAILED`. Body failures retain status and Retry-After metadata; transport failures have no status and remain non-retryable, preventing an ambiguous POST from being replayed.
+- **Evidence:** focused tests cover timeout-shaped send rejection, unreadable successful send response, and unreadable inbound error response.
+- **Follow-up:** the final retried inbound HTTP error now retains Retry-After too. Focused tests pin a server-directed zero-delay retry that succeeds and an exhausted 429 receipt that retains `retryAfterMs`.
