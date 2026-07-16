@@ -42,6 +42,7 @@ import { pathToFileURL } from "node:url";
 
 import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { ToolRisk } from "@muse/tools";
+import { isCancellationLikeError } from "@muse/resilience";
 
 import { toErrorMessage } from "./error-utils.js";
 import {
@@ -250,6 +251,9 @@ class SdkMcpConnection implements McpConnection {
     try {
       result = await this.client.listTools(undefined, { timeout: this.requestTimeoutMs });
     } catch (error) {
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
       throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
     }
 
@@ -262,14 +266,25 @@ class SdkMcpConnection implements McpConnection {
   }
 
   async callTool(toolName: string, args: JsonObject): Promise<string | JsonValue> {
-    const result = await this.client.callTool(
-      {
-        arguments: args,
-        name: toolName
-      },
-      undefined,
-      { timeout: this.requestTimeoutMs }
-    );
+    let result;
+    try {
+      result = await this.client.callTool(
+        {
+          arguments: args,
+          name: toolName
+        },
+        undefined,
+        { timeout: this.requestTimeoutMs }
+      );
+    } catch (error) {
+      // An SDK abort denotes the caller's terminal cancellation, not a broken
+      // MCP session. Preserve it so the tool factory does not retire a healthy
+      // connection or schedule an unnecessary reconnect.
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
+      throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
+    }
 
     return formatMcpToolResult(result);
   }

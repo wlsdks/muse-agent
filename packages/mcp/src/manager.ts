@@ -570,9 +570,39 @@ export class McpManager {
 
     return [...this.connections.entries()].flatMap(([serverName, connection]) =>
       (this.tools.get(serverName) ?? []).map((tool) =>
-        createMcpMuseTool(serverName, tool, connection, () => this.ensureLiveConnection(serverName))
+        createMcpMuseTool(
+          serverName,
+          tool,
+          connection,
+          () => this.ensureLiveConnection(serverName),
+          (failedConnection, error) => this.handleToolCallFailure(serverName, failedConnection, error)
+        )
       )
     );
+  }
+
+  private async handleToolCallFailure(name: string, connection: McpConnection, error: unknown): Promise<void> {
+    // A stale closure can finish after an on-demand reconnect has already
+    // installed a replacement. Never retire that healthy replacement.
+    if (this.connections.get(name) !== connection) {
+      return;
+    }
+
+    await closeConnectionQuietly(connection);
+    if (this.connections.get(name) !== connection) {
+      return;
+    }
+    this.connections.delete(name);
+    this.tools.delete(name);
+
+    const reason = toErrorMessage(error);
+    if (error instanceof McpConnectionError && !error.retryable) {
+      this.disableServer(name, reason);
+      return;
+    }
+
+    this.statuses.set(name, "failed");
+    this.scheduleReconnect(name, reason);
   }
 
   /**
