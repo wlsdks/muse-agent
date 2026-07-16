@@ -113,6 +113,45 @@ describe("InMemoryAgentMessageBus", () => {
     expect(bus.getConversation().map((message) => message.content)).toEqual(["1", "2", "3"]);
   });
 
+  it("isolates messages from publisher, subscriber, and query-result mutation", async () => {
+    const bus = new InMemoryAgentMessageBus();
+    const timestamp = new Date("2026-07-16T00:00:00.000Z");
+    const metadata = { nested: { value: "original" } };
+    const receivedBySecondSubscriber: AgentMessage[] = [];
+
+    bus.subscribe("agent", (message) => {
+      (message.timestamp as Date).setUTCFullYear(2000);
+      ((message.metadata as { nested: { value: string } }).nested.value) = "first-subscriber";
+    });
+    bus.subscribe("agent", (message) => {
+      receivedBySecondSubscriber.push(message);
+    });
+
+    await bus.publish({ content: "message", metadata, sourceAgentId: "source", targetAgentId: "agent", timestamp });
+    timestamp.setUTCFullYear(1999);
+    metadata.nested.value = "publisher";
+
+    expect(receivedBySecondSubscriber).toMatchObject([
+      {
+        content: "message",
+        metadata: { nested: { value: "original" } },
+        timestamp: new Date("2026-07-16T00:00:00.000Z")
+      }
+    ]);
+
+    const queried = bus.getConversation()[0]!;
+    (queried.timestamp as Date).setUTCFullYear(1988);
+    ((queried.metadata as { nested: { value: string } }).nested.value) = "query";
+
+    expect(bus.getConversation()).toMatchObject([
+      {
+        content: "message",
+        metadata: { nested: { value: "original" } },
+        timestamp: new Date("2026-07-16T00:00:00.000Z")
+      }
+    ]);
+  });
+
   it("delivers concurrent publishes to a subscriber in publish order", async () => {
     const bus = new InMemoryAgentMessageBus();
     const seen: string[] = [];

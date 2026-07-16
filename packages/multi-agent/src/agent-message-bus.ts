@@ -71,14 +71,20 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
   }
 
   async publish(message: AgentMessage): Promise<void> {
-    this.allMessages.push(message);
+    // Treat an agent message as an immutable boundary value. `readonly` only
+    // protects TypeScript callers: Dates and JSON metadata remain mutable at
+    // runtime, so retaining or fanning out the caller's object would let one
+    // agent alter another agent's input or rewrite conversation history.
+    const acceptedMessage = snapshotMessage(message);
+
+    this.allMessages.push(acceptedMessage);
     if (this.allMessages.length > this.maxMessages) {
       this.allMessages.splice(0, this.allMessages.length - this.maxMessages);
     }
     const generation = this.deliveryGeneration;
     const delivery = this.deliveryTail.then(async () => {
       if (generation === this.deliveryGeneration) {
-        await this.notifySubscribers(message);
+        await this.notifySubscribers(acceptedMessage);
       }
     });
     // Keep later publishes live even if a future implementation adds a
@@ -103,13 +109,13 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
   }
 
   getMessages(agentId: string): readonly AgentMessage[] {
-    return this.allMessages.filter(
-      (message) => message.targetAgentId === agentId || message.targetAgentId === undefined
-    );
+    return this.allMessages
+      .filter((message) => message.targetAgentId === agentId || message.targetAgentId === undefined)
+      .map(snapshotMessage);
   }
 
   getConversation(): readonly AgentMessage[] {
-    return [...this.allMessages];
+    return this.allMessages.map(snapshotMessage);
   }
 
   clear(): void {
@@ -144,7 +150,10 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
   // allowed to silently drop messages to every other agent.
   private async deliver(handler: AgentMessageHandler, message: AgentMessage): Promise<void> {
     try {
-      await handler(message);
+      // Every handler receives its own snapshot. A compromised or buggy
+      // subscriber therefore cannot poison the input observed by later
+      // subscribers, even though JavaScript cannot enforce `readonly`.
+      await handler(snapshotMessage(message));
     } catch {
       // intentionally swallowed — best-effort delivery
     }
@@ -169,4 +178,14 @@ function requirePositiveSafeInteger(value: number | undefined, fallback: number,
     throw new RangeError(`${name} must be a positive safe integer`);
   }
   return resolved;
+}
+
+function snapshotMessage(message: AgentMessage): AgentMessage {
+  return {
+    content: message.content,
+    ...(message.metadata === undefined ? {} : { metadata: structuredClone(message.metadata) }),
+    sourceAgentId: message.sourceAgentId,
+    ...(message.targetAgentId === undefined ? {} : { targetAgentId: message.targetAgentId }),
+    timestamp: new Date(message.timestamp)
+  };
 }
