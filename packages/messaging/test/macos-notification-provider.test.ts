@@ -145,6 +145,15 @@ describe("MacosNotificationProvider", () => {
     await expect(provider.send({ destination: "@stark", text: "hi" })).rejects.toThrow(/output truncated/u);
   });
 
+  it("preserves a successful delivery when only unused diagnostics were truncated", async () => {
+    const runner: OsascriptRunner = async () => ({ exitCode: 0, stderr: "", truncated: true });
+    const provider = new MacosNotificationProvider({ runner });
+    await expect(provider.send({ destination: "@stark", text: "hi" })).resolves.toMatchObject({
+      destination: "@stark",
+      providerId: "macos-notification"
+    });
+  });
+
   it("rejects empty text via validateOutboundMessage", async () => {
     const { runner } = fakeRunner();
     const provider = new MacosNotificationProvider({ runner });
