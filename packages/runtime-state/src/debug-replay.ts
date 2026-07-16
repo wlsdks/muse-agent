@@ -1,4 +1,4 @@
-import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, isJsonValue, type JsonObject, type JsonValue } from "@muse/shared";
 import type { DebugReplayCaptureTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
@@ -224,17 +224,4 @@ function jsonObject(value: unknown): JsonObject {
     }
   }
   return {};
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) {
-    return true;
-  }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-  return Boolean(value) && typeof value === "object" && Object.values(value).every(isJsonValue);
 }

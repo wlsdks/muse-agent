@@ -427,3 +427,10 @@ the TypeScript 7 announcement and release-notes links.
 - Kept envelope recognition narrow so a malformed plaintext record with an incidental `data` field still follows the recoverable plaintext path.
 - Verified with `pnpm --filter @muse/mcp exec vitest run test/oauth-store.test.ts` (17 passed) and `pnpm --filter @muse/mcp build`.
 - Independent architecture review: PASS after two security findings and one boundary-classification finding were addressed.
+### Runtime state: debug replay JSON boundary
+
+- Audited the shared JSON-value guard, tool-argument coercion, policy structured-output normalization, model structured-output tests, and debug replay persistence mapping.
+- Confirmed the shared guard already rejects `NaN` and infinities recursively; tools and policy already test the `1e400` boundary, so no duplicate abstraction was added.
+- Replaced debug replay's divergent local JSON guard with the shared contract. Invalid metadata now degrades to `{}`, and invalid array entries are omitted instead of later serializing as JSON `null`.
+- Verified with `pnpm --filter @muse/runtime-state exec vitest run test/debug-replay.test.ts test/debug-replay-kysely.test.ts` (16 passed) and `pnpm --filter @muse/runtime-state build`.
+- Independent architecture review: PASS.
