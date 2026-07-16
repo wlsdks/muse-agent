@@ -1,147 +1,146 @@
 ---
 name: improve-muse
-description: Autonomous end-to-end improvement cycle for the Muse repo — find the single highest-value real work, scope it substantially, build it, verify it (maker≠judge), then commit AND push. Use at the start of a dev session, after finishing a slice, or as the SOLE per-iteration entrypoint of an infinite improvement loop. It carries one substantial slice all the way to a pushed commit and NEVER returns "nothing to do".
+description: Autonomous HARDENING cycle for the Muse repo — find the highest-value reliability/health work on what ALREADY EXISTS (regression, real failure, live paper cut, hardening debt, deletion candidate), build it, verify it (maker≠judge, gate-delta), then commit AND push. Use for internal improvement passes and as a loop entrypoint. For NEW user-facing capabilities use grow-muse instead. Never returns "nothing to do".
 ---
 
-# improve-muse — autonomous improvement cycle
+# improve-muse — the hardening cycle (지키고 다듬는 쪽)
 
 ## What this is
 
-One invocation = **one substantial improvement, carried end-to-end**: find
-the most valuable real work → scope it properly → build it → verify it →
-commit AND push. This is the SOLE entrypoint a loop needs — a cron/loop that
-calls only this skill, every fire, runs Muse-improvement forever. So two
-properties are load-bearing:
+One invocation = **one substantial hardening slice, carried end-to-end**:
+find the most valuable problem in what Muse ALREADY IS → fix/harden/delete →
+verify → commit AND push. Its sibling [`grow-muse`](../grow-muse/SKILL.md)
+builds NEW capabilities; this skill keeps the existing product healthy. The
+split exists because a single queue lets one kind of work crowd out the
+other — maintenance must be explicitly queued or it silently loses
+(industry consensus: analysis/planning/execution loop separation).
 
-- **Never-empty.** There is ALWAYS a real next slice (the reservoirs below
-  hold 200+ vetted opportunities + open hardening). "할 게 없다" is a BUG,
-  never an output.
-- **Self-contained.** It does not stop at a recommendation and wait. It picks
-  the top item itself and finishes it. (The old finder-only split is retired.)
+- **Never-empty.** Five FIND rungs guarantee a real item. "할 게 없다" is a
+  BUG, never an output.
+- **Self-contained.** It picks, builds, verifies, and pushes — it does not
+  stop at a recommendation.
+- **Analysis over retrieval.** The top rungs PROBE live reality (gates,
+  runs, the booted product); ledgers are the fallback, not the source of
+  truth. A list written last month is a hypothesis, not a fact.
+- **Boundary:** BROKEN (defect, silent failure, debt, dead weight) → here.
+  MISSING (capability that doesn't exist) → grow-muse. **Working-but-poor**
+  (an existing surface that functions but serves the user badly — UX/quality)
+  → grow-muse, because it changes what the user can do/feel. One item, one
+  owner — never both, never neither.
+- **Solo-loop limitation:** a loop that calls only this skill hardens forever
+  and never grows. Pair or alternate with a grow-muse loop to move both axes.
 
-## Standing authorizations (deltas from the repo defaults — Jinan 2026-06-27)
+## Standing authorizations (deltas from repo defaults — Jinan 2026-06-27)
 
-This skill operates with autonomy the normal rules withhold; everything not
-listed here still binds.
-
-- **PUSHES.** After the verify gates are green it commits AND `git push`es the
-  current branch — overriding the default "never push without approval" FOR
-  THIS SKILL ONLY. Push happens only on green (see guardrails); never push red.
-- **Auto-picks.** It chooses the top item without asking — no human gate on the
-  pick. (A genuine human-decision ⏳ fork is the one exception: skip it, don't
-  guess — see guardrails.)
-- **Bigger slices.** Scope a meaningful unit, not the narrowest possible edit.
+- **PUSHES** on green verify (overrides "never push without approval" for
+  this skill only). Never push red.
+- **Auto-picks** without a human gate (exception: a genuine ⏳
+  human-decision fork is skipped, never guessed).
+- **Bigger slices** — a coherent unit, not the narrowest edit.
 
 ## The cycle
 
-1. **ORIENT** — `pnpm self-eval` (a regression auto-wins; ~1.5s warm via the
-   eslint cache, reuse this session's recent run if nothing changed since);
-   `git log --oneline -8` (recently shipped — also the freshness oracle);
-   `curl -s localhost:11434/api/tags` (are live evals possible?).
+1. **ORIENT** — `pnpm self-eval` (regression auto-wins); `git log --oneline -8`
+   (freshness oracle); `curl -s localhost:11434/api/tags` (live evals possible?).
 
-2. **FIND — prioritized, never-empty, RETRIEVE don't full-load.** Walk these in
-   order; take the FIRST that yields a real item, then stop searching.
-   **RETRIEVAL DISCIPLINE (load less, not cheaper):** NEVER read a whole ledger
-   into context — backlog.md (3k+ lines) and capability-parity-backlog.md (2k+)
-   are RETRIEVAL indexes, not documents to ingest. `grep`/extract ONLY the
-   section you need (the ★ OPEN block, the ◦ ready lines, the one reservoir item
-   you're scoping). A large context actively DEGRADES the pick — every frontier
-   model gets worse as input grows and a single distractor misleads it (Chroma
-   "context rot"; coding agents' primary failure mode). Caching does NOT fix this
-   — cached-but-present tokens still rot the judgment; the fix is loading less.
+2. **FIND — probe first, ledger later. Take the FIRST rung that yields, then stop.**
+
    1. **self-eval regression** → fixing it IS the slice.
    2. **failing-signal cluster** — `node scripts/scout-signals.mjs` (recurring
       real failures in `.muse/runs/`). A real failure beats a guess.
-   3. **backlog `docs/goals/backlog.md`** — ★ OPEN (a prerequisite outranks
-      what it unblocks), then ◦ ready. **Apply the FRESHNESS GUARD** (below).
-   4. **capability-parity reservoir** — [`docs/goals/capability-parity-backlog.md`](../../../docs/goals/capability-parity-backlog.md)
-      (200+ vetted, code-grounded opportunities vs hermes/openclaw) filtered by
-      [`capability-parity-judgment.md`](../../../docs/goals/capability-parity-judgment.md)
-      (`build`/`core`/`strengthens` items only — skip off-strategy).
-   5. **gap-scout** — [`docs/EXPANSION-PLAYBOOK.md`](../../../docs/EXPANSION-PLAYBOOK.md):
-      inert/dead-but-tested surfaces, thin-coverage packages, hardening.
-   The reservoir guarantees this never comes up empty. Pick the SINGLE
-   highest-value item and write a one-line WHAT+WHY+gate-it-strengthens.
+   3. **live pain probe (dogfood lens)** — spend ≤5 minutes PROBING the product
+      a real user touches today, not reading about it: `muse doctor --json`;
+      boot/hit the core surfaces (`ask` one question, `/health`, web loads);
+      skim the newest `.muse/runs` errors and the latest user-sim findings if
+      fresh. A paper cut found here (silent failure, wrong exit code, lying
+      copy, dead affordance) outranks any ledger line — the most valuable
+      sessions on record came from exactly this rung, and no ledger contained
+      them. Error-analysis first, imagination never (`agent-testing.md`).
+      **Dedup rule:** a probe finding you fix this fire needs no ledger line
+      (the commit is the record); a finding you DON'T fix (too big, ⏳,
+      deferred) gets one terse ◦ line so the next probe skips re-discovering
+      it instead of re-picking the same cut every fire.
+   4. **hardening backlog** — `docs/goals/backlog.md`, grep ★ OPEN then ◦ ready
+      lines whose kind is hardening/reliability/test-teeth/debt. **Apply the
+      FRESHNESS GUARD** (below). Parity/new-capability lines belong to
+      grow-muse — skip them here.
+   5. **subtraction pass** — the rung no ledger will ever contain: a dead or
+      inert surface, an unused flag, a view/command nobody's path reaches, a
+      stale doc that lies, duplicated logic. Net-negative LOC with green gates
+      is a first-class slice (a deletion that is a PRODUCT call — removing a
+      user-visible feature — is a ⏳ human fork, not the agent's).
 
-   **FRESHNESS GUARD** (before committing to ANY ◦/★/⏳ item): the backlog lags
-   reality — an `◦ open` item may ALREADY be shipped (observed: A2/A3). Cross-
-   check against `git log` + codegraph (does the symbol/wiring already exist?).
-   Already done ⇒ it is a one-line backlog-hygiene fix (flip to ✓), NOT the
-   slice — then continue FIND for a real item.
+   **RETRIEVAL DISCIPLINE:** never full-load a ledger — backlog.md (3k+ lines)
+   is a retrieval index; grep ONLY the section you need. Context rot degrades
+   the pick.
 
-3. **SCOPE (bigger, but ONE coherent goal).** Frame a substantial unit — a real
-   capability/hardening/wiring with acceptance criteria — not a one-line tweak,
-   and not a sprawl of unrelated edits. One coherent goal = one commit. Define
-   the acceptance criteria up front (the planner contract,
-   [`harness/core/handoff-template.md`](../../../harness/core/handoff-template.md))
-   AND **name the gate/metric this slice will move** (a self-eval scoreboard count,
-   a specific eval battery's rate, lint, a new test) — VERIFY measures its
-   before→after, so a slice with no nameable gate is too vague to be "done".
+   **FRESHNESS GUARD:** before committing to ANY ledger item, cross-check
+   git log + codegraph — an `◦ open` item may already be shipped. Already
+   done ⇒ flip it to ✓ (hygiene) and continue FIND.
 
-4. **BUILD** — implement per [`harness/host/dev-loop.md`](../../../harness/host/dev-loop.md) §3:
-   one coherent slice, deterministic code (policy/guards are code, never a
-   prompt), tests first where they bite. Build the packages you touched.
+   **Tie-break rubric** (when two rungs both yield): score each 1–5 on
+   user-felt impact today × trust-floor relevance ÷ effort+risk; note the
+   scores in the pick line. No vibes-ranking.
 
-5. **VERIFY (fail-closed, maker≠judge, OUTCOME-tied).** A slice is NOT done until:
-   - the narrow related tests + `tsc -b` build + `pnpm lint` pass — run
-     `pnpm test:changed` (vitest `related` on your git-changed files, NOT a whole
-     package suite; ~12.8k cases across 1194 files makes a full run per slice pure
-     waste), the rung that exposes THIS change; live evals when Ollama is up;
-   - a mutation check confirms the new test has teeth (RED on a code mutation);
-   - an **independent evaluator** (a different subagent than the one that built
-     it) judges PASS against the acceptance criteria. Uncertain ⇒ FAIL, don't
-     pass. `fabrication=0` is a release gate, never relaxed.
-   - **GATE-DELTA (done means the gate MOVED, not that a commit landed):** record
-     the named gate's before→after in the `pnpm self-eval` scoreboard. "Done" is
-     a MEASURED outcome, not a self-report — an LLM agent is an unreliable self-
-     evolver, so a slice whose gate did not move (or regressed) is NOT done even
-     if it compiles and committed: reopen it as `⚠ shipped-but-insufficient`.
-     This is the answer to "이미 했어도 부족할 수도 있다" — the scoreboard, not the
-     ✓ mark, decides sufficiency.
+3. **MODE** — in a loop fire, pick silently. In an interactive session,
+   state the pick AND the top-2 runners-up with a one-line WHY each (the
+   human deserves to see the ranking), then proceed without waiting.
 
-6. **SHIP + CURATE** — one Conventional Commit (English subject), then **`git
-   push`** the current branch (standing authorization above) — ONLY after VERIFY
-   is green. Then WRITE-BACK as CURATION, not accretion (a ledger that only grows
-   becomes the distractor that rots the next pick):
-   - **distill** the shipped item to ONE verified-done line carrying its gate-
-     delta (`✓ X — gate Y 0.55→0.45`), not a paragraph;
-   - **prune** at least one now-stale/obsolete entry each fire (net line growth
-     ≈ 0 — the backlog is a curated retrieval index, not an archive);
-   - record any new finding as a terse ◦ refill line.
-   A loop re-invokes for the next slice; an interactive caller gets a short
-   Korean report.
+4. **SCOPE** — one coherent goal = one commit, acceptance criteria up front,
+   and **name the gate/metric this slice moves** (a scoreboard count, a
+   battery rate, lint, a new test's existence). No nameable gate ⇒ too vague.
+
+5. **BUILD** — per [`harness/host/dev-loop.md`](../../../harness/host/dev-loop.md) §3:
+   deterministic code for policy/guards (never a prompt), tests first where
+   they bite, rebuild touched packages.
+
+6. **VERIFY (fail-closed, maker≠judge, outcome-tied)** —
+   - `pnpm test:changed` + `tsc -b` + lint on touched files; live evals when
+     Ollama is up; real-browser measurement for web UI.
+   - Mutation check: the new test goes RED on a code mutation (run it, or
+     state deterministic-by-construction when the assertion names the value).
+   - **Independent evaluator** per `harness.md` risk-tiering: MANDATORY for
+     user-visible strings, persisted formats, contracts, security paths, and
+     the silent-failure classes; a pure internal refactor / dead-code
+     subtraction may use the lighter tier (builder adversarial self-check +
+     diff skim), recorded in the commit body. Uncertain ⇒ FAIL.
+   - **GATE-DELTA:** record the named gate's before→after. A slice whose gate
+     didn't move is `⚠ shipped-but-insufficient`, not done — the scoreboard
+     decides sufficiency, not the ✓ mark.
+
+7. **SHIP + CURATE** — one Conventional Commit (verification evidence in the
+   body), `git push` on green. Write-back as CURATION: distill to ONE
+   delta-bearing line, prune ≥1 stale entry (net line growth ≈ 0), record new
+   findings as terse ◦ lines (incl. unfixed probe findings — the dedup rule).
 
 ## Guardrails (fail-closed — autonomy does NOT relax these)
 
 - **Regression-first.** self-eval non-zero ⇒ that fix is the whole slice.
 - **Maker ≠ judge.** The verifier is a different instance than the builder.
-- **Verify before claim.** No "works" without the gate output; push only on green.
+- **Verify before claim; push only on green.**
 - **fabrication = 0**, `MUSE_LOCAL_ONLY`, draft-first outbound, banking out of
   scope — all still bind (`CLAUDE.md` + `.claude/rules/`).
-- **⏳ human-decision forks are NOT the agent's to make.** A security-posture
-  tradeoff / product call / scope decision: SKIP it (leave it ⏳, record why)
-  and pick the next buildable item — never stop the loop, never guess the human's
-  call.
-- **Concurrent-loop hygiene** (main worktree): `git pull --rebase` before push,
-  explicit `git add <paths>` (never `-A`), rebuild touched deps (stale dist
-  masquerades as a bug). On a non-fast-forward, rebase and retry — never force.
+- **⏳ human forks are skipped, never guessed.**
+- **Concurrent-loop hygiene:** `git pull --rebase` before push, explicit
+  `git add <paths>`, rebuild touched deps; non-fast-forward ⇒ rebase, never force.
+- **Scope boundary:** if FIND surfaces a NEW-capability idea, don't build it
+  here — record one ◦ line tagged `→grow-muse` and keep finding a hardening
+  item. (Symmetric rule in grow-muse.)
 
 ## Forbidden outputs
 
 | Rationalization | Reality |
 |---|---|
-| "할 게 없다 / nothing to do" | A BUG. The reservoirs hold 200+ real items; FIND just didn't reach them. |
-| "후보 추천만 하고 멈춘다" | Retired. This skill finishes the slice and pushes — it does not wait at a list. |
-| "백로그에 `◦ open`이니 아직 할 일" | Run the FRESHNESS GUARD — an already-shipped item is hygiene, not work. |
-| "잔챙이 한 줄 고치고 슬라이스 완료" | Too small. Scope a substantial coherent unit (bigger slices are the directive). |
-| "테스트/lint 건너뛰고 커밋·푸시" | Push only on a green VERIFY. Red ⇒ no push. No exceptions. |
-| "⏳ 사람 결정인데 내가 정해서 진행" | Skip it, record why, take the next buildable item. Don't guess a human call. |
-| "백로그/저수지를 통째로 읽고 후보 고름" | RETRIEVAL DISCIPLINE — grep the section you need; full-loading a 3k-line ledger rots the pick (context rot). |
-| "커밋했으니 done" | Done = the gate MOVED on the scoreboard. No before→after delta ⇒ `⚠ shipped-but-insufficient`, not ✓. |
-| "백로그에 done 줄만 계속 추가" | CURATE: distill to one delta-bearing line + prune a stale entry (net ≈ 0). An append-only ledger becomes the distractor. |
+| "할 게 없다" | A BUG — rung 3 (probe the live product) and rung 5 (subtraction) never come up empty. |
+| "백로그에 ◦ open이니 할 일" | FRESHNESS GUARD first — shipped items are hygiene, not work. |
+| "추천만 하고 멈춘다" | This skill finishes and pushes. Interactive mode shows the ranking, then proceeds. |
+| "잔챙이 한 줄로 슬라이스 완료" | Scope a coherent substantial unit. |
+| "테스트/lint 건너뛰고 푸시" | Green verify or no push. |
+| "새 기능이 더 재밌겠다" | Scope boundary — tag `→grow-muse`, keep hardening. |
+| "커밋했으니 done" | Done = the gate MOVED. No delta ⇒ `⚠ shipped-but-insufficient`. |
+| "백로그 통째로 읽기" | Retrieval discipline — grep the section only. |
 
-## Evaluation (this skill ships with evals — `agent-testing.md`)
+## Evaluation
 
-[`evals.md`](evals.md): repo-state → expected end-to-end behavior (regression /
-stale-but-open / blocked-only / reservoir-pull / properly-scoped / green-gate-
-before-push). Grade the outcome shape, grow it from real misses.
+[`evals.md`](evals.md): repo-state → expected end-to-end behavior. Grade the
+outcome shape; grow it from real misses.

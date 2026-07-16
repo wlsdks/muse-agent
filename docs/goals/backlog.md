@@ -948,8 +948,8 @@ DO NOT adopt (identity conflict): cloud channels/gateway, cloud realtime voice p
 
 > The ONE compounding artifact the dev loop reads FIRST. Resurrected after the
 > docs reset deleted it (which forced every session to re-discover "what to build"
-> with expensive scout subagents and throw the answer away). The `improve-muse`
-> skill picks the top OPEN item here when `self-eval` is green; every fire appends
+> with expensive scout subagents and throw the answer away). The `improve-muse` (hardening
+> lines) / `grow-muse` (capability lines) skills pick from here when `self-eval` is green; every fire appends
 > the chosen slice + the candidates it rejected + the source, so a direction is
 > researched ONCE, not re-paid each session. Keep it pruned: move shipped items to
 > DONE, drop dead ones. This file is the antidote to the treadmill.

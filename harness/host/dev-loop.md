@@ -84,20 +84,21 @@ updated: 2026-06-08
 ## 3. THE LOOP — 매일 한 번의 fire
 
 각 fire = 검증된 슬라이스 하나. 비용 낮은 단계부터, fail-closed.
-`improve-muse` 스킬은 0–7단계를 **end-to-end로 자율 실행**한다(2026-06-27 재구성):
-스스로 #1 항목을 pick → BUILD → VERIFY → COMMIT + **PUSH**까지 한 번에. 무한 루프의
-단일 진입점이며 "할 게 없다"를 출력하지 않는다. 이 문서는 그 실행 계약(0–7)의 상세이고,
-스킬 `SKILL.md`가 권한 경계(standing push, 큰 슬라이스, ⏳ 사람-포크 skip)를 소유한다.
+진입점은 **두 스킬**이다(2026-07-17 분리): `improve-muse`(HARDEN — 기존 것의 신뢰성/부채/삭제)와
+`grow-muse`(GROW — 새 사용자-대면 역량). 각각 0–7단계를 end-to-end로 자율 실행하며(pick →
+BUILD → VERIFY → COMMIT + **PUSH**) "할 게 없다"를 출력하지 않는다. 하나의 루프는 한 축만
+움직이므로 두 축을 다 움직이려면 루프를 짝짓거나 번갈아 호출한다. 이 문서는 공용 실행
+계약(0–7)의 상세이고, 각 스킬 `SKILL.md`가 소싱 사다리와 권한 경계를 소유한다.
 
 0. **PRE-FLIGHT** — Ollama 가동 확인(`curl -s localhost:11434/api/tags`); `git fetch`로
    동시 auto-push 루프와 reconcile; 만진 의존 패키지 rebuild(stale dist가 버그로 위장하는 세금 제거).
 1. **ORIENT (회귀 우선)** — `pnpm self-eval`. 이전에 통과하던 게이트가 떨어졌으면 *그걸* 고치는 게
    이번 fire의 전부 — 여기서 멈추고 고친다.
-2. **FIND WORK (자율 — 점진적 강등)** — (a) 회귀 있으면 그게 일. (b) 없으면 [`backlog.md`](../../docs/goals/backlog.md)
-   최상단 ★ OPEN 항목 — 단 ★ OPEN 중 다른 항목의 선행조건(PREREQUISITE)으로 선언된 것이 그게 막는
-   기능보다 우선. (c) backlog가 비었으면 EXPANSION-PLAYBOOK의 gap-finding(scout 서브에이전트:
-   현재상태+공개레퍼런스+격차합성)으로 후보를 *생성*하고 backlog에 적어 누적. (d) 라벨된 실패가
-   ~20-30개 쌓이면 에러분석이 (b)보다 우선. **사람에게 "뭘 만들까" 안 묻는다 — 데이터/backlog가 고른다.**
+2. **FIND WORK (자율)** — 소싱 사다리는 호출한 스킬이 소유한다: `improve-muse`는 회귀 →
+   실패 시그널 → 라이브 페인 프로브 → hardening 백로그 → subtraction, `grow-muse`는 오너 지시 →
+   dogfood 결핍 → 북극성 갭 → parity 저수지(D/T/N/C 채점). EXPANSION-PLAYBOOK gap-finding과
+   capability-parity 저수지는 grow-muse 소관이다. **사람에게 "뭘 만들까" 안 묻는다 — 프로브와
+   데이터가 고른다.**
 3. **PLAN** — WHAT+WHY+강화할 게이트를 [`handoff-template.md`](../core/handoff-template.md)에 한 줄 계약으로.
    사소하면(오타·한 줄) 생략하고 5로 단락(skill 자가 게이트).
 4. **BUILD** — 한 수직 슬라이스, 최소 범위, 결정론 코드(프롬프트 아님). 프롬프트/스키마/제어흐름을
@@ -111,8 +112,8 @@ updated: 2026-06-08
    (b) 진안의 반복 교정을 `.claude/rules/*.md` 한 줄로(after-correction); (c) 고른+버린 방향+출처를
    [`backlog.md`](../../docs/goals/backlog.md)에, 영속 사실을 MEMORY.md에; (d) before→after를 self-eval 스코어보드에.
    set이 늘면 stale 한 줄 prune.
-7. **COMMIT + PUSH** — Conventional Commit 하나 + `git push`(현재 브랜치). `improve-muse`
-   스킬은 standing push 권한을 가진다(2026-06-27 진안) — 단 **VERIFY green일 때만** push,
+7. **COMMIT + PUSH** — Conventional Commit 하나 + `git push`(현재 브랜치). `improve-muse`/
+   `grow-muse` 스킬은 standing push 권한을 가진다(2026-06-27 진안) — 단 **VERIFY green일 때만** push,
    red면 push 금지. 비-FF면 `git pull --rebase` 후 재시도(force 금지). + 짧은 한국어 보고
    (무엇/왜+URL/before→after/잔여 리스크). 다음 fire의 ORIENT는 더 두꺼운 rule·golden suite·backlog를
    읽으니 *엄밀히 더 싸다*.
