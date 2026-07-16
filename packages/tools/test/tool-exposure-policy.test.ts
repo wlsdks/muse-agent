@@ -54,6 +54,12 @@ describe("DefaultToolExposurePolicy.select", () => {
     expect(select([tool("a")], { recentToolNames: ["a"], prompt: "" }, { maxRepeatedToolCalls: 1 }).blocked).toEqual([
       "a:repeat_limit_exceeded",
     ]);
+    expect(select([tool("a")], { recentToolNames: ["a"], prompt: "" }, { maxRepeatedToolCalls: 1.5 }).tools).toEqual([
+      "a",
+    ]);
+    expect(select([tool("a")], { recentToolNames: ["a", "a"], prompt: "" }, { maxRepeatedToolCalls: 1.5 }).blocked).toEqual([
+      "a:repeat_limit_exceeded",
+    ]);
   });
 
   it("blocks execute/local tools unless localMode is on", () => {
@@ -95,6 +101,24 @@ describe("DefaultToolExposurePolicy.select", () => {
       blocked: ["c:max_tool_count_exceeded"],
     });
     expect(select([tool("a")], { prompt: "", maxTools: 0 }).blocked).toEqual(["a:max_tool_count_exceeded"]);
+  });
+
+  it("fails closed for non-finite per-turn caps and retains the repeat cap for invalid options", () => {
+    for (const maxTools of [Number.NaN, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]) {
+      expect(select([tool("a")], { prompt: "", maxTools })).toEqual({
+        tools: [],
+        blocked: ["a:max_tool_count_exceeded"],
+      });
+    }
+
+    for (const maxRepeatedToolCalls of [Number.NaN, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]) {
+      expect(
+        select([tool("a")], { prompt: "", recentToolNames: ["a", "a", "a"] }, { maxRepeatedToolCalls })
+      ).toEqual({
+        tools: [],
+        blocked: ["a:repeat_limit_exceeded"],
+      });
+    }
   });
 
   it("relevance-first: a RELEVANT write tool wins its slot over marginally-relevant reads", () => {
