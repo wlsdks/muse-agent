@@ -355,7 +355,10 @@ fn kill_process_group(_pgid: i32) {}
 const DRAIN_RECV_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn recv_drained(drainer: mpsc::Receiver<(String, bool)>) -> (String, bool) {
-    drainer.recv_timeout(DRAIN_RECV_TIMEOUT).unwrap_or_else(|_| (String::new(), false))
+    // A timed-out or disconnected drainer means the captured stream is unknown,
+    // never complete. Preserve the runner response but surface `truncated` so a
+    // caller cannot treat an empty fallback as a clean command result.
+    drainer.recv_timeout(DRAIN_RECV_TIMEOUT).unwrap_or_else(|_| (String::new(), true))
 }
 
 /// Self-labelled marker appended to a captured stream that was truncated at the
@@ -1337,5 +1340,14 @@ mod request_input_tests {
             .expect_err("oversized input must be rejected before parsing");
         assert!(error.contains("exceeds"), "unexpected error: {error}");
         assert!(error.contains(&MAX_REQUEST_BYTES.to_string()), "missing limit: {error}");
+    }
+
+    #[test]
+    fn disconnected_drainer_is_marked_as_incomplete_output() {
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let (output, truncated) = recv_drained(receiver);
+        assert!(output.is_empty());
+        assert!(truncated, "a missing drainer result must never look complete");
     }
 }

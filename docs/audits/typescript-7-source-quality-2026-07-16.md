@@ -180,3 +180,7 @@ the TypeScript 7 announcement and release-notes links.
 - Inspected the local Rust runner protocol, command/environment hardening, process-group cleanup, output draining, sandbox planning, and protocol tests.
 - Bounded untrusted stdin before JSON parsing to 1 MiB, reading only one extra byte to detect overflow. Oversized requests now fail before an unbounded allocation or parser work begins.
 - Added direct reader tests for normal JSON and over-limit input; response serialization keeps the existing failure contract.
+## Rust runner drain-completion truthfulness
+
+- Audited the post-exit stream-drainer fallback after process-group cleanup.
+- A timed-out or disconnected drainer now marks its empty fallback as truncated instead of presenting unknown output as complete; callers retain the command outcome but can fail-safe on incomplete output.
