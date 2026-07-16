@@ -26,3 +26,28 @@ export function factLabel(key: string, lang: Lang): string {
   const pretty = key.replace(/_+/g, " ").trim();
   return pretty.length > 0 ? pretty.charAt(0).toUpperCase() + pretty.slice(1) : key;
 }
+
+export interface FactGroup {
+  readonly value: string;
+  /** Original store keys sharing this value, first-seen order. */
+  readonly keys: readonly string[];
+}
+
+/** Groups facts that carry the SAME value (the extractor historically wrote
+ * one entity under several keys — 보리 as dog_name, cat_name, pet_dog_name…)
+ * into one display row, keeping every key visible so a wrong binding stays
+ * correctable instead of hidden. Display-only: the store is untouched. */
+export function groupFactsByValue(facts: Readonly<Record<string, string>>): readonly FactGroup[] {
+  const order: string[] = [];
+  const byValue = new Map<string, string[]>();
+  for (const [key, value] of Object.entries(facts)) {
+    const existing = byValue.get(value);
+    if (existing) {
+      existing.push(key);
+    } else {
+      byValue.set(value, [key]);
+      order.push(value);
+    }
+  }
+  return order.map((value) => ({ keys: byValue.get(value) ?? [], value }));
+}
