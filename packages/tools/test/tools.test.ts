@@ -210,6 +210,155 @@ describe("ToolExecutor", () => {
     expect(executions).toBe(1);
   });
 
+  it("coalesces concurrent idempotent executions before their result is stored", async () => {
+    let executions = 0;
+    let releaseExecution: (() => void) | undefined;
+    let signalStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: async () => {
+        executions += 1;
+        signalStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseExecution = resolve;
+        });
+        return `created:${executions}`;
+      }
+    };
+    const executor = new ToolExecutor({
+      idempotencyStore: new Map(),
+      registry: new ToolRegistry([tool])
+    });
+
+    const first = executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    });
+    await started;
+    const second = executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-2",
+      name: "create_record"
+    });
+    releaseExecution?.();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ id: "call-1", output: expect.stringContaining("created:1"), status: "completed" }),
+      expect.objectContaining({ id: "call-2", output: expect.stringContaining("created:1"), status: "completed" })
+    ]);
+    expect(executions).toBe(1);
+  });
+
+  it("publishes an idempotency key before a synchronous tool can re-enter the executor", async () => {
+    let executions = 0;
+    let nestedExecution: Promise<unknown> | undefined;
+    let executor: ToolExecutor;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          nestedExecution = executor.execute({
+            arguments: { idempotencyKey: "key-1" },
+            context: { runId: "run-1" },
+            id: "call-2",
+            name: "create_record"
+          });
+        }
+        return "created:1";
+      }
+    };
+    executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+
+    const first = await executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    });
+    const second = await nestedExecution;
+
+    expect(first).toMatchObject({ id: "call-1", status: "completed" });
+    expect(second).toMatchObject({ id: "call-2", status: "completed" });
+    expect(executions).toBe(1);
+  });
+
+  it("clears a failed idempotent execution so the caller can retry", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          throw new Error("temporary failure");
+        }
+        return "created:2";
+      }
+    };
+    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    const request = {
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    } as const;
+
+    await expect(executor.execute(request)).resolves.toMatchObject({ status: "failed" });
+    await expect(executor.execute({ ...request, id: "call-2" })).resolves.toMatchObject({ status: "completed" });
+    expect(executions).toBe(2);
+  });
+
+  it("clears a cancelled idempotent execution so a later retry can run", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          throw Object.assign(new Error("cancelled"), { name: "AbortError" });
+        }
+        return "created:2";
+      }
+    };
+    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    const request = {
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    } as const;
+
+    await expect(executor.execute(request)).rejects.toMatchObject({ name: "AbortError" });
+    await expect(executor.execute({ ...request, id: "call-2" })).resolves.toMatchObject({ status: "completed" });
+    expect(executions).toBe(2);
+  });
+
   it("converts tool failures to error strings", async () => {
     const failingTool: MuseTool = {
       definition: {
