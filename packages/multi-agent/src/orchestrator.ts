@@ -7,6 +7,7 @@ import type { OrchestrationHistoryEntry, OrchestrationHistoryStore } from "./orc
 import {
   buildOrchestrationResponse,
   errorMessage,
+  normalizeDeadlineMs,
   objectiveFromInput,
   withDeadline
 } from "./orchestration-fan-in.js";
@@ -198,7 +199,7 @@ export class MultiAgentOrchestrator {
     this.messageBus = options.messageBus;
     this.historyStore = options.historyStore;
     this.clock = options.clock ?? (() => new Date());
-    this.workerTimeoutMs = options.workerTimeoutMs;
+    this.workerTimeoutMs = normalizeDeadlineMs(options.workerTimeoutMs, "workerTimeoutMs");
     this.runRegistry = options.runRegistry;
   }
 

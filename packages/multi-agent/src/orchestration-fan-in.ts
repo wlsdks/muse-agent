@@ -9,6 +9,25 @@ import { joinMessages } from "./workers.js";
 
 export { errorMessage };
 
+// Node coerces timer delays outside this range to 1ms. Reject instead of
+// silently turning a configured long deadline into an immediate timeout.
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Normalize the legacy "no deadline" values and reject values Node would
+ * silently coerce. Keeping this at the shared deadline seam makes worker and
+ * fan-in deadlines obey the same runtime contract.
+ */
+export function normalizeDeadlineMs(timeoutMs: number | undefined, name = "timeoutMs"): number | undefined {
+  if (timeoutMs === undefined || timeoutMs <= 0) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs > MAX_NODE_TIMER_DELAY_MS) {
+    throw new RangeError(`${name} must be a positive integer delay no greater than ${MAX_NODE_TIMER_DELAY_MS.toString()}ms`);
+  }
+  return timeoutMs;
+}
+
 /** The user's request to verify the final answer against — the latest user turn,
  *  or the whole transcript if there is none. */
 export function objectiveFromInput(input: AgentRunInput): string {
@@ -26,12 +45,13 @@ export function objectiveFromInput(input: AgentRunInput): string {
  * synthesis/verification calls so the policy never drifts.
  */
 export async function withDeadline<T>(operation: () => Promise<T>, timeoutMs: number | undefined, label: string): Promise<T> {
-  if (!timeoutMs || timeoutMs <= 0) {
+  const deadlineMs = normalizeDeadlineMs(timeoutMs);
+  if (deadlineMs === undefined) {
     return operation();
   }
   const timeoutController = new AbortController();
-  const deadline = sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
-    throw new Error(`${label} exceeded the ${timeoutMs.toString()}ms deadline`);
+  const deadline = sleepWithTimer(deadlineMs, undefined, { signal: timeoutController.signal }).then(() => {
+    throw new Error(`${label} exceeded the ${deadlineMs.toString()}ms deadline`);
   });
   try {
     return await Promise.race([operation(), deadline]);
