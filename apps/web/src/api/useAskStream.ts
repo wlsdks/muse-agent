@@ -1,12 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isRecord, parseJson } from "./parse-json.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+import { createStreamRequestLifecycle } from "./stream-request-lifecycle.js";
 import { errorMessage } from "@muse/shared/browser";
 
 import type { AskResult, AskRetrieval, AskVerdict } from "./types.js";
 
 export { parseSseFrame, splitSseFrames };
+export { createStreamRequestLifecycle as createAskStreamRequestLifecycle } from "./stream-request-lifecycle.js";
 
 export interface AskState {
   readonly answer: string;
@@ -115,15 +117,28 @@ export function reduceAskEvent(state: AskState, eventName: string, data: string)
 export function useAskStream(baseUrl: string, token: string) {
   const [state, setState] = useState<AskState>(INITIAL_ASK_STATE);
   const [pending, setPending] = useState(false);
+  const lifecycleRef = useRef<ReturnType<typeof createStreamRequestLifecycle> | null>(null);
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = createStreamRequestLifecycle();
+  }
+  const lifecycle = lifecycleRef.current;
+
+  useEffect(() => () => lifecycle.abort(), [lifecycle]);
 
   const reset = useCallback(() => {
+    lifecycle.abort();
     setState(INITIAL_ASK_STATE);
-  }, []);
+    setPending(false);
+  }, [lifecycle]);
 
   const ask = useCallback(
     async (question: string) => {
       const trimmed = question.trim();
-      if (!trimmed || pending) {
+      if (!trimmed) {
+        return;
+      }
+      const request = lifecycle.start();
+      if (!request) {
         return;
       }
       setState(INITIAL_ASK_STATE);
@@ -137,7 +152,8 @@ export function useAskStream(baseUrl: string, token: string) {
             "content-type": "application/json",
             ...(token ? { authorization: `Bearer ${token}` } : {})
           },
-          method: "POST"
+          method: "POST",
+          signal: request.controller.signal
         });
         if (!res.ok) {
           throw new Error(`${res.status} ${res.statusText}`.trim());
@@ -149,7 +165,9 @@ export function useAskStream(baseUrl: string, token: string) {
           if (!body) {
             throw new Error("Malformed non-stream response");
           }
-          setState((prev) => ({ ...prev, answer: body.answer, result: body }));
+          if (lifecycle.isCurrent(request)) {
+            setState((prev) => ({ ...prev, answer: body.answer, result: body }));
+          }
           return;
         }
 
@@ -165,22 +183,31 @@ export function useAskStream(baseUrl: string, token: string) {
           if (done) {
             break;
           }
+          if (!lifecycle.isCurrent(request)) {
+            return;
+          }
           buffer += decoder.decode(value, { stream: true });
           const { frames, rest } = splitSseFrames(buffer);
           buffer = rest;
           for (const frame of frames) {
             const { data, eventName } = parseSseFrame(frame);
-            setState((prev) => reduceAskEvent(prev, eventName, data));
+            if (lifecycle.isCurrent(request)) {
+              setState((prev) => reduceAskEvent(prev, eventName, data));
+            }
           }
         }
       } catch (cause) {
-        const detail = errorMessage(cause, "request failed");
-        setState((prev) => ({ ...prev, error: prev.error ?? detail }));
+        if (lifecycle.isCurrent(request) && !request.controller.signal.aborted) {
+          const detail = errorMessage(cause, "request failed");
+          setState((prev) => ({ ...prev, error: prev.error ?? detail }));
+        }
       } finally {
-        setPending(false);
+        if (lifecycle.finish(request)) {
+          setPending(false);
+        }
       }
     },
-    [baseUrl, pending, token]
+    [baseUrl, lifecycle, token]
   );
 
   return { ...state, ask, pending, reset };

@@ -560,3 +560,11 @@ the TypeScript 7 announcement and release-notes links.
 - Covered deferred Discord/Slack provider commits, append failure followed by an empty poll, cursor-write failure followed by an empty poll, direct polling compatibility, wrapper behavior, and single-flight behavior.
 - Verified with `pnpm --filter @muse/messaging exec vitest run test/deferred-cursor-polling.test.ts test/messaging.test.ts test/slack-provider-contract.test.ts test/discord-after-store.test.ts` (110 passed), `pnpm --filter @muse/api exec vitest run test/channel-poll-tick.test.ts test/discord-poll-tick.test.ts test/slack-poll-tick.test.ts` (24 passed), `pnpm --filter @muse/messaging exec tsc -b --force`, and `pnpm --filter @muse/api exec tsc -b --force`.
 - Independent runtime-contract review: PASS after staged-versus-committable cursor recovery coverage.
+
+### Web: shared streaming request lifecycle
+
+- Audited the web chat and grounded-ask streaming hooks against React cleanup semantics and the Fetch/ReadableStream abort contract. Chat already owned request cancellation; ask did not, so a reset or unmount could leave its request consuming an SSE response and let late callbacks overwrite fresh state.
+- Extracted the shared one-active-request lifecycle into a web-local module. It synchronously rejects re-entry, aborts and invalidates a reset/unmounted request, and allows only the active request to finish its pending state.
+- Preserved `createChatStreamRequestLifecycle` as a compatibility export while migrating chat to the shared implementation. Ask now passes its request signal to `fetch`, aborts on reset and cleanup, and gates buffered-response, SSE-delta, error, and `finally` updates by request identity.
+- Verified with `pnpm --filter @muse/web exec vitest run src/api/useAskStream.test.ts src/api/useChatStream.lifecycle.test.ts src/api/useChatStream.conversationId.test.ts src/api/useChatStream.commit.test.ts src/api/useChatStream.pendingApprovals.test.ts` (43 passed) and `pnpm --filter @muse/web build`.
+- Independent runtime-contract review: PASS.

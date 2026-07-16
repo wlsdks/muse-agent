@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 import { isRecord, parseJson } from "./parse-json.js";
+import { createStreamRequestLifecycle } from "./stream-request-lifecycle.js";
 import { errorMessage } from "@muse/shared/browser";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
@@ -17,40 +18,8 @@ export interface ChatTurn {
   pendingApprovals?: readonly PendingApproval[];
 }
 
-interface ChatStreamRequest {
-  readonly controller: AbortController;
-  readonly id: number;
-}
-
-export function createChatStreamRequestLifecycle() {
-  let active: ChatStreamRequest | undefined;
-  let nextId = 0;
-
-  return {
-    abort(): void {
-      active?.controller.abort();
-      active = undefined;
-    },
-    finish(request: ChatStreamRequest): boolean {
-      if (active?.id !== request.id) {
-        return false;
-      }
-      active = undefined;
-      return true;
-    },
-    isCurrent(request: ChatStreamRequest): boolean {
-      return active?.id === request.id;
-    },
-    start(): ChatStreamRequest | undefined {
-      if (active) {
-        return undefined;
-      }
-      const request = { controller: new AbortController(), id: ++nextId };
-      active = request;
-      return request;
-    }
-  };
-}
+/** @deprecated Import `createStreamRequestLifecycle` for new streaming surfaces. */
+export { createStreamRequestLifecycle as createChatStreamRequestLifecycle } from "./stream-request-lifecycle.js";
 
 /** Confirm-endpoint result for a single approval. `ran:true` = the tool
  * executed and the approval is cleared; `ran:false` = the tool reported an
@@ -250,9 +219,9 @@ export function useChatStream(baseUrl: string, token: string) {
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState<readonly string[]>([]);
   const draftRef = useRef<ChatTurn | null>(null);
-  const requestLifecycleRef = useRef<ReturnType<typeof createChatStreamRequestLifecycle> | null>(null);
+  const requestLifecycleRef = useRef<ReturnType<typeof createStreamRequestLifecycle> | null>(null);
   if (!requestLifecycleRef.current) {
-    requestLifecycleRef.current = createChatStreamRequestLifecycle();
+    requestLifecycleRef.current = createStreamRequestLifecycle();
   }
   const requestLifecycle = requestLifecycleRef.current;
   const client = useMemo(() => createApiClient(baseUrl, token), [baseUrl, token]);
