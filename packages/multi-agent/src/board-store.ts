@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+import { quarantineCorruptFile } from "@muse/shared";
 
 import type { AgentTask, TaskRun, TaskStatus } from "./task-board.js";
 
@@ -25,7 +26,11 @@ export async function readBoard(file: string): Promise<AgentTask[]> {
   let raw: string;
   try {
     const stat = await fs.stat(file);
-    if (!stat.isFile() || stat.size > MAX_BOARD_FILE_BYTES) {
+    if (!stat.isFile()) {
+      return [];
+    }
+    if (stat.size > MAX_BOARD_FILE_BYTES) {
+      await quarantineCorruptFile(file);
       return [];
     }
     raw = await fs.readFile(file, "utf8");
@@ -34,11 +39,16 @@ export async function readBoard(file: string): Promise<AgentTask[]> {
   }
   try {
     const parsed = JSON.parse(raw) as { tasks?: unknown };
-    return Array.isArray(parsed.tasks) ? parsed.tasks.flatMap((task): AgentTask[] => {
+    if (!Array.isArray(parsed.tasks)) {
+      await quarantineCorruptFile(file);
+      return [];
+    }
+    return parsed.tasks.flatMap((task): AgentTask[] => {
       const parsedTask = parseAgentTask(task);
       return parsedTask ? [parsedTask] : [];
-    }) : [];
+    });
   } catch {
+    await quarantineCorruptFile(file);
     return [];
   }
 }

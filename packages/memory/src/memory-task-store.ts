@@ -22,7 +22,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { MuseDatabase } from "@muse/db";
-import { withFileLock, withFileMutationQueue } from "@muse/shared";
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import type {
   KyselyTaskMemoryStoreOptions,
@@ -250,10 +250,6 @@ export function defaultTaskMemoryFile(): string {
   return join(homedir(), ".muse", "task-memory.json");
 }
 
-async function quarantineCorruptTaskStore(file: string): Promise<void> {
-  await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`).catch(() => undefined);
-}
-
 async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   let raw: string;
   try {
@@ -265,11 +261,11 @@ async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    await quarantineCorruptTaskStore(file);
+    await quarantineCorruptFile(file);
     return []; // corrupt ⇒ preserve + degrade to empty, never throw (task recall is best-effort)
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
-    await quarantineCorruptTaskStore(file);
+    await quarantineCorruptFile(file);
     return [];
   }
   const list = (parsed as { tasks: SerializedTaskState[] }).tasks;

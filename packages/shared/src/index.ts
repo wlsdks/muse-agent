@@ -51,6 +51,7 @@ export {
 
 export { asError, errorMessage, isErrorLike } from "./error-utils.js";
 export { computeLockRetryDelay, withFileLock, withFileMutationQueue } from "./file-lock.js";
+export { quarantineCorruptFile } from "./corrupt-file.js";
 export { isRecord, parseJson, parseJsonWith, type JsonObject, type JsonPredicate, type JsonPrimitive, type JsonValue } from "./json-utils.js";
 
 /** Parse common environment/config boolean spellings without inverting unknown input. */

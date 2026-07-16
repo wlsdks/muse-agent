@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -36,6 +36,20 @@ describe("FileAgentTaskBoard — durable persistence (S2)", () => {
     await writeBoard(file, addTask([], { id: "a", title: "x" }, "t0"));
     await (await import("node:fs/promises")).writeFile(file, "{ not json");
     expect(await readBoard(file)).toEqual([]);
+  });
+  it("quarantines corrupt board data before mutation replaces it", async () => {
+    const file = freshFile();
+    const corruptContents = "{ not json";
+    await writeFile(file, corruptContents, "utf8");
+
+    const store = new FileAgentTaskBoard(file);
+    await store.mutate((tasks) => addTask(tasks, { id: "recovered", title: "Recovered" }, "t0"));
+
+    const quarantinePrefix = `${basename(file)}.corrupt-`;
+    const quarantineFile = (await readdir(dirname(file))).find((entry) => entry.startsWith(quarantinePrefix));
+    expect(quarantineFile).toBeDefined();
+    expect(await readFile(join(dirname(file), quarantineFile!), "utf8")).toBe(corruptContents);
+    expect((await readBoard(file)).map((task) => task.id)).toEqual(["recovered"]);
   });
   it("filters malformed persisted tasks and malformed run entries", async () => {
     const file = freshFile();

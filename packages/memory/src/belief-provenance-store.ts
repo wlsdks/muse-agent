@@ -15,7 +15,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { withFileLock, withFileMutationQueue } from "@muse/shared";
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 
@@ -575,14 +575,6 @@ export function defaultBeliefProvenanceFile(): string {
   return join(homedir(), ".muse", "belief-provenance.json");
 }
 
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
-
 /** Format-only check (no decrypt): is the belief-provenance store encrypted at rest? */
 export async function isBeliefProvenanceEncrypted(file: string): Promise<boolean> {
   try {
@@ -603,7 +595,7 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    await quarantineCorruptStore(file);
+    await quarantineCorruptFile(file);
     return [];
   }
   // Decrypt if encrypted at rest. decryptMemoryEnvelope THROWS on a wrong key — fail
@@ -618,7 +610,7 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
     }
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
-    await quarantineCorruptStore(file);
+    await quarantineCorruptFile(file);
     return [];
   }
   return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly BeliefProvenance[] =>

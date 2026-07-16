@@ -20,7 +20,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { ConversationSummaryTable, MuseDatabase } from "@muse/db";
-import { withFileLock, withFileMutationQueue } from "@muse/shared";
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 import type {
   ConversationSummary,
@@ -164,11 +164,11 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch {
-      await this.quarantineCorruptStore();
+      await quarantineCorruptFile(this.file);
       return new Map(); // corrupt ⇒ preserve + degrade to empty, never throw (recall is best-effort)
     }
     if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { summaries?: unknown }).summaries)) {
-      await this.quarantineCorruptStore();
+      await quarantineCorruptFile(this.file);
       return new Map();
     }
     const list = (parsed as { summaries: SerializedConversationSummary[] }).summaries;
@@ -179,10 +179,6 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
       }
     }
     return map;
-  }
-
-  private async quarantineCorruptStore(): Promise<void> {
-    await fs.rename(this.file, `${this.file}.corrupt-${Date.now().toString()}`).catch(() => undefined);
   }
 
   private async writeMap(map: Map<string, RequiredConversationSummary>): Promise<void> {

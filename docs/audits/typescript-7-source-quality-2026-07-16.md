@@ -105,3 +105,10 @@ the TypeScript 7 announcement and release-notes links.
 - Audited FileTaskMemoryStore: mutations already hydrate inside shared queue and cross-process lock, but malformed JSON or an invalid root previously degraded to an empty state that the next save could overwrite.
 - Corrupt task-memory files now move to a timestamped quarantine before recovery writes a fresh canonical store.
 - Focused verification: `pnpm --filter @muse/memory exec vitest run test/file-task-memory-store.test.ts` (6 passed) and `pnpm --filter @muse/memory build`.
+
+## Shared corrupt-file recovery (2026-07-16)
+
+- Compared Node's asynchronous filesystem guidance with practical lock designs: atomic replacement avoids torn writes but does not preserve malformed state or serialize stale read-modify-write paths. Recovery must retain the original bytes before a canonical replacement is written.
+- Extracted the repeated best-effort corrupt-file quarantine into `@muse/shared`. Task memory, conversation summaries, belief provenance, and the durable multi-agent board now use a UUID-suffixed quarantine name so concurrent recovery attempts cannot collide within one millisecond.
+- Board malformed roots, invalid JSON, and oversized files now quarantine before its next mutation writes a fresh board; individual invalid task records remain safely filtered without treating the whole board as corrupt.
+- Focused verification: `pnpm --filter @muse/shared build`; `pnpm --filter @muse/memory exec vitest run test/file-task-memory-store.test.ts test/conversation-summary-store.test.ts src/belief-provenance-store.test.ts` (34 passed) and build; `pnpm --filter @muse/multi-agent exec vitest run test/board-store.test.ts` (8 passed) and build.
