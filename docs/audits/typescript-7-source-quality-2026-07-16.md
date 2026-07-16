@@ -326,3 +326,29 @@ the TypeScript 7 announcement and release-notes links.
 - Independent review required direct coverage of the `findByEmail` then ID-targeted upsert path, rather than inferring it from the insert test.
 - Added a narrow Kysely-shaped test double that reaches `update`, simulates the post-precheck `23505`, and separately proves a non-unique database error is rethrown unchanged.
 - Verification: `pnpm --filter @muse/auth exec vitest run test/auth.test.ts` (20 passed); `pnpm --filter @muse/auth build` passed.
+
+### Policy approval receipt contract (2026-07-16)
+
+- Inspected `packages/policy/src/approval-receipt.ts`, capability-profile allowlists, and the focused receipt tests.
+- No change: receipt creation and validation canonicalize every approval-critical field, validate registered profile constraints and expiry, and the single-process store has no asynchronous gap between nonce lookup/insert or consumed check/set. The public store interface explicitly requires future persisted adapters to make consume transactional.
+- Intentional boundary: this is an in-memory/test implementation only; a database-backed receipt store is not present and should be introduced only with a real multi-process approval flow, preserving the declared atomic `consume` contract.
+
+### Runtime-state file checkpoint identity boundary (2026-07-16)
+
+- Inspected `packages/runtime-state/src/file-checkpoint-store.ts` and its focused durability, retention, locking, resume, and traversal tests.
+- Finding: replacing unsafe run-ID characters with `_` was not injective, so distinct run IDs such as `run/a` and `run?a` shared a checkpoint file and could resume each other's state.
+- Decision: new filenames retain a bounded safe prefix plus the full SHA-256 of the original run ID. The reader and deleter retain fallback support for the legacy filename; resumable listing deduplicates a run ID while old and new files coexist. Existing lock and atomic-rename behavior stays on the new target.
+- Verification: `pnpm --filter @muse/runtime-state exec vitest run src/file-checkpoint-store.test.ts` (15 passed); `pnpm --filter @muse/runtime-state build` passed.
+
+### Runtime-state checkpoint migration follow-up (2026-07-16)
+
+- Independent review found v1/v2 namespace overlap, unsafe legacy fallback, alias-counted retention, and a save/delete interleaving risk in the initial migration design.
+- Decision: place v2 files in a dedicated subdirectory; trust a legacy file only when all persisted checkpoints name the requested run; retry a valid legacy file after corrupt v2 data; group retention by persisted logical run ID; and acquire v2/legacy locks in one stable order for save, delete, and prune.
+- Migration posture: ambiguous legacy collision files fail closed rather than disclosing another run's state. Valid legacy files remain recoverable and deletable.
+- Verification: `pnpm --filter @muse/runtime-state exec vitest run src/file-checkpoint-store.test.ts` (19 passed); `pnpm --filter @muse/runtime-state build` passed.
+
+### Runtime-state checkpoint retention lock-order follow-up (2026-07-16)
+
+- Independent review found a cross-run deadlock: save held its run's v1/v2 locks while retention could lock another run; concurrent saves could invert those dependencies.
+- Decision: complete the atomic checkpoint commit under the owning run locks, release them, then invoke retention. Retention still re-evaluates candidates under the candidate run's locks, but no longer nests a second run lock beneath a held save lock.
+- Verification: `pnpm --filter @muse/runtime-state exec vitest run src/file-checkpoint-store.test.ts` (20 passed); `pnpm --filter @muse/runtime-state build` passed.
