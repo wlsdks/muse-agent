@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { useChatStream } from "../api/useChatStream.js";
@@ -6,10 +7,14 @@ import { DeskPet } from "../components/DeskPet.js";
 import { Markdown } from "../components/markdown.js";
 import { Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { readLocationSeed, stripCompanionSeed } from "../lib/companion-seed.js";
+import { modelChip } from "../lib/model-chip.js";
 import { readToken } from "../lib/token-storage.js";
 import { shouldStickToBottom } from "./chat-autoscroll.js";
+import { ChatsView } from "./Chats.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { ModelsResponse } from "../api/types.js";
 import type { PendingApproval } from "../api/useChatStream.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 import type { RefObject } from "react";
@@ -116,6 +121,21 @@ export function PendingApprovals({
   );
 }
 
+/** The always-visible current-model badge next to the composer. Local vs
+ * cloud is the trust floor, so it lives in chrome, not Settings. Takes `t`
+ * and the classified chip as props (no hooks) so it renders directly in a
+ * test, mirroring `StarterChips`. An unknown locality shows only the model
+ * name — the badge never guesses where tokens go. */
+export function ModelChipBadge({ chip, t }: { chip: { name: string; locality: "local" | "cloud" | "unknown" }; t: Translate }) {
+  return (
+    <span className="model-chip" title={t("chat.model.tip")}>
+      <span className={`model-chip-dot ${chip.locality}`} aria-hidden="true" />
+      <span className="mono">{chip.name}</span>
+      {chip.locality !== "unknown" && <span>· {t(chip.locality === "local" ? "chat.model.local" : "chat.model.cloud")}</span>}
+    </span>
+  );
+}
+
 /** The chat empty state: welcome copy + starter chips. Hidden once a
  * conversation has messages (`hasMessages`), so a returning user with a
  * transcript never sees onboarding chips. */
@@ -142,7 +162,56 @@ export function ChatEmptyState({
   );
 }
 
-export function ChatView({ client }: { client: ApiClient }) {
+/** The 대화 surface: a conversation session plus a 기록 (history) tab — the
+ * read-only conversation list lives INSIDE chat, not as a separate sidebar
+ * destination. Resuming from history bumps `epoch` so the remounted session
+ * picks up the stored conversation id (useChatStream reads it at mount). */
+export function ChatView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
+  const { t } = useI18n();
+  const [tab, setTab] = useState<"chat" | "history">("chat");
+  const [epoch, setEpoch] = useState(0);
+
+  const handleHistoryNavigate = (view: string) => {
+    if (view === "chat") {
+      setEpoch((e) => e + 1);
+      setTab("chat");
+      return;
+    }
+    onNavigate?.(view);
+  };
+
+  return (
+    <div className="chat-shell">
+      <div className="chat-tabs" role="tablist" aria-label={t("nav.chat")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "chat"}
+          className={`chat-tab${tab === "chat" ? " active" : ""}`}
+          onClick={() => setTab("chat")}
+        >
+          {t("nav.chat")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "history"}
+          className={`chat-tab${tab === "history" ? " active" : ""}`}
+          onClick={() => setTab("history")}
+        >
+          {t("nav.chats")}
+        </button>
+      </div>
+      {tab === "chat" ? (
+        <ChatSession key={epoch} client={client} />
+      ) : (
+        <ChatsView client={client} onNavigate={handleHistoryNavigate} />
+      )}
+    </div>
+  );
+}
+
+export function ChatSession({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const token = readToken();
   const { activeTool, approve, approving, deny, error, pending, reset, send, thinking, turns } = useChatStream(
@@ -160,11 +229,32 @@ export function ChatView({ client }: { client: ApiClient }) {
     return () => window.clearInterval(timer);
   }, [pending]);
   const voice = useVoice(client.baseUrl, token);
-  const [draft, setDraft] = useState("");
+  // The native companion deep-links here with ?companion_seed=<topic>;
+  // the seed pre-fills the composer (draft-first — never auto-sent).
+  const [draft, setDraft] = useState(() => readLocationSeed() ?? "");
   const [autoSpeak, setAutoSpeak] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (readLocationSeed() === undefined) {
+      return;
+    }
+    // Consume the seed: focus so Enter sends, and strip the param so a
+    // refresh doesn't re-seed a composer the user already cleared.
+    textareaRef.current?.focus();
+    try {
+      window.history.replaceState(null, "", stripCompanionSeed(new URL(window.location.href)).toString());
+    } catch {
+      /* history unavailable */
+    }
+  }, []);
+  const models = useQuery({
+    queryFn: () => client.get<ModelsResponse>("/api/models"),
+    queryKey: ["models", client.baseUrl],
+    staleTime: 60_000
+  });
+  const chip = modelChip(models.data?.defaultModel ?? models.data?.active);
   const spokenRef = useRef<number>(turns.length);
   const stickToBottomRef = useRef(true);
 
@@ -223,7 +313,7 @@ export function ChatView({ client }: { client: ApiClient }) {
   const pickStarter = (prompt: string) => applyStarterPrompt(prompt, setDraft, textareaRef);
 
   return (
-    <div className="chat" style={{ margin: "-24px", height: "calc(100% + 48px)" }}>
+    <div className="chat">
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="chat-thread">
           <ChatEmptyState hasMessages={turns.length > 0} onPickStarter={pickStarter} />
@@ -327,6 +417,7 @@ export function ChatView({ client }: { client: ApiClient }) {
             <input type="checkbox" checked={autoSpeak} onChange={(e) => setAutoSpeak(e.target.checked)} />
             <span>{t("chat.autospeak")}</span>
           </label>
+          {chip && <ModelChipBadge chip={chip} t={t} />}
           <span className="spacer" style={{ flex: 1 }} />
           {turns.length > 0 && (
             <Button variant="ghost" size="sm" onClick={reset}>

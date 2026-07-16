@@ -5,6 +5,7 @@ import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 
 import { normalizeApiBaseUrl } from "../lib/apiUrl.js";
+import { readDeveloperMode, writeDeveloperMode } from "../lib/developer-mode.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { StringKey } from "../i18n/strings.js";
@@ -153,6 +154,8 @@ export function SettingsView({
 
       <QuietHoursControl client={client} />
 
+      <DeveloperModeControl />
+
       <div style={{ marginTop: 16 }}>
         <ContactsSection client={client} />
       </div>
@@ -226,6 +229,32 @@ function isPlausibleQuietHoursRange(raw: string): boolean {
  * writes the persisted setting (so it's ready the moment the env var is
  * unset) but the banner says so honestly instead of hiding the no-op.
  */
+/** The sidebar's engine-room gate. Local UI preference (localStorage), not a
+ * server setting — flipping it live-updates the sidebar via the
+ * developer-mode event; every view stays reachable through ⌘K either way. */
+export function DeveloperModeControl() {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState(() => readDeveloperMode());
+  const toggle = (next: boolean) => {
+    setEnabled(next);
+    writeDeveloperMode(next);
+  };
+  return (
+    <Card title={t("settings.devMode")}>
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{t("settings.devMode.label")}</div>
+          <div className="row-meta">{t("settings.devMode.hint")}</div>
+        </div>
+        <label className="autospeak-toggle">
+          <input type="checkbox" checked={enabled} onChange={(e) => toggle(e.target.checked)} />
+          <span>{t(enabled ? "settings.devMode.on" : "settings.devMode.off")}</span>
+        </label>
+      </div>
+    </Card>
+  );
+}
+
 export function QuietHoursControl({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();

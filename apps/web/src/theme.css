@@ -23,7 +23,10 @@
   --ink: #f4f6fb;
   --ink-muted: #c3c8d6;
   --ink-subtle: #868ca0;
-  --ink-tertiary: #5b6072;
+  /* Meta/informational text must stay AA-readable (≥4.5:1) on both the
+     canvas and card surfaces — measured 2026-07: #5b6072 sat at ~3:1 and
+     produced unreadable gray-on-gray list meta. Keep below --ink-subtle. */
+  --ink-tertiary: #7d8396;
 
   /* The single accent — indigo/lavender. Used scarcely, on purpose. */
   --primary: #5e6ad2;
@@ -899,6 +902,25 @@ button {
   border-bottom: 1px solid var(--hairline);
   transition: background 0.14s ease;
 }
+/* A row rendered as a <button> (clickable list rows) must not pick up the
+   UA button chrome — without this it renders as a native gray macOS button
+   bubble sized to its content instead of a full-width list row. */
+button.row {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  width: calc(100% + 2 * var(--s-sm));
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+}
+button.row:last-child {
+  border-bottom: none;
+}
 .row:last-child {
   border-bottom: none;
 }
@@ -1146,10 +1168,50 @@ button {
   height: 100%;
   min-height: 0;
 }
+/* Fills the content pane edge-to-edge (undoes the pane's 24px padding) and
+   stacks the tab strip above whichever tab body is active. */
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  margin: -24px;
+  height: calc(100% + 48px);
+  min-height: 0;
+}
+.chat-shell > .content-narrow {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-lg);
+}
+.chat-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px var(--s-lg) 0;
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+.chat-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-subtle);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 6px 10px 8px;
+  cursor: pointer;
+}
+.chat-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--primary);
+}
+
 .chat {
   display: flex;
   flex-direction: column;
   height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 .chat-scroll {
   flex: 1;
@@ -1396,6 +1458,99 @@ button {
   font-size: 12px;
   color: var(--ink-subtle);
   font-family: var(--font-mono);
+}
+
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-subtle);
+  white-space: nowrap;
+}
+
+/* ── 홈 (Home) ─────────────────────────────────────────── */
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+button.status-chip {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+}
+.status-chip-link {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--primary-hover);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.cap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cap-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--accent-soft);
+  background: var(--accent-softer);
+  color: var(--primary-hover);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.cap-chip:hover {
+  background: var(--accent-soft);
+}
+.todayline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: 11px 16px;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.model-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  /* unknown locality: neutral — a green dot must only ever mean "local" */
+  background: var(--ink-subtle);
+  flex: none;
+}
+.model-chip-dot.local {
+  background: var(--success);
+}
+.model-chip-dot.cloud {
+  background: var(--warn);
 }
 
 .bubble {

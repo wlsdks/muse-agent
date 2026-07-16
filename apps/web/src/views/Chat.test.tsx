@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState, PendingApprovals } from "./Chat.js";
+import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState, ModelChipBadge, PendingApprovals } from "./Chat.js";
 import { DICTIONARIES } from "../i18n/strings.js";
 import { I18nProvider } from "../i18n/index.js";
 
@@ -225,5 +225,32 @@ describe("ChatEmptyState — starter chips only appear in the empty state", () =
     const html = render(true);
     expect(html).toBe("");
     expect(html).not.toContain("starter-chips");
+  });
+});
+
+describe("ModelChipBadge — the current model is chrome, not a settings detail", () => {
+  function render(chip: { name: string; locality: "local" | "cloud" | "unknown" }): string {
+    return renderToStaticMarkup(<ModelChipBadge chip={chip} t={identityT} />);
+  }
+
+  it("shows the model name with a local badge", () => {
+    const html = render({ locality: "local", name: "gemma4:12b" });
+    expect(html).toContain("gemma4:12b");
+    expect(html).toContain("chat.model.local");
+    expect(html).not.toContain("cloud");
+  });
+
+  it("marks a cloud model with the cloud dot and label", () => {
+    const html = render({ locality: "cloud", name: "claude-opus-4-8" });
+    expect(html).toContain("chat.model.cloud");
+    expect(html).toContain("model-chip-dot cloud");
+    expect(html).not.toContain("model-chip-dot local");
+  });
+
+  it("never guesses locality for an unknown provider — name only", () => {
+    const html = render({ locality: "unknown", name: "some-model" });
+    expect(html).toContain("some-model");
+    expect(html).not.toContain("chat.model.local");
+    expect(html).not.toContain("chat.model.cloud");
   });
 });

@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AsyncBlock, Card, Empty, Icon } from "../components/ui.js";
+import { AsyncBlock, Button, Card, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { factLabel, groupFactsByValue } from "../lib/memory-labels.js";
+import { seedChat } from "./home-logic.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { UserMemoryResponse } from "../api/types.js";
@@ -24,7 +26,7 @@ export function memorySubtitle(t: Translate, locale: string, updatedAt?: string)
  * and curation belongs to the agent/CLI path.
  */
 export function MemoryView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
-  const { locale, t } = useI18n();
+  const { lang, locale, t } = useI18n();
   const [userId, setUserId] = useState("default");
 
   const memory = useQuery({
@@ -39,6 +41,7 @@ export function MemoryView({ client, onNavigate }: { client: ApiClient; onNaviga
     queryKey: ["memory", client.baseUrl, userId]
   });
 
+  const factGroups = groupFactsByValue(memory.data?.facts ?? {});
   const facts = Object.entries(memory.data?.facts ?? {});
   const prefs = Object.entries(memory.data?.preferences ?? {});
   const topics = memory.data?.recentTopics ?? [];
@@ -82,16 +85,32 @@ export function MemoryView({ client, onNavigate }: { client: ApiClient; onNaviga
         ) : (
           <>
         <div className="grid grid-2">
-          <Card title={t("memory.facts")} count={facts.length}>
-            {facts.length === 0 ? (
+          <Card title={t("memory.facts")} count={factGroups.length}>
+            {factGroups.length === 0 ? (
               <Empty>{t("common.empty")}</Empty>
             ) : (
-              facts.map(([k, v]) => (
-                <div className="row" key={k}>
+              factGroups.map((group) => (
+                <div className="row" key={group.value} title={group.keys.join(", ")}>
                   <div className="row-main">
-                    <div className="row-title">{v}</div>
-                    <div className="row-meta mono">{k}</div>
+                    <div className="row-title">{group.value}</div>
+                    <div className="row-meta">{group.keys.map((k) => factLabel(k, lang)).join(" · ")}</div>
                   </div>
+                  {onNavigate && (
+                    <div className="row-actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          seedChat(
+                            t("home.learned.forgetPrompt", { label: factLabel(group.keys[0] ?? "", lang), value: group.value }),
+                            onNavigate
+                          )
+                        }
+                      >
+                        {t("home.learned.forget")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))
             )}

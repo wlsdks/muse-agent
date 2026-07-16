@@ -41,3 +41,17 @@ export function relativeAgo(iso: string, t: Translate, now: number = Date.now())
   }
   return t("rel.agoDays", { n: Math.round(hr / 24) });
 }
+
+/** Case-insensitive title filter for the conversation list. Deterministic,
+ * client-side only — the list is already capped server-side. An empty or
+ * whitespace query returns the list unchanged. */
+export function filterConversations<T extends { readonly title: string }>(
+  conversations: readonly T[],
+  query: string
+): readonly T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return conversations;
+  }
+  return conversations.filter((c) => c.title.toLowerCase().includes(q));
+}

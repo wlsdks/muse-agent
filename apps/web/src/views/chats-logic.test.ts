@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { originBadgeLabelKey, relativeAgo } from "./chats-logic.js";
+import { filterConversations, originBadgeLabelKey, relativeAgo } from "./chats-logic.js";
 
 import type { Translate } from "../i18n/index.js";
 
@@ -42,5 +42,23 @@ describe("relativeAgo", () => {
 
   it("a malformed iso returns an empty string, never NaN in the label", () => {
     expect(relativeAgo("not-a-date", identityT, now)).toBe("");
+  });
+});
+
+describe("filterConversations", () => {
+  const list = [{ title: "보리 산책 계획" }, { title: "What time is it now?" }, { title: "smoke broad chat" }];
+
+  it("filters by case-insensitive substring", () => {
+    expect(filterConversations(list, "WHAT")).toEqual([{ title: "What time is it now?" }]);
+    expect(filterConversations(list, "보리")).toEqual([{ title: "보리 산책 계획" }]);
+  });
+
+  it("returns the list unchanged for empty/whitespace queries", () => {
+    expect(filterConversations(list, "")).toBe(list);
+    expect(filterConversations(list, "   ")).toBe(list);
+  });
+
+  it("returns empty when nothing matches", () => {
+    expect(filterConversations(list, "zzz")).toEqual([]);
   });
 });

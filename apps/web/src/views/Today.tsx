@@ -8,7 +8,7 @@ import type { ApiClient } from "../api/client.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 import type { ProactiveHistoryResponse, TodayBriefingResponse } from "../api/types.js";
 
-function greetingKey(): StringKey {
+export function greetingKey(): StringKey {
   const h = new Date().getHours();
   if (h < 5) return "today.greeting.lateNight";
   if (h < 12) return "today.greeting.morning";

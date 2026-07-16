@@ -5,7 +5,7 @@ import { setStoredConversationId } from "../api/useChatStream.js";
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { Markdown } from "../components/markdown.js";
 import { useI18n } from "../i18n/index.js";
-import { originBadgeLabelKey, relativeAgo } from "./chats-logic.js";
+import { filterConversations, originBadgeLabelKey, relativeAgo } from "./chats-logic.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { Translate } from "../i18n/index.js";
@@ -110,6 +110,7 @@ export function TranscriptView({
 export function ChatsView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const list = useQuery({
     queryFn: () => client.get<ConversationsListResponse>("/api/conversations"),
@@ -122,7 +123,8 @@ export function ChatsView({ client, onNavigate }: { client: ApiClient; onNavigat
     queryKey: ["conversation-detail", client.baseUrl, selectedId]
   });
 
-  const conversations = list.data?.conversations ?? [];
+  const all = list.data?.conversations ?? [];
+  const conversations = filterConversations(all, query);
 
   const resume = () => {
     if (!selectedId) {
@@ -151,6 +153,17 @@ export function ChatsView({ client, onNavigate }: { client: ApiClient; onNavigat
           </Card>
         ) : (
           <Card title={t("chats.list")} count={conversations.length}>
+            {all.length > 0 && (
+              <input
+                className="input"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("chats.searchPlaceholder")}
+                aria-label={t("chats.searchPlaceholder")}
+                style={{ marginBottom: 10 }}
+              />
+            )}
             <AsyncBlock
               loading={list.isLoading}
               error={list.error}

@@ -51,9 +51,9 @@ normal builds use TS7, while the `typescript` dependency intentionally remains t
 compiler-API compatibility alias for tooling. Do not mask migration diagnostics with
 compiler-option relaxations.
 
-**To decide what to work on next, run the `improve-muse` skill** — it finds the work
-(regression → backlog → gap-scout) and ends with a ranked recommendation; "nothing to do"
-is a forbidden output. Building the picked slice follows [`harness/host/dev-loop.md`](harness/host/dev-loop.md) §3.
+**To decide what to work on next**: `improve-muse` for HARDENING (regression → failures →
+live pain probe → debt → subtraction), `grow-muse` for a NEW capability (owner's direction →
+dogfood friction → north-star gap → parity, D/T/N/C-scored). One slice end-to-end; "nothing to do" is forbidden.
 
 ## Non-negotiables
 

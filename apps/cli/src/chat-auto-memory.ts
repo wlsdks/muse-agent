@@ -10,7 +10,7 @@
  * cooldown keeps it from firing every trivial turn.
  */
 
-import { dropModelAssertedValues, extractJsonObject, formatLearnedConfirmation, selectNewSupersessions, type UserMemoryStore } from "@muse/memory";
+import { dropExistingPetBindingConflicts, dropModelAssertedValues, extractJsonObject, formatLearnedConfirmation, resolvePetBindingCandidates, selectNewSupersessions, type UserMemoryStore } from "@muse/memory";
 
 // A sharper, example-bearing extraction prompt than the shared agent-runtime
 // one — verified to extract reliably on the LOCAL qwen3:8b tier (the shared
@@ -96,7 +96,10 @@ export async function extractMemoryFromTurn(opts: {
     // answered with a fact ("what's WireGuard's MTU?" → "1420") is never stored
     // as "what you told me". A user-stated value survives.
     return {
-      facts: dropModelAssertedValues(pickStrings(payload.facts), user, assistant),
+      // resolvePetBindingCandidates: the KEY-binding sibling of the value
+      // provenance gate — one dog turn must not bind the name to cat keys
+      // (memory-pet-binding-guard.ts).
+      facts: resolvePetBindingCandidates(dropModelAssertedValues(pickStrings(payload.facts), user, assistant), user),
       preferences: dropModelAssertedValues(pickStrings(payload.preferences), user, assistant)
     };
   } catch {
@@ -133,10 +136,15 @@ export async function applyTurnLearnings(
   facts: Readonly<Record<string, string>>,
   preferences: Readonly<Record<string, string>>
 ): Promise<{ readonly summary?: string; readonly confirmation?: string }> {
-  const before = (await store.findByUserId(userId))?.factHistory ?? [];
+  const beforeMemory = await store.findByUserId(userId);
+  const before = beforeMemory?.factHistory ?? [];
   const wroteFacts: Record<string, string> = {};
   const wrotePrefs: Record<string, string> = {};
-  for (const [key, value] of Object.entries(facts).slice(0, 5)) {
+  // Store-aware binding guard: never quietly rebind a value that already
+  // lives under another pet-name-family key (first binding wins until an
+  // explicit user correction).
+  const guardedFacts = dropExistingPetBindingConflicts(facts, beforeMemory?.facts);
+  for (const [key, value] of Object.entries(guardedFacts).slice(0, 5)) {
     await store.upsertFact(userId, key, value);
     wroteFacts[key] = value;
   }

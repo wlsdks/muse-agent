@@ -6858,20 +6858,21 @@ describe("cli program", () => {
 
     // Valid shape. The v2 validator checks the complete persisted envelope,
     // not only its version, so a truncated index is rebuilt fail-closed.
-    expect(isNotesIndexValid({
+    const valid = {
       version: NOTES_INDEX_SCHEMA_VERSION,
       model: "nomic-embed-text-v2-moe",
       builtAtIso: "2026-07-17T00:00:00.000Z",
       files: []
-    })).toBe(true);
+    };
+    expect(isNotesIndexValid(valid)).toBe(true);
     // Missing / incomplete / wrong version → invalid (incl. pre-v2 files).
     expect(isNotesIndexValid(undefined)).toBe(false);
     expect(isNotesIndexValid({})).toBe(false);
     expect(isNotesIndexValid({ version: NOTES_INDEX_SCHEMA_VERSION })).toBe(false);
     expect(isNotesIndexValid({ version: 0 })).toBe(false);
     expect(isNotesIndexValid({ version: 1 })).toBe(false);
-    expect(isNotesIndexValid({ version: 3 })).toBe(false);
-    expect(isNotesIndexValid({ version: "2" })).toBe(false);
+    expect(isNotesIndexValid({ ...valid, version: 3 })).toBe(false);
+    expect(isNotesIndexValid({ ...valid, version: "2" })).toBe(false);
 
     // End-to-end: a v0 index on disk causes `isNotesIndexStale` to
     // return true so the next reindex rebuilds the file from scratch
