@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { GmailEmailProvider, summarizeInbox, unreadBriefingLine, type EmailSummary } from "./email-provider.js";
+import { normalizeEmailOperationTimeoutMs } from "./email-provider-imap.js";
+
+describe("normalizeEmailOperationTimeoutMs", () => {
+  it("keeps only safe positive integer delays and caps Node timer overflow", () => {
+    expect(normalizeEmailOperationTimeoutMs(25)).toBe(25);
+    expect(normalizeEmailOperationTimeoutMs(0.5)).toBe(15_000);
+    expect(normalizeEmailOperationTimeoutMs(0)).toBe(15_000);
+    expect(normalizeEmailOperationTimeoutMs(Number.POSITIVE_INFINITY)).toBe(15_000);
+    expect(normalizeEmailOperationTimeoutMs(Number.MAX_SAFE_INTEGER)).toBe(2_147_483_647);
+  });
+});
 
 // Contract-faithful Gmail REST fake: routes messages.list vs
 // messages.get/{id}, asserts the Bearer header, returns Gmail-shaped
