@@ -140,11 +140,20 @@ export async function fetchWithRetry(
         retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
       }
     } catch (cause) {
-      lastError = cause;
       // A caller-owned abort is an intentional stop, not a transient network
       // failure. Retrying it can resurrect a cancelled agent turn.
-      if (externalSignal?.aborted || options.retryOnNetworkError === false || attempt === retries) {
+      if (externalSignal?.aborted) {
         throw cause;
+      }
+      // Fetch adapters disagree on whether a caller-owned timeout signal
+      // rejects with TimeoutError or AbortError. The signal itself is the
+      // stable source of truth, so every adapter gets the same public error.
+      const attemptError = timeoutSignal?.aborted
+        ? new Error(`request ${url} timed out after ${timeoutMs.toString()}ms`, { cause })
+        : cause;
+      lastError = attemptError;
+      if (options.retryOnNetworkError === false || attempt === retries) {
+        throw attemptError;
       }
     }
     const backoffMs = baseDelayMs * 2 ** attempt;

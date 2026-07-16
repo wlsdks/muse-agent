@@ -55,6 +55,21 @@ describe("fetchWithRetry beforeAttempt boundary", () => {
     expect(calls).toBe(1);
   });
 
+  it("normalizes adapter AbortError rejections caused by its timeout signal", async () => {
+    const fetchImpl = ((_url: string, init?: RequestInit) => {
+      const pending = Promise.withResolvers<Response>();
+      init?.signal?.addEventListener("abort", () => {
+        pending.reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+      return pending.promise;
+    }) as typeof globalThis.fetch;
+
+    await expect(fetchWithRetry(fetchImpl, "https://example.test/hung", {
+      retries: 0,
+      timeoutMs: 5
+    })).rejects.toThrow(/request https:\/\/example\.test\/hung timed out after 5ms/u);
+  });
+
   it("propagates a beforeAttempt failure without a later fetch, retry, or wrapper", async () => {
     const guardFailure = new Error("blocked by test guard");
     let fetches = 0;
