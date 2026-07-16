@@ -116,9 +116,9 @@ describe("createConversationSummaryInsert / mapConversationSummaryRow", () => {
 });
 
 import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { FileConversationSummaryStore } from "../src/memory-conversation-summary-store.js";
 
@@ -196,6 +196,19 @@ describe("FileConversationSummaryStore — cross-session persistence (the CLI de
     release.resolve();
     await Promise.all([heldLock, pendingSave]);
     expect(await new FileConversationSummaryStore({ file }).get("locked-summary")).toBeDefined();
+  });
+
+  it("quarantines a corrupt store before save replaces it, preserving recoverable raw data", async () => {
+    const file = freshFile();
+    const corrupt = "{not valid JSON";
+    await writeFile(file, corrupt, "utf8");
+
+    await new FileConversationSummaryStore({ file }).save(summary("recovered", { narrative: "fresh summary" }));
+
+    const quarantined = (await readdir(dirname(file))).find((name) => name.startsWith("conversation-summaries.json.corrupt-"));
+    expect(quarantined).toBeDefined();
+    expect(await import("node:fs/promises").then(({ readFile }) => readFile(join(dirname(file), quarantined!), "utf8"))).toBe(corrupt);
+    expect(await new FileConversationSummaryStore({ file }).get("recovered")).toMatchObject({ narrative: "fresh summary" });
   });
 
   afterAll(async () => {

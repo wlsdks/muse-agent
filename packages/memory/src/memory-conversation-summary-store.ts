@@ -164,11 +164,14 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch {
-      return new Map(); // corrupt ⇒ degrade to empty, never throw (recall is best-effort)
+      await this.quarantineCorruptStore();
+      return new Map(); // corrupt ⇒ preserve + degrade to empty, never throw (recall is best-effort)
     }
-    const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { summaries?: unknown }).summaries)
-      ? (parsed as { summaries: SerializedConversationSummary[] }).summaries
-      : [];
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { summaries?: unknown }).summaries)) {
+      await this.quarantineCorruptStore();
+      return new Map();
+    }
+    const list = (parsed as { summaries: SerializedConversationSummary[] }).summaries;
     const map = new Map<string, RequiredConversationSummary>();
     for (const entry of list) {
       if (entry && typeof entry.sessionId === "string" && entry.sessionId.length > 0) {
@@ -176,6 +179,10 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
       }
     }
     return map;
+  }
+
+  private async quarantineCorruptStore(): Promise<void> {
+    await fs.rename(this.file, `${this.file}.corrupt-${Date.now().toString()}`).catch(() => undefined);
   }
 
   private async writeMap(map: Map<string, RequiredConversationSummary>): Promise<void> {

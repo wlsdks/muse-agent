@@ -93,3 +93,9 @@ the TypeScript 7 announcement and release-notes links.
 - Compared the duplicated user-memory lock to the shared lock implementation. The duplicated unlock could remove a successor lock after stale-lock takeover; the shared nonce check prevents that ownership race.
 - Added validated per-call stale and live-lock wait options to the shared lock. FileUserMemoryStore now uses the shared mutation queue and nonce-aware lock while retaining its prior 3-second fail-closed wait policy.
 - Focused verification: `@muse/shared` file-lock tests (2 passed) and build; `@muse/memory` user-memory file, lock, and external-edit tests (53 passed) and build.
+
+## Conversation-summary corruption preservation (2026-07-16)
+
+- Audited FileConversationSummaryStore: normal mutations already read the latest state under shared queue and cross-process lock, but malformed JSON or an invalid root could be overwritten by the next summary save.
+- Corrupt summary files now move to a timestamped quarantine before the store degrades to empty; the next save creates a fresh canonical file without destroying recoverable bytes.
+- Focused verification: `pnpm --filter @muse/memory exec vitest run test/conversation-summary-store.test.ts` (13 passed) and `pnpm --filter @muse/memory build`.
