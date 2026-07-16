@@ -197,6 +197,23 @@ describe("fetchReadableUrl", () => {
     expect(res).toEqual({ error: "response body exceeds 64 byte limit", ok: false });
     expect(extractorCalled).toBe(false);
   });
+
+  it("ignores invalid text limits instead of handing a negative or fractional slice length to PDF or HTML readers", async () => {
+    const html = await fetchReadableUrl("https://example.test/article", {
+      fetchImpl: htmlFetch("<p>full readable article</p>"),
+      lookup: publicLookup,
+      maxChars: -1
+    });
+    const pdf = await fetchReadableUrl("https://example.test/article.pdf", {
+      fetchImpl: typedFetch("%PDF", "application/pdf"),
+      lookup: publicLookup,
+      maxChars: 0.5,
+      pdfExtractor: async () => "full PDF text"
+    });
+
+    expect(html).toMatchObject({ ok: true, text: "full readable article", truncated: false });
+    expect(pdf).toMatchObject({ ok: true, text: "full PDF text", truncated: false });
+  });
 });
 
 describe("isPdfContentType", () => {

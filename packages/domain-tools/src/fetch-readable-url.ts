@@ -100,6 +100,11 @@ function resolveMaxResponseBytes(value: number | undefined): number {
     : DEFAULT_MAX_READABLE_RESPONSE_BYTES;
 }
 
+/** Invalid text limits defer to extractReadableText's documented default cap. */
+function resolveMaxChars(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
 async function readResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array | undefined> {
   const contentLength = response.headers.get("content-length");
   if (contentLength && /^\d+$/u.test(contentLength) && Number(contentLength) > maxBytes) {
@@ -167,6 +172,7 @@ export async function fetchReadableUrl(
   }
   if (!response.ok) return { ok: false, error: `fetch failed: HTTP ${response.status.toString()}` };
   const maxResponseBytes = resolveMaxResponseBytes(options.maxResponseBytes);
+  const maxChars = resolveMaxChars(options.maxChars);
 
   // Refuse a NON-TEXT resource by its declared content-type. A PDF / image /
   // octet-stream URL would otherwise decode to garbled bytes that the model
@@ -191,7 +197,7 @@ export async function fetchReadableUrl(
     if (trimmed.length === 0) {
       return { ok: false, error: "PDF had no extractable text (scanned / image-only?)" };
     }
-    const capped = options.maxChars && trimmed.length > options.maxChars ? trimmed.slice(0, options.maxChars) : trimmed;
+    const capped = maxChars !== undefined && trimmed.length > maxChars ? trimmed.slice(0, maxChars) : trimmed;
     return { ok: true, finalUrl, text: capped, truncated: capped.length < trimmed.length };
   }
   if (!isReadableContentType(declaredType)) {
@@ -208,7 +214,7 @@ export async function fetchReadableUrl(
   if (looksBinaryText(html)) {
     return { ok: false, error: "not a readable text page (binary content)" };
   }
-  const readable = extractReadableText(html, options.maxChars ? { maxChars: options.maxChars } : {});
+  const readable = extractReadableText(html, maxChars === undefined ? {} : { maxChars });
   return {
     ok: true,
     finalUrl,
