@@ -99,3 +99,9 @@ the TypeScript 7 announcement and release-notes links.
 - Audited FileConversationSummaryStore: normal mutations already read the latest state under shared queue and cross-process lock, but malformed JSON or an invalid root could be overwritten by the next summary save.
 - Corrupt summary files now move to a timestamped quarantine before the store degrades to empty; the next save creates a fresh canonical file without destroying recoverable bytes.
 - Focused verification: `pnpm --filter @muse/memory exec vitest run test/conversation-summary-store.test.ts` (13 passed) and `pnpm --filter @muse/memory build`.
+
+## Task-memory corruption preservation (2026-07-16)
+
+- Audited FileTaskMemoryStore: mutations already hydrate inside shared queue and cross-process lock, but malformed JSON or an invalid root previously degraded to an empty state that the next save could overwrite.
+- Corrupt task-memory files now move to a timestamped quarantine before recovery writes a fresh canonical store.
+- Focused verification: `pnpm --filter @muse/memory exec vitest run test/file-task-memory-store.test.ts` (6 passed) and `pnpm --filter @muse/memory build`.

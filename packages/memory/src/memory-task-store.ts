@@ -250,6 +250,10 @@ export function defaultTaskMemoryFile(): string {
   return join(homedir(), ".muse", "task-memory.json");
 }
 
+async function quarantineCorruptTaskStore(file: string): Promise<void> {
+  await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`).catch(() => undefined);
+}
+
 async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   let raw: string;
   try {
@@ -261,11 +265,14 @@ async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    return []; // corrupt ⇒ empty, never throw (task recall is best-effort)
+    await quarantineCorruptTaskStore(file);
+    return []; // corrupt ⇒ preserve + degrade to empty, never throw (task recall is best-effort)
   }
-  const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { tasks?: unknown }).tasks)
-    ? (parsed as { tasks: SerializedTaskState[] }).tasks
-    : [];
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+    await quarantineCorruptTaskStore(file);
+    return [];
+  }
+  const list = (parsed as { tasks: SerializedTaskState[] }).tasks;
   return list.filter((entry) => entry && typeof entry.taskId === "string" && entry.taskId.length > 0).map(deserializeTaskState);
 }
 

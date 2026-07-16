@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 import { withFileLock } from "@muse/shared";
@@ -120,5 +120,22 @@ describe("FileTaskMemoryStore — cross-session task persistence (CLI default-st
     release.resolve();
     await Promise.all([heldLock, pendingSave]);
     await expect(new FileTaskMemoryStore({ file }).findById("locked-task")).resolves.toBeDefined();
+  });
+
+  it("quarantines corrupt task state before a save replaces it, preserving raw recovery data", async () => {
+    const file = freshFile();
+    const corrupt = "{not valid JSON";
+    await writeFile(file, corrupt, "utf8");
+
+    const now = new Date();
+    await new FileTaskMemoryStore({ file }).save({
+      taskId: "recovered-task", sessionId: "recovered-session", goal: "resume safely", status: "active",
+      plan: [], createdAt: now, updatedAt: now
+    });
+
+    const quarantined = (await readdir(dirname(file))).find((name) => name.startsWith("task-memory.json.corrupt-"));
+    expect(quarantined).toBeDefined();
+    expect(await readFile(join(dirname(file), quarantined!), "utf8")).toBe(corrupt);
+    await expect(new FileTaskMemoryStore({ file }).findById("recovered-task")).resolves.toMatchObject({ goal: "resume safely" });
   });
 });
