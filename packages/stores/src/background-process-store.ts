@@ -47,6 +47,11 @@ export interface BackgroundProcessRecord {
 
 const STATUSES: ReadonlySet<string> = new Set(["running", "exited", "failed", "killed"]);
 
+/** A registry PID is later passed to OS liveness and signal APIs. */
+export function isValidBackgroundProcessId(pid: unknown): pid is number {
+  return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0;
+}
+
 export function isBackgroundProcessRecord(value: unknown): value is BackgroundProcessRecord {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -54,7 +59,7 @@ export function isBackgroundProcessRecord(value: unknown): value is BackgroundPr
   const record = value as Record<string, unknown>;
   return (
     typeof record.id === "string" &&
-    typeof record.pid === "number" &&
+    isValidBackgroundProcessId(record.pid) &&
     typeof record.command === "string" &&
     typeof record.startedAt === "string" &&
     typeof record.status === "string" &&
@@ -128,6 +133,9 @@ export function capBackgroundProcesses(
 
 /** Add a record (or replace one with the same id — a re-register is idempotent). Caps terminal records. */
 export async function registerBackgroundProcess(file: string, record: BackgroundProcessRecord): Promise<void> {
+  if (!isValidBackgroundProcessId(record.pid)) {
+    throw new Error("background process record has an invalid pid");
+  }
   await mutateBackgroundProcesses(file, (current) =>
     capBackgroundProcesses([...current.filter((p) => p.id !== record.id), record])
   );
@@ -138,6 +146,9 @@ export async function updateBackgroundProcess(
   id: string,
   patch: Partial<Omit<BackgroundProcessRecord, "id">>
 ): Promise<void> {
+  if (patch.pid !== undefined && !isValidBackgroundProcessId(patch.pid)) {
+    throw new Error("background process record has an invalid pid");
+  }
   await mutateBackgroundProcesses(file, (current) =>
     current.map((p) => (p.id === id ? { ...p, ...patch } : p))
   );
