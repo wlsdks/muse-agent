@@ -43,7 +43,14 @@ describe("sendMessageWithApproval — draft-first, fail-closed outbound chat (ou
     const { registry, sent } = recordingRegistry();
     const out = await sendMessageWithApproval(base({ registry }));
     expect(out).toEqual({ destination: "U123", messageId: "m1", sent: true });
-    expect(sent).toEqual([{ message: { destination: "U123", text: "hello" }, providerId: "discord" }]);
+    expect(sent).toEqual([{
+      message: {
+        destination: "U123",
+        idempotencyKey: expect.any(String),
+        text: "hello"
+      },
+      providerId: "discord"
+    }]);
     expect((await readActionLog(logFile)).at(-1)).toMatchObject({ result: "performed" });
   });
 
