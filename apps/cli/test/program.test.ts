@@ -7733,7 +7733,7 @@ describe("cli program", () => {
         return new Response("unexpected", { status: 404 });
       }) as typeof globalThis.fetch;
       const { io: io2, output: out2 } = captureOutput();
-      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api fetch off"); } });
+      const program2 = createProgram({ ...io2, fetch: globalThis.fetch });
       await program2.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r2 = JSON.parse(out2.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe2 = r2.checks.find((c) => c.name === "searxng");
@@ -7744,7 +7744,7 @@ describe("cli program", () => {
       // 3) /healthz down → "fail".
       globalThis.fetch = (async () => { throw new Error("connection refused"); }) as typeof globalThis.fetch;
       const { io: io3, output: out3 } = captureOutput();
-      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("api fetch off"); } });
+      const program3 = createProgram({ ...io3, fetch: globalThis.fetch });
       await program3.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r3 = JSON.parse(out3.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe3 = r3.checks.find((c) => c.name === "searxng");
@@ -7759,7 +7759,7 @@ describe("cli program", () => {
         return new Response("format not enabled", { status: 400 });
       }) as typeof globalThis.fetch;
       const { io: io4, output: out4 } = captureOutput();
-      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("api fetch off"); } });
+      const program4 = createProgram({ ...io4, fetch: globalThis.fetch });
       await program4.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r4 = JSON.parse(out4.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe4 = r4.checks.find((c) => c.name === "searxng");
