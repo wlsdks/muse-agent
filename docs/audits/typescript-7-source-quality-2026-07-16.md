@@ -476,3 +476,12 @@ the TypeScript 7 announcement and release-notes links.
 - Kept lifecycle ownership local to the hook module and added focused unit coverage for abort, stale completion, and re-entry rejection.
 - Verified with `pnpm --filter @muse/web exec vitest run src/api/useChatStream.lifecycle.test.ts src/api/useChatStream.conversationId.test.ts src/api/useChatStream.commit.test.ts src/api/useChatStream.pendingApprovals.test.ts` (27 passed) and `pnpm --filter @muse/web build`.
 - Independent runtime-contract review: PASS after two concurrency follow-up findings were addressed.
+
+### MCP: Chrome DevTools local-browser boundary
+
+- Audited the Chrome DevTools turnkey preset, its environment-driven assembly path, the generic MCP URL policy, static launch audit, and focused preset tests against Chrome and MCP security guidance.
+- Fixed a trust-boundary gap: `MUSE_CHROME_DEVTOOLS_BROWSER_URL` previously flowed directly into the `npx` command and could target a remote endpoint despite the preset's local logged-in-browser contract.
+- The preset now accepts only loopback HTTP endpoints (`localhost`, `127/8`, or `::1`) with arbitrary local ports. It rejects remote/private-network hosts, non-HTTP schemes, URL userinfo, query strings, and fragments so credentials cannot enter generated process arguments.
+- Normal localhost and SSH/Docker port-forwarded local endpoints remain supported.
+- Verified with `pnpm --filter @muse/mcp exec vitest run test/chrome-devtools-mcp.test.ts` (14 passed) and `pnpm --filter @muse/mcp build`.
+- Independent runtime-contract review: PASS after query/fragment credential coverage was added.

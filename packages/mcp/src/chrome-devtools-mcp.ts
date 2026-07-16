@@ -1,3 +1,5 @@
+import net from "node:net";
+
 import type { MuseTool, ToolRisk } from "@muse/tools";
 
 import type { McpServerInput } from "./index.js";
@@ -32,11 +34,11 @@ export const CHROME_DEVTOOLS_MCP_SERVER_NAME = "chrome-devtools";
 const DEFAULT_BROWSER_URL = "http://127.0.0.1:9222";
 
 export function createChromeDevToolsMcpServer(options: ChromeDevToolsMcpOptions = {}): McpServerInput {
-  const browserUrl = options.browserUrl?.trim();
+  const browserUrl = resolveBrowserUrl(options.browserUrl);
   const args = [
     "chrome-devtools-mcp@latest",
     "--browser-url",
-    browserUrl && browserUrl.length > 0 ? browserUrl : DEFAULT_BROWSER_URL
+    browserUrl
   ];
   return {
     autoConnect: options.autoConnect ?? false,
@@ -49,6 +51,44 @@ export function createChromeDevToolsMcpServer(options: ChromeDevToolsMcpOptions 
     name: CHROME_DEVTOOLS_MCP_SERVER_NAME,
     transportType: "stdio"
   };
+}
+
+function resolveBrowserUrl(value: string | undefined): string {
+  const browserUrl = value?.trim();
+  if (!browserUrl) {
+    return DEFAULT_BROWSER_URL;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(browserUrl);
+  } catch {
+    throw new RangeError("Chrome DevTools browserUrl must be a loopback http URL");
+  }
+
+  if (
+    parsed.protocol !== "http:"
+    || parsed.username.length > 0
+    || parsed.password.length > 0
+    || parsed.search.length > 0
+    || parsed.hash.length > 0
+    || !isLoopbackHost(parsed.hostname)
+  ) {
+    throw new RangeError("Chrome DevTools browserUrl must be a loopback http URL");
+  }
+
+  return browserUrl;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[(.*)\]$/u, "$1");
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+  if (net.isIP(normalized) === 6) {
+    return normalized === "::1";
+  }
+  return net.isIP(normalized) === 4 && normalized.startsWith("127.");
 }
 
 // Pure observation — safe to run without approval.
