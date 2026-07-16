@@ -88,7 +88,7 @@ describe("local doctor runtime ownership", () => {
         HOME: "/tmp/muse-doctor-prompt-cache",
         MUSE_LOCAL_ONLY: "true",
         MUSE_MODEL: "ollama/test-model",
-        OLLAMA_BASE_URL: "http://injected-ollama.test:11434"
+        OLLAMA_BASE_URL: "http://127.0.0.1:11435"
       },
       fetchImpl: async (input) => {
         const url = String(input);
@@ -103,7 +103,7 @@ describe("local doctor runtime ownership", () => {
 
     expect(urls.filter((url) => url.endsWith("/api/generate"))).toHaveLength(2);
     expect(urls).not.toHaveLength(0);
-    expect(urls.every((url) => url.startsWith("http://injected-ollama.test:11434/"))).toBe(true);
+    expect(urls.every((url) => url.startsWith("http://127.0.0.1:11435/"))).toBe(true);
     expect(report.checks.some((check) => check.name === "prompt cache")).toBe(true);
   });
 });

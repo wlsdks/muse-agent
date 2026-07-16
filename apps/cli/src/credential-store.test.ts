@@ -5,7 +5,7 @@ import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultCredentialPath, deleteGmailCredential, deleteStoredToken, hasStoredGmailCredentialSync, readGmailCredential, readStoredToken, writeGmailCredential, writeStoredToken, type GmailOAuthCredential } from "./credential-store.js";
+import { credentialPath, defaultCredentialPath, deleteGmailCredential, deleteStoredToken, hasStoredGmailCredentialSync, readGmailCredential, readStoredToken, writeGmailCredential, writeStoredToken, type GmailOAuthCredential } from "./credential-store.js";
 import type { ProgramIO } from "./program.js";
 
 const writeFileCalls: Array<{ path: string }> = [];
@@ -179,7 +179,7 @@ describe("writeCredentialStore atomic write", () => {
   });
 });
 
-describe("credential store — re-login recovers after the per-host key changes", () => {
+describe("credential store — write paths preserve unreadable ciphertext", () => {
   let workdir: string;
   const io = (credentialKey: string): ProgramIO => ({
     configDir: workdir,
@@ -196,22 +196,28 @@ describe("credential store — re-login recovers after the per-host key changes"
     await rm(workdir, { force: true, recursive: true });
   });
 
-  it("writeStoredToken starts fresh when the existing store can't be decrypted (hostname/key changed)", async () => {
+  it("writeStoredToken refuses to clobber a store encrypted under another host key", async () => {
     // Key A writes a token; the per-host fallback key then changes (e.g. the
     // hostname changed), so the existing ciphertext no longer decrypts.
     await writeStoredToken(io("key-A-aaaaaaaaaaaaaaaaaaaaaaaa"), "https://api", "tok-A");
     const changed = io("key-B-bbbbbbbbbbbbbbbbbbbbbbbb");
 
-    // Read degrades (anonymous), and — the bug this fixes — re-login must
-    // RECOVER rather than crash on the undecryptable read-before-write.
+    const before = await readFile(credentialPath(changed), "utf8");
+    // Read degrades to anonymous, but a write cannot assume this is the only
+    // token in the unreadable file and silently destroy the remaining data.
     expect(await readStoredToken(changed, "https://api")).toBeUndefined();
-    await expect(writeStoredToken(changed, "https://api", "tok-B")).resolves.toBeUndefined();
-    expect(await readStoredToken(changed, "https://api")).toBe("tok-B");
+    await expect(writeStoredToken(changed, "https://api", "tok-B"))
+      .rejects.toThrow(/Refusing to overwrite unreadable credentials/u);
+    expect(await readFile(credentialPath(changed), "utf8")).toBe(before);
   });
 
-  it("deleteStoredToken (logout) does not crash on an undecryptable store", async () => {
+  it("deleteStoredToken refuses to clobber an undecryptable store", async () => {
     await writeStoredToken(io("key-A-aaaaaaaaaaaaaaaaaaaaaaaa"), "https://api", "tok-A");
-    await expect(deleteStoredToken(io("key-B-bbbbbbbbbbbbbbbbbbbbbbbb"), "https://api")).resolves.toBeUndefined();
+    const changed = io("key-B-bbbbbbbbbbbbbbbbbbbbbbbb");
+    const before = await readFile(credentialPath(changed), "utf8");
+    await expect(deleteStoredToken(changed, "https://api"))
+      .rejects.toThrow(/Refusing to overwrite unreadable credentials/u);
+    expect(await readFile(credentialPath(changed), "utf8")).toBe(before);
   });
 
   it("a VALID store is never clobbered — other baseUrls survive a write", async () => {

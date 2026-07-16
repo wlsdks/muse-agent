@@ -60,8 +60,8 @@ describe("requireAuthService / errorMessage", () => {
     expect(requireAuthService({ authService: service } as CompatibilityRouteOptions, reply().r)).toBe(service);
   });
 
-  it("errorMessage returns an Error's message, else the fallback", () => {
+  it("errorMessage preserves Error and string messages", () => {
     expect(errorMessage(new Error("boom"), "fb")).toBe("boom");
-    expect(errorMessage("not an error", "fb")).toBe("fb");
+    expect(errorMessage("not an error", "fb")).toBe("not an error");
   });
 });

@@ -7,6 +7,7 @@ import { LocalDirNotesProvider, type Task } from "@muse/domain-tools";
 import { readPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import type { CalendarEvent } from "@muse/calendar";
 import { isLocalOnlyEnabled, type ModelProvider } from "@muse/model";
+import { NOTES_INDEX_SCHEMA_VERSION } from "@muse/recall";
 import type { MuseToolContext } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -132,7 +133,7 @@ describe("buildMcpServeTools", () => {
         builtAtIso: "2000-01-01T00:00:00.000Z",
         files: [],
         model: "nomic-embed-text-v2-moe",
-        version: 1
+        version: NOTES_INDEX_SCHEMA_VERSION
       });
       writeFileSync(indexPath, priorBytes, "utf8");
       let resolverCalls = 0;
@@ -542,7 +543,7 @@ describe("resolveMcpServeDependencies — local bootstrap posture", () => {
             builtAtIso: "2000-01-01T00:00:00.000Z",
             files: [],
             model: "nomic-embed-text-v2-moe",
-            version: 1
+            version: NOTES_INDEX_SCHEMA_VERSION
           })
         },
         { label: "absent stale index", priorBytes: undefined }
