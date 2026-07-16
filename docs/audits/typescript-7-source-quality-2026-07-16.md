@@ -503,3 +503,12 @@ the TypeScript 7 announcement and release-notes links.
 - Added regressions for secrets in both error text and public formatter option fields.
 - Verified with `pnpm --filter @muse/cli exec vitest run src/format-cli-error.test.ts` (16 passed) and `pnpm --filter @muse/cli build`.
 - Independent runtime-contract review: PASS after final-boundary redaction was added for command and version interpolation.
+
+### CLI: import tar termination contract
+
+- Audited the encrypted bundle/import pipeline, tar invocation boundaries, archive-path behavior, and focused import tests against GNU/BSD tar guidance and Node child-process lifecycle semantics.
+- Confirmed `tar -f` consumes its archive argument directly; no speculative archive-path change was made. The concrete defect was instead that a signal-terminated child reports `close(code = null, signal)`, which list and extraction paths incorrectly accepted as success.
+- Both operations now accept only exit code zero. Signal termination rejects with the signal name, so partial archive listings and partial restores cannot be reported as completed.
+- Added focused regression coverage for signal termination in both listing and extraction stages.
+- Verified with `pnpm --filter @muse/cli exec vitest run src/commands-import.test.ts` (9 passed) and `pnpm --filter @muse/cli build`.
+- Independent runtime-contract review: PASS.

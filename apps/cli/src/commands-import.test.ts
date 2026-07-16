@@ -59,6 +59,15 @@ describe("listMuseImportEntries — UTF-8 decode across chunk boundaries (DS-17)
     expect(entries).toEqual([".muse/notes/회의록 정리.md"]);
     expect(entries[0]).not.toContain("�");
   });
+
+  it("rejects when tar is terminated by a signal instead of accepting partial output", async () => {
+    const { child, spawnFn } = makeFakeSpawn();
+    const promise = listMuseImportEntries("/tmp/bundle.tar.gz", spawnFn);
+    child.stdout.emit("data", Buffer.from(".muse/tasks.json\n", "utf8"));
+    child.emit("close", null, "SIGTERM");
+
+    await expect(promise).rejects.toThrow("tar -tzf was terminated by signal SIGTERM");
+  });
 });
 
 async function runImport(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
@@ -102,5 +111,13 @@ describe("extractMuseBundle — UTF-8 decode across chunk boundaries (DS-17)", (
     child.stderr.emit("data", full.subarray(splitAt));
     child.emit("close", 1);
     await expect(promise).rejects.toThrow("tar: 오류 발생 🚫");
+  });
+
+  it("rejects when tar is terminated by a signal instead of reporting a completed restore", async () => {
+    const { child, spawnFn } = makeFakeSpawn();
+    const promise = extractMuseBundle("/tmp/bundle.tar.gz", "/home/user", [".muse/tasks.json"], spawnFn);
+    child.emit("close", null, "SIGKILL");
+
+    await expect(promise).rejects.toThrow("tar -xzf was terminated by signal SIGKILL");
   });
 });
