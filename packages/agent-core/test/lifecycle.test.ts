@@ -262,7 +262,7 @@ describe("lifecycle recorders", () => {
     expect(run?.error).toBe("boom");
   });
 
-  it("recordRunFailure normalises non-Error throws to 'unknown error'", async () => {
+  it("recordRunFailure preserves useful string throws", async () => {
     const historyStore = new InMemoryAgentRunHistoryStore();
     await historyStore.createRun({
       id: "run-fail-2",
@@ -280,6 +280,6 @@ describe("lifecycle recorders", () => {
       historyStore
     });
 
-    expect((await historyStore.findRun("run-fail-2"))?.error).toBe("unknown error");
+    expect((await historyStore.findRun("run-fail-2"))?.error).toBe("string error");
   });
 });
