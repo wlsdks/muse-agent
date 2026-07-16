@@ -6856,11 +6856,18 @@ describe("cli program", () => {
     const { isNotesIndexValid, NOTES_INDEX_SCHEMA_VERSION, isNotesIndexStale } = await import("../src/commands-notes-rag.js");
     expect(NOTES_INDEX_SCHEMA_VERSION).toBe(2);
 
-    // Valid shape.
-    expect(isNotesIndexValid({ version: NOTES_INDEX_SCHEMA_VERSION })).toBe(true);
-    // Missing / wrong version → invalid (incl. the pre-v2 on-disk format).
+    // Valid shape. The v2 validator checks the complete persisted envelope,
+    // not only its version, so a truncated index is rebuilt fail-closed.
+    expect(isNotesIndexValid({
+      version: NOTES_INDEX_SCHEMA_VERSION,
+      model: "nomic-embed-text-v2-moe",
+      builtAtIso: "2026-07-17T00:00:00.000Z",
+      files: []
+    })).toBe(true);
+    // Missing / incomplete / wrong version → invalid (incl. pre-v2 files).
     expect(isNotesIndexValid(undefined)).toBe(false);
     expect(isNotesIndexValid({})).toBe(false);
+    expect(isNotesIndexValid({ version: NOTES_INDEX_SCHEMA_VERSION })).toBe(false);
     expect(isNotesIndexValid({ version: 0 })).toBe(false);
     expect(isNotesIndexValid({ version: 1 })).toBe(false);
     expect(isNotesIndexValid({ version: 3 })).toBe(false);
