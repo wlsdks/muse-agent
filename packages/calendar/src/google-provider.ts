@@ -1,4 +1,4 @@
-import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
+import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
 import { isRecord, parseJson, sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
@@ -85,8 +85,8 @@ export class GoogleCalendarProvider implements CalendarProvider {
       refreshToken: options.refreshToken
     };
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
-    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    this.retries = normalizeCalendarRetryCount(options.retry?.retries);
+    this.baseDelayMs = normalizeCalendarRetryDelayMs(options.retry?.baseDelayMs);
     this.sleep = options.retry?.sleep ?? sleep;
     this.timeoutMs = Number.isFinite(options.retry?.timeoutMs) ? Math.max(0, Math.trunc(options.retry!.timeoutMs!)) : 15_000;
   }
@@ -253,7 +253,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
         });
       } catch (cause) {
         if (attempt < networkRetries) {
-          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          await this.sleep(calendarBackoffMs(this.baseDelayMs, attempt));
           continue;
         }
         throw cause;
@@ -267,7 +267,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
         const retriable = isWrite ? response.status === 429 : isRetryableCalendarStatus(response.status);
         if (attempt < this.retries && retriable) {
           const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-          const backoffMs = this.baseDelayMs * 2 ** attempt;
+          const backoffMs = calendarBackoffMs(this.baseDelayMs, attempt);
           await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : backoffMs);
           continue;
         }

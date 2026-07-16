@@ -34,6 +34,34 @@ export function isRetryableCalendarStatus(status: number | undefined): boolean {
  * hour") can't freeze a calendar write. A real Google 429 is seconds.
  */
 export const CALENDAR_RETRY_AFTER_CAP_MS = 30_000;
+export const CALENDAR_MAX_RETRIES = 5;
+const DEFAULT_CALENDAR_RETRIES = 2;
+const DEFAULT_CALENDAR_RETRY_DELAY_MS = 250;
+
+/** Normalize model/config-supplied retry inputs before they reach a timer. */
+export function normalizeCalendarRetryCount(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_CALENDAR_RETRIES;
+  }
+  return Math.min(CALENDAR_MAX_RETRIES, Math.max(0, Math.trunc(value)));
+}
+
+export function normalizeCalendarRetryDelayMs(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_CALENDAR_RETRY_DELAY_MS;
+  }
+  return Math.min(CALENDAR_RETRY_AFTER_CAP_MS, Math.max(0, Math.trunc(value)));
+}
+
+/** Truncated exponential backoff that stays safe for Node timers. */
+export function calendarBackoffMs(baseDelayMs: number, attempt: number): number {
+  const normalizedBaseDelayMs = normalizeCalendarRetryDelayMs(baseDelayMs);
+  if (normalizedBaseDelayMs === 0) {
+    return 0;
+  }
+  const delay = normalizedBaseDelayMs * 2 ** Math.max(0, Math.trunc(attempt));
+  return Number.isFinite(delay) ? Math.min(delay, CALENDAR_RETRY_AFTER_CAP_MS) : CALENDAR_RETRY_AFTER_CAP_MS;
+}
 
 /**
  * Parse an HTTP `Retry-After` header into a wait in ms (RFC 7231): either

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isRetryableCalendarStatus, parseRetryAfterMs } from "../src/errors.js";
+import { calendarBackoffMs, CALENDAR_MAX_RETRIES, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "../src/errors.js";
 
 describe("parseRetryAfterMs — Retry-After header (RFC 7231)", () => {
   const NOW = Date.parse("2026-06-03T00:00:00.000Z");
@@ -39,5 +39,26 @@ describe("isRetryableCalendarStatus — only transient statuses retry", () => {
     expect(isRetryableCalendarStatus(404)).toBe(false);
     expect(isRetryableCalendarStatus(undefined)).toBe(false);
     expect(isRetryableCalendarStatus(Number.NaN)).toBe(false);
+  });
+});
+
+describe("calendar retry normalization", () => {
+  it("bounds retry counts and uses the default for non-finite input", () => {
+    expect(normalizeCalendarRetryCount(undefined)).toBe(2);
+    expect(normalizeCalendarRetryCount(Number.POSITIVE_INFINITY)).toBe(2);
+    expect(normalizeCalendarRetryCount(-4.5)).toBe(0);
+    expect(normalizeCalendarRetryCount(2.9)).toBe(2);
+    expect(normalizeCalendarRetryCount(99)).toBe(CALENDAR_MAX_RETRIES);
+  });
+
+  it("uses truncated exponential backoff without exceeding the timer-safe cap", () => {
+    expect(normalizeCalendarRetryDelayMs(undefined)).toBe(250);
+    expect(normalizeCalendarRetryDelayMs(Number.POSITIVE_INFINITY)).toBe(250);
+    expect(normalizeCalendarRetryDelayMs(-1)).toBe(0);
+    expect(normalizeCalendarRetryDelayMs(99_999)).toBe(CALENDAR_RETRY_AFTER_CAP_MS);
+    expect(calendarBackoffMs(250, 0)).toBe(250);
+    expect(calendarBackoffMs(-1, 0)).toBe(0);
+    expect(calendarBackoffMs(250, 99)).toBe(CALENDAR_RETRY_AFTER_CAP_MS);
+    expect(calendarBackoffMs(0, 99)).toBe(0);
   });
 });

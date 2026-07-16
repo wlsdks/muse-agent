@@ -81,6 +81,20 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
     expect(fetch.apiCalls()).toHaveLength(2); // one retry (token mint shared)
   });
 
+  it("caps an excessive configured retry delay before scheduling the next GET", async () => {
+    const slept: number[] = [];
+    const fetch = makeFetch((attempt) => (attempt < 3 ? new Response("busy", { status: 503 }) : new Response(JSON.stringify(ITEMS), { status: 200 })));
+    await new GoogleCalendarProvider({
+      clientId: "c",
+      clientSecret: "s",
+      fetchImpl: fetch.impl,
+      refreshToken: "r",
+      retry: { baseDelayMs: Number.MAX_VALUE, retries: 1, sleep: async (ms) => { slept.push(ms); } }
+    }).listEvents(RANGE);
+
+    expect(slept).toEqual([30_000]);
+  });
+
   it("turns a 2xx with a NON-JSON body (HTML maintenance / proxy page) into a typed MALFORMED_RESPONSE, not an opaque SyntaxError", async () => {
     const fetch = makeFetch(() => new Response("<html><body>503 Service Unavailable</body></html>", { status: 200 }));
     await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });

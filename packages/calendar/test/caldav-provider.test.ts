@@ -67,6 +67,21 @@ describe("CalDAVCalendarProvider — listEvents (REPORT)", () => {
     expect(fetch.calls).toHaveLength(2); // one retry
   });
 
+  it("caps an excessive configured retry delay before scheduling the next REPORT", async () => {
+    const slept: number[] = [];
+    const fetch = recordingFetch((attempt) => (attempt < 2 ? new Response("busy", { status: 503 }) : ok(multistatus(vevent))));
+    const provider = new CalDAVCalendarProvider({
+      fetchImpl: fetch.impl,
+      password: "p",
+      retry: { baseDelayMs: Number.MAX_VALUE, retries: 1, sleep: async (ms) => { slept.push(ms); } },
+      url: "https://dav.test/cal/",
+      username: "u"
+    });
+
+    await expect(provider.listEvents(RANGE)).resolves.toHaveLength(1);
+    expect(slept).toEqual([30_000]);
+  });
+
   it("does NOT retry a non-retryable 403 and throws HTTP_403 carrying the status", async () => {
     const fetch = recordingFetch(() => new Response("denied", { status: 403 }));
     const provider = new CalDAVCalendarProvider({

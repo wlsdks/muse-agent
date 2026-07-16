@@ -485,3 +485,12 @@ the TypeScript 7 announcement and release-notes links.
 - Normal localhost and SSH/Docker port-forwarded local endpoints remain supported.
 - Verified with `pnpm --filter @muse/mcp exec vitest run test/chrome-devtools-mcp.test.ts` (14 passed) and `pnpm --filter @muse/mcp build`.
 - Independent runtime-contract review: PASS after query/fragment credential coverage was added.
+
+### Calendar: bounded provider retry contract
+
+- Audited Google and CalDAV provider retry paths, injected delay tests, `Retry-After` parsing, and Node timer behavior against current Google Calendar truncated-backoff guidance.
+- Fixed a shared retry configuration defect: unbounded retry counts and exponential delays could exceed Node's timer range, where an oversized delay is coerced to an immediate retry.
+- Centralized calendar-owned normalization for retry count, base delay, and truncated exponential backoff. Both providers now share a maximum of five extra attempts and a 30-second delay cap, matching the existing `Retry-After` ceiling.
+- The helper normalizes its own direct inputs too, so negative, non-finite, and oversized values cannot bypass its timer-safe contract.
+- Verified with `pnpm --filter @muse/calendar exec vitest run test/errors.test.ts test/google-provider.test.ts test/caldav-provider.test.ts` (42 passed) and `pnpm --filter @muse/calendar build`.
+- Independent runtime-contract review: PASS after helper self-normalization coverage was added.
