@@ -130,11 +130,30 @@ function normalizeFeedEntry(entry: FeedEntry): FeedEntry {
   return rest as FeedEntry;
 }
 
+async function writeFeedsStoreUnlocked(file: string, store: FeedsStore): Promise<void> {
+  await fs.mkdir(dirname(file), { recursive: true });
+  await atomicWriteFile(file, `${JSON.stringify(store, null, 2)}\n`);
+  await fs.chmod(file, 0o600).catch(() => undefined);
+}
+
 export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
-  await withFileMutationQueue(file, () => withFileLock(file, async () => {
-    await fs.mkdir(dirname(file), { recursive: true });
-    await atomicWriteFile(file, `${JSON.stringify(store, null, 2)}\n`);
-    await fs.chmod(file, 0o600).catch(() => undefined);
+  await withFileMutationQueue(file, () => withFileLock(file, () => writeFeedsStoreUnlocked(file, store)));
+}
+
+/**
+ * Applies a read-modify-write update while holding the same process and
+ * cross-process lock as direct writes. Callers should prepare slow external
+ * work before invoking this function, then merge only the resulting delta into
+ * the latest persisted snapshot inside `mutate`.
+ */
+export async function mutateFeedsStore(
+  file: string,
+  mutate: (store: FeedsStore) => FeedsStore | Promise<FeedsStore>
+): Promise<FeedsStore> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const next = await mutate(await readFeedsStore(file));
+    await writeFeedsStoreUnlocked(file, next);
+    return next;
   }));
 }
 

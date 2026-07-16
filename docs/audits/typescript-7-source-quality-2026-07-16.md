@@ -75,3 +75,9 @@ the TypeScript 7 announcement and release-notes links.
 - Re-audit changed seams after all package and application entries exist.
 - Perform independent final review and the final requirement-by-requirement
   completion audit before closing the program.
+
+## Feed persistence concurrency (2026-07-16)
+
+- Confirmed against Node fs guidance and established Node persistence libraries: atomic replacement prevents partial-file corruption but does not make a stale read-modify-write operation safe.
+- `@muse/recall` now exposes `mutateFeedsStore`: callers prepare network/model work outside the lock, then apply a narrow delta to the latest locked snapshot. CLI refresh preserves concurrent additions/removals and merges concurrent successful feed archives.
+- Verified with focused `@muse/recall` store and `@muse/cli` command race tests plus their package builds.

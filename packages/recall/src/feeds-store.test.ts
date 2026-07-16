@@ -13,6 +13,7 @@ import {
   feedDocEmbedText,
   feedQueryEmbedText,
   mergeFeedEntries,
+  mutateFeedsStore,
   parseFeedBody,
   readFeedsStore,
   writeFeedsStore,
@@ -269,6 +270,37 @@ describe("readFeedsStore — version-mismatch backup (DS-20: a schema bump must 
     const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("EACCES: permission denied"));
     await expect(readFeedsStore(file)).resolves.toEqual({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] });
     expect(renameSpy).toHaveBeenCalled();
+  });
+});
+
+describe("mutateFeedsStore — latest-snapshot commit", () => {
+  it("serializes competing read-modify-write callbacks so neither feed is lost", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-feeds-mutate-test-"));
+    const file = join(dir, "feeds.json");
+    const firstEntered = Promise.withResolvers<void>();
+    const releaseFirst = Promise.withResolvers<void>();
+    try {
+      await writeFeedsStore(file, { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] });
+      const first = mutateFeedsStore(file, async (store) => {
+        firstEntered.resolve();
+        await releaseFirst.promise;
+        return {
+          version: store.version,
+          feeds: [...store.feeds, { id: "first", url: "https://first/rss", name: "First", entries: [] }]
+        };
+      });
+      await firstEntered.promise;
+      const second = mutateFeedsStore(file, (store) => ({
+        version: store.version,
+        feeds: [...store.feeds, { id: "second", url: "https://second/rss", name: "Second", entries: [] }]
+      }));
+      releaseFirst.resolve();
+      await Promise.all([first, second]);
+
+      expect((await readFeedsStore(file)).feeds.map((feed) => feed.id)).toEqual(["first", "second"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

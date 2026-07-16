@@ -32,12 +32,11 @@ import {
   embedFeedEntries,
   filterRecentFeedEntries,
   mergeFeedEntries,
+  mutateFeedsStore,
   parseFeedBody,
   readFeedsStore,
-  writeFeedsStore,
   type FeedEntry,
   type FeedRecord,
-  type FeedsStore
 } from "./feeds-store.js";
 import type { ProgramIO } from "./program.js";
 
@@ -311,6 +310,28 @@ async function refreshSingleFeed(
   }
 }
 
+/**
+ * Commits a completed refresh against the latest record, rather than the
+ * snapshot used for its network request. A concurrent remove or URL edit wins;
+ * concurrent refreshes union their archived entries and keep the newest fetch
+ * receipt.
+ */
+function mergeCompletedRefresh(latest: FeedRecord, completed: FeedRecord): FeedRecord {
+  if (latest.url !== completed.url) {
+    return latest;
+  }
+  const latestFetched = latest.lastFetchedAt === undefined ? Number.NEGATIVE_INFINITY : Date.parse(latest.lastFetchedAt);
+  const completedFetched = completed.lastFetchedAt === undefined ? Number.NEGATIVE_INFINITY : Date.parse(completed.lastFetchedAt);
+  const lastFetchedAt = Number.isFinite(completedFetched) && completedFetched > latestFetched
+    ? completed.lastFetchedAt
+    : latest.lastFetchedAt;
+  return {
+    ...latest,
+    ...(lastFetchedAt === undefined ? {} : { lastFetchedAt }),
+    entries: mergeFeedEntries(latest.entries, completed.entries)
+  };
+}
+
 export function registerFeedsCommand(program: Command, io: ProgramIO): void {
   const feeds = program.command("feeds").description("RSS/Atom feed ingest for ambient world-state");
 
@@ -357,14 +378,25 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const next: FeedsStore = {
-        version: store.version,
-        feeds: [
-          ...store.feeds,
-          { id, url: trimmedUrl, name: options.name ?? id, lastFetchedAt: new Date().toISOString(), entries }
-        ]
-      };
-      await writeFeedsStore(file, next);
+      let added = false;
+      await mutateFeedsStore(file, (latest) => {
+        if (latest.feeds.some((feed) => feed.id === id)) {
+          return latest;
+        }
+        added = true;
+        return {
+          version: latest.version,
+          feeds: [
+            ...latest.feeds,
+            { id, url: trimmedUrl, name: options.name ?? id, lastFetchedAt: new Date().toISOString(), entries }
+          ]
+        };
+      });
+      if (!added) {
+        io.stderr(`muse feeds add: id '${id}' already exists. Pass --id <new-alias> or remove the existing entry.\n`);
+        process.exitCode = 1;
+        return;
+      }
       io.stdout(`Added feed ${id} (${entries.length.toString()} entry/entries) — ${url}\n`);
     });
 
@@ -408,9 +440,18 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const next = { version: store.version, feeds: store.feeds.filter((f) => f.id !== trimmed) };
-      await writeFeedsStore(file, next);
-      io.stdout(`Removed feed '${trimmed}'\n`);
+      let removed = false;
+      await mutateFeedsStore(file, (latest) => {
+        const feeds = latest.feeds.filter((feed) => feed.id !== trimmed);
+        removed = feeds.length !== latest.feeds.length;
+        return removed ? { version: latest.version, feeds } : latest;
+      });
+      if (removed) {
+        io.stdout(`Removed feed '${trimmed}'\n`);
+      } else {
+        io.stderr(`muse feeds remove: feed '${trimmed}' changed before removal; run \`muse feeds list\` and retry.\n`);
+        process.exitCode = 1;
+      }
     });
 
   feeds
@@ -442,16 +483,14 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         io.stdout("(no feeds to refresh)\n");
         return;
       }
-      const refreshed: FeedRecord[] = [];
+      const completed = new Map<string, FeedRecord>();
       let succeeded = 0;
       const embedFn = feedTitleEmbedder();
-      for (const feed of store.feeds) {
-        if (targets.includes(feed)) {
-          const result = await refreshSingleFeed(feed, io, embedFn);
-          refreshed.push(result.record);
-          if (result.ok) succeeded += 1;
-        } else {
-          refreshed.push(feed);
+      for (const feed of targets) {
+        const result = await refreshSingleFeed(feed, io, embedFn);
+        if (result.ok) {
+          completed.set(feed.id, result.record);
+          succeeded += 1;
         }
       }
       // A total refresh failure leaves every record exactly as it was. Do not
@@ -460,7 +499,13 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
       // Partial success still persists the successful records and carries the
       // failed records through unchanged.
       if (succeeded > 0) {
-        await writeFeedsStore(file, { version: store.version, feeds: refreshed });
+        await mutateFeedsStore(file, (latest) => ({
+          version: latest.version,
+          feeds: latest.feeds.map((feed) => {
+            const refreshed = completed.get(feed.id);
+            return refreshed ? mergeCompletedRefresh(feed, refreshed) : feed;
+          })
+        }));
       }
       // Report the count actually re-fetched, not the count attempted — a
       // fail-soft refresh where every feed is down (404 / timeout) must not
