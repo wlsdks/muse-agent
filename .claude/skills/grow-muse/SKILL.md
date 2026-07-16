@@ -13,8 +13,10 @@ Every slice MUST carry a one-sentence **user story** — "진안 asks X / lives
 situation X, and Muse now does Y." No user story ⇒ filler, drop the item.
 
 **Boundary (one item, one owner):** MISSING capability → here.
-Working-but-poor UX of an existing surface → here (it changes what the user
-can do/feel). BROKEN / debt → improve-muse; hardening debt found mid-build
+Working-but-poor UX of an existing surface → here (usable and correct, just
+clunky — slow flows, confusing labels). BROKEN — including failing its
+function without erroring (unreadable, dead affordance, wrong output) →
+improve-muse; hardening debt found mid-build
 gets one ◦ line tagged `→improve-muse`, never absorbed into the slice.
 A loop calling only this skill grows forever — pair with improve-muse.
 

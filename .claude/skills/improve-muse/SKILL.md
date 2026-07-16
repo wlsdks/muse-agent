@@ -9,9 +9,12 @@ One invocation = one hardening slice, end-to-end: find the most valuable
 problem in what Muse ALREADY IS → fix/harden/delete → verify → commit AND
 push. Sibling `grow-muse` builds what doesn't exist yet.
 
-**Boundary (one item, one owner):** BROKEN / debt / dead weight → here.
-MISSING capability → grow-muse. Working-but-poor UX of an existing surface →
-grow-muse. Cross-finds get one ◦ line tagged `→grow-muse`, never built here.
+**Boundary (one item, one owner):** BROKEN / debt / dead weight → here —
+and broken includes failing its function for the user WITHOUT erroring
+(unreadable text, dead affordance, wrong or misleading output). MISSING
+capability → grow-muse. Working-but-poor (usable and correct, just clunky —
+slow flows, confusing labels) → grow-muse. Cross-finds get one ◦ line tagged
+`→grow-muse`, never built here.
 A loop calling only this skill hardens forever — pair it with a grow-muse
 loop to move both axes.
 
