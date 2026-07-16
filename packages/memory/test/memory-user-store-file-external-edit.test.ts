@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +23,7 @@ async function newStore(env?: NodeJS.ProcessEnv) {
 }
 
 async function findBackupFile(dir: string, file: string): Promise<string | undefined> {
-  const base = file.split("/").pop() as string;
+  const base = basename(file);
   const names = await readdir(dir);
   return names.find((name) => name.startsWith(`${base}.bak.`));
 }

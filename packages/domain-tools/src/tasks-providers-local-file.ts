@@ -216,12 +216,3 @@ function normalizeListLimit(value: number | undefined): number {
   }
   return Math.max(1, Math.trunc(resolved));
 }
-
-function isPersistedTask(value: unknown): value is PersistedTask {
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as PersistedTask).id === "string"
-    && typeof (value as PersistedTask).title === "string"
-    && typeof (value as PersistedTask).createdAt === "string"
-    && ((value as PersistedTask).status === "open" || (value as PersistedTask).status === "done");
-}

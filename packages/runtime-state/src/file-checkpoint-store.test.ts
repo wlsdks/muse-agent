@@ -369,7 +369,11 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
           first.save({ runId: "run-a", state: state("a"), step: 1 }),
           second.save({ runId: "run-b", state: state("b"), step: 1 })
         ]),
-        sleep(250).then(() => { throw new Error("concurrent retention save timed out"); })
+        // Windows CI performs the same fsync/rename work much more slowly under
+        // the full workspace fan-out. Five seconds still catches a real lock
+        // inversion far before the production lock's 30s give-up window, while
+        // measuring the invariant (both saves complete), not runner speed.
+        sleep(5_000).then(() => { throw new Error("concurrent retention save timed out"); })
       ])).resolves.toBeDefined();
     } finally {
       rmSync(dir, { force: true, recursive: true });

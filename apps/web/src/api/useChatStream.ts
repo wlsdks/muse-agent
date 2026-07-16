@@ -389,13 +389,12 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         });
       } finally {
-        if (!requestLifecycle.finish(request)) {
-          return;
+        if (requestLifecycle.finish(request)) {
+          setActiveTool("");
+          setThinking(false);
+          setPending(false);
+          draftRef.current = null;
         }
-        setActiveTool("");
-        setThinking(false);
-        setPending(false);
-        draftRef.current = null;
       }
     },
     [baseUrl, conversationId, pending, requestLifecycle, token]

@@ -263,7 +263,6 @@ describe("ToolExecutor", () => {
   it("publishes an idempotency key before a synchronous tool can re-enter the executor", async () => {
     let executions = 0;
     let nestedExecution: Promise<unknown> | undefined;
-    let executor: ToolExecutor;
     const tool: MuseTool = {
       definition: {
         description: "Create a record.",
@@ -284,7 +283,7 @@ describe("ToolExecutor", () => {
         return "created:1";
       }
     };
-    executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
 
     const first = await executor.execute({
       arguments: { idempotencyKey: "key-1" },
@@ -1094,7 +1093,7 @@ describe.skipIf(process.platform === "win32")("invokeRustRunner — runner outpu
     expect(result).toMatchObject({ ok: false, status: null, stderr: "", stdout: "", timedOut: false, truncated: false });
   });
 
-  it.each([-1, 1.5, 2_147_483_648, 1e400])("coerces invalid numeric runner status %p to null", async (status) => {
+  it.each([-1, 1.5, 2_147_483_648, Number.POSITIVE_INFINITY])("coerces invalid numeric runner status %p to null", async (status) => {
     const result = await invokeRustRunner(await fakeRunner(JSON.stringify({ ok: false, status })), { command: "x" });
 
     expect(result.status).toBeNull();

@@ -37,7 +37,6 @@ import { TasksProviderError,
   type TasksProviderInfo
 } from "./tasks-providers.js";
 import {
-  NOTION_DEFAULT_ENDPOINT,
   NOTION_DEFAULT_TITLE_PROPERTY,
   NOTION_DEFAULT_VERSION,
   NOTION_LIST_MAX_PAGES,

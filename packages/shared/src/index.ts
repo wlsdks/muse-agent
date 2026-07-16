@@ -6,7 +6,7 @@ import { isRecord } from "./json-utils.js";
 import { redactSecrets } from "./secret-redaction.js";
 import { SECRET_PATTERNS } from "./secret-patterns.js";
 
-import type { JsonObject, JsonValue } from "./json-utils.js";
+import type { JsonValue } from "./json-utils.js";
 
 export {
   clearSecretRegistryForTests,
@@ -180,19 +180,6 @@ export function redactSecretsInText(value: string): string {
   return redactSecrets(scrubbed);
 }
 
-function asMessageFromValue(cause: unknown): string | undefined {
-  // No bare-string passthrough: the documented contract is Error-ish →
-  // its message, anything else → the caller's fallback (a thrown string
-  // still surfaces via errorMessage's String(cause) tail when no
-  // fallback is given). Passing strings through here silently defeated
-  // every caller's curated fallback text.
-  if (cause !== null && typeof cause === "object" && "message" in cause) {
-    const message = (cause as { message?: unknown }).message;
-    return typeof message === "string" ? message : undefined;
-  }
-
-  return undefined;
-}
 /**
  * One-stop sanitizer for printing an unknown error to a terminal.
  * Extracts the message (Error instance or String fallback), strips
