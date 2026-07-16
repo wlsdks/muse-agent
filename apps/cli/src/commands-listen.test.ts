@@ -7,7 +7,7 @@ import { Command } from "commander";
 
 import { describe, expect, it } from "vitest";
 
-import { registerListenCommand, safeTranscribe, type ListenHelpers } from "./commands-listen.js";
+import { captureWavForSeconds, registerListenCommand, safeTranscribe, type ListenHelpers } from "./commands-listen.js";
 
 function stt(impl: () => Promise<{ text: string }>): SpeechToTextProvider {
   return {
@@ -50,6 +50,28 @@ describe("safeTranscribe (wake-loop STT resilience)", () => {
   });
 });
 
+describe("captureWavForSeconds", () => {
+  it("returns captured audio after its own SIGTERM stop request", async () => {
+    const wav = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);
+    const rec = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      kill: (signal?: string) => boolean;
+    };
+    rec.stdout = new EventEmitter();
+    rec.kill = (signal) => {
+      expect(signal).toBe("SIGTERM");
+      rec.stdout.emit("data", wav);
+      rec.emit("close", null, "SIGTERM");
+      return true;
+    };
+    const shells = {
+      spawnRec: () => rec as unknown as ChildProcess
+    } as unknown as ListenHelpers["shells"];
+
+    await expect(captureWavForSeconds(shells!, 0)).resolves.toEqual(wav);
+  });
+});
+
 describe("muse listen — full mic→STT→agent→TTS round-trip", () => {
   it("captured audio is transcribed, sent to the agent, the reply is synthesised and played", async () => {
     const WAV = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3]);
@@ -63,7 +85,8 @@ describe("muse listen — full mic→STT→agent→TTS round-trip", () => {
       rec.stdout = new EventEmitter();
       rec.kill = () => {
         rec.stdout.emit("data", WAV);
-        rec.emit("close");
+        rec.emit("close", null, "SIGTERM");
+        return true;
       };
       return rec;
     }
@@ -136,7 +159,11 @@ describe("muse listen (push-to-talk) — a failed transcribe ends cleanly, not a
     function fakeRec(): ChildProcess {
       const rec = new EventEmitter() as EventEmitter & { stdout: EventEmitter; kill: (s?: string) => void };
       rec.stdout = new EventEmitter();
-      rec.kill = () => { rec.stdout.emit("data", WAV); rec.emit("close"); };
+      rec.kill = () => {
+        rec.stdout.emit("data", WAV);
+        rec.emit("close", null, "SIGTERM");
+        return true;
+      };
       return rec as unknown as ChildProcess;
     }
 
@@ -197,7 +224,7 @@ describe("muse listen --wake — a transient STT failure on the follow-up prompt
       rec.kill = () => {};
       // Self-close on next tick so captureWavForSeconds resolves
       // without waiting on its real per-clip timer.
-      setImmediate(() => { rec.stdout.emit("data", WAV); rec.emit("close"); });
+      setImmediate(() => { rec.stdout.emit("data", WAV); rec.emit("close", 0, null); });
       return rec as unknown as ChildProcess;
     }
 
@@ -262,7 +289,7 @@ describe("muse listen --wake — the core wake-word contract", () => {
     const rec = new EventEmitter() as EventEmitter & { stdout: EventEmitter; kill: (s?: string) => void };
     rec.stdout = new EventEmitter();
     rec.kill = () => {};
-    setImmediate(() => { rec.stdout.emit("data", WAV); rec.emit("close"); });
+    setImmediate(() => { rec.stdout.emit("data", WAV); rec.emit("close", 0, null); });
     return rec as unknown as ChildProcess;
   }
   const ttsProvider = {

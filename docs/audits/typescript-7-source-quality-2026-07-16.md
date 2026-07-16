@@ -512,3 +512,12 @@ the TypeScript 7 announcement and release-notes links.
 - Added focused regression coverage for signal termination in both listing and extraction stages.
 - Verified with `pnpm --filter @muse/cli exec vitest run src/commands-import.test.ts` (9 passed) and `pnpm --filter @muse/cli build`.
 - Independent runtime-contract review: PASS.
+
+### CLI: child-process signal completion contract
+
+- Audited the shared child-process result helper and its CLI callers, including import, voice recording/playback, brief playback, AppleScript, background state, and external-open paths, against Node's documented `close(code, signal)` contract.
+- Fixed a cross-cutting false-success defect: signal termination previously coerced `code: null` to zero in the shared helper. Only a literal zero exit now succeeds by default; nonzero exits retain their stderr diagnostics and signals retain their names.
+- Added a narrowly-scoped caller opt-in for an intentionally requested signal. Push-to-talk and timed `rec` capture accept `SIGTERM` only after their own `child.kill("SIGTERM")` succeeds; unexpected signals, spawn failures, and nonzero exits remain failures.
+- Added direct helper coverage for default rejection and explicitly approved signals, plus an end-to-end timed capture regression returning WAV data after the controlled stop.
+- Verified with `pnpm --filter @muse/cli exec vitest run src/async-promises.test.ts src/commands-listen.test.ts src/commands-brief.test.ts src/voice-playback.test.ts src/commands-glance.test.ts` (67 passed) and `pnpm --filter @muse/cli build`.
+- Independent runtime-contract review: PASS after listener-owned stop handling was added.
