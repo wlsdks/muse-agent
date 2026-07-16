@@ -265,3 +265,9 @@ the TypeScript 7 announcement and release-notes links.
 - Compared API tick bootstrap numeric parsing with the tick implementations. Each interval-owning daemon already rejects non-finite input and clamps its own documented range, so broad `optionalNumber` extraction would add no safety and blur differing option semantics.
 - Hardened `MUSE_PARENT_PID`: only a positive, safe decimal process ID now starts the parent watcher. Exponent notation, fractional/whitespace forms, and unsafe integers are ignored rather than reaching `process.kill(pid, 0)` and causing a spurious API self-exit.
 - Focused parent-watch tests: 10 passed. `pnpm --filter @muse/api build`: passed. Independent review: pending.
+
+### 2026-07-16 - CLI session recovery marker
+
+- Inspected CLI SIGINT cancellation, REPL session lifecycle, and the persisted crash marker. Scoped SIGINT listeners already clean up in `finally` and thread cancellation into the long-running streaming callers; no evidence-backed edit was needed there.
+- Hardened the shared session crash-marker reader: only a positive safe-integer PID and a parseable start timestamp count as recoverable prior-session evidence. Malformed marker JSON fields now fail closed instead of producing a misleading crash notice.
+- Focused session-marker tests: 9 passed. `pnpm --filter @muse/stores build`: passed. Independent review: pending.
