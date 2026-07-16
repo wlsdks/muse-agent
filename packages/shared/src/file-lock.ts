@@ -21,6 +21,13 @@ const LOCK_GIVE_UP_MS = LOCK_STALE_MS;
 const LOCK_RETRY_BASE_MS = 25;
 const LOCK_RETRY_CAP_MS = 250;
 
+export interface FileLockOptions {
+  /** Age at which a lock from a crashed process may be safely stolen. */
+  readonly staleMs?: number;
+  /** Maximum time to wait for a live lock before failing closed. */
+  readonly giveUpMs?: number;
+}
+
 /** Decorrelated-jitter exponential backoff for a contended cross-process lock. */
 export function computeLockRetryDelay(attempt: number): number {
   const exponential = Math.min(LOCK_RETRY_CAP_MS, LOCK_RETRY_BASE_MS * 2 ** attempt);
@@ -29,9 +36,17 @@ export function computeLockRetryDelay(attempt: number): number {
 
 type LockProbe = "live" | "stale" | "vanished";
 
-async function probeLock(lockPath: string): Promise<LockProbe> {
+function resolveLockDuration(value: number | undefined, fallback: number, name: string): number {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive finite number`);
+  }
+  return value;
+}
+
+async function probeLock(lockPath: string, staleMs: number): Promise<LockProbe> {
   try {
-    return Date.now() - (await fs.stat(lockPath)).mtimeMs > LOCK_STALE_MS ? "stale" : "live";
+    return Date.now() - (await fs.stat(lockPath)).mtimeMs > staleMs ? "stale" : "live";
   } catch (cause) {
     return (cause as NodeJS.ErrnoException).code === "ENOENT" ? "vanished" : "live";
   }
@@ -50,11 +65,13 @@ async function lockHoldsNonce(lockPath: string, nonce: string): Promise<boolean>
  * safely stolen, and nonce ownership prevents a former holder from deleting a
  * newer holder's lock. Readers remain lock-free when writers use atomic rename.
  */
-export async function withFileLock<T>(file: string, operation: () => Promise<T>): Promise<T> {
+export async function withFileLock<T>(file: string, operation: () => Promise<T>, options: FileLockOptions = {}): Promise<T> {
   await fs.mkdir(dirname(file), { recursive: true });
   const lockPath = `${file}.lock`;
   const nonce = `${process.pid.toString()}-${randomUUID()}`;
   const startedAt = Date.now();
+  const staleMs = resolveLockDuration(options.staleMs, LOCK_STALE_MS, "staleMs");
+  const giveUpMs = resolveLockDuration(options.giveUpMs, LOCK_GIVE_UP_MS, "giveUpMs");
   let acquired = false;
   for (let attempt = 0; !acquired; attempt += 1) {
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
@@ -68,13 +85,13 @@ export async function withFileLock<T>(file: string, operation: () => Promise<T>)
       if (!isErrorLike(cause) || !contended) {
         throw cause;
       }
-      const probe = await probeLock(lockPath);
+      const probe = await probeLock(lockPath, staleMs);
       if (probe === "vanished") continue;
       if (probe === "stale") {
         await fs.unlink(lockPath).catch(() => undefined);
         continue;
       }
-      if (Date.now() - startedAt >= LOCK_GIVE_UP_MS) {
+      if (Date.now() - startedAt >= giveUpMs) {
         throw new Error(`${file} is locked by another write in progress — retry shortly`, { cause });
       }
       await sleep(computeLockRetryDelay(attempt));

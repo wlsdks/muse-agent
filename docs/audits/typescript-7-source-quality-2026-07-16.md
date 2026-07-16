@@ -87,3 +87,9 @@ the TypeScript 7 announcement and release-notes links.
 - Audited the disk-backed runtime checkpoint store: per-run save/delete already shared a cross-process lock, but retention pruning could delete a different run without respecting that run's active lock.
 - Pruning now acquires the candidate run's mutation queue and lock, re-evaluates recency after waiting, and never queues behind the save currently invoking retention.
 - Focused verification: `pnpm --filter @muse/runtime-state exec vitest run src/file-checkpoint-store.test.ts` (13 passed) and `pnpm --filter @muse/runtime-state build`.
+
+## Shared lock ownership and user-memory convergence (2026-07-16)
+
+- Compared the duplicated user-memory lock to the shared lock implementation. The duplicated unlock could remove a successor lock after stale-lock takeover; the shared nonce check prevents that ownership race.
+- Added validated per-call stale and live-lock wait options to the shared lock. FileUserMemoryStore now uses the shared mutation queue and nonce-aware lock while retaining its prior 3-second fail-closed wait policy.
+- Focused verification: `@muse/shared` file-lock tests (2 passed) and build; `@muse/memory` user-memory file, lock, and external-edit tests (53 passed) and build.
