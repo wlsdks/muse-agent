@@ -74,4 +74,61 @@ describe("fetchWithRetry beforeAttempt boundary", () => {
     expect(fetches).toBe(0);
     expect(sleeps).toBe(0);
   });
+
+  it("never issues a request for a pre-cancelled caller", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled by caller");
+    controller.abort(cancellation);
+    let calls = 0;
+
+    await expect(fetchWithRetry(
+      (async () => {
+        calls += 1;
+        return new Response("unexpected");
+      }) as typeof globalThis.fetch,
+      "https://example.test/cancelled-before-request",
+      { init: { signal: controller.signal }, retries: 2 }
+    )).rejects.toBe(cancellation);
+
+    expect(calls).toBe(0);
+  });
+
+  it("stops during retry backoff when the caller cancels", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled during backoff");
+    let calls = 0;
+
+    await expect(fetchWithRetry(
+      (async () => {
+        calls += 1;
+        return new Response("busy", { status: 503 });
+      }) as typeof globalThis.fetch,
+      "https://example.test/cancelled-during-backoff",
+      {
+        init: { signal: controller.signal },
+        retries: 2,
+        sleep: async () => {
+          controller.abort(cancellation);
+          await new Promise<void>(() => {});
+        }
+      }
+    )).rejects.toBe(cancellation);
+
+    expect(calls).toBe(1);
+  });
+
+  it("caps an excessive retry count at the documented request budget", async () => {
+    let calls = 0;
+    const response = await fetchWithRetry(
+      (async () => {
+        calls += 1;
+        return new Response("busy", { status: 503 });
+      }) as typeof globalThis.fetch,
+      "https://example.test/retry-budget",
+      { retries: 1_000, sleep: async () => {} }
+    );
+
+    expect(response.status).toBe(503);
+    expect(calls).toBe(11);
+  });
 });

@@ -1,5 +1,14 @@
 import { sleep } from "@muse/shared";
 
+const DEFAULT_RETRIES = 2;
+const DEFAULT_BASE_DELAY_MS = 250;
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_RETRY_AFTER_MS = 30_000;
+// Node timers support signed 32-bit millisecond delays. Larger values can
+// overflow and fire immediately, which defeats a retry or request timeout.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const MAX_RETRIES = 10;
+
 /**
  * Shared HTTP retry-with-backoff for read-only / idempotent actuator
  * fetches (weather lookups, inbox reads). State-changing sends must
@@ -101,11 +110,11 @@ export async function fetchWithRetry(
   url: string,
   options: RetryOptions = {}
 ): Promise<Response> {
-  const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
-  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
+  const retries = normalizeRetryCount(options.retries);
+  const baseDelayMs = normalizeTimerDelay(options.baseDelayMs, DEFAULT_BASE_DELAY_MS);
   const delay = options.sleep ?? sleep;
-  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(0, options.timeoutMs as number) : 15_000;
-  const maxRetryAfterMs = Number.isFinite(options.maxRetryAfterMs) ? Math.max(0, options.maxRetryAfterMs as number) : 30_000;
+  const timeoutMs = normalizeTimerDelay(options.timeoutMs, DEFAULT_TIMEOUT_MS);
+  const maxRetryAfterMs = normalizeTimerDelay(options.maxRetryAfterMs, DEFAULT_MAX_RETRY_AFTER_MS);
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -116,6 +125,9 @@ export async function fetchWithRetry(
 
     let retryAfterMs: number | undefined;
     const externalSignal = options.init?.signal ?? undefined;
+    // Treat cancellation as terminal before issuing a request. In particular,
+    // do not let a pre-aborted caller signal become a retryable fetch failure.
+    externalSignal?.throwIfAborted();
     const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
     const signal = externalSignal && timeoutSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : (externalSignal ?? timeoutSignal);
     const requestInit = signal ? { ...(options.init ?? {}), signal } : options.init;
@@ -129,12 +141,56 @@ export async function fetchWithRetry(
       }
     } catch (cause) {
       lastError = cause;
-      if (options.retryOnNetworkError === false || attempt === retries) {
+      // A caller-owned abort is an intentional stop, not a transient network
+      // failure. Retrying it can resurrect a cancelled agent turn.
+      if (externalSignal?.aborted || options.retryOnNetworkError === false || attempt === retries) {
         throw cause;
       }
     }
     const backoffMs = baseDelayMs * 2 ** attempt;
-    await delay(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : backoffMs);
+    await waitForRetry(delay, retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : backoffMs, externalSignal);
   }
   throw lastError ?? new Error("fetchWithRetry: retries exhausted");
+}
+
+function normalizeRetryCount(value: number | undefined): number {
+  if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+    return DEFAULT_RETRIES;
+  }
+  return Math.min(value, MAX_RETRIES);
+}
+
+function normalizeTimerDelay(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+    return fallback;
+  }
+  return Math.min(value, MAX_TIMER_DELAY_MS);
+}
+
+async function waitForRetry(
+  delay: (ms: number) => Promise<void>,
+  delayMs: number,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  if (signal === undefined) {
+    await delay(delayMs);
+    return;
+  }
+
+  signal.throwIfAborted();
+  let removeAbortListener: (() => void) | undefined;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    const rejectForAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", rejectForAbort, { once: true });
+    removeAbortListener = () => signal.removeEventListener("abort", rejectForAbort);
+    if (signal.aborted) {
+      rejectForAbort();
+    }
+  });
+
+  try {
+    await Promise.race([delay(delayMs), cancelled]);
+  } finally {
+    removeAbortListener?.();
+  }
 }
