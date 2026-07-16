@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * `pnpm test:changed` — run ONLY the tests related to what you actually changed,
- * not a whole package suite (12.8k cases across 1194 files is too heavy per edit).
+ * not a whole package suite (18.4k passing cases across 1624 executed files is too heavy per edit).
  *
  * For each git-changed `.ts/.tsx` file, vitest's `related` resolves the tests whose
  * Vite module graph touches it (a changed test file runs directly). One `vitest

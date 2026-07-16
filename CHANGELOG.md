@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **TS7-era testing contract:** Vitest is updated to 4.1.10, high-risk parser
+  invariants can use the official fast-check connector, and React interaction
+  tests now run in real Chromium through Vitest Browser Mode. The documented
+  test ladder keeps related tests in the edit loop and full Linux/Windows plus
+  browser gates at the merge boundary.
 - **TypeScript 7 migration hardening:** the native TS7 project graph now has
   explicit workspace references, valid shared imports, and genuine JSON type
   predicates at CLI persistence boundaries. The TypeScript 6 compatibility

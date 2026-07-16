@@ -1,3 +1,4 @@
+import { fc, test } from "@fast-check/vitest";
 import { describe, expect, it } from "vitest";
 
 import { parseParallelPlan, planParallelSubtasks } from "../src/parallel-decompose.js";
@@ -15,6 +16,20 @@ describe("parseParallelPlan — the deterministic contract on the model's reply"
   it("fewer than 2 real lines → [] (not a parallel decomposition)", () => {
     expect(parseParallelPlan("just one thing")).toEqual([]);
     expect(parseParallelPlan("")).toEqual([]);
+  });
+  test.prop([
+    fc.array(
+      fc.array(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz"), { minLength: 1, maxLength: 24 })
+        .map((characters) => characters.join("")),
+      { minLength: 2, maxLength: 5 }
+    )
+  ])("preserves every generated subtask while stripping supported list markers", (titles) => {
+    const markers = ["-", "*", "•", "1.", "2)"] as const;
+    const output = titles.map((title, index) => `${markers[index]!} ${title}`).join("\n");
+    expect(parseParallelPlan(output)).toEqual(titles);
+  });
+  test.prop([fc.string(), fc.string()])("treats an explicit NONE line as fail-closed for any surrounding output", (before, after) => {
+    expect(parseParallelPlan(`${before}\nNONE\n${after}`)).toEqual([]);
   });
   it("planParallelSubtasks pipes the model output through the parser", async () => {
     const subs = await planParallelSubtasks("compare X and Y", { generate: async () => "compare X\ncompare Y" });

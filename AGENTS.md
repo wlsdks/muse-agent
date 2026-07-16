@@ -54,7 +54,18 @@ self-contained — copy it into any project and point that project's
 | Provider adapters | OpenAI (Responses API), Anthropic, Gemini, OpenRouter, Ollama + OpenAI-compat presets (Groq, DeepSeek, Together, Mistral, Moonshot, Cerebras). "LM Studio" = the OpenAI-compatible adapter pointed at a local `baseUrl` (no dedicated class/preset). |
 | Calendar adapters | Local file, Google Calendar, CalDAV (iCloud / Fastmail / Proton), macOS Calendar.app |
 | Observability | OpenTelemetry + pino + persisted trace events |
-| Tests | Vitest + Playwright + Testcontainers |
+| Tests | Vitest 4.1 + Browser Mode/Playwright + opt-in fast-check + Testcontainers |
+
+## Testing contract
+
+Muse chooses a test technique by the failure it must detect, not by a target
+test count: deterministic example tests for exact contracts, property tests for
+high-risk invariants, real Chromium for React interaction, Testcontainers for
+PostgreSQL, and Playwright for critical end-to-end journeys. Keep the edit loop
+narrow with `pnpm test:changed`; run the full cross-platform gate before merge.
+The operational rules are in [`.claude/rules/testing.md`](.claude/rules/testing.md)
+and the TS7-era stack decision and rationale are in
+[`docs/development/testing-strategy.md`](docs/development/testing-strategy.md).
 
 ## TypeScript 7 toolchain
 

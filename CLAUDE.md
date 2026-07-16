@@ -32,6 +32,7 @@ pnpm test:changed                      # ONLY the tests related to your git-chan
 pnpm test:changed --uncommitted        # tighter: uncommitted changes only (mid-edit inner loop)
 pnpm --filter @muse/<name> test        # one whole package (heavier — use only when a change is broad)
 pnpm test -- -t "<test name>"          # single test by name
+pnpm --filter @muse/web test:browser  # real Chromium; required for React interaction/focus/keyboard changes
 
 # before commit:
 pnpm check                             # build + test for every workspace
@@ -40,7 +41,6 @@ pnpm check                             # build + test for every workspace
 pnpm smoke:broad                       # broad HTTP smoke, diagnostic provider (no key)
 pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b default (no cloud APIs)
 
-# before commit (lint gate):
 pnpm lint                              # 0 errors / 0 warnings required
 ```
 
@@ -80,7 +80,7 @@ For depth, read the matching file under `.claude/rules/`:
 
 - [`architecture.md`](.claude/rules/architecture.md) — package layout, ModelProvider contract, fallback policy, provider-specific schema quirks (Gemini sanitiser).
 - [`cli-product.md`](.claude/rules/cli-product.md) — CLI surface (commander, Ink, config paths, runner boundary).
-- [`testing.md`](.claude/rules/testing.md) — verification gates and the narrowest-useful-test rule.
+- [`testing.md`](.claude/rules/testing.md) — verification gates, technique selection, and narrowest-useful-test rule; rationale in [`testing-strategy.md`](docs/development/testing-strategy.md).
 - [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy + after-correction protocol.
 - [`code-style.md`](.claude/rules/code-style.md) — ESLint gate, naming, comment policy, dead-import rule.
 - [`outbound-safety.md`](.claude/rules/outbound-safety.md) — fail-close gate for any send/act toward a third party; banking out of scope.

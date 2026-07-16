@@ -8,7 +8,8 @@
     "dev": "vite --host 127.0.0.1",
     "gen:favicon": "tsx scripts/gen-favicon.ts",
     "test:e2e": "playwright test",
-    "test": "vitest run src",
+    "test": "vitest run src --exclude \"**/*.browser.test.tsx\"",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -23,6 +24,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/browser-playwright": "^4.1.10",
+    "vitest-browser-react": "^2.2.0",
     "vite": "^8.1.2"
   }
 }

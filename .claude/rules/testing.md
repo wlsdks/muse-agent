@@ -100,10 +100,36 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
 - Testcontainers for PostgreSQL query behavior.
 - Direct unit tests for every export of every helper module — no implicit-only coverage.
 
+## Supported TypeScript test stack (reviewed 2026-07-16)
+
+- **Vitest 4.1** is the primary TypeScript runner. It transforms TS/JSX through
+  Vite/Oxc and does not consume the TypeScript compiler API, so it can run beside
+  the TS7 native compiler while the `typescript` module remains on the TS6 API
+  compatibility package for eslint tooling. Keep `node:test` only for small,
+  dependency-free `.mjs` scripts.
+- **Vitest Browser Mode + Playwright** is the first choice for React interaction
+  tests. Use `*.browser.test.tsx` for focus, keyboard, hooks, and DOM events; keep
+  fast `renderToStaticMarkup` tests for static markup contracts. Browser tests run
+  in a separate Linux CI job so the normal Node suite remains fast and Windows
+  does not need to launch Chromium.
+- **fast-check + `@fast-check/vitest`** is opt-in for high-risk invariants only:
+  untrusted parsers, serialization round trips, fail-close guards, redaction,
+  message pairing, and deterministic reducers. A failing seed must remain
+  reproducible; do not replace precise example tests with broad random assertions.
+- **Injected fetch fakes** remain the default for unit-level provider contracts.
+  Add MSW only when the HTTP boundary itself (method, URL, headers, streaming, or
+  retries) is the behavior under test. Keep Playwright for end-to-end flows and
+  Testcontainers for real PostgreSQL behavior.
+- Do not globally change Vitest's `forks` pool, isolation, or worker count without
+  an A/B benchmark on representative packages. The 2026-07-16 12-core benchmark
+  was 41.16s at defaults, 45.91s at six workers, and 94.08s at two workers, so a
+  repo-wide cap was rejected. Prefer `pnpm test:changed` for the edit loop and the
+  full suite once at the merge gate.
+
 ## Run only the narrowest test that proves THIS change (Jinan, 2026-06-22)
 
 Running hundreds/thousands of tests "to be safe" is noise — Muse has
-**~12,800 test cases across 1,194 files** (verified 2026-06-26; more than
+**18,484 passing Vitest cases across 1,624 executed files** (verified 2026-07-17; more than
 the openclaw TS repo proportionally — the count is healthy, running ALL of
 it per edit is the waste). A full package suite per edit proves nothing
 about the specific change and only saturates the machine. Run the tests
@@ -159,3 +185,7 @@ back to ~300×150 and blow up the layout).
 - Don't accept fall-back assertions on tool-using flows — assert the tool was actually called.
 - Don't run the full suite / `pnpm check` for a small change; run the narrowest related test.
 - Don't claim a UI/layout fix works without a real-browser measurement.
+
+The decision table, TS7 compatibility audit, performance measurements, and
+official sources behind these rules live in
+[`docs/development/testing-strategy.md`](../../docs/development/testing-strategy.md).
