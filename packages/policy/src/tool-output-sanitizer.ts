@@ -81,8 +81,8 @@ function wrapToolData(toolName: string, content: string): string {
 }
 
 function normalizeMaxOutputLength(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? Math.trunc(value)
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
     : ToolOutputSanitizer.defaultMaxOutputLength;
 }
 

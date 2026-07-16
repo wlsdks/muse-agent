@@ -46,7 +46,7 @@ describe("ToolOutputSanitizer", () => {
   it("uses the safe default cap when a configured cap is invalid", () => {
     const output = "x".repeat(ToolOutputSanitizer.defaultMaxOutputLength + 1);
 
-    for (const maxOutputLength of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    for (const maxOutputLength of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.5]) {
       const result = new ToolOutputSanitizer({ maxOutputLength }).sanitize("large", output);
 
       expect(result.warnings).toContain(
