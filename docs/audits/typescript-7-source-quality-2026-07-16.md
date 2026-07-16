@@ -81,3 +81,9 @@ the TypeScript 7 announcement and release-notes links.
 - Confirmed against Node fs guidance and established Node persistence libraries: atomic replacement prevents partial-file corruption but does not make a stale read-modify-write operation safe.
 - `@muse/recall` now exposes `mutateFeedsStore`: callers prepare network/model work outside the lock, then apply a narrow delta to the latest locked snapshot. CLI refresh preserves concurrent additions/removals and merges concurrent successful feed archives.
 - Verified with focused `@muse/recall` store and `@muse/cli` command race tests plus their package builds.
+
+## Checkpoint retention coordination (2026-07-16)
+
+- Audited the disk-backed runtime checkpoint store: per-run save/delete already shared a cross-process lock, but retention pruning could delete a different run without respecting that run's active lock.
+- Pruning now acquires the candidate run's mutation queue and lock, re-evaluates recency after waiting, and never queues behind the save currently invoking retention.
+- Focused verification: `pnpm --filter @muse/runtime-state exec vitest run src/file-checkpoint-store.test.ts` (13 passed) and `pnpm --filter @muse/runtime-state build`.

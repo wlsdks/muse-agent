@@ -83,7 +83,7 @@ export class FileCheckpointStore implements CheckpointStore {
    *  completed run's checkpoints linger for replay (P3) but never grow unbounded.
    *  Amortized — only scans the dir every Nth save (the per-step hot loop calls
    *  save many times). Best-effort — a prune failure never breaks a save. */
-  async #pruneOldRuns(): Promise<void> {
+  async #pruneOldRuns(protectedTarget: string): Promise<void> {
     this.#savesSincePrune += 1;
     if (this.#savesSincePrune < this.#pruneInterval) return;
     this.#savesSincePrune = 0;
@@ -92,7 +92,27 @@ export class FileCheckpointStore implements CheckpointStore {
       if (names.length <= this.#maxRuns) return;
       const withMtime = await Promise.all(names.map(async (n) => ({ mtime: (await stat(join(this.#dir, n))).mtimeMs, name: n })));
       withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
-      await Promise.all(withMtime.slice(this.#maxRuns).map((e) => rm(join(this.#dir, e.name), { force: true }).catch(() => undefined)));
+      for (const candidate of withMtime.slice(this.#maxRuns)) {
+        const target = join(this.#dir, candidate.name);
+        // `save` already owns this target's queue + lock. Never queue behind
+        // ourselves: retention can wait until a later save instead of deleting
+        // the checkpoint currently being committed.
+        if (target === protectedTarget) continue;
+        await withFileMutationQueue(target, () => withFileLock(target, async () => {
+          // Re-evaluate after acquiring the candidate's lock. A concurrent save
+          // may have made it recent while prune waited, and deleting it would
+          // discard a just-committed resumable checkpoint.
+          const currentNames = (await readdir(this.#dir)).filter((name) => name.endsWith(".json"));
+          if (currentNames.length <= this.#maxRuns) return;
+          const currentByAge = await Promise.all(currentNames.map(async (name) => ({
+            mtime: (await stat(join(this.#dir, name))).mtimeMs,
+            name
+          })));
+          currentByAge.sort((a, b) => b.mtime - a.mtime);
+          if (!currentByAge.slice(this.#maxRuns).some((entry) => entry.name === candidate.name)) return;
+          await rm(target, { force: true });
+        }));
+      }
     } catch {
       /* retention is best-effort */
     }
@@ -192,7 +212,7 @@ export class FileCheckpointStore implements CheckpointStore {
       const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
       await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
       await rename(tmp, target);
-      await this.#pruneOldRuns();
+      await this.#pruneOldRuns(target);
       return checkpoint;
     }));
   }

@@ -174,6 +174,41 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
     }
   });
 
+  it("waits for an active run-file lock before retention can prune that run", async () => {
+    const dir = tmpDir();
+    const checkpointsDir = join(dir, "c");
+    try {
+      const seed = new FileCheckpointStore(checkpointsDir, { maxRuns: 10, pruneIntervalSaves: 100 });
+      await seed.save({ runId: "old", state: state("start"), step: 0 });
+      await sleep(5);
+      await seed.save({ runId: "recent", state: state("start"), step: 0 });
+
+      const acquired = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const heldLock = withFileLock(join(checkpointsDir, "old.json"), async () => {
+        acquired.resolve();
+        await release.promise;
+      });
+      await acquired.promise;
+
+      let settled = false;
+      const pendingSave = new FileCheckpointStore(checkpointsDir, { maxRuns: 2, pruneIntervalSaves: 1 })
+        .save({ runId: "new", state: state("start"), step: 0 })
+        .then(() => { settled = true; });
+      await sleep(25);
+      expect(settled).toBe(false);
+
+      release.resolve();
+      await Promise.all([heldLock, pendingSave]);
+      const store = new FileCheckpointStore(checkpointsDir);
+      expect(await store.findByRunId("old")).toEqual([]);
+      expect(await store.findByRunId("recent")).toHaveLength(1);
+      expect(await store.findByRunId("new")).toHaveLength(1);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("a runId with path separators can't escape the dir (filename is sanitized)", async () => {
     const dir = tmpDir();
     try {
