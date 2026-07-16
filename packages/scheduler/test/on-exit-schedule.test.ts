@@ -105,6 +105,25 @@ describe("OnExitWatcher.watch — real child process", () => {
 });
 
 describe("OnExitScheduler — one-shot arm + fire", () => {
+  it("cleans up a persisted watch when spawning the command fails", async () => {
+    const store = new InMemoryOnExitWatchStore();
+    const watcher = new OnExitWatcher({
+      spawner: {
+        spawn() {
+          throw new Error("spawn failed");
+        }
+      }
+    });
+    const scheduler = new OnExitScheduler({ store, watcher });
+    const onFire = vi.fn();
+
+    await expect(scheduler.arm("job-spawn-failure", { command: "echo test", kind: "on-exit" }, onFire)).rejects.toThrow("spawn failed");
+
+    expect(onFire).not.toHaveBeenCalled();
+    expect(await store.findArmed("job-spawn-failure")).toBeUndefined();
+    expect(await scheduler.reconcileOnStartup(onFire)).toEqual([]);
+  });
+
   it("fires the job exactly once through the injected pipeline hook and clears the armed record", async () => {
     const store = new InMemoryOnExitWatchStore();
     const scheduler = new OnExitScheduler({ store });

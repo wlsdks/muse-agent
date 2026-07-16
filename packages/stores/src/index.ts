@@ -8,6 +8,7 @@ export {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
   resolveDaemonSettingsFile,
+  UnsupportedDaemonSettingsFormatError,
   writeDaemonSetting,
   writeQuietHoursSetting
 } from "./daemon-settings-store.js";
@@ -76,8 +77,8 @@ export { appendActionLog, decryptActionLogAtRest, encryptActionLogAtRest, isActi
 export type { ActionLogEntry, ActionLogPruneResult, ActionResult } from "./personal-action-log-store.js";
 export { findConsent, hasConsent, readConsents, recordConsent } from "./personal-consent-store.js";
 export type { ScopedConsent } from "./personal-consent-store.js";
-export { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, formatBirthdayBriefLine, isContactsEncrypted, linkContacts, queryContacts, readContacts, removeContact, resolveContact, resolveUpcomingBirthdays, serializeContact, writeContacts } from "./personal-contacts-store.js";
-export type { Contact } from "./personal-contacts-store.js";
+export { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, formatBirthdayBriefLine, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, readContacts, removeContact, resolveContact, resolveUpcomingBirthdays, serializeContact, writeContacts } from "./personal-contacts-store.js";
+export type { Contact, ContactMutation } from "./personal-contacts-store.js";
 export { clearEpisodes, computeEpisodeRetention, decryptEpisodesAtRest, detectTopicAbsence, encryptEpisodesAtRest, isEpisodesEncrypted, planEpisodeConsolidation, readEpisodes, recurringThemes, removeEpisode, selectRetainedEpisodes, serializeEpisode, upsertEpisode, vacuumEpisodes, writeEpisodes } from "./personal-episodes-store.js";
 export type { PersistedEpisode } from "./personal-episodes-store.js";
 export { formatLocalDay, incrementFollowupLlmBudget, isFollowupLlmBudgetExhausted, readFollowupLlmBudget } from "./personal-followup-llm-budget-store.js";
@@ -97,7 +98,7 @@ export { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemory
 export type { RecallHitRecord } from "./personal-recall-hits-store.js";
 export { appendReminderHistory, readReminderHistory } from "./personal-reminder-history-store.js";
 export type { ReminderHistoryEntry } from "./personal-reminder-history-store.js";
-export { compareRemindersByDueAt, filterReminders, fireReminder, mutateReminders, nextReminderOccurrence, normalizeReminderRecurrence, parseReminderDueAt, parseReminderVia, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, serializeReminderForModel, writeReminders } from "./personal-reminders-store.js";
+export { compareRemindersByDueAt, filterReminders, fireReminder, mutateReminders, nextReminderOccurrence, normalizeReminderRecurrence, parseReminderDueAt, parseReminderVia, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, serializeReminderForModel, snoozeReminder, writeReminders } from "./personal-reminders-store.js";
 export type { PersistedReminder, ReminderRecurrence } from "./personal-reminders-store.js";
 export { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTaskById, readTasks, readTaskStatusFilter, resolveTaskRef, resolveTasksDueLine, selectTasksDueWithin, serializeTask, serializeTaskForModel, writeTasks } from "./personal-tasks-store.js";
 export type { PersistedTask } from "./personal-tasks-store.js";

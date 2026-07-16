@@ -7,6 +7,8 @@ export interface RunCommandResult {
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly timedOut: boolean;
+  /** Either stream exceeded its configured capture limit. */
+  readonly truncated: boolean;
 }
 
 export interface RunCommandOptions {
@@ -22,12 +24,15 @@ export interface RunCommandOptions {
   readonly maxStdoutBytes?: number;
   readonly maxStderrBytes?: number;
   readonly abortSignal?: AbortSignal;
+  /** Start a dedicated POSIX process group and terminate its whole tree on timeout/abort. */
+  readonly killProcessGroup?: boolean;
 }
 
 interface StreamAccumulator {
   chunks: Buffer[];
   limit?: number;
   bytes: number;
+  truncated: boolean;
 }
 
 function toBuffer(chunk: unknown): Buffer {
@@ -48,6 +53,7 @@ function appendChunk(target: StreamAccumulator, chunk: unknown): void {
 
   const remaining = limit - target.bytes;
   if (remaining <= 0) {
+    target.truncated ||= raw.length > 0;
     return;
   }
   if (raw.length <= remaining) {
@@ -58,6 +64,7 @@ function appendChunk(target: StreamAccumulator, chunk: unknown): void {
 
   target.chunks.push(raw.subarray(0, remaining));
   target.bytes += remaining;
+  target.truncated = true;
 }
 
 function asError(cause: unknown): Error {
@@ -100,7 +107,8 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
     env,
     maxStdoutBytes,
     maxStderrBytes,
-    abortSignal
+    abortSignal,
+    killProcessGroup = false
   } = options;
 
   if (abortSignal?.aborted) {
@@ -109,17 +117,32 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
 
   const child = spawnImpl(command, [...args], {
     stdio: ["pipe", "pipe", "pipe"],
+    ...(killProcessGroup && process.platform !== "win32" ? { detached: true } : {}),
     ...(cwd !== undefined ? { cwd } : {}),
     ...(env !== undefined ? { env } : {})
   });
+
+  const terminateChild = (): void => {
+    if (killProcessGroup && process.platform !== "win32" && child.pid !== undefined) {
+      try {
+        process.kill(-child.pid, killSignal);
+        return;
+      } catch {
+        // The group may already have exited between the timeout and the signal.
+      }
+    }
+    child.kill(killSignal);
+  };
   const stdout: StreamAccumulator = {
     bytes: 0,
     chunks: [],
+    truncated: false,
     ...(maxStdoutBytes !== undefined ? { limit: maxStdoutBytes } : {})
   };
   const stderr: StreamAccumulator = {
     bytes: 0,
     chunks: [],
+    truncated: false,
     ...(maxStderrBytes !== undefined ? { limit: maxStderrBytes } : {})
   };
 
@@ -146,7 +169,8 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
       signal: signal ?? null,
       stderr: Buffer.concat(stderr.chunks).toString(encoding),
       stdout: Buffer.concat(stdout.chunks).toString(encoding),
-      timedOut: false
+      timedOut: false,
+      truncated: stdout.truncated || stderr.truncated
     }) as RunCommandResult),
     once(child, "error").then(([error]) => {
       throw asError(error);
@@ -159,7 +183,7 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
     ? (() => {
       const abortDeferred = Promise.withResolvers<never>();
       const onAbort = (): void => {
-        child.kill(killSignal);
+        terminateChild();
         abortDeferred.reject(abortError(abortSignal.reason));
       };
       abortSignal.addEventListener("abort", onAbort, { once: true });
@@ -185,13 +209,14 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<RunCommandResult>((resolve) => {
     timeoutHandle = setTimeout(() => {
-      child.kill(killSignal);
+      terminateChild();
       resolve({
         exitCode: null,
         signal: typeof killSignal === "string" ? killSignal : null,
         stderr: Buffer.concat(stderr.chunks).toString(encoding),
         stdout: Buffer.concat(stdout.chunks).toString(encoding),
-        timedOut: true
+        timedOut: true,
+        truncated: stdout.truncated || stderr.truncated
       });
     }, timeoutMs);
     timeoutHandle.unref?.();

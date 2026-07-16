@@ -6,6 +6,7 @@ import { join as pathJoin } from "node:path";
 import { runCommandWithTimeout } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
+import { normalizeVoiceTimeoutMs } from "./timeout-utils.js";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -97,10 +98,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     this.id = options.id ?? "whisper-cpp";
     this.binaryPath = options.binaryPath ?? "whisper-cpp";
     this.modelPath = options.modelPath ?? resolveDefaultWhisperModelPath();
-    const timeoutMs =
-      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
-        ? options.timeoutMs
-        : DEFAULT_WHISPER_TIMEOUT_MS;
+    const timeoutMs = normalizeVoiceTimeoutMs(options.timeoutMs, DEFAULT_WHISPER_TIMEOUT_MS);
     this.runner = options.runner ?? createWhisperCppRunner(timeoutMs);
   }
 
@@ -261,17 +259,18 @@ function extensionForMime(mime: string): string {
  * coverage.
  */
 export function createWhisperCppRunner(timeoutMs: number = DEFAULT_WHISPER_TIMEOUT_MS): WhisperCppRunner {
+  const effectiveTimeoutMs = normalizeVoiceTimeoutMs(timeoutMs, DEFAULT_WHISPER_TIMEOUT_MS);
   return async (binary, args): Promise<WhisperCppRunResult> => {
     const result = await runCommandWithTimeout({
       command: binary,
       args: [...args],
-      timeoutMs,
+      timeoutMs: effectiveTimeoutMs,
       maxStderrBytes: 200_000,
       killSignal: "SIGKILL"
     });
 
     if (result.timedOut) {
-      throw new Error(`whisper-cpp timed out after ${timeoutMs.toString()}ms and was killed`);
+      throw new Error(`whisper-cpp timed out after ${effectiveTimeoutMs.toString()}ms and was killed`);
     }
 
     return { exitCode: result.exitCode, stderr: result.stderr };

@@ -316,6 +316,9 @@ export function resolveWorkspaceSkillsDir(env: MuseEnvironment): string | undefi
 }
 
 export function resolveInboxInjectionCursorFile(env: MuseEnvironment, providerId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/u.test(providerId)) {
+    throw new RangeError("providerId must contain only letters, numbers, underscores, or hyphens");
+  }
   return resolveDotMusePath(
     env,
     `MUSE_${providerId.toUpperCase()}_INBOX_INJECTION_CURSOR_FILE`,

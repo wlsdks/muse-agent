@@ -22,6 +22,16 @@ function makeProvider(overrides: Partial<{ maxFileBytes: number; maxListEntries:
 }
 
 describe("LocalDirNotesProvider describe", () => {
+  it("rejects an empty notes directory", () => {
+    expect(() => new LocalDirNotesProvider({ notesDir: "" })).toThrow(NotesValidationError);
+    expect(() => new LocalDirNotesProvider({ notesDir: "   " })).toThrow(NotesValidationError);
+  });
+
+  it("rejects non-finite file and result limits", () => {
+    expect(() => makeProvider({ maxFileBytes: Number.POSITIVE_INFINITY })).toThrow(NotesValidationError);
+    expect(() => makeProvider({ maxListEntries: Number.NaN })).toThrow(NotesValidationError);
+  });
+
   it("reports itself as local with the configured directory", () => {
     const provider = makeProvider();
     const info = provider.describe();
@@ -176,6 +186,11 @@ describe("LocalDirNotesProvider search", () => {
     await expect(provider.search("", 10)).rejects.toThrow(NotesValidationError);
   });
 
+  it("rejects a non-finite result limit", async () => {
+    const provider = makeProvider();
+    await expect(provider.search("match", Number.POSITIVE_INFINITY)).rejects.toThrow(NotesValidationError);
+  });
+
   it("caps hits at the requested limit across files", async () => {
     const provider = makeProvider();
     for (let n = 0; n < 5; n += 1) {
@@ -212,6 +227,7 @@ describe("LocalDirNotesProvider append", () => {
     const provider = makeProvider({ maxFileBytes: 2_000 });
     await provider.save({ body: "x".repeat(1_500), title: "small.md" });
     await expect(provider.append({ body: "y".repeat(1_000), id: "small.md" })).rejects.toThrow(NotesProviderError);
+    await expect(provider.read("small.md")).resolves.toMatchObject({ body: "x".repeat(1_500) });
   });
 });
 

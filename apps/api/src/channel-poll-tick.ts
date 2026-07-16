@@ -14,10 +14,19 @@ import { errorMessage } from "@muse/shared";
  * Cadence clamped to [5s, 1h].
  */
 
-import { appendInbound, type InboundFetchOptions, type InboundMessage } from "@muse/messaging";
+import {
+  appendInbound,
+  type InboundFetchOptions,
+  type InboundMessage,
+  type PollingFetchOptions
+} from "@muse/messaging";
 
 interface ChannelPollingProvider {
-  pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]>;
+  pollUpdates(options?: PollingFetchOptions): Promise<readonly InboundMessage[]>;
+  /** Commits a cursor staged by a deferred poll after durable inbox storage. */
+  commitPolledInbound?(options?: InboundFetchOptions): Promise<void>;
+  /** Discards a cursor staged by a batch that did not reach durable storage. */
+  discardPolledInbound?(options?: InboundFetchOptions): void;
 }
 
 export interface ChannelPollOptions {
@@ -56,12 +65,20 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
         try {
           const inbound = await options.provider.pollUpdates({
             source: channel,
-            ...(options.fetchLimit !== undefined ? { limit: options.fetchLimit } : {})
+            ...(options.fetchLimit !== undefined ? { limit: options.fetchLimit } : {}),
+            deferCursorCommit: true
           });
-          for (const message of inbound) {
-            await appendInbound(options.inboxFile, message);
+          try {
+            for (const message of inbound) {
+              totalIngested += Number(await appendInbound(options.inboxFile, message));
+            }
+          } catch (cause) {
+            options.provider.discardPolledInbound?.({ source: channel });
+            throw cause;
           }
-          totalIngested += inbound.length;
+          // Even an all-filtered provider batch must commit: it may contain
+          // remote entries intentionally omitted from the text-only inbox.
+          await options.provider.commitPolledInbound?.({ source: channel });
         } catch (cause) {
           const message = errorMessage(cause);
           options.errorLogger?.(`${options.logPrefix}: channel ${channel}: ${message}`);
@@ -109,4 +126,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

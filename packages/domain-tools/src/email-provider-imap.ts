@@ -28,6 +28,7 @@ const GMAIL_IMAP_PORT = 993;
 const GMAIL_SMTP_HOST = "smtp.gmail.com";
 const GMAIL_SMTP_PORT = 465;
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const SNIPPET_MAX_CHARS = 200;
 function hasErrorMessage(value: unknown): value is { message: string } {
   return value !== null && typeof value === "object" && typeof (value as { message?: unknown }).message === "string";
@@ -130,11 +131,14 @@ function defaultSmtpClientFactory(config: { readonly host: string; readonly port
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  if (timeoutMs <= 0) {
-    return promise;
-  }
+/** Normalize externally supplied IMAP/SMTP operation timeouts before using Node timers. */
+export function normalizeEmailOperationTimeoutMs(timeoutMs: number | undefined): number {
+  return typeof timeoutMs === "number" && Number.isSafeInteger(timeoutMs) && timeoutMs > 0
+    ? Math.min(timeoutMs, MAX_TIMER_DELAY_MS)
+    : DEFAULT_TIMEOUT_MS;
+}
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   const timeout = Promise.withResolvers<T>();
   const timeoutError = new ImapSmtpNetworkError(`${label} timed out after ${timeoutMs.toString()}ms`);
   const timeoutHandle = setTimeout(() => {
@@ -339,7 +343,7 @@ export class ImapSmtpEmailProvider implements EmailProvider, EmailSearcher, Emai
     this.imapPort = config.imapPort ?? GMAIL_IMAP_PORT;
     this.smtpHost = config.smtpHost?.trim() || GMAIL_SMTP_HOST;
     this.smtpPort = config.smtpPort ?? GMAIL_SMTP_PORT;
-    this.timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.timeoutMs = normalizeEmailOperationTimeoutMs(deps.timeoutMs);
   }
 
   private async withMailbox<T>(fn: (client: ImapMailboxClient, mailbox: MailboxObject) => Promise<T>): Promise<T> {

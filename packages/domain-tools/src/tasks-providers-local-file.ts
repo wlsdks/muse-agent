@@ -1,4 +1,5 @@
 import { errorMessage } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 /**
  * Filesystem-backed tasks provider — same on-disk JSON shape as
  * the inline `createTasksMcpServer` in `loopback-tasks.ts`
@@ -27,7 +28,7 @@ import { errorMessage } from "@muse/shared";
  */
 
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import {
@@ -39,6 +40,7 @@ import {
   type TasksProvider,
   type TasksProviderInfo
 } from "./tasks-providers.js";
+import { readTasks as readStoredTasks } from "@muse/stores";
 
 export interface LocalFileTasksProviderOptions {
   readonly file: string;
@@ -71,7 +73,7 @@ export class LocalFileTasksProvider implements TasksProvider {
     this.file = options.file;
     this.idFactory = options.idFactory ?? (() => `task_${randomUUID()}`);
     this.now = options.now ?? (() => new Date());
-    this.maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 200));
+    this.maxListEntries = normalizeListLimit(options.maxListEntries);
   }
 
   describe(): TasksProviderInfo {
@@ -97,7 +99,6 @@ export class LocalFileTasksProvider implements TasksProvider {
     if (!title) {
       throw new TasksValidationError("EMPTY_TITLE", "TaskInput.title must not be empty");
     }
-    const tasks = await this.readTasks();
     const created: PersistedTask = {
       createdAt: this.now().toISOString(),
       id: this.idFactory(),
@@ -107,7 +108,10 @@ export class LocalFileTasksProvider implements TasksProvider {
       ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {})
     };
     try {
-      await this.writeTasks([...tasks, created]);
+      await this.mutateTasks(async () => {
+        const tasks = await this.readTasks();
+        await this.writeTasks([...tasks, created]);
+      });
     } catch (error) {
       throw new TasksProviderError(this.id, "WRITE_FAILED", this.errorMessage(error));
     }
@@ -118,26 +122,27 @@ export class LocalFileTasksProvider implements TasksProvider {
     if (!id || id.trim().length === 0) {
       throw new TasksValidationError("EMPTY_ID", "TasksProvider.complete requires a non-empty id");
     }
-    const tasks = await this.readTasks();
-    const target = tasks.find((task) => task.id === id);
-    if (!target) {
-      return undefined;
-    }
-    if (target.status === "done") {
-      return this.toTask(target);
-    }
-    const updated: PersistedTask = {
-      ...target,
-      completedAt: this.now().toISOString(),
-      status: "done"
-    };
-    const next = tasks.map((task) => (task.id === id ? updated : task));
     try {
-      await this.writeTasks(next);
+      return await this.mutateTasks(async () => {
+        const tasks = await this.readTasks();
+        const target = tasks.find((task) => task.id === id);
+        if (!target) {
+          return undefined;
+        }
+        if (target.status === "done") {
+          return this.toTask(target);
+        }
+        const updated: PersistedTask = {
+          ...target,
+          completedAt: this.now().toISOString(),
+          status: "done"
+        };
+        await this.writeTasks(tasks.map((task) => (task.id === id ? updated : task)));
+        return this.toTask(updated);
+      });
     } catch (error) {
       throw new TasksProviderError(this.id, "WRITE_FAILED", this.errorMessage(error));
     }
-    return this.toTask(updated);
   }
 
   async search(query: string, limit: number): Promise<readonly TaskSearchHit[]> {
@@ -170,33 +175,13 @@ export class LocalFileTasksProvider implements TasksProvider {
   }
 
   private async readTasks(): Promise<readonly PersistedTask[]> {
-    let raw: string;
-    try {
-      raw = await fs.readFile(this.file, "utf8");
-    } catch {
-      return [];
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw) as unknown;
-    } catch {
-      return [];
-    }
-    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
-      return [];
-    }
-    // Use Array#filter with a type predicate so TypeScript narrows the
-    // result to PersistedTask[] without the verbose flatMap-with-empty-arr
-    // workaround. Same idiom that `LocalDirNotesProvider.list` could use.
-    return (parsed as { tasks: unknown[] }).tasks.filter(isPersistedTask);
+    return readStoredTasks(this.file);
   }
 
   private async writeTasks(tasks: readonly PersistedTask[]): Promise<void> {
     const payload = `${JSON.stringify({ tasks }, null, 2)}\n`;
-    const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
     await fs.mkdir(dirname(this.file), { recursive: true });
-    await fs.writeFile(tmp, payload, "utf8");
-    await fs.rename(tmp, this.file);
+    await atomicWriteFile(this.file, payload);
   }
 
   private toTask(persisted: PersistedTask): Task {
@@ -215,6 +200,21 @@ export class LocalFileTasksProvider implements TasksProvider {
   private errorMessage(error: unknown): string {
     return errorMessage(error);
   }
+
+  private async mutateTasks<T>(operation: () => Promise<T>): Promise<T> {
+    const parent = dirname(this.file);
+    await fs.mkdir(parent, { recursive: true });
+    await fs.access(parent, fsConstants.W_OK);
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
+  }
+}
+
+function normalizeListLimit(value: number | undefined): number {
+  const resolved = value ?? 200;
+  if (!Number.isFinite(resolved)) {
+    throw new TasksValidationError("INVALID_LIST_LIMIT", "maxListEntries must be finite");
+  }
+  return Math.max(1, Math.trunc(resolved));
 }
 
 function isPersistedTask(value: unknown): value is PersistedTask {

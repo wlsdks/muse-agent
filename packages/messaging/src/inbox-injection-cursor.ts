@@ -26,9 +26,9 @@
  * Telegram has a single global source which we key as `"_global"`.
  */
 
-import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 const GLOBAL_USER_KEY = "_global";
 
@@ -122,15 +122,7 @@ async function readPersisted(file: string): Promise<PersistedByUser> {
 
 async function writePersisted(file: string, byUser: PersistedByUser): Promise<void> {
   const payload: PersistedShapeV2 = { byUser, version: 2 };
-  // The tmp name MUST be unique per in-flight write: two concurrent
-  // writes in the same millisecond+pid would otherwise pick the same
-  // tmp path and one rename consumes the other's tmp → ENOENT / lost
-  // update. A random uuid guarantees uniqueness.
-  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 // Per-file mutation queue: writeInboxInjectionCursor / advanceInboxInjectionCursor
@@ -139,13 +131,8 @@ async function writePersisted(file: string, byUser: PersistedByUser): Promise<vo
 // — a silently dropped cursor advance that re-injects an already-seen message).
 // Serialising the WHOLE op per file makes the cursor lossless under concurrency,
 // mirroring the pending-approval store.
-const mutationQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
 function serializePerFile<T>(file: string, op: () => Promise<T>): Promise<T> {
-  const prior = mutationQueues.get(file) ?? resolvedPromise();
-  const next = prior.then(op, op);
-  mutationQueues.set(file, next.then(() => undefined, () => undefined));
-  return next;
+  return withMessagingFileMutation(file, op);
 }
 
 export async function readInboxInjectionCursor(

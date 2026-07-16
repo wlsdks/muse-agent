@@ -310,7 +310,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerAgentSpecRoutes(server, agentSpecRegistry, agentSpecResolver);
   registerToolsRoutes(server, options, agentSpecRegistry, runtimeSettings, authService);
   registerSessionSummaryRoutes(server, options, { authService });
-  registerRuntimeSettingsRoutes(server, runtimeSettings);
+  registerRuntimeSettingsRoutes(server, runtimeSettings, {
+    useAuthenticatedActor: Boolean(authService && options.requireAuth)
+  });
   if (options.calendar) {
     registerCalendarRoutes(server, {
       authService,

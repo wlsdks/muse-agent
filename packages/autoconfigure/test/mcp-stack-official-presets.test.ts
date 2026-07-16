@@ -12,6 +12,23 @@ function entry(env: MuseEnvironment, name: string) {
   return assembleMcpStack(env, undefined).externalServerInputs.find((s) => s.name === name);
 }
 
+it("does not enumerate the runtime environment while configuring OAuth credential storage", () => {
+  const env = new Proxy(
+    {
+      MUSE_CREDENTIALS_ENCRYPT: "true",
+      MUSE_MCP_CONFIG: "/nonexistent/muse-mcp-proxy-test.json",
+      MUSE_MEMORY_KEY: "test-key"
+    },
+    {
+      ownKeys() {
+        throw new Error("environment enumeration is forbidden");
+      }
+    }
+  ) as MuseEnvironment;
+
+  expect(() => assembleMcpStack(env, undefined)).not.toThrow();
+});
+
 describe("assembleMcpStack — official MCP preset opt-in toggles (default OFF)", () => {
   it("does NOT register the GitHub preset by default (absent from the assembled stack)", () => {
     expect(entry(baseEnv, GITHUB_MCP_SERVER_NAME)).toBeUndefined();

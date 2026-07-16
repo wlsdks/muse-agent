@@ -11,6 +11,7 @@ import {
   readReminders,
   serializeReminder,
   serializeReminderForModel,
+  snoozeReminder,
   writeReminders,
 } from "../src/personal-reminders-store.js";
 
@@ -61,6 +62,22 @@ describe("serializeReminder", () => {
   });
 });
 
+describe("snoozeReminder", () => {
+  it("re-arms a fired reminder without retaining its prior firing receipt", () => {
+    const next = snoozeReminder(
+      [{ ...base, firedAt: "2026-01-01T09:01:00Z", status: "fired" }],
+      base.id,
+      "2026-01-01T10:00:00Z",
+    );
+    expect(next?.[0]).toMatchObject({ dueAt: "2026-01-01T10:00:00Z", status: "pending" });
+    expect(next?.[0]).not.toHaveProperty("firedAt");
+  });
+
+  it("does not invent a reminder when the id is absent", () => {
+    expect(snoozeReminder([base], "missing", "2026-01-01T10:00:00Z")).toBeUndefined();
+  });
+});
+
 describe("eventId round-trip + read-boundary (calendar add --remind link)", () => {
   const tmp = async (): Promise<string> => join(await mkdtemp(join(tmpdir(), "muse-rem-")), "reminders.json");
 
@@ -74,6 +91,12 @@ describe("eventId round-trip + read-boundary (calendar add --remind link)", () =
     const file = await tmp();
     await writeFile(file, JSON.stringify({ reminders: [{ ...base, eventId: 42 }] }), "utf8");
     expect(await readReminders(file)).toEqual([]); // the malformed reminder is rejected at load
+  });
+
+  it("drops a reminder with a blank delivery route", async () => {
+    const file = await tmp();
+    await writeFile(file, JSON.stringify({ reminders: [{ ...base, via: { destination: " ", providerId: "slack" } }] }), "utf8");
+    expect(await readReminders(file)).toEqual([]);
   });
 });
 

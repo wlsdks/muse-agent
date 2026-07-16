@@ -16,6 +16,7 @@
 
 import { promises as fs } from "node:fs";
 
+import { withFileLock } from "@muse/shared";
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 /**
@@ -84,6 +85,11 @@ async function writeQuarantine(file: string, entries: readonly SwarmQuarantineEn
   await atomicWriteFile(file, `${JSON.stringify({ quarantine: trimmed }, null, 2)}\n`);
 }
 
+/** Keep the inert inbound ledger coherent across CLI, API, and daemon processes. */
+async function mutateQuarantine<T>(file: string, operation: () => Promise<T>): Promise<T> {
+  return withFileMutationQueue(file, () => withFileLock(file, operation));
+}
+
 export interface AddToQuarantineInput {
   readonly id: string;
   readonly kind: A2APayloadKind;
@@ -104,7 +110,7 @@ export async function addToQuarantine(file: string, input: AddToQuarantineInput)
     status: "pending",
     ...(input.label !== undefined ? { label: input.label } : {})
   };
-  await withFileMutationQueue(file, async () => {
+  await mutateQuarantine(file, async () => {
     const existing = await readQuarantine(file);
     await writeQuarantine(file, [...existing, entry]);
   });
@@ -137,7 +143,7 @@ export async function setQuarantineStatus(
   status: Exclude<QuarantineStatus, "pending">,
   atMs: number
 ): Promise<SwarmQuarantineEntry | null> {
-  return withFileMutationQueue(file, async () => {
+  return mutateQuarantine(file, async () => {
     const existing = await readQuarantine(file);
     const index = existing.findIndex((e) => e.id === id && e.status === "pending");
     if (index < 0) return null;

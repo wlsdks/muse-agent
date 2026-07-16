@@ -45,7 +45,13 @@ async function request<T>(
   if (response.status === 204) {
     return undefined as T;
   }
-  return (await response.json()) as T;
+  try {
+    return JSON.parse(await response.text()) as T;
+  } catch {
+    // A proxy, captive portal, or truncated API body can still carry a 2xx
+    // status. Do not leak a parser-specific SyntaxError into every query view.
+    throw new Error(`Malformed API response (${response.status.toString()})`);
+  }
 }
 
 // Prefer the server's actionable error body (`errorMessage` / `message` / `error`)

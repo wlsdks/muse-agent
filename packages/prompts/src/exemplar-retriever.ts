@@ -21,6 +21,14 @@ export interface InMemoryExemplarRetrieverOptions {
 }
 
 export const DEFAULT_EXEMPLAR_HEADER = "[Answer Quality Examples]";
+export const DEFAULT_EXEMPLAR_TOP_K = 3;
+const MAX_EXEMPLAR_TOP_K = 10;
+
+export function normalizeExemplarTopK(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= MAX_EXEMPLAR_TOP_K
+    ? value
+    : DEFAULT_EXEMPLAR_TOP_K;
+}
 
 export function parseExemplarMarkdown(markdown: string): readonly ExemplarDocument[] {
   const matches = [...markdown.matchAll(EXEMPLAR_HEADER_PATTERN)];
@@ -97,12 +105,12 @@ export class InMemoryExemplarRetriever implements ExemplarRetriever {
     this.headerPreamble = cleanBlock(options.headerPreamble) ?? DEFAULT_EXEMPLAR_HEADER;
     this.minScore = Math.max(1, options.minScore ?? 1);
     this.pinnedIds = options.pinnedIds ?? [];
-    this.topK = Math.max(1, options.topK ?? 3);
+    this.topK = normalizeExemplarTopK(options.topK);
   }
 
   async retrieveTopK(userPrompt: string, k: number = this.topK): Promise<string> {
     const query = cleanBlock(userPrompt);
-    const limit = Math.max(0, k);
+    const limit = normalizeExemplarTopK(k);
 
     if (!query || limit <= 0) {
       return this.fallback.retrieveTopK(userPrompt, k);

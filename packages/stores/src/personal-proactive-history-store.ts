@@ -20,7 +20,8 @@ import { promises as fs } from "node:fs";
 
 import { redactSecretsInText } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile } from "./atomic-file-store.js";
+import { withFileLock } from "./encrypted-file.js";
 
 import type { ProactiveFiredKind } from "./proactive-notice-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
@@ -55,6 +56,7 @@ const DEFAULT_CAPACITY = 500;
 const MAX_CAPACITY = 5_000;
 const DEFAULT_READ_LIMIT = 100;
 const MAX_READ_LIMIT = 500;
+const MAX_ARCHIVE_FILES = 100;
 
 export async function readProactiveHistory(file: string, limit?: number): Promise<readonly ProactiveHistoryEntry[]> {
   const cap = clampReadLimit(limit);
@@ -83,13 +85,13 @@ export async function appendProactiveHistory(
   options: AppendProactiveHistoryOptions = {}
 ): Promise<void> {
   const capacity = clampCapacity(options.capacity);
-  const archiveMaxFiles = Math.max(0, Math.trunc(options.archiveMaxFiles ?? 0));
+  const archiveMaxFiles = clampArchiveMaxFiles(options.archiveMaxFiles);
   // Serialise the read → (rotate) → append → write so concurrent appends can't
   // each read the same snapshot and clobber one another (a lost proactive-history
   // entry corrupts the trust-ledger precision) — nor collide on the same
   // `tmp-${pid}-${Date.now()}` path within one millisecond (which threw ENOENT on
   // rename). Same per-file queue the playbook / consent / objective stores use.
-  await withFileMutationQueue(file, async () => {
+  await withFileLock(file, async () => {
     let existing = await readRaw(file);
 
     // `>= capacity` (not `>`): one more append would exceed, so
@@ -128,7 +130,7 @@ export async function appendProactiveHistory(
  * cleanup; we want to fail-open, not crash an append).
  */
 export async function rotateProactiveHistoryFiles(file: string, archiveMaxFiles: number): Promise<void> {
-  const max = Math.max(1, Math.trunc(archiveMaxFiles));
+  const max = Math.max(1, clampArchiveMaxFiles(archiveMaxFiles));
   // Drop anything past the retention budget.
   for (let i = max + 1; i <= max + 5; i += 1) {
     await fs.unlink(`${file}.${i.toString()}`).catch(() => undefined);
@@ -189,6 +191,13 @@ function clampCapacity(raw: number | undefined): number {
   return Math.max(1, Math.min(MAX_CAPACITY, Math.trunc(raw)));
 }
 
+function clampArchiveMaxFiles(raw: number | undefined): number {
+  if (raw === undefined || !Number.isFinite(raw)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(MAX_ARCHIVE_FILES, Math.trunc(raw)));
+}
+
 function isHistoryEntry(value: unknown): value is ProactiveHistoryEntry {
   if (!value || typeof value !== "object") {
     return false;
@@ -202,5 +211,6 @@ function isHistoryEntry(value: unknown): value is ProactiveHistoryEntry {
     && typeof candidate.destination === "string"
     && typeof candidate.text === "string"
     && typeof candidate.firedAtIso === "string"
-    && (candidate.status === "delivered" || candidate.status === "failed");
+    && (candidate.status === "delivered" || candidate.status === "failed")
+    && (candidate.error === undefined || typeof candidate.error === "string");
 }

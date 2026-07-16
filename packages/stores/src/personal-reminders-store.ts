@@ -345,6 +345,22 @@ export function fireReminder(
   return next;
 }
 
+/** Re-arm a reminder for a later delivery, clearing its prior fire receipt. */
+export function snoozeReminder(
+  reminders: readonly PersistedReminder[],
+  id: string,
+  dueAt: string
+): readonly PersistedReminder[] | undefined {
+  const index = reminders.findIndex((reminder) => reminder.id === id);
+  if (index < 0) {
+    return undefined;
+  }
+  const { firedAt: _firedAt, ...pending } = reminders[index]!;
+  const next = [...reminders];
+  next[index] = { ...pending, dueAt, status: "pending" };
+  return next;
+}
+
 /**
  * Filter helper used by both the REST list endpoint and the CLI's
  * `--local` mode. `due` returns reminders whose dueAt is at or
@@ -426,7 +442,9 @@ function isPersistedReminder(value: unknown): value is PersistedReminder {
   if (candidate.via !== undefined) {
     if (!candidate.via || typeof candidate.via !== "object"
       || typeof candidate.via.providerId !== "string"
-      || typeof candidate.via.destination !== "string") {
+      || typeof candidate.via.destination !== "string"
+      || candidate.via.providerId.trim().length === 0
+      || candidate.via.destination.trim().length === 0) {
       return false;
     }
   }

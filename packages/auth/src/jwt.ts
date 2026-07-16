@@ -15,6 +15,7 @@ import { AuthError } from "./auth-error.js";
 
 export const defaultJwtExpirationMs = 86_400_000;
 const minimumJwtSecretBytes = 32;
+const canonicalBase64Url = /^[A-Za-z0-9_-]+$/u;
 
 /**
  * Internal — only `JwtTokenProvider`'s constructor reads this.
@@ -98,8 +99,16 @@ export class JwtTokenProvider {
   }
 
   createToken(user: JwtUser, now = new Date()): string {
-    const issuedAt = Math.floor(now.getTime() / 1_000);
-    const expiresAt = Math.floor((now.getTime() + this.jwtExpirationMs) / 1_000);
+    const nowMs = now.getTime();
+    if (!Number.isFinite(nowMs)) {
+      throw new RangeError("JWT token creation requires a valid current time");
+    }
+    const issuedAt = Math.floor(nowMs / 1_000);
+    const expiration = new Date(nowMs + this.jwtExpirationMs);
+    if (!Number.isFinite(expiration.getTime())) {
+      throw new RangeError("JWT expiration exceeds the supported date range");
+    }
+    const expiresAt = Math.floor(expiration.getTime() / 1_000);
     const claims: JwtClaims = {
       email: user.email,
       exp: expiresAt,
@@ -112,6 +121,10 @@ export class JwtTokenProvider {
   }
 
   parseToken(token: string, now = new Date()): JwtClaims | undefined {
+    const nowMs = now.getTime();
+    if (!Number.isFinite(nowMs)) {
+      return undefined;
+    }
     let claims = verifyJwt(token, this.secret);
     // Try previous-secret grace window only if current secret rejects.
     if (!claims) {
@@ -124,7 +137,7 @@ export class JwtTokenProvider {
       }
     }
 
-    if (!claims || claims.exp <= Math.floor(now.getTime() / 1_000)) {
+    if (!claims || claims.exp <= Math.floor(nowMs / 1_000)) {
       return undefined;
     }
 
@@ -159,9 +172,13 @@ function signJwt(claims: JwtClaims, secret: Buffer): string {
 }
 
 function verifyJwt(token: string, secret: Buffer): JwtClaims | undefined {
-  const [header, payload, signature] = token.split(".");
+  const segments = token.split(".");
+  if (segments.length !== 3) {
+    return undefined;
+  }
+  const [header, payload, signature] = segments;
 
-  if (!header || !payload || !signature) {
+  if (!header || !payload || !signature || ![header, payload, signature].every(isCanonicalBase64Url)) {
     return undefined;
   }
 
@@ -195,6 +212,10 @@ function parseBase64UrlJson(value: string): unknown {
   }
 }
 
+function isCanonicalBase64Url(value: string): boolean {
+  return canonicalBase64Url.test(value) && Buffer.from(value, "base64url").toString("base64url") === value;
+}
+
 function isJwtClaims(value: unknown): value is JwtClaims {
   return (
     isRecord(value) &&
@@ -205,4 +226,3 @@ function isJwtClaims(value: unknown): value is JwtClaims {
     Number.isFinite(value.exp)
   );
 }
-

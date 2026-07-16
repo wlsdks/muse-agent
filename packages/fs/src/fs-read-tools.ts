@@ -139,6 +139,15 @@ function isProbablyBinary(content: string): boolean {
   return content.includes("\u0000");
 }
 
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
+}
+
 export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
   const policy = policyPromise ?? resolvePolicy(options);
   // Name-fragment search roots. EMPTY BY DEFAULT: proactively enumerating the
@@ -151,8 +160,8 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
   const docRoots = (options.docRoots ?? []).slice();
   const extractPdf = options.extractPdfText ?? extractPdfTextWithPdfjs;
   const extractDocx = options.extractDocxText ?? extractDocxTextWithMammoth;
-  const maxTextChars = options.maxTextChars ?? DEFAULT_MAX_TEXT_CHARS;
-  const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+  const maxTextChars = requirePositiveSafeInteger(options.maxTextChars, DEFAULT_MAX_TEXT_CHARS, "maxTextChars");
+  const maxFileBytes = requirePositiveSafeInteger(options.maxFileBytes, DEFAULT_MAX_FILE_BYTES, "maxFileBytes");
 
   /** Resolve the user's reference to a concrete, sandbox-approved file path. */
   const resolveTarget = async (
@@ -464,6 +473,11 @@ export function isCatastrophicGrepPattern(pattern: string): boolean {
 export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
   const policy = policyPromise ?? resolvePolicy(options);
   const baseDir = options.baseDir ?? process.cwd();
+  const maxGrepOutputChars = requirePositiveSafeInteger(
+    options.maxGrepOutputChars,
+    DEFAULT_MAX_TEXT_CHARS,
+    "maxGrepOutputChars"
+  );
   return {
     definition: {
       description:
@@ -534,7 +548,6 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
       }
 
       const ignoreFilter: IgnoreFilter | undefined = args["includeIgnored"] === true ? undefined : await createIgnoreFilter(searchRoot);
-      const maxGrepOutputChars = options.maxGrepOutputChars ?? DEFAULT_MAX_TEXT_CHARS;
       const matchedFiles: string[] = [];
       const contentMatches: Array<{ readonly file: string; readonly line: number; readonly text: string }> = [];
       let contentChars = 0;

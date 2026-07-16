@@ -188,7 +188,7 @@ final class ServerManager {
         for line in out.split(separator: "\n") {
             guard let pid = Int32(line.trimmingCharacters(in: .whitespaces)) else { continue }
             guard let command = runCommand("/bin/ps", ["-p", "\(pid)", "-o", "command="]),
-                  command.contains("muse-api") else { continue }
+                  MuseApiProcessIdentity.isMuseApiCommand(command) else { continue }
             kill(pid, SIGTERM)
         }
     }

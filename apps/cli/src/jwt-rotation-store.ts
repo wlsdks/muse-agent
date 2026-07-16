@@ -27,20 +27,13 @@
 
 import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 
-interface PreviousSecretEntry {
-  readonly secret: string;
-  readonly rotatedAt: string;
-  readonly validUntil: string;
-}
+import { parseJwtRotationState, type JwtRotationState } from "@muse/auth";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
-export interface JwtRotationState {
-  readonly current: string;
-  readonly rotatedAt: string;
-  readonly previous: readonly PreviousSecretEntry[];
-}
+export type { JwtRotationState } from "@muse/auth";
 
 export function defaultAuthSecretsFile(): string {
   const fromEnv = process.env.MUSE_AUTH_SECRETS_FILE?.trim();
@@ -67,20 +60,7 @@ export async function readJwtRotationState(file: string): Promise<JwtRotationSta
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<JwtRotationState>;
-  if (typeof candidate.current !== "string" || candidate.current.length < 32) return undefined;
-  if (typeof candidate.rotatedAt !== "string") return undefined;
-  const previousArr = Array.isArray(candidate.previous) ? candidate.previous : [];
-  const previous: PreviousSecretEntry[] = [];
-  for (const entry of previousArr) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Partial<PreviousSecretEntry>;
-    if (typeof e.secret !== "string" || e.secret.length < 32) continue;
-    if (typeof e.rotatedAt !== "string" || typeof e.validUntil !== "string") continue;
-    previous.push({ secret: e.secret, rotatedAt: e.rotatedAt, validUntil: e.validUntil });
-  }
-  return { current: candidate.current, rotatedAt: candidate.rotatedAt, previous };
+  return parseJwtRotationState(parsed);
 }
 
 /**
@@ -113,8 +93,19 @@ export function rotateJwtState(args: {
   readonly secretFactory?: () => string;
 }): JwtRotationState {
   const generate = args.secretFactory ?? (() => randomBytes(32).toString("hex"));
-  const nowIso = args.now.toISOString();
-  const validUntil = new Date(args.now.getTime() + args.graceMs).toISOString();
+  const nowMs = args.now.getTime();
+  if (!Number.isFinite(nowMs)) {
+    throw new RangeError("JWT rotation requires a valid current time");
+  }
+  if (!Number.isFinite(args.graceMs) || args.graceMs < 0) {
+    throw new RangeError("JWT rotation graceMs must be a finite, non-negative duration");
+  }
+  const validUntilDate = new Date(nowMs + args.graceMs);
+  if (!Number.isFinite(validUntilDate.getTime())) {
+    throw new RangeError("JWT rotation graceMs exceeds the supported date range");
+  }
+  const nowIso = new Date(nowMs).toISOString();
+  const validUntil = validUntilDate.toISOString();
   const existingCurrent = args.state?.current ?? args.fallbackCurrent;
   if (!existingCurrent) {
     // First-time rotation with no prior state — promote a brand
@@ -122,7 +113,7 @@ export function rotateJwtState(args: {
     return { current: generate(), rotatedAt: nowIso, previous: [] };
   }
   const prunedPrev = args.state ? pruneExpiredPreviousSecrets(args.state, args.now).previous : [];
-  const newPrevious: PreviousSecretEntry = {
+  const newPrevious: JwtRotationState["previous"][number] = {
     secret: existingCurrent,
     rotatedAt: args.state?.rotatedAt ?? nowIso,
     validUntil
@@ -140,9 +131,29 @@ export function rotateJwtState(args: {
  */
 export async function writeJwtRotationState(file: string, state: JwtRotationState): Promise<void> {
   const payload = `${JSON.stringify(state, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWriteFile(file, payload);
+}
+
+export interface RotateAndPersistJwtStateInput {
+  readonly file: string;
+  readonly fallbackCurrent?: string;
+  readonly now: Date;
+  readonly graceMs: number;
+  readonly secretFactory?: () => string;
+}
+
+/**
+ * Atomically read, rotate, and persist the signing-key state. A rotation that
+ * reads before taking the lock can overwrite another daemon's newly current
+ * key, making still-issued tokens unverifiable instead of grace-windowed.
+ */
+export async function rotateAndPersistJwtState(input: RotateAndPersistJwtStateInput): Promise<JwtRotationState> {
+  const { file, ...rotation } = input;
+  return withFileMutationQueue(file, () =>
+    withFileLock(file, async () => {
+      const next = rotateJwtState({ ...rotation, state: await readJwtRotationState(file) });
+      await writeJwtRotationState(file, next);
+      return next;
+    })
+  );
 }

@@ -186,8 +186,9 @@ function isScopedConsent(value: unknown): value is ScopedConsent {
     typeof c.userId === "string" &&
     typeof c.objectiveId === "string" &&
     typeof c.scope === "string" &&
-    (c.allowedHost === undefined || typeof c.allowedHost === "string") &&
+    (c.allowedHost === undefined || (typeof c.allowedHost === "string" && c.allowedHost.trim().length > 0)) &&
     (c.expiresAt === undefined || typeof c.expiresAt === "string") &&
-    typeof c.grantedAt === "string"
+    typeof c.grantedAt === "string" &&
+    (c.note === undefined || typeof c.note === "string")
   );
 }

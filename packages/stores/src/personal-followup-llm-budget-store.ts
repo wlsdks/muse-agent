@@ -19,7 +19,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface FollowupLlmBudgetRecord {
   /** Local-day key — `YYYY-MM-DD`. Used so the count resets each day automatically. */
@@ -45,19 +45,24 @@ export async function readFollowupLlmBudget(file: string): Promise<FollowupLlmBu
   if (
     typeof candidate.date !== "string"
     || typeof candidate.calls !== "number"
-    || !Number.isFinite(candidate.calls)
+    || !Number.isSafeInteger(candidate.calls)
+    || candidate.calls < 0
   ) {
     return undefined;
   }
   return { calls: candidate.calls, date: candidate.date };
 }
 
-export async function writeFollowupLlmBudget(file: string, record: FollowupLlmBudgetRecord): Promise<void> {
+async function writeFollowupLlmBudgetUnlocked(file: string, record: FollowupLlmBudgetRecord): Promise<void> {
   // Use the shared atomic primitive (randomUUID tmp + fsync + 0o600 + orphan
   // cleanup): the old hand-rolled `tmp-${pid}-${Date.now()}` name collided between
   // two same-millisecond writers (the slower rename hit ENOENT and CRASHED) and left
   // the tmp orphaned on any write/rename failure.
   await atomicWriteFile(file, `${JSON.stringify(record, null, 2)}\n`);
+}
+
+export async function writeFollowupLlmBudget(file: string, record: FollowupLlmBudgetRecord): Promise<void> {
+  await withFileLock(file, () => writeFollowupLlmBudgetUnlocked(file, record));
 }
 
 /**
@@ -71,14 +76,14 @@ export async function incrementFollowupLlmBudget(file: string, today: string): P
   // the same count and write count+1, so the daily total under-counts — the budget
   // gate never trips and the followup detector over-spends its LLM-call cap. (They
   // also collided on the tmp-${pid}-${Date.now()} path and threw ENOENT on rename.)
-  return withFileMutationQueue(file, async () => {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readFollowupLlmBudget(file);
     const next: FollowupLlmBudgetRecord = existing && existing.date === today
       ? { calls: existing.calls + 1, date: today }
       : { calls: 1, date: today };
-    await writeFollowupLlmBudget(file, next);
+    await writeFollowupLlmBudgetUnlocked(file, next);
     return next;
-  });
+  }));
 }
 
 /**

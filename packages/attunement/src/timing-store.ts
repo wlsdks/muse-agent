@@ -373,7 +373,55 @@ function parseTimingState(value: unknown): TimingState {
     || !value.sessions.every(isSession) || !value.observations.every(isObservation) || !value.candidates.every(isCandidate) || !value.feedback.every(isFeedback)) {
     throw new AttunementStoreError("timing state is malformed or uses an unsupported schema");
   }
-  return value as unknown as TimingState;
+  const state = value as unknown as TimingState;
+  validateTimingStateRelationships(state);
+  return state;
+}
+
+/** File JSON is untrusted: preserve the graph invariants that TypeScript types cannot enforce at runtime. */
+function validateTimingStateRelationships(state: TimingState): void {
+  const sessions = indexTimingEntries(state.sessions, "session");
+  const observations = indexTimingEntries(state.observations, "observation");
+  const candidates = indexTimingEntries(state.candidates, "candidate");
+  const feedbackCandidateIds = new Set<string>();
+
+  for (const observation of state.observations) {
+    const session = sessions.get(observation.sessionId);
+    if (!session || session.threadId !== observation.threadId) throwInconsistentTimingRelationships();
+  }
+
+  for (const candidate of state.candidates) {
+    const session = sessions.get(candidate.sessionId);
+    if (!session || session.threadId !== candidate.threadId) throwInconsistentTimingRelationships();
+    const evidenceIds = new Set<string>();
+    for (const evidenceId of candidate.evidenceObservationIds) {
+      const observation = observations.get(evidenceId);
+      if (!evidenceIds.add(evidenceId) || !observation || observation.sessionId !== candidate.sessionId || observation.threadId !== candidate.threadId) {
+        throwInconsistentTimingRelationships();
+      }
+    }
+  }
+
+  for (const entry of state.feedback) {
+    const session = sessions.get(entry.sessionId);
+    const candidate = candidates.get(entry.candidateId);
+    if (!feedbackCandidateIds.add(entry.candidateId) || !session || !candidate || session.threadId !== entry.threadId || candidate.sessionId !== entry.sessionId || candidate.threadId !== entry.threadId) {
+      throwInconsistentTimingRelationships();
+    }
+  }
+}
+
+function indexTimingEntries<Entry extends { readonly id: string }>(entries: readonly Entry[], kind: string): ReadonlyMap<string, Entry> {
+  const byId = new Map<string, Entry>();
+  for (const entry of entries) {
+    if (byId.has(entry.id)) throw new AttunementStoreError(`timing state contains duplicate ${kind} ids`);
+    byId.set(entry.id, entry);
+  }
+  return byId;
+}
+
+function throwInconsistentTimingRelationships(): never {
+  throw new AttunementStoreError("timing state has inconsistent relationships");
 }
 
 function isSession(value: unknown): value is ThreadTimingSession {

@@ -18,8 +18,9 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
-import { errorMessage, runCommandWithTimeout } from "@muse/shared";
+import { errorMessage } from "@muse/shared";
 
+import { runDesktopNotificationCommand, type DesktopNotificationRunResult } from "./desktop-notification-command.js";
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import type {
   MessagingProvider,
@@ -34,32 +35,20 @@ import { validateOutboundMessage } from "./validate.js";
  * assert the script Muse sends without actually firing a desktop
  * notification.
  */
-export interface OsascriptRunResult {
-  readonly exitCode: number | null;
-  readonly stderr: string;
-}
+export type OsascriptRunResult = DesktopNotificationRunResult;
 
 export type OsascriptRunner = (script: string) => Promise<OsascriptRunResult>;
-
-const NOTIFICATION_OSASCRIPT_TIMEOUT_MS = 30_000;
 
 export async function defaultRunner(
   script: string,
   spawnFn: typeof spawn = spawn
 ): Promise<OsascriptRunResult> {
-  const result = await runCommandWithTimeout({
-    command: "osascript",
+  return runDesktopNotificationCommand({
     args: ["-e", script],
-    timeoutMs: NOTIFICATION_OSASCRIPT_TIMEOUT_MS,
-    spawnImpl: spawnFn,
-    killSignal: "SIGKILL"
+    command: "osascript",
+    label: "osascript notification",
+    spawnFn
   });
-
-  if (result.timedOut) {
-    throw new Error(`osascript notification timed out after ${NOTIFICATION_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed`);
-  }
-
-  return { exitCode: result.exitCode, stderr: result.stderr };
 }
 
 export interface MacosNotificationProviderOptions {
@@ -139,7 +128,7 @@ export class MacosNotificationProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `osascript exited with code ${result.exitCode ?? "null"}: ${result.stderr.trim()}`
+        `osascript exited with code ${result.exitCode ?? "null"}: ${result.stderr.trim()}${result.truncated ? " (output truncated)" : ""}`
       );
     }
     return {

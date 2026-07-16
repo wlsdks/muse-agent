@@ -84,6 +84,18 @@ export interface ObjectiveEvidenceDeps {
 
 const DEFAULT_CALENDAR_WINDOW_DAYS = 90;
 
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function normalizedWindowDays(value: number | undefined): number | undefined {
+  return isNonNegativeSafeInteger(value) ? value : undefined;
+}
+
 function toIso(value: Date | string | undefined): string | undefined {
   if (value === undefined) return undefined;
   return typeof value === "string" ? value : value.toISOString();
@@ -112,7 +124,8 @@ async function fetchStoreRecords(query: EvidenceQuery, deps: ObjectiveEvidenceDe
     }
     case "calendar": {
       if (!deps.listCalendarEvents) return [];
-      const windowMs = (query.windowDays ?? DEFAULT_CALENDAR_WINDOW_DAYS) * 86_400_000;
+      const windowDays = normalizedWindowDays(query.windowDays) ?? DEFAULT_CALENDAR_WINDOW_DAYS;
+      const windowMs = windowDays * 86_400_000;
       const nowMs = now().getTime();
       const rows = await deps.listCalendarEvents({ from: new Date(nowMs - windowMs), to: new Date(nowMs + windowMs) });
       return rows.map((e) => ({
@@ -168,12 +181,16 @@ export async function resolveObjectiveEvidence(
     return [];
   }
 
-  const keywords = query.keywords.map((k) => k.toLowerCase()).filter((k) => k.length > 0);
+  const keywords = query.keywords
+    .filter((keyword): keyword is string => typeof keyword === "string")
+    .map((keyword) => keyword.toLowerCase())
+    .filter((keyword) => keyword.length > 0);
   const matchesKeywords = (text: string): boolean =>
     keywords.length === 0 || keywords.some((k) => text.toLowerCase().includes(k));
 
   const now = deps.now ?? (() => new Date());
-  const cutoffMs = query.windowDays !== undefined ? now().getTime() - query.windowDays * 86_400_000 : undefined;
+  const windowDays = normalizedWindowDays(query.windowDays);
+  const cutoffMs = windowDays !== undefined ? now().getTime() - windowDays * 86_400_000 : undefined;
   const withinWindow = (whenIso: string | undefined): boolean => {
     if (cutoffMs === undefined || whenIso === undefined) return true;
     const whenMs = Date.parse(whenIso);
@@ -193,6 +210,8 @@ export function checkObjectiveMet(
   records: readonly EvidenceRecord[],
   query: Pick<EvidenceQuery, "expectedCount">
 ): { readonly met: boolean; readonly evidence: readonly EvidenceRecord[] } {
-  const met = query.expectedCount !== undefined ? records.length >= query.expectedCount : records.length >= 1;
+  const met = query.expectedCount === undefined
+    ? records.length >= 1
+    : isPositiveSafeInteger(query.expectedCount) && records.length >= query.expectedCount;
   return { evidence: records, met };
 }

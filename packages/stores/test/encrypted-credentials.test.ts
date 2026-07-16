@@ -1,5 +1,5 @@
 import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -131,6 +131,48 @@ describe("encrypted-credentials — byte-compatible with the pre-move on-disk fo
     expect(hasStoredEmailImapCredentialSync(io())).toBe(false);
     // Deleting the App Password record must NOT touch the sibling OAuth record.
     expect(await readGmailCredential(io())).toEqual(gmail);
+  });
+
+  it("serializes concurrent token, Gmail, and IMAP writes without losing sibling credentials", async () => {
+    const gmail: GmailOAuthCredential = { clientId: "cid", clientSecret: "csecret", refreshToken: "refresh" };
+    const emailImap: ImapEmailCredential = { appPassword: "app-password", email: "user@example.com" };
+
+    await Promise.all([
+      writeStoredToken(io(), "https://api.example.com", "token"),
+      writeGmailCredential(io(), gmail),
+      writeEmailImapCredential(io(), emailImap)
+    ]);
+
+    expect(await readStoredToken(io(), "https://api.example.com")).toBe("token");
+    expect(await readGmailCredential(io())).toEqual(gmail);
+    expect(await readEmailImapCredential(io())).toEqual(emailImap);
+  });
+
+  it("preserves encrypted credentials when a write uses the wrong key", async () => {
+    const file = credentialPath(io());
+    await writeLegacyCredentialFile(file, "fixture-key-aaaaaaaaaaaaaaaaaa", {
+      tokens: { "https://api.example.com": { token: "recoverable-token", updatedAt: "2026-01-01T00:00:00Z" } }
+    });
+    const original = await readFile(file, "utf8");
+    const wrongKeyIo: CredentialStoreIO = { configDir: workdir, credentialKey: "different-key-bbbbbbbbbbbbbbbb" };
+
+    await expect(writeStoredToken(wrongKeyIo, "https://api.example.com", "replacement-token")).rejects.toThrow(
+      /Refusing to overwrite unreadable credentials/u
+    );
+
+    expect(await readFile(file, "utf8")).toBe(original);
+    expect(await readStoredToken(io(), "https://api.example.com")).toBe("recoverable-token");
+  });
+
+  it("does not overwrite an existing malformed credential store", async () => {
+    const file = credentialPath(io());
+    await writeFile(file, "not-json\n", "utf8");
+
+    await expect(writeStoredToken(io(), "https://api.example.com", "replacement-token")).rejects.toThrow(
+      /Refusing to overwrite unreadable credentials/u
+    );
+
+    expect(await readFile(file, "utf8")).toBe("not-json\n");
   });
 
   it("stores a non-Gmail IMAP host override (e.g. Naver) unchanged", async () => {

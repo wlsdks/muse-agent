@@ -154,9 +154,13 @@ function isStandingObjective(value: unknown): value is StandingObjective {
     return false;
   }
   return (
-    candidate.status === "active" ||
-    candidate.status === "done" ||
-    candidate.status === "escalated" ||
-    candidate.status === "cancelled"
+    (candidate.status === "active" ||
+      candidate.status === "done" ||
+      candidate.status === "escalated" ||
+      candidate.status === "cancelled") &&
+    (candidate.lastEvaluatedAt === undefined || typeof candidate.lastEvaluatedAt === "string") &&
+    (candidate.attempts === undefined || (Number.isSafeInteger(candidate.attempts) && candidate.attempts >= 0)) &&
+    (candidate.nextEvalAt === undefined || typeof candidate.nextEvalAt === "string") &&
+    (candidate.resolution === undefined || typeof candidate.resolution === "string")
   );
 }

@@ -104,6 +104,35 @@ describe("syncBrowsingHistory — shared command + daemon sync core", () => {
     expect(store.visits).toHaveLength(2);
     expect(store.visits.every((v) => v.embedding === undefined)).toBe(true);
   });
+
+  it("merges a delayed sync into a newer committed snapshot without regressing the cursor", async () => {
+    let signalEmbedStart: (() => void) | undefined;
+    let releaseEmbed: (() => void) | undefined;
+    const embedStarted = new Promise<void>((resolve) => { signalEmbedStart = resolve; });
+    const embedGate = new Promise<void>((resolve) => { releaseEmbed = resolve; });
+    const delayedEmbed = async (): Promise<readonly number[]> => {
+      signalEmbedStart?.();
+      await embedGate;
+      return [0.1, 0.2];
+    };
+
+    const delayed = syncBrowsingHistory({ embed: delayedEmbed, historyFile, limit: 100, storeFile });
+    await embedStarted;
+    buildFixtureDb(historyFile, [
+      { id: 4, url: "https://blog.example/newer", title: "Newer post", visitTime: CURSOR + 9_000_000 }
+    ]);
+    await syncBrowsingHistory({ historyFile, limit: 100, storeFile });
+    releaseEmbed?.();
+    await delayed;
+
+    const store = await readBrowsingStore(storeFile);
+    expect(store.visits.map((visit) => visit.url).sort()).toEqual([
+      "https://blog.example/newer",
+      "https://blog.example/rust",
+      "https://news.example/ai"
+    ]);
+    expect(store.lastVisitTimeCursor).toBe(CURSOR + 9_000_000);
+  });
 });
 
 describe("embedBrowsingVisits — bounded, fail-soft embed pass", () => {

@@ -15,9 +15,9 @@
  * reimplemented for Muse, no code copied. See THIRD_PARTY_NOTICES.md.
  */
 
-import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface RecallHitRecord {
   /** Stable key of the recalled memory — an episode `sessionId`. */
@@ -86,31 +86,19 @@ export async function readRecallHits(file: string): Promise<readonly RecallHitRe
   );
 }
 
-export async function writeRecallHits(file: string, records: readonly RecallHitRecord[]): Promise<void> {
+async function writeRecallHitsUnlocked(file: string, records: readonly RecallHitRecord[]): Promise<void> {
   // FIFO-ish trim — keep the most recently-hit N. Bounds pathological growth
   // without losing the records that matter (recent ones drive promotion).
   const trimmed = records.length > MAX_RECALL_HIT_ENTRIES
     ? [...records].sort((a, b) => b.lastHitMs - a.lastHitMs).slice(0, MAX_RECALL_HIT_ENTRIES)
     : records;
   const payload = `${JSON.stringify({ hits: trimmed }, null, 2)}\n`;
-  // randomUUID (not pid+Date.now()): two same-ms concurrent writers picked an
-  // identical tmp name, so the slower rename hit ENOENT (the file was already
-  // renamed away) and crashed the recall path. Uniqueness here + the per-file
-  // queue below makes concurrent recall recording crash-free and lossless.
-  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, "utf8");
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, payload);
 }
 
-// Two recalls firing close together (parallel episodic lookups, a daemon tick
-// overlapping a chat turn) each run read→increment→write; without serialisation
-// the later write is built on a STALE read and silently drops the earlier hit's
-// increment — exactly the lost-write seen under parallel test load. Serialise
-// the whole read-modify-write per file (same posture as action-log /
-// pending-approval).
-const recordQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
+export async function writeRecallHits(file: string, records: readonly RecallHitRecord[]): Promise<void> {
+  await withFileLock(file, () => writeRecallHitsUnlocked(file, records));
+}
 
 /**
  * Read → increment-each → write, serialised per file. `entries` may repeat
@@ -118,6 +106,7 @@ const resolvedPromise = async (): Promise<unknown> => undefined;
  * (a single recall surfacing the same session once = one hit).
  */
 export async function recordRecallHits(file: string, entries: readonly RecallHitInput[], atMs: number): Promise<void> {
+  if (!Number.isFinite(atMs)) return;
   const byInputKey = new Map<string, RecallHitInput>();
   for (const entry of entries) {
     const key = entry.key.trim();
@@ -125,8 +114,7 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
     byInputKey.set(key, entry); // de-dupe within a single recall; latest summary wins
   }
   if (byInputKey.size === 0) return;
-  const prior = recordQueues.get(file) ?? resolvedPromise();
-  const op = async (): Promise<void> => {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readRecallHits(file);
     const byKey = new Map(existing.map((record) => [record.key, record]));
     for (const [key, input] of byInputKey) {
@@ -146,11 +134,8 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
         ...(queryHashes && queryHashes.length > 0 ? { queryHashes } : {})
       });
     }
-    await writeRecallHits(file, [...byKey.values()]);
-  };
-  const next = prior.then(op, op);
-  recordQueues.set(file, next.then(() => undefined, () => undefined));
-  return next;
+    await writeRecallHitsUnlocked(file, [...byKey.values()]);
+  }));
 }
 
 // --- Ebbinghaus fade sidecar (arXiv:2305.10250, MemoryBank) ---
@@ -165,10 +150,7 @@ const FADED_MEMORIES_FILE_ENCODING = "utf8" as const;
 
 export async function writeFadedMemoryKeys(file: string, keys: readonly string[], _atMs: number): Promise<void> {
   const payload = `${JSON.stringify({ fadedAt: _atMs, keys: [...keys] }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, FADED_MEMORIES_FILE_ENCODING);
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, payload);
 }
 
 export async function readFadedMemoryKeys(file: string): Promise<ReadonlySet<string>> {
@@ -221,6 +203,7 @@ function isRecallHitRecord(value: unknown): value is RecallHitRecord {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<RecallHitRecord>;
   return typeof candidate.key === "string"
-    && typeof candidate.hits === "number" && Number.isFinite(candidate.hits)
-    && typeof candidate.lastHitMs === "number" && Number.isFinite(candidate.lastHitMs);
+    && typeof candidate.hits === "number" && Number.isSafeInteger(candidate.hits) && candidate.hits >= 0
+    && typeof candidate.lastHitMs === "number" && Number.isFinite(candidate.lastHitMs)
+    && (candidate.summary === undefined || typeof candidate.summary === "string");
 }

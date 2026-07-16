@@ -17,6 +17,7 @@ describe("parseWatchRule", () => {
     expect(parseWatchRule({ appears: "" })).toBeUndefined(); // empty string ignored
     expect(parseWatchRule({ onAnyChange: false })).toBeUndefined(); // only `true` arms it
     expect(parseWatchRule({ below: Number.NaN, above: Number.POSITIVE_INFINITY })).toBeUndefined();
+    expect(parseWatchRule({ appears: "x".repeat(1_001) })).toBeUndefined();
   });
 
   it("keeps the string trigger fields and an accompanying extract selector", () => {

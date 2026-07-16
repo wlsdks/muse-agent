@@ -37,6 +37,20 @@ describe("createMacContactsWriteTool", () => {
     expect(entries[0]?.result).toBe("performed");
   });
 
+  it("reports a completed write when post-write audit logging fails, so a caller does not retry and duplicate the contact", async () => {
+    let called = false;
+    const tool = createMacContactsWriteTool({
+      actionLog: async () => { throw new Error("action log unavailable"); },
+      approvalGate: () => ({ approved: true }),
+      osascript: async () => { called = true; return ok(); }
+    });
+
+    const result = await tool.execute({ name: "Ada Lovelace" }, ctx);
+
+    expect(called).toBe(true);
+    expect(result).toMatchObject({ auditLogged: false, name: "Ada Lovelace", written: true });
+  });
+
   it("DENY → NO write (the core outbound-safety assertion): osascript never called, written:false, 'refused' logged", async () => {
     let called = false;
     const runner: MacOsascriptRunner = async () => { called = true; return ok(); };

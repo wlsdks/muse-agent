@@ -134,7 +134,13 @@ export function isPrivateOrReservedHost(host: string | undefined): boolean {
 
   return normalized.startsWith("fc") ||
     normalized.startsWith("fd") ||
-    normalized.startsWith("fe80");
+    isIpv6LinkLocal(normalized);
+}
+
+/** RFC 4291 link-local unicast is fe80::/10, not just fe80::/16. */
+function isIpv6LinkLocal(value: string): boolean {
+  const firstHextet = Number.parseInt(value.split(":", 1)[0] ?? "", 16);
+  return Number.isFinite(firstHextet) && (firstHextet & 0xffc0) === 0xfe80;
 }
 
 function decodeIpv4MappedV6(value: string): string | undefined {

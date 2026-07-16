@@ -1359,6 +1359,55 @@ describe("inbox-store", () => {
     expect(out.map((m) => m.text)).toEqual(["third", "second", "first"]);
   });
 
+  it("appendInbound ignores a webhook redelivery with the same provider, source, and message id", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-redelivery-"));
+    const file = join(root, "inbox.json");
+    await appendInbound(file, makeMessage({ messageId: "redelivery-1", text: "original" }));
+    await appendInbound(file, makeMessage({ messageId: "redelivery-1", text: "duplicate delivery" }));
+
+    expect(await readInbox(file)).toMatchObject([{ messageId: "redelivery-1", text: "original" }]);
+  });
+
+  it("retains webhook delivery receipts after inbox capacity evicts the original message", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-receipt-"));
+    const file = join(root, "inbox.json");
+    await appendInbound(file, makeMessage({ messageId: "evicted", text: "original" }), {
+      capacity: 1,
+      idempotencyKey: "line:event-1"
+    });
+    await appendInbound(file, makeMessage({ messageId: "new", text: "newest" }), {
+      capacity: 1,
+      idempotencyKey: "line:event-2"
+    });
+
+    await expect(appendInbound(file, makeMessage({ messageId: "evicted", text: "redelivery" }), {
+      capacity: 1,
+      idempotencyKey: "line:event-1"
+    })).resolves.toBe(false);
+    expect(await readInbox(file)).toMatchObject([{ messageId: "new", text: "newest" }]);
+  });
+
+  it("backfills a delivery receipt when a legacy inbox entry is redelivered", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-receipt-migration-"));
+    const file = join(root, "inbox.json");
+    await appendInbound(file, makeMessage({ messageId: "legacy", text: "original" }), { capacity: 1 });
+
+    await expect(appendInbound(file, makeMessage({ messageId: "legacy", text: "redelivery" }), {
+      capacity: 1,
+      idempotencyKey: "line:legacy-event"
+    })).resolves.toBe(false);
+    await appendInbound(file, makeMessage({ messageId: "new", text: "newest" }), {
+      capacity: 1,
+      idempotencyKey: "line:new-event"
+    });
+
+    await expect(appendInbound(file, makeMessage({ messageId: "legacy", text: "late redelivery" }), {
+      capacity: 1,
+      idempotencyKey: "line:legacy-event"
+    })).resolves.toBe(false);
+    expect(await readInbox(file)).toMatchObject([{ messageId: "new", text: "newest" }]);
+  });
+
   it("appendInbound persists inbound bodies with 0600 perms (not world-readable)", async () => {
     const root = mkdtempSync(join(tmpdir(), "muse-inbox-perm-"));
     const file = join(root, "inbox.json");

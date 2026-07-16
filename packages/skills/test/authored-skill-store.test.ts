@@ -97,6 +97,21 @@ describe("AuthoredSkillStore — dedup", () => {
     const again = await store.writeOrPatch(draft);
     expect(again.action).toBe("skip");
   });
+
+  it("serializes concurrent writes from separate store instances", async () => {
+    const dir = tmpDir();
+    const first = new AuthoredSkillStore({ dir });
+    const second = new AuthoredSkillStore({ dir });
+    const [created, patched] = await Promise.all([
+      first.writeOrPatch({ name: "shared-skill", description: "first", body: "first body" }),
+      second.writeOrPatch({ name: "shared-skill", description: "second", body: "second body" })
+    ]);
+
+    expect([created.action, patched.action]).toEqual(["create", "patch"]);
+    const authored = await first.listAuthored();
+    expect(authored).toHaveLength(1);
+    expect(authored[0]?.body).toBe("second body");
+  });
 });
 
 describe("AuthoredSkillStore — cap & collisions", () => {

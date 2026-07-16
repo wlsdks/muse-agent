@@ -130,7 +130,7 @@ export function assembleMcpStack(
       // interactive `muse mcp login` binds its own ephemeral port.
       oauthConfig: {
         dir: resolveOAuthStoreDir(env),
-        env: { ...env },
+        env: oauthCredentialEnvironment(env),
         redirectPort: parseInteger(env.MUSE_MCP_OAUTH_REDIRECT_PORT, 33418)
       },
       requestTimeoutMs: parseInteger(env.MUSE_MCP_REQUEST_TIMEOUT_MS, 15_000)
@@ -148,4 +148,11 @@ export function assembleMcpStack(
     securityPolicyProvider
   });
   return { externalServerInputs, manager, securityPolicyProvider, securityPolicyStore, serverStore };
+}
+
+function oauthCredentialEnvironment(env: MuseEnvironment): NodeJS.ProcessEnv {
+  return {
+    MUSE_CREDENTIALS_ENCRYPT: env.MUSE_CREDENTIALS_ENCRYPT,
+    MUSE_MEMORY_KEY: env.MUSE_MEMORY_KEY
+  };
 }

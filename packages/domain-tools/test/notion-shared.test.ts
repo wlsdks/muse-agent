@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   NOTION_DEFAULT_ENDPOINT,
+  NOTION_DEFAULT_RETRIES,
   NOTION_DEFAULT_TITLE_PROPERTY,
   NOTION_DEFAULT_VERSION,
   NOTION_LIST_MAX_PAGES,
+  NOTION_MAX_ERROR_BODY_BYTES,
+  NOTION_MAX_RETRIES,
   extractTitleString,
   isRecordArray,
   isTransientNotionStatus,
-  mapNotionStatus
+  mapNotionStatus,
+  normalizeNotionRetryPolicy,
+  readNotionErrorText,
+  resolveNotionEndpoint
 } from "../src/notion-shared.js";
 
 describe("notion-shared defaults", () => {
@@ -17,6 +23,26 @@ describe("notion-shared defaults", () => {
     expect(NOTION_DEFAULT_VERSION).toBe("2022-06-28");
     expect(NOTION_DEFAULT_TITLE_PROPERTY).toBe("Name");
     expect(NOTION_LIST_MAX_PAGES).toBe(10);
+  });
+});
+
+describe("Notion request boundaries", () => {
+  it("bounds retry options and falls back for non-finite configuration", () => {
+    expect(normalizeNotionRetryPolicy(undefined)).toMatchObject({ retries: NOTION_DEFAULT_RETRIES, baseDelayMs: 250 });
+    expect(normalizeNotionRetryPolicy({ baseDelayMs: 1e100, retries: 1e100 })).toMatchObject({ baseDelayMs: 30_000, retries: NOTION_MAX_RETRIES });
+    expect(normalizeNotionRetryPolicy({ baseDelayMs: Number.NaN, retries: Number.POSITIVE_INFINITY })).toMatchObject({ retries: NOTION_DEFAULT_RETRIES, baseDelayMs: 250 });
+  });
+
+  it("allows only the official HTTPS API endpoint for credentialed requests", () => {
+    expect(resolveNotionEndpoint(undefined)).toBe(NOTION_DEFAULT_ENDPOINT);
+    expect(() => resolveNotionEndpoint("http://api.notion.com/v1")).toThrow();
+    expect(() => resolveNotionEndpoint("https://example.test/v1")).toThrow();
+    expect(() => resolveNotionEndpoint("https://api.notion.com/v1?redirect=example.test")).toThrow();
+  });
+
+  it("caps streamed Notion error bodies before decoding them", async () => {
+    const response = new Response("x".repeat(NOTION_MAX_ERROR_BODY_BYTES + 1), { status: 500 });
+    await expect(readNotionErrorText(response)).resolves.toContain("byte limit");
   });
 });
 

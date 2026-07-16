@@ -33,6 +33,7 @@ import type {
   ScheduledJob,
   ScheduledJobInput,
   ScheduledJobStore,
+  ScheduledJobUpdateInput,
   ScheduledJobType
 } from "./index.js";
 import { InMemoryScheduledJobStore } from "./scheduler-stores.js";
@@ -199,7 +200,7 @@ export class FileScheduledJobStore implements ScheduledJobStore {
     });
   }
 
-  async update(id: string, input: ScheduledJobInput): Promise<ScheduledJob | undefined> {
+  async update(id: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob | undefined> {
     return withFileLock(this.file, async () => {
       const mem = await this.hydrate();
       const updated = mem.update(id, input);

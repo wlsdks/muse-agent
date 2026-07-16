@@ -117,11 +117,14 @@ export async function listMuseImportEntries(
     onError.then(([cause]) => {
       throw cause as Error;
     }),
-    onClose.then(([code]) => {
-      if (code === 0 || code === null) {
+    onClose.then(([code, signal]) => {
+      if (code === 0) {
         return 0;
       }
-      throw new Error(`tar -tzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
+      const termination = code === null
+        ? `was terminated by signal ${String(signal ?? "unknown")}`
+        : `exited with code ${code.toString()}`;
+      throw new Error(`tar -tzf ${termination}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
     })
   ]);
 
@@ -187,11 +190,14 @@ export async function extractMuseBundle(
     onError.then(([cause]) => {
       throw cause as Error;
     }),
-    onClose.then(([code]) => {
-      if (code === 0 || code === null) {
+    onClose.then(([code, signal]) => {
+      if (code === 0) {
         return;
       }
-      throw new Error(`tar -xzf exited with code ${(code ?? -1).toString()}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
+      const termination = code === null
+        ? `was terminated by signal ${String(signal ?? "unknown")}`
+        : `exited with code ${code.toString()}`;
+      throw new Error(`tar -xzf ${termination}: ${Buffer.concat(errChunks).toString("utf8").trim()}`);
     })
   ]);
 }
@@ -270,4 +276,3 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
-

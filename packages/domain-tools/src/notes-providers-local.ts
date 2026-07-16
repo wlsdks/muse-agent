@@ -1,4 +1,5 @@
 import { errorMessage } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 /**
  * Filesystem-backed notes provider.
  *
@@ -21,6 +22,7 @@ import { errorMessage } from "@muse/shared";
  */
 
 import { Buffer } from "node:buffer";
+import { constants as fsConstants } from "node:fs";
 import { resolve as resolveNativePath, sep as nativeSep } from "node:path";
 
 import {
@@ -48,11 +50,14 @@ export class LocalDirNotesProvider implements NotesProvider {
   private readonly maxListEntries: number;
 
   constructor(options: LocalDirNotesProviderOptions) {
+    if (!options.notesDir || options.notesDir.trim().length === 0) {
+      throw new NotesValidationError("MISSING_DIRECTORY", "LocalDirNotesProvider requires a notes directory");
+    }
     // Normalize once: a mixed-separator or trailing-sep notesDir would defeat
     // the prefix containment check in resolveSafe on win32.
     this.notesDir = resolveNativePath(options.notesDir);
-    this.maxFileBytes = Math.max(1_024, Math.trunc(options.maxFileBytes ?? 1_048_576));
-    this.maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 500));
+    this.maxFileBytes = normalizeLimit(options.maxFileBytes, 1_048_576, 1_024, "maxFileBytes");
+    this.maxListEntries = normalizeLimit(options.maxListEntries, 500, 1, "maxListEntries");
   }
 
   describe(): NotesProviderInfo {
@@ -163,7 +168,7 @@ export class LocalDirNotesProvider implements NotesProvider {
       throw new NotesValidationError("EMPTY_QUERY", "query must not be empty");
     }
     const needle = trimmed.toLowerCase();
-    const cap = Math.max(1, Math.trunc(limit));
+    const cap = normalizeLimit(limit, 1, 1, "limit");
 
     const files: string[] = [];
     await this.walk(this.notesDir, (rel) => { files.push(rel); }, new Set(), fs.readdir as never, resolve, sep);
@@ -221,18 +226,20 @@ export class LocalDirNotesProvider implements NotesProvider {
     if (buffer.byteLength > this.maxFileBytes) {
       throw new NotesValidationError("BODY_TOO_LARGE", `body exceeds maxFileBytes ${this.maxFileBytes}`);
     }
-    let exists: boolean;
-    try {
-      await fs.stat(safe.absolute);
-      exists = true;
-    } catch {
-      exists = false;
-    }
-    if (exists && input.overwrite !== true) {
-      throw new NotesProviderError(this.id, "ALREADY_EXISTS", `note already exists at ${safe.relative}; pass overwrite:true to replace`);
-    }
-    await fs.mkdir(dirname(safe.absolute), { recursive: true });
-    await fs.writeFile(safe.absolute, input.body, "utf8");
+    await this.mutateFile(safe.absolute, async () => {
+      let exists: boolean;
+      try {
+        await fs.stat(safe.absolute);
+        exists = true;
+      } catch {
+        exists = false;
+      }
+      if (exists && input.overwrite !== true) {
+        throw new NotesProviderError(this.id, "ALREADY_EXISTS", `note already exists at ${safe.relative}; pass overwrite:true to replace`);
+      }
+      await fs.mkdir(dirname(safe.absolute), { recursive: true });
+      await atomicWriteFile(safe.absolute, input.body);
+    });
     return {
       body: input.body,
       id: safe.relative,
@@ -249,18 +256,24 @@ export class LocalDirNotesProvider implements NotesProvider {
     if (typeof safe === "string") {
       throw new NotesValidationError("INVALID_PATH", safe);
     }
-    await fs.mkdir(dirname(safe.absolute), { recursive: true });
-    await fs.appendFile(safe.absolute, input.body, "utf8");
-    let stat: { readonly size: number };
-    try {
-      stat = await fs.stat(safe.absolute);
-    } catch {
-      throw new NotesProviderError(this.id, "STAT_FAILED", "cannot stat appended file");
-    }
-    if (stat.size > this.maxFileBytes) {
-      throw new NotesProviderError(this.id, "FILE_TOO_LARGE", `note exceeds maxFileBytes ${this.maxFileBytes} after append (size=${stat.size})`);
-    }
-    const body = await fs.readFile(safe.absolute, "utf8");
+    const body = await this.mutateFile(safe.absolute, async () => {
+      let existing = "";
+      try {
+        existing = await fs.readFile(safe.absolute, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
+      const next = existing + input.body;
+      const size = Buffer.byteLength(next, "utf8");
+      if (size > this.maxFileBytes) {
+        throw new NotesProviderError(this.id, "FILE_TOO_LARGE", `note exceeds maxFileBytes ${this.maxFileBytes} after append (size=${size})`);
+      }
+      await fs.mkdir(dirname(safe.absolute), { recursive: true });
+      await atomicWriteFile(safe.absolute, next);
+      return next;
+    });
     return {
       body,
       id: safe.relative,
@@ -325,6 +338,23 @@ export class LocalDirNotesProvider implements NotesProvider {
   private errorMessage(error: unknown): string {
     return errorMessage(error);
   }
+
+  private async mutateFile<T>(file: string, operation: () => Promise<T>): Promise<T> {
+    const { promises: fs } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    const parent = dirname(file);
+    await fs.mkdir(parent, { recursive: true });
+    await fs.access(parent, fsConstants.W_OK);
+    return withFileMutationQueue(file, () => withFileLock(file, operation));
+  }
+}
+
+function normalizeLimit(value: number | undefined, fallback: number, minimum: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isFinite(resolved)) {
+    throw new NotesValidationError("INVALID_LIMIT", `${name} must be finite`);
+  }
+  return Math.max(minimum, Math.trunc(resolved));
 }
 
 export function sliceWithoutLoneSurrogate(value: string, cap: number): string {

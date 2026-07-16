@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { createFilesystemMcpServer, utf8SafeSliceEnd } from "../src/loopback-filesystem.js";
+import {
+  createFilesystemMcpServer,
+  normalizeFilesystemBodyBytes,
+  normalizeFilesystemListEntries,
+  utf8SafeSliceEnd
+} from "../src/loopback-filesystem.js";
+
+describe("filesystem option normalization", () => {
+  it("keeps only safe positive integer caps", () => {
+    expect(normalizeFilesystemBodyBytes(128)).toBe(128);
+    expect(normalizeFilesystemBodyBytes(0)).toBe(65_536);
+    expect(normalizeFilesystemBodyBytes(0.5)).toBe(65_536);
+    expect(normalizeFilesystemListEntries(10)).toBe(10);
+    expect(normalizeFilesystemListEntries(-1)).toBe(256);
+    expect(normalizeFilesystemListEntries(Number.POSITIVE_INFINITY)).toBe(256);
+  });
+});
 
 describe("utf8SafeSliceEnd — trims to maxBytes on a character boundary (no mid-codepoint cut)", () => {
   it("returns the whole buffer when it fits", () => {

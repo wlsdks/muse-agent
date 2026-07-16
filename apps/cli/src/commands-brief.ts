@@ -43,7 +43,12 @@ import { projectRecentlyLearned } from "@muse/memory";
 import { composeSurfacePrompt } from "@muse/prompts";
 
 import { briefFocusBeat } from "./calendar-focus.js";
-import { playInvocationWithWatchdog, resolveAudioPlayerInvocation } from "./voice-playback.js";
+import {
+  AUDIO_PLAYER_TIMEOUT_MS,
+  playAudioWithWatchdog,
+  playInvocationWithWatchdog,
+  resolveAudioPlayerInvocation
+} from "./voice-playback.js";
 import { collectDatedNotes, formatOnThisDayBrief, selectOnThisDay } from "./on-this-day.js";
 import { formatBriefConflicts } from "./brief-conflicts.js";
 import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
@@ -54,7 +59,6 @@ import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 
 import { resolveTodayWeatherLine } from "./commands-today.js";
 import type { Command } from "commander";
-import { sleep, waitForChildProcessResult } from "./async-promises.js";
 import { readNonEmptyEnv } from "./env.js";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
@@ -107,24 +111,14 @@ interface PersistedTask {
  * `aplay`. Skips silently when TTS isn't configured — the brief
  * text already landed on stdout, --speak is just decoration.
  */
-export const BRIEF_AUDIO_PLAYER_TIMEOUT_MS = 30_000;
+export const BRIEF_AUDIO_PLAYER_TIMEOUT_MS = AUDIO_PLAYER_TIMEOUT_MS;
 
 export async function playAudioFile(
   player: string,
   audioFile: string,
   spawnFn: typeof spawn = spawn
 ): Promise<void> {
-  const child = spawnFn(player, [audioFile], { stdio: "ignore" });
-  let settled = false;
-  const processResult = waitForChildProcessResult(child, player).finally(() => {
-    settled = true;
-  });
-  const watchdog = sleep(BRIEF_AUDIO_PLAYER_TIMEOUT_MS).then(() => {
-    if (settled) return;
-    child.kill("SIGKILL");
-    throw new Error(`${player} timed out after ${BRIEF_AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`);
-  });
-  await Promise.race([processResult, watchdog]);
+  await playAudioWithWatchdog(player, audioFile, spawnFn);
 }
 
 export async function playSynthesizedAudio(

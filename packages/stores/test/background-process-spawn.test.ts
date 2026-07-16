@@ -71,6 +71,15 @@ describe("spawnBackgroundProcess (X-3 slice 2)", () => {
     await expect(spawnBackgroundProcess("   ", {}, baseDeps(file, new FakeChild()))).rejects.toThrow(/empty command/);
   });
 
+  it("rejects an invalid child pid before it can be persisted", async () => {
+    const file = tmpFile();
+    const child = new FakeChild();
+    child.pid = -1;
+
+    await expect(spawnBackgroundProcess("npm run dev", {}, baseDeps(file, child))).rejects.toThrow(/invalid pid/);
+    expect(await readBackgroundProcesses(file)).toEqual([]);
+  });
+
   it("marks the record exited with code 0 on clean exit", async () => {
     const file = tmpFile();
     const child = new FakeChild();
@@ -85,6 +94,47 @@ describe("spawnBackgroundProcess (X-3 slice 2)", () => {
     await spawnBackgroundProcess("npm test", {}, baseDeps(file, child));
     await child.exit(1);
     expect((await getBackgroundProcess(file, "bg1"))?.status).toBe("failed");
+  });
+
+  it("persists an exit observed while asynchronous launch bookkeeping is pending", async () => {
+    const file = tmpFile();
+    const child = new FakeChild();
+    const startTime = Promise.withResolvers<string | undefined>();
+    const spawned = spawnBackgroundProcess("npm test", {}, {
+      ...baseDeps(file, child),
+      readProcessStartTime: () => startTime.promise
+    });
+
+    await child.exit(0);
+    startTime.resolve("Tue Jun 24 00:00:00 2026");
+    await spawned;
+
+    expect(await getBackgroundProcess(file, "bg1")).toMatchObject({
+      status: "exited",
+      exitCode: 0,
+      endedAt: "2026-06-24T00:00:00.000Z"
+    });
+  });
+
+  it("surfaces a persistence failure for an exit observed before launch completes", async () => {
+    const file = tmpFile();
+    const child = new FakeChild();
+    const startTime = Promise.withResolvers<string | undefined>();
+    let clockCalls = 0;
+    const spawned = spawnBackgroundProcess("npm test", {}, {
+      ...baseDeps(file, child),
+      now: () => {
+        clockCalls += 1;
+        if (clockCalls === 2) throw new Error("exit persistence clock failure");
+        return new Date("2026-06-24T00:00:00.000Z");
+      },
+      readProcessStartTime: () => startTime.promise
+    });
+
+    await child.exit(0);
+    startTime.resolve(undefined);
+
+    await expect(spawned).rejects.toThrow(/exit persistence clock failure/);
   });
 
   it("passes the resolved logFile to the spawner", async () => {

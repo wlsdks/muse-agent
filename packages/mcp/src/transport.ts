@@ -42,6 +42,7 @@ import { pathToFileURL } from "node:url";
 
 import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import type { ToolRisk } from "@muse/tools";
+import { isCancellationLikeError } from "@muse/resilience";
 
 import { toErrorMessage } from "./error-utils.js";
 import {
@@ -65,6 +66,15 @@ import {
 
 const defaultMcpRequestTimeoutMs = 15_000;
 
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
+}
+
 export class DefaultMcpTransportConnector implements McpTransportConnector {
   private readonly clientName: string;
   private readonly clientVersion: string;
@@ -80,7 +90,7 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
     this.externalTransportAllowed = options.externalTransportAllowed ?? true;
     this.clientName = options.clientName ?? "muse";
     this.clientVersion = options.clientVersion ?? "1.0.0";
-    this.requestTimeoutMs = options.requestTimeoutMs ?? defaultMcpRequestTimeoutMs;
+    this.requestTimeoutMs = requirePositiveSafeInteger(options.requestTimeoutMs, defaultMcpRequestTimeoutMs, "requestTimeoutMs");
     this.stderr = options.stderr ?? "inherit";
     this.clientRoots = (options.clientRoots ?? []).filter((path) => path.trim().length > 0);
     this.oauthConfig = options.oauthConfig;
@@ -241,6 +251,9 @@ class SdkMcpConnection implements McpConnection {
     try {
       result = await this.client.listTools(undefined, { timeout: this.requestTimeoutMs });
     } catch (error) {
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
       throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
     }
 
@@ -253,14 +266,25 @@ class SdkMcpConnection implements McpConnection {
   }
 
   async callTool(toolName: string, args: JsonObject): Promise<string | JsonValue> {
-    const result = await this.client.callTool(
-      {
-        arguments: args,
-        name: toolName
-      },
-      undefined,
-      { timeout: this.requestTimeoutMs }
-    );
+    let result;
+    try {
+      result = await this.client.callTool(
+        {
+          arguments: args,
+          name: toolName
+        },
+        undefined,
+        { timeout: this.requestTimeoutMs }
+      );
+    } catch (error) {
+      // An SDK abort denotes the caller's terminal cancellation, not a broken
+      // MCP session. Preserve it so the tool factory does not retire a healthy
+      // connection or schedule an unnecessary reconnect.
+      if (isCancellationLikeError(error)) {
+        throw error;
+      }
+      throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
+    }
 
     return formatMcpToolResult(result);
   }
@@ -393,7 +417,7 @@ export function riskFromMcpAnnotations(annotations: unknown): ToolRisk {
   return "write";
 }
 
-function formatMcpToolResult(result: unknown): string | JsonValue {
+export function formatMcpToolResult(result: unknown): string | JsonValue {
   if (!isRecord(result)) {
     return normalizeJsonValue(result);
   }
@@ -433,13 +457,12 @@ function formatMcpToolResult(result: unknown): string | JsonValue {
 }
 
 function normalizeJsonValue(value: unknown): JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return Number.isNaN(value) ? null : value;
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
   }
 
   if (Array.isArray(value)) {

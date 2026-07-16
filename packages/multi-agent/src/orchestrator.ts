@@ -7,6 +7,7 @@ import type { OrchestrationHistoryEntry, OrchestrationHistoryStore } from "./orc
 import {
   buildOrchestrationResponse,
   errorMessage,
+  normalizeDeadlineMs,
   objectiveFromInput,
   withDeadline
 } from "./orchestration-fan-in.js";
@@ -34,6 +35,36 @@ function asError(value: unknown): Error {
   return new Error(errorMessage(value, "Worker execution failed"));
 }
 
+function requireDistinctWorkerIds(workers: readonly AgentWorker[], owner: string): void {
+  const ids = new Set<string>();
+
+  for (const worker of workers) {
+    if (worker.id.trim().length === 0) {
+      throw new NoAgentWorkerError(`${owner} requires workers with non-empty ids`);
+    }
+    if (ids.has(worker.id)) {
+      throw new NoAgentWorkerError(`${owner} requires distinct worker ids; duplicate: ${worker.id}`);
+    }
+    ids.add(worker.id);
+  }
+}
+
+function requireConfidenceThreshold(value: number | undefined): number {
+  const threshold = value ?? 0.1;
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+    throw new RangeError("minConfidence must be a finite number between 0 and 1");
+  }
+  return threshold;
+}
+
+function requireMaxHandoffs(value: number | undefined): number {
+  const maxHandoffs = value ?? 3;
+  if (!Number.isSafeInteger(maxHandoffs) || maxHandoffs < 0) {
+    throw new RangeError("maxHandoffs must be a non-negative safe integer");
+  }
+  return maxHandoffs;
+}
+
 export class SupervisorAgent {
   private readonly workers: readonly AgentWorker[];
   private readonly defaultWorkerId?: string;
@@ -45,11 +76,17 @@ export class SupervisorAgent {
     if (options.workers.length === 0) {
       throw new NoAgentWorkerError("SupervisorAgent requires at least one worker");
     }
+    requireDistinctWorkerIds(options.workers, "SupervisorAgent");
+    if (options.defaultWorkerId !== undefined && !options.workers.some((worker) => worker.id === options.defaultWorkerId)) {
+      throw new NoAgentWorkerError(`SupervisorAgent defaultWorkerId does not match a worker: ${options.defaultWorkerId}`);
+    }
 
-    this.workers = options.workers;
+    // Own the validated membership. `readonly` does not stop the caller from
+    // later mutating the original array and bypassing identity validation.
+    this.workers = [...options.workers];
     this.defaultWorkerId = options.defaultWorkerId;
-    this.minConfidence = options.minConfidence ?? 0.1;
-    this.maxHandoffs = options.maxHandoffs ?? 3;
+    this.minConfidence = requireConfidenceThreshold(options.minConfidence);
+    this.maxHandoffs = requireMaxHandoffs(options.maxHandoffs);
     this.idFactory = options.idFactory ?? (() => createRunId("multi_agent"));
   }
 
@@ -192,13 +229,16 @@ export class MultiAgentOrchestrator {
     if (options.workers.length === 0) {
       throw new NoAgentWorkerError("MultiAgentOrchestrator requires at least one worker");
     }
+    requireDistinctWorkerIds(options.workers, "MultiAgentOrchestrator");
 
-    this.workers = options.workers;
+    // Keep the validated worker set stable for routing, message attribution,
+    // and child-run ids even when the caller retains a mutable source array.
+    this.workers = [...options.workers];
     this.idFactory = options.idFactory ?? (() => createRunId("multi_agent_orchestration"));
     this.messageBus = options.messageBus;
     this.historyStore = options.historyStore;
     this.clock = options.clock ?? (() => new Date());
-    this.workerTimeoutMs = options.workerTimeoutMs;
+    this.workerTimeoutMs = normalizeDeadlineMs(options.workerTimeoutMs, "workerTimeoutMs");
     this.runRegistry = options.runRegistry;
   }
 

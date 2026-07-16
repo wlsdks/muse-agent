@@ -64,6 +64,10 @@ export interface InMemoryOrchestrationHistoryStoreOptions {
   readonly maxEntries?: number;
 }
 
+function snapshotEntry(entry: OrchestrationHistoryEntry): OrchestrationHistoryEntry {
+  return structuredClone(entry);
+}
+
 /**
  * Bounded in-memory ring buffer. Newest entry is index 0 of `list()`.
  */
@@ -82,7 +86,7 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
   }
 
   record(entry: OrchestrationHistoryEntry): void {
-    this.entries.unshift(entry);
+    this.entries.unshift(snapshotEntry(entry));
 
     if (this.entries.length > this.maxEntries) {
       this.entries.length = this.maxEntries;
@@ -91,18 +95,19 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
 
   list(limit?: number): readonly OrchestrationHistoryEntry[] {
     if (limit === undefined) {
-      return [...this.entries];
+      return this.entries.map(snapshotEntry);
     }
 
     if (!Number.isInteger(limit) || limit < 0) {
       throw new RangeError("limit must be a non-negative integer");
     }
 
-    return this.entries.slice(0, limit);
+    return this.entries.slice(0, limit).map(snapshotEntry);
   }
 
   getByRunId(runId: string): OrchestrationHistoryEntry | undefined {
-    return this.entries.find((entry) => entry.runId === runId);
+    const entry = this.entries.find((candidate) => candidate.runId === runId);
+    return entry ? snapshotEntry(entry) : undefined;
   }
 
   summary(): OrchestrationHistorySummary {
@@ -139,9 +144,12 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
     const sortedDurations = [...finiteDurations].sort((a, b) => a - b);
     const p95Index = Math.min(sortedDurations.length - 1, Math.ceil(0.95 * sortedDurations.length) - 1);
     const totalDuration = sortedDurations.reduce((sum, value) => sum + value, 0);
-    const lastRunAt = this.entries
+    const finishedAtValues = this.entries
       .map((entry) => entry.finishedAt.getTime())
-      .reduce((max, current) => (current > max ? current : max), 0);
+      .filter((value) => Number.isFinite(value));
+    const lastRunAt = finishedAtValues.length === 0
+      ? null
+      : new Date(finishedAtValues.reduce((latest, value) => (value > latest ? value : latest))).toISOString();
 
     return {
       avgDurationMs: sortedDurations.length === 0 ? 0 : Math.round(totalDuration / sortedDurations.length),
@@ -152,7 +160,7 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
       },
       completedRuns: completed,
       failedRuns: this.entries.length - completed,
-      lastRunAt: new Date(lastRunAt).toISOString(),
+      lastRunAt,
       maxDurationMs: sortedDurations[sortedDurations.length - 1] ?? 0,
       minDurationMs: sortedDurations[0] ?? 0,
       p95DurationMs: sortedDurations[p95Index] ?? 0,

@@ -78,6 +78,14 @@ describe("playAudioWithWatchdog (shared --speak player watchdog)", () => {
     await expect(promise).rejects.toThrow(/aplay exited with code 4/u);
   });
 
+  it("preserves the terminating signal instead of reporting an unknown exit code", async () => {
+    const { child, spawnFn } = makeFakeSpawn();
+    const promise = playAudioWithWatchdog("aplay", "/tmp/out.wav", spawnFn);
+    child.emit("close", null, "SIGTERM");
+
+    await expect(promise).rejects.toThrow("aplay terminated by SIGTERM");
+  });
+
   it("includes the player's stderr in the failure so the user sees WHY playback failed, sanitised", async () => {
     const { child, spawnFn } = makeFakeSpawn();
     const promise = playAudioWithWatchdog("aplay", "/tmp/out.wav", spawnFn);

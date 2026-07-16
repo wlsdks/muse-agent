@@ -13,6 +13,7 @@ import {
   readReminders,
   readReminderStatusFilter,
   serializeReminderForModel,
+  snoozeReminder,
   type PersistedReminder
 } from "@muse/stores";
 import { reconcileSnoozeDueAt, resolveRecurrenceForAdd, resolveSnoozeAnchor } from "./reminder-recurrence.js";
@@ -344,21 +345,19 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             // specific ("snooze 30 mins", "until tomorrow morning").
             nextDueAt = new Date(now().getTime() + 10 * 60_000).toISOString();
           }
-          const snoozed: PersistedReminder = {
-            ...reminders[index]!,
-            dueAt: nextDueAt,
-            status: "pending"
-          };
+          let snoozed: PersistedReminder | undefined;
           try {
             await mutateReminders(file, (current) => {
-              const i = current.findIndex((reminder) => reminder.id === lookup.reminder.id);
-              if (i < 0) return current;
-              const updated = [...current];
-              updated[i] = { ...current[i]!, dueAt: nextDueAt, status: "pending" };
-              return updated;
+              const next = snoozeReminder(current, lookup.reminder.id, nextDueAt);
+              if (!next) return current;
+              snoozed = next.find((reminder) => reminder.id === lookup.reminder.id);
+              return next;
             });
           } catch (error) {
             return { error: errorMessage(error) };
+          }
+          if (!snoozed) {
+            return { error: `reminder not found: ${lookup.reminder.id}` };
           }
           return { reminder: serializeReminderForModel(snoozed, now) as JsonValue };
         },

@@ -57,6 +57,47 @@ export interface BackgroundOrchestrationStore {
   list(): readonly BackgroundOrchestrationRecord[];
 }
 
+function snapshotRecord(record: BackgroundOrchestrationRecord): BackgroundOrchestrationRecord {
+  // Fast path preserves every cloneable provider payload. Model `raw` fields
+  // are intentionally `unknown`, however, and may contain SDK objects or
+  // functions. A completed run must not become a failed run merely because an
+  // opaque diagnostic value cannot be cloned.
+  try {
+    return structuredClone(record);
+  } catch {
+    return clonePlainData(record) as BackgroundOrchestrationRecord;
+  }
+}
+
+function clonePlainData(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") {
+    return typeof value === "function" ? undefined : value;
+  }
+  if (value instanceof Date) {
+    return new Date(value);
+  }
+  const existing = seen.get(value);
+  if (existing !== undefined) {
+    return existing;
+  }
+  if (Array.isArray(value)) {
+    const copy: unknown[] = [];
+    seen.set(value, copy);
+    copy.push(...value.map((item) => clonePlainData(item, seen)));
+    return copy;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return undefined;
+  }
+  const copy: Record<string, unknown> = {};
+  seen.set(value, copy);
+  for (const [key, item] of Object.entries(value)) {
+    copy[key] = clonePlainData(item, seen);
+  }
+  return copy;
+}
+
 export class InMemoryBackgroundOrchestrationStore implements BackgroundOrchestrationStore {
   private readonly records = new Map<string, BackgroundOrchestrationRecord>();
   private readonly insertionOrder: string[] = [];
@@ -65,15 +106,16 @@ export class InMemoryBackgroundOrchestrationStore implements BackgroundOrchestra
     if (this.records.has(record.orchestrationId)) {
       return;
     }
-    this.records.set(record.orchestrationId, record);
+    this.records.set(record.orchestrationId, snapshotRecord(record));
     this.insertionOrder.push(record.orchestrationId);
   }
 
   get(orchestrationId: string): BackgroundOrchestrationRecord | undefined {
-    return this.records.get(orchestrationId);
+    const record = this.records.get(orchestrationId);
+    return record ? snapshotRecord(record) : undefined;
   }
 
   list(): readonly BackgroundOrchestrationRecord[] {
-    return this.insertionOrder.map((id) => this.records.get(id)!);
+    return this.insertionOrder.map((id) => snapshotRecord(this.records.get(id)!));
   }
 }

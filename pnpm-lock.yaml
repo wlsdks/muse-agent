@@ -137,6 +137,9 @@ importers:
       '@muse/attunement':
         specifier: workspace:*
         version: link:../../packages/attunement
+      '@muse/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@muse/autoconfigure':
         specifier: workspace:*
         version: link:../../packages/autoconfigure
@@ -455,6 +458,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
 
   packages/db:
     dependencies:
@@ -567,6 +573,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
@@ -586,9 +595,6 @@ importers:
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../proactivity
-      '@muse/stores':
-        specifier: workspace:*
-        version: link:../stores
 
   packages/mcp-shared:
     dependencies:
@@ -644,6 +650,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
 
   packages/observability:
     dependencies:
@@ -819,6 +828,10 @@ importers:
   packages/shared: {}
 
   packages/skills:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       vitest:
         specifier: ^4.1.9

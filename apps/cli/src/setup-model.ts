@@ -11,7 +11,7 @@
 
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join as pathJoin } from "node:path";
+import { join as pathJoin } from "node:path";
 
 import { isCancel, multiselect, password, text } from "@clack/prompts";
 import {
@@ -21,6 +21,7 @@ import {
   encryptCredentialEnvelope,
   isCredentialsFileEncryptedAtRest
 } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 interface SetupModelIO {
   readonly stdout: (message: string) => void;
@@ -185,7 +186,6 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
 
   const env = io.env ?? process.env;
   const requested = selection as readonly SetupModelProviderSpec["id"][];
-  const persisted: PersistedShape = await readPersisted(file, env);
   const collected: Array<{ spec: SetupModelProviderSpec; token: string }> = [];
 
   for (const id of requested) {
@@ -211,7 +211,6 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
       continue;
     }
     const token = String(promptResult).trim();
-    persisted.providers[spec.id] = { suggestedModel: spec.suggestedModel, token };
     collected.push({ spec, token });
   }
 
@@ -220,7 +219,11 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
     return;
   }
 
-  await writePersisted(file, persisted, env);
+  await mergePersistedProviders(
+    file,
+    Object.fromEntries(collected.map(({ spec, token }) => [spec.id, { suggestedModel: spec.suggestedModel, token }])),
+    env
+  );
   io.stdout(`\n✓ Saved ${collected.length.toString()} provider(s) to ${file}\n`);
   io.stdout("autoconfigure will load these at next boot. Resolved environment:\n");
   for (const { spec, token } of collected) {
@@ -247,9 +250,7 @@ export async function persistModelProviderKey(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<string> {
   const file = pathJoin(home, ".muse", "models.json");
-  const persisted = await readPersisted(file, env);
-  persisted.providers[providerId] = { suggestedModel, token };
-  await writePersisted(file, persisted, env);
+  await mergePersistedProviders(file, { [providerId]: { suggestedModel, token } }, env);
   return file;
 }
 
@@ -297,7 +298,6 @@ async function readPersisted(file: string, env: NodeJS.ProcessEnv = process.env)
  * up the existing plaintext so a lost key can't make keys unrecoverable.
  */
 async function writePersisted(file: string, value: PersistedShape, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  await fs.mkdir(dirname(file), { recursive: true });
   const payload = `${JSON.stringify(value, null, 2)}\n`;
   const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
   const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
@@ -308,9 +308,24 @@ async function writePersisted(file: string, value: PersistedShape, env: NodeJS.P
     }
   }
   const content = shouldEncrypt ? `${JSON.stringify(encryptCredentialEnvelope(payload, env))}\n` : payload;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWriteFile(file, content);
 }
 
+/**
+ * Merge new provider settings against the latest on-disk credentials while
+ * holding the shared cross-process mutation lock. Setup UIs can stay open for
+ * minutes, so their earlier read must never overwrite a provider configured by
+ * a concurrent first-run wizard or another CLI process.
+ */
+async function mergePersistedProviders(
+  file: string,
+  providers: Readonly<PersistedShape["providers"]>,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  await withFileMutationQueue(file, () =>
+    withFileLock(file, async () => {
+      const current = await readPersisted(file, env);
+      await writePersisted(file, { providers: { ...current.providers, ...providers }, version: 1 }, env);
+    })
+  );
+}

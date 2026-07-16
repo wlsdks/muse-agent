@@ -14,12 +14,13 @@
  */
 
 import type { MuseDatabase, UserTable } from "@muse/db";
-import { createRunId, toDate } from "@muse/shared";
+import { createRunId, isErrorLike, toDate } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import { AuthError } from "./auth-error.js";
 
 const defaultMaxUsers = 10_000;
+const postgresUniqueViolation = "23505";
 
 export interface User {
   readonly id: string;
@@ -62,7 +63,10 @@ export class InMemoryUserStore implements UserStore {
   private readonly usersByEmail = new Map<string, User>();
 
   constructor(maxUsers = defaultMaxUsers) {
-    this.maxUsers = Math.max(1, maxUsers);
+    if (!Number.isSafeInteger(maxUsers) || maxUsers < 1) {
+      throw new RangeError("maxUsers must be a positive safe integer");
+    }
+    this.maxUsers = maxUsers;
   }
 
   findByEmail(email: string): User | undefined {
@@ -156,15 +160,17 @@ export class KyselyUserStore implements AsyncUserStore {
   }
 
   async save(input: UserInput): Promise<User> {
-    if (await this.existsByEmail(input.email)) {
-      throw new AuthError("USER_EXISTS", `User already exists: ${normalizeEmail(input.email)}`);
-    }
-
-    const row = await this.db
+    const user = createUserInsert(input);
+    const row = await runUserWrite(user.email, () => this.db
       .insertInto("users")
-      .values(createUserInsert(input))
+      .values(user)
+      .onConflict((oc) => oc.column("email").doNothing())
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst());
+
+    if (!row) {
+      throw new AuthError("USER_EXISTS", `User already exists: ${user.email}`);
+    }
 
     return mapUserRow(row);
   }
@@ -178,7 +184,7 @@ export class KyselyUserStore implements AsyncUserStore {
       throw new AuthError("USER_EXISTS", `User already exists: ${normalized.email}`);
     }
 
-    const row = await this.db
+    const row = await runUserWrite(normalized.email, () => this.db
       .insertInto("users")
       .values(createUserInsert({ ...input, id: normalized.id, email: normalized.email, updatedAt: now }))
       .onConflict((oc) =>
@@ -190,7 +196,7 @@ export class KyselyUserStore implements AsyncUserStore {
         })
       )
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirstOrThrow());
 
     return mapUserRow(row);
   }
@@ -265,4 +271,15 @@ export function mapUserRow(row: UserRow): User {
     name: row.name,
     passwordHash: row.password_hash
   };
+}
+
+async function runUserWrite<T>(email: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isErrorLike(error) && "code" in error && String(error.code) === postgresUniqueViolation) {
+      throw new AuthError("USER_EXISTS", `User already exists: ${email}`);
+    }
+    throw error;
+  }
 }

@@ -27,6 +27,23 @@ afterEach(async () => {
 });
 
 describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence seam)", () => {
+  it("bounds direct topK input to the CLI retrieval contract", async () => {
+    const files = await Promise.all(Array.from({ length: 25 }, async (_value, index) =>
+      noteFile(`note-${index.toString()}.md`, `note ${index.toString()}`, [1, 0])
+    ));
+    const result = await retrieveAndRankNotes({
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "notes", scope: undefined, topK: Number.POSITIVE_INFINITY
+    });
+    expect(result.scored).toEqual([]);
+
+    const capped = await retrieveAndRankNotes({
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "notes", scope: undefined, topK: 999
+    });
+    expect(capped.preGapScored).toHaveLength(20);
+  });
+
   // Both align closely with the query direction; the stale note's raw cosine
   // (1.0, a perfect match) OUTRANKS the current note's (~0.994) on score alone —
   // so a plain top-K cosine sort would rank the superseded fact first.

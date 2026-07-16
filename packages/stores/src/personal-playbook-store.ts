@@ -15,8 +15,8 @@
  * unchanged.
  */
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
-import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
+import { withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
+import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, writeMaybeEncrypted } from "./encrypted-file.js";
 import { PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, retainPlaybookEntries } from "./playbook-rewards.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
@@ -142,26 +142,40 @@ export async function readPlaybook(file: string, env: NodeJS.ProcessEnv = proces
   );
 }
 
-export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+async function writePlaybookUnlocked(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const text = `${JSON.stringify({ entries }, null, 2)}\n`;
-  // Peek + write under the cross-process migration lock so an ordinary RL update
-  // (adjustPlaybookReward / a daemon decay) can't race `encryptPlaybookAtRest` and
-  // clobber it with a stale-format payload; format is preserved. 0o600 kept.
-  await withFileLock(file, async () => {
-    const encrypted = await isFileEncryptedAtRest(file);
-    await writeMaybeEncrypted(file, text, encrypted, env);
-  });
+  const encrypted = await isFileEncryptedAtRest(file);
+  await writeMaybeEncrypted(file, text, encrypted, env);
+}
+
+export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  await withFileLock(file, () => writePlaybookUnlocked(file, entries, env));
+}
+
+interface PlaybookMutation<Result> {
+  readonly result: Result;
+  readonly nextEntries?: readonly PlaybookEntry[];
+}
+
+async function mutatePlaybook<Result>(
+  file: string,
+  env: NodeJS.ProcessEnv,
+  mutation: (entries: readonly PlaybookEntry[]) => PlaybookMutation<Result>
+): Promise<Result> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const existing = await readPlaybook(file, env);
+    const { nextEntries, result } = mutation(existing);
+    if (nextEntries !== undefined) {
+      await writePlaybookUnlocked(file, nextEntries, env);
+    }
+    return result;
+  }));
 }
 
 export async function recordPlaybookStrategy(file: string, entry: PlaybookEntry, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  // Serialise the read-modify-write: concurrent strategy records must not each
-  // read the same snapshot and clobber one another (a lost learned strategy is a
-  // self-improvement the agent forgets), and the cap below must apply to the
-  // real merged set, not a stale one.
-  await withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file, env);
+  await mutatePlaybook(file, env, (existing) => {
     const next = retainPlaybookEntries([...existing.filter((e) => e.id !== entry.id), entry], MAX_PLAYBOOK_ENTRIES);
-    await writePlaybook(file, next, env);
+    return { nextEntries: next, result: undefined };
   });
 }
 
@@ -171,14 +185,12 @@ export async function queryPlaybook(file: string, userId?: string, env: NodeJS.P
 }
 
 export async function removePlaybookStrategy(file: string, id: string): Promise<boolean> {
-  return withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file);
+  return mutatePlaybook(file, process.env, (existing) => {
     const next = existing.filter((e) => e.id !== id);
     if (next.length === existing.length) {
-      return false;
+      return { result: false };
     }
-    await writePlaybook(file, next);
-    return true;
+    return { nextEntries: next, result: true };
   });
 }
 
@@ -200,10 +212,9 @@ export async function adjustPlaybookReward(
   if (!Number.isFinite(delta)) {
     return undefined;
   }
-  return withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file);
+  return mutatePlaybook(file, process.env, (existing) => {
     if (!existing.some((e) => e.id === id)) {
-      return undefined;
+      return { result: undefined };
     }
     let updated = 0;
     const next = existing.map((e) => {
@@ -227,8 +238,7 @@ export async function adjustPlaybookReward(
         ...(delta > 0 ? { lastReinforcedAt: new Date(nowMs).toISOString() } : {})
       };
     });
-    await writePlaybook(file, next);
-    return updated;
+    return { nextEntries: next, result: updated };
   });
 }
 
@@ -244,10 +254,9 @@ export async function adjustPlaybookReward(
  * or undefined when no entry matched.
  */
 export async function bumpPlaybookObservation(file: string, id: string): Promise<number | undefined> {
-  return withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file);
+  return mutatePlaybook(file, process.env, (existing) => {
     if (!existing.some((e) => e.id === id)) {
-      return undefined;
+      return { result: undefined };
     }
     let updated = 0;
     const next = existing.map((e) => {
@@ -257,8 +266,7 @@ export async function bumpPlaybookObservation(file: string, id: string): Promise
       updated = (e.timesObserved ?? 1) + 1;
       return { ...e, timesObserved: updated };
     });
-    await writePlaybook(file, next);
-    return updated;
+    return { nextEntries: next, result: updated };
   });
 }
 
@@ -280,10 +288,13 @@ export async function decayStalePlaybookRewards(
   file: string,
   options: { readonly nowMs: number; readonly staleAfterDays?: number; readonly step?: number }
 ): Promise<number> {
-  const staleMs = Math.max(0, options.staleAfterDays ?? PLAYBOOK_DECAY_STALE_DAYS) * DAY_MS;
-  const step = Math.max(1, Math.trunc(options.step ?? 1));
-  return withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file);
+  const requestedStaleDays = options.staleAfterDays ?? PLAYBOOK_DECAY_STALE_DAYS;
+  const staleDays = Number.isFinite(requestedStaleDays) && requestedStaleDays >= 0
+    ? requestedStaleDays
+    : PLAYBOOK_DECAY_STALE_DAYS;
+  const requestedStep = options.step ?? 1;
+  const step = Number.isFinite(requestedStep) && requestedStep > 0 ? Math.max(1, Math.trunc(requestedStep)) : 1;
+  return mutatePlaybook(file, process.env, (existing) => {
     let decayed = 0;
     const next = existing.map((e) => {
       const reward = e.reward ?? 0;
@@ -291,16 +302,13 @@ export async function decayStalePlaybookRewards(
         return e;
       }
       const anchorMs = Date.parse(e.lastReinforcedAt ?? e.createdAt);
-      if (!Number.isFinite(anchorMs) || options.nowMs - anchorMs < staleMs) {
+      if (!Number.isFinite(anchorMs) || options.nowMs - anchorMs < staleDays * DAY_MS) {
         return e;
       }
       decayed += 1;
       return { ...e, reward: Math.max(0, reward - step) };
     });
-    if (decayed > 0) {
-      await writePlaybook(file, next);
-    }
-    return decayed;
+    return decayed > 0 ? { nextEntries: next, result: decayed } : { result: 0 };
   });
 }
 

@@ -18,6 +18,10 @@ const DEFAULT_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 // (the TS parser clamps to the same; this is the authoritative defence).
 const MAX_TIMEOUT_MS: u64 = 600_000;
 const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
+// The runner reads one JSON request from an untrusted parent process. Bound it
+// before JSON parsing so a malformed multi-gigabyte stdin payload cannot make
+// the runner allocate unbounded memory.
+const MAX_REQUEST_BYTES: usize = 1 * 1024 * 1024;
 
 fn effective_timeout_ms(requested: Option<u64>) -> u64 {
     requested.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(1, MAX_TIMEOUT_MS)
@@ -102,12 +106,20 @@ fn main() {
 }
 
 fn read_request() -> Result<RunnerRequest, String> {
-    let mut input = String::new();
-    io::stdin()
-        .read_to_string(&mut input)
-        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    read_request_from(io::stdin())
+}
 
-    serde_json::from_str(&input).map_err(|error| format!("invalid runner request JSON: {error}"))
+fn read_request_from<R: Read>(input: R) -> Result<RunnerRequest, String> {
+    let mut bytes = Vec::with_capacity(MAX_REQUEST_BYTES + 1);
+    input
+        .take((MAX_REQUEST_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    if bytes.len() > MAX_REQUEST_BYTES {
+        return Err(format!("runner request exceeds the {MAX_REQUEST_BYTES} byte limit"));
+    }
+
+    serde_json::from_slice(&bytes).map_err(|error| format!("invalid runner request JSON: {error}"))
 }
 
 /// The concrete `Command::new(program).args(args)` this run will spawn, resolved
@@ -343,7 +355,10 @@ fn kill_process_group(_pgid: i32) {}
 const DRAIN_RECV_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn recv_drained(drainer: mpsc::Receiver<(String, bool)>) -> (String, bool) {
-    drainer.recv_timeout(DRAIN_RECV_TIMEOUT).unwrap_or_else(|_| (String::new(), false))
+    // A timed-out or disconnected drainer means the captured stream is unknown,
+    // never complete. Preserve the runner response but surface `truncated` so a
+    // caller cannot treat an empty fallback as a clean command result.
+    drainer.recv_timeout(DRAIN_RECV_TIMEOUT).unwrap_or_else(|_| (String::new(), true))
 }
 
 /// Self-labelled marker appended to a captured stream that was truncated at the
@@ -446,16 +461,49 @@ const UNSAFE_ENV_EXACT: &[&str] = &[
     // so a model-set PATH redirects a guard-passing name to an attacker binary.
     // Strip it; the runner-set PATH (above) resolves normal commands.
     "PATH",
-    "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
+    "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
+    "EDITOR", "VISUAL",
+    // Git discovers subcommands from GIT_EXEC_PATH and copies hooks from its
+    // template directory. Both turn a guard-approved `git` command into an
+    // arbitrary executable path controlled by the request environment.
+    "GIT_EXEC_PATH", "GIT_TEMPLATE_DIR", "GIT_DIR", "GIT_COMMON_DIR",
     // GIT_CONFIG* point git at an attacker config (core.sshCommand / core.pager)
     // — a second path to the command-exec hooks above.
     "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+    // Cargo can replace every compiler/doc/formatter invocation, configure a
+    // registry credential provider, or hand execution to an arbitrary browser.
+    "CARGO", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER",
+    "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTDOC", "CARGO_BUILD_TARGET",
+    "CARGO_BUILD_RUSTFLAGS", "CARGO_BUILD_RUSTDOCFLAGS",
+    "CARGO_REGISTRY_CREDENTIAL_PROVIDER", "CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS",
+    // The runner starts from env_clear(); accepting these overrides would
+    // re-enable user-controlled Cargo/Git global configuration discovery.
+    "CARGO_HOME", "HOME", "XDG_CONFIG_HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    "RUSTC", "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER", "RUSTDOC", "RUSTDOCFLAGS", "RUSTFLAGS",
+    "CARGO_ENCODED_RUSTDOCFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTFMT",
+    // Rustup proxy binaries honor both a selected toolchain (including an
+    // absolute custom-toolchain path) and an alternate toolchain/config root.
+    "RUSTUP_HOME", "RUSTUP_TOOLCHAIN",
+    "BROWSER", "PAGER", "MANPAGER",
+    // OpenSSH invokes the configured askpass helper and loads a requested
+    // security-key provider library before it ever reaches the remote host.
+    "SSH_ASKPASS", "SSH_ASKPASS_REQUIRE", "SSH_SK_PROVIDER",
+];
+
+const UNSAFE_ENV_PREFIXES: &[&str] = &[
+    // Git uses numbered GIT_CONFIG_KEY_n/VALUE_n variables to inject config.
+    "GIT_CONFIG_",
+    // Cargo target runners/linkers/rustflags are executable or tool-loading
+    // configuration paths; permit target selection through command arguments.
+    "CARGO_TARGET_",
 ];
 
 fn is_safe_env_key(key: &str) -> bool {
     !key.is_empty()
-        && !key.starts_with("LD_")
-        && !key.starts_with("DYLD_")
+        && !["LD_", "DYLD_"].iter().any(|prefix| key.starts_with(prefix))
+        && !UNSAFE_ENV_PREFIXES.iter().any(|prefix| key.starts_with(prefix))
+        && !(key.starts_with("CARGO_REGISTRIES_") && key.ends_with("_CREDENTIAL_PROVIDER"))
         && !UNSAFE_ENV_EXACT.contains(&key)
         && key
             .bytes()
@@ -752,9 +800,37 @@ mod tests {
             assert!(!is_safe_env_key(key), "{key} must be rejected");
         }
         // Legitimate, similarly-named vars survive.
-        for key in ["NODE_ENV", "GIT_DIR", "GIT_AUTHOR_NAME", "MY_FLAG"] {
+        for key in ["NODE_ENV", "GIT_WORK_TREE", "GIT_AUTHOR_NAME", "MY_FLAG"] {
             assert!(is_safe_env_key(key), "{key} must be allowed");
         }
+    }
+
+    #[test]
+    fn rejects_vcs_toolchain_and_ssh_execution_environment() {
+        // Each variable below is documented by its owning tool as choosing an
+        // executable, executable search path, hook template, or loaded library.
+        for key in [
+            "GIT_EXEC_PATH", "GIT_TEMPLATE_DIR", "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_DIR", "GIT_COMMON_DIR",
+            "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "EDITOR", "VISUAL",
+            "RUSTC", "RUSTC_WRAPPER",
+            "RUSTC_WORKSPACE_WRAPPER", "RUSTDOC", "RUSTFMT", "RUSTFLAGS",
+            "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER",
+            "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTDOC", "CARGO_BUILD_TARGET",
+            "CARGO_BUILD_RUSTFLAGS", "CARGO_BUILD_RUSTDOCFLAGS",
+            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER",
+            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER",
+            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS",
+            "CARGO_REGISTRY_CREDENTIAL_PROVIDER",
+            "CARGO_REGISTRIES_PRIVATE_CREDENTIAL_PROVIDER",
+            "CARGO_HOME", "HOME", "XDG_CONFIG_HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+            "RUSTUP_HOME", "RUSTUP_TOOLCHAIN",
+            "SSH_ASKPASS", "SSH_ASKPASS_REQUIRE", "SSH_SK_PROVIDER", "BROWSER",
+        ] {
+            assert!(!is_safe_env_key(key), "{key} must be rejected");
+        }
+        assert!(is_safe_env_key("GIT_AUTHOR_NAME"));
+        assert!(is_safe_env_key("MUSE_RUNNER_LABEL"));
     }
 
     #[test]
@@ -1306,3 +1382,33 @@ mod macos_sandbox_contract_tests {
     }
 }
 
+#[cfg(test)]
+mod request_input_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn request_reader_accepts_a_normal_bounded_json_request() {
+        let request = read_request_from(Cursor::new(br#"{"command":"echo"}"#))
+            .expect("a normal JSON request should parse");
+        assert_eq!(request.command, "echo");
+    }
+
+    #[test]
+    fn request_reader_rejects_oversized_input_before_json_parsing() {
+        let oversized = vec![b' '; MAX_REQUEST_BYTES + 1];
+        let error = read_request_from(Cursor::new(oversized))
+            .expect_err("oversized input must be rejected before parsing");
+        assert!(error.contains("exceeds"), "unexpected error: {error}");
+        assert!(error.contains(&MAX_REQUEST_BYTES.to_string()), "missing limit: {error}");
+    }
+
+    #[test]
+    fn disconnected_drainer_is_marked_as_incomplete_output() {
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let (output, truncated) = recv_drained(receiver);
+        assert!(output.is_empty());
+        assert!(truncated, "a missing drainer result must never look complete");
+    }
+}

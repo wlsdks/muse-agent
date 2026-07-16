@@ -1,7 +1,7 @@
 import type { RuntimeSettingType } from "@muse/runtime-settings";
 import type { JsonObject } from "@muse/shared";
-import { isRecord } from "@muse/shared";
-export { isRecord };
+import { isJsonValue, isRecord } from "@muse/shared";
+export { isJsonValue, isRecord };
 
 /**
  * Generic shape-inspection / simple-value helpers extracted from
@@ -22,22 +22,6 @@ export function isJsonObject(value: unknown): value is JsonObject {
   }
 
   return Object.values(value).every(isJsonValue);
-}
-
-export function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "boolean" || typeof value === "string") {
-    return true;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
 export function optionalString(value: unknown): string | undefined {

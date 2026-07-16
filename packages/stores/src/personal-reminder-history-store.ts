@@ -14,7 +14,7 @@ import { promises as fs } from "node:fs";
 
 import { redactSecretsInText } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export interface ReminderHistoryEntry {
@@ -67,13 +67,13 @@ export async function appendReminderHistory(
     text: redactSecretsInText(entry.text),
     ...(entry.error ? { error: redactSecretsInText(entry.error) } : {})
   };
-  await withFileMutationQueue(file, async () => {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readRaw(file);
     const next = [...existing, scrubbed];
     const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
     const payload: PersistedShape = { entries: trimmed, version: 1 };
     await atomicWriteFile(file, `${JSON.stringify(payload, null, 2)}\n`);
-  });
+  }));
 }
 
 async function readRaw(file: string): Promise<readonly ReminderHistoryEntry[]> {
@@ -123,5 +123,6 @@ function isHistoryEntry(value: unknown): value is ReminderHistoryEntry {
     && typeof candidate.providerId === "string"
     && typeof candidate.destination === "string"
     && typeof candidate.firedAtIso === "string"
-    && (candidate.status === "delivered" || candidate.status === "failed");
+    && (candidate.status === "delivered" || candidate.status === "failed")
+    && (candidate.error === undefined || typeof candidate.error === "string");
 }

@@ -46,7 +46,10 @@ import {
   extractTitleString,
   isRecordArray,
   isTransientNotionStatus,
-  mapNotionStatus
+  mapNotionStatus,
+  normalizeNotionRetryPolicy,
+  readNotionErrorText,
+  resolveNotionEndpoint
 } from "./notion-shared.js";
 import { sleep } from "@muse/shared";
 
@@ -93,15 +96,20 @@ export class NotionNotesProvider implements NotesProvider {
     this.token = options.token;
     this.databaseId = options.databaseId;
     this.titleProperty = options.titleProperty ?? NOTION_DEFAULT_TITLE_PROPERTY;
-    this.endpoint = options.endpoint ?? NOTION_DEFAULT_ENDPOINT;
+    try {
+      this.endpoint = resolveNotionEndpoint(options.endpoint);
+    } catch (error) {
+      throw new NotesValidationError("INVALID_ENDPOINT", errorMessage(error));
+    }
     this.notionVersion = options.notionVersion ?? NOTION_DEFAULT_VERSION;
     const globalFetch = (globalThis as { fetch?: NotionFetch }).fetch;
     this.fetchImpl = options.fetchImpl ?? (globalFetch as NotionFetch);
     if (!this.fetchImpl) {
       throw new NotesValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
-    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
-    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    const retry = normalizeNotionRetryPolicy(options.retry);
+    this.retries = retry.retries;
+    this.baseDelayMs = retry.baseDelayMs;
     this.sleep = options.retry?.sleep ?? sleep;
   }
 
@@ -348,7 +356,7 @@ export class NotionNotesProvider implements NotesProvider {
           await this.sleep(this.baseDelayMs * 2 ** attempt);
           continue;
         }
-        const detail = await safeReadText(response);
+        const detail = await readNotionErrorText(response);
         const code = mapNotionStatus(response.status);
         // Forward status so callers get err.retryable for free.
         throw new NotesProviderError(
@@ -433,12 +441,4 @@ function bodyToParagraphBlocks(body: string): readonly Record<string, unknown>[]
     },
     type: "paragraph"
   }));
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return `<status ${response.status}>`;
-  }
 }

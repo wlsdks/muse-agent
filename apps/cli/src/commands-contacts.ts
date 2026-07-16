@@ -12,7 +12,7 @@
 import { overdueContacts, type OverdueContact } from "@muse/agent-core";
 import { interactionsFromEvents, resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
 import { readLocalEvents } from "./today-local-sources.js";
-import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, writeContacts, type Contact } from "@muse/stores";
+import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
 import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
@@ -132,9 +132,10 @@ export async function importAppleContacts(): Promise<AppleContactsImportResult> 
   }
   const { mergeAppleContacts } = await import("./apple-contacts-merge.js");
   const file = contactsFile();
-  const existing = await queryContacts(file);
-  const result = mergeAppleContacts(existing, read.contacts, () => createRunId("contact"));
-  await writeContacts(file, result.contacts);
+  const result = await mutateContactsWithResult(file, (current) => {
+    const merged = mergeAppleContacts(current, read.contacts, () => createRunId("contact"));
+    return { contacts: merged.contacts, result: merged };
+  });
   return { imported: result.imported, ok: true, skipped: result.skipped, total: read.contacts.length, updated: result.updated };
 }
 

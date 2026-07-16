@@ -13,6 +13,9 @@ import { errorMessage } from "@muse/shared";
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
 
+const DEFAULT_MAX_BODY_BYTES = 65_536;
+const DEFAULT_MAX_LIST_ENTRIES = 256;
+
 /**
  * `muse.fs` loopback MCP server — bounded filesystem reader.
  *
@@ -47,6 +50,20 @@ export interface FilesystemMcpServerOptions {
   };
   /** Optional path module override (used in tests). */
   readonly path?: { resolve(...segments: string[]): string; sep: string };
+}
+
+/** Invalid runtime caps retain the bounded filesystem-reader defaults. */
+export function normalizeFilesystemBodyBytes(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_MAX_BODY_BYTES;
+}
+
+/** Invalid runtime caps retain the bounded directory-listing default. */
+export function normalizeFilesystemListEntries(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_MAX_LIST_ENTRIES;
 }
 
 /**
@@ -88,8 +105,8 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
     realpath: (path) => nodeRealpath(path),
     stat: (path) => nodeStat(path)
   };
-  const maxBodyBytes = options.maxBodyBytes ?? 65_536;
-  const maxListEntries = options.maxListEntries ?? 256;
+  const maxBodyBytes = normalizeFilesystemBodyBytes(options.maxBodyBytes);
+  const maxListEntries = normalizeFilesystemListEntries(options.maxListEntries);
   const roots = options.allowedRoots.map((root) => pathLib.resolve(root));
 
   async function checkAllowed(rawPath: string): Promise<{ readonly allowed: true; readonly resolved: string } | { readonly allowed: false; readonly error: string }> {

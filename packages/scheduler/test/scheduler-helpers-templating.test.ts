@@ -8,7 +8,8 @@ import {
   resolveTemplateJson,
   validateJobTypeFields,
 } from "../src/scheduler-helpers.js";
-import type { ScheduledJob, ScheduledJobInput } from "../src/index.js";
+import { InMemoryScheduledJobStore } from "../src/scheduler-stores.js";
+import type { ScheduledJob, ScheduledJobInput, ScheduledJobUpdateInput } from "../src/index.js";
 
 const fixedNow = () => new Date("2026-03-05T14:30:00Z");
 const job = (overrides: Partial<ScheduledJobInput> = {}): ScheduledJob =>
@@ -77,33 +78,70 @@ describe("createScheduledJobUpdate", () => {
     { id: "keep-id", now: () => new Date("2020-01-01T00:00:00Z") },
   );
 
-  it("clears the id and preserves the existing createdAt while applying the new fields", () => {
+  it("only includes mutable configuration fields", () => {
     const update = createScheduledJobUpdate(
       { name: "New name", cronExpression: "0 9 * * *", jobType: "agent", agentPrompt: "p2" } as ScheduledJobInput,
       existing,
       fixedNow,
     );
-    expect(update.id).toBeUndefined();
     expect(update.name).toBe("New name");
-    expect(new Date(update.created_at).toISOString()).toBe("2020-01-01T00:00:00.000Z");
+    expect(update).not.toHaveProperty("id");
+    expect(update).not.toHaveProperty("created_at");
+    expect(update).not.toHaveProperty("last_result");
+    expect(update).not.toHaveProperty("last_run_at");
+    expect(update).not.toHaveProperty("last_status");
   });
 
-  it("falls back to the existing last-run fields when the input omits them", () => {
+  it("does not submit lifecycle fields when the input omits them", () => {
     const update = createScheduledJobUpdate(
       { name: "Old", cronExpression: "0 9 * * *", jobType: "agent", agentPrompt: "p" } as ScheduledJobInput,
       existing,
       fixedNow,
     );
-    expect(update.last_result).toBe("previous-result");
-    expect(update.last_status).toBe("success");
+    expect(update).not.toHaveProperty("last_result");
+    expect(update).not.toHaveProperty("last_status");
   });
 
-  it("prefers the input's last-run fields when supplied", () => {
+  it("does not let configuration updates overwrite execution lifecycle fields", () => {
     const update = createScheduledJobUpdate(
-      { name: "Old", cronExpression: "0 9 * * *", jobType: "agent", agentPrompt: "p", lastResult: "fresh" } as ScheduledJobInput,
+      {
+        name: "Old",
+        cronExpression: "0 9 * * *",
+        jobType: "agent",
+        agentPrompt: "p",
+        lastResult: "stale-result",
+        lastRunAt: new Date("2026-03-04T14:30:00Z"),
+        lastStatus: "failed"
+      } as ScheduledJobInput,
       existing,
       fixedNow,
     );
-    expect(update.last_result).toBe("fresh");
+    expect(update).not.toHaveProperty("last_result");
+    expect(update).not.toHaveProperty("last_run_at");
+    expect(update).not.toHaveProperty("last_status");
+  });
+
+  it("preserves execution lifecycle state in the in-memory configuration path", () => {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1", now: fixedNow });
+    const saved = store.save({ name: "Old", cronExpression: "0 9 * * *", jobType: "agent", agentPrompt: "p" });
+    store.updateExecutionResult(saved.id, "success", "fresh-result");
+
+    const staleJavaScriptInput = {
+      name: "New",
+      cronExpression: "0 10 * * *",
+      jobType: "agent",
+      agentPrompt: "updated",
+      lastResult: "stale-result",
+      lastRunAt: new Date("2026-03-04T14:30:00Z"),
+      lastStatus: "failed"
+    } as unknown as ScheduledJobUpdateInput;
+    const updated = store.update(saved.id, staleJavaScriptInput);
+
+    expect(updated).toMatchObject({
+      lastResult: "fresh-result",
+      lastRunAt: fixedNow(),
+      lastStatus: "success",
+      name: "New"
+    });
   });
 });

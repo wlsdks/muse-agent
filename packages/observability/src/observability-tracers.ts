@@ -39,6 +39,12 @@ interface MutableRecordedSpan {
   error?: string;
 }
 
+export const DEFAULT_IN_MEMORY_TRACE_MAX_SPANS = 10_000;
+
+export interface InMemoryMuseTracerOptions {
+  readonly maxSpans?: number;
+}
+
 export class NoOpMuseTracer implements MuseTracer {
   startSpan(): SpanHandle {
     return noOpSpanHandle;
@@ -47,7 +53,15 @@ export class NoOpMuseTracer implements MuseTracer {
 
 export class InMemoryMuseTracer implements MuseTracer {
   private readonly spans: MutableRecordedSpan[] = [];
+  private readonly maxSpans: number;
   private nextId = 0;
+
+  constructor(options: InMemoryMuseTracerOptions = {}) {
+    const configured = options.maxSpans ?? DEFAULT_IN_MEMORY_TRACE_MAX_SPANS;
+    this.maxSpans = Number.isSafeInteger(configured) && configured > 0
+      ? configured
+      : DEFAULT_IN_MEMORY_TRACE_MAX_SPANS;
+  }
 
   startSpan(name: string, attributes: SpanAttributes = {}): SpanHandle {
     const span: MutableRecordedSpan = {
@@ -58,6 +72,9 @@ export class InMemoryMuseTracer implements MuseTracer {
     };
 
     this.spans.push(span);
+    if (this.spans.length > this.maxSpans) {
+      this.spans.splice(0, this.spans.length - this.maxSpans);
+    }
     return new InMemorySpanHandle(span);
   }
 

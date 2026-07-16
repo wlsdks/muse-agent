@@ -46,6 +46,12 @@ describe("reject ledger", () => {
     expect(await shouldSkipCluster(file, cluster, 3)).toBe(false);
   });
 
+  it("accumulates every concurrent reject instead of losing cooldown evidence", async () => {
+    const file = ledgerFile();
+    await Promise.all(Array.from({ length: 8 }, () => recordClusterReject(file, cluster, NOW)));
+    expect(await shouldSkipCluster(file, cluster, 8)).toBe(true);
+  });
+
   it("clearCluster resets the count (merged → re-openable)", async () => {
     const file = ledgerFile();
     await recordClusterReject(file, cluster, NOW);

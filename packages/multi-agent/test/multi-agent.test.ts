@@ -199,6 +199,46 @@ describe("SupervisorAgent", () => {
     expect(() => new SupervisorAgent({ workers: [] })).toThrow(NoAgentWorkerError);
   });
 
+  it("rejects ambiguous worker identities and invalid routing configuration at construction", () => {
+    const worker = new RuleBasedAgentWorker("worker", "Worker", [], (input) =>
+      createWorkerResult("worker", "ok", input)
+    );
+    const blankIdWorker = new RuleBasedAgentWorker("   ", "Blank", [], (input) =>
+      createWorkerResult("blank", "ok", input)
+    );
+
+    expect(() => new SupervisorAgent({ workers: [worker, worker] })).toThrow(NoAgentWorkerError);
+    expect(() => new MultiAgentOrchestrator({ workers: [worker, worker] })).toThrow(NoAgentWorkerError);
+    expect(() => new SupervisorAgent({ workers: [blankIdWorker] })).toThrow(NoAgentWorkerError);
+    expect(() => new SupervisorAgent({ defaultWorkerId: "missing", workers: [worker] })).toThrow(NoAgentWorkerError);
+
+    for (const minConfidence of [Number.NaN, Number.POSITIVE_INFINITY, -0.1, 1.1]) {
+      expect(() => new SupervisorAgent({ minConfidence, workers: [worker] })).toThrow(RangeError);
+    }
+    for (const maxHandoffs of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+      expect(() => new SupervisorAgent({ maxHandoffs, workers: [worker] })).toThrow(RangeError);
+    }
+  });
+
+  it("owns the validated worker membership after construction", async () => {
+    const original = new RuleBasedAgentWorker("original", "Original", ["task"], (input) =>
+      createWorkerResult("original", "original", input)
+    );
+    const addedLater = new RuleBasedAgentWorker("added", "Added", ["task"], (input) =>
+      createWorkerResult("added", "added", input)
+    );
+    const workers = [original];
+    const supervisor = new SupervisorAgent({ workers });
+    const orchestrator = new MultiAgentOrchestrator({ workers });
+
+    workers.push(addedLater);
+    const input = { messages: [{ content: "task", role: "user" as const }], model: "m" };
+
+    expect(supervisor.selectWorker(input).to).toBe("original");
+    const result = await orchestrator.run(input, { mode: "parallel" });
+    expect(result.results).toEqual([expect.objectContaining({ status: "completed", workerId: "original" })]);
+  });
+
   it("breaks a confidence tie by worker id ASC so dispatch is deterministic regardless of the workers[] order — two equally-confident workers must route to the same one every run", () => {
     const zebra = new RuleBasedAgentWorker("zebra", "Zebra", ["task"], (input) =>
       createWorkerResult("zebra", "z", input)

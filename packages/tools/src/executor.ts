@@ -23,6 +23,7 @@ import type {
 
 export class ToolExecutor {
   private readonly idempotencyStore?: ToolIdempotencyStore;
+  private readonly inFlightIdempotentExecutions = new Map<string, Promise<ToolExecutionResult>>();
   private readonly registry: ToolRegistry;
   private readonly sanitizer: ToolOutputSanitizer;
 
@@ -54,6 +55,33 @@ export class ToolExecutor {
       return { ...existing, id: request.id };
     }
 
+    if (idempotencyKey) {
+      const inFlight = this.inFlightIdempotentExecutions.get(idempotencyKey);
+      if (inFlight) {
+        return { ...(await inFlight), id: request.id };
+      }
+
+      // Publish ownership before invoking the tool. An async function executes
+      // synchronously until its first `await`, so calling `executeResolvedTool`
+      // directly would leave a re-entrant tool invocation a brief duplicate-run
+      // window.
+      const execution = Promise.resolve().then(() => this.executeResolvedTool(request, tool, idempotencyKey));
+      this.inFlightIdempotentExecutions.set(idempotencyKey, execution);
+      try {
+        return await execution;
+      } finally {
+        this.inFlightIdempotentExecutions.delete(idempotencyKey);
+      }
+    }
+
+    return this.executeResolvedTool(request, tool);
+  }
+
+  private async executeResolvedTool(
+    request: ToolCallRequest,
+    tool: NonNullable<ReturnType<ToolRegistry["get"]>>,
+    idempotencyKey?: string
+  ): Promise<ToolExecutionResult> {
     try {
       const raw = await tool.execute(request.arguments, request.context);
       const output = stringifyToolOutput(raw);

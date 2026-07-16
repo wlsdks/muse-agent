@@ -76,7 +76,7 @@ export async function defaultKnowledgeEnrich(env: NodeJS.ProcessEnv): Promise<((
     const { LocalDirNotesProvider } = await import("@muse/domain-tools");
     const notesDir = resolveNotesDir(env as Parameters<typeof resolveNotesDir>[0]);
     return createKnowledgeEnricher({
-      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL),
+      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL, env),
       notesProvider: new LocalDirNotesProvider({ notesDir })
     });
   } catch {

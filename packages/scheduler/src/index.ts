@@ -87,6 +87,16 @@ export interface ScheduledJobInput {
   readonly updatedAt?: Date;
 }
 
+/**
+ * Mutable schedule configuration. Execution lifecycle fields are written only
+ * through `ScheduledJobStore.updateExecutionResult` so configuration updates
+ * cannot overwrite a concurrently recorded run outcome.
+ */
+export type ScheduledJobUpdateInput = Omit<
+  ScheduledJobInput,
+  "createdAt" | "id" | "lastResult" | "lastRunAt" | "lastStatus" | "updatedAt"
+>;
+
 export interface ScheduledJobExecution {
   readonly id: string;
   readonly jobId: string;
@@ -116,7 +126,7 @@ export interface ScheduledJobStore {
   findById(id: string): Awaitable<ScheduledJob | undefined>;
   findByName(name: string): Awaitable<ScheduledJob | undefined>;
   save(job: ScheduledJobInput): Awaitable<ScheduledJob>;
-  update(id: string, job: ScheduledJobInput): Awaitable<ScheduledJob | undefined>;
+  update(id: string, job: ScheduledJobUpdateInput): Awaitable<ScheduledJob | undefined>;
   delete(id: string): Awaitable<void>;
   updateExecutionResult(id: string, status: JobExecutionStatus, result?: string | null): Awaitable<void>;
 }

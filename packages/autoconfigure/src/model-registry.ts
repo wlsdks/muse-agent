@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { classifyProviderLocality } from "@muse/model";
+import { canonicalizeLocalOnlyModelBaseUrl, classifyProviderLocality, isLocalOnlyEnabled } from "@muse/model";
 import { errorMessage, closestCommandName, isRecord, parseJson } from "@muse/shared";
 
 import type { MuseEnvironment } from "./index.js";
@@ -93,7 +93,14 @@ export function resolveOllamaBaseUrl(env: MuseEnvironment): string {
   const merged = mergeModelKeysFromFile(env);
   const raw = merged.OLLAMA_BASE_URL?.trim();
   const base = raw && raw.length > 0 ? raw : "http://127.0.0.1:11434";
-  return base.replace(/\/+$/u, "");
+  const normalized = base.replace(/\/+$/u, "");
+  if (!isLocalOnlyEnabled(env)) {
+    return normalized;
+  }
+  // Model list/use calls this resolver before a ModelProvider exists. Apply the
+  // same loopback-only canonicalization here so those utility commands cannot
+  // probe a remote OLLAMA_BASE_URL while local-only is enabled.
+  return canonicalizeLocalOnlyModelBaseUrl("ollama", normalized) ?? normalized;
 }
 
 export interface ModelEnvOverride {

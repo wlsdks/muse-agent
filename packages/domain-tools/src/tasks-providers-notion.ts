@@ -44,7 +44,10 @@ import {
   extractTitleString,
   isRecordArray,
   isTransientNotionStatus,
-  mapNotionStatus
+  mapNotionStatus,
+  normalizeNotionRetryPolicy,
+  readNotionErrorText,
+  resolveNotionEndpoint
 } from "./notion-shared.js";
 import { sleep } from "@muse/shared";
 
@@ -103,15 +106,20 @@ export class NotionTasksProvider implements TasksProvider {
     this.statusProperty = options.statusProperty ?? NOTION_DEFAULT_STATUS_PROPERTY;
     this.statusOpenValue = options.statusOpenValue ?? NOTION_DEFAULT_STATUS_OPEN;
     this.statusDoneValue = options.statusDoneValue ?? NOTION_DEFAULT_STATUS_DONE;
-    this.endpoint = options.endpoint ?? NOTION_DEFAULT_ENDPOINT;
+    try {
+      this.endpoint = resolveNotionEndpoint(options.endpoint);
+    } catch (error) {
+      throw new TasksValidationError("INVALID_ENDPOINT", errorMessage(error));
+    }
     this.notionVersion = options.notionVersion ?? NOTION_DEFAULT_VERSION;
     const globalFetch = (globalThis as { fetch?: NotionFetch }).fetch;
     this.fetchImpl = options.fetchImpl ?? (globalFetch as NotionFetch);
     if (!this.fetchImpl) {
       throw new TasksValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
-    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
-    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    const retry = normalizeNotionRetryPolicy(options.retry);
+    this.retries = retry.retries;
+    this.baseDelayMs = retry.baseDelayMs;
     this.sleep = options.retry?.sleep ?? sleep;
   }
 
@@ -299,7 +307,7 @@ export class NotionTasksProvider implements TasksProvider {
           await this.sleep(this.baseDelayMs * 2 ** attempt);
           continue;
         }
-        const detail = await safeReadText(response);
+        const detail = await readNotionErrorText(response);
         const code = mapNotionStatus(response.status);
         throw new TasksProviderError(
           this.id,
@@ -340,12 +348,4 @@ function parseDate(raw: unknown): Date | undefined {
   }
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return `<status ${response.status}>`;
-  }
 }

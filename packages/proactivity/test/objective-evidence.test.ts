@@ -134,8 +134,27 @@ describe("checkObjectiveMet — deterministic completion check", () => {
     expect(checkObjectiveMet(two, { expectedCount: 3 })).toEqual({ evidence: two, met: false });
   });
 
+  it("an invalid expectedCount fails closed instead of treating empty evidence as complete", () => {
+    expect(checkObjectiveMet([], { expectedCount: 0 })).toEqual({ evidence: [], met: false });
+    expect(checkObjectiveMet(three, { expectedCount: -1 })).toEqual({ evidence: three, met: false });
+    expect(checkObjectiveMet(three, { expectedCount: 1.5 })).toEqual({ evidence: three, met: false });
+  });
+
   it("no expectedCount: presence (>=1) is enough", () => {
     expect(checkObjectiveMet([three[0]!], {})).toEqual({ evidence: [three[0]], met: true });
     expect(checkObjectiveMet([], {})).toEqual({ evidence: [], met: false });
+  });
+});
+
+describe("resolveObjectiveEvidence — defensive query normalization", () => {
+  it("ignores non-string keywords and an invalid window from an untyped caller", async () => {
+    const deps: ObjectiveEvidenceDeps = {
+      now: () => NOW,
+      readTasks: async () => [{ createdAt: "2026-07-10T00:00:00Z", title: "workout" }]
+    };
+    const query = { keywords: ["workout", 42], store: "tasks", windowDays: -1 } as unknown as EvidenceQuery;
+    await expect(resolveObjectiveEvidence(query, deps)).resolves.toEqual([
+      { source: "task:workout", text: "workout", whenIso: "2026-07-10T00:00:00Z" }
+    ]);
   });
 });

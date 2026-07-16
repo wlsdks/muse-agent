@@ -1,6 +1,7 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -60,5 +61,19 @@ describe("personal-plan-cache-store (Agentic Plan Caching, arXiv 2506.14852)", (
 
   it("tolerates a missing file (returns [])", async () => {
     expect(await readPlanCache("/nonexistent/dir/plan-cache.json")).toEqual([]);
+  });
+
+  it("preserves an external template committed while this process waits for the file lock", async () => {
+    const file = await tmpFile();
+    await recordPlanTemplate(file, entry("local-first", "first"));
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localTemplate = recordPlanTemplate(file, entry("local-second", "second"));
+    await sleep(300);
+    const first = (await readPlanCache(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ entries: [first, entry("external", "external")] }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localTemplate;
+    expect((await readPlanCache(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
   });
 });

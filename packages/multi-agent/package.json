@@ -21,6 +21,7 @@
     "@muse/agent-core": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/model": "workspace:*",
-    "@muse/shared": "workspace:*"
+    "@muse/shared": "workspace:*",
+    "@muse/stores": "workspace:*"
   }
 }

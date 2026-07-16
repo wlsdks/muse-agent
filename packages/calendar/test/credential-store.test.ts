@@ -1,6 +1,8 @@
 import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -85,5 +87,26 @@ describe("FileCalendarCredentialStore", () => {
     expect(await store.load("__proto__")).toEqual({ token: "x" });
     expect(await store.load("toString")).toBeUndefined();
     expect(await store.list()).toEqual(["__proto__"]);
+  });
+
+  it("preserves an external credential update that lands while this process waits on the file lock", async () => {
+    const file = freshFile();
+    const store = new FileCalendarCredentialStore(file);
+    await store.save("google", { refreshToken: "google-token" });
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+
+    const localSave = store.save("caldav", { password: "calendar-password" });
+    await sleep(300);
+    await writeFile(file, `${JSON.stringify({
+      providers: {
+        google: { refreshToken: "google-token" },
+        ical: { url: "https://example.test/calendar.ics" }
+      },
+      version: 1
+    }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localSave;
+    expect(await store.list()).toEqual(["caldav", "google", "ical"]);
   });
 });

@@ -10,7 +10,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
 /** Newest templates kept — bounds the file + retrieval cost. */
@@ -54,21 +54,21 @@ export async function readPlanCache(file: string): Promise<readonly PlanCacheEnt
   );
 }
 
-export async function writePlanCache(file: string, entries: readonly PlanCacheEntry[]): Promise<void> {
+async function writePlanCacheUnlocked(file: string, entries: readonly PlanCacheEntry[]): Promise<void> {
   const payload = `${JSON.stringify({ entries }, null, 2)}\n`;
   await atomicWriteFile(file, payload);
 }
 
+export async function writePlanCache(file: string, entries: readonly PlanCacheEntry[]): Promise<void> {
+  await withFileLock(file, () => writePlanCacheUnlocked(file, entries));
+}
+
 export async function recordPlanTemplate(file: string, entry: PlanCacheEntry): Promise<void> {
-  // Serialise the read→upsert→cap→write: concurrent cache writes otherwise read
-  // the same snapshot and the last write clobbers the rest (a lost plan template
-  // is a cache miss the agent re-plans from scratch), and two writes in the same
-  // millisecond collided on the tmp-${pid}-${Date.now()} path and threw ENOENT.
-  await withFileMutationQueue(file, async () => {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readPlanCache(file);
     const next = [...existing.filter((e) => e.id !== entry.id), entry].slice(-MAX_PLAN_CACHE_ENTRIES);
-    await writePlanCache(file, next);
-  });
+    await writePlanCacheUnlocked(file, next);
+  }));
 }
 
 export async function queryPlanCache(file: string, userId?: string): Promise<readonly PlanCacheEntry[]> {
@@ -81,7 +81,7 @@ function isPlanCacheStep(value: unknown): value is PlanCacheStep {
   const s = value as Partial<PlanCacheStep>;
   return typeof s.tool === "string" && s.tool.length > 0
     && typeof s.description === "string"
-    && !!s.args && typeof s.args === "object";
+    && !!s.args && typeof s.args === "object" && !Array.isArray(s.args);
 }
 
 function isPlanCacheEntry(value: unknown): value is PlanCacheEntry {

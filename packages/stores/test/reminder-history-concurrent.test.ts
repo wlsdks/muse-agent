@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -42,6 +43,20 @@ describe("appendReminderHistory under concurrency", () => {
     await Promise.all(Array.from({ length: 30 }, (_unused, i) => appendReminderHistory(file, entry(`q${i.toString()}`), { capacity: 10 })));
     expect(await readReminderHistory(file)).toHaveLength(10);
   }, 30_000);
+
+  it("preserves an external delivery committed while this process waits for the file lock", async () => {
+    const file = freshFile();
+    await appendReminderHistory(file, entry("local-first"));
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localDelivery = appendReminderHistory(file, entry("local-second"));
+    await sleep(300);
+    const first = (await readReminderHistory(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ entries: [first, entry("external")], version: 1 }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localDelivery;
+    expect((await readReminderHistory(file)).map(({ reminderId }) => reminderId)).toEqual(["local-second", "external", "local-first"]);
+  });
 });
 
 describe("appendReminderHistory — scrubs credential shapes before persisting (parity with proactive-history)", () => {

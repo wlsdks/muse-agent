@@ -28,6 +28,14 @@ function makeProvider(overrides: Partial<ConstructorParameters<typeof MuseMcpOAu
   });
 }
 
+describe("MuseMcpOAuthProvider redirect port validation", () => {
+  it("rejects invalid loopback ports before producing an OAuth redirect URL", () => {
+    for (const redirectPort of [0, -1, 65_536, Number.NaN, Number.POSITIVE_INFINITY, 33418.5]) {
+      expect(() => makeProvider({ redirectPort })).toThrow(RangeError);
+    }
+  });
+});
+
 describe("MuseMcpOAuthProvider clientMetadata", () => {
   it("declares a public client + PKCE with a loopback redirect", () => {
     const meta = makeProvider().clientMetadata;

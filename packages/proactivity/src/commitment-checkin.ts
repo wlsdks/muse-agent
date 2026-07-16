@@ -16,10 +16,16 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 import { errorMessage } from "@muse/shared";
 
-import { avoidedSourceKeys, readTrustLedger, withFileMutationQueue, withProcessLock } from "@muse/stores";
+import {
+  atomicWriteFile,
+  avoidedSourceKeys,
+  readTrustLedger,
+  withFileLock,
+  withFileMutationQueue,
+  withProcessLock
+} from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
@@ -266,11 +272,25 @@ export function snoozeCheckin(checkins: readonly PersistedCheckin[], idOrPrefix:
   return { snoozed, checkins: checkins.map((c) => (c.id === m.target.id ? snoozed : c)) };
 }
 
-async function writeFileAtomic(file: string, text: string): Promise<void> {
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, text, "utf8");
-  await fs.rename(tmp, file);
+async function writeCheckinsAtomically(file: string, checkins: readonly PersistedCheckin[]): Promise<void> {
+  await atomicWriteFile(file, `${JSON.stringify(checkins, null, 2)}\n`);
+}
+
+/**
+ * Serialize a check-in read-modify-write both within this process and across
+ * the API and CLI daemons. `withProcessLock` deliberately drops a contended
+ * tick, whereas a durable user mutation must wait for and preserve the other
+ * writer's fresh snapshot.
+ */
+async function mutateCheckins(
+  file: string,
+  mutation: (current: readonly PersistedCheckin[]) => readonly PersistedCheckin[] | Promise<readonly PersistedCheckin[]>
+): Promise<void> {
+  await withFileMutationQueue(file, () =>
+    withFileLock(file, async () => {
+      await writeCheckinsAtomically(file, await mutation(await readCheckins(file)));
+    })
+  );
 }
 
 export async function readCheckins(file: string): Promise<readonly PersistedCheckin[]> {
@@ -296,20 +316,18 @@ export async function readCheckins(file: string): Promise<readonly PersistedChec
 }
 
 export async function writeCheckins(file: string, checkins: readonly PersistedCheckin[]): Promise<void> {
-  await writeFileAtomic(file, `${JSON.stringify(checkins, null, 2)}\n`);
+  // A direct replacement is still coordinated with append/fired-status
+  // mutations, so an explicit write cannot interleave a partial JSON snapshot
+  // with a concurrent daemon update.
+  await withFileMutationQueue(file, () => withFileLock(file, () => writeCheckinsAtomically(file, checkins)));
 }
 
 /** Append newly-scheduled check-ins to the store (in addition to existing). */
 export async function appendCheckins(file: string, fresh: readonly PersistedCheckin[]): Promise<void> {
   if (fresh.length === 0) return;
-  // Serialise the read→append→write on the shared per-file queue: a concurrent
-  // in-process append (chat-turn hook) or the daemon's fired-status write otherwise
-  // reads the same snapshot and the last write clobbers the rest — a lost check-in is
-  // a proactive nudge the user never receives. (Cross-process races need a file lock.)
-  await withFileMutationQueue(file, async () => {
-    const existing = await readCheckins(file);
-    await writeCheckins(file, [...existing, ...fresh]);
-  });
+  // Preserve a concurrent chat-hook append or daemon status update, including
+  // when those run in the other process.
+  await mutateCheckins(file, (existing) => [...existing, ...fresh]);
 }
 
 export interface CheckinSendRegistry {
@@ -459,11 +477,9 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
     // write the stale pre-send `all`. During the multi-second send window a check-in
     // can be appended (chat hook) or cancelled; the stale write would drop the new one
     // and RESURRECT a cancelled nudge. Patch-by-id preserves every concurrent change.
-    await withFileMutationQueue(options.file, async () => {
-      const fresh = await readCheckins(options.file);
-      const next = fresh.map((c) => (firedIds.has(c.id) ? { ...c, firedAt: at.toISOString(), status: "fired" as const } : c));
-      await writeCheckins(options.file, next);
-    });
+    await mutateCheckins(options.file, (fresh) =>
+      fresh.map((c) => (firedIds.has(c.id) ? { ...c, firedAt: at.toISOString(), status: "fired" as const } : c))
+    );
   }
   return { delivered, due: due.length, errors, fired };
 }

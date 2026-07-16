@@ -29,6 +29,11 @@ describe("LocalFileTasksProvider construction", () => {
     expect(() => new LocalFileTasksProvider({ file: "   " })).toThrow(TasksValidationError);
   });
 
+  it("rejects a non-finite list limit", () => {
+    expect(() => makeProvider({ maxListEntries: Number.NaN })).toThrow(TasksValidationError);
+    expect(() => makeProvider({ maxListEntries: Number.POSITIVE_INFINITY })).toThrow(TasksValidationError);
+  });
+
   it("describes itself with the configured file path", () => {
     const provider = makeProvider();
     const info = provider.describe();
@@ -51,6 +56,14 @@ describe("LocalFileTasksProvider empty / missing store", () => {
 });
 
 describe("LocalFileTasksProvider add/list round-trip", () => {
+  it("preserves concurrent additions from separate provider instances", async () => {
+    const first = makeProvider({ idFactory: () => "task_first" });
+    const second = makeProvider({ idFactory: () => "task_second" });
+    await Promise.all([first.add({ title: "First" }), second.add({ title: "Second" })]);
+    const listed = await makeProvider().list("all");
+    expect(listed.map((task) => task.id).sort()).toEqual(["task_first", "task_second"]);
+  });
+
   it("adds a task and lists it back with the right shape", async () => {
     const clock = new Date("2026-01-01T00:00:00.000Z");
     const provider = makeProvider({ idFactory: () => "task_1", now: () => clock });
@@ -209,13 +222,19 @@ describe("LocalFileTasksProvider corrupt / malformed store", () => {
     expect(listed[0]?.id).toBe("good");
   });
 
-  it("a successful add after a corrupt store overwrites it with a clean, valid file", async () => {
+  it("quarantines corrupt source bytes before creating a clean replacement store", async () => {
     await fs.writeFile(file, "{{{garbage", "utf8");
     const provider = makeProvider({ idFactory: () => "task_1" });
     await provider.add({ title: "Recovered task" });
     const raw = await fs.readFile(file, "utf8");
     const parsed = JSON.parse(raw) as { tasks: unknown[] };
     expect(parsed.tasks).toHaveLength(1);
+    const preservedContents = await Promise.all(
+      (await fs.readdir(dir))
+        .filter((name) => name !== "tasks.json")
+        .map(async (name) => fs.readFile(join(dir, name), "utf8").catch(() => ""))
+    );
+    expect(preservedContents).toContain("{{{garbage");
   });
 });
 

@@ -35,6 +35,14 @@ describe("webWatchesFromConfig — parse + build runnable HTTP watches", () => {
     expect(webWatchesFromConfig(JSON.stringify({ not: "array" }))).toEqual([]);
   });
 
+  it("drops a duplicate watch id so runners keep one baseline per watch", () => {
+    const watches = webWatchesFromConfig(JSON.stringify([
+      { id: "same", message: "one", rule: { appears: "x" }, title: "one", url: "https://x.test/one" },
+      { id: "same", message: "two", rule: { appears: "x" }, title: "two", url: "https://x.test/two" }
+    ]));
+    expect(watches.map((watch) => watch.title)).toEqual(["one"]);
+  });
+
   it("snapshot returns undefined on a permanent HTTP failure (runner then skips)", async () => {
     const [watch] = webWatchesFromConfig(
       JSON.stringify([{ id: "w", message: "m", rule: { appears: "x" }, title: "t", url: "https://x.test" }]),

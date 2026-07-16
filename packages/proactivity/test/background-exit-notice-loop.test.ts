@@ -95,6 +95,18 @@ describe("runDueBackgroundExitNotices — one-shot on-exit notice", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("does not read, mark, or deliver while another daemon owns the firing lock", async () => {
+    await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+    await writeFile(`${notifiedFile}.firing.lock`, "another-daemon", "utf8");
+    const { broker, sent } = fakeBroker();
+
+    const summary = await runDueBackgroundExitNotices(opts({ broker, brokerUserId: "u1" }));
+
+    expect(summary).toEqual({ errors: [], notified: 0, outcome: "lock-held", pending: 0 });
+    expect(sent).toEqual([]);
+    expect((await readBackgroundExitNotified(notifiedFile)).has("p1")).toBe(false);
+  });
+
   it("survives a simulated restart: a fresh broker on the same sidecar does not double-fire", async () => {
     await seedExited({ id: "p1", status: "failed", exitCode: 1 });
     const run1 = fakeBroker();

@@ -1,4 +1,4 @@
-import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
+import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
 import { isRecord, parseJson, sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
@@ -85,8 +85,8 @@ export class GoogleCalendarProvider implements CalendarProvider {
       refreshToken: options.refreshToken
     };
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
-    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    this.retries = normalizeCalendarRetryCount(options.retry?.retries);
+    this.baseDelayMs = normalizeCalendarRetryDelayMs(options.retry?.baseDelayMs);
     this.sleep = options.retry?.sleep ?? sleep;
     this.timeoutMs = Number.isFinite(options.retry?.timeoutMs) ? Math.max(0, Math.trunc(options.retry!.timeoutMs!)) : 15_000;
   }
@@ -132,12 +132,24 @@ export class GoogleCalendarProvider implements CalendarProvider {
       timeMax: range.to.toISOString(),
       timeMin: range.from.toISOString()
     });
-    const payload = await this.request<{ readonly items?: readonly GoogleEventPayload[] }>(
+    const payload = await this.request<{ readonly items?: unknown }>(
       `/calendars/${encodeURIComponent(this.options.calendarId)}/events?${params.toString()}`,
       { method: "GET" }
     );
 
-    return (payload.items ?? []).map((item) => this.toEvent(item));
+    // A single malformed event must not turn into a plausible-looking epoch
+    // event or hide the rest of the user's calendar. List responses are
+    // best-effort: retain well-formed items and drop only invalid entries.
+    if (!isRecord(payload) || !Array.isArray(payload.items)) {
+      return [];
+    }
+    return payload.items.flatMap((item): readonly CalendarEvent[] => {
+      try {
+        return [this.toEvent(item)];
+      } catch {
+        return [];
+      }
+    });
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
@@ -165,22 +177,35 @@ export class GoogleCalendarProvider implements CalendarProvider {
     );
   }
 
-  private toEvent(payload: GoogleEventPayload): CalendarEvent {
-    const allDay = Boolean(payload.start?.date) && !payload.start?.dateTime;
-    const startsAt = parseGoogleTime(payload.start) ?? new Date(0);
-    const endsAt = parseGoogleTime(payload.end) ?? startsAt;
+  private toEvent(payload: unknown): CalendarEvent {
+    if (!isRecord(payload)) {
+      throw new CalendarProviderError(this.id, "MALFORMED_EVENT", "Google Calendar returned a non-object event");
+    }
+
+    const id = readStringField(payload, "id");
+    const startsAt = parseGoogleTime(payload.start);
+    const endsAt = parseGoogleTime(payload.end);
+    if (!id || id.trim().length === 0 || !startsAt || !endsAt || endsAt.getTime() < startsAt.getTime()) {
+      throw new CalendarProviderError(
+        this.id,
+        "MALFORMED_EVENT",
+        "Google Calendar returned an event without a valid id and time range"
+      );
+    }
+    const start = isRecord(payload.start) ? payload.start : undefined;
+    const allDay = typeof start?.date === "string" && typeof start.dateTime !== "string";
 
     return {
       allDay,
       endsAt,
-      id: payload.id,
+      id,
       providerId: this.id,
       raw: payload,
       startsAt,
-      title: payload.summary ?? "(untitled)",
-      ...(payload.location ? { location: payload.location } : {}),
-      ...(payload.description ? { notes: payload.description } : {}),
-      ...(payload.htmlLink ? { url: payload.htmlLink } : {})
+      title: readStringField(payload, "summary") ?? "(untitled)",
+      ...(readStringField(payload, "location") ? { location: readStringField(payload, "location")! } : {}),
+      ...(readStringField(payload, "description") ? { notes: readStringField(payload, "description")! } : {}),
+      ...(readStringField(payload, "htmlLink") ? { url: readStringField(payload, "htmlLink")! } : {})
     };
   }
 
@@ -228,7 +253,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
         });
       } catch (cause) {
         if (attempt < networkRetries) {
-          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          await this.sleep(calendarBackoffMs(this.baseDelayMs, attempt));
           continue;
         }
         throw cause;
@@ -242,7 +267,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
         const retriable = isWrite ? response.status === 429 : isRetryableCalendarStatus(response.status);
         if (attempt < this.retries && retriable) {
           const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-          const backoffMs = this.baseDelayMs * 2 ** attempt;
+          const backoffMs = calendarBackoffMs(this.baseDelayMs, attempt);
           await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : backoffMs);
           continue;
         }
@@ -308,7 +333,20 @@ export class GoogleCalendarProvider implements CalendarProvider {
       );
     }
 
-    const payload = await response.json();
+    // The OAuth endpoint can also return a 2xx HTML proxy page or a truncated
+    // body. Keep this boundary typed like the calendar API path instead of
+    // leaking an opaque JSON SyntaxError to the setup/runtime caller.
+    const body = await response.text();
+    const payload = parseJsonBody<unknown>(body);
+    if (payload === undefined) {
+      throw new CalendarProviderError(
+        this.id,
+        "OAUTH_INVALID_RESPONSE",
+        `Google OAuth returned a ${response.status.toString()} with a non-JSON body: ${body.slice(0, 200)}`.slice(0, 500),
+        undefined,
+        response.status
+      );
+    }
     const accessToken = readStringField(payload, "access_token");
     if (accessToken === undefined) {
       throw new CalendarProviderError(this.id, "OAUTH_INVALID_RESPONSE", "Google OAuth response missing access_token");
@@ -340,11 +378,8 @@ function readStringField(value: unknown, key: string): string | undefined {
   return typeof candidate === "string" ? candidate : undefined;
 }
 
-function parseGoogleTime(value: GoogleEventPayload["start"]): Date | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const raw = value.dateTime ?? value.date;
+function parseGoogleTime(value: unknown): Date | undefined {
+  const raw = readStringField(value, "dateTime") ?? readStringField(value, "date");
   if (!raw) {
     return undefined;
   }

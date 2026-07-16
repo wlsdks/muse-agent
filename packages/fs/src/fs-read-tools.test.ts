@@ -22,6 +22,14 @@ describe("file_read / file_list / file_grep", () => {
 
   const opts = () => ({ baseDir: root, roots: [root] });
 
+  it("rejects invalid configured read and grep limits before they can bypass output bounds", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => createFileReadTool({ ...opts(), maxTextChars: value })).toThrow(RangeError);
+      expect(() => createFileReadTool({ ...opts(), maxFileBytes: value })).toThrow(RangeError);
+      expect(() => createFileGrepTool({ ...opts(), maxGrepOutputChars: value })).toThrow(RangeError);
+    }
+  });
+
   describe("fileReadCharBudget — a single read must fit the model context", () => {
     it("caps a read to HALF a 32K-token window (~64K chars), well under the 200K default that would overflow it", () => {
       expect(fileReadCharBudget(32768)).toBe(65536); // 16384 tokens × 4 chars

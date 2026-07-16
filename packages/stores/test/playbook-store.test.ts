@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { rm, stat, writeFile } from "node:fs/promises";
+import { rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -112,6 +113,20 @@ describe("concurrent playbook mutation", () => {
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => recordPlaybookStrategy(file, entry(`p${i.toString()}`))));
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removePlaybookStrategy(file, `p${i.toString()}`)));
     expect(await readPlaybook(file)).toHaveLength(10);
+  }, CONCURRENT_FS_TIMEOUT_MS);
+
+  it("preserves an external strategy committed while this process waits for the file lock", async () => {
+    const file = freshFile();
+    await recordPlaybookStrategy(file, entry("local-first"));
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localStrategy = recordPlaybookStrategy(file, entry("local-second"));
+    await sleep(300);
+    const first = (await readPlaybook(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ entries: [first, entry("external")] }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localStrategy;
+    expect((await readPlaybook(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
   }, CONCURRENT_FS_TIMEOUT_MS);
 });
 
@@ -244,6 +259,13 @@ describe("decayStalePlaybookRewards — disuse-decay toward neutral (B1 §2)", (
     expect(await decayStalePlaybookRewards(file, { nowMs: now })).toBe(0);
     const after = await readPlaybook(file);
     expect(after.map((e) => e.reward)).toEqual([3, 0, -2, 2]);
+  });
+
+  it("falls back to safe defaults for non-finite decay controls", async () => {
+    const file = freshFile();
+    await writePlaybook(file, [stale("s1", 2)]);
+    expect(await decayStalePlaybookRewards(file, { nowMs: now, staleAfterDays: Number.NaN, step: Number.NaN })).toBe(1);
+    expect((await readPlaybook(file))[0]?.reward).toBe(1);
   });
 
   it("falls back to createdAt when lastReinforcedAt is absent (legacy entry)", async () => {

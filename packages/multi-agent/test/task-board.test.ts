@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import { addTask, DEFAULT_BOARD_MAX_DEPTH, DEFAULT_TASK_RUN_HISTORY_LIMIT, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -65,6 +65,19 @@ describe("agent task board — the durable Kanban coordination core", () => {
       expect(lastFailureReason(retried[0]!)).toBe("rate limit");
       const done = [task({ id: "a", status: "done" })];
       expect(retryTask(done, "a", "t3")).toEqual(done); // not blocked → no-op
+    });
+    it("retains the newest bounded run history so the latest failure remains replayable", () => {
+      let board = [task({ id: "a", status: "in_progress" })];
+      for (let index = 1; index <= 4; index += 1) {
+        board = recordTaskRun(board, "a", { at: `t${index.toString()}`, reason: `failure-${index.toString()}`, status: "failed" }, 2);
+        board = retryTask(board, "a", `retry-${index.toString()}`);
+      }
+      expect(board[0]!.runs.map((run) => run.at)).toEqual(["t3", "t4"]);
+      expect(lastFailureReason(board[0]!)).toBe("failure-4");
+      expect(DEFAULT_TASK_RUN_HISTORY_LIMIT).toBe(20);
+    });
+    it("rejects an invalid run-history cap", () => {
+      expect(() => recordTaskRun([task({ id: "a" })], "a", { at: "t", status: "failed" }, 0)).toThrow(RangeError);
     });
   });
 });

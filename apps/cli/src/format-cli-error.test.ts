@@ -122,4 +122,26 @@ describe("bugReportUrl", () => {
     expect(decoded).toContain("0.1.0");
     expect(decoded).toContain("something broke");
   });
+
+  it("redacts secret-shaped error text before pre-filling the external issue URL", () => {
+    const token = `sk-proj-${"a".repeat(32)}`;
+    const url = bugReportUrl(
+      `TypeError: upstream rejected ${token} at https://example.test/api?api_key=calendar-secret`,
+    );
+    const decoded = decodeURIComponent(url).replace(/\+/g, " ");
+
+    expect(decoded).not.toContain(token);
+    expect(decoded).not.toContain("calendar-secret");
+    expect(decoded).toContain("[redacted-openai-key]");
+    expect(decoded).toContain("[redacted-url-credential]");
+  });
+
+  it("redacts secret-shaped command and version values at the external URL boundary", () => {
+    const token = `sk-proj-${"b".repeat(32)}`;
+    const url = bugReportUrl("boom", { command: `ask ${token}`, version: token });
+    const decoded = decodeURIComponent(url).replace(/\+/g, " ");
+
+    expect(decoded).not.toContain(token);
+    expect(decoded).toContain("[redacted-openai-key]");
+  });
 });

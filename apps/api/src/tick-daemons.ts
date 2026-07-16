@@ -308,7 +308,7 @@ function buildKnowledgeEnricherIfEnabled(
     return undefined;
   }
   return createKnowledgeEnricher({
-    embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text")),
+    embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text", env)),
     ...(options.notesDir ? { notesProvider: new LocalDirNotesProvider({ notesDir: options.notesDir }) } : {}),
     ...(options.tasksFile ? { tasksProvider: new LocalFileTasksProvider({ file: options.tasksFile }) } : {}),
     ...(options.calendar ? { calendarSource: options.calendar } : {}),

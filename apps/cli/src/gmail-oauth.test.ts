@@ -87,6 +87,13 @@ describe("exchangeGmailAuthorizationCode", () => {
       clientId: "cid", clientSecret: "csecret-should-never-appear", code: "c", codeVerifier: "v", fetchImpl, redirectUri: "http://x"
     })).rejects.toThrow(/network error/u);
   });
+
+  it("rejects a 2xx non-JSON body without echoing the response", async () => {
+    const fetchImpl = (async () => new Response("<html>proxy failure</html>", { status: 200 })) as unknown as typeof fetch;
+    await expect(exchangeGmailAuthorizationCode({
+      clientId: "cid", clientSecret: "csecret", code: "c", codeVerifier: "v", fetchImpl, redirectUri: "http://x"
+    })).rejects.toThrow("Gmail token exchange response was not valid JSON");
+  });
 });
 
 describe("refreshGmailAccessToken", () => {
@@ -127,6 +134,12 @@ describe("refreshGmailAccessToken", () => {
     const { fetchImpl } = tokenEndpointFetch({ reject: new Error("ETIMEDOUT") });
     await expect(refreshGmailAccessToken({ clientId: "cid", clientSecret: "csecret", fetchImpl, refreshToken: "rt-1" }))
       .rejects.toBeInstanceOf(GmailOAuthRetryableError);
+  });
+
+  it("rejects an invalid expires_in instead of persisting a NaN expiry", async () => {
+    const { fetchImpl } = tokenEndpointFetch({ body: { access_token: "at-2", expires_in: "3600" } });
+    await expect(refreshGmailAccessToken({ clientId: "cid", clientSecret: "csecret", fetchImpl, refreshToken: "rt-1" }))
+      .rejects.toThrow("Gmail token refresh response has invalid expires_in");
   });
 
   it("never echoes the client secret or refresh token in ANY thrown message (invalid_grant / other 4xx / 5xx / network)", async () => {

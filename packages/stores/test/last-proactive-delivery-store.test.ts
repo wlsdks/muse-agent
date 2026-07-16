@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -99,4 +100,17 @@ describe("appendLastProactiveDelivery", () => {
     expect(entries).toHaveLength(15);
     expect(new Set(entries.map((e) => e.sourceKey)).size).toBe(15);
   }, 30_000);
+
+  it("preserves an external delivery committed while this process waits for the file lock", async () => {
+    await appendLastProactiveDelivery(file, { at: NOW, outcome: "delivered", sourceKey: "local-first" });
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localDelivery = appendLastProactiveDelivery(file, { at: new Date(NOW.getTime() + 2_000), outcome: "delivered", sourceKey: "local-second" });
+    await sleep(300);
+    const first = (await readLastProactiveDeliveries(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ deliveries: [first, { at: new Date(NOW.getTime() + 1_000).toISOString(), outcome: "digested", sourceKey: "external" }] }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localDelivery;
+    expect((await readLastProactiveDeliveries(file)).map(({ sourceKey }) => sourceKey)).toEqual(["local-first", "external", "local-second"]);
+  });
 });

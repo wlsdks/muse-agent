@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createApiClient } from "./client.js";
 import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
 import { isRecord, parseJson } from "./parse-json.js";
-import { errorMessage } from "@muse/shared";
+import { createStreamRequestLifecycle } from "./stream-request-lifecycle.js";
+import { errorMessage } from "@muse/shared/browser";
 
 import type { ChatResponse, Citation, PendingApproval } from "./types.js";
 
@@ -16,6 +17,9 @@ export interface ChatTurn {
   tools?: readonly string[];
   pendingApprovals?: readonly PendingApproval[];
 }
+
+/** @deprecated Import `createStreamRequestLifecycle` for new streaming surfaces. */
+export { createStreamRequestLifecycle as createChatStreamRequestLifecycle } from "./stream-request-lifecycle.js";
 
 /** Confirm-endpoint result for a single approval. `ran:true` = the tool
  * executed and the approval is cleared; `ran:false` = the tool reported an
@@ -231,7 +235,14 @@ export function useChatStream(baseUrl: string, token: string) {
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState<readonly string[]>([]);
   const draftRef = useRef<ChatTurn | null>(null);
+  const requestLifecycleRef = useRef<ReturnType<typeof createStreamRequestLifecycle> | null>(null);
+  if (!requestLifecycleRef.current) {
+    requestLifecycleRef.current = createStreamRequestLifecycle();
+  }
+  const requestLifecycle = requestLifecycleRef.current;
   const client = useMemo(() => createApiClient(baseUrl, token), [baseUrl, token]);
+
+  useEffect(() => () => requestLifecycle.abort(), [requestLifecycle]);
 
   useEffect(() => {
     try {
@@ -254,17 +265,21 @@ export function useChatStream(baseUrl: string, token: string) {
   }, [conversationId]);
 
   const reset = useCallback(() => {
+    requestLifecycle.abort();
+    draftRef.current = null;
     setTurns([]);
     setError(null);
     setActiveTool("");
     setConversationId(undefined);
+    setPending(false);
+    setThinking(false);
     try {
       window.localStorage.removeItem(STORE_KEY);
       window.localStorage.removeItem(CONVERSATION_ID_KEY);
     } catch {
       /* storage unavailable */
     }
-  }, []);
+  }, [requestLifecycle]);
 
   const send = useCallback(
     async (message: string) => {
@@ -272,6 +287,12 @@ export function useChatStream(baseUrl: string, token: string) {
       if (!text || pending) {
         return;
       }
+
+      const request = requestLifecycle.start();
+      if (!request) {
+        return;
+      }
+
       setError(null);
       setPending(true);
       setActiveTool("");
@@ -283,6 +304,9 @@ export function useChatStream(baseUrl: string, token: string) {
       setTurns((prev) => [...prev, userTurn, draft]);
 
       const commit = (mut: (t: ChatTurn) => void) => {
+        if (!requestLifecycle.isCurrent(request)) {
+          return;
+        }
         const d = draftRef.current;
         if (!d) {
           return;
@@ -304,7 +328,8 @@ export function useChatStream(baseUrl: string, token: string) {
             "content-type": "application/json",
             ...(token ? { authorization: `Bearer ${token}` } : {})
           },
-          method: "POST"
+          method: "POST",
+          signal: request.controller.signal
         });
         if (!res.ok) {
           throw new Error(`${res.status} ${res.statusText}`.trim());
@@ -313,6 +338,9 @@ export function useChatStream(baseUrl: string, token: string) {
         const contentType = res.headers.get("content-type") ?? "";
         if (!contentType.includes("text/event-stream")) {
           const body = (await res.json()) as ChatResponse;
+          if (!requestLifecycle.isCurrent(request)) {
+            return;
+          }
           commit((t) => {
             t.text = body.response ?? body.content ?? "";
             t.citations = body.citations ?? [];
@@ -334,7 +362,7 @@ export function useChatStream(baseUrl: string, token: string) {
 
         for (;;) {
           const { done, value } = await reader.read();
-          if (done) {
+          if (done || !requestLifecycle.isCurrent(request)) {
             break;
           }
           buffer += decoder.decode(value, { stream: true });
@@ -350,6 +378,9 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         }
       } catch (cause) {
+        if (!requestLifecycle.isCurrent(request)) {
+          return;
+        }
         const detail = errorMessage(cause, "request failed");
         setError(detail);
         commit((t) => {
@@ -358,13 +389,16 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         });
       } finally {
+        if (!requestLifecycle.finish(request)) {
+          return;
+        }
         setActiveTool("");
         setThinking(false);
         setPending(false);
         draftRef.current = null;
       }
     },
-    [baseUrl, conversationId, pending, token]
+    [baseUrl, conversationId, pending, requestLifecycle, token]
   );
 
   const approve = useCallback(

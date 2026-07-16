@@ -22,7 +22,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface InterruptionDeliveryEntry {
   /** ISO timestamp of the delivery. */
@@ -73,18 +73,21 @@ async function writeInterruptionLedger(file: string, entries: readonly Interrupt
 
 /**
  * Append one delivered-notice record, pruning entries older than 48h relative
- * to `entry.at` first. Serialized on the shared per-file mutation queue so
- * concurrent appends (overlapping loop ticks) can't clobber each other.
+ * to `entry.at` first. The in-process queue and cross-process lock cover the
+ * whole read-modify-write, so independently started daemons cannot lose a
+ * delivery record and accidentally exceed the configured interruption budget.
  */
 export async function appendInterruptionDelivery(
   file: string,
   entry: { readonly at: Date; readonly source: string }
 ): Promise<void> {
   await withFileMutationQueue(file, async () => {
-    const existing = await readInterruptionLedger(file);
-    const cutoffMs = entry.at.getTime() - PRUNE_WINDOW_MS;
-    const pruned = existing.filter((e) => new Date(e.at).getTime() > cutoffMs);
-    await writeInterruptionLedger(file, [...pruned, { at: entry.at.toISOString(), source: entry.source }]);
+    await withFileLock(file, async () => {
+      const existing = await readInterruptionLedger(file);
+      const cutoffMs = entry.at.getTime() - PRUNE_WINDOW_MS;
+      const pruned = existing.filter((e) => new Date(e.at).getTime() > cutoffMs);
+      await writeInterruptionLedger(file, [...pruned, { at: entry.at.toISOString(), source: entry.source }]);
+    });
   });
 }
 

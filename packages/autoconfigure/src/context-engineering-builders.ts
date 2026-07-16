@@ -259,7 +259,7 @@ export function buildEpisodicRecallProvider(
     },
     store: summaryStore,
     topK,
-    ...(embedEnabled ? { embed: createOllamaEmbedder(embedModel) } : {})
+    ...(embedEnabled ? { embed: createOllamaEmbedder(embedModel, env) } : {})
   });
   // Weighted-promotion "observe" half: record a recall hit for every
   // session this surfaces, so the dreaming pass can later promote the

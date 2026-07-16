@@ -60,6 +60,7 @@ export interface PuppeteerBrowserControllerOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_TIMEOUT_MS = 2_147_483_647;
 // Headroom over the per-operation timeout: a legitimate slow nav/settle runs to
 // `timeout`, and the protocol layer must NOT kill it first — so the CDP ceiling
 // sits a margin above. Still ~5× under puppeteer's silent 180s default, so a
@@ -81,6 +82,14 @@ const WAIT_DEFAULT_MS = 10_000;
 const WAIT_MAX_MS = 30_000;
 const WAIT_MIN_MS = 500;
 const DOM_SETTLE_SIGNAL = "__museDomSettleSignal__";
+
+/** Normalize Puppeteer/CDP timer inputs before they reach Node's timer layer. */
+export function normalizeBrowserTimeout(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isSafeInteger(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.min(value, MAX_TIMEOUT_MS);
+}
 
 export class PuppeteerBrowserController implements BrowserController {
   private browser: Browser | undefined;
@@ -261,7 +270,7 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   private get timeout(): number {
-    return this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    return normalizeBrowserTimeout(this.options.timeoutMs, DEFAULT_TIMEOUT_MS);
   }
 
   /**
@@ -270,9 +279,9 @@ export class PuppeteerBrowserController implements BrowserController {
    * an explicit too-small value is clamped up to `timeout` + headroom.
    */
   private get protocolTimeout(): number {
-    const floor = this.timeout + PROTOCOL_TIMEOUT_HEADROOM_MS;
+    const floor = Math.min(MAX_TIMEOUT_MS, this.timeout + PROTOCOL_TIMEOUT_HEADROOM_MS);
     const requested = this.options.protocolTimeoutMs;
-    return requested === undefined ? floor : Math.max(requested, floor);
+    return Math.max(normalizeBrowserTimeout(requested, floor), floor);
   }
 
   /**

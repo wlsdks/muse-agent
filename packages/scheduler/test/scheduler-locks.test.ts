@@ -102,6 +102,17 @@ describe("InMemoryDistributedSchedulerLock", () => {
     ref.t = 1;
     expect(b.tryAcquire(job, 1000)).toBe(true); // expired at the floored tick
   });
+
+  it("fails safe to a 1ms TTL for a non-finite value instead of creating an immediately-expired invalid date", () => {
+    const ref = { t: 0 };
+    const job = uniqueJob();
+    const a = new InMemoryDistributedSchedulerLock({ now: clock(ref), ownerId: "pod-a" });
+    const b = new InMemoryDistributedSchedulerLock({ now: clock(ref), ownerId: "pod-b" });
+    expect(a.tryAcquire(job, Number.NaN)).toBe(true);
+    expect(b.tryAcquire(job, 1000)).toBe(false);
+    ref.t = 1;
+    expect(b.tryAcquire(job, 1000)).toBe(true);
+  });
 });
 
 describe("createScheduledJobLockInsert", () => {
@@ -119,5 +130,10 @@ describe("createScheduledJobLockInsert", () => {
     expect((row.locked_until as Date).getTime()).toBe(1001);
     const neg = createScheduledJobLockInsert("jobZ", "owner-1", -50, new Date(1000));
     expect((neg.locked_until as Date).getTime()).toBe(1001);
+  });
+
+  it("uses a valid minimum TTL for a non-finite persisted value", () => {
+    const row = createScheduledJobLockInsert("job-nan", "owner-1", Number.NaN, new Date(1000));
+    expect((row.locked_until as Date).getTime()).toBe(1001);
   });
 });

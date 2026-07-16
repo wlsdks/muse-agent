@@ -4,6 +4,7 @@ import type { RuntimeSettings } from "@muse/runtime-settings";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated, parseRuntimeSettingInput } from "./server-helpers.js";
+import { readAuthUserId } from "./compat-parsers.js";
 import type { AdminGate } from "./routes-admin-run.js";
 import type { ServerOptions } from "./server.js";
 
@@ -86,7 +87,8 @@ export function registerSessionSummaryRoutes(
 
 export function registerRuntimeSettingsRoutes(
   server: FastifyInstance,
-  runtimeSettings: RuntimeSettings
+  runtimeSettings: RuntimeSettings,
+  options: { readonly useAuthenticatedActor?: boolean } = {}
 ): void {
   server.get("/settings", async () => runtimeSettings.list());
 
@@ -112,7 +114,10 @@ export function registerRuntimeSettingsRoutes(
       return reply.status(400).send(parsed.error);
     }
 
-    return runtimeSettings.set(parsed.value);
+    return runtimeSettings.set({
+      ...parsed.value,
+      updatedBy: options.useAuthenticatedActor ? readAuthUserId(request) ?? null : parsed.value.updatedBy
+    });
   });
 
   server.delete("/settings/:key", async (request) => {

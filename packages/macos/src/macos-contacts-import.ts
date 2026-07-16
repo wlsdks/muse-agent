@@ -142,6 +142,19 @@ function splitMulti(raw: string): string[] {
 }
 
 /** Map the AppleScript `Y-M-D` (unpadded) birthday to the store's `MM-DD` / `YYYY-MM-DD`. */
+const DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function isValidAppleBirthdayDay(year: number, month: number, day: number): boolean {
+  if (month === 2 && day === 29) {
+    return year < BIRTHDAY_NO_YEAR_FLOOR || isLeapYear(year);
+  }
+  return day <= DAYS_PER_MONTH[month - 1]!;
+}
+
 export function normalizeAppleBirthday(raw: string): string | undefined {
   const m = /^(-?\d+)-(\d+)-(\d+)$/u.exec(raw.trim());
   if (!m) {
@@ -150,7 +163,16 @@ export function normalizeAppleBirthday(raw: string): string | undefined {
   const year = Number(m[1]);
   const month = Number(m[2]);
   const day = Number(m[3]);
-  if (!Number.isFinite(month) || !Number.isFinite(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+  if (
+    !Number.isSafeInteger(year) ||
+    year > 9999 ||
+    !Number.isSafeInteger(month) ||
+    !Number.isSafeInteger(day) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    !isValidAppleBirthdayDay(year, month, day)
+  ) {
     return undefined;
   }
   const mm = String(month).padStart(2, "0");

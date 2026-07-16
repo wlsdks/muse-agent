@@ -159,6 +159,61 @@ describe("POST /api/messaging/webhooks/line", () => {
     expect(stored[0]?.sender).toBeUndefined();
     await server.close();
   });
+
+  it("accepts a repeated verified delivery without duplicating the inbox message", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-line-webhook-redelivery-"));
+    const inboxFile = join(dir, "line-inbox.json");
+    const secret = "channel-secret-redelivery";
+    const server = buildLineWebhookServer(secret, inboxFile);
+    const body = JSON.stringify({
+      events: [{
+        message: { id: "redelivery-1", text: "deliver once", type: "text" },
+        source: { userId: "U-stark" },
+        timestamp: 1700000000000,
+        type: "message",
+        webhookEventId: "01H810YECXQQZ37VAXPF6H9E6T"
+      }]
+    });
+
+    for (let index = 0; index < 2; index += 1) {
+      const reply = await server.inject({
+        headers: { "content-type": "application/json", "x-line-signature": sign(secret, body) },
+        method: "POST",
+        payload: body,
+        url: "/api/messaging/webhooks/line"
+      });
+      expect(reply.statusCode).toBe(200);
+      expect(reply.json()).toMatchObject({ stored: index === 0 ? 1 : 0 });
+    }
+
+    expect(await readInbox(inboxFile)).toHaveLength(1);
+    await server.close();
+  });
+
+  it("returns 503 so LINE retries a verified event that cannot be persisted", async () => {
+    const inboxDirectory = mkdtempSync(join(tmpdir(), "muse-line-webhook-persist-failure-"));
+    const secret = "channel-secret-persist-failure";
+    const server = buildLineWebhookServer(secret, inboxDirectory);
+    const body = JSON.stringify({
+      events: [{
+        message: { id: "persist-failure-1", text: "retry me", type: "text" },
+        source: { userId: "U-stark" },
+        timestamp: 1700000000000,
+        type: "message"
+      }]
+    });
+
+    const reply = await server.inject({
+      headers: { "content-type": "application/json", "x-line-signature": sign(secret, body) },
+      method: "POST",
+      payload: body,
+      url: "/api/messaging/webhooks/line"
+    });
+
+    expect(reply.statusCode).toBe(503);
+    expect(reply.json()).toMatchObject({ code: "MESSAGING_WEBHOOK_PERSIST_FAILED" });
+    await server.close();
+  });
 });
 
 describe("buildServer LINE webhook gating", () => {

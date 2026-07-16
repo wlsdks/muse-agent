@@ -115,21 +115,25 @@ export async function readEpisodes(
   );
 }
 
-export async function writeEpisodes(
+async function writeEpisodesUnlocked(
   file: string,
   episodes: readonly PersistedEpisode[],
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   const text = `${JSON.stringify({ episodes }, null, 2)}\n`;
-  // Peek + write under the SAME cross-process lock the migration uses, so an
-  // ordinary write can't race `encryptEpisodesAtRest` and clobber it with a
-  // stale-format payload (the per-process `withFileMutationQueue` the mutators
-  // use does NOT span processes). Format is preserved: once encrypted, stays
-  // encrypted; once plaintext, stays plaintext.
-  await withFileLock(file, async () => {
-    const encrypted = await isFileEncryptedAtRest(file);
-    await writeMaybeEncrypted(file, text, encrypted, env);
-  });
+  // The caller owns the cross-process lock. Checking the current format and
+  // replacing the file stay in that critical section so encrypted stores remain
+  // encrypted and a concurrent format migration cannot be overwritten.
+  const encrypted = await isFileEncryptedAtRest(file);
+  await writeMaybeEncrypted(file, text, encrypted, env);
+}
+
+export async function writeEpisodes(
+  file: string,
+  episodes: readonly PersistedEpisode[],
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  await withFileLock(file, () => writeEpisodesUnlocked(file, episodes, env));
 }
 
 export function serializeEpisode(episode: PersistedEpisode): JsonObject {
@@ -151,6 +155,31 @@ export function serializeEpisode(episode: PersistedEpisode): JsonObject {
   };
 }
 
+interface EpisodeMutation<Result> {
+  readonly result: Result;
+  readonly nextEpisodes?: readonly PersistedEpisode[];
+}
+
+/**
+ * Run a personal-episode read-modify-write under both local and inter-process
+ * serialization. The queue prevents local contention; the file lock ensures a
+ * second Muse process cannot replace a snapshot that this process read earlier.
+ */
+async function mutateEpisodes<Result>(
+  file: string,
+  env: NodeJS.ProcessEnv,
+  mutation: (episodes: readonly PersistedEpisode[]) => EpisodeMutation<Result>
+): Promise<Result> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const existing = await readEpisodes(file, env);
+    const { nextEpisodes, result } = mutation(existing);
+    if (nextEpisodes !== undefined) {
+      await writeEpisodesUnlocked(file, nextEpisodes, env);
+    }
+    return result;
+  }));
+}
+
 /**
  * Replace-by-id upsert. A re-summarise pass for the same session
  * (e.g. retry after a transient LLM failure) overwrites the prior
@@ -161,15 +190,9 @@ export async function upsertEpisode(
   episode: PersistedEpisode,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
-  // Serialise the read-modify-write: concurrent upserts (overlapping
-  // session-end summaries) otherwise read the same snapshot and the last write
-  // clobbers the rest — a lost episode is a session the recall WEDGE can never
-  // surface — and two writes in the same millisecond collided on the
-  // tmp-${pid}-${Date.now()} path and threw ENOENT on rename.
-  await withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file, env);
+  await mutateEpisodes(file, env, (existing) => {
     const filtered = existing.filter((entry) => entry.id !== episode.id);
-    await writeEpisodes(file, [...filtered, episode], env);
+    return { nextEpisodes: [...filtered, episode], result: undefined };
   });
 }
 
@@ -179,14 +202,12 @@ export async function removeEpisode(
   id: string,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<boolean> {
-  return withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file, env);
+  return mutateEpisodes(file, env, (existing) => {
     const next = existing.filter((entry) => entry.id !== id);
     if (next.length === existing.length) {
-      return false;
+      return { result: false };
     }
-    await writeEpisodes(file, next, env);
-    return true;
+    return { nextEpisodes: next, result: true };
   });
 }
 
@@ -244,16 +265,12 @@ export async function vacuumEpisodes(
   const cap = Number.isFinite(maxEntries) && maxEntries > 0
     ? Math.max(1, Math.trunc(maxEntries))
     : DEFAULT_VACUUM_MAX_ENTRIES;
-  // Serialised with the upsert/remove path so a vacuum can't race a concurrent
-  // upsert (read stale → write trimmed set that drops the just-added episode).
-  return withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file, env);
+  return mutateEpisodes(file, env, (existing) => {
     if (existing.length <= cap) {
-      return 0;
+      return { result: 0 };
     }
     const kept = selectRetainedEpisodes(existing, cap, nowMs);
-    await writeEpisodes(file, kept, env);
-    return existing.length - kept.length;
+    return { nextEpisodes: kept, result: existing.length - kept.length };
   });
 }
 

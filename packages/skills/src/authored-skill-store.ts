@@ -12,6 +12,8 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { withFileLock, withFileMutationQueue } from "@muse/shared";
+
 import { FileSystemSkillLoader } from "./skill-loader.js";
 import { parseSkillFile } from "./skill-parser.js";
 import type { Skill } from "./skill-contract.js";
@@ -108,6 +110,10 @@ export class AuthoredSkillStore {
   }
 
   async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
+    return this.serializeMutation(() => this.writeOrPatchUnlocked(draft));
+  }
+
+  private async writeOrPatchUnlocked(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
     const scan = scanSkillBodyForRisks(draft.body);
     if (scan.flagged) {
       const filePath = join(this.dir, ".quarantine", slugifySkillName(draft.name), "SKILL.md");
@@ -163,6 +169,10 @@ export class AuthoredSkillStore {
    * Pattern adapted from Hermes Agent's curator lifecycle (MIT) — reimplemented for Muse.
    */
   async recordUsage(name: string): Promise<boolean> {
+    return this.serializeMutation(() => this.recordUsageUnlocked(name));
+  }
+
+  private async recordUsageUnlocked(name: string): Promise<boolean> {
     try {
       const authored = await this.listAuthored();
       const skill = authored.find((s) => s.name === name);
@@ -211,6 +221,13 @@ export class AuthoredSkillStore {
   async curate(
     maxIdleDays: number,
     options: { readonly scheduledJobs?: readonly SkillReferencingJob[] } = {}
+  ): Promise<readonly string[]> {
+    return this.serializeMutation(() => this.curateUnlocked(maxIdleDays, options));
+  }
+
+  private async curateUnlocked(
+    maxIdleDays: number,
+    options: { readonly scheduledJobs?: readonly SkillReferencingJob[] }
   ): Promise<readonly string[]> {
     if (!(maxIdleDays > 0)) return [];
     const cutoff = this.now().getTime() - maxIdleDays * 24 * 60 * 60 * 1000;
@@ -291,6 +308,32 @@ export class AuthoredSkillStore {
       readonly recordMerged?: (cluster: readonly SkillDraft[]) => void | Promise<void>;
     } = {}
   ): Promise<readonly { readonly umbrella: string; readonly merged: readonly string[] }[]> {
+    return this.serializeMutation(() => this.consolidateUnlocked(merge, options));
+  }
+
+  private async consolidateUnlocked(
+    merge: (
+      cluster: readonly SkillDraft[],
+      feedback?: { readonly avoidDropping: readonly string[] }
+    ) => Promise<SkillDraft | undefined>,
+    options: {
+      readonly threshold?: number;
+      readonly minClusterSize?: number;
+      readonly dryRun?: boolean;
+      readonly validate?: (
+        cluster: readonly SkillDraft[],
+        umbrella: SkillDraft
+      ) =>
+        | boolean
+        | { readonly accept: boolean; readonly lost?: readonly string[] }
+        | Promise<boolean | { readonly accept: boolean; readonly lost?: readonly string[] }>;
+      readonly feedbackRetry?: boolean;
+      readonly attempts?: number;
+      readonly shouldSkipCluster?: (cluster: readonly SkillDraft[]) => boolean | Promise<boolean>;
+      readonly recordReject?: (cluster: readonly SkillDraft[]) => void | Promise<void>;
+      readonly recordMerged?: (cluster: readonly SkillDraft[]) => void | Promise<void>;
+    }
+  ): Promise<readonly { readonly umbrella: string; readonly merged: readonly string[] }[]> {
     const threshold = typeof options.threshold === "number" && options.threshold > 0 ? options.threshold : 0.5;
     const minSize = Math.max(2, Math.trunc(options.minClusterSize ?? 2));
     const skills = await this.listAuthored();
@@ -335,7 +378,7 @@ export class AuthoredSkillStore {
       // Archive originals FIRST so the subsequent umbrella write can't
       // similarity-match (and accidentally patch) one of them.
       for (const s of cluster) await this.archiveSkill(s);
-      const { skill } = await this.writeOrPatch(umbrella);
+      const { skill } = await this.writeOrPatchUnlocked(umbrella);
       await options.recordMerged?.(drafts); // merged → clear any cooldown entry
       out.push({ merged: cluster.map((s) => s.name), umbrella: skill.name });
     }
@@ -372,6 +415,10 @@ export class AuthoredSkillStore {
    * the slot (returns false) — never clobbers. Returns true on success.
    */
   async restore(name: string): Promise<boolean> {
+    return this.serializeMutation(() => this.restoreUnlocked(name));
+  }
+
+  private async restoreUnlocked(name: string): Promise<boolean> {
     const slug = slugifySkillName(name);
     const src = join(this.dir, ".archive", slug);
     const dest = join(this.dir, slug);
@@ -414,6 +461,14 @@ export class AuthoredSkillStore {
     readonly restored: readonly string[];
     readonly archivedConflicts: readonly string[];
   }> {
+    return this.serializeMutation(() => this.rollbackUnlocked(snapshotId));
+  }
+
+  private async rollbackUnlocked(snapshotId?: string): Promise<{
+    readonly snapshotId: string;
+    readonly restored: readonly string[];
+    readonly archivedConflicts: readonly string[];
+  }> {
     const snapshots = await this.listSnapshots();
     const snapshot = snapshotId ? snapshots.find((s) => s.id === snapshotId) : snapshots.at(-1);
     if (!snapshot) {
@@ -433,6 +488,12 @@ export class AuthoredSkillStore {
 
   private snapshotsDir(): string {
     return join(this.dir, ".snapshots");
+  }
+
+  /** Serialize every state-changing operation across local and sibling Muse processes. */
+  private async serializeMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const mutationFile = join(this.dir, ".authored-skill-store");
+    return withFileMutationQueue(mutationFile, () => withFileLock(mutationFile, operation));
   }
 
   /**

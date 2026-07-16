@@ -112,6 +112,25 @@ describe("fetchWithTimeout — a stalled Bot API connection can't hang the polli
     ).rejects.toThrow(/ECONNRESET/u);
   });
 
+  it("preserves a caller AbortSignal while adding the timeout signal", async () => {
+    const caller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    const callerAbort = new DOMException("caller cancelled", "AbortError");
+    const pendingFetch: typeof globalThis.fetch = (_input, init) => {
+      receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        receivedSignal?.addEventListener("abort", () => reject(receivedSignal?.reason), { once: true });
+      });
+    };
+
+    const pending = fetchWithTimeout(pendingFetch, "https://api.telegram.org/botX/getUpdates", { signal: caller.signal }, 5_000);
+    caller.abort(callerAbort);
+
+    await expect(pending).rejects.toBe(callerAbort);
+    expect(receivedSignal).not.toBe(caller.signal);
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
   it("falls back to the 30s default for a non-finite / non-positive timeout", () => {
     expect(DEFAULT_PROVIDER_FETCH_TIMEOUT_MS).toBe(30_000);
   });

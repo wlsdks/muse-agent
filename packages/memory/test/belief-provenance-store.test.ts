@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,7 @@ import {
   type BeliefProvenance,
   type FactProvenance
 } from "../src/belief-provenance-store.js";
+import { encryptMemoryEnvelope } from "../src/memory-encryption.js";
 
 describe("classifyValueChange — refinement (elaboration) vs contradiction (a real flip), deterministic token-subset", () => {
   it("same → same; an elaboration (token-superset, either direction) → refine; an unrelated value → contradict", () => {
@@ -386,6 +387,19 @@ describe("FileBeliefProvenanceStore", () => {
   it("quarantines a corrupt store and reads empty", async () => {
     await writeFile(file, "{ not json", "utf8");
     expect(await readBeliefProvenance(file)).toEqual([]);
+  });
+
+  it("quarantines an encrypted envelope whose authenticated plaintext is corrupt before a later append can replace it", async () => {
+    const env = { MUSE_MEMORY_KEY: "provenance-test-key" };
+    const envelope = encryptMemoryEnvelope("{not valid json", env);
+    const raw = `${JSON.stringify(envelope)}\n`;
+    await writeFile(file, raw, "utf8");
+
+    expect(await readBeliefProvenance(file, env)).toEqual([]);
+
+    const backupName = (await readdir(dir)).find((name) => name.startsWith("belief-provenance.json.corrupt-"));
+    expect(backupName).toBeDefined();
+    expect(await readFile(join(dir, backupName!), "utf8")).toBe(raw);
   });
 
   it("drops malformed entries on read", async () => {

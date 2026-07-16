@@ -242,14 +242,14 @@ export async function exchangeGmailAuthorizationCode(params: {
     // surface, so only a parsed, allow-listed field ever reaches the message.
     throw new Error(`Gmail token exchange failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
-  const payload = await response.json() as { readonly access_token?: string; readonly refresh_token?: string; readonly expires_in?: number };
-  if (!payload.access_token || !payload.refresh_token) {
+  const payload = await readGoogleTokenPayload(response, "exchange");
+  if (!payload.accessToken || !payload.refreshToken) {
     throw new Error("Gmail token exchange response missing access_token/refresh_token — ensure the consent screen requested offline access.");
   }
   return {
-    accessToken: payload.access_token,
-    expiresAt: now() + (payload.expires_in ?? 3600) * 1000,
-    refreshToken: payload.refresh_token
+    accessToken: payload.accessToken,
+    expiresAt: now() + (payload.expiresIn ?? 3600) * 1000,
+    refreshToken: payload.refreshToken
   };
 }
 
@@ -289,11 +289,47 @@ export async function refreshGmailAccessToken(params: {
     }
     throw new Error(`Gmail token refresh failed (${response.status.toString()}${errorCode ? `: ${errorCode}` : ""})`);
   }
-  const payload = await response.json() as { readonly access_token?: string; readonly expires_in?: number };
-  if (!payload.access_token) {
+  const payload = await readGoogleTokenPayload(response, "refresh");
+  if (!payload.accessToken) {
     throw new Error("Gmail token refresh response missing access_token");
   }
-  return { accessToken: payload.access_token, expiresAt: now() + (payload.expires_in ?? 3600) * 1000 };
+  return { accessToken: payload.accessToken, expiresAt: now() + (payload.expiresIn ?? 3600) * 1000 };
+}
+
+interface GoogleTokenPayload {
+  readonly accessToken?: string;
+  readonly expiresIn?: number;
+  readonly refreshToken?: string;
+}
+
+async function readGoogleTokenPayload(response: Response, operation: "exchange" | "refresh"): Promise<GoogleTokenPayload> {
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch {
+    throw new Error(`Gmail token ${operation} response could not be read`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Gmail token ${operation} response was not valid JSON`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Gmail token ${operation} response must be a JSON object`);
+  }
+
+  const payload = parsed as Record<string, unknown>;
+  const expiresIn = payload["expires_in"];
+  if (expiresIn !== undefined && (typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn < 0)) {
+    throw new Error(`Gmail token ${operation} response has invalid expires_in`);
+  }
+  return {
+    ...(typeof payload["access_token"] === "string" ? { accessToken: payload["access_token"] } : {}),
+    ...(typeof expiresIn === "number" ? { expiresIn } : {}),
+    ...(typeof payload["refresh_token"] === "string" ? { refreshToken: payload["refresh_token"] } : {})
+  };
 }
 
 export interface GmailTokenSourceDeps {
@@ -367,4 +403,3 @@ async function resolveStoredAccessToken(deps: GmailTokenSourceDeps): Promise<str
   await writeGmailCredential(deps.io, updated);
   return refreshed.accessToken;
 }
-

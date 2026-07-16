@@ -15,7 +15,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 interface PersistedShape {
   readonly version: 1;
@@ -50,8 +51,5 @@ export async function writeMatrixSince(file: string, since: string): Promise<voi
     throw new TypeError("since must be a non-empty string");
   }
   const payload: PersistedShape = { since, version: 1 };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await withMessagingFileMutation(file, () => atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`));
 }

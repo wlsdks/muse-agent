@@ -30,6 +30,8 @@
  */
 const TRUTHY_ENV_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
 const FALSY_ENV_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$/u;
+const HTTP_HEADER_VALUE_CONTROL_PATTERN = /[\u0000-\u0008\u000A-\u001F\u007F]/u;
 
 export function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
@@ -193,7 +195,12 @@ export function parseHeaderMap(value: string | undefined): Record<string, string
   }
   const out: Record<string, string> = {};
   for (const [key, raw] of Object.entries(parsed as Record<string, unknown>)) {
-    if (key.trim().length === 0 || typeof raw !== "string") {
+    if (
+      key.trim().length === 0 ||
+      !HTTP_HEADER_NAME_PATTERN.test(key) ||
+      typeof raw !== "string" ||
+      HTTP_HEADER_VALUE_CONTROL_PATTERN.test(raw)
+    ) {
       return undefined;
     }
     out[key] = raw;

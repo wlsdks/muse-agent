@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { resolveCheckinsFile, resolveRecallHitsFile } from "../src/provider-paths.js";
+import { resolveCheckinsFile, resolveInboxInjectionCursorFile, resolveRecallHitsFile } from "../src/provider-paths.js";
 import { readCredentialsSync } from "../src/provider-utils.js";
 
 // resolveDotMusePath (shared by every resolve*File): an env override wins (with
@@ -27,6 +27,13 @@ describe("provider-paths resolvers (resolveDotMusePath)", () => {
 
   it("treats a blank / whitespace override as unset and falls back to the default", () => {
     expect(resolveCheckinsFile({ MUSE_CHECKINS_FILE: "   " })).toBe(join(homedir(), ".muse", "checkins.json"));
+  });
+
+  it("keeps inbox cursor provider IDs inside the dot-muse path", () => {
+    expect(resolveInboxInjectionCursorFile({ HOME: "/tmp/muse-home" }, "telegram"))
+      .toBe("/tmp/muse-home/.muse/telegram-inbox-injection.json");
+    expect(() => resolveInboxInjectionCursorFile({ HOME: "/tmp/muse-home" }, "../../outside"))
+      .toThrow("providerId must contain only letters, numbers, underscores, or hyphens");
   });
 });
 

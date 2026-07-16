@@ -40,6 +40,9 @@ export class ActiveRunTracker {
     timeoutMs: number,
     sleep: (ms: number) => Promise<void> = defaultSleep
   ): Promise<DrainOutcome> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
+      throw new RangeError("timeoutMs must be a non-negative safe integer");
+    }
     if (this.active.size === 0) {
       return "drained";
     }

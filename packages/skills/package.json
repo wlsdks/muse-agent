@@ -16,6 +16,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@muse/shared": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "^4.1.9"
   }

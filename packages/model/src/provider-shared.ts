@@ -98,9 +98,12 @@ function sanitizeSurrogatesDeep(value: unknown): JsonValue {
     }
     return out;
   }
-  // Parsed JSON can only leave number | boolean | null here; anything
-  // else (undefined, function) came from a non-JSON caller — map to null.
-  return typeof value === "number" || typeof value === "boolean" ? value : null;
+  // `JSON.parse("1e400")` yields Infinity even though that value cannot
+  // round-trip through JSON. Preserve only finite numbers at this untrusted
+  // provider boundary; all other non-JSON values become null.
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "boolean" ? value : null;
 }
 
 export function recoverToolArgsJson(raw: string): Record<string, unknown> | undefined {

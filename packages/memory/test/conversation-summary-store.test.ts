@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { withFileLock } from "@muse/shared";
 
 import {
   InMemoryConversationSummaryStore,
@@ -27,6 +28,35 @@ describe("InMemoryConversationSummaryStore", () => {
     expect(saved.userId).toBe("u1");
     expect(saved.createdAt.getTime()).toBe(1000);
     expect(saved.updatedAt.getTime()).toBe(1000);
+  });
+
+  it("normalizes non-finite or negative summary indexes before persistence", () => {
+    const store = new InMemoryConversationSummaryStore({ now: () => new Date(1000) });
+
+    expect(store.save(summary("nan", { summarizedUpToIndex: Number.NaN })).summarizedUpToIndex).toBe(0);
+    expect(store.save(summary("infinite", { summarizedUpToIndex: Number.POSITIVE_INFINITY })).summarizedUpToIndex).toBe(0);
+    expect(store.save(summary("negative", { summarizedUpToIndex: -5 })).summarizedUpToIndex).toBe(0);
+  });
+
+  it("normalizes invalid runtime timestamps before a later persistence boundary can throw", () => {
+    const now = new Date(1000);
+    const invalid = new Date("not-a-date");
+    const input = summary("invalid-dates", {
+      createdAt: invalid,
+      facts: [{ category: "GENERAL", extractedAt: invalid, key: "k", value: "v" }],
+      updatedAt: invalid
+    });
+    const store = new InMemoryConversationSummaryStore({ now: () => now });
+
+    const saved = store.save(input);
+    const insert = createConversationSummaryInsert(input, { now: () => now });
+
+    expect(saved.createdAt.getTime()).toBe(1000);
+    expect(saved.updatedAt.getTime()).toBe(1000);
+    expect(saved.facts[0]?.extractedAt.getTime()).toBe(1000);
+    expect(insert.created_at.getTime()).toBe(1000);
+    expect(insert.updated_at.getTime()).toBe(1000);
+    expect((insert.facts_json as Array<{ extractedAt: string }>)[0]?.extractedAt).toBe(now.toISOString());
   });
 
   it("preserves the original createdAt on re-save but advances updatedAt", () => {
@@ -104,12 +134,28 @@ describe("createConversationSummaryInsert / mapConversationSummaryRow", () => {
     expect(mapped.facts).toEqual([{ category: "GENERAL", extractedAt: new Date("2026-01-01T00:00:00Z"), key: "k", value: "v" }]);
     expect(mapped.userId).toBe("u");
   });
+
+  it("maps corrupt persisted timestamps to epoch dates instead of exposing invalid Date values", () => {
+    const mapped = mapConversationSummaryRow({
+      created_at: "not-a-date",
+      facts_json: '[{"key":"k","value":"v","category":"GENERAL","extractedAt":"not-a-date"}]',
+      narrative: "n",
+      session_id: "s",
+      summarized_up_to: 0,
+      updated_at: "not-a-date",
+      user_id: null
+    } as Parameters<typeof mapConversationSummaryRow>[0]);
+
+    expect(mapped.createdAt.getTime()).toBe(0);
+    expect(mapped.updatedAt.getTime()).toBe(0);
+    expect(mapped.facts[0]?.extractedAt.getTime()).toBe(0);
+  });
 });
 
 import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { FileConversationSummaryStore } from "../src/memory-conversation-summary-store.js";
 
@@ -153,6 +199,107 @@ describe("FileConversationSummaryStore — cross-session persistence (the CLI de
 
     // unwritten file ⇒ empty, no throw
     expect(await new FileConversationSummaryStore({ file: join(tmpdir(), `muse-absent-${Date.now().toString()}.json`) }).listAll()).toEqual([]);
+  });
+
+  it("serializes concurrent saves across store instances without losing summaries", async () => {
+    const file = freshFile();
+    const sessionIds = Array.from({ length: 12 }, (_, index) => `session-${index.toString()}`);
+
+    await Promise.all(sessionIds.map((sessionId, index) =>
+      new FileConversationSummaryStore({ file, now: () => new Date(1_000 + index) }).save(summary(sessionId))
+    ));
+
+    const stored = await new FileConversationSummaryStore({ file }).listAll({ limit: 100 });
+    expect(stored.map((entry) => entry.sessionId).sort()).toEqual([...sessionIds].sort());
+  });
+
+  it("waits for an external process lock before mutating the summary file", async () => {
+    const file = freshFile();
+    const acquired = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const heldLock = withFileLock(file, async () => {
+      acquired.resolve();
+      await release.promise;
+    });
+    await acquired.promise;
+
+    let settled = false;
+    const pendingSave = new FileConversationSummaryStore({ file }).save(summary("locked-summary")).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(settled).toBe(false);
+
+    release.resolve();
+    await Promise.all([heldLock, pendingSave]);
+    expect(await new FileConversationSummaryStore({ file }).get("locked-summary")).toBeDefined();
+  });
+
+  it("quarantines a corrupt store before save replaces it, preserving recoverable raw data", async () => {
+    const file = freshFile();
+    const corrupt = "{not valid JSON";
+    await writeFile(file, corrupt, "utf8");
+
+    await new FileConversationSummaryStore({ file }).save(summary("recovered", { narrative: "fresh summary" }));
+
+    const quarantined = (await readdir(dirname(file))).find((name) => name.startsWith("conversation-summaries.json.corrupt-"));
+    expect(quarantined).toBeDefined();
+    expect(await import("node:fs/promises").then(({ readFile }) => readFile(join(dirname(file), quarantined!), "utf8"))).toBe(corrupt);
+    expect(await new FileConversationSummaryStore({ file }).get("recovered")).toMatchObject({ narrative: "fresh summary" });
+  });
+
+  it("skips malformed summaries and facts so a later save can recover the valid entries", async () => {
+    const file = freshFile();
+    await writeFile(file, JSON.stringify({
+      summaries: [
+        {
+          createdAt: "not-a-date",
+          facts: [],
+          narrative: "broken",
+          sessionId: "broken-summary",
+          summarizedUpToIndex: 0,
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        },
+        {
+          createdAt: "2026-01-01T00:00:00.000Z",
+          facts: [
+            { category: "GENERAL", extractedAt: "not-a-date", key: "broken", value: "fact" },
+            { category: "ENTITY", extractedAt: "2026-01-01T00:00:00.000Z", key: "valid", value: "fact" }
+          ],
+          narrative: "valid",
+          sessionId: "valid-summary",
+          summarizedUpToIndex: 1,
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    }), "utf8");
+
+    const store = new FileConversationSummaryStore({ file });
+    await store.save(summary("recovered-summary", { narrative: "safe to persist" }));
+
+    const recovered = await new FileConversationSummaryStore({ file }).listAll({ limit: 10 });
+    expect(recovered.map((entry) => entry.sessionId).sort()).toEqual(["recovered-summary", "valid-summary"]);
+    expect(recovered.find((entry) => entry.sessionId === "valid-summary")?.facts).toEqual([
+      expect.objectContaining({ key: "valid", value: "fact" })
+    ]);
+  });
+
+  it("persists invalid runtime timestamps with its clock fallback", async () => {
+    const file = freshFile();
+    const now = new Date(1000);
+    const invalid = new Date("not-a-date");
+    const store = new FileConversationSummaryStore({ file, now: () => now });
+
+    await expect(store.save(summary("invalid-runtime-date", {
+      createdAt: invalid,
+      facts: [{ category: "GENERAL", extractedAt: invalid, key: "k", value: "v" }],
+      updatedAt: invalid
+    }))).resolves.toMatchObject({ createdAt: now, updatedAt: now });
+
+    await expect(new FileConversationSummaryStore({ file }).get("invalid-runtime-date")).resolves.toMatchObject({
+      createdAt: now,
+      updatedAt: now
+    });
   });
 
   afterAll(async () => {

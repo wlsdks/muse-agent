@@ -22,7 +22,8 @@ import { dirname, basename } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile } from "./atomic-file-store.js";
+import { withFileLock } from "./encrypted-file.js";
 import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type FollowupStatus = "scheduled" | "fired" | "cancelled";
@@ -186,7 +187,7 @@ export async function upsertFollowup(file: string, followup: PersistedFollowup):
   // Serialise the read-modify-write so two concurrent detect/schedule passes
   // don't each read the same snapshot and clobber one another — a lost followup
   // is a proactive nudge the user never receives.
-  await withFileMutationQueue(file, async () => {
+  await withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const filtered = existing.filter((entry) => entry.id !== followup.id);
     await writeFollowups(file, [...filtered, followup]);
@@ -202,7 +203,7 @@ export async function markFollowupFired(
   id: string,
   firedAt: string
 ): Promise<PersistedFollowup | undefined> {
-  return withFileMutationQueue(file, async () => {
+  return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
     if (!target || target.status !== "scheduled") {
@@ -224,7 +225,7 @@ export async function cancelFollowup(
   id: string,
   reason: string
 ): Promise<PersistedFollowup | undefined> {
-  return withFileMutationQueue(file, async () => {
+  return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
     if (!target || target.status !== "scheduled") {
@@ -250,7 +251,7 @@ export async function snoozeFollowup(
   id: string,
   newScheduledForIso: string
 ): Promise<PersistedFollowup | undefined> {
-  return withFileMutationQueue(file, async () => {
+  return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
     if (!target || target.status !== "scheduled") {
@@ -286,9 +287,14 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
     || !Number.isFinite(Date.parse(candidate.scheduledFor))) {
     return false;
   }
-  return candidate.status === "scheduled"
-    || candidate.status === "fired"
-    || candidate.status === "cancelled";
+  return (
+    (candidate.status === "scheduled" || candidate.status === "fired" || candidate.status === "cancelled") &&
+    (candidate.originRunId === undefined || typeof candidate.originRunId === "string") &&
+    (candidate.originTurnHash === undefined || typeof candidate.originTurnHash === "string") &&
+    (candidate.kind === undefined || typeof candidate.kind === "string") &&
+    (candidate.firedAt === undefined || typeof candidate.firedAt === "string") &&
+    (candidate.cancelReason === undefined || typeof candidate.cancelReason === "string")
+  );
 }
 
 export type FollowupRefResolution =

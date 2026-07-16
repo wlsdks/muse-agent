@@ -41,34 +41,56 @@ export interface InMemoryAgentMessageBusOptions {
    * Defaults to 1000 — matches Reactor's Caffeine W-TinyLFU bound.
    */
   readonly maxSubscribers?: number;
+  /** Maximum retained messages for one orchestration run. Defaults to 10,000. */
+  readonly maxMessages?: number;
+  /** Maximum retained handlers for one agent id. Defaults to 100. */
+  readonly maxHandlersPerSubscriber?: number;
 }
 
 /**
  * Default in-memory bus. Single-process only; not durable across restarts.
  *
- * Subscriber buckets are bounded so a long-running supervisor cannot leak
- * memory on agent IDs that subscribe but never unsubscribe. `allMessages` is
- * unbounded by design — it represents the conversation log for the run, and
- * the run is expected to call `clear()` (or be replaced) at supervisor exit.
+ * Subscriber keys, handlers within each key, and the conversation tail are
+ * bounded so a long-running supervisor cannot leak memory when lifecycle
+ * cleanup is delayed. Retention is FIFO; delivery remains live for every
+ * published message even after older history is evicted.
  */
 export class InMemoryAgentMessageBus implements AgentMessageBus {
   private readonly allMessages: AgentMessage[] = [];
   private readonly subscribers = new Map<string, AgentMessageHandler[]>();
+  private deliveryTail: Promise<void> = Promise.resolve();
+  private deliveryGeneration = 0;
   private readonly maxSubscribers: number;
+  private readonly maxMessages: number;
+  private readonly maxHandlersPerSubscriber: number;
 
   constructor(options: InMemoryAgentMessageBusOptions = {}) {
-    const limit = options.maxSubscribers ?? 1000;
-
-    if (!Number.isInteger(limit) || limit <= 0) {
-      throw new RangeError("maxSubscribers must be a positive integer");
-    }
-
-    this.maxSubscribers = limit;
+    this.maxSubscribers = requirePositiveSafeInteger(options.maxSubscribers, 1000, "maxSubscribers");
+    this.maxMessages = requirePositiveSafeInteger(options.maxMessages, 10_000, "maxMessages");
+    this.maxHandlersPerSubscriber = requirePositiveSafeInteger(options.maxHandlersPerSubscriber, 100, "maxHandlersPerSubscriber");
   }
 
   async publish(message: AgentMessage): Promise<void> {
-    this.allMessages.push(message);
-    await this.notifySubscribers(message);
+    // Treat an agent message as an immutable boundary value. `readonly` only
+    // protects TypeScript callers: Dates and JSON metadata remain mutable at
+    // runtime, so retaining or fanning out the caller's object would let one
+    // agent alter another agent's input or rewrite conversation history.
+    const acceptedMessage = snapshotMessage(message);
+
+    this.allMessages.push(acceptedMessage);
+    if (this.allMessages.length > this.maxMessages) {
+      this.allMessages.splice(0, this.allMessages.length - this.maxMessages);
+    }
+    const generation = this.deliveryGeneration;
+    const delivery = this.deliveryTail.then(async () => {
+      if (generation === this.deliveryGeneration) {
+        await this.notifySubscribers(acceptedMessage);
+      }
+    });
+    // Keep later publishes live even if a future implementation adds a
+    // failing bus-level operation; subscriber failures already fail open.
+    this.deliveryTail = delivery.catch(() => {});
+    await delivery;
   }
 
   subscribe(agentId: string, handler: AgentMessageHandler): void {
@@ -80,22 +102,26 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
       this.subscribers.set(agentId, bucket);
     }
 
+    if (bucket.length >= this.maxHandlersPerSubscriber) {
+      bucket.shift();
+    }
     bucket.push(handler);
   }
 
   getMessages(agentId: string): readonly AgentMessage[] {
-    return this.allMessages.filter(
-      (message) => message.targetAgentId === agentId || message.targetAgentId === undefined
-    );
+    return this.allMessages
+      .filter((message) => message.targetAgentId === agentId || message.targetAgentId === undefined)
+      .map(snapshotMessage);
   }
 
   getConversation(): readonly AgentMessage[] {
-    return [...this.allMessages];
+    return this.allMessages.map(snapshotMessage);
   }
 
   clear(): void {
     this.allMessages.length = 0;
     this.subscribers.clear();
+    this.deliveryGeneration += 1;
   }
 
   private async notifySubscribers(message: AgentMessage): Promise<void> {
@@ -124,7 +150,10 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
   // allowed to silently drop messages to every other agent.
   private async deliver(handler: AgentMessageHandler, message: AgentMessage): Promise<void> {
     try {
-      await handler(message);
+      // Every handler receives its own snapshot. A compromised or buggy
+      // subscriber therefore cannot poison the input observed by later
+      // subscribers, even though JavaScript cannot enforce `readonly`.
+      await handler(snapshotMessage(message));
     } catch {
       // intentionally swallowed — best-effort delivery
     }
@@ -141,4 +170,22 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
       this.subscribers.delete(oldestKey);
     }
   }
+}
+
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return resolved;
+}
+
+function snapshotMessage(message: AgentMessage): AgentMessage {
+  return {
+    content: message.content,
+    ...(message.metadata === undefined ? {} : { metadata: structuredClone(message.metadata) }),
+    sourceAgentId: message.sourceAgentId,
+    ...(message.targetAgentId === undefined ? {} : { targetAgentId: message.targetAgentId }),
+    timestamp: new Date(message.timestamp)
+  };
 }

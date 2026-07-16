@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@muse/secrets": "workspace:*",
-    "@muse/shared": "workspace:*"
+    "@muse/shared": "workspace:*",
+    "@muse/stores": "workspace:*"
   }
 }

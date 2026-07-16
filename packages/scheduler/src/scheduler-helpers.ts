@@ -18,7 +18,8 @@ import type {
   ScheduledJob,
   ScheduledJobExecution,
   ScheduledJobExecutionInput,
-  ScheduledJobInput
+  ScheduledJobInput,
+  ScheduledJobUpdateInput
 } from "./index.js";
 
 type ScheduledJobInsert = Insertable<ScheduledJobTable>;
@@ -146,26 +147,32 @@ export function createScheduledJobInsert(
 }
 
 export function createScheduledJobUpdate(
-  input: ScheduledJobInput,
+  input: ScheduledJobUpdateInput,
   existing: ScheduledJob,
   now: () => Date
 ) {
-  return {
-    ...scheduledJobToRow(
-      normalizeScheduledJob(
-        {
-          ...input,
-          id: existing.id,
-          createdAt: existing.createdAt,
-          lastResult: input.lastResult ?? existing.lastResult,
-          lastRunAt: input.lastRunAt ?? existing.lastRunAt,
-          lastStatus: input.lastStatus ?? existing.lastStatus
-        },
-        { id: existing.id, now }
-      )
-    ),
-    id: undefined
-  };
+  const {
+    created_at: _createdAt,
+    id: _id,
+    last_result: _lastResult,
+    last_run_at: _lastRunAt,
+    last_status: _lastStatus,
+    ...configuration
+  } = scheduledJobToRow(
+    normalizeScheduledJob(
+      {
+        ...input,
+        id: existing.id,
+        createdAt: existing.createdAt,
+        lastResult: existing.lastResult,
+        lastRunAt: existing.lastRunAt,
+        lastStatus: existing.lastStatus
+      },
+      { id: existing.id, now }
+    )
+  );
+
+  return configuration;
 }
 
 export function createScheduledJobExecutionInsert(

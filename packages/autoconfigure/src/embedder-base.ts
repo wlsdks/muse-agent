@@ -21,11 +21,14 @@ export function resolveEmbedderBase(env: Readonly<Record<string, string | undefi
 // StoreBacked provider treats a thrown embedder as fail-open and
 // degrades that resolve to Jaccard, so recall never breaks if Ollama
 // is down or the model isn't pulled.
-export function createOllamaEmbedder(model: string): (text: string) => Promise<readonly number[]> {
+export function createOllamaEmbedder(
+  model: string,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): (text: string) => Promise<readonly number[]> {
   // Empty / whitespace OLLAMA_BASE_URL is treated as unset (loopback default);
   // shared with the doctor posture so the two never diverge (see resolveEmbedderBase).
-  const configuredBase = resolveEmbedderBase(process.env);
-  const base = isLocalOnlyEnabled(process.env)
+  const configuredBase = resolveEmbedderBase(env);
+  const base = isLocalOnlyEnabled(env)
     ? canonicalizeLocalOnlyModelBaseUrl("ollama", configuredBase)
     : configuredBase;
   if (!base) {
@@ -35,7 +38,7 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
   // grounding embeds the query every turn, so an embed model that cold-reloads
   // after a 5-minute idle gap would stall the FIRST grounded answer after a
   // break — the always-on companion sets this to 2h via MuseBridge.
-  const keepAlive = process.env.MUSE_OLLAMA_KEEP_ALIVE?.trim() || "30m";
+  const keepAlive = env.MUSE_OLLAMA_KEEP_ALIVE?.trim() || "30m";
   return async (text: string) => {
     // NFC-normalise the embed input too (sibling of the lexical tokeniser) so an NFD note
     // (macOS) and an NFC query embed from the SAME bytes — KO semantic recall stays consistent.
@@ -64,6 +67,7 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
  */
 export function createGateEmbedder(env: NodeJS.ProcessEnv): (text: string) => Promise<readonly number[]> {
   return createCachingEmbedder(createOllamaEmbedder(
-    env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe"
+    env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe",
+    env
   ));
 }

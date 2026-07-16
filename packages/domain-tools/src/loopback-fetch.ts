@@ -6,6 +6,10 @@ import { readString, readJsonObject } from "@muse/mcp";
 
 import { LOCAL_EGRESS_BLOCKED } from "./fetch-readable-url.js";
 
+const DEFAULT_MAX_BODY_BYTES = 65_536;
+const DEFAULT_TIMEOUT_MS = 5_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /**
  * `muse.fetch` loopback MCP server — bounded HTTP GET/HEAD fetcher.
  *
@@ -41,6 +45,21 @@ export interface FetchMcpServerOptions {
   readonly retryOptions?: Pick<RetryOptions, "retries" | "baseDelayMs" | "sleep" | "maxRetryAfterMs">;
 }
 
+/** Invalid body caps preserve the bounded default rather than producing an empty response. */
+export function normalizeFetchBodyBytes(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_MAX_BODY_BYTES;
+}
+
+/** `0` explicitly disables the request timer; other values must be safe positive integer milliseconds. */
+export function normalizeFetchTimeoutMs(value: number | undefined): number {
+  if (value === 0) return 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, MAX_TIMER_DELAY_MS)
+    : DEFAULT_TIMEOUT_MS;
+}
+
 /**
  * Reference loopback server: bounded HTTP GET / HEAD fetcher. Opt-in,
  * allowlist-required, body-capped. Lets Muse pull a public document or
@@ -51,8 +70,8 @@ export interface FetchMcpServerOptions {
  */
 export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMcpServer {
   const allowedHosts = new Set(options.allowedHosts.map((host) => host.toLowerCase()));
-  const maxBodyBytes = options.maxBodyBytes ?? 65_536;
-  const timeoutMs = options.timeoutMs ?? 5_000;
+  const maxBodyBytes = normalizeFetchBodyBytes(options.maxBodyBytes);
+  const timeoutMs = normalizeFetchTimeoutMs(options.timeoutMs);
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const retryOptions = options.retryOptions ?? {};
 

@@ -65,10 +65,19 @@ export interface PerformConsentedActionOptions {
 }
 
 const DEFAULT_CONSENTED_ACTION_TIMEOUT_MS = 30_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export type ConsentedActionOutcome =
   | { readonly performed: false; readonly reason: string }
   | { readonly performed: true; readonly status: number };
+
+function resolveConsentedActionTimeoutMs(value: number | undefined): number {
+  const timeoutMs = value ?? DEFAULT_CONSENTED_ACTION_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_DELAY_MS) {
+    return DEFAULT_CONSENTED_ACTION_TIMEOUT_MS;
+  }
+  return timeoutMs;
+}
 
 export async function performConsentedAction(
   options: PerformConsentedActionOptions
@@ -147,8 +156,8 @@ export async function performConsentedAction(
     }
   }
 
-  const timeoutMs = options.timeoutMs ?? DEFAULT_CONSENTED_ACTION_TIMEOUT_MS;
-  const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  const timeoutMs = resolveConsentedActionTimeoutMs(options.timeoutMs);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   let response: Response;
   // Strip any caller-supplied authorization header (case-insensitively) so the
   // consent-gated credential is the ONLY Bearer token that ever leaves — a
@@ -174,8 +183,8 @@ export async function performConsentedAction(
       ...(timeoutSignal ? { signal: timeoutSignal } : {})
     });
   } catch (cause) {
-    const aborted = cause instanceof DOMException && cause.name === "TimeoutError";
-    const reason = aborted
+    const timedOut = timeoutSignal.aborted;
+    const reason = timedOut
       ? `consented action timed out after ${timeoutMs.toString()}ms`
       : `consented action fetch failed: ${errorMessage(cause)}`;
     await log("failed", reason);

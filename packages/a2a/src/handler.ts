@@ -19,7 +19,12 @@ import { isA2AEnabled } from "@muse/agent-core";
 
 import { A2A_SIGNATURE_HEADER } from "./transport.js";
 import type { A2AAgentCard } from "./agent-card.js";
-import { parseCouncilRequest, verifyCouncilRequest, type CouncilResponse } from "./council-wire.js";
+import {
+  MAX_COUNCIL_REASONING_CHARS,
+  parseCouncilRequest,
+  verifyCouncilRequest,
+  type CouncilResponse
+} from "./council-wire.js";
 import type { PeerRegistry } from "./peer-registry.js";
 import { receiveAndQuarantine, type QuarantineDepositInput } from "./receive-quarantine.js";
 
@@ -91,7 +96,7 @@ export function createA2AHandler(options: A2AHandlerOptions): (request: A2AReque
         if (!peer || !verifyCouncilRequest(council.fromPeerId, council.question, signature, peer.secret)) {
           return json(200, empty); // unknown peer / bad signature → no compute, no reasoning
         }
-        const reasoning = await options.councilReason(council.question);
+        const reasoning = (await options.councilReason(council.question)).slice(0, MAX_COUNCIL_REASONING_CHARS);
         return json(200, { fromPeerId: options.selfPeerId ?? "", kind: "council-reasoning", reasoning } satisfies CouncilResponse);
       }
 

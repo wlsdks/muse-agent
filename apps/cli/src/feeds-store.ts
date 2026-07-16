@@ -7,6 +7,7 @@ export {
   feedDocEmbedText,
   filterRecentFeedEntries,
   mergeFeedEntries,
+  mutateFeedsStore,
   parseFeedBody,
   readFeedsStore,
   writeFeedsStore,

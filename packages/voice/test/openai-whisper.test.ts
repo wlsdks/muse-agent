@@ -41,6 +41,23 @@ describe("OpenAIWhisperSttProvider", () => {
     expect(call.init.body).toBeInstanceOf(FormData);
   });
 
+  it("omits invalid remote duration values instead of exposing NaN, Infinity, or a negative duration", async () => {
+    for (const duration of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      const p = new OpenAIWhisperSttProvider({ apiKey: "sk-test", fetchImpl: capturingFetch(jsonResponse({ duration, text: "hello" })) });
+      await expect(p.transcribe({ audio, mimeType: "audio/wav" })).resolves.toMatchObject({ durationMs: undefined, text: "hello" });
+    }
+  });
+
+  it("aborts a stalled cloud request at the configured timeout", async () => {
+    const stalled: typeof fetch = ((_url: string, init: RequestInit) => {
+      const pending = Promise.withResolvers<Response>();
+      init.signal?.addEventListener("abort", () => pending.reject(new Error("aborted")), { once: true });
+      return pending.promise;
+    }) as typeof fetch;
+    const p = new OpenAIWhisperSttProvider({ apiKey: "sk-test", fetchImpl: stalled, timeoutMs: 20 });
+    await expect(p.transcribe({ audio, mimeType: "audio/wav" })).rejects.toMatchObject({ code: "FETCH_FAILED" });
+  });
+
   it("rejects empty audio / missing mimeType / unsupported format BEFORE any network call", async () => {
     const fetchImpl = capturingFetch(jsonResponse({ text: "x" }));
     const p = new OpenAIWhisperSttProvider({ apiKey: "k", fetchImpl });

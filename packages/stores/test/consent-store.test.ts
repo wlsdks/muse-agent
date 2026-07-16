@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -128,5 +128,18 @@ describe("serializeConsent", () => {
   it("emits the five required fields and includes note only when set", () => {
     expect(Object.keys(serializeConsent(consent())).sort()).toEqual(["grantedAt", "id", "objectiveId", "scope", "userId"]);
     expect(serializeConsent(consent({ note: "approved in chat" }))).toHaveProperty("note", "approved in chat");
+  });
+});
+
+describe("readConsents", () => {
+  it("rejects blank host bindings and wrong-typed notes at the persisted boundary", async () => {
+    await writeFile(file, JSON.stringify({
+      consents: [
+        consent(),
+        consent({ allowedHost: " ", id: "blank-host" }),
+        consent({ id: "bad-note", note: 7 as unknown as string })
+      ]
+    }));
+    expect((await readConsents(file)).map((entry) => entry.id)).toEqual(["c1"]);
   });
 });

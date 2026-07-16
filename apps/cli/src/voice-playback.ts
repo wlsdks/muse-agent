@@ -165,13 +165,16 @@ async function runPlayerWithWatchdog(
     once(child, "error").then(([error]) => {
       throw asError(error);
     }),
-    once(child, "close").then(([code]) => {
+    once(child, "close").then(([code, signal]) => {
       if (code === 0) return;
       const decoded = Buffer.concat(stderrChunks).toString("utf8");
       const capped = decoded.length > STDERR_CAP_CHARS ? decoded.slice(0, STDERR_CAP_CHARS) : decoded;
       const detail = truncateErrorBody(stripUntrustedTerminalChars(capped).trim(), 240);
+      const termination = code === null
+        ? `terminated by ${typeof signal === "string" ? signal : "an unknown signal"}`
+        : `exited with code ${String(code)}`;
       throw new Error(
-        `${player} exited with code ${code ?? "unknown"}${detail ? `: ${detail}` : ""}`
+        `${player} ${termination}${detail ? `: ${detail}` : ""}`
       );
     })
   ]).finally(() => {

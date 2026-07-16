@@ -186,6 +186,7 @@ describe("applyInterruptionBudget", () => {
     const blocker = join(dir, "blocker");
     await writeFile(blocker, "x", "utf8");
     const digestFile = join(blocker, "digest.json");
+    const lastDeliveryFile = join(dir, "last-delivery.json");
     let delivers = 0;
     const logs: string[] = [];
     const result = await applyInterruptionBudget({
@@ -195,6 +196,7 @@ describe("applyInterruptionBudget", () => {
       },
       digestFile,
       errorLogger: (message) => logs.push(message),
+      lastDeliveryFile,
       ledgerFile,
       now: NOW,
       source: "pattern-firing",
@@ -203,6 +205,7 @@ describe("applyInterruptionBudget", () => {
     expect(result.outcome).toBe("digested");
     expect(delivers).toBe(0);
     expect(logs.some((line) => line.includes("digest append failed"))).toBe(true);
+    expect(await readLastProactiveDeliveries(lastDeliveryFile)).toEqual([]);
   });
   it("a vetoed source (avoidedSources) skips entirely — no send, no digest, no ledger entry, {outcome: \"skipped\"}", async () => {
     const dir = tmpDir();

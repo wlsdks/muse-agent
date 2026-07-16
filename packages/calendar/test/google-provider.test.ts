@@ -69,6 +69,9 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
 
     const noToken = makeFetch(() => new Response("{}", { status: 200 }), () => new Response(JSON.stringify({ expires_in: 3600 }), { status: 200 }));
     await expect(provider(noToken.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "OAUTH_INVALID_RESPONSE" });
+
+    const malformed = makeFetch(() => new Response("{}", { status: 200 }), () => new Response("<html>proxy failure</html>", { status: 200 }));
+    await expect(provider(malformed.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "OAUTH_INVALID_RESPONSE", status: 200 });
   });
 
   it("RETRIES a transient 503 on the idempotent GET, then succeeds", async () => {
@@ -76,6 +79,20 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
     const events = await provider(fetch.impl, { retries: 2, sleep: async () => {} }).listEvents(RANGE);
     expect(events).toHaveLength(2);
     expect(fetch.apiCalls()).toHaveLength(2); // one retry (token mint shared)
+  });
+
+  it("caps an excessive configured retry delay before scheduling the next GET", async () => {
+    const slept: number[] = [];
+    const fetch = makeFetch((attempt) => (attempt < 3 ? new Response("busy", { status: 503 }) : new Response(JSON.stringify(ITEMS), { status: 200 })));
+    await new GoogleCalendarProvider({
+      clientId: "c",
+      clientSecret: "s",
+      fetchImpl: fetch.impl,
+      refreshToken: "r",
+      retry: { baseDelayMs: Number.MAX_VALUE, retries: 1, sleep: async (ms) => { slept.push(ms); } }
+    }).listEvents(RANGE);
+
+    expect(slept).toEqual([30_000]);
   });
 
   it("turns a 2xx with a NON-JSON body (HTML maintenance / proxy page) into a typed MALFORMED_RESPONSE, not an opaque SyntaxError", async () => {
@@ -86,6 +103,18 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
   it("turns an EMPTY 2xx body into MALFORMED_RESPONSE (a 204 no-content is handled separately and does NOT error)", async () => {
     const fetch = makeFetch(() => new Response("", { status: 200 }));
     await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });
+  });
+
+  it("drops malformed list entries instead of exposing epoch or undefined-id events", async () => {
+    const fetch = makeFetch(() => new Response(JSON.stringify({
+      items: [
+        ITEMS.items[0],
+        { end: { dateTime: "2026-05-30T10:00:00Z" }, id: "bad-time", start: { dateTime: "not-a-date" } },
+        { end: { dateTime: "2026-05-30T10:00:00Z" }, start: { dateTime: "2026-05-30T09:00:00Z" } }
+      ]
+    }), { status: 200 }));
+
+    await expect(provider(fetch.impl).listEvents(RANGE)).resolves.toMatchObject([{ id: "g1" }]);
   });
 
   // A fetch that HANGS on the API endpoint (only the AbortController resolves it,
@@ -128,6 +157,21 @@ describe("GoogleCalendarProvider — writes retry only a 429 rate-limit (never a
     expect(post.method).toBe("POST");
     expect(JSON.parse(post.body ?? "{}")).toEqual({ end: { dateTime: "2026-06-01T11:00:00.000Z" }, location: "Z", start: { dateTime: "2026-06-01T10:00:00.000Z" }, summary: "New" });
     expect(created.id).toBe("new1");
+  });
+
+  it("rejects a malformed successful write response instead of returning an unusable event", async () => {
+    const fetch = makeFetch(() => new Response(JSON.stringify({
+      end: { dateTime: "2026-06-01T11:00:00Z" },
+      start: { dateTime: "not-a-date" }
+    }), { status: 200 }));
+
+    await expect(
+      provider(fetch.impl).createEvent({
+        endsAt: new Date("2026-06-01T11:00:00Z"),
+        startsAt: new Date("2026-06-01T10:00:00Z"),
+        title: "New"
+      })
+    ).rejects.toMatchObject({ code: "MALFORMED_EVENT" });
   });
 
   it("does NOT retry a 500 on a write (a retried mutation could double-create)", async () => {

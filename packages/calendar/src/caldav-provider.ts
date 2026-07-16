@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import { CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
+import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
 import { parseCalendarQueryResponse, renderCalendarQueryReport, renderVEvent } from "./caldav-ics.js";
 import { sleep } from "@muse/shared";
 import type {
@@ -77,8 +77,8 @@ export class CalDAVCalendarProvider implements CalendarProvider {
     this.url = options.url.endsWith("/") ? options.url : `${options.url}/`;
     this.authHeader = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString("base64")}`;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
-    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    this.retries = normalizeCalendarRetryCount(options.retry?.retries);
+    this.baseDelayMs = normalizeCalendarRetryDelayMs(options.retry?.baseDelayMs);
     this.sleep = options.retry?.sleep ?? sleep;
   }
 
@@ -108,7 +108,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
         });
       } catch (cause) {
         if (attempt < this.retries) {
-          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          await this.sleep(calendarBackoffMs(this.baseDelayMs, attempt));
           continue;
         }
         throw cause;
@@ -116,7 +116,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
 
       if (!response.ok) {
         if (attempt < this.retries && isRetryableCalendarStatus(response.status)) {
-          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          await this.sleep(calendarBackoffMs(this.baseDelayMs, attempt));
           continue;
         }
         throw new CalendarProviderError(this.id, `HTTP_${response.status}`, await this.errorText(response), undefined, response.status);
@@ -214,7 +214,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
       const response = await this.fetchImpl(href, init);
       if (response.status === 429 && attempt < this.retries) {
         const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
-        await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : this.baseDelayMs * 2 ** attempt);
+        await this.sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, CALENDAR_RETRY_AFTER_CAP_MS) : calendarBackoffMs(this.baseDelayMs, attempt));
         continue;
       }
       return response;

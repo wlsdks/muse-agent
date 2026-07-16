@@ -130,3 +130,18 @@ describe("createTaskMemoryStore", () => {
     );
   });
 });
+
+describe("file-backed persistence opt-outs", () => {
+  it("honours every standard false environment spelling", () => {
+    for (const value of ["FALSE", "0", "off", "no"]) {
+      expect(className(createTaskMemoryStore(undefined, { MUSE_TASK_MEMORY_PERSIST: value } as MuseEnvironment)))
+        .toBe("InMemoryTaskMemoryStore");
+      expect(className(createConversationSummaryStore(undefined, { MUSE_CONVERSATION_SUMMARY_PERSIST: value } as MuseEnvironment)))
+        .toBe("InMemoryConversationSummaryStore");
+      expect(className(createUserMemoryStore(undefined, { MUSE_USER_MEMORY_PERSIST: value } as MuseEnvironment)))
+        .toBe("InMemoryUserMemoryStore");
+      expect(className(createSchedulerStore(undefined, { MUSE_SCHEDULER_PERSIST: value } as MuseEnvironment)))
+        .toBe("InMemoryScheduledJobStore");
+    }
+  });
+});

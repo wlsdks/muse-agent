@@ -130,9 +130,46 @@ describe("parseExternalMcpConfig", () => {
     expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { good: "not-an-object" } }))).toThrow(/mcpServers\.good must be an object/);
   });
 
+  it("rejects control characters in a server name before seeding", () => {
+    const raw = JSON.stringify({ mcpServers: { "bad\nname": { command: "node" } } });
+
+    expect(() => parseExternalMcpConfig(raw)).toThrow(/server name containing control characters/);
+    expect(diagnoseExternalMcpConfig(raw)).toEqual([
+      expect.objectContaining({
+        findings: ["a server name containing control characters"],
+        name: "bad\nname",
+        status: "error"
+      })
+    ]);
+  });
+
+  it("rejects server names that collide after whitespace normalization, including disabled entries", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        filesystem: { command: "node" },
+        " filesystem ": { command: "npx", disabled: true }
+      }
+    });
+
+    expect(() => parseExternalMcpConfig(raw)).toThrow(/duplicate server name after trimming/);
+    expect(diagnoseExternalMcpConfig(raw)).toEqual([
+      expect.objectContaining({ name: "filesystem", status: "error" }),
+      expect.objectContaining({ name: " filesystem ", status: "error" })
+    ]);
+  });
+
   it("rejects a non-array args and an empty command on a stdio entry", () => {
     expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { args: "notarray", command: "run" } } }))).toThrow(/args must be a string array/);
     expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { command: "   " } } }))).toThrow(/command must be a non-empty string/);
+  });
+
+  it("rejects remote URLs that cannot reach the supported MCP transports", () => {
+    expect(() => parseExternalMcpConfig(JSON.stringify({
+      mcpServers: { malformed: { url: "not a url" } }
+    }))).toThrow(/url is not a valid URL/);
+    expect(() => parseExternalMcpConfig(JSON.stringify({
+      mcpServers: { unsupported: { url: "ftp://example.com/mcp" } }
+    }))).toThrow(/expected http: or https:/);
   });
 
   it("honours an explicit autoConnect:false (defaults to true otherwise)", () => {
@@ -140,6 +177,15 @@ describe("parseExternalMcpConfig", () => {
     expect(entry?.autoConnect).toBe(false);
     const [dflt] = parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { command: "run" } } }));
     expect(dflt?.autoConnect).toBe(true);
+  });
+
+  it("rejects non-boolean connection switches instead of enabling them", () => {
+    expect(() => parseExternalMcpConfig(JSON.stringify({
+      mcpServers: { s: { autoConnect: "false", command: "run" } }
+    }))).toThrow(/autoConnect must be a boolean/);
+    expect(() => parseExternalMcpConfig(JSON.stringify({
+      mcpServers: { s: { command: "run", disabled: "true" } }
+    }))).toThrow(/disabled must be a boolean/);
   });
 });
 
@@ -239,26 +285,18 @@ describe("diagnoseExternalMcpConfig", () => {
     expect(diagnoses[0]?.findings.join(" ")).toContain("disabled: true");
   });
 
-  it("flags malformed URLs as findings on otherwise-ok entries", () => {
+  it("reports malformed and unsupported remote URLs as errors", () => {
     const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
       mcpServers: {
-        bad_url: { url: "not a url" }
-      }
-    }));
-
-    expect(diagnoses[0]?.status).toBe("ok");
-    expect(diagnoses[0]?.findings.join(" ")).toContain("not a valid URL");
-  });
-
-  it("warns on non-http(s) URL protocols", () => {
-    const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
-      mcpServers: {
+        bad_url: { url: "not a url" },
         ftp_entry: { url: "ftp://example.com/mcp" }
       }
     }));
 
-    expect(diagnoses[0]?.status).toBe("ok");
-    expect(diagnoses[0]?.findings.join(" ")).toContain("expected http: or https:");
+    expect(diagnoses).toEqual([
+      expect.objectContaining({ findings: [expect.stringContaining("not a valid URL")], name: "bad_url", status: "error" }),
+      expect.objectContaining({ findings: [expect.stringContaining("expected http: or https:")], name: "ftp_entry", status: "error" })
+    ]);
   });
 
   it("still throws ConfigurationError on outer JSON parse failure", () => {
@@ -289,16 +327,13 @@ describe("diagnoseExternalMcpConfigFile", () => {
   it("reads + diagnoses an existing file via MUSE_MCP_CONFIG override", () => {
     const path = join(tmpRoot, "mcp.json");
     writeFileSync(path, JSON.stringify({
-      mcpServers: {
-        good: { command: "node" },
-        bad: { url: "https://" }
-      }
+      mcpServers: { good: { command: "node" }, bad: { url: "https://" } }
     }), "utf8");
 
     const diagnoses = diagnoseExternalMcpConfigFile({ MUSE_MCP_CONFIG: path });
     expect(diagnoses.map((entry) => entry.name)).toEqual(["good", "bad"]);
     expect(diagnoses[0]?.status).toBe("ok");
-    expect(diagnoses[1]?.status).toBe("ok");
+    expect(diagnoses[1]?.status).toBe("error");
     expect(diagnoses[1]?.findings.join(" ")).toMatch(/url.*not a valid|expected http/);
   });
 });

@@ -79,6 +79,10 @@ export interface DistillQueuedDeps {
   readonly strategyConsistencySamples?: number;
 }
 
+function normalizeMaxPerTick(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : 1;
+}
+
 /** Returns the number of strategies actually recorded this tick. */
 export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise<number> {
   // Kill switch: paused ⇒ zero writes, queue untouched (resume catches up).
@@ -89,7 +93,7 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
   if (pending.length === 0) {
     return 0;
   }
-  const cap = Math.max(1, deps.maxPerTick ?? 1);
+  const cap = normalizeMaxPerTick(deps.maxPerTick);
   const batch = pending.slice(0, cap);
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? (() => `pb_${now().getTime().toString(36)}_${Math.trunc(performance.now()).toString(36)}`);

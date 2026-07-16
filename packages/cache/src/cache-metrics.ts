@@ -35,6 +35,8 @@ export interface CacheMetricsSnapshot extends CacheStatsSnapshot {
 }
 
 export const cacheUnknownModel = "unknown";
+/** Keep long-running metrics bounded while retaining a recent similarity sample. */
+export const MAX_SEMANTIC_SIMILARITY_SAMPLES = 1_000;
 
 export class InMemoryCacheStatsStore implements CacheStatsStore {
   private exactHits = 0;
@@ -87,7 +89,10 @@ export class InMemoryCacheMetricsRecorder implements CacheMetricsRecorder {
 
   recordSemanticHit(similarityScore: number, model = cacheUnknownModel): void {
     this.statsStore?.incrementSemanticHit();
-    this.semanticSimilarityScores.push(clamp(similarityScore, 0, 1));
+    this.semanticSimilarityScores.push(Number.isFinite(similarityScore) ? clamp(similarityScore, 0, 1) : 0);
+    if (this.semanticSimilarityScores.length > MAX_SEMANTIC_SIMILARITY_SAMPLES) {
+      this.semanticSimilarityScores.splice(0, this.semanticSimilarityScores.length - MAX_SEMANTIC_SIMILARITY_SAMPLES);
+    }
     this.increment(this.hitsByProvider, resolveProvider(model));
   }
 

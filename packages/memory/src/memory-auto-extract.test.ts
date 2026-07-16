@@ -27,6 +27,35 @@ function turn(userId: string, userText: string): AfterCompleteArgs {
   ];
 }
 
+describe("createUserMemoryAutoExtractHook — option validation", () => {
+  const createHook = (options: Record<string, number>) => createUserMemoryAutoExtractHook({
+    store: new InMemoryUserMemoryStore(),
+    modelProvider: fakeProvider("{}"),
+    model: "m",
+    ...options
+  });
+
+  it("rejects non-finite, fractional, and negative count limits before they can disable extraction bounds", () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, -1]) {
+      expect(() => createHook({ maxFactsPerExchange: value })).toThrow(RangeError);
+      expect(() => createHook({ extractionCooldownMs: value })).toThrow(RangeError);
+    }
+
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(() => createHook({ maxUserPromptChars: value })).toThrow(RangeError);
+      expect(() => createHook({ extractionTimeoutMs: value })).toThrow(RangeError);
+    }
+  });
+
+  it("retains zero as the explicit no-extraction and no-cooldown setting", () => {
+    expect(() => createHook({ maxFactsPerExchange: 0, extractionCooldownMs: 0 })).not.toThrow();
+  });
+
+  it("clamps low character and timeout limits to their documented minimums", () => {
+    expect(() => createHook({ maxUserPromptChars: 0, extractionTimeoutMs: -1 })).not.toThrow();
+  });
+});
+
 describe("createUserMemoryAutoExtractHook — onLearned", () => {
   it("notifies the supersession recorded this turn when a fact CHANGES", async () => {
     const store = new InMemoryUserMemoryStore();

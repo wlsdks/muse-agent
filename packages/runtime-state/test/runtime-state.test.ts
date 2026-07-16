@@ -5,6 +5,17 @@ import {
 } from "../src/index.js";
 
 describe("InMemoryCheckpointStore", () => {
+  it("rejects invalid retention limits instead of bypassing memory bounds", () => {
+    for (const options of [
+      { maxCheckpointsPerRun: 0 },
+      { maxCheckpointsPerRun: Number.NaN },
+      { maxRuns: -1 },
+      { maxRuns: Number.POSITIVE_INFINITY }
+    ]) {
+      expect(() => new InMemoryCheckpointStore(options)).toThrow(RangeError);
+    }
+  });
+
   it("saves and replays checkpoints sorted by step", async () => {
     const store = new InMemoryCheckpointStore({ idFactory: sequentialIds("checkpoint") });
 
@@ -48,6 +59,12 @@ describe("InMemoryCheckpointStore", () => {
 });
 
 describe("InMemoryHookTraceStore", () => {
+  it("rejects invalid trace limits instead of silently discarding or retaining traces", () => {
+    for (const maxTraces of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new InMemoryHookTraceStore({ maxTraces })).toThrow(RangeError);
+    }
+  });
+
   it("records hook traces by run and keeps recent traces bounded", () => {
     const store = new InMemoryHookTraceStore({
       idFactory: sequentialIds("hook-trace"),

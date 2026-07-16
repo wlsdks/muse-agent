@@ -44,7 +44,8 @@ import { ConfigurationError, type MuseEnvironment } from "./index.js";
  *
  * Disabled entries (top-level `disabled: true`) are skipped silently —
  * no row is emitted, but the entry can be flipped on without rewriting
- * the file.
+ * the file. They still reserve their normalized server name, so a disabled
+ * `" filesystem "` cannot silently shadow an active `"filesystem"` entry.
  *
  * Missing file → empty list (not an error). Malformed JSON or invalid
  * entry shape → ConfigurationError so misconfigurations surface loudly.
@@ -88,11 +89,17 @@ export function parseExternalMcpConfig(raw: string, source = "<inline>"): readon
   }
   const entries = Object.entries(servers as Record<string, unknown>);
   const out: McpServerInput[] = [];
+  const names = new Set<string>();
   for (const [name, value] of entries) {
     const trimmedName = name.trim();
-    if (trimmedName.length === 0) {
-      throw new ConfigurationError(`MCP config (${source}) has an empty server name`);
+    const nameError = serverNameError(trimmedName);
+    if (nameError) {
+      throw new ConfigurationError(`MCP config (${source}) has ${nameError}`);
     }
+    if (names.has(trimmedName)) {
+      throw new ConfigurationError(`MCP config (${source}) has duplicate server name after trimming: ${JSON.stringify(trimmedName)}`);
+    }
+    names.add(trimmedName);
     const entry = parseEntry(trimmedName, value, source);
     if (entry) {
       out.push(entry);
@@ -106,12 +113,18 @@ function parseEntry(name: string, value: unknown, source: string): McpServerInpu
     throw new ConfigurationError(`MCP config (${source}).mcpServers.${name} must be an object`);
   }
   const entry = value as Record<string, unknown>;
+  if (entry.disabled !== undefined && typeof entry.disabled !== "boolean") {
+    throw new ConfigurationError(`MCP config (${source}).mcpServers.${name}.disabled must be a boolean`);
+  }
   if (entry.disabled === true) {
     return undefined;
   }
   const description = stringOrUndefined(entry.description);
   const autoConnectRaw = entry.autoConnect;
-  const autoConnect = typeof autoConnectRaw === "boolean" ? autoConnectRaw : true;
+  if (autoConnectRaw !== undefined && typeof autoConnectRaw !== "boolean") {
+    throw new ConfigurationError(`MCP config (${source}).mcpServers.${name}.autoConnect must be a boolean`);
+  }
+  const autoConnect = autoConnectRaw ?? true;
   const transport = inferTransport(name, entry, source);
   const config = buildConfig(name, entry, transport, source);
   return {
@@ -168,6 +181,10 @@ function buildConfig(
   const url = entry.url;
   if (typeof url !== "string" || url.trim().length === 0) {
     throw new ConfigurationError(`MCP config (${source}).mcpServers.${name}.url must be a non-empty string`);
+  }
+  const urlFinding = remoteUrlFinding(url);
+  if (urlFinding) {
+    throw new ConfigurationError(`MCP config (${source}).mcpServers.${name}.${urlFinding}`);
   }
   const headers = parseStringMap(entry.headers, `mcpServers.${name}.headers`, source);
   return {
@@ -257,10 +274,26 @@ export function diagnoseExternalMcpConfig(
     throw new ConfigurationError(`MCP config (${source}).mcpServers must be a JSON object`);
   }
   const out: ExternalMcpEntryDiagnosis[] = [];
+  const normalizedNameCounts = new Map<string, number>();
+  for (const rawName of Object.keys(servers as Record<string, unknown>)) {
+    const name = rawName.trim();
+    if (!serverNameError(name)) {
+      normalizedNameCounts.set(name, (normalizedNameCounts.get(name) ?? 0) + 1);
+    }
+  }
   for (const [rawName, value] of Object.entries(servers as Record<string, unknown>)) {
     const trimmedName = rawName.trim();
-    if (trimmedName.length === 0) {
-      out.push({ findings: ["server name must be a non-empty string"], name: rawName, status: "error" });
+    const nameError = serverNameError(trimmedName);
+    if (nameError) {
+      out.push({ findings: [nameError], name: rawName, status: "error" });
+      continue;
+    }
+    if ((normalizedNameCounts.get(trimmedName) ?? 0) > 1) {
+      out.push({
+        findings: [`duplicate server name after trimming: ${JSON.stringify(trimmedName)}`],
+        name: rawName,
+        status: "error"
+      });
       continue;
     }
     if (value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).disabled === true) {
@@ -270,11 +303,12 @@ export function diagnoseExternalMcpConfig(
     try {
       const entry = parseEntry(trimmedName, value, source);
       if (entry) {
+        const findings = validateEntry(entry);
         out.push({
           entry,
-          findings: validateEntry(entry),
+          findings,
           name: trimmedName,
-          status: "ok",
+          status: findings.length === 0 ? "ok" : "error",
           transportType: entry.transportType
         });
       }
@@ -311,17 +345,22 @@ function validateEntry(entry: McpServerInput): readonly string[] {
   if (entry.transportType === "streamable" || entry.transportType === "sse") {
     const url = (entry.config as { url?: unknown } | undefined)?.url;
     if (typeof url === "string") {
-      try {
-        const parsedUrl = new URL(url);
-        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-          findings.push(`url protocol is '${parsedUrl.protocol}', expected http: or https:`);
-        }
-      } catch {
-        findings.push(`url is not a valid URL: ${JSON.stringify(url)}`);
-      }
+      const finding = remoteUrlFinding(url);
+      if (finding) findings.push(finding);
     }
   }
   return findings;
+}
+
+function remoteUrlFinding(url: string): string | undefined {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:"
+      ? undefined
+      : `url protocol is '${parsedUrl.protocol}', expected http: or https:`;
+  } catch {
+    return `url is not a valid URL: ${JSON.stringify(url)}`;
+  }
 }
 
 /**
@@ -361,4 +400,14 @@ function tryReadFile(path: string): string | undefined {
       `Failed to read MCP config at ${path}: ${errorMessage(cause)}`
     );
   }
+}
+
+function serverNameError(name: string): string | undefined {
+  if (name.length === 0) {
+    return "an empty server name";
+  }
+  if (/[\u0000-\u001F\u007F]/u.test(name)) {
+    return "a server name containing control characters";
+  }
+  return undefined;
 }

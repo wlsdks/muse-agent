@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { ConversationSummaryTable, MuseDatabase } from "@muse/db";
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 import type {
   ConversationSummary,
@@ -68,10 +69,10 @@ export class InMemoryConversationSummaryStore implements ConversationSummaryStor
 
   save(summary: ConversationSummary): ConversationSummary {
     const existing = this.summaries.get(summary.sessionId);
-    const now = this.now();
+    const now = validDateOrFallback(this.now(), new Date());
     const normalized = normalizeConversationSummary(summary, {
-      createdAt: existing?.createdAt ?? summary.createdAt ?? now,
-      updatedAt: summary.updatedAt ?? now
+      createdAt: validDateOrFallback(existing?.createdAt ?? summary.createdAt, now),
+      updatedAt: validDateOrFallback(summary.updatedAt, now)
     });
 
     this.summaries.set(normalized.sessionId, normalized);
@@ -116,16 +117,41 @@ function serializeSummary(s: RequiredConversationSummary): SerializedConversatio
   };
 }
 
-function deserializeSummary(r: SerializedConversationSummary): RequiredConversationSummary {
-  return {
-    createdAt: new Date(r.createdAt),
-    facts: (r.facts ?? []).map((f) => ({ category: f.category, extractedAt: new Date(f.extractedAt), key: f.key, value: f.value })),
-    narrative: r.narrative,
-    sessionId: r.sessionId,
-    summarizedUpToIndex: r.summarizedUpToIndex,
-    updatedAt: new Date(r.updatedAt),
-    ...(r.userId ? { userId: r.userId } : {})
-  };
+function deserializeSummary(value: unknown): RequiredConversationSummary | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const createdAt = parseValidDate(record.createdAt);
+  const updatedAt = parseValidDate(record.updatedAt);
+  if (
+    typeof record.sessionId !== "string" ||
+    record.sessionId.trim().length === 0 ||
+    typeof record.narrative !== "string" ||
+    typeof record.summarizedUpToIndex !== "number" ||
+    !Number.isFinite(record.summarizedUpToIndex) ||
+    !createdAt ||
+    !updatedAt
+  ) {
+    return undefined;
+  }
+
+  const facts = Array.isArray(record.facts)
+    ? record.facts.flatMap(deserializeStoredStructuredFact)
+    : [];
+  return normalizeConversationSummary(
+    {
+      createdAt,
+      facts,
+      narrative: record.narrative,
+      sessionId: record.sessionId,
+      summarizedUpToIndex: record.summarizedUpToIndex,
+      updatedAt,
+      ...(typeof record.userId === "string" ? { userId: record.userId } : {})
+    },
+    { createdAt, updatedAt }
+  );
 }
 
 /**
@@ -163,15 +189,19 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch {
-      return new Map(); // corrupt ⇒ degrade to empty, never throw (recall is best-effort)
+      await quarantineCorruptFile(this.file);
+      return new Map(); // corrupt ⇒ preserve + degrade to empty, never throw (recall is best-effort)
     }
-    const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { summaries?: unknown }).summaries)
-      ? (parsed as { summaries: SerializedConversationSummary[] }).summaries
-      : [];
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { summaries?: unknown }).summaries)) {
+      await quarantineCorruptFile(this.file);
+      return new Map();
+    }
+    const list = (parsed as { summaries: SerializedConversationSummary[] }).summaries;
     const map = new Map<string, RequiredConversationSummary>();
     for (const entry of list) {
-      if (entry && typeof entry.sessionId === "string" && entry.sessionId.length > 0) {
-        map.set(entry.sessionId, deserializeSummary(entry));
+      const summary = deserializeSummary(entry);
+      if (summary) {
+        map.set(summary.sessionId, summary);
       }
     }
     return map;
@@ -197,23 +227,27 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
   }
 
   async save(summary: ConversationSummary): Promise<ConversationSummary> {
-    const map = await this.readMap();
-    const existing = map.get(summary.sessionId);
-    const now = this.now();
-    const normalized = normalizeConversationSummary(summary, {
-      createdAt: existing?.createdAt ?? summary.createdAt ?? now,
-      updatedAt: summary.updatedAt ?? now
+    return this.serializeWrite(async () => {
+      const map = await this.readMap();
+      const existing = map.get(summary.sessionId);
+      const now = validDateOrFallback(this.now(), new Date());
+      const normalized = normalizeConversationSummary(summary, {
+        createdAt: validDateOrFallback(existing?.createdAt ?? summary.createdAt, now),
+        updatedAt: validDateOrFallback(summary.updatedAt, now)
+      });
+      map.set(normalized.sessionId, normalized);
+      await this.writeMap(map);
+      return normalized;
     });
-    map.set(normalized.sessionId, normalized);
-    await this.writeMap(map);
-    return normalized;
   }
 
   async delete(sessionId: string): Promise<boolean> {
-    const map = await this.readMap();
-    if (!map.delete(sessionId)) return false;
-    await this.writeMap(map);
-    return true;
+    return this.serializeWrite(async () => {
+      const map = await this.readMap();
+      if (!map.delete(sessionId)) return false;
+      await this.writeMap(map);
+      return true;
+    });
   }
 
   async listAll(options: ConversationSummaryListOptions = {}): Promise<readonly ConversationSummary[]> {
@@ -221,6 +255,10 @@ export class FileConversationSummaryStore implements ConversationSummaryStore {
     const all = [...(await this.readMap()).values()];
     const filtered = options.userId ? all.filter((entry) => entry.userId === options.userId) : all;
     return filtered.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, limit);
+  }
+
+  private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
 }
 
@@ -306,10 +344,10 @@ export function createConversationSummaryInsert(
   summary: ConversationSummary,
   options: { readonly now: () => Date }
 ): ConversationSummaryInsert {
-  const now = options.now();
+  const now = validDateOrFallback(options.now(), new Date());
   const normalized = normalizeConversationSummary(summary, {
-    createdAt: summary.createdAt ?? now,
-    updatedAt: summary.updatedAt ?? now
+    createdAt: validDateOrFallback(summary.createdAt, now),
+    updatedAt: validDateOrFallback(summary.updatedAt, now)
   });
 
   return {
@@ -341,19 +379,23 @@ function normalizeConversationSummary(
 ): RequiredConversationSummary {
   return {
     createdAt: options.createdAt,
-    facts: (summary.facts ?? []).map(normalizeStructuredFact),
+    facts: (summary.facts ?? []).map((fact) => normalizeStructuredFact(fact, options.updatedAt)),
     narrative: summary.narrative.trim(),
     sessionId: summary.sessionId,
-    summarizedUpToIndex: Math.max(0, Math.trunc(summary.summarizedUpToIndex)),
+    summarizedUpToIndex: normalizeNonNegativeInteger(summary.summarizedUpToIndex),
     updatedAt: options.updatedAt,
     userId: summary.userId && summary.userId.trim().length > 0 ? summary.userId.trim() : undefined
   };
 }
 
-function normalizeStructuredFact(fact: StructuredFact): RequiredStructuredFact {
+function normalizeNonNegativeInteger(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+function normalizeStructuredFact(fact: StructuredFact, fallbackDate: Date): RequiredStructuredFact {
   return {
     category: fact.category ?? "GENERAL",
-    extractedAt: fact.extractedAt ?? new Date(),
+    extractedAt: validDateOrFallback(fact.extractedAt, fallbackDate),
     key: fact.key.trim(),
     value: fact.value.trim()
   };
@@ -377,6 +419,25 @@ function deserializeStructuredFact(fact: SerializedStructuredFact): RequiredStru
   };
 }
 
+function deserializeStoredStructuredFact(value: unknown): readonly RequiredStructuredFact[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const extractedAt = parseValidDate(record.extractedAt);
+  if (typeof record.key !== "string" || typeof record.value !== "string" || !extractedAt) {
+    return [];
+  }
+
+  return [{
+    category: factCategoryValue(record.category),
+    extractedAt,
+    key: record.key,
+    value: record.value
+  }];
+}
+
 function factCategoryValue(value: unknown): FactCategory {
   return value === "ENTITY" ||
     value === "DECISION" ||
@@ -393,7 +454,16 @@ function stringValue(value: unknown): string {
 }
 
 function dateValue(value: unknown): Date {
-  return value instanceof Date ? value : new Date(typeof value === "string" ? value : 0);
+  return parseValidDate(value) ?? new Date(0);
+}
+
+function parseValidDate(value: unknown): Date | undefined {
+  const date = value instanceof Date ? value : new Date(typeof value === "string" ? value : "");
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function validDateOrFallback(value: unknown, fallback: Date): Date {
+  return parseValidDate(value) ?? parseValidDate(fallback) ?? new Date(0);
 }
 
 function jsonArray<T>(value: unknown): readonly T[] {

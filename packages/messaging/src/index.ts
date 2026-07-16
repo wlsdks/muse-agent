@@ -74,7 +74,8 @@ export type {
   MessagingProviderId,
   MessagingProviderInfo,
   OutboundMessage,
-  OutboundReceipt
+  OutboundReceipt,
+  PollingFetchOptions
 } from "./types.js";
 
 export { TELEGRAM_BOT_COMMANDS, TelegramProvider, clampForTelegram, escapeForTelegramParseMode, type TelegramProviderOptions } from "./telegram-provider.js";

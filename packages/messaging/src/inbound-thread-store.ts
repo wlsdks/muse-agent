@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 /**
  * DEPRECATED (S3b) production backend — the API server now wires Telegram/
@@ -74,9 +75,6 @@ export async function readAllThreads(file: string): Promise<Readonly<Record<stri
   return readAll(file);
 }
 
-const writeQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
-
 export async function appendThreadTurns(
   file: string,
   key: string,
@@ -85,13 +83,7 @@ export async function appendThreadTurns(
   if (turns.length === 0) {
     return;
   }
-  const prior = writeQueues.get(file) ?? resolvedPromise();
-  const next = prior.then(
-    () => doAppendThreadTurns(file, key, turns),
-    () => doAppendThreadTurns(file, key, turns)
-  );
-  writeQueues.set(file, next.catch(() => undefined));
-  return next;
+  return withMessagingFileMutation(file, () => doAppendThreadTurns(file, key, turns));
 }
 
 async function doAppendThreadTurns(
@@ -103,8 +95,5 @@ async function doAppendThreadTurns(
   const merged = [...(all[key] ?? []), ...turns];
   all[key] = merged.slice(Math.max(0, merged.length - MAX_TURNS));
   const payload: PersistedShape = { threads: all, version: 1 };
-  await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-  await fs.rename(tmp, file);
+  await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
 }

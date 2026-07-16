@@ -189,19 +189,37 @@ export function pickAutoExtractSystemPrompt(userPrompt: string): string {
   return hangul / total >= 0.3 ? systemPromptKo : systemPromptEn;
 }
 
+function normalizeNonNegativeSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+
+  return resolved;
+}
+
+function normalizeMinimumSafeInteger(value: number | undefined, fallback: number, minimum: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved)) {
+    throw new RangeError(`${name} must be a safe integer`);
+  }
+
+  return Math.max(minimum, resolved);
+}
+
 export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOptions): HookStageShape {
-  const maxFacts = Math.max(0, Math.trunc(options.maxFactsPerExchange ?? 5));
-  const maxPreferences = Math.max(0, Math.trunc(options.maxPreferencesPerExchange ?? 5));
-  const maxVetoes = Math.max(0, Math.trunc(options.maxVetoesPerExchange ?? 3));
-  const maxGoals = Math.max(0, Math.trunc(options.maxGoalsPerExchange ?? 3));
-  const maxKey = Math.max(1, Math.trunc(options.maxKeyLength ?? 32));
-  const maxValue = Math.max(1, Math.trunc(options.maxValueLength ?? 200));
-  const maxUserPrompt = Math.max(64, Math.trunc(options.maxUserPromptChars ?? 2_048));
-  const maxAssistantOutput = Math.max(64, Math.trunc(options.maxAssistantOutputChars ?? 2_048));
-  const extractionTimeoutMs = Math.max(100, Math.trunc(options.extractionTimeoutMs ?? 10_000));
+  const maxFacts = normalizeNonNegativeSafeInteger(options.maxFactsPerExchange, 5, "maxFactsPerExchange");
+  const maxPreferences = normalizeNonNegativeSafeInteger(options.maxPreferencesPerExchange, 5, "maxPreferencesPerExchange");
+  const maxVetoes = normalizeNonNegativeSafeInteger(options.maxVetoesPerExchange, 3, "maxVetoesPerExchange");
+  const maxGoals = normalizeNonNegativeSafeInteger(options.maxGoalsPerExchange, 3, "maxGoalsPerExchange");
+  const maxKey = normalizeMinimumSafeInteger(options.maxKeyLength, 32, 1, "maxKeyLength");
+  const maxValue = normalizeMinimumSafeInteger(options.maxValueLength, 200, 1, "maxValueLength");
+  const maxUserPrompt = normalizeMinimumSafeInteger(options.maxUserPromptChars, 2_048, 64, "maxUserPromptChars");
+  const maxAssistantOutput = normalizeMinimumSafeInteger(options.maxAssistantOutputChars, 2_048, 64, "maxAssistantOutputChars");
+  const extractionTimeoutMs = normalizeMinimumSafeInteger(options.extractionTimeoutMs, 10_000, 100, "extractionTimeoutMs");
   // Per-user cooldown stops a burst of short turns from churning
   // user-memory.json. Explicit 0 disables.
-  const extractionCooldownMs = Math.max(0, Math.trunc(options.extractionCooldownMs ?? 60_000));
+  const extractionCooldownMs = normalizeNonNegativeSafeInteger(options.extractionCooldownMs, 60_000, "extractionCooldownMs");
   const now = options.now ?? (() => Date.now());
   const lastFiredByUser = new Map<string, number>();
 

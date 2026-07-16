@@ -210,6 +210,155 @@ describe("ToolExecutor", () => {
     expect(executions).toBe(1);
   });
 
+  it("coalesces concurrent idempotent executions before their result is stored", async () => {
+    let executions = 0;
+    let releaseExecution: (() => void) | undefined;
+    let signalStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: async () => {
+        executions += 1;
+        signalStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseExecution = resolve;
+        });
+        return `created:${executions}`;
+      }
+    };
+    const executor = new ToolExecutor({
+      idempotencyStore: new Map(),
+      registry: new ToolRegistry([tool])
+    });
+
+    const first = executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    });
+    await started;
+    const second = executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-2",
+      name: "create_record"
+    });
+    releaseExecution?.();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ id: "call-1", output: expect.stringContaining("created:1"), status: "completed" }),
+      expect.objectContaining({ id: "call-2", output: expect.stringContaining("created:1"), status: "completed" })
+    ]);
+    expect(executions).toBe(1);
+  });
+
+  it("publishes an idempotency key before a synchronous tool can re-enter the executor", async () => {
+    let executions = 0;
+    let nestedExecution: Promise<unknown> | undefined;
+    let executor: ToolExecutor;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          nestedExecution = executor.execute({
+            arguments: { idempotencyKey: "key-1" },
+            context: { runId: "run-1" },
+            id: "call-2",
+            name: "create_record"
+          });
+        }
+        return "created:1";
+      }
+    };
+    executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+
+    const first = await executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    });
+    const second = await nestedExecution;
+
+    expect(first).toMatchObject({ id: "call-1", status: "completed" });
+    expect(second).toMatchObject({ id: "call-2", status: "completed" });
+    expect(executions).toBe(1);
+  });
+
+  it("clears a failed idempotent execution so the caller can retry", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          throw new Error("temporary failure");
+        }
+        return "created:2";
+      }
+    };
+    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    const request = {
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    } as const;
+
+    await expect(executor.execute(request)).resolves.toMatchObject({ status: "failed" });
+    await expect(executor.execute({ ...request, id: "call-2" })).resolves.toMatchObject({ status: "completed" });
+    expect(executions).toBe(2);
+  });
+
+  it("clears a cancelled idempotent execution so a later retry can run", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => {
+        executions += 1;
+        if (executions === 1) {
+          throw Object.assign(new Error("cancelled"), { name: "AbortError" });
+        }
+        return "created:2";
+      }
+    };
+    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    const request = {
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    } as const;
+
+    await expect(executor.execute(request)).rejects.toMatchObject({ name: "AbortError" });
+    await expect(executor.execute({ ...request, id: "call-2" })).resolves.toMatchObject({ status: "completed" });
+    expect(executions).toBe(2);
+  });
+
   it("converts tool failures to error strings", async () => {
     const failingTool: MuseTool = {
       definition: {
@@ -877,6 +1026,39 @@ describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
     // watchdog = 1 + 5000 grace; killed well before any 15s test cap.
     expect(Date.now() - start).toBeLessThan(9_000);
   }, 15_000);
+
+  it("kills a wedged runner's inherited command process group", async () => {
+    const { chmodSync, mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runner-tree-"));
+    const pidFile = join(dir, "command.pid");
+    const script = join(dir, "wedged-runner");
+    writeFileSync(
+      script,
+      `#!${process.execPath}\nconst { spawn } = require("node:child_process");\nconst { writeFileSync } = require("node:fs");\nconst command = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });\nwriteFileSync(${JSON.stringify(pidFile)}, String(command.pid));\nsetInterval(() => {}, 1000);\n`
+    );
+    chmodSync(script, 0o755);
+
+    await expect(invokeRustRunner(script, { command: "noop", timeoutMs: 1 })).resolves.toMatchObject({ timedOut: true });
+    const commandPid = Number(readFileSync(pidFile, "utf8"));
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      try {
+        process.kill(commandPid, 0);
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    try {
+      process.kill(commandPid, "SIGKILL");
+    } catch {
+      // The assertion below has the clearer failure when the process is gone.
+    }
+    throw new Error(`runner watchdog left command process ${commandPid.toString()} alive`);
+  }, 15_000);
 });
 
 // The runner is a SEPARATE child process; its stdout is an untrusted boundary
@@ -904,12 +1086,24 @@ describe.skipIf(process.platform === "win32")("invokeRustRunner — runner outpu
     expect(result).toEqual({ error: null, ok: true, status: null, stderr: "", stdout: "", timedOut: false, truncated: false });
   });
 
-  it("coerces wrong-typed runner fields to safe defaults (ok only on ===true; status only when numeric; strings else \"\")", async () => {
+  it("coerces wrong-typed runner fields to safe defaults (ok only on ===true; status only when a valid exit code; strings else \"\")", async () => {
     const result = await invokeRustRunner(
       await fakeRunner(JSON.stringify({ ok: 1, status: "x", stdout: 5, stderr: null, timedOut: "yes", truncated: 1 })),
       { command: "x" }
     );
     expect(result).toMatchObject({ ok: false, status: null, stderr: "", stdout: "", timedOut: false, truncated: false });
+  });
+
+  it.each([-1, 1.5, 2_147_483_648, 1e400])("coerces invalid numeric runner status %p to null", async (status) => {
+    const result = await invokeRustRunner(await fakeRunner(JSON.stringify({ ok: false, status })), { command: "x" });
+
+    expect(result.status).toBeNull();
+  });
+
+  it.each([0, 127])("preserves valid runner exit status %i", async (status) => {
+    const result = await invokeRustRunner(await fakeRunner(JSON.stringify({ ok: false, status })), { command: "x" });
+
+    expect(result.status).toBe(status);
   });
 
   it("falls back to a typed `runner returned invalid JSON` failure when stdout is not JSON (never throws)", async () => {

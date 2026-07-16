@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -27,6 +28,20 @@ describe("recordPatternFired under concurrency", () => {
     expect(all).toHaveLength(25);
     expect(new Set(all.map((r) => r.patternId)).size).toBe(25);
   }, 30_000);
+
+  it("preserves an external fire committed while this process waits for the file lock", async () => {
+    const file = freshFile();
+    await recordPatternFired(file, "local-first", 1);
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localFire = recordPatternFired(file, "local-second", 3);
+    await sleep(300);
+    const first = (await readPatternsFired(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ fired: [first, { firedAtMs: 2, patternId: "external" }] }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localFire;
+    expect((await readPatternsFired(file)).map(({ patternId }) => patternId)).toEqual(["local-first", "external", "local-second"]);
+  });
 });
 
 // dismissPattern is the same read→append→write; the CLI `muse pattern dismiss`

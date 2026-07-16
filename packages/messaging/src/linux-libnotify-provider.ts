@@ -15,8 +15,9 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
-import { errorMessage, runCommandWithTimeout } from "@muse/shared";
+import { errorMessage } from "@muse/shared";
 
+import { runDesktopNotificationCommand, type DesktopNotificationRunResult } from "./desktop-notification-command.js";
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import type {
   MessagingProvider,
@@ -33,32 +34,20 @@ export type LibnotifyUrgency = "low" | "normal" | "critical";
  * pattern. Tests pass a stub `runner` to assert argv shape without
  * actually firing a desktop notification.
  */
-export interface NotifySendRunResult {
-  readonly exitCode: number | null;
-  readonly stderr: string;
-}
+export type NotifySendRunResult = DesktopNotificationRunResult;
 
 export type NotifySendRunner = (args: readonly string[]) => Promise<NotifySendRunResult>;
-
-const NOTIFY_SEND_TIMEOUT_MS = 30_000;
 
 export async function defaultRunner(
   args: readonly string[],
   spawnFn: typeof spawn = spawn
 ): Promise<NotifySendRunResult> {
-  const result = await runCommandWithTimeout({
+  return runDesktopNotificationCommand({
+    args,
     command: "notify-send",
-    args: [...args],
-    timeoutMs: NOTIFY_SEND_TIMEOUT_MS,
-    spawnImpl: spawnFn,
-    killSignal: "SIGKILL"
+    label: "notify-send",
+    spawnFn
   });
-
-  if (result.timedOut) {
-    throw new Error(`notify-send timed out after ${NOTIFY_SEND_TIMEOUT_MS.toString()}ms and was killed`);
-  }
-
-  return { exitCode: result.exitCode, stderr: result.stderr };
 }
 
 export interface LinuxLibnotifyProviderOptions {
@@ -130,7 +119,7 @@ export class LinuxLibnotifyProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `notify-send exited with code ${result.exitCode ?? "null"}: ${result.stderr.trim()}`
+        `notify-send exited with code ${result.exitCode ?? "null"}: ${result.stderr.trim()}${result.truncated ? " (output truncated)" : ""}`
       );
     }
     return {

@@ -39,6 +39,7 @@ import {
   type ScheduledJobExecutionInput,
   type ScheduledJobExecutionStore,
   type ScheduledJobInput,
+  type ScheduledJobUpdateInput,
   type ScheduledJobStore
 } from "./index.js";
 
@@ -88,7 +89,7 @@ export class InMemoryScheduledJobStore implements ScheduledJobStore {
     return saved;
   }
 
-  update(id: string, input: ScheduledJobInput): ScheduledJob | undefined {
+  update(id: string, input: ScheduledJobUpdateInput): ScheduledJob | undefined {
     const existing = this.jobs.get(id);
 
     if (!existing) {
@@ -106,9 +107,9 @@ export class InMemoryScheduledJobStore implements ScheduledJobStore {
         ...input,
         id,
         createdAt: existing.createdAt,
-        lastResult: input.lastResult ?? existing.lastResult,
-        lastRunAt: input.lastRunAt ?? existing.lastRunAt,
-        lastStatus: input.lastStatus ?? existing.lastStatus
+        lastResult: existing.lastResult,
+        lastRunAt: existing.lastRunAt,
+        lastStatus: existing.lastStatus
       },
       { id, now: this.now }
     );
@@ -258,7 +259,7 @@ export class KyselyScheduledJobStore implements ScheduledJobStore {
     return mapScheduledJobRow(insert as ScheduledJobRow);
   }
 
-  async update(id: string, input: ScheduledJobInput): Promise<ScheduledJob | undefined> {
+  async update(id: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob | undefined> {
     const existing = await this.findById(id);
 
     if (!existing) {

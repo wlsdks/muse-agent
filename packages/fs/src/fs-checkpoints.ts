@@ -102,8 +102,8 @@ export function defaultCheckpointsDir(env: Readonly<Record<string, string | unde
 
 export function defaultMaxCheckpoints(env: Readonly<Record<string, string | undefined>> = process.env): number {
   const fromEnv = env.MUSE_CHECKPOINTS_MAX?.trim();
-  const parsed = fromEnv ? Number.parseInt(fromEnv, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_CHECKPOINTS;
+  const parsed = fromEnv ? Number(fromEnv) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_CHECKPOINTS;
 }
 
 function newCheckpointId(): string {
@@ -111,6 +111,28 @@ function newCheckpointId(): string {
 }
 
 const CHECKPOINT_ACTIONS: ReadonlySet<string> = new Set(["write", "edit", "multi_edit", "delete", "move"]);
+const CHECKPOINT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u;
+
+function isSafeCheckpointId(id: string): boolean {
+  return CHECKPOINT_ID_PATTERN.test(id);
+}
+
+function requireSafeCheckpointId(id: string): string {
+  if (!isSafeCheckpointId(id)) {
+    throw new TypeError("Checkpoint id must contain only filesystem-safe characters");
+  }
+
+  return id;
+}
+
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
+}
 
 /** A pre-R3-5 manifest has no `version` field at all — that (and any malformed value) reads as `1`, the format every existing on-disk checkpoint was written in. */
 function reviveVersion(raw: unknown): number {
@@ -167,14 +189,14 @@ export class FileCheckpointStore implements CheckpointStore {
 
   constructor(options: FileCheckpointStoreOptions = {}) {
     this.dir = options.dir && options.dir.trim().length > 0 ? options.dir : defaultCheckpointsDir();
-    this.maxCheckpoints = options.maxCheckpoints ?? DEFAULT_MAX_CHECKPOINTS;
-    this.maxBytes = options.maxBytesPerSnapshot ?? DEFAULT_MAX_BYTES_PER_SNAPSHOT;
+    this.maxCheckpoints = requirePositiveSafeInteger(options.maxCheckpoints, DEFAULT_MAX_CHECKPOINTS, "maxCheckpoints");
+    this.maxBytes = requirePositiveSafeInteger(options.maxBytesPerSnapshot, DEFAULT_MAX_BYTES_PER_SNAPSHOT, "maxBytesPerSnapshot");
     this.now = options.now ?? (() => new Date());
     this.idFactory = options.idFactory ?? newCheckpointId;
   }
 
   async record(input: CheckpointRecordInput): Promise<string> {
-    const id = this.idFactory();
+    const id = requireSafeCheckpointId(this.idFactory());
     const originalBuffer = input.originalContent === undefined ? undefined : toBuffer(input.originalContent);
     const existedBefore = originalBuffer !== undefined;
     const bytes = existedBefore ? originalBuffer.length : 0;
@@ -249,6 +271,10 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   async get(id: string): Promise<CheckpointRecord | undefined> {
+    if (!isSafeCheckpointId(id)) {
+      return undefined;
+    }
+
     const dirPath = join(this.dir, id);
     let raw: string;
     try {

@@ -26,14 +26,28 @@ export async function waitForChildProcessClose(child: ChildProcess): Promise<voi
   await once(child, "close");
 }
 
+export interface WaitForChildProcessOptions {
+  /**
+   * Opt in only for a signal this caller successfully requested. This keeps
+   * unexpected signal termination fail-closed while supporting workflows that
+   * intentionally stop a child process after collecting its output.
+   */
+  readonly acceptsTerminationSignal?: (signal: string) => boolean;
+}
+
 export async function waitForChildProcessResult(
   child: ChildProcess,
   context: string,
-  stderrChunks?: readonly Buffer[]
+  stderrChunks?: readonly Buffer[],
+  options: WaitForChildProcessOptions = {}
 ): Promise<void> {
   const result = await Promise.race([
     once(child, "error").then(([cause]) => ({ kind: "error" as const, error: cause as Error })),
-    once(child, "close").then(([code, signal]) => ({ kind: "close" as const, code: code ?? 0, signal: signal ?? null }))
+    once(child, "close").then(([code, signal]) => ({
+      kind: "close" as const,
+      code: typeof code === "number" ? code : null,
+      signal: typeof signal === "string" ? signal : null
+    }))
   ]);
 
   if (result.kind === "error") {
@@ -44,15 +58,19 @@ export async function waitForChildProcessResult(
     return;
   }
 
+  if (result.code === null && result.signal !== null && options.acceptsTerminationSignal?.(result.signal)) {
+    return;
+  }
+
   const stderrMessage = stderrChunks?.length
     ? `: ${Buffer.concat([...stderrChunks]).toString("utf8").trim()}`
     : "";
 
-  if (result.signal === null) {
+  if (result.code !== null) {
     throw new Error(`${context} exited with code ${result.code.toString()}${stderrMessage}`);
   }
 
-  throw new Error(`${context} terminated by ${result.signal} after code ${result.code.toString()}${stderrMessage}`);
+  throw new Error(`${context} terminated by ${result.signal ?? "an unknown signal"}${stderrMessage}`);
 }
 
 export async function readRequestBody(

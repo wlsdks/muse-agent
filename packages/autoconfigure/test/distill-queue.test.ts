@@ -114,6 +114,25 @@ describe("distillQueuedCorrections — drain-idempotency + grounding fence (the 
     expect(await readPlaybook(playbookFile)).toHaveLength(0);
     expect(await readPendingLearnEvents(queueFile)).toHaveLength(0); // drained despite no lesson
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 1.5])("normalizes malformed maxPerTick %p to one safe queue item", async (maxPerTick) => {
+    const queueFile = freshFile("learnq");
+    const playbookFile = freshFile("playbook");
+    await seedCorrection(queueFile, "always include the project lead on status updates");
+
+    const recorded = await distillQueuedCorrections({
+      distill: distillReturning("include the project lead on every status update"),
+      maxPerTick,
+      model: "m",
+      modelProvider,
+      playbookFile,
+      queueFile,
+      strategyConsistencySamples: 1
+    });
+
+    expect(recorded).toBe(1);
+    expect(await readPendingLearnEvents(queueFile)).toHaveLength(0);
+  });
 });
 
 // A distiller whose draft VARIES per call — the self-consistency gate draws k times.

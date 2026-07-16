@@ -11,6 +11,7 @@ import {
   Auth,
   DefaultAuthProvider,
   InMemoryUserStore,
+  KyselyUserStore,
   JwtTokenProvider,
   createUserInsert,
   mapUserRow,
@@ -71,6 +72,12 @@ describe("users and password auth", () => {
     expect(store.count()).toBe(1);
   });
 
+  it("rejects invalid capacity limits instead of silently disabling eviction", () => {
+    for (const maxUsers of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new InMemoryUserStore(maxUsers)).toThrow("maxUsers must be a positive safe integer");
+    }
+  });
+
   it("rejects a blank passwordHash with INVALID_USER (parity with the existing email / name blank checks — pre-fix an empty hash silently created a user record with no credential)", () => {
     // The sibling email / name fields already reject blank input via
     // INVALID_USER; passwordHash quietly accepted "" / "   " and
@@ -115,6 +122,55 @@ describe("Kysely auth mapping", () => {
       id: "user-1"
     });
     expect(mapUserRow(user)).not.toHaveProperty("role");
+  });
+
+  it("uses the email unique constraint as the atomic registration decision", async () => {
+    const inserted = {
+      created_at: new Date("2026-07-16T00:00:00.000Z"),
+      email: "user@example.com",
+      id: "user-1",
+      name: "User",
+      password_hash: "hash",
+      updated_at: new Date("2026-07-16T00:00:00.000Z")
+    };
+    const { conflictColumn, db } = createUserInsertDb(inserted);
+    const store = new KyselyUserStore(db);
+
+    await expect(store.save({ email: "USER@example.com", name: "User", passwordHash: "hash", id: "user-1" }))
+      .resolves.toMatchObject({ email: "user@example.com", id: "user-1" });
+    expect(conflictColumn()).toBe("email");
+  });
+
+  it("maps an atomic email conflict to the USER_EXISTS contract", async () => {
+    const { db } = createUserInsertDb(undefined);
+    const store = new KyselyUserStore(db);
+
+    await expect(store.save({ email: "user@example.com", name: "User", passwordHash: "hash" }))
+      .rejects.toMatchObject({ code: "USER_EXISTS" });
+  });
+
+  it("normalizes a PostgreSQL unique violation that races an insert", async () => {
+    const { db } = createUserInsertDb(undefined, Object.assign(new Error("unique violation"), { code: "23505" }));
+    const store = new KyselyUserStore(db);
+
+    await expect(store.save({ email: "user@example.com", name: "User", passwordHash: "hash" }))
+      .rejects.toMatchObject({ code: "USER_EXISTS" });
+  });
+
+  it("normalizes a concurrent email conflict during an ID-targeted upsert", async () => {
+    const db = createUserUpdateDb(Object.assign(new Error("unique violation"), { code: "23505" }));
+    const store = new KyselyUserStore(db);
+
+    await expect(store.update({ email: "user@example.com", id: "user-1", name: "User", passwordHash: "hash" }))
+      .rejects.toMatchObject({ code: "USER_EXISTS" });
+  });
+
+  it("propagates non-unique update failures unchanged", async () => {
+    const failure = new Error("database unavailable");
+    const store = new KyselyUserStore(createUserUpdateDb(failure));
+
+    await expect(store.update({ email: "user@example.com", id: "user-1", name: "User", passwordHash: "hash" }))
+      .rejects.toBe(failure);
   });
 });
 
@@ -176,14 +232,12 @@ describe("jwt tokens", () => {
     })).toThrow("Every previousJwtSecret");
   });
 
-  it("extractExpiration returns undefined (not an Invalid Date) when claims.exp * 1000 would overflow the JS Date range", () => {
+  it("rejects an expiration that would overflow the JavaScript Date range before minting a token", () => {
     const jwt = new JwtTokenProvider({
       jwtExpirationMs: 1e16,
       jwtSecret
     });
-    const token = jwt.createToken({ email: "u@example.com", id: "u1" });
-    const expiresAt = jwt.extractExpiration(token);
-    expect(expiresAt, "claims.exp around 1e13 → *1000 = 1e16 > Date max (8.64e15) → Invalid Date; the fix returns undefined so callers fall through to their own fallback instead of holding an Invalid Date that crashes on .toISOString()").toBeUndefined();
+    expect(() => jwt.createToken({ email: "u@example.com", id: "u1" })).toThrow(RangeError);
   });
 
   it("extractExpiration returns a clean Date for a normal token", () => {
@@ -197,20 +251,6 @@ describe("jwt tokens", () => {
     expect(Number.isFinite(expiresAt?.getTime())).toBe(true);
   });
 
-  it("Auth.authenticateBearer rejects a token whose exp claim overflows the Date range (instead of returning an Invalid-Date identity)", () => {
-    const jwt = new JwtTokenProvider({
-      jwtExpirationMs: 1e16,
-      jwtSecret
-    });
-    const user = { email: "u@example.com", id: "u1" };
-    const token = jwt.createToken(user);
-    const service = new Auth({
-      authProvider: { authenticate: () => user, getUserById: () => user },
-      jwt
-    });
-    const identity = service.authenticateBearer(token);
-    expect(identity, "exp ≈ 1e13 → *1000 = 1e16 > Date max → Invalid Date; the fix returns undefined instead of leaking an Invalid Date through AuthIdentity.expiresAt").toBeUndefined();
-  });
 });
 
 describe("Auth registration and login", () => {
@@ -268,4 +308,56 @@ function createPostgresBuilder(): Kysely<MuseDatabase> {
       createQueryCompiler: () => new PostgresQueryCompiler()
     }
   });
+}
+
+function createUserInsertDb(
+  row: unknown,
+  failure?: unknown
+): { readonly conflictColumn: () => string | undefined; readonly db: Kysely<MuseDatabase> } {
+  let target: string | undefined;
+  const db = {
+    insertInto: () => ({
+      values: () => ({
+        onConflict: (configure: (oc: { column(column: string): { doNothing(): void } }) => unknown) => {
+          configure({
+            column(column) {
+              target = column;
+              return { doNothing: () => undefined };
+            }
+          });
+          return {
+            returningAll: () => ({
+              executeTakeFirst: async () => {
+                if (failure !== undefined) throw failure;
+                return row;
+              }
+            })
+          };
+        }
+      })
+    })
+  } as unknown as Kysely<MuseDatabase>;
+  return { conflictColumn: () => target, db };
+}
+
+function createUserUpdateDb(failure: unknown): Kysely<MuseDatabase> {
+  return {
+    insertInto: () => ({
+      values: () => ({
+        onConflict: (configure: (oc: { column(column: string): { doUpdateSet(values: unknown): void } }) => unknown) => {
+          configure({ column: () => ({ doUpdateSet: () => undefined }) });
+          return {
+            returningAll: () => ({
+              executeTakeFirstOrThrow: async () => { throw failure; }
+            })
+          };
+        }
+      })
+    }),
+    selectFrom: () => ({
+      selectAll: () => ({
+        where: () => ({ executeTakeFirst: async () => undefined })
+      })
+    })
+  } as unknown as Kysely<MuseDatabase>;
 }

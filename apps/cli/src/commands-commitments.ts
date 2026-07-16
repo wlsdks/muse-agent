@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 
 import { detectUserCommitments, type UserCommitment } from "@muse/agent-core";
 import { resolveTasksFile } from "@muse/autoconfigure";
-import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
+import { mutateTasks, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { readLastChatHistory } from "./chat-history.js";
@@ -99,15 +99,23 @@ export function registerCommitmentsCommands(program: Command, io: ProgramIO): vo
       const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
       const found = detectUserCommitments(userTurns, { maxCommitments: 50 });
       const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
-      const existing = await readTasks(tasksFile).catch(() => []);
-      const openTitles = existing.filter((task) => task.status === "open").map((task) => task.title);
-      const result = buildTaskFromCommitment(found, index, openTitles, () => `task_${randomUUID()}`, new Date());
-      if ("error" in result) {
-        io.stderr(`${result.error}\n`);
+      let task: PersistedTask | undefined;
+      let trackingError: string | undefined;
+      await mutateTasks(tasksFile, (current) => {
+        const openTitles = current.filter((candidate) => candidate.status === "open").map((candidate) => candidate.title);
+        const result = buildTaskFromCommitment(found, index, openTitles, () => `task_${randomUUID()}`, new Date());
+        if ("error" in result) {
+          trackingError = result.error;
+          return current;
+        }
+        task = result.task;
+        return [...current, task];
+      });
+      if (trackingError) {
+        io.stderr(`${trackingError}\n`);
         process.exitCode = 1;
         return;
       }
-      await writeTasks(tasksFile, [...existing, result.task]);
-      io.stdout(`Tracked as a task: "${result.task.title}"  (see \`muse tasks list\`)\n`);
+      io.stdout(`Tracked as a task: "${task!.title}"  (see \`muse tasks list\`)\n`);
     });
 }

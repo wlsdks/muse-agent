@@ -18,7 +18,9 @@ export function createMcpMuseTool(
    * (loopback in-process tools that never lose their transport), execute
    * uses the captured `connection` unchanged.
    */
-  resolveConnection?: () => Awaitable<McpConnectionResolution>
+  resolveConnection?: () => Awaitable<McpConnectionResolution>,
+  /** Lets a manager retire a connection whose tool call failed mid-session. */
+  onConnectionFailure?: (connection: McpConnection, error: unknown) => Awaitable<void>
 ): MuseTool {
   return {
     definition: {
@@ -55,6 +57,7 @@ export function createMcpMuseTool(
         if (isCancellationLikeError(error)) {
           throw error;
         }
+        await onConnectionFailure?.(activeConnection, error);
         // A mid-session callTool rejection (auth expired → 401, server
         // 500, request timeout, an SDK throw) MUST surface to the agent
         // as a clear, actionable error — never escape unhandled (which

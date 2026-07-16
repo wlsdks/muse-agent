@@ -22,6 +22,7 @@ import type { FastifyPluginAsync } from "fastify";
 interface LineWebhookEvent {
   readonly type?: string;
   readonly timestamp?: number;
+  readonly webhookEventId?: string;
   readonly source?: { readonly userId?: string; readonly groupId?: string; readonly roomId?: string };
   readonly message?: { readonly id?: string; readonly type?: string; readonly text?: string };
 }
@@ -75,6 +76,7 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
     const body = request.body as LineWebhookBody | null;
     const events = body?.events ?? [];
     let stored = 0;
+    let persistenceFailed = false;
     for (const event of events) {
       if (event.type !== "message" || event.message?.type !== "text" || typeof event.message.text !== "string") {
         continue;
@@ -84,16 +86,27 @@ export const lineWebhookPlugin: FastifyPluginAsync<LineWebhookOptions> = async (
         continue;
       }
       try {
-        await appendInbound(opts.inboxFile, inbound, opts.capacity !== undefined ? { capacity: opts.capacity } : {});
-        stored += 1;
+        const inserted = await appendInbound(opts.inboxFile, inbound, {
+          ...(opts.capacity !== undefined ? { capacity: opts.capacity } : {}),
+          ...(typeof event.webhookEventId === "string" ? { idempotencyKey: `line:${event.webhookEventId}` } : {})
+        });
+        stored += Number(inserted);
       } catch (cause) {
+        persistenceFailed = true;
         request.log.warn(
           `messaging-webhook: failed to persist line message ${inbound.messageId}: ${errorMessage(cause, "Failed to persist message")}`
         );
       }
     }
-    // LINE retries non-2xx for ~30 minutes — always 200 once signature
-    // matches, even if persistence partially failed (we logged it).
+    // A non-2xx response asks LINE to redeliver. LINE's stable webhook event
+    // ID is stored as a bounded receipt, so retrying after a partial write
+    // does not duplicate events retained in that receipt ledger.
+    if (persistenceFailed) {
+      return reply.status(503).send({
+        code: "MESSAGING_WEBHOOK_PERSIST_FAILED",
+        message: "failed to persist one or more verified webhook events"
+      });
+    }
     return reply.status(200).send({ events: events.length, stored });
   });
 };

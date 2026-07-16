@@ -52,7 +52,14 @@ export function createGracefulShutdown(deps: GracefulShutdownDeps): () => Promis
         // best-effort drain — a drain failure must not block the server close
       }
     }
-    await deps.closeServer();
-    clearTimeout(deadline);
+    try {
+      await deps.closeServer();
+      clearTimeout(deadline);
+    } catch {
+      // Signal handlers intentionally invoke this function with `void`. Keep
+      // a close failure observable without creating an unhandled rejection;
+      // the existing deadline remains armed to release a stuck listener.
+      deps.log?.("server close failed; waiting for the forced-exit deadline");
+    }
   };
 }

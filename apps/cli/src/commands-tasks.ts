@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 
 import { openLoops, type OpenLoop } from "@muse/agent-core";
 import { resolveTasksFile } from "@muse/autoconfigure";
-import { compareTasksByDueDate, parseTaskDueAt, readTasks, readTaskStatusFilter, resolveTaskRef, serializeTask, writeTasks, type PersistedTask } from "@muse/stores";
+import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, resolveTaskRef, serializeTask, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
@@ -314,8 +314,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
           ...(resolvedDueAt ? { dueAt: resolvedDueAt } : {}),
           ...(options.urgent === true ? { urgent: true } : {})
         };
-        const existing = await readTasks(file);
-        await writeTasks(file, [...existing, persisted]);
+        await mutateTasks(file, (current) => [...current, persisted]);
         return serializeTask(persisted);
       };
       const addApi = async (): Promise<Record<string, unknown>> => {
@@ -349,21 +348,22 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       let alreadyDone = false;
       const completeLocal = async (): Promise<Record<string, unknown>> => {
         const file = localTasksFile();
-        const all = await readTasks(file);
-        const resolved = resolveLocalTaskId(id, all);
-        const index = all.findIndex((task) => task.id === resolved);
-        const existing = all[index]!;
-        // Idempotent: a task already done keeps its ORIGINAL completedAt — re-
-        // completing must not silently rewrite "when it was done" to now.
-        if (existing.status === "done") {
-          alreadyDone = true;
-          return serializeTask(existing);
-        }
-        const persisted: PersistedTask = { ...existing, completedAt: new Date().toISOString(), status: "done" };
-        const next = [...all];
-        next[index] = persisted;
-        await writeTasks(file, next);
-        return serializeTask(persisted);
+        let completed: PersistedTask | undefined;
+        await mutateTasks(file, (current) => {
+          const resolved = resolveLocalTaskId(id, current);
+          const index = current.findIndex((task) => task.id === resolved);
+          const existing = current[index]!;
+          // Idempotent: a task already done keeps its ORIGINAL completedAt — re-
+          // completing must not silently rewrite "when it was done" to now.
+          if (existing.status === "done") {
+            alreadyDone = true;
+            completed = existing;
+            return current;
+          }
+          completed = { ...existing, completedAt: new Date().toISOString(), status: "done" };
+          return current.map((task, taskIndex) => taskIndex === index ? completed! : task);
+        });
+        return serializeTask(completed!);
       };
       const completeApi = async (): Promise<Record<string, unknown>> => (await helpers.apiRequest(
         io,
@@ -449,36 +449,36 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
 
       const editLocal = async (): Promise<Record<string, unknown>> => {
         const file = localTasksFile();
-        const all = await readTasks(file);
-        const resolved = resolveLocalTaskId(id, all);
-        const index = all.findIndex((task) => task.id === resolved);
-        if (index === -1) {
-          throw new Error(`Task ${id} not found`);
-        }
-        const existing = all[index]!;
-        const patched: PersistedTask = {
-          ...existing,
-          ...(typeof updates.title === "string" ? { title: updates.title } : {}),
-          ...(typeof updates.notes === "string"
-            ? updates.notes.length > 0 ? { notes: updates.notes } : { }
-            : { }),
-          ...(Array.isArray(updates.tags)
-            ? (updates.tags as readonly string[]).length > 0 ? { tags: updates.tags as readonly string[] } : { }
-            : { }),
-          ...(typeof updates.dueAt === "string" ? { dueAt: updates.dueAt } : { }),
-          ...(typeof updates.urgent === "boolean" ? { urgent: updates.urgent } : { })
-        };
-        // Clear-out semantics: --notes "" / --tags "" / --due none drop the field.
-        const cleared: PersistedTask = {
-          ...patched,
-          ...(typeof updates.notes === "string" && updates.notes.length === 0 ? { notes: undefined } : {}),
-          ...(Array.isArray(updates.tags) && (updates.tags as readonly string[]).length === 0 ? { tags: undefined } : {}),
-          ...(updates.dueAt === null ? { dueAt: undefined } : {})
-        };
-        const next = [...all];
-        next[index] = cleared;
-        await writeTasks(file, next);
-        return serializeTask(cleared);
+        let updated: PersistedTask | undefined;
+        await mutateTasks(file, (current) => {
+          const resolved = resolveLocalTaskId(id, current);
+          const index = current.findIndex((task) => task.id === resolved);
+          if (index === -1) {
+            throw new Error(`Task ${id} not found`);
+          }
+          const existing = current[index]!;
+          const patched: PersistedTask = {
+            ...existing,
+            ...(typeof updates.title === "string" ? { title: updates.title } : {}),
+            ...(typeof updates.notes === "string"
+              ? updates.notes.length > 0 ? { notes: updates.notes } : { }
+              : { }),
+            ...(Array.isArray(updates.tags)
+              ? (updates.tags as readonly string[]).length > 0 ? { tags: updates.tags as readonly string[] } : { }
+              : { }),
+            ...(typeof updates.dueAt === "string" ? { dueAt: updates.dueAt } : { }),
+            ...(typeof updates.urgent === "boolean" ? { urgent: updates.urgent } : { })
+          };
+          // Clear-out semantics: --notes "" / --tags "" / --due none drop the field.
+          updated = {
+            ...patched,
+            ...(typeof updates.notes === "string" && updates.notes.length === 0 ? { notes: undefined } : {}),
+            ...(Array.isArray(updates.tags) && (updates.tags as readonly string[]).length === 0 ? { tags: undefined } : {}),
+            ...(updates.dueAt === null ? { dueAt: undefined } : {})
+          };
+          return current.map((task, taskIndex) => taskIndex === index ? updated! : task);
+        });
+        return serializeTask(updated!);
       };
       const editApi = async (): Promise<Record<string, unknown>> => (await helpers.apiRequest(
         io,
@@ -503,11 +503,12 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
     .action(async (id: string, options: { readonly local?: boolean }, command) => {
       const deleteLocal = async (): Promise<string> => {
         const file = localTasksFile();
-        const all = await readTasks(file);
-        const resolved = resolveLocalTaskId(id, all);
-        const next = all.filter((task) => task.id !== resolved);
-        await writeTasks(file, next);
-        return resolved;
+        let resolved: string | undefined;
+        await mutateTasks(file, (current) => {
+          resolved = resolveLocalTaskId(id, current);
+          return current.filter((task) => task.id !== resolved);
+        });
+        return resolved!;
       };
       const deleteApi = async (): Promise<string> => {
         await helpers.apiRequest(io, command, `/api/tasks/${encodeURIComponent(id)}`, undefined, "DELETE");

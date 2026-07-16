@@ -24,6 +24,28 @@ describe("createChromeDevToolsMcpServer", () => {
     ]);
   });
 
+  it("accepts loopback IPv6 and localhost endpoints", () => {
+    for (const browserUrl of ["http://localhost:9333", "http://[::1]:9333"]) {
+      const server = createChromeDevToolsMcpServer({ browserUrl });
+      expect((server.config as { args: readonly string[] }).args.at(-1)).toBe(browserUrl);
+    }
+  });
+
+  it("rejects remote, non-http, and credential-bearing browser endpoints", () => {
+    for (const browserUrl of [
+      "https://example.com",
+      "http://192.168.1.10:9222",
+      "ws://127.0.0.1:9222",
+      "http://user:pass@127.0.0.1:9222",
+      "http://127.0.0.1:9222/?access_token=secret",
+      "http://127.0.0.1:9222/#access_token=secret"
+    ]) {
+      expect(() => createChromeDevToolsMcpServer({ browserUrl }), browserUrl).toThrow(
+        "Chrome DevTools browserUrl must be a loopback http URL"
+      );
+    }
+  });
+
   it("falls back to the default debugging port when browserUrl is blank / whitespace", () => {
     // A blank option must not become a literal empty --browser-url; it falls back
     // to the default 9222 port (the > 0 length guard).

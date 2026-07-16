@@ -359,5 +359,11 @@ function isPersistedTask(value: unknown): value is PersistedTask {
   if (candidate.dueAt !== undefined && typeof candidate.dueAt !== "string") {
     return false;
   }
-  return true;
+  return (
+    (candidate.completedAt === undefined || typeof candidate.completedAt === "string") &&
+    (candidate.notes === undefined || typeof candidate.notes === "string") &&
+    (candidate.tags === undefined || (Array.isArray(candidate.tags) && candidate.tags.every((tag) => typeof tag === "string"))) &&
+    (candidate.proactive === undefined || typeof candidate.proactive === "boolean") &&
+    (candidate.urgent === undefined || typeof candidate.urgent === "boolean")
+  );
 }

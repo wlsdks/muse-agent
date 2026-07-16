@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -122,4 +123,26 @@ describe("appendInterruptionDelivery", () => {
     expect(ledger).toHaveLength(25);
     expect(new Set(ledger.map((e) => e.source)).size).toBe(25);
   }, 30_000);
+
+  it("re-reads after an external writer releases the file lock, preserving both deliveries", async () => {
+    await appendInterruptionDelivery(file, { at: NOW, source: "initial" });
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+
+    const localAppend = appendInterruptionDelivery(file, { at: new Date(NOW.getTime() + 2), source: "local" });
+    await sleep(300);
+    await writeFile(file, `${JSON.stringify({
+      deliveries: [
+        entry("initial", NOW.getTime()),
+        entry("external", NOW.getTime() + 1)
+      ]
+    }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localAppend;
+    expect((await readInterruptionLedger(file)).map((delivery) => delivery.source).sort()).toEqual([
+      "external",
+      "initial",
+      "local"
+    ]);
+  });
 });

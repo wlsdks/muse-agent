@@ -314,13 +314,36 @@ async function runOne(subtask: Subtask, deps: LeadWorkerDeps, priorContext?: rea
     return { error: errorMessage(error), status: "failed", subtask };
   }
 
+  let outputValue: unknown;
+  let sourcesValue: unknown;
+  try {
+    if (!produced || typeof produced !== "object") {
+      return { error: "sub-task result is not an object (fail-close)", status: "failed", subtask };
+    }
+    outputValue = produced.output;
+    sourcesValue = produced.sources;
+  } catch {
+    return { error: "sub-task result access failed (fail-close)", status: "failed", subtask };
+  }
+  if (typeof outputValue !== "string") {
+    return { error: "sub-task result has no string output (fail-close)", status: "failed", subtask };
+  }
+
   // Blank output is fail-close, never a silent success: a worker that returned
   // nothing did NOT complete its sub-task, so it must not be folded into the
   // synthesis as if it had (the "blank = success" trap the handoff validator
   // closes on the orchestrator path — closed here too).
-  const sources = produced.sources;
-  if (produced.output.trim().length === 0) {
-    return { error: "empty sub-task output (fail-close)", output: produced.output, ...(sources ? { sources } : {}), status: "failed", subtask };
+  let sources: string[] | undefined;
+  try {
+    if (Array.isArray(sourcesValue) && sourcesValue.every((source) => typeof source === "string")) {
+      sources = [...sourcesValue];
+    }
+  } catch {
+    // Sources are diagnostic evidence, not execution control. Omit a hostile
+    // or malformed container without letting it abort the sub-task result.
+  }
+  if (outputValue.trim().length === 0) {
+    return { error: "empty sub-task output (fail-close)", output: outputValue, ...(sources ? { sources } : {}), status: "failed", subtask };
   }
 
   // A worker that consumed a poisoned source can carry an embedded instruction
@@ -330,7 +353,7 @@ async function runOne(subtask: Subtask, deps: LeadWorkerDeps, priorContext?: rea
   // verifySynthesisCoverage, detectSubtaskConflicts, and sequenced priorContext. Pure +
   // byte-identical on clean text, so benign outputs are unchanged; runs AFTER the raw
   // empty-check so fail-close is preserved (the neutralizer never empties).
-  const output = neutralizeInjectionSpans(produced.output);
+  const output = neutralizeInjectionSpans(outputValue);
 
   if (deps.groundingGate) {
     let grounded: boolean;

@@ -52,12 +52,35 @@ describe("mergeAppleContacts — dedup + additive merge", () => {
     expect(result.contacts[0]!.email).toBe("sara@x.com");
   });
 
-  it("does NOT overwrite an already-set birthday/email/phone (skips a no-op match)", () => {
+  it("does not collapse same-named people when both sides have different addressable identifiers", () => {
+    const existing: Contact = { id: "u2", name: "Alex Kim", phone: "555-0101" };
+    const result = mergeAppleContacts([existing], [apple({ emails: ["alex@example.com"], name: "Alex Kim" })], idFactory());
+    expect(result.imported).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(result.contacts).toEqual([
+      existing,
+      { email: "alex@example.com", id: "id-1", name: "Alex Kim" }
+    ]);
+  });
+
+  it("uses the unique name fallback only when the stored contact has no address", () => {
+    const existing: Contact = { id: "u3", name: "Sara Kim", relationship: "coworker" };
+    const result = mergeAppleContacts([existing], [apple({ emails: ["sara@x.com"], name: "sara kim" })], idFactory());
+    expect(result.imported).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(result.contacts).toEqual([{ email: "sara@x.com", id: "u3", name: "Sara Kim", relationship: "coworker" }]);
+  });
+
+  it("keeps same-named records with conflicting phone and email identities separate", () => {
     const existing: Contact = { birthday: "01-01", email: "e@x.com", id: "u3", name: "Ed", phone: "5551234567" };
     const result = mergeAppleContacts([existing], [apple({ birthday: "12-31", emails: ["other@x.com"], name: "Ed", phones: ["5559999999"] })], idFactory());
     expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(1);
-    expect(result.contacts[0]).toEqual(existing);
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.contacts).toEqual([
+      existing,
+      { birthday: "12-31", email: "other@x.com", id: "id-1", name: "Ed", phone: "5559999999" }
+    ]);
   });
 
   it("skips a bare label with no name+phone/email/birthday", () => {

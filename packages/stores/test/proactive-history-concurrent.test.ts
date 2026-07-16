@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { appendProactiveHistory, readProactiveHistory, type ProactiveHistoryEntry } from "../src/personal-proactive-history-store.js";
 
@@ -33,6 +34,28 @@ const entry = (itemId: string): ProactiveHistoryEntry => ({
 // trust-ledger precision), AND collided on the same `tmp-${pid}-${Date.now()}`
 // path within one millisecond — which threw ENOENT on rename, crashing the append.
 describe("appendProactiveHistory under concurrency", () => {
+  it("reads after an external lock releases so it preserves another process's audit entry", async () => {
+    const file = freshFile();
+    await appendProactiveHistory(file, entry("seed"));
+    const lockPath = `${file}.lock`;
+    await writeFile(lockPath, "external-holder", "utf8");
+
+    const pending = appendProactiveHistory(file, entry("local"));
+    await sleep(300);
+    await writeFile(file, JSON.stringify({ entries: [entry("seed"), entry("external")], version: 1 }), "utf8");
+    await unlink(lockPath);
+    await pending;
+
+    expect((await readProactiveHistory(file)).map((value) => value.itemId).sort()).toEqual(["external", "local", "seed"]);
+  }, 10_000);
+
+  it("normalizes non-finite archive limits and drops malformed optional errors", async () => {
+    const file = freshFile();
+    await appendProactiveHistory(file, entry("safe"), { archiveMaxFiles: Number.POSITIVE_INFINITY });
+    await writeFile(file, JSON.stringify({ entries: [entry("valid"), { ...entry("invalid"), error: 7 }], version: 1 }), "utf8");
+    expect((await readProactiveHistory(file)).map((value) => value.itemId)).toEqual(["valid"]);
+  });
+
   it("preserves EVERY entry recorded concurrently (no lost update, no rename crash)", async () => {
     const file = freshFile();
     await Promise.all(Array.from({ length: 25 }, (_unused, i) => appendProactiveHistory(file, entry(`p${i.toString()}`), { capacity: 100 })));

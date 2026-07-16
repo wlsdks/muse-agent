@@ -138,7 +138,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     const gmailToken = localOnly ? undefined : env.MUSE_GMAIL_TOKEN?.trim();
     const emailSource = gmailToken ? new GmailEmailProvider(gmailToken) : undefined;
     return [createNotesKnowledgeSearchTool({
-      embed: createCachingEmbedder(createOllamaEmbedder(embedModel)),
+      embed: createCachingEmbedder(createOllamaEmbedder(embedModel, env)),
       notesProvider,
       ...(tasksProvider ? { tasksProvider } : {}),
       ...(calendarRegistry ? { calendarSource: calendarRegistry } : {}),
@@ -194,7 +194,8 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     // embed and the record embeddings so they share one vector space.
     const historyEmbedder = parseBoolean(env.MUSE_HISTORY_SEARCH_HYBRID, false)
       ? createCachingEmbedder(createOllamaEmbedder(
-          env.MUSE_HISTORY_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe"
+          env.MUSE_HISTORY_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe",
+          env
         ))
       : undefined;
     return [createHistorySearchTool({
@@ -285,7 +286,12 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => historySearchTools,
     () => homeReadTools,
     () => emailReadTools,
-    () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
+    // Open-Meteo geocoding and forecast lookup send the requested location to
+    // a public service. Local-only must remove that egress path before a model
+    // can invoke it; world_time remains because it is pure local Intl logic.
+    () => !localOnly
+      ? [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})]
+      : [],
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],

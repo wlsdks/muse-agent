@@ -9,6 +9,7 @@ export {
   InMemoryCacheMetricsRecorder,
   InMemoryCacheStatsStore,
   isLocalProvider,
+  MAX_SEMANTIC_SIMILARITY_SAMPLES,
   NoOpCacheMetricsRecorder,
   resolveProvider,
   type CacheMetricsRecorder,

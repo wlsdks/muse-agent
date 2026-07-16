@@ -16,9 +16,7 @@ import type { Command } from "commander";
 
 import {
   defaultAuthSecretsFile,
-  readJwtRotationState,
-  rotateJwtState,
-  writeJwtRotationState
+  rotateAndPersistJwtState
 } from "./jwt-rotation-store.js";
 import type { ProgramIO } from "./program.js";
 
@@ -114,15 +112,13 @@ export function registerAuthCommands(program: Command, io: ProgramIO, helpers: A
         process.exitCode = 1;
         return;
       }
-      const existing = await readJwtRotationState(file);
       const fallbackCurrent = process.env.MUSE_AUTH_JWT_SECRET?.trim();
-      const next = rotateJwtState({
-        state: existing,
+      const next = await rotateAndPersistJwtState({
+        file,
         ...(fallbackCurrent ? { fallbackCurrent } : {}),
         now: new Date(),
         graceMs: graceHours * 60 * 60 * 1000
       });
-      await writeJwtRotationState(file, next);
       if (options.json) {
         io.stdout(`${JSON.stringify(next, null, 2)}\n`);
         return;

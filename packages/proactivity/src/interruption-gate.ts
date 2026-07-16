@@ -145,10 +145,10 @@ export async function applyInterruptionBudget(
       text: options.text,
       ...(options.sourceId !== undefined ? { sourceId: options.sourceId } : {})
     });
+    await recordLastDelivery(options, key, "digested");
   } catch (cause) {
     options.errorLogger?.(`interruption-budget: digest append failed, notice lost: ${describe(cause)}`);
   }
-  await recordLastDelivery(options, key, "digested");
   return { outcome: "digested" };
 }
 

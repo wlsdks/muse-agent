@@ -72,6 +72,18 @@ describe("createToken / parseToken round-trip", () => {
     expect(shortLived.validateToken(token, new Date(now.getTime() + 500))).toBe("u1");
     expect(shortLived.validateToken(token, new Date(now.getTime() + 2000))).toBeUndefined();
   });
+
+  it("fails closed when a caller supplies an invalid clock", () => {
+    const invalidNow = new Date("invalid");
+    const token = provider.createToken(USER, now);
+    expect(() => provider.createToken(USER, invalidNow)).toThrow(RangeError);
+    expect(provider.parseToken(token, invalidNow)).toBeUndefined();
+  });
+
+  it("rejects an expiration duration outside JavaScript's Date range", () => {
+    const impractical = new JwtTokenProvider({ jwtSecret: SECRET, jwtExpirationMs: Number.MAX_VALUE });
+    expect(() => impractical.createToken(USER, now)).toThrow(RangeError);
+  });
 });
 
 describe("extract* accessors (operate on a currently-valid token)", () => {
@@ -108,6 +120,20 @@ describe("verifyJwt rejection branches", () => {
     for (const token of ["", "onlyone", "two.parts", "a.b.c.d", "a..c", ".b.c", "a.b."]) {
       expect(provider.parseToken(token, now)).toBeUndefined();
     }
+  });
+
+  it("rejects a valid compact JWT with an appended fourth segment", () => {
+    const token = provider.createToken(USER, now);
+    expect(provider.parseToken(`${token}.trailing`, now)).toBeUndefined();
+  });
+
+  it("rejects a noncanonical base64url signature that decodes to the same bytes", () => {
+    const token = provider.createToken(USER, now);
+    const [header, payload, signature] = token.split(".");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const last = signature.at(-1)!;
+    const noncanonicalLast = alphabet[(alphabet.indexOf(last) & ~3) | 1]!;
+    expect(provider.parseToken(`${header}.${payload}.${signature.slice(0, -1)}${noncanonicalLast}`, now)).toBeUndefined();
   });
 
   it("rejects a tampered payload or signature", () => {

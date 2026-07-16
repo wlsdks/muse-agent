@@ -47,6 +47,14 @@ export interface MuseMcpOAuthProviderOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
+function requireLoopbackPort(port: number): number {
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new RangeError("redirectPort must be a safe integer between 1 and 65535");
+  }
+
+  return port;
+}
+
 export class MuseMcpOAuthProvider implements OAuthClientProvider {
   private readonly serverId: string;
   private readonly oauthDir: string;
@@ -60,7 +68,7 @@ export class MuseMcpOAuthProvider implements OAuthClientProvider {
   constructor(options: MuseMcpOAuthProviderOptions) {
     this.serverId = options.serverId;
     this.oauthDir = options.oauthDir;
-    this.redirectPort = options.redirectPort;
+    this.redirectPort = requireLoopbackPort(options.redirectPort);
     this.clientName = options.clientName;
     this.scopes = options.scopes && options.scopes.length > 0 ? options.scopes : undefined;
     this.openBrowser = options.openBrowser ?? openUrlInDefaultBrowser;

@@ -207,6 +207,14 @@ function clampRunLimit(value: number | undefined, fallback: number): number {
     : fallback;
 }
 
+function normalizeExemplarCount(value: number | undefined): number {
+  const defaultCount = 3;
+  const maximumCount = 10;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= maximumCount
+    ? value
+    : defaultCount;
+}
+
 /** The single PTC orchestrator tool name (defined as a MuseTool in `@muse/tools`). */
 const RUN_TOOL_PLAN_TOOL_NAME = "run_tool_plan";
 
@@ -385,9 +393,9 @@ export class AgentRuntime {
     this.outputGuards = options.outputGuards ?? [];
     this.responseFilters = options.responseFilters ?? [];
     this.exemplarRetriever = options.exemplarRetriever;
-    this.exemplarTopK = Math.max(1, options.exemplarTopK ?? 3);
+    this.exemplarTopK = normalizeExemplarCount(options.exemplarTopK);
     this.toolExemplarBank = options.toolExemplarBank;
-    this.toolExemplarTopK = Math.max(1, options.toolExemplarTopK ?? 3);
+    this.toolExemplarTopK = normalizeExemplarCount(options.toolExemplarTopK);
     this.promptLayerRegistry = options.promptLayerRegistry;
     this.personaRegister = options.personaRegister;
     this.activeContextProvider = options.activeContextProvider;

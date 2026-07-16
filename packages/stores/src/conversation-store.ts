@@ -186,12 +186,13 @@ export class InMemoryConversationStore {
     return next;
   }
 
-  rename(id: string, title: string): boolean {
+  rename(id: string, title: string, options: { readonly now?: () => Date } = {}): boolean {
     const existing = this.conversations.get(id);
     if (!existing) {
       return false;
     }
-    this.conversations.set(id, { ...existing, title });
+    const updatedAt = (options.now ?? (() => new Date()))().toISOString();
+    this.conversations.set(id, { ...existing, title, updatedAt });
     return true;
   }
 
@@ -331,7 +332,7 @@ export class FileConversationStore {
   async rename(id: string, title: string): Promise<boolean> {
     return withFileLock(this.file, async () => {
       const mem = await this.hydrate();
-      const ok = mem.rename(id, title);
+      const ok = mem.rename(id, title, this.now ? { now: this.now } : {});
       if (ok) {
         await writeConversationsFile(this.file, mem.all());
       }

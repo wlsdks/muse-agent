@@ -16,7 +16,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export type LastProactiveDeliveryOutcome = "delivered" | "digested";
 
@@ -83,7 +83,7 @@ export async function appendLastProactiveDelivery(
     readonly title?: string;
   }
 ): Promise<void> {
-  await withFileMutationQueue(file, async () => {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readLastProactiveDeliveries(file);
     const next: LastProactiveDeliveryEntry = {
       at: entry.at.toISOString(),
@@ -94,5 +94,5 @@ export async function appendLastProactiveDelivery(
     const combined = [...existing, next];
     const trimmed = combined.length > MAX_ENTRIES ? combined.slice(combined.length - MAX_ENTRIES) : combined;
     await writeLastProactiveDeliveries(file, trimmed);
-  });
+  }));
 }

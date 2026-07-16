@@ -56,6 +56,12 @@ export interface Contact {
   readonly about?: string;
 }
 
+/** A contact-store mutation and the value derived from its locked snapshot. */
+export interface ContactMutation<TResult> {
+  readonly contacts: readonly Contact[];
+  readonly result: TResult;
+}
+
 export interface UpcomingBirthday {
   readonly contact: Contact;
   /** Normalised `MM-DD`. */
@@ -171,14 +177,7 @@ export async function readContacts(file: string, env: NodeJS.ProcessEnv = proces
 }
 
 export async function writeContacts(file: string, contacts: readonly Contact[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const text = `${JSON.stringify({ contacts }, null, 2)}\n`;
-  // Peek + write under the cross-process migration lock so an ordinary add can't
-  // race `encryptContactsAtRest` and clobber it with a stale-format payload;
-  // format is preserved (encrypted stays encrypted). atomicWriteFile keeps 0o600.
-  await withFileLock(file, async () => {
-    const encrypted = await isFileEncryptedAtRest(file);
-    await writeMaybeEncrypted(file, text, encrypted, env);
-  });
+  await withFileLock(file, () => writeContactsUnlocked(file, contacts, env));
 }
 
 /** Add a contact. Idempotent on `id`: re-adding the same id REPLACES. */
@@ -187,23 +186,23 @@ export async function addContact(file: string, contact: Contact, env: NodeJS.Pro
   // won't resolve, which under outbound-safety rule 3 (recipient resolved, never
   // guessed) means a send is refused / a clarify fires instead of reaching the
   // intended person. Concurrent adds must not clobber.
-  await withFileMutationQueue(file, async () => {
-    const existing = await readContacts(file, env);
+  await mutateContacts(file, env, async (existing) => {
     const filtered = existing.filter((entry) => entry.id !== contact.id);
-    await writeContacts(file, [...filtered, contact], env);
+    return [...filtered, contact];
   });
 }
 
 export async function removeContact(file: string, id: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
-  return withFileMutationQueue(file, async () => {
-    const existing = await readContacts(file, env);
+  let removed = false;
+  await mutateContacts(file, env, async (existing) => {
     const next = existing.filter((entry) => entry.id !== id);
     if (next.length === existing.length) {
-      return false;
+      return existing;
     }
-    await writeContacts(file, next, env);
-    return true;
+    removed = true;
+    return next;
   });
+  return removed;
 }
 
 export async function queryContacts(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly Contact[]> {
@@ -225,21 +224,67 @@ export async function linkContacts(
   as?: string,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<{ readonly ok: boolean; readonly reason?: string }> {
-  return withFileMutationQueue(file, async () => {
-    const all = await readContacts(file, env);
+  let result: { readonly ok: boolean; readonly reason?: string } = { ok: false };
+  await mutateContacts(file, env, async (all) => {
     const a = findContactByName(all, nameA);
     const b = findContactByName(all, nameB);
-    if (!a) return { ok: false, reason: `no contact named "${nameA}"` };
-    if (!b) return { ok: false, reason: `no contact named "${nameB}"` };
-    if (a.id === b.id) return { ok: false, reason: "a contact cannot be linked to itself" };
+    if (!a) { result = { ok: false, reason: `no contact named "${nameA}"` }; return all; }
+    if (!b) { result = { ok: false, reason: `no contact named "${nameB}"` }; return all; }
+    if (a.id === b.id) { result = { ok: false, reason: "a contact cannot be linked to itself" }; return all; }
     const next = all.map((c) => {
       if (c.id === a.id) return { ...c, connections: upsertConnection(c.connections, b.name, as) };
       if (c.id === b.id) return { ...c, connections: upsertConnection(c.connections, a.name, as) };
       return c;
     });
-    await writeContacts(file, next, env);
-    return { ok: true };
+    result = { ok: true };
+    return next;
   });
+  return result;
+}
+
+async function mutateContacts(
+  file: string,
+  env: NodeJS.ProcessEnv,
+  mutate: (contacts: readonly Contact[]) => Promise<readonly Contact[]> | readonly Contact[]
+): Promise<void> {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const current = await readContacts(file, env);
+    const next = await mutate(current);
+    if (next !== current) {
+      await writeContactsUnlocked(file, next, env);
+    }
+  }));
+}
+
+/**
+ * Applies a read-modify-write operation while holding the contact-store lock.
+ *
+ * Importers must derive both their next contact list and their reported summary
+ * from this latest locked snapshot; a separate read followed by `writeContacts`
+ * can otherwise erase an intervening add or removal.
+ */
+export async function mutateContactsWithResult<TResult>(
+  file: string,
+  mutate: (contacts: readonly Contact[]) => Promise<ContactMutation<TResult>> | ContactMutation<TResult>,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<TResult> {
+  let mutation: ContactMutation<TResult> | undefined;
+  await mutateContacts(file, env, async (contacts) => {
+    mutation = await mutate(contacts);
+    return mutation.contacts;
+  });
+  if (!mutation) {
+    throw new Error("Contact mutation completed without a result");
+  }
+  return mutation.result;
+}
+
+async function writeContactsUnlocked(file: string, contacts: readonly Contact[], env: NodeJS.ProcessEnv): Promise<void> {
+  const text = `${JSON.stringify({ contacts }, null, 2)}\n`;
+  // Callers hold the cross-process lock across the full read-modify-write. The
+  // standalone writer takes it itself; both preserve an existing encryption format.
+  const encrypted = await isFileEncryptedAtRest(file);
+  await writeMaybeEncrypted(file, text, encrypted, env);
 }
 
 // Canonicalise a contact name/alias for matching: NFC + full-width-ASCII fold + lowercase

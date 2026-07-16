@@ -92,6 +92,14 @@ const defaultRetryMultiplier = 2;
 // so a hostile/absurd "retry after 1h" can't hang the retry loop.
 const defaultMaxRetryAfterMs = 60_000;
 
+function positiveFiniteOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function positiveSafeIntegerOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
 export class CircuitBreakerOpenError extends Error {
   readonly breakerName: string;
 
@@ -139,9 +147,9 @@ export class DefaultCircuitBreaker implements CircuitBreaker {
   private openedAt = 0;
 
   constructor(options: DefaultCircuitBreakerOptions = {}) {
-    this.failureThreshold = Math.max(1, options.failureThreshold ?? defaultFailureThreshold);
-    this.resetTimeoutMs = Math.max(1, options.resetTimeoutMs ?? defaultResetTimeoutMs);
-    this.halfOpenMaxCalls = Math.max(1, options.halfOpenMaxCalls ?? defaultHalfOpenMaxCalls);
+    this.failureThreshold = positiveSafeIntegerOr(options.failureThreshold, defaultFailureThreshold);
+    this.resetTimeoutMs = positiveFiniteOr(options.resetTimeoutMs, defaultResetTimeoutMs);
+    this.halfOpenMaxCalls = positiveSafeIntegerOr(options.halfOpenMaxCalls, defaultHalfOpenMaxCalls);
     this.name = options.name ?? "default";
     this.now = options.now ?? Date.now;
     this.metricsRecorder = options.metricsRecorder ?? noOpResilienceMetricsRecorder;
@@ -267,13 +275,13 @@ export class CircuitBreakerRegistry {
 
   constructor(options: CircuitBreakerRegistryOptions = {}) {
     this.options = {
-      failureThreshold: Math.max(1, options.failureThreshold ?? defaultFailureThreshold),
-      halfOpenMaxCalls: Math.max(1, options.halfOpenMaxCalls ?? defaultHalfOpenMaxCalls),
+      failureThreshold: positiveSafeIntegerOr(options.failureThreshold, defaultFailureThreshold),
+      halfOpenMaxCalls: positiveSafeIntegerOr(options.halfOpenMaxCalls, defaultHalfOpenMaxCalls),
       metricsRecorder: options.metricsRecorder,
       now: options.now,
-      resetTimeoutMs: Math.max(1, options.resetTimeoutMs ?? defaultResetTimeoutMs)
+      resetTimeoutMs: positiveFiniteOr(options.resetTimeoutMs, defaultResetTimeoutMs)
     };
-    this.maxBreakers = Math.max(1, options.maxBreakers ?? defaultMaxBreakers);
+    this.maxBreakers = positiveSafeIntegerOr(options.maxBreakers, defaultMaxBreakers);
   }
 
   get(name: string): CircuitBreaker {
@@ -319,7 +327,7 @@ export class CircuitBreakerRegistry {
 }
 
 export async function retry<T>(operation: () => Awaitable<T>, options: RetryOptions = {}): Promise<T> {
-  const maxAttempts = Math.max(1, options.maxAttempts ?? defaultRetryAttempts);
+  const maxAttempts = positiveSafeIntegerOr(options.maxAttempts, defaultRetryAttempts);
   const sleep = options.sleep ?? delay;
   let lastError: unknown;
   // Decorrelated jitter carries the previous delay forward; seed at initial.

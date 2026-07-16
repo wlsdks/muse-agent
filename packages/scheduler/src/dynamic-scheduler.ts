@@ -23,6 +23,7 @@ import {
   type ScheduledJobInput,
   type ScheduledJobStore,
   type ScheduledJobType,
+  type ScheduledJobUpdateInput,
   type ScheduledTaskHandle
 } from "./index.js";
 
@@ -56,7 +57,11 @@ export class DynamicScheduler {
     this.distributedLock = options.distributedLock ?? new NoOpDistributedSchedulerLock();
     this.cronScheduler = options.cronScheduler;
     this.now = options.now ?? (() => new Date());
-    this.lockTtlBufferMs = options.lockTtlBufferMs ?? defaultLockTtlBufferMs;
+    const lockTtlBufferMs = options.lockTtlBufferMs ?? defaultLockTtlBufferMs;
+    if (!Number.isSafeInteger(lockTtlBufferMs) || lockTtlBufferMs < 0) {
+      throw new RangeError("lockTtlBufferMs must be a non-negative safe integer");
+    }
+    this.lockTtlBufferMs = lockTtlBufferMs;
     this.isPaused = options.isPaused;
   }
 
@@ -81,7 +86,7 @@ export class DynamicScheduler {
     return saved;
   }
 
-  async update(id: string, input: ScheduledJobInput): Promise<ScheduledJob | undefined> {
+  async update(id: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob | undefined> {
     this.validator.validate(input);
     const updated = await this.store.update(id, input);
 

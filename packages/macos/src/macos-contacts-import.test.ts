@@ -86,6 +86,14 @@ describe("normalizeAppleBirthday", () => {
     expect(normalizeAppleBirthday("")).toBeUndefined();
     expect(normalizeAppleBirthday("nope")).toBeUndefined();
     expect(normalizeAppleBirthday("1990-13-40")).toBeUndefined();
+    expect(normalizeAppleBirthday("1990-02-29")).toBeUndefined();
+    expect(normalizeAppleBirthday("1604-04-31")).toBeUndefined();
+    expect(normalizeAppleBirthday("10000-01-01")).toBeUndefined();
+  });
+
+  it("accepts leap day only when a real supplied year is a leap year", () => {
+    expect(normalizeAppleBirthday("2000-02-29")).toBe("2000-02-29");
+    expect(normalizeAppleBirthday("1604-02-29")).toBe("02-29");
   });
 });
 

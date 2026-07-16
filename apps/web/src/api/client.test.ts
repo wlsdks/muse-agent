@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "./client.js";
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 function mockFetch(impl: (url: string, init: RequestInit) => Response) {
   const spy = vi.fn((url: URL | string, init?: RequestInit) =>
     Promise.resolve(impl(String(url), init ?? {}))
@@ -9,10 +13,6 @@ function mockFetch(impl: (url: string, init: RequestInit) => Response) {
   vi.stubGlobal("fetch", spy);
   return spy;
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("createApiClient", () => {
   it("resolves paths against the base URL and parses JSON", async () => {
@@ -49,5 +49,12 @@ describe("createApiClient", () => {
     mockFetch(() => new Response(null, { status: 204 }));
     const client = createApiClient("http://127.0.0.1:3030", "");
     await expect(client.del("/api/tasks/1")).resolves.toBeUndefined();
+  });
+
+  it("turns a malformed 2xx body into an actionable transport error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>proxy error</html>", { status: 200 })));
+
+    await expect(createApiClient("https://muse.test", "").get("/api/tasks"))
+      .rejects.toThrow("Malformed API response (200)");
   });
 });

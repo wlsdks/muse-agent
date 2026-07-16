@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { isValidBackgroundProcessId } from "./background-process-store.js";
 import type { BackgroundSpawner, SpawnedChild } from "./background-process-spawn.js";
 
 export function createNodeBackgroundSpawner(): BackgroundSpawner {
@@ -26,12 +27,18 @@ export function createNodeBackgroundSpawner(): BackgroundSpawner {
           ...(options.cwd ? { cwd: options.cwd } : {}),
           stdio: ["ignore", fd, fd]
         });
+        if (!isValidBackgroundProcessId(child.pid)) {
+          // Node emits the underlying spawn failure asynchronously. Consume it
+          // because this synchronous adapter cannot return a usable child.
+          child.once("error", () => undefined);
+          throw new Error("background process spawn returned no valid pid");
+        }
         child.unref();
         return {
-          pid: child.pid ?? -1,
+          pid: child.pid,
           onExit(listener) {
             child.on("exit", (code) => {
-              void listener(code);
+              void Promise.resolve(listener(code)).catch(() => undefined);
             });
           }
         };

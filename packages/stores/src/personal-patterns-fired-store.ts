@@ -18,7 +18,7 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface PatternFiredRecord {
   readonly patternId: string;
@@ -54,7 +54,7 @@ export async function readPatternsFired(file: string): Promise<readonly PatternF
   );
 }
 
-export async function writePatternsFired(file: string, records: readonly PatternFiredRecord[]): Promise<void> {
+async function writePatternsFiredUnlocked(file: string, records: readonly PatternFiredRecord[]): Promise<void> {
   // FIFO trim — keep the most recent N. Two thousand entries covers
   // years of daily firing per pattern; the trim guards pathological
   // clock drift or bulk-replay scenarios. Dismissals are NEVER trimmed:
@@ -77,16 +77,19 @@ export async function writePatternsFired(file: string, records: readonly Pattern
   await atomicWriteFile(file, payload);
 }
 
-export async function recordPatternFired(file: string, patternId: string, firedAtMs: number): Promise<void> {
-  // Serialise the read→append→write: concurrent fires (overlapping daemon ticks)
-  // otherwise read the same snapshot and the last write clobbers the rest (a lost
-  // fire record skews the pattern's cooldown/cadence), and two writes in the same
-  // millisecond collided on the tmp-${pid}-${Date.now()} path and threw ENOENT on
-  // rename. Same per-file queue the other personal stores use.
-  await withFileMutationQueue(file, async () => {
+export async function writePatternsFired(file: string, records: readonly PatternFiredRecord[]): Promise<void> {
+  await withFileLock(file, () => writePatternsFiredUnlocked(file, records));
+}
+
+async function appendPatternRecord(file: string, record: PatternFiredRecord): Promise<void> {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
     const existing = await readPatternsFired(file);
-    await writePatternsFired(file, [...existing, { firedAtMs, patternId }]);
-  });
+    await writePatternsFiredUnlocked(file, [...existing, record]);
+  }));
+}
+
+export async function recordPatternFired(file: string, patternId: string, firedAtMs: number): Promise<void> {
+  await appendPatternRecord(file, { firedAtMs, patternId });
 }
 
 /**
@@ -95,17 +98,7 @@ export async function recordPatternFired(file: string, patternId: string, firedA
  * pattern permanently (learned avoidance), surviving a cooldown `reset`.
  */
 export async function dismissPattern(file: string, patternId: string, atMs: number): Promise<void> {
-  // Serialise the read→append→write on the shared per-file queue like
-  // recordPatternFired: concurrent IN-PROCESS dismissals/fires otherwise read the same
-  // snapshot and the last write clobbers the rest (a lost dismissal would let Muse keep
-  // suggesting a pattern the user vetoed — learned avoidance dropped), and two same-ms
-  // writes collided on the tmp-${pid}-${Date.now()} rename. (A cross-process CLI-vs-
-  // daemon race still needs a file lock — out of scope; atomic rename prevents
-  // corruption but not a cross-process clobber.)
-  await withFileMutationQueue(file, async () => {
-    const existing = await readPatternsFired(file);
-    await writePatternsFired(file, [...existing, { dismissed: true, firedAtMs: atMs, patternId }]);
-  });
+  await appendPatternRecord(file, { dismissed: true, firedAtMs: atMs, patternId });
 }
 
 /** True when any record for this pattern is a dismissal. */
@@ -142,5 +135,6 @@ function isPatternFiredRecord(value: unknown): value is PatternFiredRecord {
   const candidate = value as Partial<PatternFiredRecord>;
   return typeof candidate.patternId === "string"
     && typeof candidate.firedAtMs === "number"
-    && Number.isFinite(candidate.firedAtMs);
+    && Number.isFinite(candidate.firedAtMs)
+    && (candidate.dismissed === undefined || typeof candidate.dismissed === "boolean");
 }

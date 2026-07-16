@@ -5,6 +5,7 @@ import {
   createMcpStartupCheck,
   createSloFeedingAgentMetrics,
   createTraceEventInsert,
+  DEFAULT_IN_MEMORY_TRACE_MAX_SPANS,
   InMemoryAgentMetrics,
   createMuseObservabilitySnapshotProvider,
   InMemoryFollowupSuggestionStore,
@@ -56,6 +57,21 @@ describe("Muse tracer", () => {
       name: "muse.agent.run"
     });
     expect(tracer.recordedSpans()[0]?.endedAt).toBeInstanceOf(Date);
+  });
+
+  it("keeps only recent in-memory spans and falls back from invalid retention caps", () => {
+    const tracer = new InMemoryMuseTracer({ maxSpans: 2 });
+    for (const name of ["first", "second", "third"]) {
+      tracer.startSpan(name).end();
+    }
+    expect(tracer.recordedSpans().map((span) => span.name)).toEqual(["second", "third"]);
+
+    for (const maxSpans of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1] as const) {
+      const fallback = new InMemoryMuseTracer({ maxSpans });
+      fallback.startSpan("retained").end();
+      expect(fallback.recordedSpans()).toHaveLength(1);
+    }
+    expect(DEFAULT_IN_MEMORY_TRACE_MAX_SPANS).toBeGreaterThan(0);
   });
 
   it("persists completed spans through a trace event sink", async () => {

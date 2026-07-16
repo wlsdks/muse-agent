@@ -1,4 +1,4 @@
-import { parseBooleanTriStateFromEnv, parseJson, type JsonValue } from "@muse/shared";
+import { isJsonValue, parseBooleanTriStateFromEnv, parseJson, type JsonValue } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 export type RuntimeSettingType = "string" | "number" | "boolean" | "json";
@@ -69,7 +69,7 @@ export class InMemoryRuntimeSettingsStore implements RuntimeSettingsStore {
       key: input.key,
       type: input.type ?? existing?.type ?? "string",
       updatedAt: input.updatedAt ?? this.now(),
-      updatedBy: input.updatedBy ?? undefined,
+      updatedBy: input.updatedBy === undefined ? existing?.updatedBy : input.updatedBy ?? undefined,
       value: input.value
     };
 
@@ -84,6 +84,8 @@ export class InMemoryRuntimeSettingsStore implements RuntimeSettingsStore {
 
 export class RuntimeSettings {
   private readonly cache = new Map<string, CachedSetting>();
+  private readonly cacheGenerations = new Map<string, number>();
+  private cacheEpoch = 0;
   private readonly cacheTtlMs: number;
   private readonly now: () => Date;
 
@@ -149,14 +151,16 @@ export class RuntimeSettings {
   }
 
   async set(input: RuntimeSettingUpsert): Promise<RuntimeSetting> {
+    this.invalidateKey(input.key);
     const setting = await this.store.upsert(input);
-    this.cache.delete(input.key);
+    this.invalidateKey(input.key);
     return setting;
   }
 
   async delete(key: string): Promise<void> {
+    this.invalidateKey(key);
     await this.store.delete(key);
-    this.cache.delete(key);
+    this.invalidateKey(key);
   }
 
   find(key: string): Awaitable<RuntimeSetting | undefined> {
@@ -169,6 +173,7 @@ export class RuntimeSettings {
 
   refreshCache(): void {
     this.cache.clear();
+    this.cacheEpoch += 1;
   }
 
   private async getValue(key: string): Promise<string | undefined> {
@@ -178,12 +183,25 @@ export class RuntimeSettings {
       return cached.value;
     }
 
+    const generation = this.cacheGeneration(key);
+    const epoch = this.cacheEpoch;
     const value = await this.store.findValue(key);
-    this.cache.set(key, {
-      expiresAt: this.now().getTime() + this.cacheTtlMs,
-      value
-    });
+    if (epoch === this.cacheEpoch && generation === this.cacheGeneration(key)) {
+      this.cache.set(key, {
+        expiresAt: this.now().getTime() + this.cacheTtlMs,
+        value
+      });
+    }
     return value;
+  }
+
+  private cacheGeneration(key: string): number {
+    return this.cacheGenerations.get(key) ?? 0;
+  }
+
+  private invalidateKey(key: string): void {
+    this.cache.delete(key);
+    this.cacheGenerations.set(key, this.cacheGeneration(key) + 1);
   }
 }
 
@@ -198,7 +216,7 @@ function compareRuntimeSettings(left: RuntimeSetting, right: RuntimeSetting): nu
 
 function parseJsonValue(value: string): JsonValue | undefined {
   const parsed = parseJson(value);
-  return parsed === undefined ? undefined : parsed as JsonValue;
+  return parsed !== undefined && isJsonValue(parsed) ? parsed : undefined;
 }
 
 function parseFiniteNumber(value: string | undefined): number | undefined {

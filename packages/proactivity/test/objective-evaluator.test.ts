@@ -74,6 +74,18 @@ describe("createModelObjectiveEvaluator — propose → resolve → check", () =
     expect(await evaluate(objective())).toEqual({ outcome: "unmet" });
   });
 
+  it("ignores zero, negative, and fractional model count proposals", async () => {
+    const evidenceDeps: ObjectiveEvidenceDeps = { readTasks: async () => [{ title: "workout" }] };
+    for (const expectedCount of [0, -1, 1.5]) {
+      const evaluate = createModelObjectiveEvaluator({
+        evidenceDeps,
+        model: "m",
+        modelProvider: modelReturning(`{"store":"tasks","keywords":["workout"],"expectedCount":${expectedCount.toString()}}`)
+      });
+      expect(await evaluate(objective())).toMatchObject({ outcome: "met" });
+    }
+  });
+
   it("a store proposed with no reader injected resolves to no evidence ⇒ unmet (fail-close wiring gap)", async () => {
     const evaluate = createModelObjectiveEvaluator({
       model: "m",

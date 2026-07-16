@@ -171,6 +171,22 @@ describe("retry and timeout", () => {
       .rejects.toBeInstanceOf(RetryExhaustedError);
   });
 
+  it("falls back to the default retry count when an invalid attempt limit would skip or miscount retries", async () => {
+    for (const maxAttempts of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5] as const) {
+      let calls = 0;
+      const error = await retry(
+        () => {
+          calls += 1;
+          throw new Error("transient");
+        },
+        { maxAttempts, retryable: () => true, sleep: async () => {} }
+      ).then(() => undefined, (failure: unknown) => failure);
+
+      expect(error).toMatchObject({ attempts: 3 });
+      expect(calls).toBe(3);
+    }
+  });
+
   it("fails fast with the ORIGINAL error on a non-retryable failure", async () => {
     let attempts = 0;
     const rootCause = new Error("model 'xyz' not found");

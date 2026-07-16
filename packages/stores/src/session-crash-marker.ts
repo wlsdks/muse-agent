@@ -44,12 +44,26 @@ export async function detectUncleanShutdown(markerPath: string): Promise<Session
     return undefined;
   }
   try {
-    const parsed = JSON.parse(raw) as Partial<SessionStartInfo>;
-    if (typeof parsed.startedAt === "string" && typeof parsed.pid === "number") {
-      return { pid: parsed.pid, startedAt: parsed.startedAt };
+    const parsed = JSON.parse(raw) as unknown;
+    if (isSessionStartInfo(parsed)) {
+      return parsed;
     }
   } catch {
     /* corrupt marker → treat as no recoverable info */
   }
   return undefined;
+}
+
+function isSessionStartInfo(value: unknown): value is SessionStartInfo {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.startedAt === "string"
+    && Number.isFinite(Date.parse(record.startedAt))
+    && typeof record.pid === "number"
+    && Number.isSafeInteger(record.pid)
+    && record.pid > 0
+  );
 }

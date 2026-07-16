@@ -1,5 +1,5 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
-import { safeReadText } from "./http-utils.js";
+import { fetchWithVoiceTimeout, safeReadText } from "./http-utils.js";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -26,6 +26,7 @@ export interface OpenAIWhisperSttProviderOptions {
   readonly apiKey: string;
   readonly endpoint?: string;
   readonly model?: string;
+  readonly timeoutMs?: number;
   readonly fetchImpl?: FetchLike;
 }
 
@@ -40,6 +41,7 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
   private readonly apiKey: string;
   private readonly endpoint: string;
   private readonly model: string;
+  private readonly timeoutMs: number | undefined;
   private readonly fetchImpl: FetchLike;
 
   constructor(options: OpenAIWhisperSttProviderOptions) {
@@ -50,6 +52,7 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     this.apiKey = options.apiKey;
     this.endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
     this.model = options.model ?? DEFAULT_MODEL;
+    this.timeoutMs = options.timeoutMs;
     this.fetchImpl = options.fetchImpl ?? ((globalThis as { fetch?: FetchLike }).fetch as FetchLike);
     if (!this.fetchImpl) {
       throw new VoiceValidationError("NO_FETCH", "global fetch is unavailable; pass fetchImpl");
@@ -96,11 +99,11 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(this.endpoint, {
+      response = await fetchWithVoiceTimeout(this.fetchImpl, this.endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form
-      });
+      }, this.timeoutMs);
     } catch (cause) {
       throw new VoiceProviderError(this.id, "FETCH_FAILED", "Whisper request failed", cause);
     }
@@ -135,7 +138,7 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     return {
       text,
       language: typeof language === "string" ? language : undefined,
-      durationMs: typeof durationSec === "number" ? Math.round(durationSec * 1000) : undefined,
+      durationMs: normalizedDurationMs(durationSec),
       raw: body
     };
   }
@@ -149,4 +152,12 @@ export class OpenAIWhisperSttProvider implements SpeechToTextProvider {
     if (mime.includes("flac")) return "audio.flac";
     return "audio.bin";
   }
+}
+
+function normalizedDurationMs(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  const durationMs = Math.round(value * 1000);
+  return Number.isSafeInteger(durationMs) ? durationMs : undefined;
 }

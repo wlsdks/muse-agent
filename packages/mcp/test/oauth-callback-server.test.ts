@@ -16,6 +16,11 @@ async function hit(port: number, query: string): Promise<number> {
 }
 
 describe("startOAuthCallbackServer", () => {
+  it("rejects an empty CSRF state or non-finite timeout before binding a loopback port", async () => {
+    await expect(startOAuthCallbackServer({ expectedState: "", timeoutMs: 5_000 })).rejects.toThrow(/non-empty CSRF state/i);
+    await expect(startOAuthCallbackServer({ expectedState: "state", timeoutMs: Number.NaN })).rejects.toThrow(/positive finite/i);
+  });
+
   it("resolves the code when state matches exactly", async () => {
     server = await startOAuthCallbackServer({ expectedState: "s-good", timeoutMs: 5_000 });
     const status = await hit(server.port, "?code=auth-code-1&state=s-good");

@@ -18,7 +18,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 interface PersistedShape {
   readonly version: 1;
@@ -35,18 +36,14 @@ export async function writeChannelCursor(file: string, channelId: string, cursor
   if (typeof cursor !== "string" || cursor.length === 0) {
     throw new TypeError(`after must be a non-empty string, got ${String(cursor)}`);
   }
-  const existing = await readMap(file);
-  const next: PersistedShape = {
-    after: { ...existing, [channelId]: cursor },
-    version: 1
-  };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  // 0o600: this sidecar names every channel the bot polls plus its
-  // last seen cursor — same posture as the sibling
-  // `inbound-thread-store` and the messaging credential store.
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await withMessagingFileMutation(file, async () => {
+    const existing = await readMap(file);
+    const next: PersistedShape = {
+      after: { ...existing, [channelId]: cursor },
+      version: 1
+    };
+    await atomicWritePrivateFile(file, `${JSON.stringify(next, null, 2)}\n`);
+  });
 }
 
 async function readMap(file: string): Promise<Readonly<Record<string, string>>> {

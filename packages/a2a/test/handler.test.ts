@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { envelopeToSendRequest } from "../src/a2a-message.js";
-import { buildCouncilRequest, signCouncilRequest } from "../src/council-wire.js";
+import { buildCouncilRequest, MAX_COUNCIL_REASONING_CHARS, signCouncilRequest } from "../src/council-wire.js";
 import { AGENT_CARD_PATH, createA2AHandler, type A2ARequest } from "../src/handler.js";
 import { createPeerRegistry } from "../src/peer-registry.js";
 import { signEnvelope } from "../src/signing.js";
@@ -82,6 +82,12 @@ describe("createA2AHandler — council compute path (bounded, opt-in)", () => {
     const { h } = handler({ councilReason: async (q: string) => `because ${q}` });
     const res = await h(req("POST", "/", councilBody, { [A2A_SIGNATURE_HEADER]: councilSig }));
     expect(JSON.parse(res.body).reasoning).toBe("because what should we do?");
+  });
+
+  it("caps participating-peer reasoning before it becomes an A2A response", async () => {
+    const { h } = handler({ councilReason: async () => "x".repeat(MAX_COUNCIL_REASONING_CHARS + 1) });
+    const res = await h(req("POST", "/", councilBody, { [A2A_SIGNATURE_HEADER]: councilSig }));
+    expect(JSON.parse(res.body).reasoning).toHaveLength(MAX_COUNCIL_REASONING_CHARS);
   });
 
   it("refuses to compute (empty reasoning) on a council request with a bad signature, even when participating", async () => {

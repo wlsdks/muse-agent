@@ -206,11 +206,15 @@ describe("MCP security policy", () => {
     expect(isPublicHttpUrl("http://[::]/mcp")).toBe(false);
   });
 
-  it("regression: bare `::1` (loopback) and fc/fd/fe80 prefixes still reject as before", () => {
+  it("rejects the full IPv6 link-local fe80::/10 range, not only fe80::/16", () => {
     expect(isPrivateOrReservedHost("::1")).toBe(true);
     expect(isPrivateOrReservedHost("fc00::1")).toBe(true);
     expect(isPrivateOrReservedHost("fd12:3456:789a::1")).toBe(true);
     expect(isPrivateOrReservedHost("fe80::1")).toBe(true);
+    expect(isPrivateOrReservedHost("fe90::1")).toBe(true);
+    expect(isPrivateOrReservedHost("febf::1")).toBe(true);
+    expect(isPublicHttpUrl("http://[fe90::1]/mcp")).toBe(false);
+    expect(isPublicHttpUrl("http://[febf::1]/mcp")).toBe(false);
     // A v6 public address (Cloudflare's public DNS) is allowed.
     expect(isPrivateOrReservedHost("2606:4700:4700::1111")).toBe(false);
     expect(isPublicHttpUrl("https://[2606:4700:4700::1111]/mcp")).toBe(true);
@@ -218,6 +222,12 @@ describe("MCP security policy", () => {
 });
 
 describe("DefaultMcpTransportConnector", () => {
+  it("rejects invalid request timeouts before they can disable MCP call bounds", () => {
+    for (const requestTimeoutMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(() => new DefaultMcpTransportConnector({ requestTimeoutMs })).toThrow(RangeError);
+    }
+  });
+
   it("connects stdio MCP servers and calls tools through the SDK client", async () => {
     const serverCode = [
       'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
@@ -357,6 +367,21 @@ describe("DefaultMcpTransportConnector", () => {
 });
 
 describe("McpManager", () => {
+  it("rejects an unsafe runtime configuration update without replacing the stored safe server", async () => {
+    const store = new InMemoryMcpServerStore();
+    const manager = new McpManager(store);
+    await manager.register({ config: { command: "node" }, name: "local", transportType: "stdio" });
+
+    await expect(manager.syncRuntimeServer({
+      config: { args: ["-e", "process.exit(0)"], command: "node" },
+      name: "local",
+      transportType: "stdio"
+    })).resolves.toBeUndefined();
+
+    expect(store.findByName("local")?.config).toEqual({ command: "node" });
+    expect(manager.getStatus("local")).toBe("disabled");
+  });
+
   it("connects allowed servers and projects MCP tools into Muse tools", async () => {
     const connection: McpConnection = {
       callTool: async (toolName, args) => ({ args, toolName }),

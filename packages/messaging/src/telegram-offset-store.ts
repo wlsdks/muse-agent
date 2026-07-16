@@ -14,7 +14,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 interface PersistedShape {
   readonly version: 1;
@@ -48,14 +49,13 @@ export async function writeTelegramOffset(file: string, offset: number): Promise
   if (!Number.isFinite(offset)) {
     throw new TypeError(`offset must be a finite number, got ${String(offset)}`);
   }
-  const payload: PersistedShape = { offset: Math.trunc(offset), version: 1 };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  // 0o600: this sidecar reveals which Telegram bot updates this
-  // process has acknowledged. Sibling `inbound-thread-store` already
-  // uses user-only mode (its docstring calls it out as the convention)
-  // — default umask would leave this file world-readable on a shared
-  // box, leaking the user's polling cadence + chat ids.
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await withMessagingFileMutation(file, async () => {
+    // Telegram offsets acknowledge every update below the cursor, so moving
+    // backwards replays old messages. A slower concurrent poll may only keep
+    // the newer cursor, never overwrite it with an older one.
+    const persisted = await readTelegramOffset(file);
+    const nextOffset = Math.max(persisted ?? Number.NEGATIVE_INFINITY, Math.trunc(offset));
+    const payload: PersistedShape = { offset: nextOffset, version: 1 };
+    await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
+  });
 }

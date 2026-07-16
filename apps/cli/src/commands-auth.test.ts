@@ -17,7 +17,7 @@ describe("parseGraceHours (muse auth rotate-jwt --grace-hours)", () => {
   });
 
   it("rejects a lenient-prefix typo / unit-slip instead of silently mis-sizing the grace window", () => {
-    for (const bad of ["24x", "2d", "30m", "1.5h", "12abc", "abc", "-5", "   ", "NaN", "Infinity"]) {
+    for (const bad of ["24x", "2d", "30m", "1.5h", "12abc", "abc", "-5", "   ", "NaN", "Infinity", "1e309"]) {
       expect(parseGraceHours(bad), `"${bad}" must not be silently accepted`).toBeUndefined();
     }
   });

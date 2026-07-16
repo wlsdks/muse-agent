@@ -13,8 +13,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 export interface ClusterMember {
   readonly name: string;
@@ -55,10 +56,11 @@ async function readLedger(file: string): Promise<RejectLedger> {
 }
 
 async function writeLedger(file: string, ledger: RejectLedger): Promise<void> {
-  await mkdir(dirname(file), { recursive: true });
-  const tmp = join(dirname(file), `.${createHash("sha1").update(file).digest("hex").slice(0, 8)}.tmp`);
-  await writeFile(tmp, JSON.stringify(ledger), { mode: 0o600 });
-  await rename(tmp, file);
+  await atomicWriteFile(file, `${JSON.stringify(ledger)}\n`);
+}
+
+async function mutateLedger<T>(file: string, mutation: (ledger: RejectLedger) => Promise<T>): Promise<T> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => mutation(await readLedger(file))));
 }
 
 /** True when this cluster has been rejected at least `threshold` times (cooldown active). */
@@ -74,17 +76,19 @@ export async function shouldSkipCluster(
 /** Bump the cluster's consecutive-reject count (atomic read-modify-write). */
 export async function recordClusterReject(file: string, cluster: readonly ClusterMember[], nowIso: string): Promise<void> {
   const fp = fingerprintCluster(cluster);
-  const ledger = await readLedger(file);
-  const prev = ledger[fp]?.rejectCount ?? 0;
-  ledger[fp] = { lastRejectedAt: nowIso, rejectCount: prev + 1 };
-  await writeLedger(file, ledger);
+  await mutateLedger(file, async (ledger) => {
+    const prev = ledger[fp]?.rejectCount ?? 0;
+    ledger[fp] = { lastRejectedAt: nowIso, rejectCount: prev + 1 };
+    await writeLedger(file, ledger);
+  });
 }
 
 /** Clear the cluster's entry — called when it finally merges (or to reset). */
 export async function clearCluster(file: string, cluster: readonly ClusterMember[]): Promise<void> {
   const fp = fingerprintCluster(cluster);
-  const ledger = await readLedger(file);
-  if (ledger[fp] === undefined) return;
-  delete ledger[fp];
-  await writeLedger(file, ledger);
+  await mutateLedger(file, async (ledger) => {
+    if (ledger[fp] === undefined) return;
+    delete ledger[fp];
+    await writeLedger(file, ledger);
+  });
 }

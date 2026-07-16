@@ -42,7 +42,7 @@ describe("macOS notification defaultRunner watchdog", () => {
     const { child, spawnFn } = fakeSpawn();
     const p = defaultRunner("display notification \"hi\"", spawnFn);
     child.emit("close", 0);
-    await expect(p).resolves.toEqual({ exitCode: 0, stderr: "" });
+    await expect(p).resolves.toEqual({ exitCode: 0, stderr: "", truncated: false });
   });
 
   it("SIGKILLs and rejects when osascript wedges past the timeout", async () => {
@@ -76,6 +76,14 @@ describe("macOS notification defaultRunner watchdog", () => {
     const result = await p;
     expect(result.stderr).toBe("오류: 권한 없음 🚫");
     expect(result.stderr).not.toContain("�");
+  });
+
+  it("bounds an untrusted osascript diagnostic stream", async () => {
+    const { child, spawnFn } = fakeSpawn();
+    const p = defaultRunner("display notification \"hi\"", spawnFn);
+    child.stderr.emit("data", Buffer.alloc(20 * 1024, "x"));
+    child.emit("close", 1);
+    await expect(p).resolves.toMatchObject({ exitCode: 1, truncated: true });
   });
 });
 
@@ -129,6 +137,21 @@ describe("MacosNotificationProvider", () => {
     const runner: OsascriptRunner = async () => ({ exitCode: 1, stderr: "syntax error" });
     const provider = new MacosNotificationProvider({ runner });
     await expect(provider.send({ destination: "@stark", text: "hi" })).rejects.toBeInstanceOf(MessagingProviderError);
+  });
+
+  it("marks a truncated osascript error diagnostic", async () => {
+    const runner: OsascriptRunner = async () => ({ exitCode: 1, stderr: "partial failure", truncated: true });
+    const provider = new MacosNotificationProvider({ runner });
+    await expect(provider.send({ destination: "@stark", text: "hi" })).rejects.toThrow(/output truncated/u);
+  });
+
+  it("preserves a successful delivery when only unused diagnostics were truncated", async () => {
+    const runner: OsascriptRunner = async () => ({ exitCode: 0, stderr: "", truncated: true });
+    const provider = new MacosNotificationProvider({ runner });
+    await expect(provider.send({ destination: "@stark", text: "hi" })).resolves.toMatchObject({
+      destination: "@stark",
+      providerId: "macos-notification"
+    });
   });
 
   it("rejects empty text via validateOutboundMessage", async () => {

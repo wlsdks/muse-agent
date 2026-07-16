@@ -107,6 +107,21 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     expect(isProposalActionable(proposal, new Date())).toBe(true);
   });
 
+  it("fails closed when an in-memory proposal has an unparseable expiry", async () => {
+    const { file } = paths();
+    const proposal = await proposeMessageAction(file, draft);
+    expect(isProposalActionable({ ...proposal, expiresAt: "not-a-date" }, new Date())).toBe(false);
+  });
+
+  it("normalizes invalid or unrepresentable proposal TTLs to a valid bounded expiry", async () => {
+    const { file } = paths();
+    const now = new Date("2026-07-16T00:00:00.000Z");
+    for (const ttlMs of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 1.5, Number.MAX_SAFE_INTEGER]) {
+      const proposal = await proposeMessageAction(file, { ...draft, now: () => now, ttlMs });
+      expect(Date.parse(proposal.expiresAt!)).toBe(now.getTime() + 86_400_000);
+    }
+  });
+
   it("a send failure leaves the proposal pending (retryable) and logs failed", async () => {
     const { actionLogFile, file } = paths();
     const proposal = await proposeMessageAction(file, draft);

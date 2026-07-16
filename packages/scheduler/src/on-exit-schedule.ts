@@ -139,7 +139,11 @@ export class OnExitWatcher {
   constructor(options: OnExitWatcherOptions = {}) {
     this.spawner = options.spawner ?? createNodeOnExitSpawner();
     this.now = options.now ?? (() => new Date());
-    this.killGraceMs = options.killGraceMs ?? defaultOnExitKillGraceMs;
+    const killGraceMs = options.killGraceMs ?? defaultOnExitKillGraceMs;
+    if (!Number.isSafeInteger(killGraceMs) || killGraceMs < 0) {
+      throw new RangeError("killGraceMs must be a non-negative safe integer");
+    }
+    this.killGraceMs = killGraceMs;
     this.isAlive = options.isAlive ?? defaultIsAlive;
   }
 
@@ -283,13 +287,30 @@ export class OnExitScheduler {
     }
 
     this.armedJobIds.add(jobId);
-    await this.store.markArmed(jobId, trigger, this.now());
+    const armedAt = this.now();
+    let needsPersistenceCleanup = false;
 
     try {
+      await this.store.markArmed(jobId, trigger, armedAt);
+      needsPersistenceCleanup = true;
       const outcome = await this.watcher.watch(trigger);
       await this.store.markCompleted(jobId, outcome);
+      needsPersistenceCleanup = false;
       await onFire(jobId, outcome);
       return outcome;
+    } catch (cause) {
+      if (needsPersistenceCleanup) {
+        // The watcher never became durable when spawning fails. Clear the
+        // armed record without firing the user job, otherwise a later startup
+        // would mistake this local failure for a process lost in a crash.
+        await this.store.markCompleted(jobId, {
+          durationMs: Math.max(0, this.now().getTime() - armedAt.getTime()),
+          exitCode: null,
+          signal: null,
+          status: "watcher-lost"
+        });
+      }
+      throw cause;
     } finally {
       this.armedJobIds.delete(jobId);
     }

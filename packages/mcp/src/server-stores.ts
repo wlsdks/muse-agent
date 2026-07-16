@@ -26,6 +26,7 @@ import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import {
+  McpRegistryError,
   normalizeMcpSecurityPolicy,
   normalizeMcpServerInput,
   type KyselyMcpSecurityPolicyStoreOptions,
@@ -68,13 +69,20 @@ export class KyselyMcpServerStore implements McpServerStore {
   }
 
   async save(input: McpServerInput): Promise<McpServer> {
-    const row = await this.db
-      .insertInto("mcp_servers")
-      .values(createMcpServerInsert(input, { idFactory: this.idFactory, now: this.now }))
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    try {
+      const row = await this.db
+        .insertInto("mcp_servers")
+        .values(createMcpServerInsert(input, { idFactory: this.idFactory, now: this.now }))
+        .returningAll()
+        .executeTakeFirstOrThrow();
 
-    return mapMcpServerRow(row);
+      return mapMcpServerRow(row);
+    } catch (error) {
+      if (isPostgresUniqueViolation(error)) {
+        throw new McpRegistryError(`MCP server already exists: ${input.name}`);
+      }
+      throw error;
+    }
   }
 
   async update(name: string, input: McpServerInput): Promise<McpServer | undefined> {
@@ -227,4 +235,8 @@ function toStringArray(value: JsonValue): readonly string[] {
 
 function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
+}
+
+function isPostgresUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505");
 }

@@ -255,10 +255,10 @@ export function parseObjectiveProposal(raw: string): ObjectiveProposal {
       // No usable keyword ⇒ not a recognised proposal (a store query
       // needs something to look for) — skip, keep the prior candidate.
       if (keywords.length === 0) continue;
-      const windowDays = typeof parsed.windowDays === "number" && Number.isFinite(parsed.windowDays)
+      const windowDays = typeof parsed.windowDays === "number" && Number.isSafeInteger(parsed.windowDays) && parsed.windowDays >= 0
         ? parsed.windowDays
         : undefined;
-      const expectedCount = typeof parsed.expectedCount === "number" && Number.isFinite(parsed.expectedCount)
+      const expectedCount = typeof parsed.expectedCount === "number" && Number.isSafeInteger(parsed.expectedCount) && parsed.expectedCount > 0
         ? parsed.expectedCount
         : undefined;
       proposal = {

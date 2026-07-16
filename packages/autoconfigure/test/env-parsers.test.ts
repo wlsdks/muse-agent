@@ -193,6 +193,11 @@ describe("parseHeaderMap", () => {
     expect(parseHeaderMap('{"X-Nested":{"a":1}}')).toBeUndefined();
   });
 
+  it("rejects header names and values that HTTP clients would reject", () => {
+    expect(parseHeaderMap('{"Bad\\nHeader":"fine"}')).toBeUndefined();
+    expect(parseHeaderMap('{"X-Ok":"bad\\r\\nnext"}')).toBeUndefined();
+  });
+
   it("returns undefined for an empty object (no headers to add)", () => {
     expect(parseHeaderMap("{}")).toBeUndefined();
   });

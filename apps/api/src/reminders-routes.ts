@@ -14,7 +14,7 @@ import { isErrorLike } from "@muse/shared";
 
 import { randomUUID } from "node:crypto";
 
-import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, parseReminderVia, readReminders, readReminderHistory, readReminderStatusFilter, serializeReminder, writeReminders, type PersistedReminder, type ReminderRecurrence } from "@muse/stores";
+import { compareRemindersByDueAt, filterReminders, fireReminder, mutateReminders, parseReminderDueAt, parseReminderVia, readReminders, readReminderHistory, readReminderStatusFilter, serializeReminder, snoozeReminder, type PersistedReminder, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import type { FastifyInstance } from "fastify";
 
@@ -78,7 +78,6 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       return reply.status(400).send({ code: "INVALID_REMINDER_VIA", message: viaResult.message });
     }
     const via = viaResult;
-    const reminders = await readReminders(remindersFile);
     const created: PersistedReminder = {
       createdAt: new Date().toISOString(),
       dueAt: parsed,
@@ -88,7 +87,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       ...(recurrence ? { recurrence } : {}),
       ...(via ? { via } : {})
     };
-    await writeReminders(remindersFile, [...reminders, created]);
+    await mutateReminders(remindersFile, (current) => [...current, created]);
     // Opt-in Apple Reminders mirror (MUSE_APPLE_REMINDERS_MIRROR). Self-gated +
     // fail-soft: it never fails the create — a miss returns `mirrorWarning` so
     // the caller (CLI / web) can surface it.
@@ -116,15 +115,16 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     } else {
       nextDueAt = new Date(Date.now() + 10 * 60_000).toISOString();
     }
-    const reminders = await readReminders(remindersFile);
-    const index = reminders.findIndex((reminder) => reminder.id === id);
-    if (index < 0) {
+    let snoozed: PersistedReminder | undefined;
+    await mutateReminders(remindersFile, (current) => {
+      const next = snoozeReminder(current, id, nextDueAt);
+      if (!next) return current;
+      snoozed = next.find((reminder) => reminder.id === id);
+      return next;
+    });
+    if (!snoozed) {
       return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
     }
-    const snoozed: PersistedReminder = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
-    const next = [...reminders];
-    next[index] = snoozed;
-    await writeReminders(remindersFile, next);
     return reply.status(200).send(serializeReminder(snoozed));
   });
 
@@ -148,13 +148,16 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     } else {
       firedAt = new Date().toISOString();
     }
-    const reminders = await readReminders(remindersFile);
-    const next = fireReminder(reminders, id, firedAt);
-    if (!next) {
+    let fired: PersistedReminder | undefined;
+    await mutateReminders(remindersFile, (current) => {
+      const next = fireReminder(current, id, firedAt);
+      if (!next) return current;
+      fired = next.find((reminder) => reminder.id === id);
+      return next;
+    });
+    if (!fired) {
       return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
     }
-    await writeReminders(remindersFile, next);
-    const fired = next.find((reminder) => reminder.id === id) as PersistedReminder;
     return reply.status(200).send(serializeReminder(fired));
   });
 
@@ -163,12 +166,15 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       return reply;
     }
     const { id } = request.params as { readonly id: string };
-    const reminders = await readReminders(remindersFile);
-    const next = reminders.filter((reminder) => reminder.id !== id);
-    if (next.length === reminders.length) {
+    let removed = false;
+    await mutateReminders(remindersFile, (current) => {
+      const next = current.filter((reminder) => reminder.id !== id);
+      removed = next.length !== current.length;
+      return next;
+    });
+    if (!removed) {
       return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
     }
-    await writeReminders(remindersFile, next);
     return reply.status(204).send();
   });
 

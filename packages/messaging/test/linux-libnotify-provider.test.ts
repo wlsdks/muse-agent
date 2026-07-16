@@ -42,7 +42,7 @@ describe("notify-send defaultRunner watchdog", () => {
     const { child, spawnFn } = fakeSpawn();
     const p = defaultRunner(["Muse", "hi"], spawnFn);
     child.emit("close", 0);
-    await expect(p).resolves.toEqual({ exitCode: 0, stderr: "" });
+    await expect(p).resolves.toEqual({ exitCode: 0, stderr: "", truncated: false });
   });
 
   it("SIGKILLs and rejects when notify-send wedges past the timeout", async () => {
@@ -76,6 +76,14 @@ describe("notify-send defaultRunner watchdog", () => {
     const result = await p;
     expect(result.stderr).toBe("오류: 디스플레이 없음 🚫");
     expect(result.stderr).not.toContain("�");
+  });
+
+  it("bounds an untrusted notify-send diagnostic stream", async () => {
+    const { child, spawnFn } = fakeSpawn();
+    const p = defaultRunner(["Muse", "hi"], spawnFn);
+    child.stderr.emit("data", Buffer.alloc(20 * 1024, "x"));
+    child.emit("close", 1);
+    await expect(p).resolves.toMatchObject({ exitCode: 1, truncated: true });
   });
 });
 
@@ -164,5 +172,11 @@ describe("LinuxLibnotifyProvider", () => {
     const failing: NotifySendRunner = async () => ({ exitCode: 1, stderr: "no display" });
     const provider = new LinuxLibnotifyProvider({ runner: failing });
     await expect(provider.send({ destination: "@stark", text: "x" })).rejects.toThrow(MessagingProviderError);
+  });
+
+  it("marks a truncated notify-send error diagnostic", async () => {
+    const failing: NotifySendRunner = async () => ({ exitCode: 1, stderr: "partial failure", truncated: true });
+    const provider = new LinuxLibnotifyProvider({ runner: failing });
+    await expect(provider.send({ destination: "@stark", text: "x" })).rejects.toThrow(/output truncated/u);
   });
 });

@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { appendAckCursor, readAckCursor } from "../src/inbox-ack-cursor.js";
+import { advanceInboxInjectionCursor, readInboxInjectionCursor } from "../src/inbox-injection-cursor.js";
+import { appendReplyCursor, readReplyCursor } from "../src/inbox-reply-cursor.js";
 import { appendInbound, readInbox } from "../src/inbox-store.js";
+import { appendThreadTurns, readThread } from "../src/inbound-thread-store.js";
 import { clearPendingApproval, type PendingApproval, readPendingApprovals, recordPendingApproval } from "../src/pending-approval-store.js";
 import type { InboundMessage } from "../src/types.js";
 
@@ -29,6 +33,41 @@ describe("appendInbound under concurrency — the write-queue serializes, no los
     await Promise.all([appendInbound(a, msg(1)), appendInbound(b, msg(2)), appendInbound(b, msg(3))]);
     expect((await readInbox(a, 100)).map((m) => m.messageId)).toEqual(["m1"]);
     expect((await readInbox(b, 100)).map((m) => m.messageId).sort()).toEqual(["m2", "m3"]);
+  });
+});
+
+describe("delivery cursors under concurrency — no duplicate user-facing work", () => {
+  it("preserves every acknowledgement, reply key, and legacy thread turn", async () => {
+    const ackFile = join(dir, "acks.json");
+    const replyFile = join(dir, "replies.json");
+    const threadFile = join(dir, "threads.json");
+
+    await Promise.all([
+      appendAckCursor(ackFile, ["a", "b"]),
+      appendAckCursor(ackFile, ["c"]),
+      appendReplyCursor(replyFile, ["r1"]),
+      appendReplyCursor(replyFile, ["r2", "r3"]),
+      appendThreadTurns(threadFile, "telegram:me", [{ content: "first", role: "user" }]),
+      appendThreadTurns(threadFile, "telegram:me", [{ content: "second", role: "assistant" }])
+    ]);
+
+    expect([...await readAckCursor(ackFile)].sort()).toEqual(["a", "b", "c"]);
+    expect([...await readReplyCursor(replyFile)].sort()).toEqual(["r1", "r2", "r3"]);
+    expect((await readThread(threadFile, "telegram:me")).map((turn) => turn.content).sort()).toEqual(["first", "second"]);
+  });
+});
+
+describe("inbox injection cursor under concurrency — no repeated prompt context", () => {
+  it("unions equal-timestamp message ids from concurrent advances", async () => {
+    const file = join(dir, "injection.json");
+    const iso = "2026-07-16T00:00:00.000Z";
+
+    await Promise.all([
+      advanceInboxInjectionCursor(file, { telegram: { ids: ["a"], iso } }, "u1"),
+      advanceInboxInjectionCursor(file, { telegram: { ids: ["b"], iso } }, "u1")
+    ]);
+
+    expect((await readInboxInjectionCursor(file, "u1")).telegram).toEqual({ ids: ["a", "b"], iso });
   });
 });
 

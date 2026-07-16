@@ -91,6 +91,14 @@ describe("resolveOllamaBaseUrl", () => {
     expect(resolveOllamaBaseUrl({ MUSE_MODEL_KEYS_FILE: join(dir, "models.json"), OLLAMA_BASE_URL: "http://ollama.lan:11434/" }))
       .toBe("http://ollama.lan:11434");
   });
+
+  it("refuses a remote Ollama URL before model commands can probe it under local-only", () => {
+    expect(() => resolveOllamaBaseUrl({
+      MUSE_LOCAL_ONLY: "true",
+      MUSE_MODEL_KEYS_FILE: join(dir, "models.json"),
+      OLLAMA_BASE_URL: "http://ollama.lan:11434"
+    })).toThrow();
+  });
 });
 
 describe("resolveModelSwitchTarget", () => {

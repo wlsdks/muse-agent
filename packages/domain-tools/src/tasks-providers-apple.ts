@@ -34,6 +34,8 @@
 
 import { runCommandWithTimeout } from "@muse/shared";
 
+import { normalizeAppleScriptTimeout, quoteAppleScriptString as quote } from "./apple-script-shared.js";
+
 import {
   TasksProviderError,
   TasksValidationError,
@@ -69,10 +71,7 @@ export class AppleRemindersProvider implements TasksProvider {
   constructor(options: AppleRemindersProviderOptions = {}) {
     this.listName = options.list;
     this.osascriptPath = options.osascriptPath ?? "/usr/bin/osascript";
-    this.timeoutMs =
-      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
-        ? options.timeoutMs
-        : APPLE_REMINDERS_OSASCRIPT_TIMEOUT_MS;
+    this.timeoutMs = normalizeAppleScriptTimeout(options.timeoutMs);
   }
 
   describe(): TasksProviderInfo {
@@ -273,7 +272,6 @@ export class AppleRemindersProvider implements TasksProvider {
  * reminder body.
  */
 const APPLE_REMINDERS_SEARCH_DELIM = "~~~MUSE_REMINDERS_SEARCH_END~~~";
-const APPLE_REMINDERS_OSASCRIPT_TIMEOUT_MS = 30_000;
 
 function parseListOutput(output: string, providerId: string): readonly Task[] {
   return output
@@ -328,8 +326,4 @@ function toDateOrNow(iso: string | undefined): Date {
   }
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function quote(value: string): string {
-  return `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/\n/gu, "\\n")}"`;
 }

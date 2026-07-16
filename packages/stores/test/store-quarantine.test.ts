@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { quarantineCorruptStore } from "../src/store-quarantine.js";
 
@@ -37,6 +37,25 @@ describe("quarantineCorruptStore", () => {
     // directory means fs.rename throws ENOENT — the function must swallow it.
     const nested = join(dir, "gone", "store.json");
     await expect(quarantineCorruptStore(nested)).resolves.toBeUndefined();
+  });
+
+  it("preserves each recovery when corruption recurs within one millisecond", async () => {
+    const file = join(dir, "store.json");
+    const now = vi.spyOn(Date, "now").mockReturnValue(1);
+    try {
+      await writeFile(file, "first corruption", "utf8");
+      await quarantineCorruptStore(file);
+      await writeFile(file, "second corruption", "utf8");
+      await quarantineCorruptStore(file);
+    } finally {
+      now.mockRestore();
+    }
+
+    const entries = await readdir(dir);
+    expect(entries).toHaveLength(2);
+    expect(await Promise.all(entries.map((entry) => readFile(join(dir, entry), "utf8")))).toEqual(
+      expect.arrayContaining(["first corruption", "second corruption"]),
+    );
   });
 
   it("quarantines a directory too (rename doesn't care about file type)", async () => {

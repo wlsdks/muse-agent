@@ -173,6 +173,16 @@ describe("performConsentedAction — fail-closed scoped-consent gate (outbound-s
     expect((out as { reason: string }).reason).toContain("timed out");
   });
 
+  it("normalizes invalid timeout options to the bounded default instead of disabling the action cap", async () => {
+    await grant();
+    const invalidTimeouts = [Number.NaN, Number.NEGATIVE_INFINITY, -1, 0, 1.5, 2_147_483_648];
+    for (const timeoutMs of invalidTimeouts) {
+      const { calls, fetchImpl } = recordingFetch();
+      await performConsentedAction(base(fetchImpl, { timeoutMs }));
+      expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
   it("reports a fetch transport error as a non-performed outcome (not a false success)", async () => {
     await grant();
     const throwing = (async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch;

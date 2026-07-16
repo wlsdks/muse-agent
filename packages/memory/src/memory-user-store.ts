@@ -17,12 +17,16 @@
 
 import type { MuseDatabase } from "@muse/db";
 import { redactSecretsInText, type JsonValue } from "@muse/shared";
-import type { Insertable, Kysely } from "kysely";
+import { sql, type Insertable, type Kysely } from "kysely";
 import { classifyValueChange } from "./belief-provenance-store.js";
 import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
 type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
+
+export interface KyselyUserMemoryStoreOptions {
+  readonly acquireUserLock?: (transaction: Kysely<MuseDatabase>, userId: string) => Promise<void>;
+}
 
 /**
  * Maximum length, in code points, the user-memory store will
@@ -295,35 +299,38 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
 }
 
 export class KyselyUserMemoryStore implements UserMemoryStore {
-  constructor(private readonly db: Kysely<MuseDatabase>) {}
+  private readonly acquireUserLock: (transaction: Kysely<MuseDatabase>, userId: string) => Promise<void>;
+
+  constructor(private readonly db: Kysely<MuseDatabase>, options: KyselyUserMemoryStoreOptions = {}) {
+    this.acquireUserLock = options.acquireUserLock ?? acquirePostgresUserMemoryLock;
+  }
 
   async findByUserId(userId: string): Promise<UserMemory | undefined> {
-    const row = await this.db.selectFrom("user_memories").selectAll().where("user_id", "=", userId).executeTakeFirst();
-    return row ? mapUserMemoryRow(row as UserMemoryRow) : undefined;
+    return this.find(this.db, userId);
   }
 
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
-    const existing = await this.findByUserId(userId);
-    return this.save({
-      facts: mergeRecordTouchLast(existing?.facts ?? {}, { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) }),
+    const patch = { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) };
+    return this.mutate(userId, (existing) => ({
+      facts: mergeRecordTouchLast(existing?.facts ?? {}, patch),
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
       ...(existing?.userModel ? { userModel: existing.userModel } : {})
-    });
+    }));
   }
 
   async upsertPreference(userId: string, key: string, value: string): Promise<UserMemory> {
-    const existing = await this.findByUserId(userId);
-    return this.save({
+    const patch = { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) };
+    return this.mutate(userId, (existing) => ({
       facts: existing?.facts ?? {},
-      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) }),
+      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, patch),
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
       ...(existing?.userModel ? { userModel: existing.userModel } : {})
-    });
+    }));
   }
 
   async deleteByUserId(userId: string): Promise<boolean> {
@@ -337,21 +344,35 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
    * Stored as JSONB on `user_memories.user_model`.
    */
   async upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<UserMemory> {
-    const existing = await this.findByUserId(userId);
-    const baseModel = existing?.userModel ?? EMPTY_USER_MODEL;
-    return this.save({
+    return this.mutate(userId, (existing) => ({
       facts: existing?.facts ?? {},
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
-      userModel: applyUserModelSlot(baseModel, slot)
+      userModel: applyUserModelSlot(existing?.userModel ?? EMPTY_USER_MODEL, slot)
+    }));
+  }
+
+  private async mutate(userId: string, operation: (existing: UserMemory | undefined) => UserMemory): Promise<UserMemory> {
+    return this.db.transaction().execute(async (transaction) => {
+      // `ON CONFLICT` serializes a single SQL statement, but these operations
+      // need a read-modify-write merge across JSONB columns. Scope the lock to
+      // the user so independent users remain concurrent while same-user writes
+      // cannot overwrite each other's facts, preferences, or typed slots.
+      await this.acquireUserLock(transaction, userId);
+      return this.save(transaction, operation(await this.find(transaction, userId)));
     });
   }
 
-  private async save(memory: UserMemory): Promise<UserMemory> {
+  private async find(db: Kysely<MuseDatabase>, userId: string): Promise<UserMemory | undefined> {
+    const row = await db.selectFrom("user_memories").selectAll().where("user_id", "=", userId).executeTakeFirst();
+    return row ? mapUserMemoryRow(row as UserMemoryRow) : undefined;
+  }
+
+  private async save(db: Kysely<MuseDatabase>, memory: UserMemory): Promise<UserMemory> {
     const insert = createUserMemoryInsert(memory);
-    const row = await this.db
+    const row = await db
       .insertInto("user_memories")
       .values(insert)
       .onConflict((oc) => oc.column("user_id").doUpdateSet({
@@ -366,6 +387,12 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
 
     return mapUserMemoryRow(row as UserMemoryRow);
   }
+}
+
+function acquirePostgresUserMemoryLock(transaction: Kysely<MuseDatabase>, userId: string): Promise<void> {
+  return sql`select pg_advisory_xact_lock(hashtext(${userId}))`
+    .execute(transaction)
+    .then(() => undefined);
 }
 
 export function createUserMemoryInsert(memory: UserMemory): UserMemoryInsert {

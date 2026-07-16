@@ -62,7 +62,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
 
   constructor(options: DefaultToolExposurePolicyOptions = {}) {
     this.allowWriteWithoutMutationIntent = options.allowWriteWithoutMutationIntent ?? false;
-    this.maxRepeatedToolCalls = Math.max(1, options.maxRepeatedToolCalls ?? 3);
+    this.maxRepeatedToolCalls = normalizePositiveLimit(options.maxRepeatedToolCalls, 3);
   }
 
   select(tools: readonly MuseTool[], context: ToolExposureContext = {}): ToolExposureSelection {
@@ -94,7 +94,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
     }
 
     const sorted = selected.sort(compareToolExposurePriority(promptTokens));
-    const limit = context.maxTools === undefined ? sorted.length : Math.max(0, Math.trunc(context.maxTools));
+    const limit = normalizeExposureLimit(context.maxTools, sorted.length);
 
     if (sorted.length > limit) {
       for (const tool of sorted.slice(limit)) {
@@ -239,6 +239,31 @@ function blockTool(toolName: string, code: ToolExposureBlock["code"], reason: st
 
 function stringSet(values: readonly string[] | undefined): ReadonlySet<string> {
   return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
+}
+
+/**
+ * Limits are a safety boundary, so a non-finite configuration must not turn
+ * `count >= limit` into a comparison that can never succeed. Invalid policy
+ * options retain the documented default rather than silently disabling it.
+ */
+function normalizePositiveLimit(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    // Preserve the legacy fractional behavior: a cap of 1.5 permits two
+    // invocations and blocks the third because prior-call counts are integers.
+    ? Math.max(1, value)
+    : fallback;
+}
+
+/**
+ * An explicitly supplied but invalid per-turn exposure cap fails closed. The
+ * normal runtime adapter already filters metadata to finite numbers; this
+ * protects direct policy consumers as well.
+ */
+function normalizeExposureLimit(value: number | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function countStrings(values: readonly string[]): ReadonlyMap<string, number> {

@@ -159,6 +159,18 @@ describe("muse tasks — API-unreachable falls back to the local store (local-fi
     expect(stored[0]).toMatchObject({ status: "open", title: "review the deck" });
   });
 
+  it("concurrent local adds retain both tasks instead of overwriting a stale snapshot", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-tasks-concurrent-add-")), "tasks.json");
+    process.env.MUSE_TASKS_FILE = file;
+    const [firstError, secondError] = await Promise.all([
+      runWith(unreachable, ["add", "first", "task", "--local"]),
+      runWith(unreachable, ["add", "second", "task", "--local"])
+    ]);
+    expect(firstError).toBeUndefined();
+    expect(secondError).toBeUndefined();
+    expect((await readTasks(file)).map((task) => task.title).sort()).toEqual(["first task", "second task"]);
+  });
+
   it("add: a REAL api error (NOT unreachable) still throws — the fallback never masks a 500", async () => {
     const file = join(mkdtempSync(join(tmpdir(), "muse-tasks-fb-err-")), "tasks.json");
     process.env.MUSE_TASKS_FILE = file;

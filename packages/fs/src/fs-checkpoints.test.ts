@@ -23,6 +23,8 @@ describe("defaultCheckpointsDir / defaultMaxCheckpoints", () => {
     expect(defaultMaxCheckpoints({})).toBe(200);
     expect(defaultMaxCheckpoints({ MUSE_CHECKPOINTS_MAX: "not-a-number" })).toBe(200);
     expect(defaultMaxCheckpoints({ MUSE_CHECKPOINTS_MAX: "-3" })).toBe(200);
+    expect(defaultMaxCheckpoints({ MUSE_CHECKPOINTS_MAX: "5.5" })).toBe(200);
+    expect(defaultMaxCheckpoints({ MUSE_CHECKPOINTS_MAX: "5files" })).toBe(200);
   });
 });
 
@@ -35,6 +37,20 @@ describe("FileCheckpointStore", () => {
 
   afterEach(async () => {
     await rm(dir, { force: true, recursive: true });
+  });
+
+  it("rejects invalid storage caps instead of silently bypassing retention", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new FileCheckpointStore({ dir, maxCheckpoints: value })).toThrow(RangeError);
+      expect(() => new FileCheckpointStore({ dir, maxBytesPerSnapshot: value })).toThrow(RangeError);
+    }
+  });
+
+  it("refuses unsafe checkpoint ids before filesystem paths are constructed", async () => {
+    const store = new FileCheckpointStore({ dir, idFactory: () => "../../outside" });
+
+    await expect(store.record({ action: "write", originalContent: undefined, path: "/abs/x.md", summary: "x" })).rejects.toThrow(TypeError);
+    await expect(store.get("../../outside")).resolves.toBeUndefined();
   });
 
   it("round-trips a checkpoint: record -> list -> get returns the original content", async () => {

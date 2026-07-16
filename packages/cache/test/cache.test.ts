@@ -6,6 +6,7 @@ import {
   InMemoryCacheMetricsRecorder,
   InMemoryCacheStatsStore,
   InMemoryResponseCache,
+  MAX_SEMANTIC_SIMILARITY_SAMPLES,
   NoOpPromptCache,
   NoOpResponseCache,
   anonymousUserId,
@@ -165,6 +166,21 @@ describe("cache metrics", () => {
       semanticSimilarityScores: [1]
     });
     expect(metrics.snapshot().estimatedCostSavedUsd).toBeGreaterThan(0);
+  });
+
+  it("keeps semantic metric samples finite and bounded for long-lived runtimes", () => {
+    const nonFinite = new InMemoryCacheMetricsRecorder();
+    nonFinite.recordSemanticHit(Number.NaN);
+    expect(nonFinite.snapshot().semanticSimilarityScores).toEqual([0]);
+
+    const metrics = new InMemoryCacheMetricsRecorder();
+    for (let index = 0; index <= MAX_SEMANTIC_SIMILARITY_SAMPLES; index += 1) {
+      metrics.recordSemanticHit(index / MAX_SEMANTIC_SIMILARITY_SAMPLES);
+    }
+    const samples = metrics.snapshot().semanticSimilarityScores;
+    expect(samples).toHaveLength(MAX_SEMANTIC_SIMILARITY_SAMPLES);
+    expect(samples[0]).toBeCloseTo(1 / MAX_SEMANTIC_SIMILARITY_SAMPLES);
+    expect(samples.at(-1)).toBe(1);
   });
 
   it("estimates cost and provider from model names", () => {

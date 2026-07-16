@@ -185,6 +185,26 @@ describe("InMemoryOrchestrationHistoryStore", () => {
     expect(summary.byMode.parallel.avgDurationMs).toBe(300);
     expect(summary.byMode.parallel.runs).toBe(2);
   });
+
+  it("owns entry snapshots and ignores invalid completion timestamps in summary", () => {
+    const store = new InMemoryOrchestrationHistoryStore();
+    const entry = makeEntry("owned", 100);
+    store.record(entry);
+
+    entry.startedAt.setTime(1);
+    entry.finishedAt.setTime(2);
+    const read = store.getByRunId("owned")!;
+    read.startedAt.setTime(3);
+    read.finishedAt.setTime(4);
+
+    expect(store.getByRunId("owned")).toMatchObject({
+      finishedAt: new Date(105),
+      startedAt: new Date(100)
+    });
+
+    store.record({ ...makeEntry("invalid-finished", 200), finishedAt: new Date(Number.NaN) });
+    expect(store.summary().lastRunAt).toBe(new Date(105).toISOString());
+  });
 });
 
 describe("MultiAgentOrchestrator history recording", () => {

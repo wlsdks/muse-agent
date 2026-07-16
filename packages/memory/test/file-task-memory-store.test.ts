@@ -1,12 +1,13 @@
 import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
+import { withFileLock } from "@muse/shared";
 
 import type { TaskState } from "../src/index.js";
-import { FileTaskMemoryStore } from "../src/memory-task-store.js";
+import { FileTaskMemoryStore, InMemoryTaskMemoryStore, KyselyTaskMemoryStore } from "../src/memory-task-store.js";
 
 describe("FileTaskMemoryStore — cross-session task persistence (CLI default-store fix)", () => {
   let dirs: string[] = [];
@@ -18,6 +19,16 @@ describe("FileTaskMemoryStore — cross-session task persistence (CLI default-st
   afterAll(async () => {
     await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
     dirs = [];
+  });
+
+  it("rejects invalid retention and capacity settings in every task store implementation", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new InMemoryTaskMemoryStore({ maxTasks: value })).toThrow(RangeError);
+      expect(() => new InMemoryTaskMemoryStore({ retentionMs: value })).toThrow(RangeError);
+      expect(() => new FileTaskMemoryStore({ file: freshFile(), maxTasks: value })).toThrow(RangeError);
+      expect(() => new FileTaskMemoryStore({ file: freshFile(), retentionMs: value })).toThrow(RangeError);
+      expect(() => new KyselyTaskMemoryStore({} as never, { retentionMs: value })).toThrow(RangeError);
+    }
   });
 
   it("a task saved by one instance is found by a FRESH instance on the same file, with nested Dates round-tripped", async () => {
@@ -84,5 +95,47 @@ describe("FileTaskMemoryStore — cross-session task persistence (CLI default-st
     const reader = new FileTaskMemoryStore({ file });
     await expect(reader.findById(first.taskId)).resolves.toMatchObject({ goal: first.goal });
     await expect(reader.findById(second.taskId)).resolves.toMatchObject({ goal: second.goal });
+  });
+
+  it("waits for an external process lock before mutating task memory", async () => {
+    const file = freshFile();
+    const acquired = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const heldLock = withFileLock(file, async () => {
+      acquired.resolve();
+      await release.promise;
+    });
+    await acquired.promise;
+
+    let settled = false;
+    const pendingSave = new FileTaskMemoryStore({ file }).save({
+      taskId: "locked-task", sessionId: "locked-session", goal: "wait for the lock", status: "active",
+      plan: [], createdAt: new Date(), updatedAt: new Date()
+    }).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(settled).toBe(false);
+
+    release.resolve();
+    await Promise.all([heldLock, pendingSave]);
+    await expect(new FileTaskMemoryStore({ file }).findById("locked-task")).resolves.toBeDefined();
+  });
+
+  it("quarantines corrupt task state before a save replaces it, preserving raw recovery data", async () => {
+    const file = freshFile();
+    const corrupt = "{not valid JSON";
+    await writeFile(file, corrupt, "utf8");
+
+    const now = new Date();
+    await new FileTaskMemoryStore({ file }).save({
+      taskId: "recovered-task", sessionId: "recovered-session", goal: "resume safely", status: "active",
+      plan: [], createdAt: now, updatedAt: now
+    });
+
+    const quarantined = (await readdir(dirname(file))).find((name) => name.startsWith("task-memory.json.corrupt-"));
+    expect(quarantined).toBeDefined();
+    expect(await readFile(join(dirname(file), quarantined!), "utf8")).toBe(corrupt);
+    await expect(new FileTaskMemoryStore({ file }).findById("recovered-task")).resolves.toMatchObject({ goal: "resume safely" });
   });
 });

@@ -28,6 +28,17 @@ const objective = (id: string): StandingObjective => ({
 // SEPARATE processes; a lost standing objective is a watch/until/notify the
 // daemon never acts on again.
 describe("addObjective — cross-process file lock", () => {
+  it("drops malformed optional scheduling fields before they can corrupt backoff", async () => {
+    await writeFile(file, JSON.stringify({
+      objectives: [
+        objective("valid"),
+        { ...objective("invalid-attempts"), attempts: -1 },
+        { ...objective("invalid-resolution"), resolution: 7 }
+      ]
+    }), "utf8");
+    expect((await readObjectives(file)).map((entry) => entry.id)).toEqual(["valid"]);
+  });
+
   it("blocks its write while an externally-held (cross-process) lock is present", async () => {
     const lockPath = `${file}.lock`;
     await writeFile(lockPath, "external-holder", "utf8");

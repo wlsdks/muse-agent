@@ -194,6 +194,7 @@ export {
 export {
   createNoOpMuseTracer,
   createTraceEventInsert,
+  DEFAULT_IN_MEMORY_TRACE_MAX_SPANS,
   InMemoryMuseTracer,
   InMemoryTraceEventSink,
   KyselyTraceEventSink,
@@ -201,7 +202,8 @@ export {
   OpenTelemetryTraceEventSink,
   PersistedMuseTracer,
   PinoTraceEventLogger,
-  TimescaleTraceEventExporter
+  TimescaleTraceEventExporter,
+  type InMemoryMuseTracerOptions
 } from "./observability-tracers.js";
 
 // Latency-query primitives (in-memory + Kysely, types, defaults) live in
@@ -293,5 +295,4 @@ export {
   type TokenUsageGroup,
   type TokenUsageSummary
 } from "./observability-token-usage-local.js";
-
 

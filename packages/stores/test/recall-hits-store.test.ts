@@ -1,6 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -73,6 +74,19 @@ describe("recall-hits store", () => {
       ]);
       expect((await readRecallHits(file))[0]).toMatchObject({ key: "a", hits: 10, lastHitMs: 1_000 });
       expect((await readRecallHits(fileB))[0]).toMatchObject({ key: "b", hits: 10, lastHitMs: 1_000 });
+    });
+
+    it("preserves an external hit committed while this process waits for the file lock", async () => {
+      await recordRecallHits(file, [{ key: "local-first" }], 1_000);
+      await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+      const localHit = recordRecallHits(file, [{ key: "local-second" }], 3_000);
+      await sleep(300);
+      const first = (await readRecallHits(file))[0]!;
+      await writeFile(file, `${JSON.stringify({ hits: [first, { hits: 1, key: "external", lastHitMs: 2_000 }] }, null, 2)}\n`);
+      await unlink(`${file}.lock`);
+
+      await localHit;
+      expect((await readRecallHits(file)).map(({ key }) => key)).toEqual(["local-first", "external", "local-second"]);
     });
   });
 

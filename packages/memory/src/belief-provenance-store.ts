@@ -15,6 +15,8 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
+
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 
 /** Newest entries kept; bounds the file so a chatty extractor can't grow it without limit. */
@@ -573,14 +575,6 @@ export function defaultBeliefProvenanceFile(): string {
   return join(homedir(), ".muse", "belief-provenance.json");
 }
 
-async function quarantineCorruptStore(file: string): Promise<void> {
-  try {
-    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
-  } catch {
-    // ignore — read still degrades to empty either way
-  }
-}
-
 /** Format-only check (no decrypt): is the belief-provenance store encrypted at rest? */
 export async function isBeliefProvenanceEncrypted(file: string): Promise<boolean> {
   try {
@@ -601,7 +595,7 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    await quarantineCorruptStore(file);
+    await quarantineCorruptFile(file);
     return [];
   }
   // Decrypt if encrypted at rest. decryptMemoryEnvelope THROWS on a wrong key — fail
@@ -612,11 +606,15 @@ export async function readBeliefProvenance(file: string, env: NodeJS.ProcessEnv 
     try {
       parsed = JSON.parse(plaintext);
     } catch {
+      // The key authenticated successfully, so this is not a wrong-key case:
+      // preserve the damaged envelope before a later append would otherwise
+      // replace it with an empty fresh history.
+      await quarantineCorruptFile(file);
       return [];
     }
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
-    await quarantineCorruptStore(file);
+    await quarantineCorruptFile(file);
     return [];
   }
   return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly BeliefProvenance[] =>
@@ -665,15 +663,21 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
 
   async recordMany(entries: readonly BeliefProvenance[]): Promise<void> {
     if (entries.length === 0) return;
-    const existing = await readBeliefProvenance(this.file, this.env);
-    const next = [...existing, ...entries].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
-    await writeBeliefProvenance(this.file, next, this.env);
+    await this.serializeWrite(async () => {
+      const existing = await readBeliefProvenance(this.file, this.env);
+      const next = [...existing, ...entries].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
+      await writeBeliefProvenance(this.file, next, this.env);
+    });
   }
 
   async query(userId: string, key?: string): Promise<readonly BeliefProvenance[]> {
     const all = await readBeliefProvenance(this.file, this.env);
     const scoped = all.filter((e) => e.userId === userId && (key === undefined || e.key === key));
     return [...scoped].sort(compareNewestFirst);
+  }
+
+  private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
 }
 

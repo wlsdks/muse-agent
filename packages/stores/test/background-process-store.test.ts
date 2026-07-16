@@ -90,4 +90,12 @@ describe("background-process registry store (X-3)", () => {
     await writeFile(file, JSON.stringify({ processes: [rec(), { id: "bad" }, { not: "a record" }] }), "utf8");
     expect(await readBackgroundProcesses(file)).toEqual([rec()]);
   });
+
+  it("drops entries with an unsafe PID before they can reach signal operations", async () => {
+    const file = tmpFile();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(file, JSON.stringify({ processes: [rec(), rec({ id: "negative", pid: -1 }), rec({ id: "fraction", pid: 1.5 })] }), "utf8");
+
+    expect(await readBackgroundProcesses(file)).toEqual([rec()]);
+  });
 });

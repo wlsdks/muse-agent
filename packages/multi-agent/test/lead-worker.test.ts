@@ -444,6 +444,45 @@ describe("runLeadWorkerTask — SEQUENCED dependent step with a fully-failed ups
 });
 
 describe("runLeadWorkerTask — failure propagation (MAST: never swallow)", () => {
+  it("contains a malformed runtime sub-task result as one failed execution", async () => {
+    const execute = vi.fn(async (s: Subtask): Promise<SubtaskOutput> =>
+      s.text.includes("액션아이템")
+        ? ({ output: null } as unknown as SubtaskOutput)
+        : { output: `done:${s.text}` }
+    );
+
+    const result = await runLeadWorkerTask(
+      "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록",
+      deps({ execute })
+    );
+
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(result.executions.find((execution) => execution.subtask.text.includes("액션아이템"))).toMatchObject({
+      error: expect.stringContaining("no string output"),
+      status: "failed"
+    });
+    expect(result.executions.filter((execution) => execution.status === "completed")).toHaveLength(2);
+  });
+
+  it("contains throwing result accessors and omits malformed sources", async () => {
+    const execute = async (subtask: Subtask): Promise<SubtaskOutput> => {
+      if (subtask.text.includes("회의록")) {
+        return Object.defineProperty({}, "output", { get: () => { throw new Error("poisoned getter"); } }) as SubtaskOutput;
+      }
+      return {
+        output: `done:${subtask.text}`,
+        sources: new Proxy(["valid.md"], { get: () => { throw new Error("poisoned source getter"); } }) as unknown as string[]
+      };
+    };
+    const result = await runLeadWorkerTask(
+      "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록",
+      deps({ execute })
+    );
+    expect(result.executions.find((execution) => execution.subtask.text.includes("회의록"))).toMatchObject({ status: "failed" });
+    expect(result.executions.filter((execution) => execution.status === "completed")).toHaveLength(2);
+    expect(result.executions.filter((execution) => execution.status === "completed").every((execution) => execution.sources === undefined)).toBe(true);
+  });
+
   it("records a thrown sub-task as failed, continues the rest, surfaces all to synthesize", async () => {
     const execute = vi.fn(async (s: Subtask) => {
       if (s.text.includes("액션아이템")) throw new Error("worker boom");

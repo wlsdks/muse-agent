@@ -38,8 +38,13 @@ describe("createAuthService — fail-open JWT secret wiring", () => {
   });
 
   it("reads the secret from the rotation file (MUSE_AUTH_SECRETS_FILE) even with NO env secret", async () => {
-    const file = await secretsFile({ current: SECRET, previous: [] });
+    const file = await secretsFile({ current: SECRET, rotatedAt: "2026-07-16T00:00:00.000Z", previous: [] });
     expect(createAuthService(env({ MUSE_AUTH_SECRETS_FILE: file }), undefined)).toBeDefined();
+  });
+
+  it("falls through to the env secret when the persisted rotation state is not canonical", async () => {
+    const file = await secretsFile({ current: SECRET, rotatedAt: "not-a-date", previous: [] });
+    expect(createAuthService(env({ MUSE_AUTH_JWT_SECRET: SECRET, MUSE_AUTH_SECRETS_FILE: file }), undefined)).toBeDefined();
   });
 
   it("FAIL-OPEN: a corrupt secrets file falls through to the env secret (a bad file can't lock the operator out)", async () => {

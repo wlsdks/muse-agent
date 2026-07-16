@@ -36,6 +36,12 @@ export interface OutboundMessage {
    */
   readonly destination: string;
   readonly text: string;
+  /**
+   * Internal retry-scoped idempotency key. Delivery coordinators set this once
+   * before retrying an otherwise ambiguous write; providers that support
+   * idempotency must forward it to their native request identity.
+   */
+  readonly idempotencyKey?: string;
 }
 
 export interface OutboundReceipt {
@@ -66,6 +72,15 @@ export interface InboundFetchOptions {
    * LINE inbound is webhook-only and won't accept on-demand pulls.
    */
   readonly source?: string;
+}
+
+/**
+ * Polling options for providers that maintain a remote cursor. A durable
+ * consumer can defer cursor advancement until it has persisted the batch,
+ * then call the provider's matching commit method.
+ */
+export interface PollingFetchOptions extends InboundFetchOptions {
+  readonly deferCursorCommit?: boolean;
 }
 
 export interface InboundMessage {

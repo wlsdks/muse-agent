@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -82,6 +82,18 @@ describe("muse quiet <range> — set + enable", () => {
     await runQuiet(["23:00-08:00"]);
     await runQuiet(["not-a-range"]);
     expect(readQuietHoursSettingSync(settingsFile)).toEqual({ enabled: true, range: "23:00-08:00" });
+  });
+
+  it("an unsupported persisted format reports a user-actionable error without modifying it", async () => {
+    const original = "[]";
+    writeFileSync(settingsFile, original, "utf8");
+
+    const { exitCode, stderr, stdout } = await runQuiet(["23:00-08:00"]);
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("unsupported format");
+    expect(stdout).toBe("");
+    expect(readFileSync(settingsFile, "utf8")).toBe(original);
   });
 });
 

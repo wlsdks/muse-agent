@@ -1,4 +1,4 @@
-import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import { createRunId, isJsonValue, type JsonObject, type JsonValue } from "@muse/shared";
 import type { DebugReplayCaptureTable, MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
@@ -17,6 +17,8 @@ export interface DebugReplayCaptureStore {
   purgeExpired(referenceTime?: Date): Promise<number>;
 }
 
+const DEFAULT_DEBUG_REPLAY_LIST_LIMIT = 50;
+
 export class InMemoryDebugReplayCaptureStore implements DebugReplayCaptureStore {
   private readonly captures = new Map<string, JsonObject>();
 
@@ -26,15 +28,16 @@ export class InMemoryDebugReplayCaptureStore implements DebugReplayCaptureStore 
     return saved;
   }
 
-  async listDebugReplayCaptures(limit = 50): Promise<readonly JsonObject[]> {
-    // Kysely path orders by captured_at DESC (newest first); the
+  async listDebugReplayCaptures(limit?: number): Promise<readonly JsonObject[]> {
+    // Kysely path orders by captured_at DESC, id ASC; the
     // pre-fix in-memory path returned Map iteration order (oldest
     // first), so tests using this store saw a different ordering than
     // production. Sort by parsed capturedAt DESC with an id ASC
     // tiebreaker so two captures at the same instant come out in a
     // deterministic, stable order across runs.
+    const normalizedLimit = normalizeDebugReplayListLimit(limit);
     const sorted = [...this.captures.values()].sort(compareDebugReplayByCapturedAtDesc);
-    return sorted.slice(0, Math.max(0, limit));
+    return sorted.slice(0, normalizedLimit);
   }
 
   async getDebugReplayCapture(id: string): Promise<JsonObject | undefined> {
@@ -68,12 +71,14 @@ export class KyselyDebugReplayCaptureStore implements DebugReplayCaptureStore {
     return mapDebugReplayCaptureRow(saved);
   }
 
-  async listDebugReplayCaptures(limit = 50): Promise<readonly JsonObject[]> {
+  async listDebugReplayCaptures(limit?: number): Promise<readonly JsonObject[]> {
+    const normalizedLimit = normalizeDebugReplayListLimit(limit);
     const rows = await this.db
       .selectFrom("debug_replay_captures")
       .selectAll()
       .orderBy("captured_at", "desc")
-      .limit(limit)
+      .orderBy("id", "asc")
+      .limit(normalizedLimit)
       .execute();
     return rows.map(mapDebugReplayCaptureRow);
   }
@@ -133,6 +138,18 @@ function compareDebugReplayByCapturedAtDesc(a: JsonObject, b: JsonObject): numbe
   const tb = parseTimestampMs(b.capturedAt);
   if (ta !== tb) return tb - ta;
   return stringValue(a.id).localeCompare(stringValue(b.id));
+}
+
+function normalizeDebugReplayListLimit(limit: number | undefined): number {
+  const candidate = limit ?? DEFAULT_DEBUG_REPLAY_LIST_LIMIT;
+  if (!Number.isFinite(candidate)) {
+    return DEFAULT_DEBUG_REPLAY_LIST_LIMIT;
+  }
+
+  const normalized = Math.trunc(candidate);
+  return Number.isSafeInteger(normalized)
+    ? Math.max(0, normalized)
+    : DEFAULT_DEBUG_REPLAY_LIST_LIMIT;
 }
 
 function parseTimestampMs(value: unknown): number {
@@ -207,17 +224,4 @@ function jsonObject(value: unknown): JsonObject {
     }
   }
   return {};
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) {
-    return true;
-  }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-  return Boolean(value) && typeof value === "object" && Object.values(value).every(isJsonValue);
 }

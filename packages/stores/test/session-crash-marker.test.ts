@@ -43,4 +43,17 @@ describe("session crash marker (SES-3/10)", () => {
     await writeFile(path, "{not json", "utf8");
     expect(await detectUncleanShutdown(path)).toBeUndefined();
   });
+
+  it.each([
+    { pid: -1, startedAt: "2026-06-24T00:00:00.000Z" },
+    { pid: 1.5, startedAt: "2026-06-24T00:00:00.000Z" },
+    { pid: Number.MAX_SAFE_INTEGER + 1, startedAt: "2026-06-24T00:00:00.000Z" },
+    { pid: 42, startedAt: "not-a-timestamp" }
+  ])("treats a malformed marker shape as no recoverable info: %o", async (marker) => {
+    const path = tmpMarker();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(path, JSON.stringify(marker), "utf8");
+
+    expect(await detectUncleanShutdown(path)).toBeUndefined();
+  });
 });

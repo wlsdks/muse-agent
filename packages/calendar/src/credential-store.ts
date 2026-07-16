@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -41,23 +41,23 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
   }
 
   async save(providerId: string, credentials: ProviderCredentials): Promise<void> {
-    const all = await this.readAll();
-    const next: PersistedShape = {
-      providers: { ...all.providers, [providerId]: { ...credentials } },
-      version: 1
-    };
-    await this.writeAll(next);
+    await this.mutateAll(async (all) => {
+      await this.writeAll({
+        providers: { ...all.providers, [providerId]: { ...credentials } },
+        version: 1
+      });
+    });
   }
 
   async remove(providerId: string): Promise<void> {
-    const all = await this.readAll();
+    await this.mutateAll(async (all) => {
+      if (!(providerId in all.providers)) {
+        return;
+      }
 
-    if (!(providerId in all.providers)) {
-      return;
-    }
-
-    const { [providerId]: _ignored, ...rest } = all.providers;
-    await this.writeAll({ providers: rest, version: 1 });
+      const { [providerId]: _ignored, ...rest } = all.providers;
+      await this.writeAll({ providers: rest, version: 1 });
+    });
   }
 
   async list(): Promise<readonly string[]> {
@@ -97,11 +97,16 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
   }
 
   private async writeAll(value: PersistedShape): Promise<void> {
-    const tmp = `${this.file}.tmp-${process.pid}-${Date.now()}`;
-    await fs.mkdir(dirname(this.file), { recursive: true });
-    await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await fs.rename(tmp, this.file);
+    await atomicWriteFile(this.file, `${JSON.stringify(value, null, 2)}\n`);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
+  }
+
+  private async mutateAll(mutator: (value: PersistedShape) => Promise<void>): Promise<void> {
+    await withFileMutationQueue(this.file, async () => {
+      await withFileLock(this.file, async () => {
+        await mutator(await this.readAll());
+      });
+    });
   }
 }
 

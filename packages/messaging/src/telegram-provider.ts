@@ -1,4 +1,4 @@
-import { truncateErrorBody } from "@muse/shared";
+import { errorMessage, isRecord, truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
@@ -79,11 +79,11 @@ interface TelegramUpdate {
 }
 
 interface TelegramMessageObject {
-  readonly message_id: number;
+  readonly message_id?: number;
   readonly date: number;
   readonly text?: string;
   readonly chat: { readonly id: number; readonly username?: string; readonly title?: string; readonly type?: string };
-  readonly from?: { readonly id: number; readonly username?: string; readonly first_name?: string };
+  readonly from?: { readonly username?: string; readonly first_name?: string };
 }
 
 /**
@@ -103,6 +103,7 @@ interface TelegramGetUpdatesResponse {
   readonly ok: boolean;
   readonly description?: string;
   readonly result?: readonly TelegramUpdate[];
+  readonly parameters?: { readonly retry_after?: number };
 }
 
 export class TelegramProvider implements MessagingProvider {
@@ -177,37 +178,51 @@ export class TelegramProvider implements MessagingProvider {
     const readTimeoutMs = longPoll > 0
       ? Math.max(this.timeoutMs ?? 30_000, (longPoll + 15) * 1000)
       : this.timeoutMs;
-    const response = await fetchReadWithRetry(this.fetchImpl, url, { method: "GET" }, { timeoutMs: readTimeoutMs });
-    const text = await response.text();
+    const response = await this.request("Telegram getUpdates request", () =>
+      fetchReadWithRetry(this.fetchImpl, url, { method: "GET" }, { timeoutMs: readTimeoutMs })
+    );
+    const text = await this.readResponseText(response, "Telegram getUpdates");
     const parsed = tryParseJson<TelegramGetUpdatesResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Telegram getUpdates failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response, parsed?.parameters?.retry_after)
       );
     }
-    const updates = parsed.result ?? [];
+    const updates: readonly unknown[] = Array.isArray(parsed.result) ? parsed.result : [];
     // Advance offset BEFORE filtering. Updates without a `.message`
     // (e.g. callback_query) still need acknowledgement or Telegram
     // will redeliver them on every poll until they expire.
-    if (this.offsetFile && updates.length > 0) {
-      const maxId = updates.reduce((acc, u) => (u.update_id > acc ? u.update_id : acc), updates[0]!.update_id);
-      await writeTelegramOffset(this.offsetFile, maxId + 1);
+    const nextOffset = nextTelegramOffset(updates);
+    if (this.offsetFile && nextOffset !== undefined) {
+      await writeTelegramOffset(this.offsetFile, nextOffset);
     }
     return updates.flatMap((update): readonly InboundMessage[] => {
-      const message = update.message ?? update.edited_message ?? update.channel_post;
+      const message = telegramMessageFromUpdate(update);
       if (!message || typeof message.text !== "string") {
+        return [];
+      }
+      const directMessageId = message.message_id;
+      const messageId = typeof directMessageId === "number" && Number.isSafeInteger(directMessageId) && directMessageId > 0
+        ? directMessageId
+        : telegramUpdateId(update);
+      if (messageId === undefined) {
+        return [];
+      }
+      const receivedAtIso = telegramEpochSecondsToIso(message.date);
+      if (receivedAtIso === undefined) {
         return [];
       }
       const senderUsername = message.from?.username;
       const senderName = senderUsername ?? message.from?.first_name ?? message.chat.username;
       return [{
-        messageId: String(message.message_id),
+        messageId: String(messageId),
         providerId: this.id,
         raw: update,
-        receivedAtIso: new Date(message.date * 1000).toISOString(),
+        receivedAtIso,
         scope: telegramChatScope(message.chat),
         ...(senderName ? { sender: senderName } : {}),
         source: String(message.chat.id),
@@ -217,19 +232,20 @@ export class TelegramProvider implements MessagingProvider {
   }
 
   async sendTyping(destination: string): Promise<void> {
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendChatAction`, {
+    const response = await this.request("Telegram sendChatAction request", () => fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendChatAction`, {
       body: JSON.stringify({ action: "typing", chat_id: destination }),
       headers: { "content-type": "application/json" },
       method: "POST"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Telegram sendChatAction");
     const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Telegram sendChatAction failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response, parsed?.parameters?.retry_after)
       );
     }
   }
@@ -242,7 +258,7 @@ export class TelegramProvider implements MessagingProvider {
    * cosmetic.
    */
   async reactToMessage(destination: string, messageId: string, emoji: string): Promise<void> {
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/setMessageReaction`, {
+    const response = await this.request("Telegram setMessageReaction request", () => fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/setMessageReaction`, {
       body: JSON.stringify({
         chat_id: destination,
         message_id: Number(messageId),
@@ -250,15 +266,16 @@ export class TelegramProvider implements MessagingProvider {
       }),
       headers: { "content-type": "application/json" },
       method: "POST"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Telegram setMessageReaction");
     const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Telegram setMessageReaction failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response, parsed?.parameters?.retry_after)
       );
     }
   }
@@ -273,19 +290,20 @@ export class TelegramProvider implements MessagingProvider {
    * boot to avoid a needless network round-trip).
    */
   async registerCommands(): Promise<void> {
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/setMyCommands`, {
+    const response = await this.request("Telegram setMyCommands request", () => fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/setMyCommands`, {
       body: JSON.stringify({ commands: TELEGRAM_BOT_COMMANDS }),
       headers: { "content-type": "application/json" },
       method: "POST"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Telegram setMyCommands");
     const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Telegram setMyCommands failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response, parsed?.parameters?.retry_after)
       );
     }
   }
@@ -297,7 +315,7 @@ export class TelegramProvider implements MessagingProvider {
     // still overflow and get the whole message rejected (400).
     const outboundText = clampForTelegram(message.text, this.parseMode);
     validateOutboundMessage({ ...message, text: outboundText });
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendMessage`, {
+    const response = await this.request("Telegram sendMessage request", () => fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendMessage`, {
       body: JSON.stringify({
         chat_id: message.destination,
         // Without this, a URL in the reply (including one an indirect
@@ -310,8 +328,8 @@ export class TelegramProvider implements MessagingProvider {
       }),
       headers: { "content-type": "application/json" },
       method: "POST"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Telegram sendMessage");
     const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
@@ -333,6 +351,97 @@ export class TelegramProvider implements MessagingProvider {
       raw: parsed.result
     };
   }
+
+  private async request(operation: string, invoke: () => Promise<Response>): Promise<Response> {
+    try {
+      return await invoke();
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `${operation} failed: ${errorMessage(cause, "network request failed")}`
+      );
+    }
+  }
+
+  private async readResponseText(response: Response, operation: string): Promise<string> {
+    try {
+      return await response.text();
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `${operation} failed with ${response.status.toString()}: unable to read response body: ${errorMessage(cause, "unknown response body failure")}`,
+        response.status,
+        retryAfterMsFromResponse(response)
+      );
+    }
+  }
+}
+
+function nextTelegramOffset(updates: readonly unknown[]): number | undefined {
+  let highest = -1;
+  for (const update of updates) {
+    const updateId = telegramUpdateId(update);
+    if (updateId === undefined || updateId >= Number.MAX_SAFE_INTEGER) {
+      continue;
+    }
+    highest = Math.max(highest, updateId);
+  }
+  return highest >= 0 ? highest + 1 : undefined;
+}
+
+function telegramUpdateId(value: unknown): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const updateId = value["update_id"];
+  return typeof updateId === "number" && Number.isSafeInteger(updateId) && updateId >= 0
+    ? updateId
+    : undefined;
+}
+
+function telegramMessageFromUpdate(value: unknown): TelegramMessageObject | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value["message"] ?? value["edited_message"] ?? value["channel_post"];
+  if (!isRecord(candidate) || !isRecord(candidate["chat"])) {
+    return undefined;
+  }
+  const chat = candidate["chat"];
+  const chatId = chat["id"];
+  const date = candidate["date"];
+  const text = candidate["text"];
+  if (typeof text !== "string" || typeof date !== "number" || typeof chatId !== "number" || !Number.isSafeInteger(chatId)) {
+    return undefined;
+  }
+  const from = isRecord(candidate["from"]) ? candidate["from"] : undefined;
+  const rawMessageId = candidate["message_id"];
+  return {
+    ...(typeof rawMessageId === "number" ? { message_id: rawMessageId } : {}),
+    chat: {
+      id: chatId,
+      ...(typeof chat["type"] === "string" ? { type: chat["type"] } : {}),
+      ...(typeof chat["username"] === "string" ? { username: chat["username"] } : {})
+    },
+    date,
+    ...(from && (typeof from["first_name"] === "string" || typeof from["username"] === "string") ? {
+      from: {
+        ...(typeof from["first_name"] === "string" ? { first_name: from["first_name"] } : {}),
+        ...(typeof from["username"] === "string" ? { username: from["username"] } : {})
+      }
+    } : {}),
+    text
+  };
+}
+
+function telegramEpochSecondsToIso(seconds: number): string | undefined {
+  if (!Number.isSafeInteger(seconds) || seconds < 0) {
+    return undefined;
+  }
+  const date = new Date(seconds * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 }
 
 /**
@@ -381,4 +490,3 @@ export function clampForTelegram(text: string, mode: "MarkdownV2" | "HTML" | und
   const worstCaseFactor = mode === "HTML" ? 5 : 2;
   return clampOutboundText(text, Math.floor(TELEGRAM_MAX_TEXT / worstCaseFactor));
 }
-

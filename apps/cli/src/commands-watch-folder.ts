@@ -37,7 +37,7 @@ import {
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
-import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
+import { appendProactiveHistory, mutateTasks, parseTaskDueAt, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -322,8 +322,7 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
                 tags: ["inbox", "watch-folder"],
                 title
               };
-              const existing = await readTasks(tasksFile);
-              await writeTasks(tasksFile, [...existing, task]);
+              await mutateTasks(tasksFile, (current) => [...current, task]);
               io.stdout(`  + task created: ${task.id} (dueAt ${dueAt})\n`);
             } catch (cause) {
               io.stderr(`  task-create failed for ${filename}: ${errorMessage(cause)}\n`);
@@ -381,4 +380,3 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       io.stdout("\n(ctrl-c — stopping)\n");
     });
 }
-

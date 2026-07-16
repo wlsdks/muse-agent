@@ -24,6 +24,23 @@ const rateLimited = (retryAfterMs?: number): MessagingProviderError =>
   new MessagingProviderError("telegram", "UPSTREAM_FAILED", "rate limited", 429, retryAfterMs);
 
 describe("sendWithRetry — honours a 429 Retry-After over the fixed ladder", () => {
+  it("reuses one generated idempotency key across every retry attempt", async () => {
+    const keys: Array<string | undefined> = [];
+    let attempts = 0;
+    const registry = {
+      send: async (_providerId: string, message: typeof MSG & { readonly idempotencyKey?: string }) => {
+        keys.push(message.idempotencyKey);
+        attempts += 1;
+        if (attempts === 1) throw new MessagingProviderError("matrix", "UPSTREAM_FAILED", "busy", 503);
+        return { destination: message.destination, messageId: "ok", providerId: "matrix" };
+      }
+    } as unknown as Registry;
+    await sendWithRetry(registry, "matrix", MSG, { sleep: async () => undefined });
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+  });
+
   it("waits the server-mandated Retry-After (not the 200ms ladder) before retrying, then delivers", async () => {
     const slept: number[] = [];
     const { registry, attempts } = scriptedRegistry([rateLimited(3000), undefined]);

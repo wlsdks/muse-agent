@@ -277,6 +277,80 @@ describe("muse feeds refresh — the summary count reflects feeds actually re-fe
   });
 });
 
+describe("muse feeds concurrent persistence", () => {
+  const responseFor = (id: string) => new Response(
+    `<?xml version="1.0"?><rss version="2.0"><channel><item><title>${id}</title><link>https://x.example/${id}</link><guid>${id}</guid><pubDate>2026-05-20T00:00:00Z</pubDate></item></channel></rss>`,
+    { status: 200 }
+  );
+
+  function interceptFeedFetches(expected: number): {
+    readonly requests: readonly ReturnType<typeof Promise.withResolvers<void>>[];
+    readonly responses: readonly ReturnType<typeof Promise.withResolvers<Response>>[];
+    readonly fetch: typeof globalThis.fetch;
+  } {
+    const requests = Array.from({ length: expected }, () => Promise.withResolvers<void>());
+    const responses = Array.from({ length: expected }, () => Promise.withResolvers<Response>());
+    let index = 0;
+    return {
+      requests,
+      responses,
+      fetch: ((input) => {
+        if (String(input).startsWith("https://93.184.216.34/")) {
+          const current = index;
+          index += 1;
+          requests[current]!.resolve();
+          return responses[current]!.promise;
+        }
+        return Promise.reject(new Error("embedding disabled for persistence race test"));
+      }) as typeof globalThis.fetch
+    };
+  }
+
+  it("keeps both concurrently added feeds after their stale pre-fetch snapshots overlap", async () => {
+    const file = writeRawFeedsStore([]).file;
+    const originalFetch = globalThis.fetch;
+    const intercepted = interceptFeedFetches(2);
+    globalThis.fetch = intercepted.fetch;
+    try {
+      const first = runFeedsCommand(["add", "https://93.184.216.34/first.xml", "--id", "first"], file);
+      await intercepted.requests[0]!.promise;
+      const second = runFeedsCommand(["add", "https://93.184.216.34/second.xml", "--id", "second"], file);
+      await intercepted.requests[1]!.promise;
+      intercepted.responses[1]!.resolve(responseFor("second"));
+      await second;
+      intercepted.responses[0]!.resolve(responseFor("first"));
+      await first;
+
+      const persisted = JSON.parse(readFileSync(file, "utf8")) as { feeds: Array<{ id: string }> };
+      expect(persisted.feeds.map((feed) => feed.id).sort()).toEqual(["first", "second"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("merges concurrent successful refreshes instead of letting the last stale snapshot erase entries", async () => {
+    const file = seedFeeds(["news"]);
+    const originalFetch = globalThis.fetch;
+    const intercepted = interceptFeedFetches(2);
+    globalThis.fetch = intercepted.fetch;
+    try {
+      const first = runFeedsCommand(["refresh", "--id", "news"], file);
+      await intercepted.requests[0]!.promise;
+      const second = runFeedsCommand(["refresh", "--id", "news"], file);
+      await intercepted.requests[1]!.promise;
+      intercepted.responses[1]!.resolve(responseFor("second"));
+      await second;
+      intercepted.responses[0]!.resolve(responseFor("first"));
+      await first;
+
+      const persisted = JSON.parse(readFileSync(file, "utf8")) as { feeds: Array<{ entries: Array<{ id: string }> }> };
+      expect(persisted.feeds[0]!.entries.map((entry) => entry.id).sort()).toEqual(["first", "second"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("muse feeds add --id empty / whitespace fallback", () => {
   function seedEmptyStore(): string {
     const dir = mkdtempSync(join(tmpdir(), "muse-feeds-add-"));

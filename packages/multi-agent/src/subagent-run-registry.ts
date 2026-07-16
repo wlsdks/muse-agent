@@ -49,7 +49,22 @@ interface MutableRunRecord {
 const TERMINAL_STATUSES = new Set<SubAgentRunStatus>(["completed", "failed", "timed-out", "cancelled"]);
 
 function freeze(record: MutableRunRecord): SubAgentRunRecord {
-  return Object.freeze({ ...record });
+  return Object.freeze({
+    ...record,
+    ...(record.finishedAt ? { finishedAt: new Date(record.finishedAt) } : {}),
+    lastHeartbeatAt: new Date(record.lastHeartbeatAt),
+    startedAt: new Date(record.startedAt)
+  });
+}
+
+function normalizeStallTimeoutMs(timeoutMs: number, name: string): number {
+  if (timeoutMs <= 0) {
+    return 0;
+  }
+  if (!Number.isSafeInteger(timeoutMs)) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+  return timeoutMs;
 }
 
 export class SubAgentRunRegistry {
@@ -60,7 +75,11 @@ export class SubAgentRunRegistry {
 
   constructor(options: SubAgentRunRegistryOptions = {}) {
     this.now = options.now ?? (() => new Date());
-    this.defaultTimeoutMs = options.defaultTimeoutMs ?? 0;
+    this.defaultTimeoutMs = normalizeStallTimeoutMs(options.defaultTimeoutMs ?? 0, "defaultTimeoutMs");
+  }
+
+  private currentTime(): Date {
+    return new Date(this.now());
   }
 
   register(args: RegisterRunArgs): SubAgentRunRecord {
@@ -78,13 +97,13 @@ export class SubAgentRunRegistry {
       throw new Error(`parentRunId "${parentRunId}" is not registered — a child must attach to a known parent`);
     }
 
-    const now = this.now();
+    const now = this.currentTime();
     const record: MutableRunRecord = {
       lastHeartbeatAt: now,
       runId,
       startedAt: now,
       status: "running",
-      timeoutMs: timeoutMs ?? this.defaultTimeoutMs
+      timeoutMs: normalizeStallTimeoutMs(timeoutMs ?? this.defaultTimeoutMs, "timeoutMs")
     };
 
     if (parentRunId !== undefined) {
@@ -104,7 +123,7 @@ export class SubAgentRunRegistry {
       return false;
     }
 
-    record.lastHeartbeatAt = this.now();
+    record.lastHeartbeatAt = this.currentTime();
     return true;
   }
 
@@ -116,7 +135,7 @@ export class SubAgentRunRegistry {
     }
 
     record.status = "completed";
-    record.finishedAt = this.now();
+    record.finishedAt = this.currentTime();
     record.outcome = outcome;
     return true;
   }
@@ -129,7 +148,7 @@ export class SubAgentRunRegistry {
     }
 
     record.status = "failed";
-    record.finishedAt = this.now();
+    record.finishedAt = this.currentTime();
     record.error = error;
     return true;
   }
@@ -142,7 +161,7 @@ export class SubAgentRunRegistry {
     }
 
     record.status = "timed-out";
-    record.finishedAt = this.now();
+    record.finishedAt = this.currentTime();
     record.error = error;
     return true;
   }
@@ -162,7 +181,7 @@ export class SubAgentRunRegistry {
     }
 
     record.status = "cancelled";
-    record.finishedAt = this.now();
+    record.finishedAt = this.currentTime();
     record.error = reason;
     return true;
   }
@@ -192,7 +211,7 @@ export class SubAgentRunRegistry {
   }
 
   detectStalled(): readonly SubAgentRunRecord[] {
-    const now = this.now();
+    const now = this.currentTime();
     return this.insertionOrder
       .map((id) => this.records.get(id)!)
       .filter((record) => {
@@ -204,7 +223,7 @@ export class SubAgentRunRegistry {
 
   markStalledAsTimedOut(): readonly SubAgentRunRecord[] {
     const stalled = this.detectStalled();
-    const now = this.now();
+    const now = this.currentTime();
     const transitioned: SubAgentRunRecord[] = [];
 
     for (const frozen of stalled) {
@@ -230,7 +249,7 @@ export class SubAgentRunRegistry {
 
   recoverOrphaned(error?: string): readonly SubAgentRunRecord[] {
     const orphaned = this.detectOrphaned();
-    const now = this.now();
+    const now = this.currentTime();
     const recovered: SubAgentRunRecord[] = [];
 
     for (const frozen of orphaned) {

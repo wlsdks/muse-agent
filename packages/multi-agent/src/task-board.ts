@@ -19,6 +19,8 @@ export type TaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done" 
  * distinguishing it from a top-level one), not a hypothetical one.
  */
 export const DEFAULT_BOARD_MAX_DEPTH = 1;
+/** Keep durable retry context useful without allowing an indefinitely retried task to grow forever. */
+export const DEFAULT_TASK_RUN_HISTORY_LIMIT = 20;
 
 /** One execution attempt of a task — the history a retry reads to avoid repeating a failure. */
 export interface TaskRun {
@@ -105,12 +107,21 @@ export function transitionTask(
 /**
  * Append a run to a task's history. A FAILED run moves it to `blocked` and stamps the
  * reason (so a human can intervene and a retry can replay it); a COMPLETED run moves it
- * to `done`. The history is never dropped — that's what makes a retry smarter than a re-run.
+ * to `done`. The recent bounded history keeps retries informed without letting a stuck task
+ * retain an unbounded amount of persisted output.
  */
-export function recordTaskRun(tasks: readonly AgentTask[], id: string, run: TaskRun): AgentTask[] {
+export function recordTaskRun(
+  tasks: readonly AgentTask[],
+  id: string,
+  run: TaskRun,
+  maxHistory: number = DEFAULT_TASK_RUN_HISTORY_LIMIT
+): AgentTask[] {
+  if (!Number.isSafeInteger(maxHistory) || maxHistory <= 0) {
+    throw new RangeError("maxHistory must be a positive safe integer");
+  }
   return tasks.map((t) => {
     if (t.id !== id) return t;
-    const runs = [...t.runs, run];
+    const runs = [...t.runs, run].slice(-maxHistory);
     if (run.status === "failed") {
       return { ...t, runs, status: "blocked", updatedAt: run.at, ...(run.reason !== undefined ? { blockedReason: run.reason } : {}) };
     }

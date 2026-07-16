@@ -16,6 +16,8 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
 export const BROWSING_STORE_SCHEMA_VERSION = 1;
@@ -122,7 +124,8 @@ export async function readBrowsingStore(file: string): Promise<BrowsingStore> {
     return emptyStore();
   }
   const visits: BrowsingVisit[] = [];
-  for (const v of candidate.visits ?? []) {
+  const storedVisits = Array.isArray(candidate.visits) ? candidate.visits : [];
+  for (const v of storedVisits) {
     if (!v || typeof v !== "object") continue;
     const c = v as Partial<BrowsingVisit>;
     if (
@@ -143,17 +146,33 @@ export async function readBrowsingStore(file: string): Promise<BrowsingStore> {
     visits.push(hasValidEmbedding ? { ...base, embedding: c.embedding } : base);
   }
   const cursor =
-    typeof candidate.lastVisitTimeCursor === "number" && Number.isFinite(candidate.lastVisitTimeCursor)
+    typeof candidate.lastVisitTimeCursor === "number" && Number.isFinite(candidate.lastVisitTimeCursor) && candidate.lastVisitTimeCursor >= 0
       ? candidate.lastVisitTimeCursor
       : 0;
   return { version: BROWSING_STORE_SCHEMA_VERSION, visits, lastVisitTimeCursor: cursor };
 }
 
 export async function writeBrowsingStore(file: string, store: BrowsingStore): Promise<void> {
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
+    await writeBrowsingStoreUnlocked(file, store);
+  }));
+}
+
+/** Apply a read-modify-write transition to the latest cross-process store snapshot. */
+export async function mutateBrowsingStore(
+  file: string,
+  mutate: (current: BrowsingStore) => BrowsingStore | Promise<BrowsingStore>
+): Promise<BrowsingStore> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const next = await mutate(await readBrowsingStore(file));
+    await writeBrowsingStoreUnlocked(file, next);
+    return next;
+  }));
+}
+
+async function writeBrowsingStoreUnlocked(file: string, store: BrowsingStore): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, `${JSON.stringify(store, null, 2)}\n`);
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
@@ -165,6 +184,8 @@ export async function writeBrowsingStore(file: string, store: BrowsingStore): Pr
  * while bounding worst-case disk + search cost.
  */
 export const DEFAULT_BROWSING_VISITS_CAP = 5000;
+export const MAX_BROWSING_VISITS_CAP = 10_000;
+export const MAX_BROWSING_SEARCH_RESULTS = 100;
 
 /**
  * Merge `incoming` (a fresh sync) into `previous` (the on-disk
@@ -185,8 +206,7 @@ export function mergeBrowsingVisits(
     if (visit.id) byId.set(visit.id, visit);
   }
   const merged = [...byId.values()].sort(compareBrowsingVisitsNewestFirst);
-  const effectiveCap =
-    Number.isFinite(cap) && cap > 0 ? Math.trunc(cap) : DEFAULT_BROWSING_VISITS_CAP;
+  const effectiveCap = normalizePositiveLimit(cap, DEFAULT_BROWSING_VISITS_CAP, MAX_BROWSING_VISITS_CAP);
   return merged.slice(0, effectiveCap);
 }
 
@@ -221,5 +241,12 @@ export function searchBrowsingVisits(
   const hits = visits.filter(
     (v) => v.title.toLowerCase().includes(needle) || v.url.toLowerCase().includes(needle)
   );
-  return [...hits].sort(compareBrowsingVisitsNewestFirst).slice(0, Math.max(1, limit));
+  return [...hits].sort(compareBrowsingVisitsNewestFirst).slice(0, normalizePositiveLimit(limit, 1, MAX_BROWSING_SEARCH_RESULTS));
+}
+
+function normalizePositiveLimit(value: number, fallback: number, maximum: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.min(maximum, Math.max(1, Math.trunc(value)));
 }

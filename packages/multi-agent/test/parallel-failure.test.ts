@@ -30,6 +30,15 @@ function hangingWorker(id: string): RuleBasedAgentWorker {
 }
 
 describe("MultiAgentOrchestrator per-worker deadline — explicit termination of a hung worker", () => {
+  it("rejects worker deadlines that Node would silently coerce to an immediate timer", () => {
+    for (const workerTimeoutMs of [Number.NaN, Number.MIN_VALUE, 1.5, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+      expect(() => new MultiAgentOrchestrator({
+        workerTimeoutMs,
+        workers: [syntheticWorker("worker", "ok")]
+      })).toThrow(RangeError);
+    }
+  });
+
   for (const mode of ["parallel", "sequential"] as const) {
     it(`${mode}: a hung worker is terminated at the deadline and marked failed; survivors complete`, async () => {
       const orchestrator = new MultiAgentOrchestrator({

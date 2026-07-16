@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -42,4 +43,20 @@ describe("episodes store under concurrency", () => {
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removeEpisode(file, `ep${i.toString()}`)));
     expect(await readEpisodes(file)).toHaveLength(15);
   }, 30_000);
+
+  it("preserves an external upsert committed while this process waits for the file lock", async () => {
+    const file = freshFile();
+    await upsertEpisode(file, episode("local-first"));
+
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localAppend = upsertEpisode(file, episode("local-second"));
+    await sleep(300);
+
+    const first = (await readEpisodes(file))[0]!;
+    await writeFile(file, `${JSON.stringify({ episodes: [first, episode("external")] }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await localAppend;
+    expect((await readEpisodes(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
+  });
 });

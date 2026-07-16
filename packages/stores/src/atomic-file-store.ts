@@ -29,7 +29,9 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { sleep } from "@muse/shared";
+import { computeLockRetryDelay, sleep, withFileLock, withFileMutationQueue } from "@muse/shared";
+
+export { computeLockRetryDelay, withFileLock, withFileMutationQueue };
 
 export interface AtomicWriteOptions {
   /** fsync the tmp file before rename (durable against a crash mid-rename). Default true. */
@@ -101,20 +103,4 @@ export async function atomicWriteFile(file: string, contents: string | Uint8Arra
     await fs.rm(tmp, { force: true }).catch(() => undefined);
     throw error;
   }
-}
-
-const mutationQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
-
-/**
- * Serialise a read-modify-write `op` against `file` so concurrent callers run
- * one-at-a-time (no lost-update). Keyed by file path, so different files run
- * in parallel. A throwing op never wedges the queue — the chain swallows the
- * rejection for sequencing while still rejecting the returned promise.
- */
-export async function withFileMutationQueue<T>(file: string, op: () => Promise<T>): Promise<T> {
-  const prior = mutationQueues.get(file) ?? resolvedPromise();
-  const next = prior.then(op, op);
-  mutationQueues.set(file, next.then(() => undefined, () => undefined));
-  return next;
 }

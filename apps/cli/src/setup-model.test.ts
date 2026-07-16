@@ -131,6 +131,17 @@ describe("persistModelProviderKey encryption-at-rest", () => {
     expect(finalRaw).not.toContain("sk-ant-secret");
   });
 
+  it("preserves every provider when setup writes race on the same credentials file", async () => {
+    await Promise.all([
+      persistModelProviderKey(home, "openai", "sk-openai", "openai/gpt-4o-mini", {}),
+      persistModelProviderKey(home, "anthropic", "sk-anthropic", "anthropic/claude-haiku-4-5-20251001", {})
+    ]);
+
+    const persisted = JSON.parse(await readFile(file, "utf8")) as { providers: Record<string, { token: string }> };
+    expect(persisted.providers.openai?.token).toBe("sk-openai");
+    expect(persisted.providers.anthropic?.token).toBe("sk-anthropic");
+  });
+
   it("wrong-key read fails CLOSED: throws and leaves the ciphertext on disk unchanged", async () => {
     const rightEnv = { MUSE_CREDENTIALS_ENCRYPT: "true", MUSE_MEMORY_KEY: "right-key" };
     await persistModelProviderKey(home, "openai", "sk-secret", "openai/gpt-4o-mini", rightEnv);

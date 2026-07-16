@@ -212,9 +212,12 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
       }
       const chunks: Buffer[] = [];
       recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-      const stopPromise = waitForChildProcessResult(recording, "sox");
+      let stopRequested = false;
+      const stopPromise = waitForChildProcessResult(recording, "sox", undefined, {
+        acceptsTerminationSignal: (signal) => stopRequested && signal === "SIGTERM"
+      });
       await shells.waitForEnter();
-      recording.kill("SIGTERM");
+      stopRequested = recording.kill("SIGTERM");
       try {
         await stopPromise;
       } catch (cause) {
@@ -253,9 +256,12 @@ export async function captureWavForSeconds(shells: ListenShells, seconds: number
   const recording = shells.spawnRec(["-q", "-r", "16000", "-c", "1", "-t", "wav", "-"]);
   const chunks: Buffer[] = [];
   recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-  const stopPromise = waitForChildProcessResult(recording, "rec");
+  let stopRequested = false;
+  const stopPromise = waitForChildProcessResult(recording, "rec", undefined, {
+    acceptsTerminationSignal: (signal) => stopRequested && signal === "SIGTERM"
+  });
   const timer = setTimeout(() => {
-    recording.kill("SIGTERM");
+    stopRequested = recording.kill("SIGTERM");
   }, seconds * 1000);
   try {
     await stopPromise;
@@ -321,4 +327,3 @@ export function defaultBuildVoiceProviders(): { stt?: SpeechToTextProvider; tts?
     ...(tts ? { tts } : {})
   };
 }
-

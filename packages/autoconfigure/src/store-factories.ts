@@ -82,7 +82,7 @@ import {
   type ScheduledJobStore
 } from "@muse/scheduler";
 
-import { parseInteger, type MuseEnvironment } from "./index.js";
+import { parseBoolean, parseInteger, type MuseEnvironment } from "./index.js";
 
 export function createHistoryStore(db: Kysely<MuseDatabase> | undefined): AgentRunHistoryStore {
   return db ? new KyselyAgentRunHistoryStore(db) : new InMemoryAgentRunHistoryStore();
@@ -146,7 +146,7 @@ export function createTaskMemoryStore(db: Kysely<MuseDatabase> | undefined, env:
   // instead of resetting every invocation. Opt out via
   // MUSE_TASK_MEMORY_PERSIST=false (tests wanting a clean slate). Parity with the
   // user-memory + conversation-summary file stores.
-  if (env.MUSE_TASK_MEMORY_PERSIST === "false") {
+  if (!parseBoolean(env.MUSE_TASK_MEMORY_PERSIST, true)) {
     return new InMemoryTaskMemoryStore({ maxTasks, retentionMs });
   }
   const file = env.MUSE_TASK_MEMORY_FILE?.trim();
@@ -164,7 +164,7 @@ export function createConversationSummaryStore(
   // in one `muse ask`/`chat` would never be recalled in the next (and the
   // recall-hit-fed fade/promotion consolidation would starve). Opt out via
   // MUSE_CONVERSATION_SUMMARY_PERSIST=false (tests wanting a clean slate).
-  if (env?.MUSE_CONVERSATION_SUMMARY_PERSIST === "false") {
+  if (!parseBoolean(env?.MUSE_CONVERSATION_SUMMARY_PERSIST, true)) {
     return new InMemoryConversationSummaryStore();
   }
   const file = env?.MUSE_CONVERSATION_SUMMARY_FILE?.trim();
@@ -182,7 +182,7 @@ export function createUserMemoryStore(
   // path via MUSE_USER_MEMORY_FILE; opt out and fall back to a
   // pure in-memory store via MUSE_USER_MEMORY_PERSIST=false (rare —
   // tests that want a clean slate per run).
-  const persist = env?.MUSE_USER_MEMORY_PERSIST !== "false";
+  const persist = parseBoolean(env?.MUSE_USER_MEMORY_PERSIST, true);
   if (!persist) {
     return new InMemoryUserMemoryStore();
   }
@@ -216,7 +216,7 @@ export function createSchedulerStore(db: Kysely<MuseDatabase> | undefined, env: 
   // store — parity with the task-memory / user-memory / conversation-summary
   // file stores above. Opt out via MUSE_SCHEDULER_PERSIST=false (tests
   // wanting a clean slate per run).
-  if (env.MUSE_SCHEDULER_PERSIST === "false") {
+  if (!parseBoolean(env.MUSE_SCHEDULER_PERSIST, true)) {
     return new InMemoryScheduledJobStore({ maxJobs });
   }
   const file = env.MUSE_SCHEDULED_JOBS_FILE?.trim();

@@ -57,4 +57,23 @@ describe("graceful shutdown", () => {
     await sleep(60);
     expect(exited).toBeUndefined();
   });
+
+  it("absorbs a close failure and keeps the forced-exit deadline armed", async () => {
+    const logs: string[] = [];
+    let exited: number | undefined;
+    const shutdown = createGracefulShutdown({
+      closeServer: async () => { throw new Error("close boom"); },
+      exit: (code) => {
+        exited = code;
+      },
+      forceExitAfterMs: 30,
+      log: (message) => logs.push(message)
+    });
+
+    await expect(shutdown()).resolves.toBeUndefined();
+    await sleep(80);
+
+    expect(exited).toBe(0);
+    expect(logs).toContain("server close failed; waiting for the forced-exit deadline");
+  });
 });

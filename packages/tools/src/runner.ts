@@ -189,6 +189,10 @@ export async function invokeRustRunner(
       stdin: `${responseText}\n`,
       timeoutMs: runnerWatchdogMs(request),
       spawnImpl: spawn,
+      // The Rust runner puts each command in its own process group. If this
+      // outer watchdog kills a wedged runner, kill that whole inherited group
+      // too; otherwise a backgrounded command can survive its runner parent.
+      killProcessGroup: true,
       maxStdoutBytes: 200_000,
       maxStderrBytes: 200_000
     });
@@ -202,6 +206,18 @@ export async function invokeRustRunner(
         stdout: result.stdout,
         timedOut: true,
         truncated: false
+      };
+    }
+
+    if (result.truncated) {
+      return {
+        error: "runner process output exceeded the 200000 byte capture limit",
+        ok: false,
+        status: null,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        timedOut: false,
+        truncated: true
       };
     }
 
@@ -299,6 +315,12 @@ export function parseRunnerCommandRequest(value: JsonObject): RunnerCommandReque
   };
 }
 
+const MAX_RUNNER_EXIT_CODE = 0x7fff_ffff;
+
+function isRunnerExitCode(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_RUNNER_EXIT_CODE;
+}
+
 function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
   try {
     const parsed = JSON.parse(value);
@@ -310,7 +332,7 @@ function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
     return {
       error: typeof parsed.error === "string" ? parsed.error : null,
       ok: parsed.ok === true,
-      status: typeof parsed.status === "number" ? parsed.status : null,
+      status: isRunnerExitCode(parsed.status) ? parsed.status : null,
       stderr: typeof parsed.stderr === "string" ? parsed.stderr : "",
       stdout: typeof parsed.stdout === "string" ? parsed.stdout : "",
       timedOut: parsed.timedOut === true,

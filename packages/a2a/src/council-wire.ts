@@ -22,6 +22,8 @@ import type { A2APeer } from "./peer-registry.js";
 import type { A2AEnv } from "./transport.js";
 
 export const COUNCIL_METHOD = "council/reason";
+/** Maximum signed question length accepted by either council peer. */
+export const MAX_COUNCIL_QUESTION_CHARS = 4_000;
 
 export interface CouncilRequest {
   readonly jsonrpc: "2.0";
@@ -65,7 +67,12 @@ export function parseCouncilRequest(body: unknown): { readonly fromPeerId: strin
   const b = body as { method?: unknown; params?: { fromPeerId?: unknown; question?: unknown } };
   if (b.method !== COUNCIL_METHOD || !b.params) return null;
   const { fromPeerId, question } = b.params;
-  if (typeof fromPeerId !== "string" || typeof question !== "string" || question.trim().length === 0) return null;
+  if (
+    typeof fromPeerId !== "string"
+    || typeof question !== "string"
+    || question.trim().length === 0
+    || question.length > MAX_COUNCIL_QUESTION_CHARS
+  ) return null;
   return { fromPeerId, question };
 }
 
@@ -117,7 +124,11 @@ export interface RequestCouncilReasoningOptions {
  * or null if the swarm is off, the peer doesn't participate, or anything fails.
  */
 export async function requestCouncilReasoning(options: RequestCouncilReasoningOptions): Promise<string | null> {
-  if (!isA2AEnabled(options.env) || options.question.trim().length === 0) return null;
+  if (
+    !isA2AEnabled(options.env)
+    || options.question.trim().length === 0
+    || options.question.length > MAX_COUNCIL_QUESTION_CHARS
+  ) return null;
   const signature = signCouncilRequest(options.fromPeerId, options.question, options.peer.secret);
   const fetchImpl = options.fetchImpl ?? fetch;
   const effectiveTimeoutMs = options.timeoutMs ?? DEFAULT_COUNCIL_TIMEOUT_MS;

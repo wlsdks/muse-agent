@@ -16,11 +16,11 @@
  * the user explicitly disables persistence.
  */
 
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { sleep, isErrorLike } from "@muse/shared";
+import { isErrorLike, withFileLock as withSharedFileLock, withFileMutationQueue } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -159,10 +159,9 @@ function legacyDefaultEntry(data: StoredFile, userId: string): StoredMemory | un
   return data.users["default"];
 }
 
-const resolvedPromise = async (): Promise<unknown> => undefined;
+const USER_MEMORY_LOCK_GIVE_UP_MS = 3_000;
 
 export class FileUserMemoryStore implements UserMemoryStore {
-  private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
   private readonly now: () => Date;
   private readonly env: NodeJS.ProcessEnv;
@@ -304,10 +303,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
   }
 
   private async serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
-    const prior = FileUserMemoryStore.writeQueues.get(this.file) ?? resolvedPromise();
-    const next = prior.then(fn, fn);
-    FileUserMemoryStore.writeQueues.set(this.file, next.catch(() => undefined));
-    return next;
+    return withFileMutationQueue(this.file, fn);
   }
 
   // Returns the parsed file AND whether it was encrypted at rest, so a write can
@@ -456,52 +452,10 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }));
   }
 
-  // EVERY mutation (upsert / delete / encrypt / decrypt) runs under ONE
-  // cross-process O_EXCL lock so a concurrent ordinary write in another process
-  // (e.g. the daemon's auto-extract) cannot race a migration's read-modify-write
-  // and lose a fact or the encryption (last-rename-wins). The in-process
-  // serializeWrite still orders same-process writes so they don't busy-spin on
-  // the file lock. A lock older than LOCK_STALE_MS (a write whose process died
-  // mid-flight) is STOLEN so a crash can't block writes forever; reads never
-  // lock (the atomic rename keeps the file consistent for a concurrent reader).
+  // Every mutation uses the shared cross-process O_EXCL lock. The nonce-aware
+  // release protects a live successor after a stale crashed lock is stolen;
+  // the shared mutation queue also avoids same-process lock contention.
   private async withFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    await mkdir(dirname(this.file), { recursive: true });
-    const lockPath = `${this.file}.lock`;
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
-    for (let attempt = 0; handle === undefined; attempt += 1) {
-      try {
-        handle = await open(lockPath, "wx");
-      } catch (cause) {
-        if (!(isErrorLike(cause)) || (cause as NodeJS.ErrnoException).code !== "EEXIST") {
-          throw cause;
-        }
-        if (await lockIsStale(lockPath)) {
-          await unlink(lockPath).catch(() => undefined); // steal a dead holder's lock
-          continue;
-        }
-        if (attempt >= LOCK_MAX_ATTEMPTS) {
-          throw new Error("user-memory is locked by another write in progress — retry shortly", { cause });
-        }
-        await sleep(LOCK_RETRY_MS);
-      }
-    }
-    try {
-      return await fn();
-    } finally {
-      await handle.close().catch(() => undefined);
-      await unlink(lockPath).catch(() => undefined);
-    }
-  }
-}
-
-const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 50;
-const LOCK_MAX_ATTEMPTS = 60; // ~3s before giving up on a live lock holder
-
-async function lockIsStale(lockPath: string): Promise<boolean> {
-  try {
-    return Date.now() - (await stat(lockPath)).mtimeMs > LOCK_STALE_MS;
-  } catch {
-    return true; // vanished between the EEXIST and the stat — treat as stealable
+    return withSharedFileLock(this.file, fn, { giveUpMs: USER_MEMORY_LOCK_GIVE_UP_MS });
   }
 }

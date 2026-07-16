@@ -99,8 +99,14 @@ export function createMacContactsWriteTool(deps: MacContactsWriteToolDeps): Muse
       const runner = deps.osascript ?? defaultOsascriptRunner;
       const userId = deps.userId ?? "local";
       const what = `Contact: ${name}`;
-      const log = (result: MacContactsActionResult, why: string, detail: string): Promise<void> | void =>
-        deps.actionLog?.({ detail, gateClass: "mac_contacts_write", id: idFactory(), result, userId, what, when: now().toISOString(), why });
+      const log = async (result: MacContactsActionResult, why: string, detail: string): Promise<boolean> => {
+        try {
+          await deps.actionLog?.({ detail, gateClass: "mac_contacts_write", id: idFactory(), result, userId, what, when: now().toISOString(), why });
+          return true;
+        } catch {
+          return false;
+        }
+      };
 
       const draft: ContactDraft = {
         name,
@@ -154,8 +160,10 @@ export function createMacContactsWriteTool(deps: MacContactsWriteToolDeps): Muse
         await log("failed", "user-approved contact creation", detail);
         return { detail, reason: "write-failed", written: false };
       }
-      await log("performed", "user-approved contact creation", `created: ${name}`);
-      return { name, written: true };
+      const auditLogged = await log("performed", "user-approved contact creation", `created: ${name}`);
+      return auditLogged
+        ? { name, written: true }
+        : { auditLogged: false, detail: "contact created, but action audit logging failed", name, written: true };
     }
   };
 }

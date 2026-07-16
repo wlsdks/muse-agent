@@ -22,6 +22,10 @@ import { linkExpandRefs } from "./notes-links.js";
 
 type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 
+// Keep the package boundary aligned with the CLI's `--top` contract without
+// introducing a package -> app dependency. This also bounds direct callers.
+const MAX_RETRIEVAL_TOP_K = 20;
+
 export interface NoteRetrievalResult {
   /** The selected (MMR + graph + second-hop) chunks for the prompt window. */
   scored: ScoredChunk[];
@@ -54,7 +58,8 @@ export async function retrieveAndRankNotes(params: {
    */
   readonly rerankFn?: (query: string, candidateTexts: readonly string[]) => Promise<readonly number[] | undefined>;
 }): Promise<NoteRetrievalResult> {
-  const { query, embedModel, indexFiles, notesDir, topK, scope, json, onStderr, embedFn, rerankFn } = params;
+  const { query, embedModel, indexFiles, notesDir, scope, json, onStderr, embedFn, rerankFn } = params;
+  const topK = normalizeRetrievalTopK(params.topK);
 
   let scored: ScoredChunk[] = [];
   let preGapScored: ScoredChunk[] = [];
@@ -187,4 +192,11 @@ export async function retrieveAndRankNotes(params: {
   // below, never drop it. Confidence classification reads `preGapScored`
   // (untouched), so this only reorders which chunk the model sees/cites first.
   return { notesUnavailable, preGapScored, queryVec, scored: demoteStale(scored, (s) => s.chunk.text), splitClauses, subqueryEmbeddings };
+}
+
+function normalizeRetrievalTopK(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    return 0;
+  }
+  return Math.min(value, MAX_RETRIEVAL_TOP_K);
 }

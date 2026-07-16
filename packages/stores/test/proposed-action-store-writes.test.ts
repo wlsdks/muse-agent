@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,6 +48,18 @@ describe("writeProposedActions / readProposedActions", () => {
     const file = freshFile();
     await writeProposedActions(file, []);
     expect(await readProposedActions(file)).toEqual([]);
+  });
+
+  it("drops malformed expiry and delivery fields so stale drafts cannot become actionable", async () => {
+    const file = freshFile();
+    await writeFile(file, JSON.stringify({
+      proposals: [
+        proposal("valid"),
+        { ...proposal("invalid-expiry"), expiresAt: "not-a-date" },
+        { ...proposal("invalid-route"), destination: " " }
+      ]
+    }));
+    expect((await readProposedActions(file)).map((item) => item.id)).toEqual(["valid"]);
   });
 });
 

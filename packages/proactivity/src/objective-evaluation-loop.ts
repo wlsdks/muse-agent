@@ -76,6 +76,22 @@ const DEFAULT_MAX_PER_TICK = 5;
 const DEFAULT_MAX_ATTEMPTS = 6;
 const DEFAULT_BACKOFF_BASE_MS = 60_000;
 const DEFAULT_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+const MAX_DATE_MS = 8_640_000_000_000_000;
+
+function normalizePositiveDuration(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback;
+}
+
+function nextBackoffDelay(baseMs: number, capMs: number, attempt: number, nowMs: number): number {
+  const latestValidDelay = Math.max(1, MAX_DATE_MS - nowMs);
+  const cappedDelay = Math.min(capMs, latestValidDelay);
+  const exponentialDelay = baseMs * 2 ** (attempt - 1);
+  return Number.isFinite(exponentialDelay)
+    ? Math.min(cappedDelay, exponentialDelay)
+    : cappedDelay;
+}
 
 /**
  * Re-evaluate due objectives. The whole select→evaluate→act→mark section
@@ -127,8 +143,8 @@ async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Prom
   // non-finite backoff makes `delay` NaN, then `new Date(nowMs + NaN).toISOString()`
   // throws — the catch swallows it, the objective never gets a new nextEvalAt and
   // re-evaluates EVERY tick (backoff defeated). Fall back to the default.
-  const base = Number.isFinite(options.backoffBaseMs) ? options.backoffBaseMs! : DEFAULT_BACKOFF_BASE_MS;
-  const cap = Number.isFinite(options.backoffMaxMs) ? options.backoffMaxMs! : DEFAULT_BACKOFF_MAX_MS;
+  const base = normalizePositiveDuration(options.backoffBaseMs, DEFAULT_BACKOFF_BASE_MS);
+  const cap = normalizePositiveDuration(options.backoffMaxMs, DEFAULT_BACKOFF_MAX_MS);
 
   const nowMs = now().getTime();
   const all = await readObjectives(options.file);
@@ -204,7 +220,7 @@ async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Prom
         continue;
       }
 
-      const delay = Math.min(cap, base * 2 ** (attempts - 1));
+      const delay = nextBackoffDelay(base, cap, attempts, nowMs);
       await patchObjective(options.file, objective.id, {
         attempts,
         lastEvaluatedAt: nowIso,

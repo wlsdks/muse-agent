@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { MuseDatabase } from "@muse/db";
+import { quarantineCorruptFile, withFileLock, withFileMutationQueue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import type {
   KyselyTaskMemoryStoreOptions,
@@ -53,6 +54,15 @@ type RequiredTaskState = Omit<
   readonly userId?: string;
 };
 
+function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+
+  return resolved;
+}
+
 export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenance {
   private readonly tasks = new Map<string, RequiredTaskState>();
   private readonly activeTaskBySession = new Map<string, string>();
@@ -60,8 +70,8 @@ export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaint
   private readonly retentionMs: number;
 
   constructor(options: { readonly maxTasks?: number; readonly retentionMs?: number } = {}) {
-    this.maxTasks = Math.max(1, options.maxTasks ?? 10_000);
-    this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_TASK_MEMORY_RETENTION_MS);
+    this.maxTasks = requirePositiveSafeInteger(options.maxTasks, 10_000, "maxTasks");
+    this.retentionMs = requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs");
   }
 
   save(state: TaskState): void {
@@ -251,11 +261,14 @@ async function readTaskStates(file: string): Promise<readonly TaskState[]> {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    return []; // corrupt ⇒ empty, never throw (task recall is best-effort)
+    await quarantineCorruptFile(file);
+    return []; // corrupt ⇒ preserve + degrade to empty, never throw (task recall is best-effort)
   }
-  const list = parsed && typeof parsed === "object" && Array.isArray((parsed as { tasks?: unknown }).tasks)
-    ? (parsed as { tasks: SerializedTaskState[] }).tasks
-    : [];
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+    await quarantineCorruptFile(file);
+    return [];
+  }
+  const list = (parsed as { tasks: SerializedTaskState[] }).tasks;
   return list.filter((entry) => entry && typeof entry.taskId === "string" && entry.taskId.length > 0).map(deserializeTaskState);
 }
 
@@ -286,14 +299,13 @@ async function writeTaskStates(file: string, tasks: readonly TaskState[]): Promi
  * `FileConversationSummaryStore`.
  */
 export class FileTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenance {
-  private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
   private readonly options: { readonly maxTasks?: number; readonly retentionMs?: number };
   constructor(options: { readonly file?: string; readonly maxTasks?: number; readonly retentionMs?: number } = {}) {
     this.file = options.file && options.file.trim().length > 0 ? options.file : defaultTaskMemoryFile();
     this.options = {
-      ...(options.maxTasks !== undefined ? { maxTasks: options.maxTasks } : {}),
-      ...(options.retentionMs !== undefined ? { retentionMs: options.retentionMs } : {})
+      maxTasks: requirePositiveSafeInteger(options.maxTasks, 10_000, "maxTasks"),
+      retentionMs: requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs")
     };
   }
 
@@ -339,17 +351,7 @@ export class FileTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenan
   }
 
   private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
-    const prior = FileTaskMemoryStore.writeQueues.get(this.file) ?? Promise.resolve();
-    const next = prior.catch(() => undefined).then(operation);
-    FileTaskMemoryStore.writeQueues.set(this.file, next);
-
-    try {
-      return await next;
-    } finally {
-      if (FileTaskMemoryStore.writeQueues.get(this.file) === next) {
-        FileTaskMemoryStore.writeQueues.delete(this.file);
-      }
-    }
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
 }
 
@@ -362,7 +364,7 @@ export class KyselyTaskMemoryStore implements TaskMemoryStore, TaskMemoryMainten
     options: KyselyTaskMemoryStoreOptions = {}
   ) {
     this.now = options.now ?? (() => new Date());
-    this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_TASK_MEMORY_RETENTION_MS);
+    this.retentionMs = requirePositiveSafeInteger(options.retentionMs, DEFAULT_TASK_MEMORY_RETENTION_MS, "retentionMs");
   }
 
   async save(state: TaskState): Promise<void> {

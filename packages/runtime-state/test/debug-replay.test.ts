@@ -178,6 +178,18 @@ describe("createDebugReplayCaptureInsert + mapDebugReplayCaptureRow", () => {
     });
   });
 
+  it("drops non-finite values rather than serializing them as JSON null", () => {
+    const insert = createDebugReplayCaptureInsert({
+      capturedAt: "2026-05-09T00:00:00.000Z",
+      metadata: { nested: { invalid: Number.POSITIVE_INFINITY } },
+      toolsAttempted: ["read_file", Number.NaN, { invalid: Number.NEGATIVE_INFINITY }],
+      userPrompt: "say hi"
+    });
+
+    expect(insert.metadata_json).toEqual({});
+    expect(insert.tools_attempted).toEqual(["read_file"]);
+  });
+
   it("a corrupt persisted timestamp degrades to a valid ISO, not a RangeError that 500s the list", () => {
     // One hand-edited / partially-written row must not throw out of
     // the mapper — that would crash GET /api/admin/debug/replay for

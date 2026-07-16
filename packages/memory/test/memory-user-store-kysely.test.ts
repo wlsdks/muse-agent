@@ -76,15 +76,25 @@ function createFakeUserMemoriesDb() {
           };
         }
       };
+    },
+    transaction() {
+      return {
+        execute: async <T>(operation: (transaction: Kysely<MuseDatabase>) => Promise<T>) =>
+          operation(db as unknown as Kysely<MuseDatabase>)
+      };
     }
   };
   return { db: db as unknown as Kysely<MuseDatabase>, rows };
 }
 
+function createStore(db: Kysely<MuseDatabase>): KyselyUserMemoryStore {
+  return new KyselyUserMemoryStore(db, { acquireUserLock: async () => undefined });
+}
+
 describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () => {
   it("findByUserId returns undefined when absent, the row once inserted", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     expect(await store.findByUserId("stark")).toBeUndefined();
     await store.upsertFact("stark", "name", "Stark");
     expect((await store.findByUserId("stark"))?.facts.name).toBe("Stark");
@@ -92,7 +102,7 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
 
   it("upsertFact preserves an EXISTING preference instead of clobbering it on save()", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     await store.upsertPreference("stark", "tone", "concise");
     await store.upsertFact("stark", "city", "Seoul");
     const memory = await store.findByUserId("stark");
@@ -102,7 +112,7 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
 
   it("upsertPreference preserves EXISTING facts instead of clobbering them on save()", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     await store.upsertFact("stark", "city", "Seoul");
     await store.upsertPreference("stark", "tone", "concise");
     const memory = await store.findByUserId("stark");
@@ -112,7 +122,7 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
 
   it("upsertUserModelSlot preserves existing facts/preferences and replaces a slot by id within its kind", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     await store.upsertFact("stark", "city", "Seoul");
     await store.upsertUserModelSlot!("stark", { id: "style", kind: "preference", updatedAt: new Date("2026-05-01T00:00:00Z"), value: "concise" });
     await store.upsertUserModelSlot!("stark", { id: "style", kind: "preference", updatedAt: new Date("2026-05-02T00:00:00Z"), value: "very concise" });
@@ -125,7 +135,7 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
 
   it("deleteByUserId reports true only when a row actually existed", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     await store.upsertFact("stark", "name", "Stark");
     expect(await store.deleteByUserId("stark")).toBe(true);
     expect(await store.deleteByUserId("stark")).toBe(false); // already gone
@@ -134,11 +144,25 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
 
   it("keeps two users' rows independent", async () => {
     const { db } = createFakeUserMemoriesDb();
-    const store = new KyselyUserMemoryStore(db);
+    const store = createStore(db);
     await store.upsertFact("stark", "name", "Stark");
     await store.upsertFact("rhodes", "name", "Rhodey");
     expect((await store.findByUserId("stark"))?.facts.name).toBe("Stark");
     expect((await store.findByUserId("rhodes"))?.facts.name).toBe("Rhodey");
+  });
+
+  it("takes a transaction-scoped user lock before same-user read-modify-write updates", async () => {
+    const { db } = createFakeUserMemoriesDb();
+    const lockedUsers: string[] = [];
+    const store = new KyselyUserMemoryStore(db, {
+      acquireUserLock: async (_transaction, userId) => {
+        lockedUsers.push(userId);
+      }
+    });
+
+    await store.upsertFact("stark", "name", "Stark");
+
+    expect(lockedUsers).toEqual(["stark"]);
   });
 });
 

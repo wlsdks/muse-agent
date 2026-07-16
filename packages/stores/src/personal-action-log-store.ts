@@ -200,16 +200,17 @@ export async function readActionLog(file: string, env: NodeJS.ProcessEnv = proce
   );
 }
 
-async function writeActionLog(file: string, entries: readonly ActionLogEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+async function writeActionLogUnlocked(
+  file: string,
+  entries: readonly ActionLogEntry[],
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
   const text = `${JSON.stringify({ entries }, null, 2)}\n`;
-  // Peek + write under the SAME cross-process lock the migration uses so an
-  // ordinary append can't race `encryptActionLogAtRest` and clobber it with a
-  // stale-format payload; format is preserved (encrypted stays encrypted,
-  // plaintext stays plaintext). atomicWriteFile keeps the 0o600 owner-only mode.
-  await withFileLock(file, async () => {
-    const encrypted = await isFileEncryptedAtRest(file);
-    await writeMaybeEncrypted(file, text, encrypted, env);
-  });
+  // The caller owns the cross-process lock. Checking the current format and
+  // replacing the file must remain in that same critical section so encrypted
+  // logs stay encrypted and a concurrent migration cannot be overwritten.
+  const encrypted = await isFileEncryptedAtRest(file);
+  await writeMaybeEncrypted(file, text, encrypted, env);
 }
 
 /**
@@ -246,13 +247,15 @@ export async function appendActionLog(file: string, entry: ActionLogEntry, env: 
   const redacted = redactActionLogEntry(entry);
   const prior = appendQueues.get(file) ?? resolvedPromise();
   const op = async (): Promise<void> => {
-    const existing = await readActionLog(file, env);
-    // Seal the new entry to the chain tip — its prevHash binds it to all prior
-    // history, so a later deletion/edit/reorder breaks verification at a precise
-    // index. The append queue already serialises the read-modify-write, so two
-    // concurrent appends can't fork the chain.
-    const chained: ActionLogEntry = { ...redacted, prevHash: chainTipHash(existing) };
-    await writeActionLog(file, [...existing, chained], env);
+    await withFileLock(file, async () => {
+      const existing = await readActionLog(file, env);
+      // Seal the new entry to the chain tip — its prevHash binds it to all prior
+      // history, so a later deletion/edit/reorder breaks verification at a precise
+      // index. The in-process queue prevents local forks; the file lock extends
+      // that read-modify-write invariant to every Muse process.
+      const chained: ActionLogEntry = { ...redacted, prevHash: chainTipHash(existing) };
+      await writeActionLogUnlocked(file, [...existing, chained], env);
+    });
   };
   const next = prior.then(op, op);
   appendQueues.set(file, next.then(() => undefined, () => undefined));
@@ -326,6 +329,12 @@ function isActionLogEntry(value: unknown): value is ActionLogEntry {
   if (e.gateClass !== undefined && typeof e.gateClass !== "string") {
     return false;
   }
+  if (e.objectiveId !== undefined && typeof e.objectiveId !== "string") {
+    return false;
+  }
+  if (e.detail !== undefined && typeof e.detail !== "string") {
+    return false;
+  }
   return e.result === "performed" || e.result === "refused" || e.result === "failed" || e.result === "noted";
 }
 
@@ -397,17 +406,17 @@ export async function pruneActionLogByAge(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<ActionLogPruneResult> {
   const now = options.now ?? Date.now();
-  const entries = await readActionLog(file, env);
-  if (entries.length === 0) {
-    return { rotated: false };
-  }
-  const oldestMs = Date.parse(entries[0]!.when);
   const cutoffMs = now - Math.max(0, options.ageDays) * 86_400_000;
-  if (!Number.isFinite(oldestMs) || oldestMs >= cutoffMs) {
-    return { rotated: false };
-  }
   const archivePath = `${file}.archive-${now.toString()}.json`;
   return withFileLock(file, async () => {
+    const entries = await readActionLog(file, env);
+    if (entries.length === 0) {
+      return { rotated: false };
+    }
+    const oldestMs = Date.parse(entries[0]!.when);
+    if (!Number.isFinite(oldestMs) || oldestMs >= cutoffMs) {
+      return { rotated: false };
+    }
     const wasEncrypted = await isFileEncryptedAtRest(file);
     await fs.rename(file, archivePath);
     await writeMaybeEncrypted(file, EMPTY_ACTION_LOG_BODY, wasEncrypted, env);

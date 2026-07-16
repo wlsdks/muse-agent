@@ -27,6 +27,11 @@ const veto = (id: string): ActionVeto => ({
 // veto is a learned-avoidance the agent forgets, so it re-attempts an action
 // the user already refused.
 describe("recordVeto — cross-process file lock", () => {
+  it("drops a malformed optional reason at the persisted boundary", async () => {
+    await writeFile(file, JSON.stringify({ vetoes: [veto("valid"), { ...veto("invalid"), reason: 7 }] }), "utf8");
+    expect((await readVetoes(file)).map((entry) => entry.id)).toEqual(["valid"]);
+  });
+
   it("blocks its write while an externally-held (cross-process) lock is present", async () => {
     const lockPath = `${file}.lock`;
     await writeFile(lockPath, "external-holder", "utf8");

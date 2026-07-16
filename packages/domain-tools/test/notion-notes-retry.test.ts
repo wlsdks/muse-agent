@@ -26,6 +26,10 @@ function sequence(responses: Array<{ status: number; body: string }>, onCall?: (
 }
 
 describe("NotionNotesProvider — read retries a transient 429 (Notion rate-limit)", () => {
+  it("rejects a non-Notion endpoint before a token can be sent", () => {
+    expect(() => new NotionNotesProvider({ endpoint: "https://example.test/v1", fetchImpl: sequence([]), token: "t" })).toThrow();
+  });
+
   it("list() recovers from a 429 then succeeds (the real-world rate-limit failure mode)", async () => {
     let calls = 0;
     const notion = new NotionNotesProvider({

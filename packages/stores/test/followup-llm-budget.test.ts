@@ -1,6 +1,7 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,6 +48,17 @@ describe("incrementFollowupLlmBudget", () => {
     expect(await incrementFollowupLlmBudget(file, "2026-06-01")).toEqual({ calls: 1, date: "2026-06-01" });
     expect(await incrementFollowupLlmBudget(file, "2026-06-01")).toEqual({ calls: 2, date: "2026-06-01" });
     expect(await incrementFollowupLlmBudget(file, "2026-06-02")).toEqual({ calls: 1, date: "2026-06-02" }); // rollover
+  });
+
+  it("increments from the latest cross-process state after waiting for the file lock", async () => {
+    await incrementFollowupLlmBudget(file, "2026-06-01");
+    await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
+    const localIncrement = incrementFollowupLlmBudget(file, "2026-06-01");
+    await sleep(300);
+    await writeFile(file, `${JSON.stringify({ calls: 9, date: "2026-06-01" }, null, 2)}\n`);
+    await unlink(`${file}.lock`);
+
+    await expect(localIncrement).resolves.toEqual({ calls: 10, date: "2026-06-01" });
   });
 });
 

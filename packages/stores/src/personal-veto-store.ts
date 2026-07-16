@@ -167,6 +167,7 @@ function isActionVeto(value: unknown): value is ActionVeto {
     typeof v.userId === "string" &&
     typeof v.objectiveId === "string" &&
     typeof v.scope === "string" &&
-    typeof v.vetoedAt === "string"
+    typeof v.vetoedAt === "string" &&
+    (v.reason === undefined || typeof v.reason === "string")
   );
 }

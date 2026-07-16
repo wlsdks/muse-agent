@@ -22,6 +22,10 @@ describe("tsToIso (Slack ts → ISO conversion on the fetchInbound path)", () =>
     expect(tsToIso("Infinity")).toBe("Infinity");
   });
 
+  it("rejects a numeric prefix with trailing junk instead of silently advancing a malformed cursor", () => {
+    expect(tsToIso("1700000000.123456garbage")).toBe("1700000000.123456garbage");
+  });
+
   it("falls back when seconds*1000 exceeds the maximum Date value (would throw RangeError) — defends fetchInbound from a poisoned ts crashing the whole batch", () => {
     const beyondMaxDate = "9999999999999999";
     expect(Number.isFinite(new Date(Number.parseFloat(beyondMaxDate) * 1000).getTime())).toBe(false);

@@ -635,16 +635,19 @@ export async function runLocalChat(
  * lazily here — a STATIC import would break the bun-compiled desktop binary.
  */
 async function autoCompleteReportedTask(message: string): Promise<string | null> {
-  const { readTasks, writeTasks } = await import("@muse/stores");
+  const { mutateTasks } = await import("@muse/stores");
   const file = resolveTasksFile(process.env as Record<string, string | undefined>);
-  const tasks = await readTasks(file);
-  const openTasks = tasks.filter((task) => task.status === "open");
-  const index = matchCompletedTask(message, openTasks.map((task) => task.title));
-  if (index === null) return null;
-  const target = openTasks[index]!;
-  const completedAt = new Date().toISOString();
-  await writeTasks(file, tasks.map((task) => task.id === target.id ? { ...task, status: "done" as const, completedAt } : task));
-  return target.title;
+  let completedTitle: string | null = null;
+  await mutateTasks(file, (current) => {
+    const openTasks = current.filter((task) => task.status === "open");
+    const index = matchCompletedTask(message, openTasks.map((task) => task.title));
+    if (index === null) return current;
+    const target = openTasks[index]!;
+    completedTitle = target.title;
+    const completedAt = new Date().toISOString();
+    return current.map((task) => task.id === target.id ? { ...task, status: "done" as const, completedAt } : task);
+  });
+  return completedTitle;
 }
 
 /** Honest stand-in when the model returns a blank completion — never a blank bubble. */
@@ -699,4 +702,3 @@ export function wireReplGracefulExit(args: {
     process.off("SIGINT", sigintProcess);
   };
 }
-

@@ -34,6 +34,16 @@ describe("createOllamaEmbedder — MUSE_LOCAL_ONLY fail-close on remote OLLAMA_B
     expect(() => createOllamaEmbedder("nomic-embed-text-v2-moe")).toThrow(LocalOnlyViolationError);
   });
 
+  it("honours an injected local-only environment instead of ambient process.env", () => {
+    process.env.OLLAMA_BASE_URL = "http://192.168.1.50:11434";
+    delete process.env.MUSE_LOCAL_ONLY;
+
+    expect(() => createOllamaEmbedder("nomic-embed-text-v2-moe", {
+      MUSE_LOCAL_ONLY: "true",
+      OLLAMA_BASE_URL: "https://ollama.example.com"
+    })).toThrow(LocalOnlyViolationError);
+  });
+
   it("allows a loopback OLLAMA_BASE_URL under local-only", async () => {
     process.env.OLLAMA_BASE_URL = "http://localhost:11434";
     process.env.MUSE_LOCAL_ONLY = "true";

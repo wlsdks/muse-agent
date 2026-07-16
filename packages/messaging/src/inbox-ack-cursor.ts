@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 /**
  * Persisted set of inbound message keys (`${providerId}:${messageId}`)
@@ -38,19 +38,13 @@ export async function readAckCursor(file: string): Promise<ReadonlySet<string>> 
   return new Set();
 }
 
-// Same race the reply cursor guards against: an overlapping tick must never
-// lose an acked key (a lost key means a SECOND ack for the same message,
-// exactly the duplicate this cursor exists to prevent). Per-file mutation
-// queue + randomUUID tmp, mirrored from `appendReplyCursor`.
-const appendQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
-
 export async function appendAckCursor(file: string, newKeys: readonly string[]): Promise<void> {
   if (newKeys.length === 0) {
     return;
   }
-  const prior = appendQueues.get(file) ?? resolvedPromise();
-  const op = async (): Promise<void> => {
+  // Losing an acknowledged key causes a second acknowledgement. Coordinate
+  // the complete read-merge-write across both daemon processes.
+  await withMessagingFileMutation(file, async () => {
     const merged = new Set(await readAckCursor(file));
     for (const key of newKeys) {
       merged.add(key);
@@ -58,12 +52,6 @@ export async function appendAckCursor(file: string, newKeys: readonly string[]):
     const all = [...merged];
     const bounded = all.slice(Math.max(0, all.length - MAX_ACKED));
     const payload: PersistedShape = { acked: bounded, version: 1 };
-    await fs.mkdir(dirname(file), { recursive: true });
-    const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
-    await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-    await fs.rename(tmp, file);
-  };
-  const next = prior.then(op, op);
-  appendQueues.set(file, next.then(() => undefined, () => undefined));
-  return next;
+    await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
+  });
 }

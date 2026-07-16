@@ -24,6 +24,8 @@
 
 import { runCommandWithTimeout } from "@muse/shared";
 
+import { normalizeAppleScriptTimeout, quoteAppleScriptString as quote } from "./apple-script-shared.js";
+
 import {
   NotesProviderError,
   NotesValidationError,
@@ -63,7 +65,6 @@ export interface AppleNotesProviderOptions {
  * between the AppleScript template and `parseSearchOutput`.
  */
 const APPLE_NOTES_SEARCH_DELIM = "~~~MUSE_NOTES_SEARCH_END~~~";
-const APPLE_NOTES_OSASCRIPT_TIMEOUT_MS = 30_000;
 
 export class AppleNotesProvider implements NotesProvider {
   readonly id = "apple";
@@ -74,10 +75,7 @@ export class AppleNotesProvider implements NotesProvider {
   constructor(options: AppleNotesProviderOptions = {}) {
     this.folder = options.folder;
     this.osascriptPath = options.osascriptPath ?? "/usr/bin/osascript";
-    this.timeoutMs =
-      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
-        ? options.timeoutMs
-        : APPLE_NOTES_OSASCRIPT_TIMEOUT_MS;
+    this.timeoutMs = normalizeAppleScriptTimeout(options.timeoutMs);
   }
 
   describe(): NotesProviderInfo {
@@ -338,8 +336,4 @@ function parseSearchOutput(output: string, query: string, providerId: string): r
 function toDateOrUndefined(iso: string): Date | undefined {
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
-function quote(value: string): string {
-  return `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/\n/gu, "\\n")}"`;
 }

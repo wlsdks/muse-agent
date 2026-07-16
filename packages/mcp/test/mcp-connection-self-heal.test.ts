@@ -172,6 +172,78 @@ describe("DS-16 — MCP connection self-heal", () => {
     }
   });
 
+  it("retires a connection after a permanent tool-call failure instead of leaving it marked connected", async () => {
+    const connection = makeConnection("unused");
+    connection.callTool = vi.fn().mockRejectedValue(new McpConnectionError("token revoked", 401));
+    const connector = { connect: vi.fn().mockResolvedValue(connection) };
+    const manager = new McpManager(new InMemoryMcpServerStore(), { connector });
+
+    await connectServer(manager);
+    const [tool] = manager.toMuseTools();
+
+    await expect(tool?.execute({}, CONTEXT)).resolves.toContain("token revoked");
+    expect(manager.getStatus("local")).toBe("disabled");
+    expect(manager.getToolCatalog("local")).toEqual([]);
+    expect(connection.close).toHaveBeenCalledTimes(1);
+
+    await expect(tool?.execute({}, CONTEXT)).resolves.toContain("disconnected");
+    expect(connector.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves cancellation without retiring an otherwise-live connection", async () => {
+    const connection = makeConnection("unused");
+    const abort = Object.assign(new Error("cancelled"), { name: "AbortError" });
+    connection.callTool = vi.fn().mockRejectedValue(abort);
+    const connector = { connect: vi.fn().mockResolvedValue(connection) };
+    const manager = new McpManager(new InMemoryMcpServerStore(), { connector });
+
+    await connectServer(manager);
+    const [tool] = manager.toMuseTools();
+
+    await expect(tool?.execute({}, CONTEXT)).rejects.toBe(abort);
+    expect(manager.getStatus("local")).toBe("connected");
+    expect(manager.getToolCatalog("local")).toHaveLength(1);
+    expect(connection.close).not.toHaveBeenCalled();
+  });
+
+  it("does not let a delayed concurrent failure retire a replacement connection", async () => {
+    let nowMs = 0;
+    let releaseFirstClose: (() => void) | undefined;
+    let releaseSecondClose: (() => void) | undefined;
+    const firstClose = new Promise<void>((resolve) => { releaseFirstClose = resolve; });
+    const secondClose = new Promise<void>((resolve) => { releaseSecondClose = resolve; });
+    const failed = makeConnection("unused");
+    failed.callTool = vi.fn().mockRejectedValue(new McpConnectionError("upstream down", 503));
+    failed.close = vi
+      .fn()
+      .mockImplementationOnce(async () => firstClose)
+      .mockImplementationOnce(async () => secondClose);
+    const replacement = makeConnection("fresh-reply");
+    const connector = { connect: vi.fn().mockResolvedValueOnce(failed).mockResolvedValueOnce(replacement) };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector,
+      now: () => new Date(nowMs),
+      reconnect: { initialDelayMs: 1, maxAttempts: 3 }
+    });
+
+    await connectServer(manager);
+    const [tool] = manager.toMuseTools();
+    const first = tool?.execute({}, CONTEXT);
+    const second = tool?.execute({}, CONTEXT);
+    await vi.waitFor(() => expect(failed.close).toHaveBeenCalledTimes(2));
+
+    releaseFirstClose?.();
+    await vi.waitFor(() => expect(manager.getStatus("local")).toBe("failed"));
+    nowMs = 10;
+    await expect(tool?.execute({}, CONTEXT)).resolves.toBe("fresh-reply");
+    expect(manager.getStatus("local")).toBe("connected");
+
+    releaseSecondClose?.();
+    await Promise.all([first, second]);
+    expect(manager.getStatus("local")).toBe("connected");
+    expect(manager.getToolCatalog("local")).toHaveLength(1);
+  });
+
   it("does not retry-storm inside the reconnect backoff window (transient failure)", async () => {
     const nowMs = 1_800_000_000_000;
     const first = makeConnection("dead-reply");

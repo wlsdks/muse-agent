@@ -17,6 +17,8 @@
 
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 import { dirname } from "node:path";
 
 export interface PendingApproval {
@@ -87,22 +89,8 @@ export async function readPendingApprovals(file: string): Promise<readonly Pendi
 }
 
 async function writePendingApprovals(file: string, pending: readonly PendingApproval[]): Promise<void> {
-  await fs.mkdir(dirname(file), { recursive: true });
-  // The tmp name MUST be unique per in-flight write: two concurrent writes in
-  // the same millisecond+pid would otherwise pick the same tmp path, and one
-  // rename consumes the other's tmp → ENOENT. A random uuid guarantees
-  // uniqueness (there is no write-queue serialising callers here).
-  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   const payload = `${JSON.stringify({ pending }, null, 2)}\n`;
-  const handle = await fs.open(tmp, "w");
-  try {
-    await handle.writeFile(payload);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWritePrivateFile(file, payload);
 }
 
 // Per-file mutation queue: record/clear are read-modify-write, so two
@@ -110,13 +98,8 @@ async function writePendingApprovals(file: string, pending: readonly PendingAppr
 // write would clobber the first (last-writer-wins, a silently dropped pending
 // approval — i.e. a refused action lost). Serialising the WHOLE op per file
 // makes the store lossless under concurrency, mirroring the inbox write-queue.
-const mutationQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
 function serializePerFile<T>(file: string, op: () => Promise<T>): Promise<T> {
-  const prior = mutationQueues.get(file) ?? resolvedPromise();
-  const next = prior.then(op, op);
-  mutationQueues.set(file, next.then(() => undefined, () => undefined));
-  return next;
+  return withMessagingFileMutation(file, op);
 }
 
 /**

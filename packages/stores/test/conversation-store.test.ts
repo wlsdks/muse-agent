@@ -106,13 +106,16 @@ describe("FileConversationStore — round-trip persistence", () => {
     expect((list[0] as unknown as { turns?: unknown }).turns).toBeUndefined();
   });
 
-  it("rename() persists the new title; delete() removes the conversation durably", async () => {
+  it("rename() persists the new title and bumps updatedAt; delete() removes the conversation durably", async () => {
     const file = tmpFile();
-    const store = new FileConversationStore({ file });
+    let now = new Date("2026-07-14T09:00:00.000Z");
+    const store = new FileConversationStore({ file, now: () => now });
     await store.appendTurns("c1", [{ content: "hi", role: "user" }]);
 
+    now = new Date("2026-07-14T09:05:00.000Z");
     expect(await store.rename("c1", "renamed title")).toBe(true);
     expect((await store.get("c1"))?.title).toBe("renamed title");
+    expect((await store.get("c1"))?.updatedAt).toBe("2026-07-14T09:05:00.000Z");
     expect(await store.rename("does-not-exist", "x")).toBe(false);
 
     expect(await store.delete("c1")).toBe(true);

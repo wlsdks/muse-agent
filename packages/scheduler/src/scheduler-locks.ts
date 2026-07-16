@@ -37,6 +37,10 @@ interface InMemorySchedulerLockEntry {
   readonly lockedUntil: Date;
 }
 
+function normalizeLockTtlMs(ttlMs: number): number {
+  return Number.isFinite(ttlMs) && ttlMs > 0 ? Math.max(1, Math.trunc(ttlMs)) : 1;
+}
+
 export class NoOpDistributedSchedulerLock implements DistributedSchedulerLock {
   tryAcquire(): boolean {
     return true;
@@ -66,7 +70,7 @@ export class InMemoryDistributedSchedulerLock implements DistributedSchedulerLoc
     }
 
     this.locks.set(jobId, {
-      lockedUntil: new Date(now.getTime() + Math.max(1, ttlMs)),
+      lockedUntil: new Date(now.getTime() + normalizeLockTtlMs(ttlMs)),
       ownerId: this.ownerId
     });
     return true;
@@ -138,7 +142,7 @@ export function createScheduledJobLockInsert(
   return {
     created_at: now,
     job_id: jobId,
-    locked_until: new Date(now.getTime() + Math.max(1, ttlMs)),
+    locked_until: new Date(now.getTime() + normalizeLockTtlMs(ttlMs)),
     owner_id: ownerId,
     updated_at: now
   };

@@ -1,4 +1,4 @@
-import { truncateErrorBody } from "@muse/shared";
+import { errorMessage, truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
@@ -104,19 +104,39 @@ export class LineProvider implements MessagingProvider {
     validateOutboundMessage({ ...message, text: outboundText });
     // No link-preview-suppression field exists on the LINE text
     // message object — accepted residual risk, see outbound-safety.md.
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/v2/bot/message/push`, {
-      body: JSON.stringify({
-        messages: [{ text: outboundText, type: "text" }],
-        to: message.destination
-      }),
-      headers: {
-        authorization: `Bearer ${this.token}`,
-        "content-type": "application/json"
-      },
-      method: "POST"
-    }, this.timeoutMs);
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/v2/bot/message/push`, {
+        body: JSON.stringify({
+          messages: [{ text: outboundText, type: "text" }],
+          to: message.destination
+        }),
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          "content-type": "application/json"
+        },
+        method: "POST"
+      }, this.timeoutMs);
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `LINE pushMessage request failed: ${errorMessage(cause, "network request failed")}`
+      );
+    }
     if (!response.ok) {
-      const text = await response.text();
+      let text: string;
+      try {
+        text = await response.text();
+      } catch (cause) {
+        throw new MessagingProviderError(
+          this.id,
+          "UPSTREAM_FAILED",
+          `LINE pushMessage failed with ${response.status.toString()}: unable to read error response: ${errorMessage(cause, "unknown response body failure")}`,
+          response.status,
+          retryAfterMsFromResponse(response)
+        );
+      }
       const parsed = tryParseJson<LineErrorResponse>(text);
       throw new MessagingProviderError(
         this.id,

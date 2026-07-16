@@ -92,6 +92,10 @@ describe("searchBrowsingVisits", () => {
   it("respects the limit", () => {
     expect(searchBrowsingVisits(visits, "example", 1)).toHaveLength(1);
   });
+
+  it("normalizes malformed result limits", () => {
+    expect(searchBrowsingVisits(visits, "example", Number.NaN)).toHaveLength(1);
+  });
 });
 
 describe("readBrowsingStore / writeBrowsingStore", () => {
@@ -132,6 +136,11 @@ describe("readBrowsingStore / writeBrowsingStore", () => {
     const store = await readBrowsingStore(file);
     expect(store.visits).toHaveLength(1);
     expect(store.lastVisitTimeCursor).toBe(0);
+  });
+
+  it("treats a non-array visits field and negative cursor as an empty valid store", async () => {
+    await writeFile(file, JSON.stringify({ lastVisitTimeCursor: -1, version: BROWSING_STORE_SCHEMA_VERSION, visits: { unexpected: true } }), "utf8");
+    await expect(readBrowsingStore(file)).resolves.toEqual({ version: BROWSING_STORE_SCHEMA_VERSION, visits: [], lastVisitTimeCursor: 0 });
   });
 
   it("backs up (does not silently discard) a version mismatch", async () => {

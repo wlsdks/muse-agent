@@ -42,6 +42,17 @@ describe("win_app_read", () => {
     expect(out.drives[0]).toMatchObject({ freeGb: 120.5, name: "C" });
   });
 
+  it("refuses malformed system capacity output instead of returning non-finite JSON numbers", () => {
+    const mixed = parseReadOutput("storage", "C\t120.5\t476.9\nD\tNaN\t931.5\nE\t20\t10\n") as unknown as {
+      readonly drives: readonly { readonly name: string }[];
+      readonly ok: boolean;
+    };
+    expect(mixed).toMatchObject({ ok: true });
+    expect(mixed.drives).toEqual([{ freeGb: 120.5, name: "C", totalGb: 476.9 }]);
+    expect(parseReadOutput("storage", "C\tInfinity\t10\n")).toMatchObject({ ok: false, reason: "no valid drives reported" });
+    expect(parseReadOutput("battery", "101\tTrue\n")).toMatchObject({ ok: false, source: "battery" });
+  });
+
   it("an unknown source is refused without spawning; a failed spawn is fail-soft", async () => {
     let called = 0;
     const tool = createWinAppReadTool({ runner: async () => { called += 1; return result(""); } });

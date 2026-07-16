@@ -50,6 +50,54 @@ describe("LineProvider.send — outbound push (contract-faithful fake)", () => {
     expect((err as MessagingProviderError & { status?: number }).status).toBe(401);
     expect((err as Error).message).toContain("Invalid channel access token");
   });
+
+  it("preserves Retry-After metadata from a rate-limited LINE response", async () => {
+    const { fetchImpl } = recordingFetch(() => new Response("rate limited", {
+      headers: { "retry-after": "2" },
+      status: 429,
+      statusText: "Too Many Requests"
+    }));
+    const provider = new LineProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "U", text: "hi" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.status).toBe(429);
+    expect(err.retryAfterMs).toBe(2_000);
+  });
+
+  it("preserves HTTP failure metadata when the response body cannot be read", async () => {
+    const unreadableResponse = {
+      headers: new Headers({ "retry-after": "3" }),
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: async (): Promise<string> => { throw new Error("body stream failed"); }
+    } as unknown as Response;
+    const { fetchImpl } = recordingFetch(() => unreadableResponse);
+    const provider = new LineProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "U", text: "hi" }).catch((cause: unknown) => cause) as MessagingProviderError;
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect(err.status).toBe(503);
+    expect(err.retryAfterMs).toBe(3_000);
+    expect(err.message).toContain("body stream failed");
+  });
+
+  it("normalizes a rejected request into UPSTREAM_FAILED for the retry policy", async () => {
+    const fetchImpl = (async () => { throw new Error("network unavailable"); }) as unknown as typeof globalThis.fetch;
+    const provider = new LineProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "U", text: "hi" }).catch((cause: unknown) => cause);
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect((err as MessagingProviderError).code).toBe("UPSTREAM_FAILED");
+    expect((err as Error).message).toContain("network unavailable");
+  });
+
+  it("normalizes a timeout-shaped request rejection into UPSTREAM_FAILED", async () => {
+    const fetchImpl = (async () => { throw new Error("request to https://api.line.me timed out after 30000ms"); }) as unknown as typeof globalThis.fetch;
+    const provider = new LineProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "U", text: "hi" }).catch((cause: unknown) => cause);
+    expect(err).toBeInstanceOf(MessagingProviderError);
+    expect((err as MessagingProviderError).code).toBe("UPSTREAM_FAILED");
+    expect((err as Error).message).toContain("timed out");
+  });
 });
 
 describe("LineProvider.fetchInbound — persisted webhook inbox", () => {

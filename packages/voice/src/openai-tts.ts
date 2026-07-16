@@ -1,5 +1,5 @@
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
-import { safeReadText } from "./http-utils.js";
+import { fetchWithVoiceTimeout, safeReadText } from "./http-utils.js";
 import type {
   TextToSpeechProvider,
   TtsFormat,
@@ -31,6 +31,7 @@ export interface OpenAITtsProviderOptions {
   readonly model?: string;
   readonly defaultVoice?: string;
   readonly defaultFormat?: TtsFormat;
+  readonly timeoutMs?: number;
   readonly fetchImpl?: FetchLike;
 }
 
@@ -46,6 +47,7 @@ export class OpenAITtsProvider implements TextToSpeechProvider {
   private readonly model: string;
   private readonly defaultVoice: string;
   private readonly defaultFormat: TtsFormat;
+  private readonly timeoutMs: number | undefined;
   private readonly fetchImpl: FetchLike;
 
   constructor(options: OpenAITtsProviderOptions) {
@@ -58,6 +60,7 @@ export class OpenAITtsProvider implements TextToSpeechProvider {
     this.model = options.model ?? DEFAULT_MODEL;
     this.defaultVoice = options.defaultVoice ?? DEFAULT_VOICE;
     this.defaultFormat = options.defaultFormat ?? "mp3";
+    this.timeoutMs = options.timeoutMs;
     this.fetchImpl = options.fetchImpl ?? ((globalThis as { fetch?: FetchLike }).fetch as FetchLike);
     if (!this.fetchImpl) {
       throw new VoiceValidationError("NO_FETCH", "global fetch is unavailable; pass fetchImpl");
@@ -95,14 +98,14 @@ export class OpenAITtsProvider implements TextToSpeechProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(this.endpoint, {
+      response = await fetchWithVoiceTimeout(this.fetchImpl, this.endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(body)
-      });
+      }, this.timeoutMs);
     } catch (cause) {
       throw new VoiceProviderError(this.id, "FETCH_FAILED", "TTS request failed", cause);
     }

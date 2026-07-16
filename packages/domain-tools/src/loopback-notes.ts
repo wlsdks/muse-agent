@@ -1,7 +1,5 @@
 import { Buffer } from "node:buffer";
 import {
-  appendFile as nodeAppendFile,
-  mkdir as nodeMkdir,
   readFile as nodeReadFile,
   readdir as nodeReaddir,
   stat as nodeStat,
@@ -11,6 +9,7 @@ import {
 import { resolve as nodePathResolve } from "node:path";
 
 import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -86,12 +85,15 @@ export interface NotesMcpServerOptions {
 }
 
 export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMcpServer {
+  if (!options.notesDir || options.notesDir.trim().length === 0) {
+    throw new Error("createNotesMcpServer requires a notesDir");
+  }
   const root = nodePathResolve(options.notesDir);
-  const defaultSearchLimit = Math.max(1, Math.trunc(options.defaultSearchLimit ?? 20));
-  const maxSearchLimit = Math.max(defaultSearchLimit, Math.trunc(options.maxSearchLimit ?? 100));
-  const maxQueryLength = Math.max(16, Math.trunc(options.maxQueryLength ?? 500));
-  const maxFileBytes = Math.max(1_024, Math.trunc(options.maxFileBytes ?? 1_048_576));
-  const maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 500));
+  const defaultSearchLimit = normalizeLimit(options.defaultSearchLimit, 20, 1);
+  const maxSearchLimit = Math.max(defaultSearchLimit, normalizeLimit(options.maxSearchLimit, 100, 1));
+  const maxQueryLength = normalizeLimit(options.maxQueryLength, 500, 16);
+  const maxFileBytes = normalizeLimit(options.maxFileBytes, 1_048_576, 1_024);
+  const maxListEntries = normalizeLimit(options.maxListEntries, 500, 1);
   const probeExists =
     options.probeExists ??
     (async (absolutePath: string): Promise<boolean> => {
@@ -104,6 +106,10 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
     });
 
   const resolveSafe = createNotesPathResolver(root);
+
+  async function mutateNote<T>(file: string, operation: () => Promise<T>): Promise<T> {
+    return withFileMutationQueue(file, () => withFileLock(file, operation));
+  }
 
   // Thin wrapper over the module-level walker that closes over the
   // server's `root` so callers don't need to keep passing it.
@@ -258,8 +264,8 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
             }
             try {
               const judged = await runNotesLlmJudge({
-                judgeMaxCandidates: Math.max(1, Math.trunc(options.judgeMaxCandidates ?? 200)),
-                judgePreviewChars: Math.max(50, Math.trunc(options.judgePreviewChars ?? 200)),
+                judgeMaxCandidates: normalizeLimit(options.judgeMaxCandidates, 200, 1),
+                judgePreviewChars: normalizeLimit(options.judgePreviewChars, 200, 50),
                 limit,
                 maxFileBytes,
                 model: options.model,
@@ -372,19 +378,24 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (typeof safe === "string") {
             return { error: safe };
           }
-          const exists = await probeExists(safe.absolute);
-          if (exists && !overwrite) {
-            return { error: `note already exists at ${safe.relative}; pass overwrite: true to replace` };
-          }
-          const parent = nodePathResolve(safe.absolute, "..");
+          let created: boolean;
           try {
-            await nodeMkdir(parent, { recursive: true });
-            // Under !overwrite, write create-exclusive (`wx`): if the probe was
-            // stale and a concurrent create landed in the TOCTOU window, the write
-            // fails with EEXIST instead of clobbering it.
-            await nodeWriteFile(safe.absolute, content, overwrite ? "utf8" : { encoding: "utf8", flag: "wx" });
+            created = await mutateNote(safe.absolute, async () => {
+              const exists = await probeExists(safe.absolute);
+              if (exists && !overwrite) {
+                throw new Error("NOTE_ALREADY_EXISTS");
+              }
+              if (overwrite) {
+                await atomicWriteFile(safe.absolute, content);
+              } else {
+                // Keep exclusive creation under the lock: another writer that
+                // does not participate in Muse's lock still cannot clobber us.
+                await nodeWriteFile(safe.absolute, content, { encoding: "utf8", flag: "wx" });
+              }
+              return !exists;
+            });
           } catch (error) {
-            if (!overwrite && (error as NodeJS.ErrnoException).code === "EEXIST") {
+            if (!overwrite && ((error as NodeJS.ErrnoException).code === "EEXIST" || (error as Error).message === "NOTE_ALREADY_EXISTS")) {
               return { error: `note already exists at ${safe.relative}; pass overwrite: true to replace` };
             }
             return { error: `cannot write note: ${errorMessage(error)}` };
@@ -396,7 +407,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           // Muse write — a failure surfaces as a visible `mirrorNote`, nothing
           // more. The Muse-side file is already written and is left untouched.
           let mirrorNote: string | undefined;
-          if (options.mirror && !exists) {
+          if (options.mirror && created) {
             try {
               const outcome = await options.mirror({ body: content, title: deriveMirrorNoteTitle(safe.relative, content) });
               if (outcome.warning) {
@@ -407,7 +418,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
             }
           }
           return {
-            created: !exists,
+            created,
             path: safe.relative,
             sizeBytes: Buffer.byteLength(content, "utf8"),
             ...(mirrorNote ? { mirrorNote } : {})
@@ -452,28 +463,31 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (typeof safe === "string") {
             return { error: safe };
           }
-          // Check the RESULTING size BEFORE writing (current bytes + the new bytes),
-          // so an append that would blow the cap mutates NOTHING — the oversized bytes
-          // never hit disk (no partial side-effect). For a non-existent file the
-          // current size is 0; both content and file are UTF-8 so the byte sum is exact.
-          const appendBytes = Buffer.byteLength(content, "utf8");
-          let currentBytes = 0;
           try {
-            currentBytes = (await nodeStat(safe.absolute)).size;
-          } catch {
-            // the note doesn't exist yet → currentBytes stays 0 (the append creates it)
-          }
-          if (currentBytes + appendBytes > maxFileBytes) {
-            return { error: `note would exceed maxFileBytes ${maxFileBytes} (current=${currentBytes}, append=${appendBytes})`, path: safe.relative };
-          }
-          const parent = nodePathResolve(safe.absolute, "..");
-          try {
-            await nodeMkdir(parent, { recursive: true });
-            await nodeAppendFile(safe.absolute, content, "utf8");
+            const result = await mutateNote(safe.absolute, async () => {
+              let existing = "";
+              try {
+                existing = await nodeReadFile(safe.absolute, "utf8");
+              } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                  throw error;
+                }
+              }
+              const next = existing + content;
+              const sizeBytes = Buffer.byteLength(next, "utf8");
+              if (sizeBytes > maxFileBytes) {
+                return { currentBytes: Buffer.byteLength(existing, "utf8") };
+              }
+              await atomicWriteFile(safe.absolute, next);
+              return { sizeBytes };
+            });
+            if ("currentBytes" in result) {
+              return { error: `note would exceed maxFileBytes ${maxFileBytes} (current=${result.currentBytes}, append=${Buffer.byteLength(content, "utf8")})`, path: safe.relative };
+            }
+            return { path: safe.relative, sizeBytes: result.sizeBytes } satisfies JsonObject;
           } catch (error) {
             return { error: `cannot append to note: ${errorMessage(error)}` };
           }
-          return { path: safe.relative, sizeBytes: currentBytes + appendBytes } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,
@@ -532,4 +546,11 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
       }
     ]
   };
+}
+
+function normalizeLimit(value: number | undefined, fallback: number, minimum: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.trunc(value));
 }

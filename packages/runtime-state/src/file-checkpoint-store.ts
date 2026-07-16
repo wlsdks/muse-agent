@@ -5,23 +5,44 @@
  * run's checkpoints to `<dir>/<runId>.json` so a mid-run crash + restart can replay
  * from the last step (the langgraph "save graph state at each step, resume" gap).
  *
- * Single-user + sequential, so a plain read-modify-write per save is safe. Tolerant:
- * a missing / corrupt file reads as no checkpoints (never throws into the agent loop).
+ * Each run file is serialized in-process and across processes. Tolerant: a missing
+ * / corrupt file reads as no checkpoints (never throws into the agent loop).
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId, withFileLock, withFileMutationQueue, type JsonObject } from "@muse/shared";
 
 import type { CheckpointStore, ExecutionCheckpoint, SaveCheckpointInput } from "./index.js";
 
 const DEFAULT_MAX_PER_RUN = 50;
 const DEFAULT_MAX_RUNS = 500;
+const RUN_FILE_PREFIX_MAX_LENGTH = 180;
+const V2_DIRECTORY = "v2";
 
-/** Filesystem-safe filename for a runId (no path traversal, no separators). */
+/**
+ * Filesystem-safe, collision-resistant filename for a run id. The readable
+ * prefix is bounded for filesystem compatibility; the full digest keeps two
+ * IDs that sanitize to the same prefix from sharing resumable state.
+ */
 function runFileName(runId: string): string {
-  return `${runId.replace(/[^A-Za-z0-9._-]/gu, "_").slice(0, 200)}.json`;
+  const prefix = fileSafeSegment(runId).slice(0, RUN_FILE_PREFIX_MAX_LENGTH) || "run";
+  return `${prefix}-${createHash("sha256").update(runId).digest("hex")}.json`;
+}
+
+/** Legacy v1 filename retained only to recover checkpoints created before collision-safe names. */
+function legacyRunFileName(runId: string): string {
+  return `${fileSafeSegment(runId).slice(0, 200)}.json`;
+}
+
+function checkpointFilePaths(dir: string, runId: string): readonly string[] {
+  return [join(dir, V2_DIRECTORY, runFileName(runId)), join(dir, legacyRunFileName(runId))];
+}
+
+function fileSafeSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/gu, "_");
 }
 
 function serialize(checkpoint: ExecutionCheckpoint): JsonObject {
@@ -43,6 +64,11 @@ function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
 }
 
 const byStep = (a: ExecutionCheckpoint, b: ExecutionCheckpoint): number => a.step - b.step;
+
+function checkpointRunId(checkpoints: readonly ExecutionCheckpoint[]): string | undefined {
+  const first = checkpoints[0];
+  return first && checkpoints.every((checkpoint) => checkpoint.runId === first.runId) ? first.runId : undefined;
+}
 
 function checkpointPhase(c: ExecutionCheckpoint): string {
   const p = (c.state as { phase?: unknown }).phase;
@@ -79,36 +105,50 @@ export class FileCheckpointStore implements CheckpointStore {
    *  completed run's checkpoints linger for replay (P3) but never grow unbounded.
    *  Amortized — only scans the dir every Nth save (the per-step hot loop calls
    *  save many times). Best-effort — a prune failure never breaks a save. */
-  async #pruneOldRuns(): Promise<void> {
+  async #checkpointGroups(): Promise<readonly { readonly mtime: number; readonly runId: string }[]> {
+    const groups = new Map<string, number>();
+    for (const file of await listCheckpointFiles(this.#dir)) {
+      const checkpoints = await readCheckpointFile(file);
+      const runId = checkpoints ? checkpointRunId(checkpoints) : undefined;
+      if (!runId) continue;
+      try {
+        const mtime = (await stat(file)).mtimeMs;
+        groups.set(runId, Math.max(groups.get(runId) ?? Number.NEGATIVE_INFINITY, mtime));
+      } catch {
+        // A concurrent delete can make a retention candidate disappear.
+      }
+    }
+    return [...groups].map(([runId, mtime]) => ({ mtime, runId }));
+  }
+
+  async #pruneOldRuns(protectedRunId: string): Promise<void> {
     this.#savesSincePrune += 1;
     if (this.#savesSincePrune < this.#pruneInterval) return;
     this.#savesSincePrune = 0;
     try {
-      const names = (await readdir(this.#dir)).filter((n) => n.endsWith(".json"));
-      if (names.length <= this.#maxRuns) return;
-      const withMtime = await Promise.all(names.map(async (n) => ({ mtime: (await stat(join(this.#dir, n))).mtimeMs, name: n })));
-      withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
-      await Promise.all(withMtime.slice(this.#maxRuns).map((e) => rm(join(this.#dir, e.name), { force: true }).catch(() => undefined)));
+      const groups = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
+      if (groups.length <= this.#maxRuns) return;
+      for (const candidate of groups.slice(this.#maxRuns)) {
+        if (candidate.runId === protectedRunId) continue;
+        await withRunFileLocks(this.#dir, candidate.runId, async () => {
+          const current = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
+          if (current.length <= this.#maxRuns || !current.slice(this.#maxRuns).some((entry) => entry.runId === candidate.runId)) {
+            return;
+          }
+          await removeCheckpointsForRun(this.#dir, candidate.runId);
+        });
+      }
     } catch {
       /* retention is best-effort */
     }
   }
 
   async findByRunId(runId: string): Promise<readonly ExecutionCheckpoint[]> {
-    let raw: string;
-    try {
-      raw = await readFile(join(this.#dir, runFileName(runId)), "utf8");
-    } catch {
-      return [];
+    for (const file of checkpointFilePaths(this.#dir, runId)) {
+      const checkpoints = await readCheckpointFile(file);
+      if (checkpoints && checkpointRunId(checkpoints) === runId) return checkpoints;
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return []; // a half-written / corrupt checkpoint file carries no resumable state
-    }
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(deserialize).filter((c): c is ExecutionCheckpoint => c !== undefined).sort(byStep);
+    return [];
   }
 
   async findLatestByRunId(runId: string): Promise<ExecutionCheckpoint | undefined> {
@@ -137,32 +177,24 @@ export class FileCheckpointStore implements CheckpointStore {
    * The reported step/phase is the PROGRESS point, not a terminal `failed` sentinel.
    * Most-recently-touched first. (Reads each run file's saved runId, not the
    * sanitized filename, so it round-trips correctly.)
-   */
+  */
   async listResumable(): Promise<readonly { readonly runId: string; readonly step: number; readonly phase: string; readonly updatedAt: Date }[]> {
-    let names: string[];
-    try {
-      names = (await readdir(this.#dir)).filter((n) => n.endsWith(".json"));
-    } catch {
-      return [];
-    }
-    const out: { runId: string; step: number; phase: string; updatedAt: Date }[] = [];
-    for (const name of names) {
-      let checkpoints: readonly ExecutionCheckpoint[];
-      try {
-        const raw = await readFile(join(this.#dir, name), "utf8");
-        const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed)) continue;
-        checkpoints = parsed.map(deserialize).filter((c): c is ExecutionCheckpoint => c !== undefined).sort(byStep);
-      } catch {
-        continue;
-      }
+    const byRunId = new Map<string, { runId: string; step: number; phase: string; updatedAt: Date }>();
+    for (const file of await listCheckpointFiles(this.#dir)) {
+      const checkpoints = await readCheckpointFile(file);
+      const runId = checkpoints ? checkpointRunId(checkpoints) : undefined;
+      if (!checkpoints || !runId) continue;
       const latest = checkpoints[checkpoints.length - 1];
       if (!latest || checkpointPhase(latest) === "complete") continue; // a finished run isn't resumable
       const progress = checkpoints.filter((c) => checkpointPhase(c) === "act" || checkpointPhase(c) === "start");
       const at = progress[progress.length - 1] ?? latest;
-      out.push({ phase: checkpointPhase(at), runId: at.runId, step: at.step, updatedAt: latest.createdAt });
+      const candidate = { phase: checkpointPhase(at), runId, step: at.step, updatedAt: latest.createdAt };
+      const existing = byRunId.get(candidate.runId);
+      if (!existing || candidate.updatedAt.getTime() > existing.updatedAt.getTime()) {
+        byRunId.set(candidate.runId, candidate);
+      }
     }
-    return out.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    return [...byRunId.values()].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
   async save(input: SaveCheckpointInput): Promise<ExecutionCheckpoint> {
@@ -173,30 +205,81 @@ export class FileCheckpointStore implements CheckpointStore {
       state: input.state,
       step: input.step
     };
-    const existing = [...await this.findByRunId(input.runId)];
-    const at = existing.findIndex((c) => c.step === checkpoint.step);
-    if (at >= 0) existing[at] = checkpoint;
-    else existing.push(checkpoint);
-    existing.sort(byStep);
-    const capped = existing.slice(-this.#maxPerRun);
     if (!this.#ensuredDir) {
-      await mkdir(this.#dir, { recursive: true });
+      await mkdir(join(this.#dir, V2_DIRECTORY), { recursive: true });
       this.#ensuredDir = true;
     }
-    // Atomic write: a crash mid-write must not corrupt the file and lose ALL prior
-    // good checkpoints for this run — exactly when fault-tolerance matters. Write a
-    // temp file then rename (atomic on POSIX); the reader never sees a partial file.
-    const target = join(this.#dir, runFileName(input.runId));
-    const tmp = `${target}.${checkpoint.id}.tmp`;
-    await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
-    await rename(tmp, target);
-    await this.#pruneOldRuns();
-    return checkpoint;
+    const target = checkpointFilePaths(this.#dir, input.runId)[0]!;
+    const saved = await withRunFileLocks(this.#dir, input.runId, async () => {
+      const existing = [...await this.findByRunId(input.runId)];
+      const at = existing.findIndex((candidate) => candidate.step === checkpoint.step);
+      if (at >= 0) existing[at] = checkpoint;
+      else existing.push(checkpoint);
+      existing.sort(byStep);
+      const capped = existing.slice(-this.#maxPerRun);
+      const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
+      await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
+      await rename(tmp, target);
+      return checkpoint;
+    });
+    // Retention may lock a different run. It must run after the committing
+    // run's locks are released, otherwise two concurrent saves can each hold
+    // one run while pruning the other.
+    await this.#pruneOldRuns(checkpoint.runId);
+    return saved;
   }
 
   async deleteByRunId(runId: string): Promise<void> {
-    await rm(join(this.#dir, runFileName(runId)), { force: true }).catch(() => undefined);
+    await mkdir(join(this.#dir, V2_DIRECTORY), { recursive: true });
+    await withRunFileLocks(this.#dir, runId, async () => removeCheckpointsForRun(this.#dir, runId));
   }
+}
+
+async function readCheckpointFile(file: string): Promise<readonly ExecutionCheckpoint[] | undefined> {
+    let raw: string;
+    try {
+      raw = await readFile(file, "utf8");
+    } catch {
+      return undefined;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return []; // a half-written / corrupt checkpoint file carries no resumable state
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(deserialize).filter((c): c is ExecutionCheckpoint => c !== undefined).sort(byStep);
+}
+
+async function listCheckpointFiles(dir: string): Promise<readonly string[]> {
+  const roots = await Promise.all([dir, join(dir, V2_DIRECTORY)].map(async (parent) => {
+    try {
+      return (await readdir(parent)).filter((name) => name.endsWith(".json")).map((name) => join(parent, name));
+    } catch {
+      return [];
+    }
+  }));
+  return roots.flat();
+}
+
+async function removeCheckpointsForRun(dir: string, runId: string): Promise<void> {
+  for (const file of checkpointFilePaths(dir, runId)) {
+    const checkpoints = await readCheckpointFile(file);
+    if (checkpoints && checkpointRunId(checkpoints) === runId) {
+      await rm(file, { force: true }).catch(() => undefined);
+    }
+  }
+}
+
+async function withRunFileLocks<T>(dir: string, runId: string, operation: () => Promise<T>): Promise<T> {
+  return withCheckpointFileLocks([...checkpointFilePaths(dir, runId)].sort(), operation);
+}
+
+async function withCheckpointFileLocks<T>(files: readonly string[], operation: () => Promise<T>): Promise<T> {
+  const [file, ...remaining] = files;
+  if (!file) return operation();
+  return withFileMutationQueue(file, () => withFileLock(file, () => withCheckpointFileLocks(remaining, operation)));
 }
 
 function requirePositiveSafeInteger(value: number | undefined, fallback: number, name: string): number {

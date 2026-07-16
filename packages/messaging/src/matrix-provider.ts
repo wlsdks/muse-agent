@@ -1,4 +1,4 @@
-import { truncateErrorBody } from "@muse/shared";
+import { errorMessage, isRecord, truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
@@ -144,18 +144,19 @@ export class MatrixProvider implements MessagingProvider {
     if (this.ownUserId) {
       return this.ownUserId;
     }
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/_matrix/client/v3/account/whoami`, {
+    const response = await this.request("Matrix whoami request", () => fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/_matrix/client/v3/account/whoami`, {
       headers: this.authHeaders(),
       method: "GET"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Matrix whoami");
     const parsed = tryParseJson<MatrixErrorBody & { user_id?: string }>(text);
     if (!response.ok || typeof parsed?.user_id !== "string") {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Matrix whoami failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        matrixRetryAfterMs(parsed)
       );
     }
     this.ownUserId = parsed.user_id;
@@ -191,34 +192,22 @@ export class MatrixProvider implements MessagingProvider {
     const readTimeoutMs = longPoll > 0
       ? Math.max(this.timeoutMs ?? 30_000, (longPoll + 15) * 1000)
       : this.timeoutMs;
-    const response = await fetchReadWithRetry(this.fetchImpl, url, {
+    const response = await this.request("Matrix sync request", () => fetchReadWithRetry(this.fetchImpl, url, {
       headers: this.authHeaders(),
       method: "GET"
-    }, { timeoutMs: readTimeoutMs });
-    const text = await response.text();
+    }, { timeoutMs: readTimeoutMs }));
+    const text = await this.readResponseText(response, "Matrix sync");
     const parsed = tryParseJson<MatrixSyncResponse>(text);
-    if (!response.ok || typeof parsed?.next_batch !== "string") {
+    if (!response.ok || typeof parsed?.next_batch !== "string" || parsed.next_batch.length === 0) {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Matrix sync failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        matrixRetryAfterMs(parsed)
       );
     }
-    const joined = parsed.rooms?.join ?? {};
-    const events: { readonly roomId: string; readonly event: MatrixTimelineEvent; readonly joinedMemberCount: number | undefined }[] = [];
-    for (const [roomId, room] of Object.entries(joined)) {
-      const joinedMemberCount = room.summary?.["m.joined_member_count"];
-      for (const event of room.timeline?.events ?? []) {
-        events.push({ event, joinedMemberCount, roomId });
-      }
-    }
-    const candidates = events.filter(({ event }) =>
-      event.type === "m.room.message"
-      && event.content?.msgtype === "m.text"
-      && typeof event.content.body === "string"
-      && typeof event.event_id === "string"
-    );
+    const candidates = matrixSyncCandidates(parsed.rooms);
     // whoami only when something needs filtering — idle long polls
     // stay a single request.
     const ownUserId = candidates.length > 0 ? await this.resolveOwnUserId() : undefined;
@@ -228,22 +217,20 @@ export class MatrixProvider implements MessagingProvider {
     if (this.sinceFile) {
       await writeMatrixSince(this.sinceFile, parsed.next_batch);
     }
-    return candidates.flatMap(({ event, roomId, joinedMemberCount }): readonly InboundMessage[] => {
+    return candidates.flatMap((event): readonly InboundMessage[] => {
       if (event.sender === ownUserId) {
         return [];
       }
-      const scope = matrixRoomScope(joinedMemberCount);
+      const scope = matrixRoomScope(event.joinedMemberCount);
       return [{
-        messageId: event.event_id!,
+        messageId: event.eventId,
         providerId: this.id,
-        raw: event,
-        receivedAtIso: typeof event.origin_server_ts === "number"
-          ? new Date(event.origin_server_ts).toISOString()
-          : new Date().toISOString(),
+        raw: event.raw,
+        receivedAtIso: matrixTimestampToIso(event.originServerTs),
         ...(scope ? { scope } : {}),
         ...(event.sender ? { sender: event.sender } : {}),
-        source: roomId,
-        text: event.content!.body as string
+        source: event.roomId,
+        text: event.body
       }];
     });
   }
@@ -251,19 +238,20 @@ export class MatrixProvider implements MessagingProvider {
   async sendTyping(destination: string): Promise<void> {
     const userId = await this.resolveOwnUserId();
     const url = `${this.baseUrl}/_matrix/client/v3/rooms/${encodeURIComponent(destination)}/typing/${encodeURIComponent(userId)}`;
-    const response = await fetchWithTimeout(this.fetchImpl, url, {
+    const response = await this.request("Matrix typing request", () => fetchWithTimeout(this.fetchImpl, url, {
       body: JSON.stringify({ timeout: 5000, typing: true }),
       headers: { ...this.authHeaders(), "content-type": "application/json" },
       method: "PUT"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Matrix typing");
     if (!response.ok) {
       const parsed = tryParseJson<MatrixErrorBody>(text);
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Matrix typing failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        matrixRetryAfterMs(parsed)
       );
     }
   }
@@ -278,23 +266,22 @@ export class MatrixProvider implements MessagingProvider {
     // Client-generated transaction id makes the PUT idempotent on the
     // homeserver — a retried request with the same txnId is deduplicated.
     this.txnCounter += 1;
-    const txnId = `muse-${Date.now().toString()}-${this.txnCounter.toString()}`;
-    const url = `${this.baseUrl}/_matrix/client/v3/rooms/${encodeURIComponent(message.destination)}/send/m.room.message/${txnId}`;
-    const response = await fetchWithTimeout(this.fetchImpl, url, {
+    const txnId = message.idempotencyKey ?? `muse-${Date.now().toString()}-${this.txnCounter.toString()}`;
+    const url = `${this.baseUrl}/_matrix/client/v3/rooms/${encodeURIComponent(message.destination)}/send/m.room.message/${encodeURIComponent(txnId)}`;
+    const response = await this.request("Matrix send request", () => fetchWithTimeout(this.fetchImpl, url, {
       body: JSON.stringify({ body: outboundText, msgtype: "m.text" }),
       headers: { ...this.authHeaders(), "content-type": "application/json" },
       method: "PUT"
-    }, this.timeoutMs);
-    const text = await response.text();
+    }, this.timeoutMs));
+    const text = await this.readResponseText(response, "Matrix send");
     const parsed = tryParseJson<MatrixSendResponse>(text);
     if (!response.ok || typeof parsed?.event_id !== "string") {
-      const bodyRetrySeconds = typeof parsed?.retry_after_ms === "number" ? parsed.retry_after_ms / 1000 : undefined;
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
         `Matrix send failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status,
-        retryAfterMsFromResponse(response, bodyRetrySeconds)
+        retryAfterMsFromResponse(response, matrixRetryAfterSeconds(parsed))
       );
     }
     return {
@@ -304,4 +291,106 @@ export class MatrixProvider implements MessagingProvider {
       raw: parsed
     };
   }
+
+  private async request(operation: string, invoke: () => Promise<Response>): Promise<Response> {
+    try {
+      return await invoke();
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `${operation} failed: ${errorMessage(cause, "network request failed")}`
+      );
+    }
+  }
+
+  private async readResponseText(response: Response, operation: string): Promise<string> {
+    try {
+      return await response.text();
+    } catch (cause) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `${operation} failed with ${response.status.toString()}: unable to read response body: ${errorMessage(cause, "unknown response body failure")}`,
+        response.status,
+        retryAfterMsFromResponse(response)
+      );
+    }
+  }
+}
+
+function matrixRetryAfterMs(body: MatrixErrorBody | undefined): number | undefined {
+  return typeof body?.retry_after_ms === "number" && Number.isFinite(body.retry_after_ms) && body.retry_after_ms >= 0
+    ? body.retry_after_ms
+    : undefined;
+}
+
+function matrixRetryAfterSeconds(body: MatrixErrorBody | undefined): number | undefined {
+  const retryAfterMs = matrixRetryAfterMs(body);
+  return retryAfterMs === undefined ? undefined : retryAfterMs / 1000;
+}
+
+interface MatrixTextEventCandidate {
+  readonly body: string;
+  readonly eventId: string;
+  readonly joinedMemberCount: number | undefined;
+  readonly originServerTs: number | undefined;
+  readonly raw: Record<string, unknown>;
+  readonly roomId: string;
+  readonly sender: string | undefined;
+}
+
+function matrixSyncCandidates(rooms: unknown): readonly MatrixTextEventCandidate[] {
+  if (!isRecord(rooms) || !isRecord(rooms["join"])) {
+    return [];
+  }
+  const candidates: MatrixTextEventCandidate[] = [];
+  for (const [roomId, room] of Object.entries(rooms["join"])) {
+    if (!isRecord(room) || !isRecord(room["timeline"]) || !Array.isArray(room["timeline"]["events"])) {
+      continue;
+    }
+    const summary = isRecord(room["summary"]) ? room["summary"] : undefined;
+    const memberCount = summary?.["m.joined_member_count"];
+    const joinedMemberCount = typeof memberCount === "number" && Number.isSafeInteger(memberCount) && memberCount > 0
+      ? memberCount
+      : undefined;
+    for (const rawEvent of room["timeline"]["events"]) {
+      const candidate = matrixTextEvent(rawEvent);
+      if (candidate) {
+        candidates.push({ ...candidate, joinedMemberCount, roomId });
+      }
+    }
+  }
+  return candidates;
+}
+
+function matrixTextEvent(value: unknown): Omit<MatrixTextEventCandidate, "joinedMemberCount" | "roomId"> | undefined {
+  if (!isRecord(value) || value["type"] !== "m.room.message" || !isRecord(value["content"])) {
+    return undefined;
+  }
+  const content = value["content"];
+  const body = content["body"];
+  const eventId = value["event_id"];
+  if (content["msgtype"] !== "m.text" || typeof body !== "string" || typeof eventId !== "string" || eventId.length === 0) {
+    return undefined;
+  }
+  const originServerTs = value["origin_server_ts"];
+  const sender = value["sender"];
+  return {
+    body,
+    eventId,
+    originServerTs: typeof originServerTs === "number" ? originServerTs : undefined,
+    raw: value,
+    sender: typeof sender === "string" ? sender : undefined
+  };
+}
+
+function matrixTimestampToIso(timestamp: number | undefined): string {
+  if (typeof timestamp === "number" && Number.isFinite(timestamp)) {
+    const date = new Date(timestamp);
+    if (Number.isFinite(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+  return new Date().toISOString();
 }

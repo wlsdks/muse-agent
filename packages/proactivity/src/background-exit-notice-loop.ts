@@ -29,7 +29,14 @@ import { promises as fs } from "node:fs";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { sendWithRetry } from "@muse/mcp-shared";
 import { errorMessage, redactSecretsInText } from "@muse/shared";
-import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
+import {
+  atomicWriteFile,
+  avoidedSourceKeys,
+  readBackgroundProcesses,
+  readTrustLedger,
+  withProcessLock,
+  type BackgroundProcessRecord
+} from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
@@ -66,7 +73,7 @@ export async function readBackgroundExitNotified(file: string): Promise<Readonly
 
 async function writeBackgroundExitNotified(file: string, ids: ReadonlySet<string>): Promise<void> {
   const payload: BackgroundExitNotifiedSidecar = { notifiedIds: [...ids] };
-  await fs.writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await atomicWriteFile(file, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 /** Short, redaction-safe label for a background process (its command, capped). */
@@ -126,6 +133,8 @@ export interface RunDueBackgroundExitNoticesSummary {
   readonly notified: number;
   /** One string per delivery failure (the id stays marked to preserve at-most-once). */
   readonly errors: readonly string[];
+  /** Another daemon owns this tick, so no read, mark, or delivery was attempted. */
+  readonly outcome?: "lock-held";
 }
 
 /**
@@ -136,6 +145,30 @@ export interface RunDueBackgroundExitNoticesSummary {
  * real exit exactly once.
  */
 export async function runDueBackgroundExitNotices(
+  options: RunDueBackgroundExitNoticesOptions
+): Promise<RunDueBackgroundExitNoticesSummary> {
+  // The API daemon and CLI daemon poll the same background-process registry.
+  // Hold one cross-process lock across select -> persist-before-send so both
+  // cannot observe one terminal process and deliver duplicate notices.
+  const lockOutcome = await withProcessLock(
+    `${options.notifiedFile}.firing.lock`,
+    () => runDueBackgroundExitNoticesUnderLock(options)
+  );
+  if (lockOutcome.kind === "lock-held") {
+    return { errors: [], notified: 0, outcome: "lock-held", pending: 0 };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // A broken lock must not permanently hide an exit. Degrade to the prior
+    // unlocked behavior, but make the protection failure visible to callers.
+    return {
+      ...lockOutcome.value,
+      errors: [`background-exit: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDueBackgroundExitNoticesUnderLock(
   options: RunDueBackgroundExitNoticesOptions
 ): Promise<RunDueBackgroundExitNoticesSummary> {
   const now = options.now ?? (() => new Date());

@@ -14,18 +14,26 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { InboundMessage } from "./types.js";
+import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
 
 const DEFAULT_CAPACITY = 500;
 const MAX_CAPACITY = 5_000;
 const DEFAULT_READ_LIMIT = 100;
 export const MAX_READ_LIMIT = 200;
+const MAX_IDEMPOTENCY_KEYS = 10_000;
 
 interface PersistedShape {
   readonly version: 1;
   readonly inbox: readonly InboundMessage[];
+  /** Bounded delivery receipts retained independently from inbox capacity. */
+  readonly idempotencyKeys?: readonly string[];
+}
+
+interface PersistedInbox {
+  readonly inbox: readonly InboundMessage[];
+  readonly idempotencyKeys: readonly string[];
 }
 
 /**
@@ -60,67 +68,108 @@ export async function readInbox(file: string, limit?: number): Promise<readonly 
 
 export interface AppendInboundOptions {
   readonly capacity?: number;
+  /**
+   * Stable delivery identifier supplied by a webhook provider. Unlike a
+   * message retained in the inbox, this receipt remains after inbox capacity
+   * trims so a delayed redelivery can still be ignored.
+   */
+  readonly idempotencyKey?: string;
 }
 
 /**
  * Append a single inbound message to the persisted file, trimming
  * to `capacity` newest entries. Atomic tmp+rename for crash safety,
- * AND per-file write serialization so two concurrent webhook
- * invocations don't both read the same inbox snapshot and clobber
- * each other's append at rename time.
+ * per-file write serialization so two concurrent webhook invocations
+ * don't clobber each other's append, and provider/source/message-id
+ * idempotence. Provider delivery keys get a separate bounded receipt ledger;
+ * deduplication outside that ledger's retention window is best-effort.
  */
-const writeQueues = new Map<string, Promise<unknown>>();
-const resolvedPromise = async (): Promise<unknown> => undefined;
-
 export async function appendInbound(
   file: string,
   message: InboundMessage,
   options: AppendInboundOptions = {}
-): Promise<void> {
-  const prior = writeQueues.get(file) ?? resolvedPromise();
-  const run = (): Promise<void> => doAppendInbound(file, message, options);
-  const next = prior.then(run, run);
-  writeQueues.set(file, next.catch(() => undefined));
-  return next;
+): Promise<boolean> {
+  return withMessagingFileMutation(file, () => doAppendInbound(file, message, options));
 }
 
 async function doAppendInbound(
   file: string,
   message: InboundMessage,
   options: AppendInboundOptions
-): Promise<void> {
+): Promise<boolean> {
   const capacity = clampCapacity(options.capacity);
-  const existing = await readPersistedRaw(file);
+  const idempotencyKey = normalizeIdempotencyKey(options.idempotencyKey);
+  const existing = await readPersistedInbox(file);
+  if (idempotencyKey !== undefined && existing.idempotencyKeys.includes(idempotencyKey)) {
+    return false;
+  }
+  if (existing.inbox.some((entry) => isSameInboundMessage(entry, message))) {
+    if (idempotencyKey !== undefined) {
+      const payload: PersistedShape = {
+        idempotencyKeys: retainRecentIdempotencyKeys(existing.idempotencyKeys, idempotencyKey),
+        inbox: existing.inbox,
+        version: 1
+      };
+      await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
+    }
+    return false;
+  }
   // Stored newest-last so the append is straightforward; the trim
   // drops the oldest from the front.
-  const next = [...existing, message];
+  const next = [...existing.inbox, message];
   const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
-  const payload: PersistedShape = { inbox: trimmed, version: 1 };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  const idempotencyKeys = idempotencyKey === undefined
+    ? existing.idempotencyKeys
+    : retainRecentIdempotencyKeys(existing.idempotencyKeys, idempotencyKey);
+  const payload: PersistedShape = { idempotencyKeys, inbox: trimmed, version: 1 };
+  await atomicWritePrivateFile(file, `${JSON.stringify(payload, null, 2)}\n`);
+  return true;
 }
 
-async function readPersistedRaw(file: string): Promise<readonly InboundMessage[]> {
+async function readPersistedInbox(file: string): Promise<PersistedInbox> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
   } catch {
-    return [];
+    return { idempotencyKeys: [], inbox: [] };
   }
   try {
-    const parsed = JSON.parse(raw) as { inbox?: unknown };
+    const parsed = JSON.parse(raw) as { inbox?: unknown; idempotencyKeys?: unknown };
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.inbox)) {
-      return [];
+      return { idempotencyKeys: [], inbox: [] };
     }
-    return (parsed.inbox as unknown[]).flatMap((entry): readonly InboundMessage[] =>
-      isInboundMessage(entry) ? [entry] : []
-    );
+    return {
+      idempotencyKeys: parseIdempotencyKeys(parsed.idempotencyKeys),
+      inbox: (parsed.inbox as unknown[]).flatMap((entry): readonly InboundMessage[] =>
+        isInboundMessage(entry) ? [entry] : []
+      )
+    };
   } catch {
+    return { idempotencyKeys: [], inbox: [] };
+  }
+}
+
+function parseIdempotencyKeys(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) {
     return [];
   }
+  return value
+    .flatMap((entry): readonly string[] => normalizeIdempotencyKey(entry) === undefined ? [] : [entry])
+    .slice(-MAX_IDEMPOTENCY_KEYS);
+}
+
+function retainRecentIdempotencyKeys(existing: readonly string[], next: string): readonly string[] {
+  return [...existing, next].slice(-MAX_IDEMPOTENCY_KEYS);
+}
+
+function normalizeIdempotencyKey(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 && value.length <= 256 ? value : undefined;
+}
+
+function isSameInboundMessage(left: InboundMessage, right: InboundMessage): boolean {
+  return left.providerId === right.providerId
+    && left.source === right.source
+    && left.messageId === right.messageId;
 }
 
 function clampReadLimit(raw: number | undefined): number {

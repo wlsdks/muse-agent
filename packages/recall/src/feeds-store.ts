@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { stripUntrustedTerminalChars } from "@muse/shared";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 import { XMLParser } from "fast-xml-parser";
 
 import { roundVectorForStore } from "./browsing-store.js";
@@ -95,7 +96,7 @@ export async function readFeedsStore(file: string): Promise<FeedsStore> {
     await backupVersionMismatchedStore(file, candidate.version);
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  const feeds = (candidate.feeds ?? [])
+  const feeds = (Array.isArray(candidate.feeds) ? candidate.feeds : [])
     .filter((f) => f && typeof f === "object" && typeof f.id === "string" && typeof f.url === "string")
     .map((f) => normalizeFeedRecord(f));
   return { version: FEEDS_STORE_SCHEMA_VERSION, feeds };
@@ -129,12 +130,31 @@ function normalizeFeedEntry(entry: FeedEntry): FeedEntry {
   return rest as FeedEntry;
 }
 
-export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
+async function writeFeedsStoreUnlocked(file: string, store: FeedsStore): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, `${JSON.stringify(store, null, 2)}\n`);
   await fs.chmod(file, 0o600).catch(() => undefined);
+}
+
+export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
+  await withFileMutationQueue(file, () => withFileLock(file, () => writeFeedsStoreUnlocked(file, store)));
+}
+
+/**
+ * Applies a read-modify-write update while holding the same process and
+ * cross-process lock as direct writes. Callers should prepare slow external
+ * work before invoking this function, then merge only the resulting delta into
+ * the latest persisted snapshot inside `mutate`.
+ */
+export async function mutateFeedsStore(
+  file: string,
+  mutate: (store: FeedsStore) => FeedsStore | Promise<FeedsStore>
+): Promise<FeedsStore> {
+  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const next = await mutate(await readFeedsStore(file));
+    await writeFeedsStoreUnlocked(file, next);
+    return next;
+  }));
 }
 
 /**
@@ -276,6 +296,7 @@ function sanitizeFeedText(value: string | undefined): string {
  * disk + parse cost.
  */
 export const DEFAULT_FEED_ENTRIES_CAP = 200;
+export const MAX_FEED_ENTRIES_CAP = 1_000;
 
 /**
  * Merge `incoming` (latest fetch) into `previous` (the
@@ -321,7 +342,7 @@ export function mergeFeedEntries(
   }
   const merged = [...byId.values()].sort(compareFeedEntriesNewestFirst);
   const effectiveCap = Number.isFinite(cap) && cap > 0
-    ? Math.trunc(cap)
+    ? Math.min(MAX_FEED_ENTRIES_CAP, Math.max(1, Math.trunc(cap)))
     : DEFAULT_FEED_ENTRIES_CAP;
   return merged.slice(0, effectiveCap);
 }

@@ -26,9 +26,11 @@ import {
   backupPlaintextCredentialsFile,
   credentialEncryptionEnabled,
   decodeMaybeEncryptedCredentialsJson,
+  isEncryptedCredentialEnvelope,
   encryptCredentialEnvelope,
   isCredentialsFileEncryptedAtRest
 } from "@muse/shared";
+import { atomicWriteFile, withFileLock } from "@muse/stores";
 
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 
@@ -83,15 +85,25 @@ export async function loadOAuthRecord(
     return {};
   }
 
+  // Recognize a credential envelope before decrypting so an authenticated
+  // ciphertext with an unsupported payload shape remains fail-closed instead
+  // of being quarantined and overwritten as ordinary plaintext corruption.
+  if (isCredentialEnvelopeCandidate(parsed) && !isEncryptedCredentialEnvelope(parsed)) {
+    throw new Error("OAuth credentials use an unsupported encrypted envelope and were left untouched");
+  }
+  const encrypted = isEncryptedCredentialEnvelope(parsed);
   // THROWS fail-closed on a wrong key for a genuinely-encrypted envelope —
   // never swallow a live token as "corruption".
   parsed = decodeMaybeEncryptedCredentialsJson(parsed, env);
 
-  const shape = parsed as Partial<PersistedShape>;
-  if (!shape || typeof shape !== "object" || !shape.oauth || typeof shape.oauth !== "object") {
+  if (!isPersistedShape(parsed)) {
+    if (encrypted) {
+      throw new Error("encrypted OAuth credentials have an unsupported record shape and were left untouched");
+    }
+    await quarantineCorruptStore(file);
     return {};
   }
-  return { ...shape.oauth };
+  return { ...parsed.oauth };
 }
 
 export async function loadTokens(
@@ -169,7 +181,8 @@ export async function clearOAuth(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   if (scope === "all") {
-    await fs.rm(oauthRecordPath(dir, serverId), { force: true });
+    const file = oauthRecordPath(dir, serverId);
+    await withFileLock(file, () => fs.rm(file, { force: true }));
     return;
   }
   await mutate(dir, serverId, env, (record) => {
@@ -191,18 +204,18 @@ async function mutate(
   env: NodeJS.ProcessEnv,
   apply: (record: OAuthRecord) => OAuthRecord
 ): Promise<void> {
-  const current = await loadOAuthRecord(dir, serverId, env);
-  await writeRecord(dir, serverId, apply(current), env);
+  const file = oauthRecordPath(dir, serverId);
+  await withFileLock(file, async () => {
+    const current = await loadOAuthRecord(dir, serverId, env);
+    await writeRecord(file, apply(current), env);
+  });
 }
 
 async function writeRecord(
-  dir: string,
-  serverId: string,
+  file: string,
   record: OAuthRecord,
   env: NodeJS.ProcessEnv
 ): Promise<void> {
-  const file = oauthRecordPath(dir, serverId);
-  await fs.mkdir(dir, { recursive: true });
   const payload = `${JSON.stringify({ oauth: record, version: 1 } satisfies PersistedShape, null, 2)}\n`;
   const alreadyEncrypted = await isCredentialsFileEncryptedAtRest(file);
   const shouldEncrypt = credentialEncryptionEnabled(env) || alreadyEncrypted;
@@ -213,12 +226,33 @@ async function writeRecord(
     }
   }
   const content = shouldEncrypt ? `${JSON.stringify(encryptCredentialEnvelope(payload, env))}\n` : payload;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.writeFile(tmp, content, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWriteFile(file, content);
 }
 
 function isFileNotFound(error: unknown): boolean {
   return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+}
+
+function isPersistedShape(value: unknown): value is PersistedShape {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && (value as { version?: unknown }).version === 1
+      && (value as { oauth?: unknown }).oauth
+      && typeof (value as { oauth?: unknown }).oauth === "object"
+      && !Array.isArray((value as { oauth?: unknown }).oauth)
+  );
+}
+
+function isCredentialEnvelopeCandidate(value: unknown): value is Record<string, unknown> {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && typeof (value as { data?: unknown }).data === "string"
+      && typeof (value as { iv?: unknown }).iv === "string"
+      && typeof (value as { salt?: unknown }).salt === "string"
+      && typeof (value as { tag?: unknown }).tag === "string"
+  );
 }

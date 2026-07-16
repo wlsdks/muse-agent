@@ -71,6 +71,12 @@ describe("InMemoryAgentSpecRegistry", () => {
     expect(registry.getByName("first")).toBeUndefined();
     expect(registry.getByName("second")?.id).toBe("spec-2");
   });
+
+  it("rejects capacity values that would make saved specs immediately unreachable", () => {
+    for (const maxEntries of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(() => new InMemoryAgentSpecRegistry([], { maxEntries })).toThrow("maxEntries must be a positive safe integer");
+    }
+  });
 });
 
 describe("RuleBasedAgentSpecResolver", () => {

@@ -1,4 +1,4 @@
-import { isErrorLike } from "@muse/shared";
+import { isErrorLike, redactSecretsInText } from "@muse/shared";
 /**
  * Actionable top-level error formatting (clig.dev "Errors").
  *
@@ -100,7 +100,8 @@ function errorMessage(error: unknown): string {
 export function bugReportUrl(errorText: string, options: FormatCliErrorOptions = {}): string {
   const version = options.version ?? "unknown";
   const command = (options.command ?? "").trim() || "<command>";
-  const firstLine = errorText.split("\n")[0]?.slice(0, 120) ?? errorText;
+  const redactedErrorText = redactSecretsInText(errorText);
+  const firstLine = redactedErrorText.split("\n")[0]?.slice(0, 120) ?? redactedErrorText;
   const title = `[bug] muse ${command}: ${firstLine}`;
   const body = [
     `**Command:** \`muse ${command}\``,
@@ -108,13 +109,16 @@ export function bugReportUrl(errorText: string, options: FormatCliErrorOptions =
     "",
     "**Error:**",
     "```",
-    errorText,
+    redactedErrorText,
     "```",
     "",
     "**What I expected / steps to reproduce:**",
     ""
   ].join("\n");
-  const params = new URLSearchParams({ body, title });
+  const params = new URLSearchParams({
+    body: redactSecretsInText(body),
+    title: redactSecretsInText(title)
+  });
   return `${ISSUE_TRACKER_URL}?${params.toString()}`;
 }
 

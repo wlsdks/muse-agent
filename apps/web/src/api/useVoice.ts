@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { errorMessage } from "@muse/shared";
+import { errorMessage } from "@muse/shared/browser";
 
 interface SttResponse {
   readonly text?: string;

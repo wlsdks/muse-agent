@@ -7,17 +7,12 @@
 
 import { readFileSync } from "node:fs";
 
-import { AsyncAuth, Auth, DefaultAuthProvider, InMemoryUserStore, JwtTokenProvider, KyselyAuthProvider, KyselyUserStore, type MuseAuth } from "@muse/auth";
+import { AsyncAuth, Auth, DefaultAuthProvider, InMemoryUserStore, JwtTokenProvider, KyselyAuthProvider, KyselyUserStore, parseJwtRotationState, type JwtRotationState, type MuseAuth } from "@muse/auth";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
 import { parseInteger } from "./env-parsers.js";
 import type { MuseEnvironment } from "./index.js";
-
-interface AutoconfigureJwtRotationState {
-  readonly current: string;
-  readonly previous: ReadonlyArray<{ readonly secret: string; readonly validUntil: string }>;
-}
 
 /**
  * Synchronous, fail-open reader for the JWT rotation
@@ -27,7 +22,7 @@ interface AutoconfigureJwtRotationState {
  * to the env-only path — a corrupted state file cannot lock an
  * operator out of their own daemon.
  */
-function loadJwtRotationStateSync(env: MuseEnvironment): AutoconfigureJwtRotationState | undefined {
+function loadJwtRotationStateSync(env: MuseEnvironment): JwtRotationState | undefined {
   const overridden = env.MUSE_AUTH_SECRETS_FILE?.trim();
   let file: string;
   if (overridden && overridden.length > 0) {
@@ -49,18 +44,7 @@ function loadJwtRotationStateSync(env: MuseEnvironment): AutoconfigureJwtRotatio
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as { current?: unknown; previous?: unknown };
-  if (typeof candidate.current !== "string" || candidate.current.length < 32) return undefined;
-  const previousRaw = Array.isArray(candidate.previous) ? candidate.previous : [];
-  const previous: AutoconfigureJwtRotationState["previous"] = previousRaw.flatMap((entry: unknown) => {
-    if (!entry || typeof entry !== "object") return [];
-    const e = entry as { secret?: unknown; validUntil?: unknown };
-    if (typeof e.secret !== "string" || e.secret.length < 32) return [];
-    if (typeof e.validUntil !== "string") return [];
-    return [{ secret: e.secret, validUntil: e.validUntil }];
-  });
-  return { current: candidate.current, previous };
+  return parseJwtRotationState(parsed);
 }
 
 export function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | undefined): MuseAuth | undefined {

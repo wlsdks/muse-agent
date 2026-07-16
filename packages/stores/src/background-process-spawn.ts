@@ -13,6 +13,7 @@
 
 import {
   getBackgroundProcess,
+  isValidBackgroundProcessId,
   mutateBackgroundProcesses,
   registerBackgroundProcess,
   updateBackgroundProcess,
@@ -60,6 +61,33 @@ export async function spawnBackgroundProcess(
   const id = deps.newId();
   const logFile = deps.logFileFor(id);
   const child = deps.spawner.spawn(trimmed, { ...(options.cwd ? { cwd: options.cwd } : {}), logFile });
+  if (!isValidBackgroundProcessId(child.pid)) {
+    throw new Error("background process spawn returned an invalid pid");
+  }
+
+  let registryReady = false;
+  let observedExitCode: number | null = null;
+  let exitObserved = false;
+  const recordExit = async (exitCode: number | null): Promise<void> => {
+    await updateBackgroundProcess(deps.storeFile, id, {
+      status: exitCode === 0 ? "exited" : "failed",
+      exitCode,
+      endedAt: deps.now().toISOString()
+    });
+  };
+
+  // Subscribe before any awaited launch bookkeeping. A short-lived command can
+  // exit while its PID identity is being read or its initial record is written.
+  // Capture that exit and persist it immediately once the record exists.
+  child.onExit((exitCode) => {
+    exitObserved = true;
+    observedExitCode = exitCode;
+    if (registryReady) {
+      return recordExit(exitCode).catch(() => undefined);
+    }
+    return undefined;
+  });
+
   const osStartTime = deps.readProcessStartTime ? await deps.readProcessStartTime(child.pid) : undefined;
   const record: BackgroundProcessRecord = {
     id,
@@ -72,14 +100,10 @@ export async function spawnBackgroundProcess(
     ...(osStartTime ? { osStartTime } : {})
   };
   await registerBackgroundProcess(deps.storeFile, record);
-
-  child.onExit(async (exitCode) => {
-    await updateBackgroundProcess(deps.storeFile, id, {
-      status: exitCode === 0 ? "exited" : "failed",
-      exitCode,
-      endedAt: deps.now().toISOString()
-    });
-  });
+  registryReady = true;
+  if (exitObserved) {
+    await recordExit(observedExitCode);
+  }
 
   return record;
 }
@@ -129,6 +153,10 @@ export async function stopBackgroundProcess(
   if (record.status !== "running") {
     return "already_done";
   }
+  if (!isValidBackgroundProcessId(record.pid)) {
+    await updateBackgroundProcess(storeFile, id, { status: "exited", endedAt: now().toISOString() });
+    return "pid_reused";
+  }
   const currentStartTime = readProcessStartTime ? await readProcessStartTime(record.pid) : undefined;
   if (readProcessStartTime && !pidIdentityMatches(record, currentStartTime)) {
     await updateBackgroundProcess(storeFile, id, { status: "exited", endedAt: now().toISOString() });
@@ -168,6 +196,10 @@ export async function reconcileBackgroundProcesses(
     const reconciledCurrent = await Promise.all(current.map(async (process) => {
       if (process.status !== "running") {
         return process;
+      }
+      if (!isValidBackgroundProcessId(process.pid)) {
+        reconciled.push(process.id);
+        return { ...process, status: "exited" as const, endedAt: now().toISOString() };
       }
       const alive = isAlive(process.pid);
       if (!alive) {

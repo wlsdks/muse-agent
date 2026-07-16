@@ -64,4 +64,18 @@ describe("swarm-quarantine-store", () => {
     // the stored status reflects the single resolution
     expect((await readQuarantine(file)).find((e) => e.id === "q1")?.status).toBe("promoted");
   });
+
+  it("preserves overlapping add and resolve mutations", async () => {
+    await addToQuarantine(file, { content: "first", fromPeerId: "p", id: "q1", kind: "skill", receivedAtMs: 100 });
+
+    await Promise.all([
+      addToQuarantine(file, { content: "second", fromPeerId: "p", id: "q2", kind: "strategy", receivedAtMs: 200 }),
+      setQuarantineStatus(file, "q1", "promoted", 300)
+    ]);
+
+    expect(await readQuarantine(file)).toEqual([
+      expect.objectContaining({ id: "q1", resolvedAtMs: 300, status: "promoted" }),
+      expect.objectContaining({ id: "q2", status: "pending" })
+    ]);
+  });
 });

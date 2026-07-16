@@ -1,7 +1,7 @@
 import { parseBoolean } from "@muse/autoconfigure";
 import { parseQuietHours } from "@muse/proactivity";
 
-import { readDaemonSettingsSync, readQuietHoursSettingSync, writeDaemonSetting, writeQuietHoursSetting, type DaemonSettings } from "./daemon-settings-store.js";
+import { readDaemonSettingsSync, readQuietHoursSettingSync, UnsupportedDaemonSettingsFormatError, writeDaemonSetting, writeQuietHoursSetting, type DaemonSettings } from "./daemon-settings-store.js";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -131,7 +131,14 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       if (typeof body.enabled !== "boolean") {
         return reply.status(400).send({ reason: "enabled must be a boolean" });
       }
-      await writeDaemonSetting(settingsFile, key, body.enabled);
+      try {
+        await writeDaemonSetting(settingsFile, key, body.enabled);
+      } catch (error) {
+        if (error instanceof UnsupportedDaemonSettingsFormatError) {
+          return reply.status(409).send({ reason: error.message });
+        }
+        throw error;
+      }
       const appliedLive = gate.applyDaemonToggle?.(key, body.enabled) ?? false;
       return { appliedLive, enabled: body.enabled, key };
     });
@@ -158,7 +165,14 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       if (!parseQuietHours(range)) {
         return reply.status(400).send({ reason: `invalid quiet-hours range "${range}" — expected "HH:MM-HH:MM"` });
       }
-      await writeQuietHoursSetting(settingsFile, { enabled: body.enabled, range });
+      try {
+        await writeQuietHoursSetting(settingsFile, { enabled: body.enabled, range });
+      } catch (error) {
+        if (error instanceof UnsupportedDaemonSettingsFormatError) {
+          return reply.status(409).send({ reason: error.message });
+        }
+        throw error;
+      }
       return shapeQuietHoursSettings(process.env, settingsFile);
     });
   }

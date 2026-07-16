@@ -113,6 +113,68 @@ describe("InMemoryAgentMessageBus", () => {
     expect(bus.getConversation().map((message) => message.content)).toEqual(["1", "2", "3"]);
   });
 
+  it("isolates messages from publisher, subscriber, and query-result mutation", async () => {
+    const bus = new InMemoryAgentMessageBus();
+    const timestamp = new Date("2026-07-16T00:00:00.000Z");
+    const metadata = { nested: { value: "original" } };
+    const receivedBySecondSubscriber: AgentMessage[] = [];
+
+    bus.subscribe("agent", (message) => {
+      (message.timestamp as Date).setUTCFullYear(2000);
+      ((message.metadata as { nested: { value: string } }).nested.value) = "first-subscriber";
+    });
+    bus.subscribe("agent", (message) => {
+      receivedBySecondSubscriber.push(message);
+    });
+
+    await bus.publish({ content: "message", metadata, sourceAgentId: "source", targetAgentId: "agent", timestamp });
+    timestamp.setUTCFullYear(1999);
+    metadata.nested.value = "publisher";
+
+    expect(receivedBySecondSubscriber).toMatchObject([
+      {
+        content: "message",
+        metadata: { nested: { value: "original" } },
+        timestamp: new Date("2026-07-16T00:00:00.000Z")
+      }
+    ]);
+
+    const queried = bus.getConversation()[0]!;
+    (queried.timestamp as Date).setUTCFullYear(1988);
+    ((queried.metadata as { nested: { value: string } }).nested.value) = "query";
+
+    expect(bus.getConversation()).toMatchObject([
+      {
+        content: "message",
+        metadata: { nested: { value: "original" } },
+        timestamp: new Date("2026-07-16T00:00:00.000Z")
+      }
+    ]);
+  });
+
+  it("delivers concurrent publishes to a subscriber in publish order", async () => {
+    const bus = new InMemoryAgentMessageBus();
+    const seen: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    const firstHandlerStarted = new Promise<void>((resolve) => {
+      bus.subscribe("agent", async (message) => {
+        if (message.content === "first") {
+          resolve();
+          await new Promise<void>((release) => { releaseFirst = release; });
+        }
+        seen.push(message.content);
+      });
+    });
+
+    const first = bus.publish({ content: "first", sourceAgentId: "x", targetAgentId: "agent", timestamp: new Date() });
+    await firstHandlerStarted;
+    const second = bus.publish({ content: "second", sourceAgentId: "x", targetAgentId: "agent", timestamp: new Date() });
+    releaseFirst?.();
+    await Promise.all([first, second]);
+
+    expect(seen).toEqual(["first", "second"]);
+  });
+
   it("clear() empties messages and subscribers", async () => {
     const bus = new InMemoryAgentMessageBus();
     let calls = 0;
@@ -150,9 +212,29 @@ describe("InMemoryAgentMessageBus", () => {
     expect(seen).toEqual(["second", "third"]);
   });
 
+  it("retains only the newest bounded conversation tail", async () => {
+    const bus = new InMemoryAgentMessageBus({ maxMessages: 2 });
+    await bus.publish({ content: "first", sourceAgentId: "x", timestamp: new Date() });
+    await bus.publish({ content: "second", sourceAgentId: "x", timestamp: new Date() });
+    await bus.publish({ content: "third", sourceAgentId: "x", timestamp: new Date() });
+    expect(bus.getConversation().map((message) => message.content)).toEqual(["second", "third"]);
+  });
+
+  it("evicts the oldest handler within an over-subscribed agent bucket", async () => {
+    const bus = new InMemoryAgentMessageBus({ maxHandlersPerSubscriber: 2 });
+    const seen: string[] = [];
+    bus.subscribe("agent", () => { seen.push("first"); });
+    bus.subscribe("agent", () => { seen.push("second"); });
+    bus.subscribe("agent", () => { seen.push("third"); });
+    await bus.publish({ content: "go", sourceAgentId: "x", targetAgentId: "agent", timestamp: new Date() });
+    expect(seen).toEqual(["second", "third"]);
+  });
+
   it("rejects non-positive maxSubscribers", () => {
     expect(() => new InMemoryAgentMessageBus({ maxSubscribers: 0 })).toThrow(RangeError);
     expect(() => new InMemoryAgentMessageBus({ maxSubscribers: -5 })).toThrow(RangeError);
+    expect(() => new InMemoryAgentMessageBus({ maxMessages: Number.POSITIVE_INFINITY })).toThrow(RangeError);
+    expect(() => new InMemoryAgentMessageBus({ maxHandlersPerSubscriber: 0 })).toThrow(RangeError);
   });
 });
 

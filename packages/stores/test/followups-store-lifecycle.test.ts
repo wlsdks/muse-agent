@@ -58,6 +58,18 @@ describe("personal-followups-store lifecycle (markFired / cancel / upsert)", () 
     expect(all.map((x) => x.id).sort()).toEqual(["e", "f"]);
     expect(all.find((x) => x.id === "e")?.summary).toBe("updated");
   });
+
+  it("drops entries with malformed optional fields at the persisted boundary", async () => {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        base("valid"),
+        { ...base("bad-kind"), kind: 7 },
+        { ...base("bad-reason"), cancelReason: false }
+      ]
+    }));
+    expect((await readFollowups(file)).map((entry) => entry.id)).toEqual(["valid"]);
+  });
 });
 
 describe("readFollowupStatusFilter", () => {

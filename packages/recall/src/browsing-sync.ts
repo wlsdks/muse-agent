@@ -15,9 +15,9 @@ import {
   browsingDocEmbedText,
   defaultBrowsingFile,
   mergeBrowsingVisits,
+  mutateBrowsingStore,
   readBrowsingStore,
-  roundVectorForStore,
-  writeBrowsingStore
+  roundVectorForStore
 } from "./browsing-store.js";
 import { readChromeHistoryVisits } from "./chrome-history.js";
 
@@ -119,12 +119,22 @@ export async function syncBrowsingHistory(
   const visits = options.embed
     ? await embedBrowsingVisits(merged, options.embed, { incomingIds: new Set(incoming.map((v) => v.id)) })
     : merged;
-  const nextCursor = incoming.reduce(
-    (max, v) => Math.max(max, cursorFromBrowsingVisit(v)),
-    store.lastVisitTimeCursor
-  );
-  await writeBrowsingStore(storeFile, { lastVisitTimeCursor: nextCursor, version: store.version, visits });
-  return { synced: incoming.length, total: visits.length };
+  const preparedById = new Map(visits.map((visit) => [visit.id, visit]));
+  const committed = await mutateBrowsingStore(storeFile, (latest) => {
+    const mergedLatest = mergeBrowsingVisits(latest.visits, incoming);
+    const mergedWithEmbeddings = mergedLatest.map((visit) => {
+      const prepared = preparedById.get(visit.id);
+      return prepared?.title === visit.title && prepared.embedding && !visit.embedding
+        ? { ...visit, embedding: prepared.embedding }
+        : visit;
+    });
+    const nextCursor = incoming.reduce(
+      (max, visit) => Math.max(max, cursorFromBrowsingVisit(visit)),
+      latest.lastVisitTimeCursor
+    );
+    return { lastVisitTimeCursor: nextCursor, version: latest.version, visits: mergedWithEmbeddings };
+  });
+  return { synced: incoming.length, total: committed.visits.length };
 }
 
 /** True when an auto-sync is due (never run, or `intervalMs` has elapsed). Pure — clock is passed in. */

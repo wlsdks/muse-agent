@@ -115,6 +115,22 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     expect(Date.parse((await byId("o1"))!.nextEvalAt!)).toBe(nowMs + 1000);
   });
 
+  it("a non-positive or oversized backoff configuration still writes a future valid retry timestamp", async () => {
+    await addObjective(file, obj());
+    const negative = await run({ backoffBaseMs: -1, backoffMaxMs: 0, evaluate: async () => ({ outcome: "unmet" }) });
+    expect(negative.retried).toEqual(["o1"]);
+    expect(Date.parse((await byId("o1"))!.nextEvalAt!)).toBe(nowMs + 60_000);
+
+    await addObjective(file, obj({ id: "oversized" }));
+    const oversized = await run({
+      backoffBaseMs: Number.MAX_SAFE_INTEGER,
+      backoffMaxMs: Number.MAX_SAFE_INTEGER,
+      evaluate: async () => ({ outcome: "unmet" })
+    });
+    expect(oversized.retried).toContain("oversized");
+    expect(Number.isFinite(Date.parse((await byId("oversized"))!.nextEvalAt!))).toBe(true);
+  });
+
   it("UNMET: backs off with an exponential nextEvalAt and stays active (never spins)", async () => {
     await addObjective(file, obj());
     const summary = await run({ backoffBaseMs: 1000, evaluate: async () => ({ outcome: "unmet" }) });

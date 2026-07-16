@@ -11,7 +11,8 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryRuntimeSettingsStore,
   RuntimeSettings,
-  type RuntimeSetting
+  type RuntimeSetting,
+  type RuntimeSettingsStore
 } from "../src/index.js";
 import {
   buildRuntimeSettingUpsertQuery,
@@ -70,6 +71,8 @@ describe("RuntimeSettings", () => {
     await expect(service.getNumber("limits.invalid", 1.5)).resolves.toBe(1.5);
     await expect(service.getString("missing", "fallback")).resolves.toBe("fallback");
     await expect(service.getJson("routing.weights", {})).resolves.toEqual({ primary: 0.7 });
+    await service.set({ key: "routing.nonfinite", type: "json", value: "{\"score\":1e400}" });
+    await expect(service.getJson("routing.nonfinite", { score: 0 })).resolves.toEqual({ score: 0 });
   });
 
   it("caches negative lookups until refresh or set invalidates the key", async () => {
@@ -85,6 +88,61 @@ describe("RuntimeSettings", () => {
 
     await service.set({ key: "feature.flag", value: "paused" });
     await expect(service.getString("feature.flag", "off")).resolves.toBe("paused");
+  });
+
+  it("does not let an older in-flight read repopulate the cache after set", async () => {
+    const backing = new InMemoryRuntimeSettingsStore();
+    const deferred = Promise.withResolvers<string | undefined>();
+    let deferFirstRead = true;
+    const store: RuntimeSettingsStore = {
+      delete: (key) => backing.delete(key),
+      find: (key) => backing.find(key),
+      findValue: (key) => {
+        if (deferFirstRead) {
+          deferFirstRead = false;
+          return deferred.promise;
+        }
+        return backing.findValue(key);
+      },
+      list: () => backing.list(),
+      upsert: (input) => backing.upsert(input)
+    };
+    const service = new RuntimeSettings(store, { cacheTtlMs: 60_000 });
+
+    const staleRead = service.getString("feature.flag", "off");
+    await service.set({ key: "feature.flag", value: "fresh" });
+    deferred.resolve("stale");
+
+    await expect(staleRead).resolves.toBe("stale");
+    await expect(service.getString("feature.flag", "off")).resolves.toBe("fresh");
+  });
+
+  it("does not let an older in-flight read repopulate the cache after refresh", async () => {
+    const backing = new InMemoryRuntimeSettingsStore();
+    backing.upsert({ key: "feature.flag", value: "fresh" });
+    const deferred = Promise.withResolvers<string | undefined>();
+    let deferFirstRead = true;
+    const store: RuntimeSettingsStore = {
+      delete: (key) => backing.delete(key),
+      find: (key) => backing.find(key),
+      findValue: (key) => {
+        if (deferFirstRead) {
+          deferFirstRead = false;
+          return deferred.promise;
+        }
+        return backing.findValue(key);
+      },
+      list: () => backing.list(),
+      upsert: (input) => backing.upsert(input)
+    };
+    const service = new RuntimeSettings(store, { cacheTtlMs: 60_000 });
+
+    const staleRead = service.getString("feature.flag", "off");
+    service.refreshCache();
+    deferred.resolve("stale");
+
+    await expect(staleRead).resolves.toBe("stale");
+    await expect(service.getString("feature.flag", "off")).resolves.toBe("fresh");
   });
 
   it("falls back to the 30-second default when a non-finite / non-positive cacheTtlMs slips through (NaN from a corrupt config, Infinity from a 'cache forever' typo, 0 / negative from a zero-cache mistake) — the cache must NOT degenerate into always-miss (NaN) or never-expire (Infinity)", async () => {
@@ -136,15 +194,22 @@ describe("InMemoryRuntimeSettingsStore", () => {
     ]);
   });
 
-  it("preserves descriptions on update unless explicitly cleared", () => {
+  it("preserves optional metadata on update unless explicitly cleared", () => {
     const store = new InMemoryRuntimeSettingsStore();
 
-    store.upsert({ description: "Maximum tools per run", key: "tools.max", value: "10" });
+    store.upsert({
+      description: "Maximum tools per run",
+      key: "tools.max",
+      updatedBy: "operator",
+      value: "10"
+    });
     store.upsert({ key: "tools.max", value: "20" });
     expect(store.find("tools.max")?.description).toBe("Maximum tools per run");
+    expect(store.find("tools.max")?.updatedBy).toBe("operator");
 
-    store.upsert({ description: null, key: "tools.max", value: "30" });
+    store.upsert({ description: null, key: "tools.max", updatedBy: null, value: "30" });
     expect(store.find("tools.max")?.description).toBeUndefined();
+    expect(store.find("tools.max")?.updatedBy).toBeUndefined();
   });
 });
 
@@ -184,6 +249,28 @@ describe("KyselyRuntimeSettingsStore", () => {
       now,
       "operator",
       "20"
+    ]);
+  });
+
+  it("preserves omitted metadata in a Kysely conflict update, matching the in-memory patch contract", () => {
+    const db = createPostgresBuilder();
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const compiled = buildRuntimeSettingUpsertQuery(
+      db,
+      { key: "guard.rateLimit", value: "30" },
+      { now: () => now }
+    ).compile();
+
+    expect(compiled.parameters).toEqual([
+      "general",
+      null,
+      "guard.rateLimit",
+      "string",
+      now,
+      null,
+      "30",
+      now,
+      "30"
     ]);
   });
 

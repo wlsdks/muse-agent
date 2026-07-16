@@ -238,4 +238,61 @@ describe("MultiAgentOrchestrator.runBackground", () => {
       expect((store.get("dup-1") as { response: { output: string } }).response.output).toBe("first");
     }
   });
+
+  it("snapshots completed records so callers and polling clients cannot mutate stored state", () => {
+    const store = new InMemoryBackgroundOrchestrationStore();
+    const record: BackgroundOrchestrationRecord = {
+      finishedAt: new Date("2026-07-16T00:00:00.000Z"),
+      orchestrationId: "immutable-record",
+      response: { id: "response", model: "diagnostic", output: "original" },
+      results: [],
+      status: "completed",
+      subtaskCount: 1,
+      workerIds: ["worker"]
+    };
+
+    store.complete(record);
+    record.finishedAt.setUTCFullYear(2000);
+    (record.workerIds as string[]).push("caller");
+    (record.response as { output: string }).output = "caller";
+
+    const polled = store.get("immutable-record")!;
+    if (polled.status === "completed") {
+      polled.finishedAt.setUTCFullYear(1999);
+      (polled.workerIds as string[]).push("poller");
+      (polled.response as { output: string }).output = "poller";
+    }
+
+    expect(store.get("immutable-record")).toMatchObject({
+      finishedAt: new Date("2026-07-16T00:00:00.000Z"),
+      response: { output: "original" },
+      workerIds: ["worker"]
+    });
+  });
+
+  it("keeps completed records when opaque provider diagnostics cannot be cloned", () => {
+    const store = new InMemoryBackgroundOrchestrationStore();
+    const workerResult = createWorkerResult("worker", "output", taskInput);
+    const unsafeWorkerResult = {
+      ...workerResult,
+      response: { ...workerResult.response, raw: () => "opaque SDK value" }
+    };
+
+    store.complete({
+      finishedAt: new Date(),
+      orchestrationId: "opaque-raw",
+      response: { id: "response", model: "diagnostic", output: "complete", raw: () => "opaque SDK value" },
+      results: [{ result: unsafeWorkerResult, status: "completed", workerId: "worker" }],
+      status: "completed",
+      subtaskCount: 1,
+      workerIds: ["worker"]
+    });
+
+    const record = store.get("opaque-raw");
+    expect(record?.status).toBe("completed");
+    if (record?.status === "completed") {
+      expect(record.response.raw).toBeUndefined();
+      expect(record.results[0]?.result?.response.raw).toBeUndefined();
+    }
+  });
 });
