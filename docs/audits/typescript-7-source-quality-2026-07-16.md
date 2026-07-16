@@ -434,3 +434,10 @@ the TypeScript 7 announcement and release-notes links.
 - Replaced debug replay's divergent local JSON guard with the shared contract. Invalid metadata now degrades to `{}`, and invalid array entries are omitted instead of later serializing as JSON `null`.
 - Verified with `pnpm --filter @muse/runtime-state exec vitest run test/debug-replay.test.ts test/debug-replay-kysely.test.ts` (16 passed) and `pnpm --filter @muse/runtime-state build`.
 - Independent architecture review: PASS.
+### API: shared JSON input guard ownership
+
+- Audited API server-input utilities, their direct tests, the shared JSON guard, and dependent parser paths.
+- Replaced the duplicate API-local recursive JSON validator with a re-export of `@muse/shared` `isJsonValue`; the public API module path remains stable.
+- The shared guard retains finite-number validation and recursive array/object validation, so API input behavior is unchanged while the contract has one owner.
+- Verified with `pnpm --filter @muse/api exec vitest run src/server-input-utils.test.ts` (9 passed) and `pnpm --filter @muse/api build`.
+- Independent architecture review: PASS.
