@@ -112,3 +112,9 @@ the TypeScript 7 announcement and release-notes links.
 - Extracted the repeated best-effort corrupt-file quarantine into `@muse/shared`. Task memory, conversation summaries, belief provenance, and the durable multi-agent board now use a UUID-suffixed quarantine name so concurrent recovery attempts cannot collide within one millisecond.
 - Board malformed roots, invalid JSON, and oversized files now quarantine before its next mutation writes a fresh board; individual invalid task records remain safely filtered without treating the whole board as corrupt.
 - Focused verification: `pnpm --filter @muse/shared build`; `pnpm --filter @muse/memory exec vitest run test/file-task-memory-store.test.ts test/conversation-summary-store.test.ts src/belief-provenance-store.test.ts` (34 passed) and build; `pnpm --filter @muse/multi-agent exec vitest run test/board-store.test.ts` (8 passed) and build.
+
+## Follow-up persistence and recovery audit (2026-07-16)
+
+- Audited follow-up capture, lifecycle mutations, and daemon firing. Upsert, fire, cancel, and snooze already reacquire the latest persisted state under the shared nonce-owned file lock; daemon delivery has a separate firing lock, so no lost-update or duplicate-delivery change was warranted.
+- The legacy `@muse/stores` quarantine compatibility helper alone still used a timestamp-only target. It now delegates to the shared UUID-suffixed primitive, preserving every backup when repeated corruptions occur within one millisecond.
+- Focused verification: `pnpm --filter @muse/stores exec vitest run test/store-quarantine.test.ts test/followups-cross-process.test.ts test/followups-store-lifecycle.test.ts` (14 passed) and `pnpm --filter @muse/stores build`.
