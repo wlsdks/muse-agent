@@ -175,3 +175,8 @@ the TypeScript 7 announcement and release-notes links.
 - Inspected `runCommandWithTimeout`, its bounded stream accumulator, and the Rust runner/voice consumer impact graph.
 - Added an explicit `truncated` result signal whenever either bounded stream exceeds its capture limit. The Rust runner now fail-closes with that signal instead of misclassifying a partial JSON response as generic invalid JSON.
 - Voice consumers retain their existing stderr behavior because they do not parse captured stdout; no unrelated output contract change was made.
+## Rust runner request-size boundary
+
+- Inspected the local Rust runner protocol, command/environment hardening, process-group cleanup, output draining, sandbox planning, and protocol tests.
+- Bounded untrusted stdin before JSON parsing to 1 MiB, reading only one extra byte to detect overflow. Oversized requests now fail before an unbounded allocation or parser work begins.
+- Added direct reader tests for normal JSON and over-limit input; response serialization keeps the existing failure contract.

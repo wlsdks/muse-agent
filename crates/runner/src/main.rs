@@ -18,6 +18,10 @@ const DEFAULT_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 // (the TS parser clamps to the same; this is the authoritative defence).
 const MAX_TIMEOUT_MS: u64 = 600_000;
 const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
+// The runner reads one JSON request from an untrusted parent process. Bound it
+// before JSON parsing so a malformed multi-gigabyte stdin payload cannot make
+// the runner allocate unbounded memory.
+const MAX_REQUEST_BYTES: usize = 1 * 1024 * 1024;
 
 fn effective_timeout_ms(requested: Option<u64>) -> u64 {
     requested.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(1, MAX_TIMEOUT_MS)
@@ -102,12 +106,20 @@ fn main() {
 }
 
 fn read_request() -> Result<RunnerRequest, String> {
-    let mut input = String::new();
-    io::stdin()
-        .read_to_string(&mut input)
-        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    read_request_from(io::stdin())
+}
 
-    serde_json::from_str(&input).map_err(|error| format!("invalid runner request JSON: {error}"))
+fn read_request_from<R: Read>(input: R) -> Result<RunnerRequest, String> {
+    let mut bytes = Vec::with_capacity(MAX_REQUEST_BYTES + 1);
+    input
+        .take((MAX_REQUEST_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    if bytes.len() > MAX_REQUEST_BYTES {
+        return Err(format!("runner request exceeds the {MAX_REQUEST_BYTES} byte limit"));
+    }
+
+    serde_json::from_slice(&bytes).map_err(|error| format!("invalid runner request JSON: {error}"))
 }
 
 /// The concrete `Command::new(program).args(args)` this run will spawn, resolved
@@ -1306,3 +1318,24 @@ mod macos_sandbox_contract_tests {
     }
 }
 
+#[cfg(test)]
+mod request_input_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn request_reader_accepts_a_normal_bounded_json_request() {
+        let request = read_request_from(Cursor::new(br#"{"command":"echo"}"#))
+            .expect("a normal JSON request should parse");
+        assert_eq!(request.command, "echo");
+    }
+
+    #[test]
+    fn request_reader_rejects_oversized_input_before_json_parsing() {
+        let oversized = vec![b' '; MAX_REQUEST_BYTES + 1];
+        let error = read_request_from(Cursor::new(oversized))
+            .expect_err("oversized input must be rejected before parsing");
+        assert!(error.contains("exceeds"), "unexpected error: {error}");
+        assert!(error.contains(&MAX_REQUEST_BYTES.to_string()), "missing limit: {error}");
+    }
+}
