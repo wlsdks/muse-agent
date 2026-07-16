@@ -568,3 +568,11 @@ the TypeScript 7 announcement and release-notes links.
 - Preserved `createChatStreamRequestLifecycle` as a compatibility export while migrating chat to the shared implementation. Ask now passes its request signal to `fetch`, aborts on reset and cleanup, and gates buffered-response, SSE-delta, error, and `finally` updates by request identity.
 - Verified with `pnpm --filter @muse/web exec vitest run src/api/useAskStream.test.ts src/api/useChatStream.lifecycle.test.ts src/api/useChatStream.conversationId.test.ts src/api/useChatStream.commit.test.ts src/api/useChatStream.pendingApprovals.test.ts` (43 passed) and `pnpm --filter @muse/web build`.
 - Independent runtime-contract review: PASS.
+
+### API: channel-daemon supervisor lifecycle transitions
+
+- Audited daemon replacement and server-shutdown ownership against Node's synchronous callback semantics and established supervisor shutdown practice.
+- Fixed a re-entrant replacement defect: a retiring handle could synchronously call back into `stop(name)` after its replacement had been registered, stopping the replacement while leaving its status marked as running.
+- `adopt` now makes replacement transitions explicit, treats duplicate adoption of the same live handle as idempotent, and rejects registrations attempted by a retiring handle. `stopAll` is explicitly terminal because its sole call site is Fastify's `onClose` hook: it rejects both re-entrant and late asynchronous registrations after shutdown begins.
+- Cleanup is also handle-identity re-entrant safe, and replacement state retains the candidate identity so callbacks that re-adopt the same candidate neither recursively stop it nor publish an already-stopped handle.
+- Added regressions for retiring-handle re-entry, same-candidate re-adoption, duplicate adoption, re-entry during complete shutdown, shutdown-time sibling adoption, self-adoption during cleanup, and a post-shutdown registration.

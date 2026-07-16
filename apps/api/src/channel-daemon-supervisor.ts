@@ -24,6 +24,7 @@ export interface ChannelDaemonSupervisor {
   adopt(name: string, handle: StoppableHandle): void;
   isRunning(name: string): boolean;
   stop(name: string): void;
+  /** Terminal server-shutdown operation; later registrations are stopped. */
   stopAll(): void;
   noteIngest(name: string, count: number): void;
   noteError(name: string, message: string): void;
@@ -40,6 +41,10 @@ interface DaemonState {
 
 export function createChannelDaemonSupervisor(): ChannelDaemonSupervisor {
   const daemons = new Map<string, DaemonState>();
+  const replacingCandidates = new Map<string, StoppableHandle>();
+  const stoppingHandles = new Set<StoppableHandle>();
+  let closed = false;
+  let stoppingAll = false;
 
   const state = (name: string): DaemonState => {
     const existing = daemons.get(name);
@@ -52,21 +57,52 @@ export function createChannelDaemonSupervisor(): ChannelDaemonSupervisor {
   };
 
   const safelyStop = (handle: StoppableHandle | undefined): void => {
+    if (!handle || stoppingHandles.has(handle)) return;
+
+    stoppingHandles.add(handle);
     try {
-      handle?.stop();
+      handle.stop();
     } catch {
       // A failed cleanup must not leave the replacement or stopped state
       // reporting the old daemon as live. The caller records operational
       // errors separately through noteError.
+    } finally {
+      stoppingHandles.delete(handle);
     }
   };
 
   return {
     adopt(name, handle) {
+      if (daemons.get(name)?.handle === handle) return;
+
+      if (closed || stoppingAll) {
+        safelyStop(handle);
+        return;
+      }
+
+      const replacingCandidate = replacingCandidates.get(name);
+      if (replacingCandidate) {
+        if (replacingCandidate !== handle) safelyStop(handle);
+        return;
+      }
+
       const entry = state(name);
       const previous = entry.handle;
+
+      replacingCandidates.set(name, handle);
+      entry.handle = undefined;
+      try {
+        safelyStop(previous);
+      } finally {
+        replacingCandidates.delete(name);
+      }
+
+      if (closed || stoppingAll) {
+        safelyStop(handle);
+        return;
+      }
+
       entry.handle = handle;
-      safelyStop(previous);
     },
     isRunning(name) {
       return daemons.get(name)?.handle !== undefined;
@@ -104,10 +140,18 @@ export function createChannelDaemonSupervisor(): ChannelDaemonSupervisor {
       }
     },
     stopAll() {
-      for (const entry of daemons.values()) {
-        const handle = entry.handle;
-        entry.handle = undefined;
-        safelyStop(handle);
+      if (closed || stoppingAll) return;
+
+      closed = true;
+      stoppingAll = true;
+      try {
+        for (const entry of daemons.values()) {
+          const handle = entry.handle;
+          entry.handle = undefined;
+          safelyStop(handle);
+        }
+      } finally {
+        stoppingAll = false;
       }
     }
   };
