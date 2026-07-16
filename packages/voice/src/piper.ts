@@ -5,6 +5,7 @@ import { join as pathJoin } from "node:path";
 import { runCommandWithTimeout } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
+import { normalizeVoiceTimeoutMs } from "./timeout-utils.js";
 import type {
   TextToSpeechProvider,
   TtsFormat,
@@ -90,10 +91,7 @@ export class PiperTtsProvider implements TextToSpeechProvider {
     this.id = options.id ?? "piper";
     this.binaryPath = options.binaryPath ?? "piper";
     this.modelPath = options.modelPath;
-    const timeoutMs =
-      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
-        ? options.timeoutMs
-        : DEFAULT_PIPER_TIMEOUT_MS;
+    const timeoutMs = normalizeVoiceTimeoutMs(options.timeoutMs, DEFAULT_PIPER_TIMEOUT_MS);
     this.runner = options.runner ?? createPiperRunner(timeoutMs);
   }
 
@@ -172,18 +170,19 @@ export class PiperTtsProvider implements TextToSpeechProvider {
  * timeout coverage.
  */
 export function createPiperRunner(timeoutMs: number = DEFAULT_PIPER_TIMEOUT_MS): PiperRunner {
+  const effectiveTimeoutMs = normalizeVoiceTimeoutMs(timeoutMs, DEFAULT_PIPER_TIMEOUT_MS);
   return async (binary, args, stdin): Promise<PiperRunResult> => {
     const result = await runCommandWithTimeout({
       command: binary,
       args: [...args],
-      timeoutMs,
+      timeoutMs: effectiveTimeoutMs,
       maxStderrBytes: 200_000,
       stdin,
       killSignal: "SIGKILL"
     });
 
     if (result.timedOut) {
-      throw new Error(`piper timed out after ${timeoutMs.toString()}ms and was killed`);
+      throw new Error(`piper timed out after ${effectiveTimeoutMs.toString()}ms and was killed`);
     }
 
     return { exitCode: result.exitCode, stderr: result.stderr };

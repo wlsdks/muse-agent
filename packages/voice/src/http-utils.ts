@@ -1,7 +1,8 @@
+import { normalizeVoiceTimeoutMs } from "./timeout-utils.js";
+
 /** Shared fetch-response helpers for the cloud STT/TTS adapters (openai-whisper, openai-tts). */
 
 export const DEFAULT_VOICE_FETCH_TIMEOUT_MS = 60_000;
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * Bound a cloud voice request so an unreachable provider cannot pin a voice
@@ -14,9 +15,7 @@ export async function fetchWithVoiceTimeout(
   init: RequestInit,
   timeoutMs: number = DEFAULT_VOICE_FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  const effectiveTimeoutMs = Number.isSafeInteger(timeoutMs) && timeoutMs > 0
-    ? Math.min(timeoutMs, MAX_TIMER_DELAY_MS)
-    : DEFAULT_VOICE_FETCH_TIMEOUT_MS;
+  const effectiveTimeoutMs = normalizeVoiceTimeoutMs(timeoutMs, DEFAULT_VOICE_FETCH_TIMEOUT_MS);
   return fetchImpl(url, { ...init, signal: AbortSignal.timeout(effectiveTimeoutMs) });
 }
 

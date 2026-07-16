@@ -6,6 +6,7 @@ import { join as pathJoin } from "node:path";
 import { runCommandWithTimeout } from "@muse/shared";
 
 import { VoiceProviderError, VoiceValidationError } from "./errors.js";
+import { normalizeVoiceTimeoutMs } from "./timeout-utils.js";
 import type {
   SpeechToTextProvider,
   SttProviderInfo,
@@ -76,13 +77,6 @@ export interface WhisperCppSttProviderOptions {
 }
 
 const DEFAULT_WHISPER_TIMEOUT_MS = 120_000;
-const MAX_WHISPER_TIMEOUT_MS = 2_147_483_647;
-
-function normalizeWhisperTimeoutMs(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.min(Math.trunc(value), MAX_WHISPER_TIMEOUT_MS)
-    : DEFAULT_WHISPER_TIMEOUT_MS;
-}
 
 /**
  * Local Whisper.cpp adapter. Drops a tmp WAV next to a tmp output
@@ -104,7 +98,7 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     this.id = options.id ?? "whisper-cpp";
     this.binaryPath = options.binaryPath ?? "whisper-cpp";
     this.modelPath = options.modelPath ?? resolveDefaultWhisperModelPath();
-    const timeoutMs = normalizeWhisperTimeoutMs(options.timeoutMs);
+    const timeoutMs = normalizeVoiceTimeoutMs(options.timeoutMs, DEFAULT_WHISPER_TIMEOUT_MS);
     this.runner = options.runner ?? createWhisperCppRunner(timeoutMs);
   }
 
@@ -265,7 +259,7 @@ function extensionForMime(mime: string): string {
  * coverage.
  */
 export function createWhisperCppRunner(timeoutMs: number = DEFAULT_WHISPER_TIMEOUT_MS): WhisperCppRunner {
-  const effectiveTimeoutMs = normalizeWhisperTimeoutMs(timeoutMs);
+  const effectiveTimeoutMs = normalizeVoiceTimeoutMs(timeoutMs, DEFAULT_WHISPER_TIMEOUT_MS);
   return async (binary, args): Promise<WhisperCppRunResult> => {
     const result = await runCommandWithTimeout({
       command: binary,
