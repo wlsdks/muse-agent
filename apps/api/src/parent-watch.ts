@@ -7,8 +7,8 @@ export function watchParentProcess(
   pidRaw: string | undefined = process.env.MUSE_PARENT_PID,
   intervalMs = 3000
 ): NodeJS.Timeout | undefined {
-  const pid = Number(pidRaw);
-  if (!pidRaw || !Number.isInteger(pid) || pid <= 1) return undefined;
+  const pid = parseParentProcessId(pidRaw);
+  if (pid === undefined) return undefined;
 
   const timer = setInterval(() => {
     if (!isAlive(pid)) {
@@ -19,6 +19,14 @@ export function watchParentProcess(
   // Don't keep the event loop alive solely for this watcher.
   timer.unref?.();
   return timer;
+}
+
+function parseParentProcessId(raw: string | undefined): number | undefined {
+  if (!raw || !/^[1-9]\d*$/u.test(raw)) {
+    return undefined;
+  }
+  const pid = Number(raw);
+  return Number.isSafeInteger(pid) && pid > 1 ? pid : undefined;
 }
 
 /// `kill(pid, 0)` sends no signal — it only checks for the process's existence.

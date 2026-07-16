@@ -259,3 +259,9 @@ the TypeScript 7 announcement and release-notes links.
 - Inspected API tick-daemon bootstrap, quiet-hours resolver, channel-daemon supervisor, and focused lifecycle tests. Existing daemon handles are registered for Fastify `onClose`, replacement handles are stopped, and status output is bounded/redacted; no evidence-backed change was needed.
 - Inspected the shared `@muse/autoconfigure` distill consumer. `maxPerTick` now accepts only positive safe integers; malformed values fall back to the one-item cost/progress-safe default instead of relying on `slice` coercion or producing an empty batch.
 - Focused shared distill tests: 15 passed. `pnpm --filter @muse/autoconfigure build`: passed. Independent review: pending.
+
+### 2026-07-16 - environment numeric boundaries and parent watch
+
+- Compared API tick bootstrap numeric parsing with the tick implementations. Each interval-owning daemon already rejects non-finite input and clamps its own documented range, so broad `optionalNumber` extraction would add no safety and blur differing option semantics.
+- Hardened `MUSE_PARENT_PID`: only a positive, safe decimal process ID now starts the parent watcher. Exponent notation, fractional/whitespace forms, and unsafe integers are ignored rather than reaching `process.kill(pid, 0)` and causing a spurious API self-exit.
+- Focused parent-watch tests: 10 passed. `pnpm --filter @muse/api build`: passed. Independent review: pending.
