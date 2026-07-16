@@ -549,3 +549,14 @@ the TypeScript 7 announcement and release-notes links.
 - Covered ordinary duplicate delivery, capacity eviction, legacy pre-receipt inbox entries that later receive an event key, `stored: 0` no-op accounting, and `503` retry signaling.
 - Verified with `pnpm --filter @muse/messaging exec vitest run test/messaging.test.ts` (97 passed), `pnpm --filter @muse/messaging build`, `pnpm --filter @muse/api exec vitest run test/messaging-webhooks.test.ts` (6 passed), and `pnpm --filter @muse/api build`.
 - Independent runtime-contract review: PASS after receipt-backfill migration coverage.
+
+### API and messaging: durable channel-poll cursor commits
+
+- Audited the Discord and Slack polling cursor flow from remote response through the generic API poller and local inbox store. The prior ordering advanced a provider cursor before the inbox append, so a local write failure could permanently skip remote messages.
+- Added a shared `PollingFetchOptions` contract: durable pollers defer cursor advancement, persist the complete batch, then explicitly commit. Direct provider polling preserves its immediate-cursor behavior for compatibility.
+- Cursor state is now split between a fetched-but-not-persisted stage and an inbox-durable-but-not-yet-written committable stage. Append failures discard only the first; cursor-write failures retain the second for a later retry, including an empty subsequent poll.
+- The generic poller commits all-filtered raw batches too, so events intentionally excluded from the text inbox do not replay forever. Ingest logging now counts only actual inbox insertions rather than duplicate deliveries.
+- Discord's official channel endpoint documents `after` as a message-ID boundary; Slack documents `oldest` as an exclusive timestamp boundary. Both cursor writes therefore occur only after the local at-least-once boundary succeeds.
+- Covered deferred Discord/Slack provider commits, append failure followed by an empty poll, cursor-write failure followed by an empty poll, direct polling compatibility, wrapper behavior, and single-flight behavior.
+- Verified with `pnpm --filter @muse/messaging exec vitest run test/deferred-cursor-polling.test.ts test/messaging.test.ts test/slack-provider-contract.test.ts test/discord-after-store.test.ts` (110 passed), `pnpm --filter @muse/api exec vitest run test/channel-poll-tick.test.ts test/discord-poll-tick.test.ts test/slack-poll-tick.test.ts` (24 passed), `pnpm --filter @muse/messaging exec tsc -b --force`, and `pnpm --filter @muse/api exec tsc -b --force`.
+- Independent runtime-contract review: PASS after staged-versus-committable cursor recovery coverage.

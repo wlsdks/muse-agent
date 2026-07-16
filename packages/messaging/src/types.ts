@@ -74,6 +74,15 @@ export interface InboundFetchOptions {
   readonly source?: string;
 }
 
+/**
+ * Polling options for providers that maintain a remote cursor. A durable
+ * consumer can defer cursor advancement until it has persisted the batch,
+ * then call the provider's matching commit method.
+ */
+export interface PollingFetchOptions extends InboundFetchOptions {
+  readonly deferCursorCommit?: boolean;
+}
+
 export interface InboundMessage {
   readonly providerId: MessagingProviderId;
   /** Platform-native message id (Telegram message_id, etc.). */

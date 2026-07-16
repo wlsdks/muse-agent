@@ -10,7 +10,8 @@ import type {
   MessagingProvider,
   MessagingProviderInfo,
   OutboundMessage,
-  OutboundReceipt
+  OutboundReceipt,
+  PollingFetchOptions
 } from "./types.js";
 import { validateOutboundMessage } from "./validate.js";
 
@@ -74,6 +75,10 @@ export class SlackProvider implements MessagingProvider {
   private readonly afterFile: string | undefined;
   private readonly inboxFile: string | undefined;
   private readonly timeoutMs: number | undefined;
+  /** Cursor from a fetched batch that has not yet reached durable inbox storage. */
+  private readonly stagedCursorByChannel = new Map<string, string>();
+  /** Cursor whose inbox batch is durable but whose cursor-file write must be retried. */
+  private readonly committableCursorByChannel = new Map<string, string>();
 
   constructor(options: SlackProviderOptions) {
     this.token = options.token;
@@ -116,21 +121,54 @@ export class SlackProvider implements MessagingProvider {
 
   /**
    * Polling-side surface for a daemon: like `fetchInbound` but
-   * advances the per-channel `ts` cursor when an `afterFile` is
-   * configured. Each call passes `oldest=<stored>` to Slack and
-   * persists the newest `ts` back on success — so a polling tick
-   * walks the channel rather than re-reading the same window.
+   * uses the per-channel `ts` cursor when an `afterFile` is configured.
+   * By default it persists the newest timestamp on success. A durable
+   * consumer can defer that write until its inbox append succeeds, then call
+   * `commitPolledInbound`.
    *
    * Without `afterFile`, behaves identically to `fetchInbound`.
    * `source` is required either way.
    */
-  async pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+  async pollUpdates(options?: PollingFetchOptions): Promise<readonly InboundMessage[]> {
+    if (options?.deferCursorCommit) {
+      const channel = options.source?.trim();
+      if (channel) {
+        this.stagedCursorByChannel.delete(channel);
+      }
+    }
     return this.fetchHistory(options, true);
   }
 
+  /** Commit a cursor staged by `pollUpdates({ deferCursorCommit: true })`. */
+  async commitPolledInbound(options?: InboundFetchOptions): Promise<void> {
+    const channel = options?.source?.trim();
+    if (!channel || !this.afterFile) {
+      return;
+    }
+    const staged = this.stagedCursorByChannel.get(channel);
+    if (staged !== undefined) {
+      this.committableCursorByChannel.set(channel, staged);
+      this.stagedCursorByChannel.delete(channel);
+    }
+    const cursor = this.committableCursorByChannel.get(channel);
+    if (cursor === undefined) {
+      return;
+    }
+    await writeSlackAfter(this.afterFile, channel, cursor);
+    this.committableCursorByChannel.delete(channel);
+  }
+
+  /** Discard a fetched cursor when its batch could not be persisted locally. */
+  discardPolledInbound(options?: InboundFetchOptions): void {
+    const channel = options?.source?.trim();
+    if (channel) {
+      this.stagedCursorByChannel.delete(channel);
+    }
+  }
+
   private async fetchHistory(
-    options: InboundFetchOptions | undefined,
-    advanceCursor: boolean
+    options: PollingFetchOptions | undefined,
+    polling: boolean
   ): Promise<readonly InboundMessage[]> {
     const channel = options?.source?.trim();
     if (!channel || channel.length === 0) {
@@ -141,7 +179,7 @@ export class SlackProvider implements MessagingProvider {
       );
     }
     const limit = clampInboundLimit(options?.limit);
-    const cursor = advanceCursor && this.afterFile
+    const cursor = polling && this.afterFile
       ? await readSlackAfter(this.afterFile, channel)
       : undefined;
     const formParams: Record<string, string> = { channel, limit: limit.toString() };
@@ -174,13 +212,19 @@ export class SlackProvider implements MessagingProvider {
       );
     }
     const messages = parsed.messages ?? [];
-    // Newest-first response: advance cursor to the most recent `ts`
-    // (ack everything seen, whether the entry survived the
-    // text/empty filter or not).
-    if (advanceCursor && this.afterFile && messages.length > 0) {
+    // Advance on everything seen, including entries filtered from the
+    // inbox. A durable poller can defer this acknowledgement until after its
+    // local write succeeds.
+    if (polling && this.afterFile && messages.length > 0) {
       const newest = pickNewestTs(messages);
       if (newest !== undefined) {
-        await writeSlackAfter(this.afterFile, channel, newest);
+        if (options?.deferCursorCommit) {
+          this.stagedCursorByChannel.set(channel, newest);
+        } else {
+          await writeSlackAfter(this.afterFile, channel, newest);
+          this.stagedCursorByChannel.delete(channel);
+          this.committableCursorByChannel.delete(channel);
+        }
       }
     }
     return messages.flatMap((message): readonly InboundMessage[] => {

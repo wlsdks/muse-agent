@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { readInbox } from "@muse/messaging";
+import { DiscordProvider, readDiscordAfter, readInbox } from "@muse/messaging";
 import type { InboundFetchOptions, InboundMessage } from "@muse/messaging";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -62,7 +62,10 @@ describe("startChannelPollTick", () => {
     await handle.tickOnce();
     handle.stop();
 
-    expect(calls).toEqual([{ limit: 50, source: "c1" }, { limit: 50, source: "c2" }]);
+    expect(calls).toEqual([
+      { deferCursorCommit: true, limit: 50, source: "c1" },
+      { deferCursorCommit: true, limit: 50, source: "c2" }
+    ]);
     expect((await readInbox(file)).map((m) => m.messageId)).toEqual(["m3", "m2", "m1"]);
     expect(logs).toEqual(["TEST: ingested 3 message(s) across 2 channel(s)"]);
   });
@@ -77,7 +80,7 @@ describe("startChannelPollTick", () => {
     });
     await handle.tickOnce();
     handle.stop();
-    expect(calls).toEqual([{ source: "only" }]);
+    expect(calls).toEqual([{ deferCursorCommit: true, source: "only" }]);
   });
 
   it("logs and skips a failing channel without poisoning the others", async () => {
@@ -136,5 +139,102 @@ describe("startChannelPollTick", () => {
     await Promise.all([handle.tickOnce(), handle.tickOnce()]);
     handle.stop();
     expect(maxActive).toBe(1);
+  });
+
+  it("commits a deferred provider cursor only after durable inbox storage", async () => {
+    const file = inboxFile();
+    const commits: number[] = [];
+    const handle = startChannelPollTick({
+      channels: ["c1"],
+      inboxFile: file,
+      logPrefix: "COMMIT",
+      provider: {
+        commitPolledInbound: async () => { commits.push((await readInbox(file)).length); },
+        pollUpdates: async () => [msg("m1", "c1")]
+      }
+    });
+
+    await handle.tickOnce();
+    handle.stop();
+    expect(commits).toEqual([1]);
+  });
+
+  it("does not commit a deferred provider cursor when inbox persistence fails", async () => {
+    const events: string[] = [];
+    const handle = startChannelPollTick({
+      channels: ["c1"],
+      errorLogger: (message) => events.push(`error:${message}`),
+      inboxFile: dir,
+      logPrefix: "FAILED",
+      provider: {
+        commitPolledInbound: async () => { events.push("commit"); },
+        pollUpdates: async () => [msg("m1", "c1")]
+      }
+    });
+
+    await handle.tickOnce();
+    handle.stop();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toContain("FAILED: channel c1:");
+  });
+
+  it("does not commit a stale cursor after a failed append followed by an empty poll", async () => {
+    const afterFile = join(dir, "discord-after.json");
+    let fetches = 0;
+    const provider = new DiscordProvider({
+      afterFile,
+      fetch: async () => {
+        fetches += 1;
+        return new Response(JSON.stringify(fetches === 1 ? [{
+          content: "must not be acknowledged",
+          id: "1234567890123456789",
+          timestamp: "2026-07-16T00:00:00.000Z"
+        }] : []));
+      },
+      token: "test"
+    });
+    const handle = startChannelPollTick({
+      channels: ["c1"],
+      inboxFile: dir,
+      logPrefix: "STALE",
+      provider
+    });
+
+    await handle.tickOnce();
+    await handle.tickOnce();
+    handle.stop();
+    expect(await readDiscordAfter(afterFile, "c1")).toBeUndefined();
+  });
+
+  it("retries a cursor commit after storage succeeds even when the next poll is empty", async () => {
+    const afterFile = join(dir, "discord-after-retry.json");
+    await fs.mkdir(afterFile);
+    const inboxFile = join(dir, "inbox.json");
+    let fetches = 0;
+    const provider = new DiscordProvider({
+      afterFile,
+      fetch: async () => {
+        fetches += 1;
+        return new Response(JSON.stringify(fetches === 1 ? [{
+          content: "persisted before commit failure",
+          id: "2234567890123456789",
+          timestamp: "2026-07-16T00:00:00.000Z"
+        }] : []));
+      },
+      token: "test"
+    });
+    const handle = startChannelPollTick({
+      channels: ["c1"],
+      inboxFile,
+      logPrefix: "RETRY",
+      provider
+    });
+
+    await handle.tickOnce();
+    await fs.rm(afterFile, { force: true, recursive: true });
+    await handle.tickOnce();
+    handle.stop();
+    expect(await readInbox(inboxFile)).toHaveLength(1);
+    expect(await readDiscordAfter(afterFile, "c1")).toBe("2234567890123456789");
   });
 });

@@ -10,7 +10,8 @@ import type {
   MessagingProvider,
   MessagingProviderInfo,
   OutboundMessage,
-  OutboundReceipt
+  OutboundReceipt,
+  PollingFetchOptions
 } from "./types.js";
 import { validateOutboundMessage } from "./validate.js";
 
@@ -73,6 +74,10 @@ export class DiscordProvider implements MessagingProvider {
   private readonly afterFile: string | undefined;
   private readonly inboxFile: string | undefined;
   private readonly timeoutMs: number | undefined;
+  /** Cursor from a fetched batch that has not yet reached durable inbox storage. */
+  private readonly stagedCursorByChannel = new Map<string, string>();
+  /** Cursor whose inbox batch is durable but whose cursor-file write must be retried. */
+  private readonly committableCursorByChannel = new Map<string, string>();
 
   constructor(options: DiscordProviderOptions) {
     this.token = options.token;
@@ -116,21 +121,54 @@ export class DiscordProvider implements MessagingProvider {
 
   /**
    * Polling-side surface for a daemon: like `fetchInbound` but
-   * advances the per-channel "after" cursor when an `afterFile` is
-   * configured. Each call passes `?after=<stored>` to Discord and
-   * persists the newest message id back on success — so a polling
-   * tick walks the channel rather than re-reading the same window.
+   * uses the per-channel "after" cursor when an `afterFile` is
+   * configured. By default it persists the newest message id on
+   * success. A durable consumer can defer that write until its inbox
+   * append succeeds, then call `commitPolledInbound`.
    *
    * Without `afterFile`, behaves identically to `fetchInbound`
    * (snapshot of newest `limit`). `source` is required either way.
    */
-  async pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+  async pollUpdates(options?: PollingFetchOptions): Promise<readonly InboundMessage[]> {
+    if (options?.deferCursorCommit) {
+      const channelId = options.source?.trim();
+      if (channelId) {
+        this.stagedCursorByChannel.delete(channelId);
+      }
+    }
     return this.fetchMessages(options, true);
   }
 
+  /** Commit a cursor staged by `pollUpdates({ deferCursorCommit: true })`. */
+  async commitPolledInbound(options?: InboundFetchOptions): Promise<void> {
+    const channelId = options?.source?.trim();
+    if (!channelId || !this.afterFile) {
+      return;
+    }
+    const staged = this.stagedCursorByChannel.get(channelId);
+    if (staged !== undefined) {
+      this.committableCursorByChannel.set(channelId, staged);
+      this.stagedCursorByChannel.delete(channelId);
+    }
+    const cursor = this.committableCursorByChannel.get(channelId);
+    if (cursor === undefined) {
+      return;
+    }
+    await writeDiscordAfter(this.afterFile, channelId, cursor);
+    this.committableCursorByChannel.delete(channelId);
+  }
+
+  /** Discard a fetched cursor when its batch could not be persisted locally. */
+  discardPolledInbound(options?: InboundFetchOptions): void {
+    const channelId = options?.source?.trim();
+    if (channelId) {
+      this.stagedCursorByChannel.delete(channelId);
+    }
+  }
+
   private async fetchMessages(
-    options: InboundFetchOptions | undefined,
-    advanceCursor: boolean
+    options: PollingFetchOptions | undefined,
+    polling: boolean
   ): Promise<readonly InboundMessage[]> {
     const channelId = options?.source?.trim();
     if (!channelId || channelId.length === 0) {
@@ -141,7 +179,7 @@ export class DiscordProvider implements MessagingProvider {
       );
     }
     const limit = clampInboundLimit(options?.limit);
-    const cursor = advanceCursor && this.afterFile
+    const cursor = polling && this.afterFile
       ? await readDiscordAfter(this.afterFile, channelId)
       : undefined;
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(channelId)}/messages?limit=${limit.toString()}`
@@ -168,13 +206,18 @@ export class DiscordProvider implements MessagingProvider {
     }
     const parsed = tryParseJson<readonly DiscordChannelMessage[]>(text);
     const messages: readonly DiscordChannelMessage[] = Array.isArray(parsed) ? parsed : [];
-    // Discord returns newest-first. Advance the cursor on ANY id
-    // seen — even messages we filter out client-side (empty content)
-    // must be ack'd or we'll re-poll them.
-    if (advanceCursor && this.afterFile && messages.length > 0) {
+    // Advance on ANY id seen — even messages we filter out client-side
+    // (empty content) must be acknowledged or we'll re-poll them.
+    if (polling && this.afterFile && messages.length > 0) {
       const newest = pickNewestId(messages);
       if (newest !== undefined) {
-        await writeDiscordAfter(this.afterFile, channelId, newest);
+        if (options?.deferCursorCommit) {
+          this.stagedCursorByChannel.set(channelId, newest);
+        } else {
+          await writeDiscordAfter(this.afterFile, channelId, newest);
+          this.stagedCursorByChannel.delete(channelId);
+          this.committableCursorByChannel.delete(channelId);
+        }
       }
     }
     return messages.flatMap((message): readonly InboundMessage[] => {
