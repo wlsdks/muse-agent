@@ -43,6 +43,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Flows moved to the sidebar.** The automation builder is now its own
+  Workspace item (홈 · 대화 · 오늘 · 흐름 · 연동) instead of a tab inside
+  자동 활동, which keeps its 예정/액션 로그/목표/거부 tabs.
+
 - **The flow canvas is now a builder.** On the 흐름 tab you can create a new
   automation from a form with a live canvas preview, click any node to edit
   its real settings (schedule presets or raw cron, prompt, model, notify

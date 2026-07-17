@@ -18,6 +18,19 @@ import type { FlowCanvasEdge, FlowCanvasNode } from "./flow-canvas-mapping.js";
 import type { ApiClient } from "../api/client.js";
 import type { FlowProjection, FlowsResponse } from "../api/types.js";
 
+
+export function FlowsView({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
+  return (
+    <div className="content-narrow">
+      <p className="eyebrow">{t("group.workspace")}</p>
+      <h1 className="page-title">{t("nav.flows")}</h1>
+      <p className="muted" style={{ marginTop: 4, marginBottom: 16 }}>{t("flows.subtitle")}</p>
+      <FlowsTab client={client} />
+    </div>
+  );
+}
+
 export function FlowsTab({ client }: { client: ApiClient }) {
   const q = useQuery({
     queryFn: () => client.get<FlowsResponse>("/api/flows"),

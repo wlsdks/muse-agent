@@ -63,6 +63,7 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
       [
         "autonomy",
         "calendar",
+        "flows",
         "chat",
         "continuity",
         "home",

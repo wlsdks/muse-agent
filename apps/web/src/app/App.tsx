@@ -13,6 +13,7 @@ import { BoardView } from "../views/Board.js";
 import { CalendarView } from "../views/Calendar.js";
 import { ContinuityReviewView } from "../views/ContinuityReview.js";
 import { AutonomyView } from "../views/Autonomy.js";
+import { FlowsView } from "../views/Flows.js";
 import { ChatView } from "../views/Chat.js";
 import { ChatsView } from "../views/Chats.js";
 import { DashboardView } from "../views/Dashboard.js";
@@ -62,6 +63,7 @@ type ViewId =
   | "journey"
   | "activity"
   | "autonomy"
+  | "flows"
   | "dashboard"
   | "tools"
   | "mcp"
@@ -88,6 +90,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: HomeView, group: "group.workspace", icon: Icon.home, id: "home", key: "z", labelKey: "nav.home" },
   { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", key: "c", labelKey: "nav.chat" },
   { Component: TodayView, group: "group.workspace", icon: Icon.calendar, id: "today", key: "t", labelKey: "nav.today" },
+  { Component: FlowsView, group: "group.workspace", icon: Icon.activity, id: "flows", key: "w", labelKey: "nav.flows" },
   { Component: ChatsView, group: "group.workspace", icon: Icon.clock, id: "chats", advanced: true, key: "h", labelKey: "nav.chats" },
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", advanced: true, key: "b", labelKey: "nav.board" },
   { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", advanced: true, key: "x", labelKey: "nav.agents" },
@@ -105,7 +108,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: DashboardView, group: "group.system", icon: Icon.chart, id: "dashboard", advanced: true, key: "d", labelKey: "nav.dashboard" },
   { Component: ToolsView, group: "group.system", icon: Icon.tool, id: "tools", advanced: true, key: "o", labelKey: "nav.tools" },
   { Component: McpServersView, group: "group.system", icon: Icon.plug, id: "mcp", advanced: true, key: "p", labelKey: "nav.mcp" },
-  { Component: SelfImprovementView, group: "group.system", icon: Icon.brain, id: "self-improvement", advanced: true, key: "w", labelKey: "nav.selfImprovement" },
+  { Component: SelfImprovementView, group: "group.system", icon: Icon.brain, id: "self-improvement", advanced: true, key: "1", labelKey: "nav.selfImprovement" },
   { Component: SkillsView, group: "group.system", icon: Icon.tool, id: "skills", advanced: true, key: "j", labelKey: "nav.skills" },
   { Component: PromptLab, group: "group.system", icon: Icon.tool, id: "prompt-lab", advanced: true, key: "f", labelKey: "nav.promptLab" },
   { Component: SchedulerView, group: "group.system", icon: Icon.clock, id: "scheduler", advanced: true, key: "v", labelKey: "nav.scheduler" },

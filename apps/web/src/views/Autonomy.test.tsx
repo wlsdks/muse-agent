@@ -112,8 +112,8 @@ describe("AutonomyView — upcoming is the first and default tab", () => {
   });
 });
 
-describe("AutonomyView — Flows tab sits second, between Upcoming and Action log", () => {
-  it("renders the tab order: Upcoming, Flows, Action log, Objectives, Avoidances", () => {
+describe("AutonomyView — tab order after the Flows promotion to its own nav item", () => {
+  it("renders the tab order: Upcoming, Action log, Objectives, Avoidances", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const client = createApiClient("http://127.0.0.1:3030", "");
     const html = renderToStaticMarkup(
@@ -123,7 +123,7 @@ describe("AutonomyView — Flows tab sits second, between Upcoming and Action lo
         </I18nProvider>
       </QueryClientProvider>
     );
-    const order = [">Upcoming<", ">Flows<", ">Action log<", ">Objectives<", ">Avoidances<"].map((needle) =>
+    const order = [">Upcoming<", ">Action log<", ">Objectives<", ">Avoidances<"].map((needle) =>
       html.indexOf(needle)
     );
     for (const index of order) {
