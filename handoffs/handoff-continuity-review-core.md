@@ -57,7 +57,7 @@ The core result contains domain facts only. CLI outcome commands and translated 
 ## Worker notes
 
 - TDD RED evidence: the new public export was missing; API `reviewQueue` was absent; corrupt-state HTTP returned 500 instead of a structured 409; rendered web had no pending-review card. Browser Mode then exposed an inaccessible outcome button caused by using the wrong Button accessibility prop.
-- Focused GREEN evidence: core/Pack 21 tests, HTTP 9 tests, CLI 17 tests, and Chromium Browser Mode 3 tests passed. Root TS7 graph, direct web typecheck, changed-file ESLint, and `git diff --check` passed before final hook execution.
+- Focused GREEN evidence: core/Pack 22 tests, HTTP 9 tests, CLI 17 tests, and Chromium Browser Mode 3 tests passed. Root TS7 graph, direct web typecheck, changed-file ESLint, and `git diff --check` passed before final hook execution.
 - Cross-surface evidence: HTTP `reviewQueue` equals direct core; CLI JSON with only `outcomeCommands` removed equals direct core; the two-pending HTTP loop and rendered web both advance after an explicit outcome.
 - Real-store evidence: `/Users/jinan/.muse/attunement.json` remained byte- and SHA-256-identical with 21 deliveries and 21 outcomes before/after. The canonical result was no pending item and first-20 progress 20/20.
 - Browser-plugin evidence: the in-app Browser reported no available browser even after the documented single bootstrap retry. Repo Chromium Browser Mode provided rendered interaction verification; no screenshot claim is made.

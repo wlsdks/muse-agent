@@ -27,7 +27,7 @@ manual-only and keep the existing outcome policy and store schema.
 
 ## Verification evidence
 
-- Core/Pack focused tests: 21 passed, including seven review Interface cases.
+- Core/Pack focused tests: 22 passed, including eight review Interface cases.
 - HTTP route tests: 9 passed, including direct-core equality, corrupt-store
   structured failure, byte-identical GET, and two-pending outcome-to-next.
 - CLI tests: 17 passed; removing only the CLI `outcomeCommands` Adapter yields
