@@ -28,6 +28,9 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Documentation
 
+- Completed the first-20 Personal Continuity ledger audit with raw and strict
+  usefulness rates, explicit same-session/life-breadth limitations, a
+  manual-only automation decision, and the next evidence-driven build order.
 - Added the supported TS7/TS6 toolchain split, migration rules, verification
   order, and official references in `docs/development/typescript-7.md`; linked
   it from the agent and contributor contracts.

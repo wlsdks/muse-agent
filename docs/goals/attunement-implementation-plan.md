@@ -81,6 +81,22 @@ pack. It does not require desktop observation.
 30% are rejected, stop adding automation. Fix the pack's usefulness first. Passing this
 threshold is measurement evidence only; it never grants permission for proactive delivery.
 
+### First-20 batch result — 2026-07-17
+
+The first ledger window is complete: raw outcomes are `used 12`, `adjusted 6`,
+`ignored 2`, `rejected 0`. A strict receipt audit excludes two historical
+`used` entries without concrete task-advancing evidence, yielding a conservative
+10/20 use lower bound. The numerical kill threshold therefore does not kill
+manual Slice A, but it does **not** authorize automation.
+
+This was agent-operated, mostly same-session batch dogfood. The life sample is
+only a grocery/milk stress stratum, not broad or longitudinal daily-life
+evidence. Keep delivery user-invoked and hold Slice B. Before another promotion
+review, expose deterministic state already on the exact linked task (especially
+due/staleness and tags), remove duplicated contextual notes, and collect matched
+life/work return moments across dates. Full evidence and the raw/strict audit:
+[`../evaluations/continuity-first-20-2026-07-17.md`](../evaluations/continuity-first-20-2026-07-17.md).
+
 ## Slice B — safe observation and better timing
 
 **User experience:** after the user explicitly starts a personal thread, Muse can notice a
