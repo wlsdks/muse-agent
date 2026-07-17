@@ -112,6 +112,27 @@ describe("AutonomyView — upcoming is the first and default tab", () => {
   });
 });
 
+describe("AutonomyView — Flows tab sits second, between Upcoming and Action log", () => {
+  it("renders the tab order: Upcoming, Flows, Action log, Objectives, Avoidances", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createApiClient("http://127.0.0.1:3030", "");
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <I18nProvider>
+          <AutonomyView client={client} />
+        </I18nProvider>
+      </QueryClientProvider>
+    );
+    const order = [">Upcoming<", ">Flows<", ">Action log<", ">Objectives<", ">Avoidances<"].map((needle) =>
+      html.indexOf(needle)
+    );
+    for (const index of order) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+});
+
 describe("AutonomyView — connected to an injected fetch fake, no real network", () => {
   it("fetches /api/automation/upcoming through the client (never a bare global fetch)", async () => {
     const getSpy = vi.fn(async (path: string) => {

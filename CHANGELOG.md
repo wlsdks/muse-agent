@@ -34,6 +34,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **See your automations as a flow.** 자동 활동 gains a "흐름" (Flows) tab
+  that draws every scheduled automation as a node canvas — schedule trigger,
+  what the agent does, where the result goes, and a visible retry loop when
+  one is configured. Automations Muse creates from a prompt
+  (`muse scheduler add "..." --every "daily 9am"`) appear on the canvas the
+  moment they exist. Read-only in this first slice; editing comes next.
+
 - **Automation now shows what comes NEXT.** The 자동 활동 view opens on a new
   "예정" (Upcoming) tab: your next evening digest (and its daily hour), how
   much unasked-interruption budget is left this hour and today, the next

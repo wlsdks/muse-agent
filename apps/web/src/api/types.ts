@@ -362,6 +362,46 @@ export interface AutomationUpcomingResponse {
   readonly nextReminder: UpcomingReminder | null;
 }
 
+// Mirrors `apps/api`'s `FlowProjection`/`FlowNode`/`FlowEdge` (flow-projection.ts).
+// Duplicated as a plain JSON-shape type — same reason as `CadenceSummary`
+// below: apps/web only talks to the API server, never a `@muse/*` package.
+export type FlowNodeKind =
+  | "trigger.schedule"
+  | "action.agent"
+  | "action.tool"
+  | "output.notify"
+  | "output.webhook"
+  | "output.record";
+
+export interface FlowNode {
+  readonly id: string;
+  readonly kind: FlowNodeKind;
+  readonly label: string;
+  readonly meta: Record<string, string | number | boolean | null>;
+}
+
+export interface FlowEdge {
+  readonly id: string;
+  readonly from: string;
+  readonly to: string;
+  readonly label?: string;
+  readonly loop?: boolean;
+}
+
+export interface FlowProjection {
+  readonly id: string;
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly source: "scheduler";
+  readonly nextRunAtIso: string | null;
+  readonly nodes: readonly FlowNode[];
+  readonly edges: readonly FlowEdge[];
+}
+
+export interface FlowsResponse {
+  readonly flows: readonly FlowProjection[];
+}
+
 // Mirrors `@muse/scheduler`'s `CadenceSummary` (server computes it from the
 // job's persisted `cronExpression` via `summarizeCadence` — the web never
 // re-derives it). Duplicated as a plain JSON-shape type rather than an

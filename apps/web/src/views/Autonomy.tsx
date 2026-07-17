@@ -5,6 +5,7 @@ import { AsyncBlock, Badge, Card, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeDateTime } from "../lib/datetime.js";
 import { actionResultLabel, objectiveStatusLabel } from "./autonomy-labels.js";
+import { FlowsTab } from "./Flows.js";
 import { nextTabIndex } from "./tabKeyNav.js";
 import { timeUntil } from "./Today.js";
 
@@ -17,9 +18,10 @@ import type {
 } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 
-type Tab = "upcoming" | "actions" | "objectives" | "vetoes";
+type Tab = "upcoming" | "flows" | "actions" | "objectives" | "vetoes";
 const TABS: readonly { id: Tab; labelKey: StringKey }[] = [
   { id: "upcoming", labelKey: "auto.tab.upcoming" },
+  { id: "flows", labelKey: "auto.tab.flows" },
   { id: "actions", labelKey: "auto.tab.actions" },
   { id: "objectives", labelKey: "auto.tab.objectives" },
   { id: "vetoes", labelKey: "auto.tab.vetoes" }
@@ -73,6 +75,7 @@ export function AutonomyView({ client }: { client: ApiClient }) {
       </div>
 
       {tab === "upcoming" && <UpcomingTab client={client} />}
+      {tab === "flows" && <FlowsTab client={client} />}
       {tab === "actions" && <ActionsTab client={client} locale={locale} />}
       {tab === "objectives" && <ObjectivesTab client={client} locale={locale} />}
       {tab === "vetoes" && <VetoesTab client={client} locale={locale} />}
