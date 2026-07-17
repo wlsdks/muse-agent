@@ -12,6 +12,7 @@ import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
 
 export interface ProgressiveAutonomyRuntimeOpportunityReceipt {
+  readonly evidenceClass: ProgressiveAutonomyOpportunityEvidenceClass;
   readonly enforcementDecision: ProgressiveAutonomyEnforcementDecision;
   readonly envelope: ProgressiveAutonomyActionEnvelope;
   readonly id: string;
@@ -25,6 +26,33 @@ export interface ProgressiveAutonomyRuntimeOpportunityReceipt {
   readonly toolCallId: string;
 }
 
+export type ProgressiveAutonomyOpportunityEvidenceClass = "controlled" | "organic" | "unclassified";
+
+export type ProgressiveAutonomyOpportunityReviewDecision =
+  | "needs-adjustment"
+  | "would-approve"
+  | "would-deny";
+
+export type ProgressiveAutonomyOpportunitySourceState = "exact" | "stale";
+
+export interface ProgressiveAutonomyOpportunityReviewReceipt {
+  readonly action: ProgressiveAutonomyActionEnvelope["action"];
+  readonly decision: ProgressiveAutonomyOpportunityReviewDecision;
+  readonly evidenceClass: "organic";
+  readonly id: string;
+  readonly linkedAt: string;
+  readonly opportunityId: string;
+  readonly ownerUserId: string;
+  readonly reason?: string;
+  readonly recordedAt: string;
+  readonly runId: string;
+  readonly sourceReason?: string;
+  readonly sourceState: ProgressiveAutonomyOpportunitySourceState;
+  readonly taskId: string;
+  readonly threadId: string;
+  readonly toolCallId: string;
+}
+
 interface OpportunityTrace {
   readonly envelope: ProgressiveAutonomyActionEnvelope;
   readonly runId: string;
@@ -33,7 +61,8 @@ interface OpportunityTrace {
 
 interface OpportunityState {
   readonly opportunities: readonly ProgressiveAutonomyRuntimeOpportunityReceipt[];
-  readonly schemaVersion: 1;
+  readonly reviews: readonly ProgressiveAutonomyOpportunityReviewReceipt[];
+  readonly schemaVersion: 2;
   readonly traces: readonly OpportunityTrace[];
 }
 
@@ -41,6 +70,13 @@ export class ProgressiveAutonomyOpportunityStoreCorruptError extends Error {
   constructor() {
     super("progressive autonomy opportunity store is corrupt; refusing evidence");
     this.name = "ProgressiveAutonomyOpportunityStoreCorruptError";
+  }
+}
+
+export class ProgressiveAutonomyOpportunityReviewConflictError extends Error {
+  constructor() {
+    super("progressive autonomy opportunity already has a different review");
+    this.name = "ProgressiveAutonomyOpportunityReviewConflictError";
   }
 }
 
@@ -54,6 +90,40 @@ export class FileProgressiveAutonomyOpportunityStore {
 
   async list(): Promise<readonly ProgressiveAutonomyRuntimeOpportunityReceipt[]> {
     return structuredClone((await this.read()).opportunities);
+  }
+
+  async listReviews(): Promise<readonly ProgressiveAutonomyOpportunityReviewReceipt[]> {
+    return structuredClone((await this.read()).reviews);
+  }
+
+  async recordReview(
+    candidate: ProgressiveAutonomyOpportunityReviewReceipt
+  ): Promise<ProgressiveAutonomyOpportunityReviewReceipt> {
+    const review = parseReview(structuredClone(candidate), true);
+    await fs.mkdir(dirname(this.file), { recursive: true });
+    return withFileMutationQueue(this.file, () => withFileLock(this.file, async () => {
+      const state = await this.read();
+      const opportunity = state.opportunities.find((entry) => entry.id === review.opportunityId);
+      if (!opportunity) throw new TypeError("progressive autonomy opportunity does not exist");
+      if (opportunity.evidenceClass !== "organic") {
+        throw new TypeError("only organic opportunities can be reviewed");
+      }
+      assertReviewBinding(review, opportunity);
+      const existing = state.reviews.find((entry) => entry.opportunityId === review.opportunityId);
+      if (existing) {
+        if (sameCanonicalReview(existing, review)) return structuredClone(existing);
+        throw new ProgressiveAutonomyOpportunityReviewConflictError();
+      }
+      const next: OpportunityState = {
+        ...state,
+        reviews: [...state.reviews, review],
+        schemaVersion: 2
+      };
+      const validated = parseState(next);
+      await atomicWriteFile(this.file, `${JSON.stringify(validated, null, 2)}\n`);
+      await fs.chmod(this.file, 0o600);
+      return structuredClone(review);
+    }));
   }
 
   async record(
@@ -78,7 +148,8 @@ export class FileProgressiveAutonomyOpportunityStore {
       const existing = state.opportunities.find((entry) => sameLogicalOpportunity(entry, receipt));
       const next: OpportunityState = {
         opportunities: existing ? state.opportunities : [...state.opportunities, receipt],
-        schemaVersion: 1,
+        reviews: state.reviews,
+        schemaVersion: 2,
         traces: [...state.traces, {
           envelope: receipt.envelope,
           runId: receipt.runId,
@@ -110,18 +181,25 @@ export class FileProgressiveAutonomyOpportunityStore {
 }
 
 function emptyState(): OpportunityState {
-  return { opportunities: [], schemaVersion: 1, traces: [] };
+  return { opportunities: [], reviews: [], schemaVersion: 2, traces: [] };
 }
 
 function parseState(value: unknown): OpportunityState {
-  if (!isExactRecord(value, ["opportunities", "schemaVersion", "traces"])
-    || value.schemaVersion !== 1
+  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)
     || !Array.isArray(value.opportunities)
     || !Array.isArray(value.traces)) {
     throw new ProgressiveAutonomyOpportunityStoreCorruptError();
   }
-  const opportunities = value.opportunities.map(parseReceipt);
+  const schemaVersion = value.schemaVersion as 1 | 2;
+  if (!isExactRecord(value, schemaVersion === 1
+    ? ["opportunities", "schemaVersion", "traces"]
+    : ["opportunities", "reviews", "schemaVersion", "traces"])
+    || (schemaVersion === 2 && !Array.isArray(value.reviews))) {
+    throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+  }
+  const opportunities = value.opportunities.map((entry) => parseReceipt(entry, schemaVersion));
   const traces = value.traces.map(parseTrace);
+  const reviews = schemaVersion === 1 ? [] : (value.reviews as unknown[]).map((entry) => parseReview(entry, false));
   if (new Set(traces.map((entry) => traceKey(entry))).size !== traces.length
     || new Set(opportunities.map((entry) => logicalKey(entry))).size !== opportunities.length
     || new Set(opportunities.map((entry) => entry.id)).size !== opportunities.length
@@ -131,22 +209,111 @@ function parseState(value: unknown): OpportunityState {
       && trace.toolCallId === opportunity.toolCallId
       && sameSemanticScope(opportunity, trace)
     ).length !== 1)
-    || traces.some((trace) => opportunities.filter((entry) => sameSemanticScope(entry, trace)).length !== 1)) {
+    || traces.some((trace) => opportunities.filter((entry) => sameSemanticScope(entry, trace)).length !== 1)
+    || new Set(reviews.map((entry) => entry.id)).size !== reviews.length
+    || new Set(reviews.map((entry) => entry.opportunityId)).size !== reviews.length) {
     throw new ProgressiveAutonomyOpportunityStoreCorruptError();
   }
-  return { opportunities, schemaVersion: 1, traces };
+  for (const review of reviews) {
+    const opportunity = opportunities.find((entry) => entry.id === review.opportunityId);
+    if (!opportunity || opportunity.evidenceClass !== "organic") {
+      throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+    }
+    try {
+      assertReviewBinding(review, opportunity);
+    } catch {
+      throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+    }
+  }
+  return { opportunities, reviews, schemaVersion: 2, traces };
 }
 
-function parseReceipt(value: unknown): ProgressiveAutonomyRuntimeOpportunityReceipt {
+function parseReview(value: unknown, normalize: boolean): ProgressiveAutonomyOpportunityReviewReceipt {
+  const optionalKeys = ["reason", "sourceReason"].filter((key) => isRecord(value) && key in value);
+  const keys = [
+    "action", "decision", "evidenceClass", "id", "linkedAt", "opportunityId", "ownerUserId",
+    "recordedAt", "runId", "sourceState", "taskId", "threadId", "toolCallId", ...optionalKeys
+  ];
+  if (!isExactRecord(value, keys)
+    || value.action !== "muse.tasks.complete-linked-next-step"
+    || !oneOf(value.decision, ["needs-adjustment", "would-approve", "would-deny"])
+    || value.evidenceClass !== "organic"
+    || !isNonBlank(value.id) || !isCanonicalUtcIso(value.linkedAt) || !isNonBlank(value.opportunityId)
+    || !isNonBlank(value.ownerUserId) || !isCanonicalUtcIso(value.recordedAt) || !isNonBlank(value.runId)
+    || !oneOf(value.sourceState, ["exact", "stale"])
+    || !isNonBlank(value.taskId) || !isNonBlank(value.threadId) || !isNonBlank(value.toolCallId)) {
+    throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+  }
+  const reason = normalizeOptionalText(value.reason, normalize);
+  const sourceReason = normalizeOptionalText(value.sourceReason, normalize);
+  if ((!normalize && ("reason" in value) !== (reason !== undefined))
+    || (!normalize && ("sourceReason" in value) !== (sourceReason !== undefined))
+    || (value.decision === "would-approve" && value.sourceState !== "exact")
+    || (value.sourceState === "exact" && sourceReason !== undefined)
+    || (value.sourceState === "stale" && sourceReason === undefined)) {
+    throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+  }
+  const { reason: _reason, sourceReason: _sourceReason, ...required } = value;
+  return {
+    ...(required as unknown as ProgressiveAutonomyOpportunityReviewReceipt),
+    ...(reason === undefined ? {} : { reason }),
+    ...(sourceReason === undefined ? {} : { sourceReason })
+  };
+}
+
+function normalizeOptionalText(value: unknown, normalize: boolean): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+  const result = normalize ? value.trim() : value;
+  if (normalize && result.length === 0) return undefined;
+  if (result.length === 0 || result.length > 500 || /[\u0000-\u001f\u007f]/u.test(result)
+    || (!normalize && result !== result.trim())) {
+    throw new ProgressiveAutonomyOpportunityStoreCorruptError();
+  }
+  return result;
+}
+
+function assertReviewBinding(
+  review: ProgressiveAutonomyOpportunityReviewReceipt,
+  opportunity: ProgressiveAutonomyRuntimeOpportunityReceipt
+): void {
+  if (review.ownerUserId !== opportunity.envelope.userId
+    || review.runId !== opportunity.runId
+    || review.toolCallId !== opportunity.toolCallId
+    || review.action !== opportunity.envelope.action
+    || review.taskId !== opportunity.envelope.link.taskId
+    || review.threadId !== opportunity.envelope.threadId
+    || review.linkedAt !== opportunity.envelope.link.linkedAt
+    || review.evidenceClass !== opportunity.evidenceClass
+    || Date.parse(review.recordedAt) < Date.parse(opportunity.recordedAt)) {
+    throw new TypeError("progressive autonomy review does not match its opportunity");
+  }
+}
+
+function sameCanonicalReview(
+  left: ProgressiveAutonomyOpportunityReviewReceipt,
+  right: ProgressiveAutonomyOpportunityReviewReceipt
+): boolean {
+  return left.ownerUserId === right.ownerUserId
+    && left.opportunityId === right.opportunityId
+    && left.decision === right.decision
+    && left.reason === right.reason
+    && left.sourceState === right.sourceState
+    && left.sourceReason === right.sourceReason;
+}
+
+function parseReceipt(value: unknown, schemaVersion: 1 | 2 = 2): ProgressiveAutonomyRuntimeOpportunityReceipt {
   const keys = [
     "enforcementDecision", "envelope", "id", "origin", "rationale", "recordedAt",
     "runId", "shadowAssessment", "shadowRationale", "toolCallId"
   ];
+  if (schemaVersion === 2) keys.push("evidenceClass");
   if (isRecord(value) && "matchedGrantId" in value) keys.push("matchedGrantId");
   if (!isExactRecord(value, keys)
     || value.origin !== "runtime-opportunity"
     || !oneOf(value.enforcementDecision, ["deny", "confirm", "allow-standing"])
     || !oneOf(value.shadowAssessment, ["wouldDeny", "wouldConfirm", "wouldAllowStanding"])
+    || (schemaVersion === 2 && !oneOf(value.evidenceClass, ["controlled", "organic", "unclassified"]))
     || !isNonBlank(value.id) || !isNonBlank(value.rationale) || !isIso(value.recordedAt)
     || !isNonBlank(value.runId) || !isNonBlank(value.shadowRationale) || !isNonBlank(value.toolCallId)
     || ("matchedGrantId" in value && !isNonBlank(value.matchedGrantId))
@@ -154,7 +321,9 @@ function parseReceipt(value: unknown): ProgressiveAutonomyRuntimeOpportunityRece
     || !isValidShadowDecision(value)) {
     throw new ProgressiveAutonomyOpportunityStoreCorruptError();
   }
-  const receipt = value as unknown as ProgressiveAutonomyRuntimeOpportunityReceipt;
+  const receipt = (schemaVersion === 1
+    ? { ...value, evidenceClass: "unclassified" }
+    : value) as unknown as ProgressiveAutonomyRuntimeOpportunityReceipt;
   if (!hasCanonicalRuntimeBinding(receipt)) throw new ProgressiveAutonomyOpportunityStoreCorruptError();
   return receipt;
 }
@@ -256,6 +425,15 @@ function isNonBlank(value: unknown): value is string {
 
 function isIso(value: unknown): value is string {
   return isNonBlank(value) && Number.isFinite(Date.parse(value));
+}
+
+function isCanonicalUtcIso(value: unknown): value is string {
+  if (!isIso(value)) return false;
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
 }
 
 function oneOf<T extends string>(value: unknown, values: readonly T[]): value is T {

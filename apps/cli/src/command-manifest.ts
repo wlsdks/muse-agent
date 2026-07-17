@@ -105,10 +105,12 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [
+      "decide",
       "grant-next-step",
       "list",
       "report",
       "revoke",
+      "review",
       "shadow"
     ]
   },

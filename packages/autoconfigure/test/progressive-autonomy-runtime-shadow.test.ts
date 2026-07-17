@@ -15,6 +15,7 @@ import { FileProgressiveAutonomyAdminStore } from "@muse/stores/host-progressive
 import { FileProgressiveAutonomyOpportunityStore } from "@muse/stores/host-progressive-autonomy-opportunities";
 
 import {
+  createMuseRuntimeAssembly,
   createProgressiveAutonomyToolOpportunityObserver,
   observeProgressiveAutonomyToolOpportunity
 } from "../src/index.js";
@@ -24,6 +25,55 @@ describe("progressive autonomy organic runtime shadow", () => {
 
   afterEach(async () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
+  });
+
+  it("defaults public observations to unclassified, permits controlled only, and ignores forged organic input", async () => {
+    const fixture = await createFixture();
+    const defaultReceipt = await observe(fixture, "run-default", "call-1");
+    const controlled = await observeProgressiveAutonomyToolOpportunity({
+      arguments: { id: fixture.taskId }, runId: "run-controlled", toolCallId: "call-1",
+      toolName: "muse.tasks.complete", userId: "dogfood-user"
+    }, { ...fixture, evidenceClass: "controlled", now: () => new Date("2026-07-17T03:00:00.000Z") } as never);
+    const forged = await observeProgressiveAutonomyToolOpportunity({
+      arguments: { id: fixture.taskId }, runId: "run-forged", toolCallId: "call-1",
+      toolName: "muse.tasks.complete", userId: "dogfood-user"
+    }, { ...fixture, evidenceClass: "organic", now: () => new Date("2026-07-17T03:00:00.000Z") } as never);
+
+    expect(defaultReceipt?.evidenceClass).toBe("unclassified");
+    expect(controlled?.evidenceClass).toBe("controlled");
+    expect(forged?.evidenceClass).toBe("unclassified");
+  });
+
+  it("binds organic provenance only inside createMuseRuntimeAssembly", async () => {
+    const fixture = await createFixture();
+    const assembly = createMuseRuntimeAssembly({ env: {
+      HOME: fixture.dir,
+      MUSE_ATTUNEMENT_FILE: fixture.attunementFile,
+      MUSE_MODEL: "diagnostic/smoke",
+      MUSE_MODEL_PROVIDER_ID: "diagnostic",
+      MUSE_PROGRESSIVE_AUTONOMY_FILE: fixture.autonomyFile,
+      MUSE_PROGRESSIVE_AUTONOMY_OPPORTUNITIES_FILE: fixture.opportunitiesFile,
+      MUSE_SCHEDULER_PERSIST: "false",
+      MUSE_TASKS_FILE: fixture.tasksFile,
+      MUSE_TASK_MEMORY_PERSIST: "false"
+    } });
+    const observer = (assembly.agentRuntime as unknown as {
+      readonly toolOpportunityObserver?: (input: {
+        readonly arguments: Readonly<Record<string, unknown>>;
+        readonly runId: string;
+        readonly toolCallId: string;
+        readonly toolName: string;
+        readonly userId?: string;
+      }) => Promise<unknown>;
+    }).toolOpportunityObserver;
+    expect(observer).toBeTypeOf("function");
+    await observer!({
+      arguments: { id: fixture.taskId }, runId: "run-assembly", toolCallId: "call-1",
+      toolName: "muse.tasks.complete", userId: "dogfood-user"
+    });
+
+    expect(await new FileProgressiveAutonomyOpportunityStore({ file: fixture.opportunitiesFile }).list())
+      .toMatchObject([{ evidenceClass: "organic" }]);
   });
 
   it("records one schema-valid muse.tasks.complete proposal before a denying approval gate and leaves the real task unchanged", async () => {
@@ -277,6 +327,7 @@ describe("progressive autonomy organic runtime shadow", () => {
     const fixture = {
       attunementFile: join(dir, "attunement.json"),
       autonomyFile: join(dir, "progressive-autonomy.json"),
+      dir,
       linkedAt: "2026-07-17T02:00:00.000Z",
       opportunitiesFile: join(dir, "progressive-autonomy-opportunities.json"),
       taskId: "task-next",

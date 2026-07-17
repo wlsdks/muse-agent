@@ -1,7 +1,7 @@
 ---
 title: Progressive autonomy P0
 status: implemented
-updated: 2026-07-17
+updated: 2026-07-18
 ---
 
 # Progressive autonomy P0
@@ -18,10 +18,14 @@ The durable store rejects malformed records and cross-record inconsistencies, in
 
 ## Outside P0
 
-P0 has no CLI, API, web, messaging, posting, purchasing, finance, account or credential changes, calendar invitations, browser submission, generic desktop control, irreversible deletion, subagent side effects, new personal-data sources, or outcome-driven permission promotion. Cross-surface conformance and every additional action schema require separate reviewed slices.
+P0 has no live-autonomy CLI, API, web, messaging, posting, purchasing, finance, account or credential changes, calendar invitations, browser submission, generic desktop control, irreversible deletion, subagent side effects, new personal-data sources, or outcome-driven permission promotion. CLI and local/authenticated HTTP expose shadow evidence review only; they cannot execute the reviewed action. A web review screen, cross-surface live execution, and every additional action schema require separate reviewed slices.
 
 ## Shadow dogfood and promotion
 
 Collect 20–50 real shadow decisions before considering live promotion. Each sample must preserve existing confirmation enforcement and retain its rationale receipt. Review exact-scope matches, false allows, false denies, user vetoes, expiry/version failures, relinks, crash replay, and undo outcomes.
+
+Runtime proposals and explicit reviews are separate evidence. The trusted runtime composition root marks normal runtime opportunities `organic`; direct harness runs are `controlled` only when explicitly labeled, and legacy schema-v1 records read as `unclassified` without rewriting the file. Controlled and unclassified opportunities remain inspectable but never enter the review queue or readiness count.
+
+`muse autonomy review` and the equivalent HTTP read return the oldest unreviewed organic opportunity with its exact recorded scope and current source state. `would-approve` requires the same user-authored link and an open task; stale evidence may receive only `would-deny` or `needs-adjustment`, while unavailable evidence accepts no decision. Reviews are counterfactual and execute nothing. Only unique, valid explicit organic reviews count toward the 20–50 sample window; reaching 20 changes the status to `audit-required`, never to automatic permission.
 
 Promotion requires zero false `wouldAllowStanding` decisions, zero scope expansion, complete durable receipts, successful crash/replay and safe-undo review, and an explicit human decision. Any false allow, corrupt-state tolerance, unexplained receipt gap, CAS clobber, veto miss, or unsafe undo immediately demotes the action to confirmation or disables it. Sample volume, approval rate, silence, confidence, and Attunement outcomes never promote authority automatically.

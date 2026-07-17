@@ -50,6 +50,13 @@ export interface PersistedTask {
 
 export type TaskStatusFilter = "open" | "done" | "all";
 
+export class TaskStoreUnavailableError extends Error {
+  constructor() {
+    super("task store cannot be read or validated");
+    this.name = "TaskStoreUnavailableError";
+  }
+}
+
 export async function readTasks(file: string): Promise<readonly PersistedTask[]> {
   let raw: string;
   try {
@@ -57,18 +64,12 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
   } catch {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
+  const entries = parseTaskEntries(raw);
+  if (!entries) {
     await quarantineCorruptStore(file);
     return [];
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
-    await quarantineCorruptStore(file);
-    return [];
-  }
-  return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>
+  return entries.flatMap((entry): readonly PersistedTask[] =>
     isPersistedTask(entry) ? [entry] : []
   );
 }
@@ -77,6 +78,37 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
  * to title matching — that remains deliberately confined to chat convenience. */
 export async function readTaskById(file: string, id: string): Promise<PersistedTask | undefined> {
   return (await readTasks(file)).find((task) => task.id === id);
+}
+
+/** Strict, non-mutating lookup for audit/review boundaries. Unlike the
+ * recovery-oriented reader above, absence, unreadable bytes, malformed JSON,
+ * an invalid document, or any invalid task row is surfaced to the caller and
+ * never quarantined or normalized to an empty store. */
+export async function readTaskByIdStrict(file: string, id: string): Promise<PersistedTask | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    throw new TaskStoreUnavailableError();
+  }
+  const entries = parseTaskEntries(raw);
+  if (!entries || entries.some((entry) => !isPersistedTask(entry))) {
+    throw new TaskStoreUnavailableError();
+  }
+  return entries.find((entry): entry is PersistedTask => isPersistedTask(entry) && entry.id === id);
+}
+
+function parseTaskEntries(raw: string): readonly unknown[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+    return undefined;
+  }
+  return (parsed as { tasks: unknown[] }).tasks;
 }
 
 /**

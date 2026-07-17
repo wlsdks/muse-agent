@@ -15,6 +15,11 @@ import {
   type ProgressiveAutonomyRuntimeOpportunityReceipt
 } from "@muse/stores/host-progressive-autonomy-opportunities";
 
+import {
+  isProgressiveAutonomyOrganicAuthority,
+  type ProgressiveAutonomyOrganicAuthority
+} from "./progressive-autonomy-organic-authority.js";
+
 const POLICY_VERSION = 1;
 const EXECUTOR_VERSION = 1;
 
@@ -22,6 +27,7 @@ export interface ProgressiveAutonomyToolOpportunityObserverOptions {
   readonly attunementFile: string;
   readonly autonomyFile: string;
   readonly defaultUserId?: string;
+  readonly evidenceClass?: "controlled";
   readonly now?: () => Date;
   readonly opportunitiesFile: string;
   readonly tasksFile: string;
@@ -33,9 +39,32 @@ export function createProgressiveAutonomyToolOpportunityObserver(
   return (input) => observeProgressiveAutonomyToolOpportunity(input, options);
 }
 
+/** Composition-root seam; deliberately absent from the package barrel. */
+export function createTrustedProgressiveAutonomyToolOpportunityObserver(
+  options: ProgressiveAutonomyToolOpportunityObserverOptions,
+  authority: ProgressiveAutonomyOrganicAuthority
+): ToolOpportunityObserver {
+  if (!isProgressiveAutonomyOrganicAuthority(authority)) {
+    throw new TypeError("trusted progressive-autonomy organic authority required");
+  }
+  return (input) => observeWithEvidenceClass(input, options, "organic");
+}
+
 export async function observeProgressiveAutonomyToolOpportunity(
   input: ToolOpportunityObserverInput,
   options: ProgressiveAutonomyToolOpportunityObserverOptions
+): Promise<ProgressiveAutonomyRuntimeOpportunityReceipt | undefined> {
+  return observeWithEvidenceClass(
+    input,
+    options,
+    options.evidenceClass === "controlled" ? "controlled" : "unclassified"
+  );
+}
+
+async function observeWithEvidenceClass(
+  input: ToolOpportunityObserverInput,
+  options: ProgressiveAutonomyToolOpportunityObserverOptions,
+  evidenceClass: ProgressiveAutonomyRuntimeOpportunityReceipt["evidenceClass"]
 ): Promise<ProgressiveAutonomyRuntimeOpportunityReceipt | undefined> {
   if (input.toolName !== "muse.tasks.complete") return undefined;
   const taskId = input.arguments.id;
@@ -101,6 +130,7 @@ export async function observeProgressiveAutonomyToolOpportunity(
   });
   const identity = `${input.runId}\u0000${input.toolCallId}\u0000${canonicalTaskId}`;
   const receipt: ProgressiveAutonomyRuntimeOpportunityReceipt = {
+    evidenceClass,
     enforcementDecision: decision.enforcementDecision,
     envelope,
     id: `runtime-opportunity-${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`,

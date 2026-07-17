@@ -20,7 +20,7 @@ describe("muse autonomy trusted shadow CLI", () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
   });
 
-  it("dedupes organic runtime logical identities and never counts 22 legacy manual receipts toward readiness", () => {
+  it("classifies legacy runtime evidence as unclassified and never counts 22 manual receipts toward v3 readiness", () => {
     const envelope = {
       action: "muse.tasks.complete-linked-next-step",
       idempotencyKey: "runtime-opportunity:run-1:task-next",
@@ -45,6 +45,7 @@ describe("muse autonomy trusted shadow CLI", () => {
     const runtime = {
       enforcementDecision: "confirm" as const,
       envelope,
+      evidenceClass: "unclassified" as const,
       id: "runtime-1",
       origin: "runtime-opportunity" as const,
       rationale: "explicit confirmation required",
@@ -58,8 +59,88 @@ describe("muse autonomy trusted shadow CLI", () => {
     const report = buildShadowReport(manual, [runtime, { ...runtime, id: "runtime-2", toolCallId: "call-2" }]);
 
     expect(report.sources.manualCli.observedDecisions).toBe(22);
-    expect(report.sources.runtimeOpportunity.observedDecisions).toBe(1);
-    expect(report.review).toMatchObject({ observedOrganicOpportunities: 1, status: "collecting" });
+    expect(report.schemaVersion).toBe(3);
+    expect(report.sources.runtimeOpportunity).toMatchObject({
+      byEvidenceClass: { controlled: 0, organic: 0, unclassified: 1 },
+      observedDecisions: 1
+    });
+    expect(report.review).toMatchObject({
+      eligibleReviews: 0,
+      remainingReviews: 20,
+      status: "collecting",
+      unresolvedOrganicOpportunities: 0
+    });
+  });
+
+  it("requires audit at twenty unique organic reviews and never reports ready or promoted authority", () => {
+    const opportunities = Array.from({ length: 20 }, (_, index) => {
+      const suffix = index.toString();
+      const runId = `run-${suffix}`;
+      return {
+        enforcementDecision: "confirm" as const,
+        envelope: {
+          action: "muse.tasks.complete-linked-next-step" as const,
+          idempotencyKey: `runtime-opportunity:${runId}:task-${suffix}`,
+          link: { artifactType: "task" as const, linkedAt: "2026-07-17T02:00:00.000Z", providerId: "local" as const, role: "next-step" as const, taskId: `task-${suffix}` },
+          schemaVersion: 1 as const, threadId: `thread-${suffix}`, traceId: `runtime-tool:${runId}:call-1`,
+          transition: { from: "open" as const, to: "done" as const }, userId: "dogfood-user"
+        },
+        evidenceClass: "organic" as const, id: `opportunity-${suffix}`, origin: "runtime-opportunity" as const,
+        rationale: "confirm", recordedAt: `2026-07-${(index + 1).toString().padStart(2, "0")}T03:00:00.000Z`,
+        runId, shadowAssessment: "wouldConfirm" as const, shadowRationale: "confirm", toolCallId: "call-1"
+      };
+    });
+    const reviews = opportunities.map((opportunity, index) => ({
+      action: opportunity.envelope.action,
+      decision: index % 2 === 0 ? "would-approve" as const : "would-deny" as const,
+      evidenceClass: "organic" as const, id: `review-${index.toString()}`,
+      linkedAt: opportunity.envelope.link.linkedAt, opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId, recordedAt: `2026-07-${(index + 1).toString().padStart(2, "0")}T04:00:00.000Z`,
+      runId: opportunity.runId, sourceState: "exact" as const, taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId, toolCallId: opportunity.toolCallId
+    }));
+
+    const report = buildShadowReport([], opportunities, reviews);
+    expect(report.review).toMatchObject({
+      decisionDistribution: { "needs-adjustment": 0, "would-approve": 10, "would-deny": 10 },
+      eligibleReviews: 20, remainingReviews: 0, status: "audit-required"
+    });
+    expect(JSON.stringify(report)).not.toMatch(/ready|allowed|promoted/u);
+  });
+
+  it("defensively excludes an impossible stale would-approve review from v3 eligibility", () => {
+    const opportunity = {
+      enforcementDecision: "confirm" as const,
+      envelope: {
+        action: "muse.tasks.complete-linked-next-step" as const,
+        idempotencyKey: "runtime-opportunity:run-invalid:task-next",
+        link: { artifactType: "task" as const, linkedAt: "2026-07-17T02:00:00.000Z", providerId: "local" as const, role: "next-step" as const, taskId: "task-next" },
+        schemaVersion: 1 as const, threadId: "thread-life", traceId: "runtime-tool:run-invalid:call-1",
+        transition: { from: "open" as const, to: "done" as const }, userId: "dogfood-user"
+      },
+      evidenceClass: "organic" as const, id: "opportunity-invalid", origin: "runtime-opportunity" as const,
+      rationale: "confirm", recordedAt: "2026-07-17T03:00:00.000Z", runId: "run-invalid",
+      shadowAssessment: "wouldConfirm" as const, shadowRationale: "confirm", toolCallId: "call-1"
+    };
+    const report = buildShadowReport([], [opportunity], [{
+      action: opportunity.envelope.action,
+      decision: "would-approve",
+      evidenceClass: "organic",
+      id: "review-invalid",
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      sourceReason: "recorded task is no longer open",
+      sourceState: "stale",
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId
+    }]);
+
+    expect(report.review).toMatchObject({ eligibleReviews: 0, remainingReviews: 20, unresolvedOrganicOpportunities: 1 });
+    expect(report.review.decisionDistribution["would-approve"]).toBe(0);
   });
 
   it("grants the exact open user-linked local next step through the public program", async () => {
@@ -144,13 +225,18 @@ describe("muse autonomy trusted shadow CLI", () => {
     expect(reported.errors).toEqual([]);
     expect(JSON.parse(reported.output.join(""))).toEqual({
       review: {
-        minimumRealDecisions: 20,
-        observedOrganicOpportunities: 0,
+        coverage: 0,
+        decisionDistribution: { "needs-adjustment": 0, "would-approve": 0, "would-deny": 0 },
+        eligibleReviews: 0,
+        minimumEligibleReviews: 20,
         promotion: "explicit-user-decision-only",
+        remainingReviews: 20,
         status: "collecting",
-        targetRealDecisions: 50
+        targetEligibleReviews: 50,
+        unique: { days: 0, tasks: 0, threads: 0 },
+        unresolvedOrganicOpportunities: 0
       },
-      schemaVersion: 2,
+      schemaVersion: 3,
       sources: {
         manualCli: {
           assessments: { wouldAllowStanding: 1, wouldConfirm: 0, wouldDeny: 0 },
@@ -159,15 +245,64 @@ describe("muse autonomy trusted shadow CLI", () => {
           rationales: [{ count: 1, rationale: "exact active standing grant" }],
           unique: { days: 1, tasks: 1, threads: 1 }
         },
+        organicReview: {
+          classification: "explicit-counterfactual-user-review",
+          decisions: { "needs-adjustment": 0, "would-approve": 0, "would-deny": 0 },
+          observedDecisions: 0,
+          unique: { days: 0, tasks: 0, threads: 0 }
+        },
         runtimeOpportunity: {
           assessments: { wouldAllowStanding: 0, wouldConfirm: 0, wouldDeny: 0 },
-          classification: "organic-runtime-opportunity",
+          byEvidenceClass: { controlled: 0, organic: 0, unclassified: 0 },
+          classification: "runtime-opportunity-by-provenance",
+          excludedFromReadiness: 0,
           observedDecisions: 0,
           rationales: [],
           unique: { days: 0, tasks: 0, threads: 0 }
         }
       }
     });
+  });
+
+  it("reviews and decides one organic opportunity through the public CLI without mutating task, thread, or authority bytes", async () => {
+    const fixture = await createFixture();
+    const opportunity = await new FileProgressiveAutonomyOpportunityStore({ file: fixture.opportunitiesFile }).record({
+      enforcementDecision: "confirm",
+      envelope: {
+        action: "muse.tasks.complete-linked-next-step",
+        idempotencyKey: `runtime-opportunity:run-cli:${fixture.taskId}`,
+        link: { artifactType: "task", linkedAt: "2026-07-17T02:00:00.000Z", providerId: "local", role: "next-step", taskId: fixture.taskId },
+        schemaVersion: 1, threadId: fixture.threadId, traceId: "runtime-tool:run-cli:call-1",
+        transition: { from: "open", to: "done" }, userId: "dogfood-user"
+      },
+      evidenceClass: "organic",
+      id: "organic-cli", origin: "runtime-opportunity", rationale: "confirm",
+      recordedAt: "2026-07-17T03:00:00.000Z", runId: "run-cli",
+      shadowAssessment: "wouldConfirm", shadowRationale: "no exact active standing grant", toolCallId: "call-1"
+    });
+    const sourceBytes = await Promise.all([
+      readFile(fixture.tasksFile, "utf8"), readFile(fixture.attunementFile, "utf8")
+    ]);
+
+    const reviewed = await run(["review", "--json"]);
+    expect(reviewed.errors).toEqual([]);
+    expect(JSON.parse(reviewed.output.join(""))).toMatchObject({ opportunity: { opportunityId: opportunity.id, currentSource: { state: "exact" } } });
+    const decided = await run(["decide", opportunity.id, "--decision", "would-approve", "--reason", "  yes  ", "--json"]);
+    expect(decided.errors).toEqual([]);
+    expect(JSON.parse(decided.output.join(""))).toMatchObject({ decision: "would-approve", reason: "yes" });
+    const report = JSON.parse((await run(["report", "--json"])).output.join("")) as Record<string, unknown>;
+    expect(report).toMatchObject({
+      review: {
+        coverage: 1,
+        decisionDistribution: { "needs-adjustment": 0, "would-approve": 1, "would-deny": 0 },
+        eligibleReviews: 1,
+        unresolvedOrganicOpportunities: 0
+      }
+    });
+    expect(await Promise.all([
+      readFile(fixture.tasksFile, "utf8"), readFile(fixture.attunementFile, "utf8")
+    ])).toEqual(sourceBytes);
+    await expect(readFile(fixture.autonomyFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("fails closed on corrupt autonomy persistence without overwriting it", async () => {
@@ -194,6 +329,82 @@ describe("muse autonomy trusted shadow CLI", () => {
     expect(await readFile(fixture.opportunitiesFile, "utf8")).toBe(corrupt);
   });
 
+  it("fails the v3 report on persisted stale would-approve corruption without overwriting evidence", async () => {
+    const fixture = await createFixture();
+    const opportunity = await new FileProgressiveAutonomyOpportunityStore({ file: fixture.opportunitiesFile }).record({
+      enforcementDecision: "confirm",
+      envelope: {
+        action: "muse.tasks.complete-linked-next-step",
+        idempotencyKey: `runtime-opportunity:run-stale-approve:${fixture.taskId}`,
+        link: { artifactType: "task", linkedAt: "2026-07-17T02:00:00.000Z", providerId: "local", role: "next-step", taskId: fixture.taskId },
+        schemaVersion: 1, threadId: fixture.threadId, traceId: "runtime-tool:run-stale-approve:call-1",
+        transition: { from: "open", to: "done" }, userId: "dogfood-user"
+      },
+      evidenceClass: "organic",
+      id: "opportunity-stale-approve",
+      origin: "runtime-opportunity",
+      rationale: "confirm",
+      recordedAt: "2026-07-17T03:00:00.000Z",
+      runId: "run-stale-approve",
+      shadowAssessment: "wouldConfirm",
+      shadowRationale: "confirm",
+      toolCallId: "call-1"
+    });
+    const state = JSON.parse(await readFile(fixture.opportunitiesFile, "utf8")) as { reviews: unknown[] };
+    state.reviews.push({
+      action: opportunity.envelope.action,
+      decision: "would-approve",
+      evidenceClass: "organic",
+      id: "review-stale-approve",
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      sourceReason: "recorded task is no longer open",
+      sourceState: "stale",
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId
+    });
+    const corruptBytes = JSON.stringify(state);
+    await writeFile(fixture.opportunitiesFile, corruptBytes, "utf8");
+
+    const reported = await run(["report", "--json"]);
+    expect(reported.errors.join("")).toContain("opportunity store is corrupt");
+    expect(process.exitCode).toBe(2);
+    expect(await readFile(fixture.opportunitiesFile, "utf8")).toBe(corruptBytes);
+  });
+
+  it("reports a schema-v1 runtime receipt as unclassified without rewriting its bytes", async () => {
+    const fixture = await createFixture();
+    const envelope = {
+      action: "muse.tasks.complete-linked-next-step" as const,
+      idempotencyKey: `runtime-opportunity:legacy-run:${fixture.taskId}`,
+      link: { artifactType: "task" as const, linkedAt: "2026-07-17T11:00:00+09:00", providerId: "local" as const, role: "next-step" as const, taskId: fixture.taskId },
+      schemaVersion: 1 as const, threadId: fixture.threadId, traceId: "runtime-tool:legacy-run:call-1",
+      transition: { from: "open" as const, to: "done" as const }, userId: "dogfood-user"
+    };
+    const receipt = {
+      enforcementDecision: "confirm", envelope, id: "legacy-opportunity", origin: "runtime-opportunity",
+      rationale: "confirm", recordedAt: "2026-07-17T12:00:00+09:00", runId: "legacy-run",
+      shadowAssessment: "wouldConfirm", shadowRationale: "confirm", toolCallId: "call-1"
+    };
+    const legacyBytes = `${JSON.stringify({
+      opportunities: [receipt], schemaVersion: 1,
+      traces: [{ envelope, runId: "legacy-run", toolCallId: "call-1" }]
+    }, null, 2)}\n`;
+    await writeFile(fixture.opportunitiesFile, legacyBytes, "utf8");
+
+    const reported = await run(["report", "--json"]);
+    expect(reported.errors).toEqual([]);
+    expect(JSON.parse(reported.output.join(""))).toMatchObject({
+      review: { eligibleReviews: 0, remainingReviews: 20, status: "collecting" },
+      sources: { runtimeOpportunity: { byEvidenceClass: { controlled: 0, organic: 0, unclassified: 1 } } }
+    });
+    expect(await readFile(fixture.opportunitiesFile, "utf8")).toBe(legacyBytes);
+  });
+
   it("fails the v2 report on a canonical-trace identity mismatch without overwriting evidence", async () => {
     const fixture = await createFixture();
     const envelope = {
@@ -215,6 +426,7 @@ describe("muse autonomy trusted shadow CLI", () => {
     await new FileProgressiveAutonomyOpportunityStore({ file: fixture.opportunitiesFile }).record({
       enforcementDecision: "confirm",
       envelope,
+      evidenceClass: "unclassified",
       id: "runtime-report-1",
       origin: "runtime-opportunity",
       rationale: "explicit confirmation required",
@@ -322,7 +534,7 @@ describe("muse autonomy trusted shadow CLI", () => {
     const revoked = await run(["revoke", grant.id, "--json"]);
 
     expect(JSON.parse(reported.output.join(""))).toMatchObject({
-      review: { observedOrganicOpportunities: 0 },
+      review: { eligibleReviews: 0 },
       sources: { manualCli: { observedDecisions: 1 } }
     });
     expect(JSON.parse(revoked.output.join(""))).toMatchObject({ revokedAt: expect.any(String), usedCount: 0 });

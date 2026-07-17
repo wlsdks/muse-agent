@@ -198,7 +198,8 @@ import {
   resolveAnswerTemperature,
   resolveDefaultModel
 } from "./autoconfigure-model-provider.js";
-import { createProgressiveAutonomyToolOpportunityObserver } from "./progressive-autonomy-runtime-observer.js";
+import { mintProgressiveAutonomyOrganicAuthority } from "./progressive-autonomy-organic-authority.js";
+import { createTrustedProgressiveAutonomyToolOpportunityObserver } from "./progressive-autonomy-runtime-observer.js";
 import { resolveDefaultUserId } from "./user-id.js";
 
 export interface MuseEnvironment {
@@ -1282,13 +1283,13 @@ function buildAgentRuntime(params: {
       toolRegistry,
       ...(parseBoolean(env.MUSE_PROGRESSIVE_AUTONOMY_SHADOW_OBSERVE, true)
         ? {
-            toolOpportunityObserver: createProgressiveAutonomyToolOpportunityObserver({
+            toolOpportunityObserver: createTrustedProgressiveAutonomyToolOpportunityObserver({
               attunementFile: resolveAttunementFile(env),
               autonomyFile: resolveProgressiveAutonomyFile(env),
               defaultUserId: resolveDefaultUserId(env),
               opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(env),
               tasksFile: resolveTasksFile(env)
-            })
+            }, mintProgressiveAutonomyOrganicAuthority())
           }
         : {}),
       toolExposurePolicy: createPersonalToolExposurePolicy(env),

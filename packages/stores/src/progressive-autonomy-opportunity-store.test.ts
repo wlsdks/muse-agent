@@ -16,6 +16,218 @@ describe("FileProgressiveAutonomyOpportunityStore public evidence contract", () 
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
   });
 
+  it("reads schema v1 as unclassified without rewriting bytes", async () => {
+    const { file, store } = await fixture();
+    const { evidenceClass: _evidenceClass, ...legacy } = receipt();
+    const raw = `${JSON.stringify({
+      opportunities: [legacy],
+      schemaVersion: 1,
+      traces: [{ envelope: legacy.envelope, runId: legacy.runId, toolCallId: legacy.toolCallId }]
+    }, null, 2)}\n`;
+    await writeFile(file, raw, "utf8");
+
+    expect(await store.list()).toEqual([{ ...legacy, evidenceClass: "unclassified" }]);
+    expect(await readFile(file, "utf8")).toBe(raw);
+
+    const next = receipt();
+    await store.record({
+      ...next,
+      envelope: {
+        ...next.envelope,
+        idempotencyKey: "runtime-opportunity:run-2:task-next",
+        traceId: "runtime-tool:run-2:call-1"
+      },
+      id: "opportunity-2",
+      runId: "run-2"
+    });
+    const migrated = JSON.parse(await readFile(file, "utf8")) as {
+      opportunities: Array<{ evidenceClass: string }>;
+      reviews: unknown[];
+      schemaVersion: number;
+    };
+    expect(migrated).toMatchObject({ schemaVersion: 2, reviews: [] });
+    expect(migrated.opportunities.map((entry) => entry.evidenceClass)).toEqual(["unclassified", "unclassified"]);
+  });
+
+  it("records one normalized organic review, replays without writing, conflicts on change, and fails closed on cross-record corruption", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await store.record(opportunity);
+    const review = {
+      action: opportunity.envelope.action,
+      decision: "would-deny" as const,
+      evidenceClass: "organic" as const,
+      id: "review-1",
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId,
+      reason: "  not yet  ",
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      sourceState: "exact" as const,
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId
+    };
+    expect(await store.recordReview(review)).toMatchObject({ reason: "not yet" });
+    const exactBytes = await readFile(file, "utf8");
+    expect(await store.recordReview({
+      ...review, id: "review-replay", reason: "not yet", recordedAt: "2026-07-17T05:00:00.000Z"
+    })).toMatchObject({ id: "review-1", reason: "not yet" });
+    expect(await readFile(file, "utf8")).toBe(exactBytes);
+    await expect(store.recordReview({ ...review, decision: "would-approve" }))
+      .rejects.toThrow("already has a different review");
+    expect(await readFile(file, "utf8")).toBe(exactBytes);
+
+    const corrupt = JSON.parse(exactBytes) as { reviews: Array<{ ownerUserId: string }> };
+    corrupt.reviews[0]!.ownerUserId = "different-user";
+    const corruptBytes = JSON.stringify(corrupt);
+    await writeFile(file, corruptBytes, "utf8");
+    await expect(store.listReviews()).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(file, "utf8")).toBe(corruptBytes);
+  });
+
+  it("normalizes a blank candidate reason to absent while persisted blank reason remains corrupt", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await store.record(opportunity);
+    const recorded = await store.recordReview({
+      action: opportunity.envelope.action,
+      decision: "needs-adjustment",
+      evidenceClass: "organic",
+      id: "review-blank",
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId,
+      reason: "   ",
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      sourceState: "exact",
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId
+    });
+    expect(recorded).not.toHaveProperty("reason");
+
+    const state = JSON.parse(await readFile(file, "utf8")) as { reviews: Array<Record<string, unknown>> };
+    state.reviews[0]!.reason = "   ";
+    const corruptBytes = JSON.stringify(state);
+    await writeFile(file, corruptBytes, "utf8");
+    await expect(store.listReviews()).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(file, "utf8")).toBe(corruptBytes);
+  });
+
+  it("rejects would-approve with stale source as a candidate or persisted full-state corruption without overwriting bytes", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await store.record(opportunity);
+    const staleApproval = {
+      action: opportunity.envelope.action,
+      decision: "would-approve" as const,
+      evidenceClass: "organic" as const,
+      id: "review-stale-approve",
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      sourceReason: "recorded task is no longer open",
+      sourceState: "stale" as const,
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId
+    };
+    const beforeCandidate = await readFile(file, "utf8");
+    await expect(store.recordReview(staleApproval)).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(file, "utf8")).toBe(beforeCandidate);
+
+    const state = JSON.parse(beforeCandidate) as { reviews: unknown[] };
+    state.reviews.push(staleApproval);
+    const corruptBytes = JSON.stringify(state);
+    await writeFile(file, corruptBytes, "utf8");
+    await expect(store.listReviews()).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(file, "utf8")).toBe(corruptBytes);
+  });
+
+  it("retains stale would-deny and needs-adjustment reviews as valid negative evidence", async () => {
+    for (const decision of ["would-deny", "needs-adjustment"] as const) {
+      const { store } = await fixture();
+      const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+      await store.record(opportunity);
+      expect(await store.recordReview({
+        action: opportunity.envelope.action,
+        decision,
+        evidenceClass: "organic",
+        id: `review-${decision}`,
+        linkedAt: opportunity.envelope.link.linkedAt,
+        opportunityId: opportunity.id,
+        ownerUserId: opportunity.envelope.userId,
+        recordedAt: "2026-07-17T04:00:00.000Z",
+        runId: opportunity.runId,
+        sourceReason: "recorded task is no longer open",
+        sourceState: "stale",
+        taskId: opportunity.envelope.link.taskId,
+        threadId: opportunity.envelope.threadId,
+        toolCallId: opportunity.toolCallId
+      })).toMatchObject({ decision, sourceState: "stale" });
+    }
+  });
+
+  it("keeps v2 opportunity timestamps parseable while new review timestamps remain canonical UTC", async () => {
+    const offsetFixture = await fixture();
+    const offsetOpportunity = {
+      ...receipt(),
+      envelope: {
+        ...receipt().envelope,
+        link: { ...receipt().envelope.link, linkedAt: "2026-07-17T11:00:00+09:00" }
+      },
+      evidenceClass: "organic" as const,
+      recordedAt: "2026-07-17T12:00:00+09:00"
+    };
+    expect(await offsetFixture.store.record(offsetOpportunity)).toMatchObject({
+      envelope: { link: { linkedAt: "2026-07-17T11:00:00+09:00" } },
+      recordedAt: "2026-07-17T12:00:00+09:00"
+    });
+    const offsetBytes = await readFile(offsetFixture.file, "utf8");
+    await expect(offsetFixture.store.recordReview({
+      action: offsetOpportunity.envelope.action,
+      decision: "would-deny",
+      evidenceClass: "organic",
+      id: "review-offset-linked-at",
+      linkedAt: offsetOpportunity.envelope.link.linkedAt,
+      opportunityId: offsetOpportunity.id,
+      ownerUserId: offsetOpportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: offsetOpportunity.runId,
+      sourceState: "exact",
+      taskId: offsetOpportunity.envelope.link.taskId,
+      threadId: offsetOpportunity.envelope.threadId,
+      toolCallId: offsetOpportunity.toolCallId
+    })).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(offsetFixture.file, "utf8")).toBe(offsetBytes);
+
+    const recordedAtFixture = await fixture();
+    const canonicalOpportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await recordedAtFixture.store.record(canonicalOpportunity);
+    const canonicalBytes = await readFile(recordedAtFixture.file, "utf8");
+    await expect(recordedAtFixture.store.recordReview({
+      action: canonicalOpportunity.envelope.action,
+      decision: "would-deny",
+      evidenceClass: "organic",
+      id: "review-offset-recorded-at",
+      linkedAt: canonicalOpportunity.envelope.link.linkedAt,
+      opportunityId: canonicalOpportunity.id,
+      ownerUserId: canonicalOpportunity.envelope.userId,
+      recordedAt: "2026-07-17T13:00:00+09:00",
+      runId: canonicalOpportunity.runId,
+      sourceState: "exact",
+      taskId: canonicalOpportunity.envelope.link.taskId,
+      threadId: canonicalOpportunity.envelope.threadId,
+      toolCallId: canonicalOpportunity.toolCallId
+    })).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(recordedAtFixture.file, "utf8")).toBe(canonicalBytes);
+  });
+
   it("is no-write idempotent for exact replay, records a new trace without recounting a logical duplicate, and rejects a conflicting trace scope", async () => {
     const { file, store } = await fixture();
     const first = receipt();
@@ -235,6 +447,7 @@ describe("FileProgressiveAutonomyOpportunityStore public evidence contract", () 
 
 function receipt(): ProgressiveAutonomyRuntimeOpportunityReceipt {
   return {
+    evidenceClass: "unclassified",
     enforcementDecision: "confirm",
     envelope: {
       action: "muse.tasks.complete-linked-next-step",

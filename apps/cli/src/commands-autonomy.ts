@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  ProgressiveAutonomyOpportunityReviewService,
   resolveAttunementFile,
   resolveDefaultUserId,
   resolveProgressiveAutonomyFile,
@@ -12,6 +13,7 @@ import { readTaskById } from "@muse/stores";
 import { FileProgressiveAutonomyAdminStore } from "@muse/stores/host-progressive-autonomy";
 import {
   FileProgressiveAutonomyOpportunityStore,
+  type ProgressiveAutonomyOpportunityReviewReceipt,
   type ProgressiveAutonomyRuntimeOpportunityReceipt
 } from "@muse/stores/host-progressive-autonomy-opportunities";
 import type { ProgressiveAutonomyShadowReceipt } from "@muse/policy";
@@ -61,33 +63,84 @@ function summarizeShadowReceipts(receipts: readonly ReportReceipt[]) {
 
 export function buildShadowReport(
   manualReceipts: readonly ProgressiveAutonomyShadowReceipt[],
-  runtimeReceipts: readonly ProgressiveAutonomyRuntimeOpportunityReceipt[] = []
+  runtimeReceipts: readonly ProgressiveAutonomyRuntimeOpportunityReceipt[] = [],
+  reviewReceipts: readonly ProgressiveAutonomyOpportunityReviewReceipt[] = []
 ) {
   const uniqueRuntime = [...new Map(runtimeReceipts.map((receipt) => [
     `${receipt.runId}\u0000${receipt.envelope.action}\u0000${receipt.envelope.link.taskId}`,
     receipt
   ])).values()];
-  const organicCount = uniqueRuntime.length;
+  const runtimeById = new Map(uniqueRuntime.map((receipt) => [receipt.id, receipt]));
+  const organicOpportunities = uniqueRuntime.filter((receipt) => receipt.evidenceClass === "organic");
+  const validReviews = [...new Map(reviewReceipts
+    .filter((review) => reviewMatchesOpportunity(review, runtimeById.get(review.opportunityId)))
+    .map((review) => [review.opportunityId, review])).values()];
+  const decisions = { "needs-adjustment": 0, "would-approve": 0, "would-deny": 0 };
+  const reviewDays = new Set<string>();
+  const reviewTasks = new Set<string>();
+  const reviewThreads = new Set<string>();
+  for (const review of validReviews) {
+    decisions[review.decision] += 1;
+    reviewDays.add(review.recordedAt.slice(0, 10));
+    reviewTasks.add(review.taskId);
+    reviewThreads.add(review.threadId);
+  }
+  const byEvidenceClass = {
+    controlled: uniqueRuntime.filter((receipt) => receipt.evidenceClass === "controlled").length,
+    organic: organicOpportunities.length,
+    unclassified: uniqueRuntime.filter((receipt) => receipt.evidenceClass === "unclassified").length
+  };
+  const eligibleReviews = validReviews.length;
   return {
     review: {
-      minimumRealDecisions: 20,
-      observedOrganicOpportunities: organicCount,
+      coverage: organicOpportunities.length === 0 ? 0 : eligibleReviews / organicOpportunities.length,
+      decisionDistribution: decisions,
+      eligibleReviews,
+      minimumEligibleReviews: 20,
       promotion: "explicit-user-decision-only" as const,
-      status: organicCount >= 20 ? "ready-for-human-review" as const : "collecting" as const,
-      targetRealDecisions: 50
+      remainingReviews: Math.max(0, 20 - eligibleReviews),
+      status: eligibleReviews >= 20 ? "audit-required" as const : "collecting" as const,
+      targetEligibleReviews: 50,
+      unique: { days: reviewDays.size, tasks: reviewTasks.size, threads: reviewThreads.size },
+      unresolvedOrganicOpportunities: Math.max(0, organicOpportunities.length - eligibleReviews)
     },
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     sources: {
       manualCli: {
         classification: "legacy-read-only" as const,
         ...summarizeShadowReceipts(manualReceipts)
       },
       runtimeOpportunity: {
-        classification: "organic-runtime-opportunity" as const,
+        byEvidenceClass,
+        classification: "runtime-opportunity-by-provenance" as const,
+        excludedFromReadiness: byEvidenceClass.controlled + byEvidenceClass.unclassified,
         ...summarizeShadowReceipts(uniqueRuntime)
+      },
+      organicReview: {
+        classification: "explicit-counterfactual-user-review" as const,
+        decisions,
+        observedDecisions: eligibleReviews,
+        unique: { days: reviewDays.size, tasks: reviewTasks.size, threads: reviewThreads.size }
       }
     }
   };
+}
+
+function reviewMatchesOpportunity(
+  review: ProgressiveAutonomyOpportunityReviewReceipt,
+  opportunity: ProgressiveAutonomyRuntimeOpportunityReceipt | undefined
+): boolean {
+  return opportunity?.evidenceClass === "organic"
+    && review.evidenceClass === "organic"
+    && (review.decision !== "would-approve" || review.sourceState === "exact")
+    && (review.sourceState === "exact" ? review.sourceReason === undefined : review.sourceReason !== undefined)
+    && review.ownerUserId === opportunity.envelope.userId
+    && review.runId === opportunity.runId
+    && review.toolCallId === opportunity.toolCallId
+    && review.action === opportunity.envelope.action
+    && review.taskId === opportunity.envelope.link.taskId
+    && review.threadId === opportunity.envelope.threadId
+    && review.linkedAt === opportunity.envelope.link.linkedAt;
 }
 
 export function registerAutonomyCommands(program: Command, io: ProgramIO): void {
@@ -263,6 +316,54 @@ export function registerAutonomyCommands(program: Command, io: ProgramIO): void 
       }
     });
 
+  autonomy.command("review")
+    .description("Review the oldest unresolved organic runtime opportunity without executing it")
+    .option("--json", "Print machine-readable JSON")
+    .action(async (options: { readonly json?: boolean }) => {
+      try {
+        const env = process.env as Environment;
+        const opportunity = await createReviewService(env).review();
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ opportunity: opportunity ?? null, schemaVersion: 1 }, null, 2)}\n`);
+        } else if (!opportunity) {
+          io.stdout("No unresolved organic progressive-autonomy opportunity.\n");
+        } else {
+          io.stdout(`${opportunity.opportunityId}  task=${opportunity.taskId}  source=${opportunity.currentSource.state}\n`);
+          io.stdout(`Recorded ${opportunity.recordedAt}: ${opportunity.shadowAssessment} — ${opportunity.shadowRationale}\n`);
+          io.stdout(`Next: muse autonomy decide ${opportunity.opportunityId} --decision <would-approve|would-deny|needs-adjustment>\n`);
+        }
+      } catch (cause) {
+        fail(io, cause);
+      }
+    });
+
+  autonomy.command("decide <opportunityId>")
+    .description("Record one counterfactual user decision for an organic runtime opportunity")
+    .requiredOption("--decision <decision>", "would-approve, would-deny, or needs-adjustment")
+    .option("--reason <reason>", "Optional bounded reason")
+    .option("--json", "Print machine-readable JSON")
+    .action(async (opportunityId: string, options: {
+      readonly decision: "needs-adjustment" | "would-approve" | "would-deny";
+      readonly json?: boolean;
+      readonly reason?: string;
+    }) => {
+      try {
+        const env = process.env as Environment;
+        const receipt = await createReviewService(env).decide(opportunityId, {
+          decision: options.decision,
+          ...(options.reason === undefined ? {} : { reason: options.reason })
+        });
+        if (options.json) {
+          io.stdout(`${JSON.stringify(receipt, null, 2)}\n`);
+        } else {
+          io.stdout(`${receipt.decision}: ${receipt.opportunityId} (${receipt.sourceState})\n`);
+          io.stdout("Counterfactual only; no task or authority changed.\n");
+        }
+      } catch (cause) {
+        fail(io, cause);
+      }
+    });
+
   autonomy.command("report")
     .description("Summarize real receipts from this resolved local shadow store")
     .option("--json", "Print machine-readable JSON")
@@ -280,22 +381,32 @@ export function registerAutonomyCommands(program: Command, io: ProgramIO): void 
         });
         const report = buildShadowReport(
           await store.executorStore().listShadowReceipts(),
-          await opportunities.list()
+          await opportunities.list(),
+          await opportunities.listReviews()
         );
         if (options.json) {
           io.stdout(`${JSON.stringify(report, null, 2)}\n`);
         } else {
           const runtime = report.sources.runtimeOpportunity;
           const manual = report.sources.manualCli;
-          io.stdout(`Organic runtime opportunities: ${runtime.observedDecisions.toString()} (would allow ${runtime.assessments.wouldAllowStanding.toString()}, confirm ${runtime.assessments.wouldConfirm.toString()}, deny ${runtime.assessments.wouldDeny.toString()}).\n`);
+          io.stdout(`Runtime opportunities: ${runtime.observedDecisions.toString()} (organic ${runtime.byEvidenceClass.organic.toString()}, controlled ${runtime.byEvidenceClass.controlled.toString()}, unclassified ${runtime.byEvidenceClass.unclassified.toString()}).\n`);
           io.stdout(`Legacy manual shadow receipts: ${manual.observedDecisions.toString()} (read-only classification; not counted for readiness).\n`);
           io.stdout(report.review.status === "collecting"
-            ? `Collect ${(report.review.minimumRealDecisions - report.review.observedOrganicOpportunities).toString()} more organic runtime opportunities before human review.\n`
-            : "Ready for human review; this does not promote authority.\n");
+            ? `Collect ${report.review.remainingReviews.toString()} more explicit organic reviews before audit.\n`
+            : "Audit required; this does not promote authority.\n");
           io.stdout("Promotion always requires an explicit user decision.\n");
         }
       } catch (cause) {
         fail(io, cause);
       }
     });
+}
+
+function createReviewService(env: Environment): ProgressiveAutonomyOpportunityReviewService {
+  return new ProgressiveAutonomyOpportunityReviewService({
+    attunementFile: resolveAttunementFile(env),
+    opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(env),
+    ownerUserId: resolveDefaultUserId(env),
+    tasksFile: resolveTasksFile(env)
+  });
 }

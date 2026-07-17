@@ -9,12 +9,14 @@ import {
   createGateEmbedder,
   parseBoolean,
   resolveAttunementFile,
+  resolveDefaultUserId,
   resolveNotesDir,
   resolveActionLogFile,
   resolveContactsFile,
   resolveIntegrationEnvironment,
   resolveNotesIndexFile,
   resolveObjectivesFile,
+  resolveProgressiveAutonomyOpportunitiesFile,
   resolveVetoesFile,
   resolvePlaybookFile,
   resolveWeaknessesFile,
@@ -91,6 +93,7 @@ import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
 import { registerPromptRoutes } from "./prompt-routes.js";
+import { registerProgressiveAutonomyRoutes } from "./progressive-autonomy-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -339,6 +342,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     notesDir: options.notesDir ?? resolveNotesDir(process.env),
     tasksFile: options.tasksFile ?? resolveTasksFile(process.env)
+  });
+  registerProgressiveAutonomyRoutes(server, {
+    attunementFile: options.attunementFile ?? resolveAttunementFile(options.env ?? process.env),
+    authService,
+    defaultUserId: resolveDefaultUserId(options.env ?? process.env),
+    opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(options.env ?? process.env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(options.env ?? process.env)
   });
   if (options.notesDir) {
     registerNotesRoutes(server, {

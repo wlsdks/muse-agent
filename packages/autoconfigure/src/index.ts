@@ -125,6 +125,13 @@ export {
 } from "./progressive-autonomy-runtime-observer.js";
 
 export {
+  ProgressiveAutonomyOpportunityReviewService,
+  type ProgressiveAutonomyCurrentSource,
+  type ProgressiveAutonomyOpportunityReviewPresentation,
+  type ProgressiveAutonomyOpportunityReviewServiceOptions
+} from "./progressive-autonomy-opportunity-review.js";
+
+export {
   activeModelEnvOverride,
   fetchInstalledOllamaModels,
   readMuseCliConfigFile,
