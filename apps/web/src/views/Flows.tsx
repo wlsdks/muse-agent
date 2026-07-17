@@ -177,6 +177,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           onDeleted={() => {
             setSelectedFlowId(flows.find((flow) => flow.id !== selectedFlow.id)?.id);
           }}
+          onDuplicated={(jobId) => setSelectedFlowId(jobId)}
         />
         <FlowCanvasArea
           flow={selectedFlow}
@@ -340,11 +341,13 @@ interface TriggerResult {
 function FlowHeaderActions({
   client,
   flow,
-  onDeleted
+  onDeleted,
+  onDuplicated
 }: {
   client: ApiClient;
   flow: FlowProjection;
   onDeleted: () => void;
+  onDuplicated: (jobId: string) => void;
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -395,6 +398,17 @@ function FlowHeaderActions({
     onSuccess: invalidateExecutions
   });
 
+  const duplicate = useMutation({
+    mutationFn: () =>
+      client.post<{ readonly id: string }>(`${jobUrl}/duplicate`, {
+        nameSuffix: t("auto.flows.header.duplicateSuffix")
+      }),
+    onSuccess: (created) => {
+      invalidateFlows();
+      onDuplicated(created.id);
+    }
+  });
+
   const remove = useMutation({
     mutationFn: () => client.del(jobUrl),
     onSuccess: () => {
@@ -440,6 +454,9 @@ function FlowHeaderActions({
         <Button variant="secondary" size="sm" disabled={dryRun.isPending} onClick={() => dryRun.mutate()}>
           {dryRun.isPending ? t("auto.flows.header.dryRunning") : t("auto.flows.header.dryRun")}
         </Button>
+        <Button variant="secondary" size="sm" disabled={duplicate.isPending} onClick={() => duplicate.mutate()}>
+          {duplicate.isPending ? t("auto.flows.header.duplicating") : t("auto.flows.header.duplicate")}
+        </Button>
         <Button
           variant={confirmingDelete ? "danger" : "ghost"}
           size="sm"
@@ -464,6 +481,7 @@ function FlowHeaderActions({
         <div className="banner">{t("auto.flows.header.dryRunResult", { status: describeTriggerResult(dryRun.data) })}</div>
       )}
       {dryRun.error && <div className="banner err">{errorMessage(dryRun.error, t("auto.flows.header.dryRunFailed"))}</div>}
+      {duplicate.error && <div className="banner err">{errorMessage(duplicate.error, t("auto.flows.header.duplicateFailed"))}</div>}
       {remove.error && <div className="banner err">{errorMessage(remove.error, t("auto.flows.header.deleteFailed"))}</div>}
     </div>
   );

@@ -1,4 +1,5 @@
 import {
+  buildDuplicateJobInput,
   parseCadence,
   summarizeCadence,
   SchedulerValidationError,
@@ -109,6 +110,33 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
 
       try {
         return reply.status(201).send(toScheduledJobResponse(await options.scheduler.service.create(parsed.value)));
+      } catch (error) {
+        return sendSchedulerError(reply, error);
+      }
+    });
+
+    server.post(`${prefix}/jobs/:jobId/duplicate`, async (request, reply) => {
+      if (!options.requireAuthenticated(request, reply)) {
+        return reply;
+      }
+
+      if (!options.scheduler?.service) {
+        return sendSchedulerServiceUnavailable(reply);
+      }
+
+      const { jobId } = request.params as { readonly jobId: string };
+      const source = await options.scheduler.service.findById(jobId);
+      if (!source) {
+        return sendSchedulerJobNotFound(reply, jobId);
+      }
+
+      const body = isRecord(request.body) ? request.body : {};
+      const rawSuffix = readString(body, "nameSuffix");
+      const nameSuffix = rawSuffix && rawSuffix.length > 0 ? rawSuffix : " (copy)";
+
+      try {
+        const created = await options.scheduler.service.create(buildDuplicateJobInput(source, { nameSuffix }));
+        return reply.status(201).send(toScheduledJobResponse(created));
       } catch (error) {
         return sendSchedulerError(reply, error);
       }

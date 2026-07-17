@@ -492,3 +492,12 @@ test("the notify picker offers only deliverable channels and fills the resolved 
   await screen.getByRole("button", { name: "Save" }).click();
   expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { notificationChannelId: "telegram:424242" });
 });
+
+test("Duplicate POSTs to the job's duplicate endpoint with the localized name suffix", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("button", { name: "Duplicate" }).click();
+
+  expect(client.post).toHaveBeenCalledWith("/api/scheduler/jobs/job_1/duplicate", { nameSuffix: " (copy)" });
+});
