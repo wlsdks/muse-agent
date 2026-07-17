@@ -1,9 +1,11 @@
 import {
   completePendingApproval,
-  type CompletePendingApprovalResult
+  type CompletePendingApprovalResult,
+  type PendingApprovalAcquisition
 } from "@muse/messaging";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
+import { normalizeLocalTaskMutationOutcome } from "@muse/domain-tools";
 
 export interface ChatApprovalExecuteResult {
   readonly statusCode: number;
@@ -85,6 +87,7 @@ function mapCompletion(
  * maps the coordinator's durable result to HTTP.
  */
 export async function executeChatApproval(opts: {
+  readonly acquisition?: PendingApprovalAcquisition;
   readonly id: string;
   readonly pendingFile: string;
   readonly resolveTool?: (name: string) => MuseTool | undefined;
@@ -101,6 +104,7 @@ export async function executeChatApproval(opts: {
   const id = opts.id.trim();
   let executionFailed = false;
   const completion = await completePendingApproval({
+    acquisition: opts.acquisition,
     actor: { surface: "api", ...(opts.requestUserId ? { requestUserId: opts.requestUserId } : {}) },
     file: opts.pendingFile,
     id,
@@ -113,7 +117,10 @@ export async function executeChatApproval(opts: {
       return {
         execute: async () => {
           try {
-            return await tool.execute(snapshot.arguments as JsonObject, { runId: `chat-approve-${snapshot.id}` });
+            const output = await tool.execute(snapshot.arguments as JsonObject, { runId: `chat-approve-${snapshot.id}` });
+            return opts.acquisition === "recover-stale-claim"
+              ? normalizeLocalTaskMutationOutcome(snapshot.tool, output)
+              : output;
           } catch (cause) {
             executionFailed = true;
             throw cause;

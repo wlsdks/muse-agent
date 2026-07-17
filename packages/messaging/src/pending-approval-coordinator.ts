@@ -5,6 +5,7 @@ import {
   declinePendingApprovalClaim,
   finalizePendingApprovalExecution,
   observePendingApprovalState,
+  recoverPendingApprovalClaim,
   type PendingApproval,
   type PendingApprovalActor,
   type PendingApprovalObservedState
@@ -15,8 +16,9 @@ export type PendingApprovalPreparation =
   | { readonly kind: "decline"; readonly detail: string }
   | { readonly kind: "unknown"; readonly detail: string };
 
-export type PendingApprovalCoordinatorPhase = "claim" | "decline" | "begin" | "finalize";
+export type PendingApprovalCoordinatorPhase = "claim" | "recover" | "decline" | "begin" | "finalize";
 export type PendingApprovalCoordinatorState = PendingApprovalObservedState | "forbidden";
+export type PendingApprovalAcquisition = "fresh" | "recover-stale-claim";
 
 export type CompletePendingApprovalResult =
   | { readonly kind: "unavailable"; readonly state: "not-found" | "expired" | "forbidden" }
@@ -46,12 +48,14 @@ export interface PendingApprovalCoordinatorOperations {
   readonly begin?: typeof beginPendingApprovalExecution;
   readonly finalize?: typeof finalizePendingApprovalExecution;
   readonly observe?: typeof observePendingApprovalState;
+  readonly recover?: typeof recoverPendingApprovalClaim;
 }
 
 export interface CompletePendingApprovalOptions {
   readonly file: string;
   readonly id: string;
   readonly actor: PendingApprovalActor;
+  readonly acquisition?: PendingApprovalAcquisition;
   readonly prepare: (snapshot: PendingApproval) => Promise<PendingApprovalPreparation>;
   readonly now?: () => Date;
   readonly operations?: PendingApprovalCoordinatorOperations;
@@ -71,7 +75,8 @@ export async function completePendingApproval(options: CompletePendingApprovalOp
     claim: options.operations?.claim ?? claimPendingApproval,
     decline: options.operations?.decline ?? declinePendingApprovalClaim,
     finalize: options.operations?.finalize ?? finalizePendingApprovalExecution,
-    observe: options.operations?.observe ?? observePendingApprovalState
+    observe: options.operations?.observe ?? observePendingApprovalState,
+    recover: options.operations?.recover ?? recoverPendingApprovalClaim
   };
   const uncertain = async (
     phase: PendingApprovalCoordinatorPhase,
@@ -86,17 +91,24 @@ export async function completePendingApproval(options: CompletePendingApprovalOp
       return { certainty: "unobserved", effectAttempted, error, kind: "persistence-uncertain", phase };
     }
   };
+  const acquisitionPhase: "claim" | "recover" = options.acquisition === "recover-stale-claim" ? "recover" : "claim";
 
-  let claim: Awaited<ReturnType<typeof claimPendingApproval>>;
+  let claim: Awaited<ReturnType<typeof recoverPendingApprovalClaim>>;
   try {
-    claim = await operations.claim(options.file, options.id, options.actor, options.now);
+    claim = options.acquisition === "recover-stale-claim"
+      ? await operations.recover(options.file, options.id, options.actor, options.now)
+      : await operations.claim(options.file, options.id, options.actor, options.now);
   } catch (cause) {
-    return uncertain("claim", false, cause);
+    return uncertain(acquisitionPhase, false, cause);
   }
   if (!claim.claimedByThisCall) {
     return claim.state === "not-found" || claim.state === "expired" || claim.state === "forbidden"
       ? { kind: "unavailable", state: claim.state }
-      : { kind: "conflict", phase: "claim", state: claim.state };
+      : {
+          kind: "conflict",
+          phase: acquisitionPhase,
+          state: claim.state
+        };
   }
 
   const snapshot = claim.approvalSnapshot;
