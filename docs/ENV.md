@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **579** variables.
+Total: **584** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -199,6 +199,7 @@ Total: **579** variables.
 | `MUSE_EVAL_FAST` | apps/cli |
 | `MUSE_EVAL_MODEL` | apps/cli |
 | `MUSE_EVAL_REPEAT` | apps/cli |
+| `MUSE_EVAL_THRESHOLD` | apps/cli |
 | `MUSE_EXPORT_MAGIC` | apps/cli |
 | `MUSE_EXPORT_PASSPHRASE` | apps/cli |
 | `MUSE_EXPORT_VERSION` | apps/cli |
@@ -421,6 +422,9 @@ Total: **579** variables.
 | `MUSE_PROACTIVE_SIDECAR_FILE` | apps/api, apps/cli, packages/autoconfigure, packages/stores |
 | `MUSE_PROACTIVE_TICK_MS` | apps/api, packages/autoconfigure |
 | `MUSE_PROACTIVE_TRUST_FILE` | apps/api, apps/cli |
+| `MUSE_PROGRESSIVE_AUTONOMY_FILE` | packages/autoconfigure |
+| `MUSE_PROGRESSIVE_AUTONOMY_OPPORTUNITIES_FILE` | packages/autoconfigure |
+| `MUSE_PROGRESSIVE_AUTONOMY_SHADOW_OBSERVE` | packages/autoconfigure |
 | `MUSE_PROMPT_TOKEN_BUDGET` | packages/autoconfigure |
 | `MUSE_PROPOSED_ACTIONS_FILE` | apps/cli |
 | `MUSE_PRUNE_META_FILE` | apps/cli |
@@ -589,4 +593,5 @@ Total: **579** variables.
 | `MUSE_WINDOWS_ACTUATORS` | apps/cli |
 | `MUSE_WORDMARK` | apps/cli |
 | `MUSE_WORKSPACE_SKILLS_DIR` | packages/autoconfigure |
+| `MUSE_WORKS_FILE` | packages/autoconfigure |
 | `MUSE_X` | apps/cli |
