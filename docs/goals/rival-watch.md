@@ -14,10 +14,30 @@
 - **local clones (persistent, owner-designated 2026-07-17):** `/Users/jinan/ai/<name>` —
   fetch, never re-clone (`git -C /Users/jinan/ai/<name> fetch origin`).
 - **roster:**
-  - openclaw — https://github.com/openclaw/openclaw — clone `/Users/jinan/ai/openclaw` — SHA 8fa4867ab (2026-07-17, 383k★)
-  - hermes-agent (Nous) — https://github.com/NousResearch/hermes-agent — clone `/Users/jinan/ai/hermes-agent` — SHA 73ad9136 (2026-07-17, 216k★)
-  - QwenPaw — https://github.com/agentscope-ai/QwenPaw — clone `/Users/jinan/ai/QwenPaw` (blobless) — SHA cc179603 (2026-07-17; 23k★/5mo, v2.0.0 2026-07-10; enrolled this scout, code spot-checked: ReMe memory + console + e2e)
+  - openclaw — https://github.com/openclaw/openclaw — MIT (LICENSE text verified; GitHub misreports NOASSERTION) — clone `/Users/jinan/ai/openclaw` — SHA 8fa4867ab (2026-07-17, 383k★)
+  - hermes-agent (Nous) — https://github.com/NousResearch/hermes-agent — MIT — clone `/Users/jinan/ai/hermes-agent` — SHA 73ad9136 (2026-07-17, 216k★)
+  - QwenPaw — https://github.com/agentscope-ai/QwenPaw — Apache-2.0 — clone `/Users/jinan/ai/QwenPaw` (blobless) — SHA cc179603 (2026-07-17; 23k★/5mo, v2.0.0 2026-07-10; enrolled this scout, code spot-checked: ReMe memory + console + e2e)
 - **queries run last scout:** "new open source personal AI assistant July 2026 local-first"; "personal assistant agent open source 2026 alternative openclaw hermes"
+
+## Reference shelf (cloned, consulted on demand — NOT delta-watched per fire)
+
+> Famous open-source personal-agent codebases kept at `/Users/jinan/ai/<name>`
+> for mechanism lookups (memory, continuity, voice). Fetch with the roster at
+> fire start; promote to the roster only when one meets the enrollment bar.
+> **License rule (all roster+shelf): reference-only, NO verbatim copy —
+> reimplement with attribution.**
+> 🚨 **AGPL repos (khoj): IDEAS ONLY, ZERO code. 한 줄도, 주석 한 줄도,
+> 식별자 이름 하나도 옮기지 않는다 — 읽고 덮고, 자기 설계로 다시 쓴다.
+> Violation = the slice fails review, no exceptions (owner directive
+> 2026-07-17).**
+
+- khoj — https://github.com/khoj-ai/khoj — 🚨 **AGPL-3.0 — 절대 주의. 코드를 단 한 줄도,
+  주석도, 스키마·프롬프트 문구도 베끼지 않는다. 읽고 아이디어만 참조 → 완전히 자기 말로
+  재구현. 한 줄이라도 옮기면 Muse 전체가 네트워크 카피레프트 의무에 걸린다. diff에 khoj
+  유래 문자열이 보이면 그 슬라이스는 FAIL이다.** — `/Users/jinan/ai/khoj` (36k★, personal
+  second brain / doc+web memory)
+- letta — https://github.com/letta-ai/letta — Apache-2.0 — `/Users/jinan/ai/letta` (24k★, MemGPT-lineage stateful memory)
+- leon — https://github.com/leon-ai/leon — MIT — `/Users/jinan/ai/leon` (17k★, local personal assistant since 2019)
 
 ## Roster changes
 

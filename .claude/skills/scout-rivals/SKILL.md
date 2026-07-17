@@ -20,7 +20,10 @@ DELTA, never the base.
 
 1. **ANCHOR** — run `date` (never assume); read the watermark block at the
    top of `docs/goals/rival-watch.md` (last scout date, per-repo upstream
-   SHAs, roster). Everything below is scoped to changes AFTER the watermark.
+   SHAs, roster + reference shelf). `git -C /Users/jinan/ai/<name> fetch
+   origin` EVERY roster and shelf clone now — the fire reads today's
+   upstream, never a stale checkout. Everything below is scoped to changes
+   AFTER the watermark.
 
 2. **SWEEP (delta only, verify-in-code)** —
    - **Named rivals** (roster in rival-watch.md carries repo URLs, SHAs, and
@@ -30,7 +33,11 @@ DELTA, never the base.
      thousands of commits per window — sweep RELEASES + CHANGELOG first
      (observed fire 1: 7.8k commits in 3.5 weeks; raw log is for locating an
      implementing file, never the survey) → list genuinely NEW capabilities
-     and notable architecture changes. Read the implementing file for
+     and notable architecture changes. **Sweep legwork may fan out to cheap
+     subagents** (model: haiku — one per repo, release/changelog digestion
+     and delta listing only); their outputs are DATA to spot-check.
+     **JUDGE never delegates** — fit/verdict/edge and roster decisions stay
+     with the invoking model. Read the implementing file for
      anything you might judge `build` — a claim you didn't see in code is
      recorded ⚠ unverified and never judged build.
    - **Landscape refresh** (2–3 web searches, anchored to today's date):
@@ -83,6 +90,12 @@ DELTA, never the base.
   not feature envy. Muse's trust floor is the moat, not a checklist gap.
 - **No product code:** findings are fuel; building them is grow-muse /
   improve-muse's job. Cross-skill tags, never inline fixes.
+- **🚨 AGPL quarantine (khoj and any future AGPL repo):** read for IDEAS
+  ONLY — never copy a line of code, a comment, a schema, or a prompt
+  string into Muse or into a ledger row's proposal text. Findings sourced
+  from an AGPL repo must describe the MECHANISM in your own words and
+  carry an `[AGPL-source: ideas-only]` tag so the building skills know.
+  One copied line puts the whole product under network copyleft.
 
 ## Rationalizations (reject on sight)
 
@@ -93,5 +106,6 @@ DELTA, never the base.
 | "그들이 하니까 우리도" | Fit lens first — 51 skips exist because rivals serve multi-tenant cloud. |
 | "찾았으니 바로 고치자" | Scout ships intelligence, not code. Tag it for the building skills. |
 | "델타가 없네, 억지로 만들자" | An empty delta is a valid, honest outcome. Bump the watermark and stop. |
+| "khoj 구현이 딱 맞는데 조금만 갖다 쓰자" | AGPL — 한 줄도 금지. 아이디어를 자기 말로 재구현하거나 버린다. |
 
 Golden set: [`evals.md`](evals.md).
