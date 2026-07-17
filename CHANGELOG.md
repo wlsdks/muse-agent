@@ -34,6 +34,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **The sidebar now shows your life, not just chat.** A new "My Life" (내 삶)
+  group surfaces Tasks, Calendar, and Reminders as first-class nav items,
+  Today returns to the Workspace group (the Home link to it no longer points
+  at a hidden view), and Automation (자동 활동 — what Muse does on its own,
+  its standing goals, and your vetoes) is visible under System. 4 groups,
+  12 items; the engine-room views stay behind the developer toggle.
+
 - **Continuity evaluation now separates raw outcome thresholds from longitudinal evidence:**
   the shared Attunement Module reports life/work feedback and feedback-bearing UTC-date
   coverage, keeps incomplete first-20 windows on hold, and never turns numeric coverage

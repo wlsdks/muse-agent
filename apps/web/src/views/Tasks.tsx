@@ -83,7 +83,7 @@ export function TasksView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">{t("group.workspace")}</p>
+      <p className="eyebrow">{t("group.life")}</p>
       <h1 className="page-title">{t("tasks.title")}</h1>
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>

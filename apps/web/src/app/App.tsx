@@ -70,7 +70,7 @@ type ViewId =
   | "prompt-lab"
   | "scheduler"
   | "settings";
-type GroupKey = "group.workspace" | "group.knowledge" | "group.system";
+type GroupKey = "group.workspace" | "group.life" | "group.knowledge" | "group.system";
 
 interface NavEntry {
   readonly id: ViewId;
@@ -86,22 +86,22 @@ interface NavEntry {
 
 export const NAV: readonly NavEntry[] = [
   { Component: HomeView, group: "group.workspace", icon: Icon.home, id: "home", key: "z", labelKey: "nav.home" },
-  { Component: TodayView, group: "group.workspace", icon: Icon.calendar, id: "today", advanced: true, key: "t", labelKey: "nav.today" },
   { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", key: "c", labelKey: "nav.chat" },
+  { Component: TodayView, group: "group.workspace", icon: Icon.calendar, id: "today", key: "t", labelKey: "nav.today" },
   { Component: ChatsView, group: "group.workspace", icon: Icon.clock, id: "chats", advanced: true, key: "h", labelKey: "nav.chats" },
-  { Component: TasksView, group: "group.workspace", icon: Icon.task, id: "tasks", advanced: true, key: "k", labelKey: "nav.tasks" },
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", advanced: true, key: "b", labelKey: "nav.board" },
   { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", advanced: true, key: "x", labelKey: "nav.agents" },
-  { Component: CalendarView, group: "group.workspace", icon: Icon.calendar, id: "calendar", advanced: true, key: "l", labelKey: "nav.calendar" },
-  { Component: RemindersView, group: "group.workspace", icon: Icon.bell, id: "reminders", advanced: true, key: "r", labelKey: "nav.reminders" },
   { Component: MessagingView, group: "group.workspace", icon: Icon.mail, id: "messaging", advanced: true, key: "i", labelKey: "nav.messaging" },
   { Component: IntegrationsView, group: "group.workspace", icon: Icon.plug, id: "integrations", key: "e", labelKey: "nav.integrations" },
+  { Component: TasksView, group: "group.life", icon: Icon.task, id: "tasks", key: "k", labelKey: "nav.tasks" },
+  { Component: CalendarView, group: "group.life", icon: Icon.calendar, id: "calendar", key: "l", labelKey: "nav.calendar" },
+  { Component: RemindersView, group: "group.life", icon: Icon.bell, id: "reminders", key: "r", labelKey: "nav.reminders" },
   { Component: NotesView, group: "group.knowledge", icon: Icon.note, id: "notes", key: "n", labelKey: "nav.notes" },
   { Component: MemoryView, group: "group.knowledge", icon: Icon.brain, id: "memory", key: "m", labelKey: "nav.memory" },
   { Component: ContinuityReviewView, group: "group.knowledge", icon: Icon.clock, id: "continuity", key: "q", labelKey: "nav.continuity" },
   { Component: JourneyView, group: "group.knowledge", icon: Icon.clock, id: "journey", advanced: true, key: "u", labelKey: "nav.journey" },
   { Component: ActivityView, group: "group.knowledge", icon: Icon.activity, id: "activity", advanced: true, key: "a", labelKey: "nav.activity" },
-  { Component: AutonomyView, group: "group.system", icon: Icon.shield, id: "autonomy", advanced: true, key: "y", labelKey: "nav.autonomy" },
+  { Component: AutonomyView, group: "group.system", icon: Icon.shield, id: "autonomy", key: "y", labelKey: "nav.autonomy" },
   { Component: DashboardView, group: "group.system", icon: Icon.chart, id: "dashboard", advanced: true, key: "d", labelKey: "nav.dashboard" },
   { Component: ToolsView, group: "group.system", icon: Icon.tool, id: "tools", advanced: true, key: "o", labelKey: "nav.tools" },
   { Component: McpServersView, group: "group.system", icon: Icon.plug, id: "mcp", advanced: true, key: "p", labelKey: "nav.mcp" },
@@ -112,7 +112,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", key: "s", labelKey: "nav.settings" }
 ];
 
-const GROUPS: readonly GroupKey[] = ["group.workspace", "group.knowledge", "group.system"];
+const GROUPS: readonly GroupKey[] = ["group.workspace", "group.life", "group.knowledge", "group.system"];
 
 // Primary sidebar nav. Pure + i18n-free (t injected) so the a11y semantics —
 // the navigation landmark and aria-current="page" on the active view — are

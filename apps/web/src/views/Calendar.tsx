@@ -80,7 +80,7 @@ export function CalendarView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">{t("group.workspace")}</p>
+      <p className="eyebrow">{t("group.life")}</p>
       <h1 className="page-title">{t("calendar.title")}</h1>
 
       <Card title={t("calendar.new")} className="lifted">

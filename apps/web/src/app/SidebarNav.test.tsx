@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { SidebarNav } from "./App.js";
+import { NAV, SidebarNav } from "./App.js";
 
 import type { Translate } from "../i18n/index.js";
 
@@ -35,14 +35,61 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
     expect(defaultHtml).not.toContain("nav.dashboard");
     expect(defaultHtml).not.toContain("nav.promptLab");
     expect(defaultHtml).not.toContain("nav.scheduler");
-    expect(defaultHtml).not.toContain("nav.today");
-    // the companion core stays
-    for (const core of ["nav.home", "nav.chat", "nav.notes", "nav.memory", "nav.continuity", "nav.integrations", "nav.settings"]) {
+    // the companion core + life data stays
+    for (const core of [
+      "nav.home",
+      "nav.chat",
+      "nav.today",
+      "nav.integrations",
+      "nav.tasks",
+      "nav.calendar",
+      "nav.reminders",
+      "nav.notes",
+      "nav.memory",
+      "nav.continuity",
+      "nav.settings"
+    ]) {
       expect(defaultHtml).toContain(core);
     }
 
     const devHtml = renderToStaticMarkup(<SidebarNav view="chat" taskCount={0} t={t} onSelect={() => {}} devMode />);
     expect(devHtml).toContain("nav.dashboard");
     expect(devHtml).toContain("nav.promptLab");
+  });
+
+  it("pins the LNB contract: the visible set, the My Life group, and group render order", () => {
+    const visibleIds = NAV.filter((n) => !n.advanced).map((n) => n.id).sort();
+    expect(visibleIds).toEqual(
+      [
+        "autonomy",
+        "calendar",
+        "chat",
+        "continuity",
+        "home",
+        "integrations",
+        "memory",
+        "notes",
+        "reminders",
+        "settings",
+        "tasks",
+        "today"
+      ].sort()
+    );
+
+    for (const id of ["tasks", "calendar", "reminders"] as const) {
+      const entry = NAV.find((n) => n.id === id);
+      expect(entry?.group).toBe("group.life");
+      expect(entry?.advanced).toBeFalsy();
+    }
+
+    const groupOrder: string[] = [];
+    for (const n of NAV) {
+      if (!groupOrder.includes(n.group)) {
+        groupOrder.push(n.group);
+      }
+    }
+    expect(groupOrder.indexOf("group.workspace")).toBeLessThan(groupOrder.indexOf("group.life"));
+    expect(groupOrder.indexOf("group.life")).toBeLessThan(groupOrder.indexOf("group.knowledge"));
+    expect(groupOrder.indexOf("group.knowledge")).toBeLessThan(groupOrder.indexOf("group.system"));
   });
 });

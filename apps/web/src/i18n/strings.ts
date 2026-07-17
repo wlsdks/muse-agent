@@ -10,6 +10,7 @@ const en = {
   "brand.sub": "Learns you, not the world",
 
   "group.workspace": "Workspace",
+  "group.life": "My Life",
   "group.knowledge": "Knowledge",
   "group.system": "System",
 
@@ -681,6 +682,7 @@ const ko: Strings = {
   "brand.sub": "세상이 아니라, 당신을 배우는 AI",
 
   "group.workspace": "워크스페이스",
+  "group.life": "내 삶",
   "group.knowledge": "지식",
   "group.system": "시스템",
 
