@@ -9,22 +9,23 @@
  * piece has to sit in a package.
  *
  * Ground truth this module encodes (see the R3-3 handoff's scout section):
- *   - `resolveDefaultModel` (autoconfigure-model-provider.ts) reads ONLY
- *     `MUSE_MODEL` / `MUSE_DEFAULT_MODEL` from the process env — never the
- *     CLI config file — so an explicit env var always wins over whatever
- *     this module writes (`activeModelEnvOverride` surfaces that so callers
- *     can say so honestly instead of implying the switch always applies).
+ *   - `resolveDefaultModel` (autoconfigure-model-provider.ts) resolves
+ *     explicit `MUSE_MODEL`/`MUSE_DEFAULT_MODEL` env FIRST, then (since
+ *     2026-07-17) the CLI config file this module writes, then ambient
+ *     credentials — so an explicit env var still wins over the switch
+ *     (`activeModelEnvOverride` surfaces that honestly), but a stale
+ *     ambient cloud key no longer beats the user's saved choice.
  *   - The API server's ONE `MuseRuntimeAssembly` (and therefore its
  *     `defaultModel` / `modelProvider`) is built ONCE at process boot
  *     (`apps/api/src/index.ts`'s top-level `createApiServerOptions()`) from
- *     that same process env, and NEVER reads the CLI config file — there is
- *     no hot-reload seam for the model (unlike `PERSONA.md`'s
- *     `PersonaHotReloadRegistry`). So writing the config file changes what
- *     the NEXT `muse chat` / `muse tui` CLI invocation uses; it does NOT
- *     change an already-running daemon/API server, even after a restart,
- *     unless the operator separately exports `MUSE_DEFAULT_MODEL` for that
- *     process. Both call sites must surface this caveat verbatim rather
- *     than imply the switch "just works" everywhere.
+ *     that same resolution — there is no hot-reload seam for the model
+ *     (unlike `PERSONA.md`'s `PersonaHotReloadRegistry`). Writing the
+ *     config file changes the NEXT `muse chat` / `muse tui` invocation
+ *     immediately and an already-running daemon/API server only after a
+ *     RESTART (boot-once assembly; since 2026-07-17 the restart picks the
+ *     config up — no `MUSE_DEFAULT_MODEL` export needed). Call sites must
+ *     still surface the restart caveat rather than imply the switch
+ *     applies to a live server.
  */
 
 import { randomBytes } from "node:crypto";

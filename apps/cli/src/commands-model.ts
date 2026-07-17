@@ -114,9 +114,8 @@ export function formatSwitchConfirmation(params: {
     lines.push(`New \`muse chat\` / \`muse tui\` runs will use ${params.newModelId} immediately.`);
   }
   lines.push(
-    `This does NOT change an already-running \`muse daemon\` / API server — that process reads ` +
-    `MUSE_MODEL/MUSE_DEFAULT_MODEL from its OWN environment at startup and never reads this config file. ` +
-    `Export MUSE_DEFAULT_MODEL=${params.newModelId} in its environment and restart it to change what the daemon itself uses.`
+    `This does NOT change an already-running \`muse daemon\` / API server — the model is resolved once at boot. ` +
+    `Restart it and it will pick up this config (an explicit MUSE_MODEL/MUSE_DEFAULT_MODEL in its environment still wins).`
   );
   return lines.join("\n");
 }

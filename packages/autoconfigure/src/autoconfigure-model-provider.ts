@@ -17,7 +17,10 @@ import {
   type ModelProvider
 } from "@muse/model";
 
+import { readFileSync } from "node:fs";
+
 import { parseBoolean, parseCsv, parseHeaderMap, parseInteger, parseNonNegativeFloat, parseNonNegativeInteger, parseOptionalString } from "./env-parsers.js";
+import { resolveMuseCliConfigFilePath } from "./provider-paths.js";
 
 /**
  * Temperature for Muse's user-facing ANSWER generation (chat / ask). Set
@@ -258,11 +261,17 @@ export function resolveModelFallbackChain(params: {
 /**
  * Resolve the default model identifier the runtime should use.
  *
- * Priority: explicit `MUSE_MODEL` (or `MUSE_DEFAULT_MODEL`) wins.
+ * Priority: explicit `MUSE_MODEL` (or `MUSE_DEFAULT_MODEL`) → local-only forced
+ * local → the user's saved choice in `~/.config/muse/config.json` → a model
+ * inferred from an ambient cloud credential → the local fallback.
  *
- * Cloud use is allowed unless `MUSE_LOCAL_ONLY=true`. Without an explicit model,
- * an ambient cloud credential selects its provider; otherwise Muse falls back to
- * the local model. Local-only mode forces the local model and ignores cloud keys.
+ * The config-file rung exists because a STALE ambient key must not beat an
+ * explicit user choice: a dead `GEMINI_API_KEY` in the shell hijacked every
+ * bare-assembly surface (`muse ask`/`brief`/jobs) into a 400-erroring cloud
+ * provider while `muse config set defaultModel ollama/gemma4:12b` sat ignored
+ * (recurred three times before this fix, 2026-07-17). Local-only still wins
+ * over a cloud model saved in config — fail-close posture is not user-config
+ * overridable.
  */
 export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
   const explicit = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
@@ -272,11 +281,47 @@ export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
   if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
     return LOCAL_FIRST_DEFAULT_MODEL;
   }
+  const configured = readConfiguredDefaultModel(env);
+  if (configured) {
+    return configured;
+  }
   // Cloud is allowed by default: prefer a model inferred from an ambient cloud
   // credential, but ALWAYS fall back to the local default so a fresh box with no
   // cloud key (and no OLLAMA_BASE_URL) still boots on gemma4:12b — never a
   // no-default-model dead end.
   return inferDefaultModelFromCredentials(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+}
+
+// Cache keyed by resolved config path so hot paths don't re-stat the file on
+// every assembly build; a different MUSE_CLI_CONFIG_FILE/HOME (tests) re-reads.
+const configuredModelCache = new Map<string, string | undefined>();
+
+/** Test seam: drop the config-file cache (a long-lived process re-reads on next resolve). */
+export function clearConfiguredDefaultModelCache(): void {
+  configuredModelCache.clear();
+}
+
+function readConfiguredDefaultModel(env: MuseEnvironment): string | undefined {
+  let file: string;
+  try {
+    file = resolveMuseCliConfigFilePath(env);
+  } catch {
+    return undefined;
+  }
+  if (configuredModelCache.has(file)) {
+    return configuredModelCache.get(file);
+  }
+  let value: string | undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as { defaultModel?: unknown };
+    value = typeof parsed.defaultModel === "string" && parsed.defaultModel.trim().length > 0
+      ? parsed.defaultModel.trim()
+      : undefined;
+  } catch {
+    value = undefined;
+  }
+  configuredModelCache.set(file, value);
+  return value;
 }
 
 function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefined {

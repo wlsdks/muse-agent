@@ -159,9 +159,9 @@ async function handleModel(options: HandleInboundSlashCommandOptions, argument: 
   } else {
     lines.push(
       "New `muse chat`/`muse tui` CLI runs on this machine will use it immediately. This chat's OWN running Muse "
-      + "process does NOT hot-apply the switch — it reads MUSE_MODEL/MUSE_DEFAULT_MODEL from its own environment at "
-      + `startup and never reads this config file. Restart it with MUSE_DEFAULT_MODEL=${resolution.modelId} to change `
-      + "what THIS chat uses (이 채팅이 실제로 쓰는 모델을 바꾸려면 서버 재시작이 필요해요)."
+      + "process does NOT hot-apply the switch — the model is resolved once at boot. Restart the server and it will "
+      + "pick up this saved choice; an explicit MUSE_MODEL/MUSE_DEFAULT_MODEL in its environment still wins "
+      + "(이 채팅이 실제로 쓰는 모델을 바꾸려면 서버 재시작이 필요해요 — 재시작하면 저장된 설정을 그대로 읽어요)."
     );
   }
   return lines.join("\n");

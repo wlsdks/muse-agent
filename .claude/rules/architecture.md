@@ -56,11 +56,13 @@ switched on it is deterministic, fail-close (`local-only-policy.ts`):
   off-box host — a REMOTE Ollama/LM-Studio host counts as egress.
 - The model router (`createModelProvider`) throws `LocalOnlyViolationError`
   (loud, not a silent disable) before instantiating a cloud provider.
-- **Default model resolution.** Cloud is allowed by default, so
-  `resolveDefaultModel` infers a cloud model from an ambient credential
-  (GEMINI → OPENAI → ANTHROPIC → OPENROUTER) and ALWAYS falls back to the
-  local model (`ollama/gemma4:12b`) when no key is present — a fresh box still
-  boots. When `MUSE_LOCAL_ONLY=true`, the local model is forced and ambient
+- **Default model resolution.** Priority: explicit `MUSE_MODEL`/
+  `MUSE_DEFAULT_MODEL` env → local-only forced local → the user's saved
+  `defaultModel` in `~/.config/muse/config.json` → a cloud model inferred
+  from an ambient credential (GEMINI → OPENAI → ANTHROPIC → OPENROUTER) →
+  the local fallback (`ollama/gemma4:12b`, so a fresh box still boots).
+  The config rung exists because a stale ambient key must never beat the
+  user's explicit choice (dead-GEMINI hijack, fixed 2026-07-17). When `MUSE_LOCAL_ONLY=true`, the local model is forced and ambient
   cloud keys are IGNORED (so a stray `GEMINI_API_KEY` can never trip the gate).
 - When local-only is on, the voice registry ignores an OpenAI key, so cloud
   STT/TTS never registers (mic audio cannot silently go to OpenAI).

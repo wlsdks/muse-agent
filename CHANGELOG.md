@@ -10,6 +10,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **Your saved model choice now beats a stale API key.** A dead
+  `GEMINI_API_KEY` sitting in the shell used to hijack `muse ask`, briefs,
+  and background jobs into a failing cloud provider even when
+  `muse config set defaultModel ollama/gemma4:12b` said otherwise. Model
+  resolution now honors: explicit `MUSE_MODEL` env, then local-only mode,
+  then your saved config, then ambient keys, then the local fallback — and
+  the `muse model use` / `/model` confirmation messages now correctly say a
+  server restart picks the saved choice up (no env export needed).
+
 - **`muse ask` answers in the language you asked in.** An English question
   against a Korean-primed local model came back in Korean (measured 3/3);
   the ask surface now injects the same deterministic language-mirror layer

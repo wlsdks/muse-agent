@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { createModelProvider, createModelProviderFor, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
+import { clearConfiguredDefaultModelCache, createModelProvider, createModelProviderFor, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
 
 // The vision-model knob (MUSE_VISION_MODEL) + measured local default. Pure so the
 // swap policy AND the fail-soft path (optional model not pulled → fall back to the
@@ -181,5 +181,49 @@ describe("createModelProviderFor — isolated from the session's local provider 
   it("a local model override still builds (createModelProviderFor isn't cloud-only)", () => {
     const p = createModelProviderFor("ollama/gemma4:12b", {} as never);
     expect(p?.id).toBe("ollama");
+  });
+});
+
+describe("resolveDefaultModel — config.json rung (config beats a stale ambient key)", () => {
+  const write = async (content: string): Promise<string> => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "muse-modelcfg-"));
+    const file = join(dir, "config.json");
+    await writeFile(file, content);
+    return file;
+  };
+  beforeEach(() => {
+    clearConfiguredDefaultModelCache();
+  });
+
+  it("the saved config defaultModel outranks an ambient GEMINI_API_KEY (the dead-key hijack)", async () => {
+    const file = await write(JSON.stringify({ defaultModel: "ollama/gemma4:12b" }));
+    const env = { GEMINI_API_KEY: "dead-key", MUSE_CLI_CONFIG_FILE: file } as never;
+    expect(resolveDefaultModel(env)).toBe("ollama/gemma4:12b");
+  });
+
+  it("an explicit MUSE_MODEL env still outranks the config file", async () => {
+    const file = await write(JSON.stringify({ defaultModel: "ollama/gemma4:12b" }));
+    const env = { MUSE_CLI_CONFIG_FILE: file, MUSE_MODEL: "anthropic/claude-x" } as never;
+    expect(resolveDefaultModel(env)).toBe("anthropic/claude-x");
+  });
+
+  it("MUSE_LOCAL_ONLY forces local even when the config saves a cloud model", async () => {
+    const file = await write(JSON.stringify({ defaultModel: "gemini/gemini-2.0-flash" }));
+    const env = { MUSE_CLI_CONFIG_FILE: file, MUSE_LOCAL_ONLY: "true" } as never;
+    expect(resolveDefaultModel(env)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+  });
+
+  it("a malformed or missing config file falls through to ambient inference", async () => {
+    const bad = await write("{not json");
+    expect(resolveDefaultModel({ GEMINI_API_KEY: "k", MUSE_CLI_CONFIG_FILE: bad } as never)).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ GEMINI_API_KEY: "k", MUSE_CLI_CONFIG_FILE: "/nonexistent/config.json" } as never)).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("an empty-string defaultModel in config is ignored (falls through)", async () => {
+    const file = await write(JSON.stringify({ defaultModel: "  " }));
+    expect(resolveDefaultModel({ MUSE_CLI_CONFIG_FILE: file } as never)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
   });
 });
