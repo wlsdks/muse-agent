@@ -284,14 +284,80 @@ export const defaultServeFetch: typeof globalThis.fetch = (async (input, init) =
   return globalThis.fetch(input, init);
 }) as typeof globalThis.fetch;
 
+/** Bounded exponential backoff: 1s, 2s, 4s, … capped at 30s. */
+const RESTART_BASE_DELAY_MS = 1_000;
+const RESTART_MAX_DELAY_MS = 30_000;
+/** Circuit-break once this many unexpected exits land inside the rolling window below. */
+const RESTART_MAX_ATTEMPTS = 5;
+/** Rolling window the circuit breaker counts unexpected exits within. */
+const RESTART_WINDOW_MS = 10 * 60 * 1000;
+/** A child that stays up at least this long forgives the prior exit history — a healthy stretch resets the streak. */
+const RESTART_HEALTHY_MS = 60_000;
+
+export interface RestartPolicyConfig {
+  readonly baseDelayMs?: number;
+  readonly maxDelayMs?: number;
+  readonly windowMs?: number;
+  readonly maxRestarts?: number;
+}
+
+export interface RestartDecisionState {
+  /** ms epoch timestamps of unexpected exits still in the current (unforgiven) streak — NOT including the exit being decided now. */
+  readonly priorExitsMs: readonly number[];
+  /** How long (ms) the child that just exited had been alive before this exit. >= the healthy threshold forgives (clears) `priorExitsMs`. */
+  readonly aliveMs: number;
+}
+
+export type RestartDecision =
+  | { readonly kind: "restart"; readonly delayMs: number; readonly attempt: number; readonly maxAttempts: number }
+  | { readonly kind: "give-up"; readonly detail: string };
+
 /**
- * Spawn the server in the foreground (inherited stdio) and wire ctrl-c to an
- * explicit SIGTERM of the child — relying on process-group signal delivery
- * alone isn't guaranteed on every launcher shape, so this forwards it
- * itself (and the forward is what the SIGINT unit test proves via the
- * injected `registerSignalHandler` + a fake `spawn` that records `kill`).
- * Returns the child's exit code (0 when it exits with no code, e.g. via a
- * forwarded signal).
+ * Pure supervision policy for an unexpectedly-exited child: bounded
+ * exponential backoff with a circuit breaker. No I/O, no timers — every
+ * branch (backoff sequence, the cap, the 5-in-10-minute break, and the
+ * healthy-stretch reset) is directly unit-testable by passing `nowMs` and
+ * `state` by hand.
+ */
+export function nextRestartDecision(
+  state: RestartDecisionState,
+  nowMs: number,
+  config: RestartPolicyConfig = {}
+): RestartDecision {
+  const baseDelayMs = config.baseDelayMs ?? RESTART_BASE_DELAY_MS;
+  const maxDelayMs = config.maxDelayMs ?? RESTART_MAX_DELAY_MS;
+  const windowMs = config.windowMs ?? RESTART_WINDOW_MS;
+  const maxRestarts = config.maxRestarts ?? RESTART_MAX_ATTEMPTS;
+  const forgiven = state.aliveMs >= RESTART_HEALTHY_MS;
+  const windowStart = nowMs - windowMs;
+  const priorInWindow = forgiven ? [] : state.priorExitsMs.filter((atMs) => atMs > windowStart);
+  const countIncludingThis = priorInWindow.length + 1;
+  if (countIncludingThis >= maxRestarts) {
+    return { detail: `${String(countIncludingThis)} unexpected exits within the last 10 minutes`, kind: "give-up" };
+  }
+  const delayMs = Math.min(maxDelayMs, baseDelayMs * 2 ** priorInWindow.length);
+  return { attempt: countIncludingThis, delayMs, kind: "restart", maxAttempts: maxRestarts };
+}
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * Spawn the server in the foreground (inherited stdio), wire ctrl-c to an
+ * explicit SIGTERM of the CURRENT child (relying on process-group signal
+ * delivery alone isn't guaranteed on every launcher shape, so this forwards
+ * it itself — proved by the SIGINT unit test's injected
+ * `registerSignalHandler` + a fake `spawn` that records `kill`), and
+ * supervise it: an exit that (a) wasn't caused by our own signal forward and
+ * (b) has a non-zero or null exit code (a clean `0` is a deliberate exit,
+ * e.g. an admin-shutdown route, and is never restarted) is "unexpected" and
+ * gets restarted per `nextRestartDecision` (bounded backoff, circuit-broken
+ * after 5-in-10-minutes, forgiven after a 60s+ healthy stretch) — mirrors
+ * the desktop app's ServerManager/RestartPolicy posture so a killed/crashed
+ * child doesn't leave `muse serve` idling with the port dead. A signal
+ * fired while asleep between restarts aborts the wait and exits cleanly,
+ * without spawning again. Returns the last child's exit code (0 on a clean
+ * exit or a forwarded signal; the last unexpected exit's code once
+ * supervision gives up).
  */
 export async function runServeForeground(opts: {
   readonly command: string;
@@ -301,18 +367,54 @@ export async function runServeForeground(opts: {
   readonly spawn: ServeSpawnFn;
   readonly stdout: (line: string) => void;
   readonly registerSignalHandler?: (event: "SIGINT" | "SIGTERM", handler: () => void) => void;
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly now?: () => number;
+  readonly maxRestarts?: number;
 }): Promise<number> {
-  const child = opts.spawn({ args: opts.args, command: opts.command, cwd: opts.cwd, env: opts.env });
   const register = opts.registerSignalHandler ?? ((event, handler) => { process.on(event, handler); });
+  const sleep = opts.sleep ?? defaultSleep;
+  const now = opts.now ?? Date.now;
+
   let stopping = false;
+  let currentChild: ServeChildHandle | undefined;
+  let resolveStopped: () => void = () => {};
+  const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
   const onSignal = (): void => {
     if (stopping) return;
     stopping = true;
     opts.stdout("\n(stopping)\n");
-    child.kill("SIGTERM");
+    currentChild?.kill("SIGTERM");
+    resolveStopped();
   };
   register("SIGINT", onSignal);
   register("SIGTERM", onSignal);
-  const exitCode = await child.waitForExit();
-  return exitCode ?? 0;
+
+  let priorExitsMs: readonly number[] = [];
+  for (;;) {
+    const spawnedAtMs = now();
+    currentChild = opts.spawn({ args: opts.args, command: opts.command, cwd: opts.cwd, env: opts.env });
+    const exitCode = await currentChild.waitForExit();
+    if (stopping || exitCode === 0) return exitCode ?? 0;
+
+    const exitedAtMs = now();
+    const aliveMs = exitedAtMs - spawnedAtMs;
+    const decision = nextRestartDecision({ aliveMs, priorExitsMs }, exitedAtMs, opts.maxRestarts !== undefined ? { maxRestarts: opts.maxRestarts } : {});
+    if (decision.kind === "give-up") {
+      opts.stdout(
+        `\napi child exited unexpectedly ${decision.detail} — giving up.\n`
+        + "Inspect the output above for what's crashing, then run `muse serve` again once it's fixed.\n"
+      );
+      return exitCode ?? 1;
+    }
+    priorExitsMs = aliveMs >= RESTART_HEALTHY_MS ? [exitedAtMs] : [...priorExitsMs, exitedAtMs];
+
+    const codeLabel = exitCode === null ? "unknown" : String(exitCode);
+    const delaySeconds = (decision.delayMs / 1000).toFixed(decision.delayMs % 1000 === 0 ? 0 : 1);
+    opts.stdout(
+      `api child exited unexpectedly (code ${codeLabel}) — restarting in ${delaySeconds}s (attempt ${String(decision.attempt)}/${String(decision.maxAttempts)})\n`
+    );
+
+    await Promise.race([sleep(decision.delayMs), stopped]);
+    if (stopping) return 0;
+  }
 }

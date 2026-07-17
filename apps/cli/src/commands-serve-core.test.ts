@@ -7,6 +7,7 @@ import {
   defaultServeFetch,
   defaultServeSpawn,
   hostForProbe,
+  nextRestartDecision,
   probeServeHealth,
   probeWebUi,
   resolveServeHost,
@@ -14,7 +15,8 @@ import {
   resolveServeWebDir,
   runServeForeground,
   shutdownAndWaitFree,
-  type ServeChildHandle
+  type ServeChildHandle,
+  type ServeSpawnFn
 } from "./commands-serve-core.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -255,22 +257,230 @@ describe("runServeForeground — SIGINT forwards an explicit kill to the child (
     expect(stdoutLines.join("")).toContain("(stopping)");
   });
 
-  it("propagates a non-zero child exit code without any signal firing", async () => {
+  it("an exit without any signal firing is UNEXPECTED — with maxRestarts:1 the breaker trips immediately and the exit code propagates", async () => {
     const child: ServeChildHandle = {
       kill: () => undefined,
       pid: 1,
       waitForExit: async () => 7
     };
+    const stdoutLines: string[] = [];
     const exitCode = await runServeForeground({
       args: [],
       command: "node",
       cwd: "/repo",
       env: {},
+      maxRestarts: 1,
+      now: () => 0,
       registerSignalHandler: () => undefined,
+      sleep: async () => undefined,
       spawn: () => child,
-      stdout: () => undefined
+      stdout: (line) => { stdoutLines.push(line); }
     });
     expect(exitCode).toBe(7);
+    expect(stdoutLines.join("")).toContain("giving up");
+  });
+});
+
+describe("nextRestartDecision — the pure supervision policy", () => {
+  it("backs off exponentially: 1s, 2s, 4s, 8s for consecutive rapid exits", () => {
+    let priorExitsMs: readonly number[] = [];
+    const expectedDelaysMs = [1_000, 2_000, 4_000, 8_000];
+    let nowMs = 0;
+    for (const expectedDelayMs of expectedDelaysMs) {
+      const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, nowMs);
+      expect(decision).toMatchObject({ delayMs: expectedDelayMs, kind: "restart" });
+      if (decision.kind === "restart") {
+        priorExitsMs = [...priorExitsMs, nowMs];
+      }
+      nowMs += 100;
+    }
+  });
+
+  it("caps the backoff at 30s once the exponent would exceed it", () => {
+    const priorExitsMs = [0, 100, 200, 300, 400, 500]; // 6 prior exits ⇒ this would be exit #7
+    const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, 600, { maxRestarts: 10 });
+    expect(decision).toEqual({ attempt: 7, delayMs: 30_000, kind: "restart", maxAttempts: 10 });
+  });
+
+  it("circuit-breaks on the 5th unexpected exit within the default 10-minute window", () => {
+    const priorExitsMs = [0, 1_000, 3_000, 7_000]; // 4 prior exits, all well within 10 minutes
+    const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, 15_000);
+    expect(decision.kind).toBe("give-up");
+  });
+
+  it("does NOT circuit-break on the 4th exit — only trips at the 5th", () => {
+    const priorExitsMs = [0, 1_000, 3_000]; // 3 prior exits ⇒ this is the 4th
+    const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, 7_000);
+    expect(decision).toMatchObject({ attempt: 4, kind: "restart" });
+  });
+
+  it("a healthy stretch of >= 60s forgives the prior exit history — resets to attempt 1", () => {
+    const priorExitsMs = [0, 1_000, 3_000, 7_000]; // would otherwise trip the breaker
+    const decision = nextRestartDecision({ aliveMs: 60_000, priorExitsMs }, 200_000);
+    expect(decision).toMatchObject({ attempt: 1, delayMs: 1_000, kind: "restart" });
+  });
+
+  it("just under the healthy threshold (59.999s alive) does NOT forgive the history", () => {
+    const priorExitsMs = [0, 1_000, 3_000, 7_000];
+    const decision = nextRestartDecision({ aliveMs: 59_999, priorExitsMs }, 200_000);
+    expect(decision.kind).toBe("give-up");
+  });
+
+  it("boundary: an exit exactly 10 minutes old has fallen OUT of the rolling window", () => {
+    const windowMs = 10 * 60 * 1000;
+    const nowMs = 1_000_000;
+    const priorExitsMs = [nowMs - windowMs]; // exactly at the edge — expired
+    const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, nowMs);
+    expect(decision).toMatchObject({ attempt: 1, delayMs: 1_000, kind: "restart" });
+  });
+
+  it("boundary: an exit 1ms inside the rolling window still counts", () => {
+    const windowMs = 10 * 60 * 1000;
+    const nowMs = 1_000_000;
+    const priorExitsMs = [nowMs - windowMs + 1]; // 1ms inside — still counted
+    const decision = nextRestartDecision({ aliveMs: 0, priorExitsMs }, nowMs);
+    expect(decision).toMatchObject({ attempt: 2, delayMs: 2_000, kind: "restart" });
+  });
+});
+
+describe("runServeForeground — supervises an unexpectedly-exited child (builder-evolution fire 1)", () => {
+  function makeChild(exitCode: number | null): { readonly child: ServeChildHandle; kill: () => void } {
+    let resolveExit: (code: number | null) => void = () => undefined;
+    const exitPromise = new Promise<number | null>((resolve) => { resolveExit = resolve; });
+    const child: ServeChildHandle = {
+      kill: () => { resolveExit(null); },
+      pid: 999,
+      waitForExit: () => exitPromise
+    };
+    // Auto-resolve on next microtask unless the test wants to hold it open (kill() below overrides).
+    queueMicrotask(() => { resolveExit(exitCode); });
+    return { child, kill: () => { resolveExit(null); } };
+  }
+
+  it("respawns with the SAME args after an unexpected exit", async () => {
+    const spawnCalls: Array<{ readonly command: string; readonly args: readonly string[] }> = [];
+    let callCount = 0;
+    const handlers = new Map<"SIGINT" | "SIGTERM", () => void>();
+    const spawn: ServeSpawnFn = (spawnOpts) => {
+      spawnCalls.push({ args: spawnOpts.args, command: spawnOpts.command });
+      callCount += 1;
+      if (callCount === 1) return makeChild(1).child; // unexpected non-zero exit
+      // Second spawn: fire the stop signal so the loop exits cleanly instead of looping forever.
+      const child = makeChild(null).child;
+      queueMicrotask(() => { handlers.get("SIGINT")!(); });
+      return child;
+    };
+
+    const exitCode = await runServeForeground({
+      args: ["dist/index.js"],
+      command: "node",
+      cwd: "/repo",
+      env: {},
+      now: () => 0,
+      registerSignalHandler: (event, handler) => { handlers.set(event, handler); },
+      sleep: async () => undefined,
+      spawn,
+      stdout: () => undefined
+    });
+
+    expect(spawnCalls).toHaveLength(2);
+    expect(spawnCalls[0]).toEqual({ args: ["dist/index.js"], command: "node" });
+    expect(spawnCalls[1]).toEqual({ args: ["dist/index.js"], command: "node" });
+    expect(exitCode).toBe(0);
+  });
+
+  it("a signal fired DURING the sleep gap aborts the restart — no respawn, clean exit", async () => {
+    const spawnCalls: number[] = [];
+    const handlers = new Map<"SIGINT" | "SIGTERM", () => void>();
+    let sleepCalls = 0;
+    const spawn: ServeSpawnFn = () => {
+      spawnCalls.push(spawnCalls.length);
+      return makeChild(1).child; // unexpected exit every time it's called
+    };
+    // A sleep that never resolves on its own — only the signal-triggered race branch can end it.
+    const foreverSleep = (): Promise<void> => new Promise(() => { /* never resolves */ });
+
+    const runPromise = runServeForeground({
+      args: [],
+      command: "node",
+      cwd: "/repo",
+      env: {},
+      now: () => 0,
+      registerSignalHandler: (event, handler) => { handlers.set(event, handler); },
+      sleep: async () => {
+        sleepCalls += 1;
+        await foreverSleep();
+      },
+      spawn,
+      stdout: () => undefined
+    });
+
+    // Wait for the first spawn's exit + the restart line to be scheduled, then fire the signal
+    // while the supervisor is asleep waiting to respawn.
+    await new Promise((resolve) => { setTimeout(resolve, 20); });
+    expect(spawnCalls).toHaveLength(1);
+    expect(sleepCalls).toBe(1);
+    handlers.get("SIGTERM")!();
+
+    const exitCode = await runPromise;
+    expect(spawnCalls).toHaveLength(1); // never respawned
+    expect(exitCode).toBe(0);
+  });
+
+  it("5 rapid unexpected deaths trip the circuit breaker and give up with an honest message — no 5th respawn", async () => {
+    const spawnCalls: number[] = [];
+    let nowMs = 0;
+    const spawn: ServeSpawnFn = () => {
+      spawnCalls.push(spawnCalls.length);
+      return makeChild(1).child;
+    };
+    const stdoutLines: string[] = [];
+
+    const exitCode = await runServeForeground({
+      args: [],
+      command: "node",
+      cwd: "/repo",
+      env: {},
+      now: () => { nowMs += 10; return nowMs; }, // rapid deaths, all well inside the 10-minute window
+      registerSignalHandler: () => undefined,
+      sleep: async () => undefined,
+      spawn,
+      stdout: (line) => { stdoutLines.push(line); }
+    });
+
+    expect(spawnCalls).toHaveLength(5); // 5 spawns total: 4 restarts, then the 5th exit gives up instead of a 6th
+    expect(exitCode).toBe(1);
+    expect(stdoutLines.join("")).toContain("giving up");
+    expect(stdoutLines.join("")).toContain("muse serve");
+  });
+
+  it("stopping via SIGINT on the FIRST child is unchanged — clean exit, no restart line", async () => {
+    const handlers = new Map<"SIGINT" | "SIGTERM", () => void>();
+    let resolveExit: (code: number | null) => void = () => undefined;
+    const killCalls: NodeJS.Signals[] = [];
+    const child: ServeChildHandle = {
+      kill: (signal) => { killCalls.push(signal); resolveExit(0); },
+      pid: 1,
+      waitForExit: () => new Promise((resolve) => { resolveExit = resolve; })
+    };
+    const stdoutLines: string[] = [];
+
+    const runPromise = runServeForeground({
+      args: [],
+      command: "node",
+      cwd: "/repo",
+      env: {},
+      registerSignalHandler: (event, handler) => { handlers.set(event, handler); },
+      spawn: () => child,
+      stdout: (line) => { stdoutLines.push(line); }
+    });
+    handlers.get("SIGTERM")!();
+    const exitCode = await runPromise;
+
+    expect(killCalls).toEqual(["SIGTERM"]);
+    expect(exitCode).toBe(0);
+    expect(stdoutLines.join("")).not.toContain("restarting");
+    expect(stdoutLines.join("")).not.toContain("giving up");
   });
 });
 

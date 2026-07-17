@@ -47,6 +47,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **`muse serve` now heals itself.** If the API process dies unexpectedly,
+  the supervisor restarts it with exponential backoff (up to 5 attempts in
+  a 10-minute window, forgiven after a healthy minute) and tells you what
+  happened; Ctrl-C/TERM still shuts everything down cleanly with no orphan
+  processes. A graceful shutdown is never resurrected.
+
 - **Your saved model choice now beats a stale API key.** A dead
   `GEMINI_API_KEY` sitting in the shell used to hijack `muse ask`, briefs,
   and background jobs into a failing cloud provider even when
