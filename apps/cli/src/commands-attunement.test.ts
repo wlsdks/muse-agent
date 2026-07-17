@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeTasks, type PersistedTask } from "@muse/stores";
+import { createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -444,6 +445,13 @@ describe("muse thread review — real first-20 feedback queue", () => {
       rejected: `muse thread outcome ${secondDelivery!} rejected`,
       used: `muse thread outcome ${secondDelivery!} used`
     });
+    const { outcomeCommands: _commands, ...cliNextDomain } = queue.next!;
+    const cliDomain = { next: cliNextDomain, progress: queue.progress };
+    const coreDomain = await prepareContinuityReview(
+      await readAttunementState(f.attunementFile),
+      createLocalExactArtifactResolver({ notesDir: f.notesDir, tasksFile: f.taskFile })
+    );
+    expect(cliDomain).toEqual(coreDomain);
 
     const text = await run(f, ["thread", "review"]);
     expect(text.stdout).toContain("First-20 Continuity review: 1/2 opened packs have feedback");

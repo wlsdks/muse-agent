@@ -82,6 +82,13 @@ operation. Timing `offer` uses the sibling read-only preparation Interface and c
 delivery. Rendering stays surface-local; a hidden next step may expose only its exact
 `artifactType:artifactId` marker, not title, summary, status, due timestamp, or tags.
 
+Continuity review uses a sibling read-only core Module. It owns first-20 eligibility,
+deterministic oldest-pending selection, progress, current-link verification, and exact
+evidence resolution. CLI adds copy-ready commands as a surface-local Adapter; HTTP returns
+the canonical domain projection and web renders it. A removed link or unavailable source is
+shown as unavailable, never searched for, and merely fetching review cannot open a delivery,
+record an outcome, or change policy.
+
 ## Minimal observation contract
 
 The first persisted unit is an app session transition, not a raw screen sample:

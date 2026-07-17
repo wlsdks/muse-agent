@@ -30,6 +30,25 @@ interface ReviewResponse {
   }[];
   readonly evaluation: KindEvaluation & { readonly byKind: Readonly<Record<Kind, KindEvaluation>> };
   readonly resetReceipts: readonly { readonly id: string; readonly resetPolicyVersion: number; readonly threadId: string; readonly undone: boolean }[];
+  readonly reviewQueue: {
+    readonly next?: {
+      readonly deliveryId: string;
+      readonly evidence: readonly {
+        readonly artifact?: OpenedPackArtifact;
+        readonly reference: { readonly artifactId: string; readonly artifactType: string; readonly providerId: string; readonly role: string };
+        readonly status: "available" | "unavailable";
+      }[];
+      readonly openedAt: string;
+      readonly thread: { readonly id: string; readonly kind: Kind; readonly title: string };
+    };
+    readonly progress: {
+      readonly eligibleDeliveries: number;
+      readonly remainingFeedback: number;
+      readonly remainingPacks: number;
+      readonly reviewedDeliveries: number;
+      readonly target: number;
+    };
+  };
   readonly threads: readonly {
     readonly id: string;
     readonly kind: Kind;
@@ -65,6 +84,53 @@ export interface OpenedPack {
     readonly policy: { readonly nextStep: string };
     readonly thread: { readonly kind: Kind; readonly title: string };
   };
+}
+
+export function PendingReviewCard({
+  disabled,
+  onOutcome,
+  reviewQueue
+}: {
+  readonly disabled: boolean;
+  readonly onOutcome: (deliveryId: string, value: Outcome) => void;
+  readonly reviewQueue: ReviewResponse["reviewQueue"];
+}) {
+  const { t } = useI18n();
+  const { next, progress } = reviewQueue;
+  return <Card>
+    <div className="row-title">{t("continuity.reviewProgress", {
+      eligible: progress.eligibleDeliveries,
+      reviewed: progress.reviewedDeliveries,
+      target: progress.target,
+      waiting: progress.remainingFeedback
+    })}</div>
+    {!next
+      ? <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.reviewNone")}</p>
+      : <>
+          <div className="row-title" style={{ marginTop: 12 }}>{t("continuity.nextReview", { title: next.thread.title })}</div>
+          <div className="row-meta">{kindLabel(next.thread.kind)} · {next.deliveryId}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+            {next.evidence.length === 0 ? <div className="row-meta">{t("continuity.reviewNoEvidence")}</div> : null}
+            {next.evidence.map((entry) => {
+              const marker = artifactMarker(entry.reference);
+              return <div className="row-meta" key={`${entry.reference.providerId}:${marker}:${entry.reference.role}`}>
+                {entry.artifact ? `${entry.artifact.title} · ${marker}` : `${t("continuity.unavailable")} · ${marker}`}
+              </div>;
+            })}
+          </div>
+          <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+            <span className="row-meta">{t("continuity.recordOutcome")}</span>
+            {OUTCOMES.map((value) => <Button
+              ariaLabel={t("continuity.recordOutcomeFor", { id: next.deliveryId, outcome: value })}
+              disabled={disabled}
+              key={value}
+              size="sm"
+              variant="ghost"
+              onClick={() => onOutcome(next.deliveryId, value)}
+            >{value}</Button>)}
+          </div>
+        </>}
+  </Card>;
 }
 
 function rate(part: number, total: number): string {
@@ -243,6 +309,13 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               <KindSummary kind="work" evaluation={data.evaluation.byKind.work} />
             </div>
             {openedPack ? <OpenedPackCard openedPack={openedPack} /> : null}
+            <PendingReviewCard
+              disabled={outcome.isPending}
+              onOutcome={(deliveryId, value) => {
+                if (window.confirm(t("continuity.outcomeConfirm", { outcome: value }))) outcome.mutate({ deliveryId, value });
+              }}
+              reviewQueue={data.reviewQueue}
+            />
 
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.threads")}</h2>
             <Card>

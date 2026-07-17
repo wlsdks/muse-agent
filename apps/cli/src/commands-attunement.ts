@@ -18,17 +18,18 @@ import {
   mcpProviderId,
   openPreparedContinuityPack,
   prepareContinuityPack,
+  prepareContinuityReview,
   readAttunementState,
   recordContinuityOutcome,
   resetThreadPolicy,
   undoThreadReset,
   unlinkArtifact,
   type ArtifactLink,
-  type ArtifactReference,
   type ArtifactLinkValidator,
   type AttunementState,
+  type ContinuityReview,
+  type ContinuityReviewItem,
   type ContinuityOutcome,
-  type ContinuityDelivery,
   type ContinuityPack,
   type ExactArtifactResolver,
   type PersonalThread,
@@ -215,28 +216,9 @@ export interface ContinuityStats extends ContinuityKindStats {
   readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindStats>>;
 }
 
-export interface ContinuityReviewEvidence {
-  readonly artifact?: Awaited<ReturnType<ExactArtifactResolver>>;
-  readonly reference: ArtifactReference;
-  readonly status: "available" | "unavailable";
-}
-
-export interface ContinuityReviewItem {
-  readonly deliveryId: string;
-  readonly evidence: readonly ContinuityReviewEvidence[];
-  readonly openedAt: string;
-  readonly outcomeCommands: Readonly<Record<ContinuityOutcome, string>>;
-  readonly thread: Pick<PersonalThread, "id" | "kind" | "title">;
-}
-
-export interface ContinuityReviewQueue {
-  readonly next?: ContinuityReviewItem;
-  readonly progress: {
-    readonly eligibleDeliveries: number;
-    readonly remainingFeedback: number;
-    readonly remainingPacks: number;
-    readonly reviewedDeliveries: number;
-    readonly target: number;
+interface CliContinuityReview extends Omit<ContinuityReview, "next"> {
+  readonly next?: ContinuityReviewItem & {
+    readonly outcomeCommands: Readonly<Record<ContinuityOutcome, string>>;
   };
 }
 
@@ -273,63 +255,26 @@ export function formatContinuityStats(stats: ContinuityStats): string {
   return `${lines.join("\n")}\n`;
 }
 
-function compareDeliveries(left: ContinuityDelivery, right: ContinuityDelivery): number {
-  return left.openedAt.localeCompare(right.openedAt) || left.id.localeCompare(right.id);
-}
-
-function sameArtifact(left: ArtifactLink, right: ArtifactReference): boolean {
-  return left.artifactId === right.artifactId
-    && left.artifactType === right.artifactType
-    && left.providerId === right.providerId
-    && left.role === right.role;
-}
-
-/** Read-only projection of the first-20 feedback queue; never records an outcome. */
-export async function buildContinuityReviewQueue(
+/** Add only copy-ready CLI commands to the canonical domain review. */
+async function prepareCliContinuityReview(
   state: AttunementState,
   resolveExactArtifact: ExactArtifactResolver
-): Promise<ContinuityReviewQueue> {
-  const eligible = [...state.deliveries]
-    .sort(compareDeliveries)
-    .slice(0, KILL_CRITERION_FIRST_PACKS);
-  const reviewedDeliveries = eligible.filter((delivery) => delivery.outcome !== undefined).length;
-  const pending = eligible.find((delivery) => delivery.outcome === undefined);
-  const progress = {
-    eligibleDeliveries: eligible.length,
-    remainingFeedback: eligible.length - reviewedDeliveries,
-    remainingPacks: KILL_CRITERION_FIRST_PACKS - eligible.length,
-    reviewedDeliveries,
-    target: KILL_CRITERION_FIRST_PACKS
-  };
-  if (!pending) return { progress };
-
-  const thread = state.threads.find((candidate) => candidate.id === pending.threadId);
-  if (!thread) return { progress };
-  const evidence: ContinuityReviewEvidence[] = [];
-  for (const reference of pending.evidenceRefs) {
-    const link = thread.links.find((candidate) => sameArtifact(candidate, reference));
-    const artifact = link ? await resolveExactArtifact(link) : undefined;
-    evidence.push({
-      ...(artifact ? { artifact, status: "available" as const } : { status: "unavailable" as const }),
-      reference
-    });
-  }
+): Promise<CliContinuityReview> {
+  const review = await prepareContinuityReview(state, resolveExactArtifact);
+  if (!review.next) return { progress: review.progress };
   const outcomeCommands = Object.fromEntries(
-    OUTCOMES.map((outcome) => [outcome, `muse thread outcome ${pending.id} ${outcome}`])
+    OUTCOMES.map((outcome) => [outcome, `muse thread outcome ${review.next!.deliveryId} ${outcome}`])
   ) as Readonly<Record<ContinuityOutcome, string>>;
   return {
     next: {
-      deliveryId: pending.id,
-      evidence,
-      openedAt: pending.openedAt,
+      ...review.next,
       outcomeCommands,
-      thread: { id: thread.id, kind: thread.kind, title: thread.title }
     },
-    progress
+    progress: review.progress
   };
 }
 
-export function formatContinuityReviewQueue(queue: ContinuityReviewQueue): string {
+export function formatContinuityReviewQueue(queue: CliContinuityReview): string {
   const { progress } = queue;
   const lines = [
     `First-${progress.target.toString()} Continuity review: ${progress.reviewedDeliveries.toString()}/${progress.eligibleDeliveries.toString()} opened packs have feedback; ${progress.remainingPacks.toString()} more packs still need to be opened.`
@@ -623,7 +568,7 @@ Examples:
     .action(async (options: { readonly json?: boolean }, command: Command) => {
       await commandAction(command, io, "thread review", async () => {
         const state = await readAttunementState(attunementFile());
-        const queue = await buildContinuityReviewQueue(state, resolveExactArtifact);
+        const queue = await prepareCliContinuityReview(state, resolveExactArtifact);
         if (options.json) {
           io.stdout(`${JSON.stringify(queue, null, 2)}\n`);
           return;

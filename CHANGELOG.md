@@ -10,6 +10,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Continuity review now has one meaning across CLI, HTTP, and web:** the
+  shared Attunement core selects the same oldest pending first-20 delivery,
+  reports the same progress, and resolves only evidence that remains exactly
+  user-linked. Review reads create no delivery or feedback; the web advances
+  only after an explicit outcome, while unavailable or removed sources are
+  never replaced by a guess.
 - **Pre-push checks now match the pushed change:** docs/assets-only pushes
   avoid package-manager work, code pushes keep fail-closed type checks and
   lint only existing changed sources, and web checks run only for web/shared

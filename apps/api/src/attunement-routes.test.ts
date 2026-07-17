@@ -1,12 +1,14 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   AttunementStoreError,
   createLocalArtifactValidator,
+  createLocalExactArtifactResolver,
   createPersonalThread,
   linkArtifact,
+  prepareContinuityReview,
   readAttunementState,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
@@ -136,6 +138,86 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ errorMessage: "thread policy changed while building this pack; rebuild before opening it" });
     expect((await readAttunementState(attunementFile)).deliveries).toHaveLength(0);
+  });
+});
+
+describe("GET /api/attunement/review", () => {
+  it("returns the shared oldest-pending exact review without mutating persisted state", async () => {
+    const app = server();
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    const deliveryId = opened.json().delivery.id as string;
+    const before = await readFile(attunementFile);
+
+    const response = await app.inject({ method: "GET", url: "/api/attunement/review" });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.reviewQueue).toEqual({
+      next: {
+        deliveryId,
+        evidence: [{
+          artifact: expect.objectContaining({ artifactId: TASK.id, title: TASK.title }),
+          reference: { artifactId: TASK.id, artifactType: "task", providerId: "local", role: "next-step" },
+          status: "available"
+        }],
+        openedAt: "2026-07-17T00:00:00.000Z",
+        thread: { id: threadId, kind: "life", title: "Prepare birthday" }
+      },
+      progress: {
+        eligibleDeliveries: 1,
+        remainingFeedback: 1,
+        remainingPacks: 19,
+        reviewedDeliveries: 0,
+        target: 20
+      }
+    });
+    expect(body.reviewQueue).toEqual(await prepareContinuityReview(
+      await readAttunementState(attunementFile),
+      createLocalExactArtifactResolver({ notesDir, tasksFile })
+    ));
+    expect(await readFile(attunementFile)).toEqual(before);
+  });
+
+  it("returns a structured conflict instead of a complete-looking queue for a missing delivery thread", async () => {
+    const app = server();
+    await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    const corrupt = JSON.parse(await readFile(attunementFile, "utf8")) as { threads: unknown[] };
+    corrupt.threads = [];
+    await writeFile(attunementFile, `${JSON.stringify(corrupt)}\n`);
+
+    const response = await app.inject({ method: "GET", url: "/api/attunement/review" });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ errorMessage: expect.stringMatching(/delivery '.+' references a missing thread/u) });
+    expect(response.json()).not.toHaveProperty("reviewQueue");
+  });
+
+  it("advances every canonical reader to the other pending delivery after one explicit outcome", async () => {
+    const app = server();
+    const openedIds: string[] = [];
+    for (let index = 0; index < 2; index += 1) {
+      const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+      openedIds.push(opened.json().delivery.id as string);
+    }
+    const before = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    const firstPending = before.json().reviewQueue.next.deliveryId as string;
+
+    const recorded = await app.inject({
+      method: "POST",
+      payload: { outcome: "used" },
+      url: `/api/attunement/deliveries/${firstPending}/outcome`
+    });
+    const after = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    const expectedNext = openedIds.find((id) => id !== firstPending);
+
+    expect(recorded.statusCode).toBe(200);
+    expect(after.json().reviewQueue.next.deliveryId).toBe(expectedNext);
+    expect(after.json().reviewQueue.progress).toMatchObject({ remainingFeedback: 1, reviewedDeliveries: 1 });
+    expect(after.json().reviewQueue).toEqual(await prepareContinuityReview(
+      await readAttunementState(attunementFile),
+      createLocalExactArtifactResolver({ notesDir, tasksFile })
+    ));
   });
 });
 

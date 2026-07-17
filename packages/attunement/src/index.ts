@@ -6,6 +6,12 @@ export {
   type OpenPreparedContinuityPack
 } from "./continuity-preparation.js";
 export {
+  prepareContinuityReview,
+  type ContinuityReview,
+  type ContinuityReviewEvidence,
+  type ContinuityReviewItem
+} from "./continuity-review.js";
+export {
   CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   computeContinuityEvaluation,

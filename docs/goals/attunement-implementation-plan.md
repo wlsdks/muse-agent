@@ -75,10 +75,11 @@ pack. It does not require desktop observation.
   suppression. It cannot expand data sources, retention, permissions, recipients, or actions.
 - Golden examples cover both a daily-life thread and a work thread; neither may rely on a
   work-only field or prompt.
-- `muse thread review` reads the oldest unreviewed delivery in the first-20 window, resolves
-  its exact persisted evidence, and prints copy-ready commands for all four outcomes.
-  `--json` exposes deterministic progress. Review is read-only: only the user-authored
-  `muse thread outcome` command may create feedback.
+- One shared review Module reads the oldest unreviewed delivery in the first-20 window,
+  resolves only its still-linked exact evidence, and exposes deterministic progress to CLI,
+  HTTP, and web. CLI adds copy-ready commands for all four outcomes as a surface-local
+  Adapter. Review fetches are read-only: only an explicit user-authored outcome action may
+  create feedback.
 
 **Kill criterion:** if fewer than 20% of the first 20 eligible packs are used, or more than
 30% are rejected, stop adding automation. Fix the pack's usefulness first. Passing this

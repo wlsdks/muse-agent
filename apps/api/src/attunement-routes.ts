@@ -1,4 +1,4 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
@@ -99,46 +99,55 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.get("/api/attunement/review", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    const state = await readAttunementState(gate.attunementFile);
-    return {
-      deliveries: state.deliveries
-        .slice()
-        .sort((left, right) => right.openedAt.localeCompare(left.openedAt))
-        .map((delivery) => {
-          const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
-          if (!thread) throw new Error(`delivery '${delivery.id}' references a missing personal thread`);
-          return {
-            evidenceRefs: delivery.evidenceRefs,
-            id: delivery.id,
-            openedAt: delivery.openedAt,
-            outcome: delivery.outcome,
-            policyVersion: delivery.policyVersion,
-            runId: delivery.runId,
-            thread: { id: thread.id, kind: thread.kind, title: thread.title }
-          };
-        }),
-      evaluation: computeContinuityEvaluation(state),
-      resetReceipts: state.resetReceipts
-        .slice()
-        .sort((left, right) => right.resetPolicyVersion - left.resetPolicyVersion)
-        .map((receipt) => ({
-          id: receipt.id,
-          resetPolicyVersion: receipt.resetPolicyVersion,
-          threadId: receipt.threadId,
-          undone: state.undoResetReceipts.some((undo) => undo.resetId === receipt.id)
-        })),
-      threads: state.threads
-        .slice()
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .map((thread) => ({
-          id: thread.id,
-          kind: thread.kind,
-          linkCount: thread.links.length,
-          links: thread.links.map(({ artifactId, artifactType, providerId, role }) => ({ artifactId, artifactType, providerId, role })),
-          policy: thread.policy,
-          title: thread.title
-        }))
-    };
+    try {
+      const state = await readAttunementState(gate.attunementFile);
+      return {
+        deliveries: state.deliveries
+          .slice()
+          .sort((left, right) => right.openedAt.localeCompare(left.openedAt))
+          .map((delivery) => {
+            const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
+            if (!thread) throw new Error(`delivery '${delivery.id}' references a missing personal thread`);
+            return {
+              evidenceRefs: delivery.evidenceRefs,
+              id: delivery.id,
+              openedAt: delivery.openedAt,
+              outcome: delivery.outcome,
+              policyVersion: delivery.policyVersion,
+              runId: delivery.runId,
+              thread: { id: thread.id, kind: thread.kind, title: thread.title }
+            };
+          }),
+        evaluation: computeContinuityEvaluation(state),
+        reviewQueue: await prepareContinuityReview(
+          state,
+          createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile })
+        ),
+        resetReceipts: state.resetReceipts
+          .slice()
+          .sort((left, right) => right.resetPolicyVersion - left.resetPolicyVersion)
+          .map((receipt) => ({
+            id: receipt.id,
+            resetPolicyVersion: receipt.resetPolicyVersion,
+            threadId: receipt.threadId,
+            undone: state.undoResetReceipts.some((undo) => undo.resetId === receipt.id)
+          })),
+        threads: state.threads
+          .slice()
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .map((thread) => ({
+            id: thread.id,
+            kind: thread.kind,
+            linkCount: thread.links.length,
+            links: thread.links.map(({ artifactId, artifactType, providerId, role }) => ({ artifactId, artifactType, providerId, role })),
+            policy: thread.policy,
+            title: thread.title
+          }))
+      };
+    } catch (cause) {
+      if (cause instanceof AttunementStoreError) return reply.code(409).send({ errorMessage: cause.message });
+      throw cause;
+    }
   });
 
   server.post<{ Body: { readonly kind?: unknown; readonly title?: unknown } }>("/api/attunement/threads", async (request, reply) => {
