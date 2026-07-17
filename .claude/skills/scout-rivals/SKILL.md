@@ -30,9 +30,17 @@ DELTA, never the base.
      anything you might judge `build` — a claim you didn't see in code is
      recorded ⚠ unverified and never judged build.
    - **Landscape refresh** (2–3 web searches, anchored to today's date):
-     notable NEW open-source personal-agent projects with real traction.
-     A newcomer joins the roster only with evidence (stars velocity, real
-     releases, working code you spot-checked) — hype posts don't enroll.
+     notable NEW open-source **personal assistant** agents with real
+     traction. Muse is NOT a coding agent — pure coding agents
+     (Devin/OpenHands class) don't enroll; a generalizable mechanism from
+     one may be recorded as a mechanism finding if it transfers to personal
+     continuity. A newcomer joins the roster only with evidence (stars
+     velocity, real releases, working code you spot-checked) — hype posts
+     don't enroll.
+   - **Papers (optional, when a mechanism needs grounding):** openly
+     accessible only (arXiv/open-access — anyone can read and reference).
+     A paper is mechanism evidence, not a finding by itself; distill the
+     mechanism and judge its transfer like any other item.
    - Cross-check every "Muse lacks X" against Muse's actual code
      (codegraph / `git log`) — the June snapshot's `status` column and your
      own assumptions both go stale; a gap Muse already closed is a ✓ flip,
