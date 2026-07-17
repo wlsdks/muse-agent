@@ -11,15 +11,14 @@
 import { resolvePendingApprovalsFile } from "@muse/autoconfigure";
 import type { HostLookup } from "@muse/domain-tools";
 import {
-  beginPendingApprovalExecution,
-  classifyPendingApprovalToolOutcome,
-  claimPendingApproval,
   clearPendingApproval,
-  declinePendingApprovalClaim,
-  finalizePendingApprovalExecution,
+  completePendingApproval,
   listPendingApprovals,
+  type CompletePendingApprovalResult,
   type PendingApproval,
-  type PendingApprovalExecutionState
+  type PendingApprovalCoordinatorOperations,
+  type PendingApprovalCoordinatorPhase,
+  type PendingApprovalCoordinatorState
 } from "@muse/messaging";
 import type { JsonObject } from "@muse/shared";
 import { confirm, isCancel } from "@clack/prompts";
@@ -30,14 +29,39 @@ import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 
 export interface ApproveResult {
-  readonly status: "ran" | "declined" | "not-found" | "no-tool" | "unknown" | "conflict";
+  readonly status: "ran" | "declined" | "not-found" | "no-tool" | "unknown" | "conflict" | "persistence-uncertain";
   readonly tool?: string;
   readonly detail?: string;
-  readonly state?: PendingApprovalExecutionState | "not-found" | "expired" | "forbidden";
+  readonly state?: PendingApprovalCoordinatorState;
+  readonly phase?: PendingApprovalCoordinatorPhase;
+  readonly effectAttempted?: boolean;
+  readonly certainty?: "observed" | "unobserved";
 }
 
-function conflictResult(tool: string, state: NonNullable<ApproveResult["state"]>, detail?: string): ApproveResult {
-  return { ...(detail ? { detail } : {}), state, status: "conflict", tool };
+function mapCoordinatorResult(result: CompletePendingApprovalResult): ApproveResult {
+  switch (result.kind) {
+    case "unavailable":
+      return { state: result.state, status: "not-found" };
+    case "conflict":
+      return { phase: result.phase, state: result.state, status: "conflict" };
+    case "denied":
+      return result.detail === "tool no longer available"
+        ? { detail: result.detail, state: "denied", status: "no-tool", tool: result.approvalSnapshot.tool }
+        : { detail: result.detail, state: "denied", status: "declined", tool: result.approvalSnapshot.tool };
+    case "unknown":
+      return { detail: result.detail, effectAttempted: result.effectAttempted, state: "unknown", status: "unknown", tool: result.approvalSnapshot.tool };
+    case "succeeded":
+      return { state: "succeeded", status: "ran", tool: result.approvalSnapshot.tool };
+    case "persistence-uncertain":
+      return {
+        certainty: result.certainty,
+        detail: result.error,
+        effectAttempted: result.effectAttempted,
+        phase: result.phase,
+        ...(result.certainty === "observed" ? { state: result.state } : {}),
+        status: "persistence-uncertain"
+      };
+  }
 }
 
 /**
@@ -58,12 +82,7 @@ export async function approvePendingApproval(opts: {
   /** DNS resolver for the web_action SSRF guard (tests inject a fake public resolver). */
   readonly lookup?: HostLookup;
   readonly now?: () => Date;
-  /** Fault-injection seam for proving effect-before-finalize replay safety. */
-  readonly finalizeExecution?: typeof finalizePendingApprovalExecution;
-  /** Fault-injection seam for proving claim-snapshot race safety. */
-  readonly claimApproval?: typeof claimPendingApproval;
-  readonly beginExecution?: typeof beginPendingApprovalExecution;
-  readonly declineClaim?: typeof declinePendingApprovalClaim;
+  readonly coordinatorOperations?: PendingApprovalCoordinatorOperations;
   /** Tool-result seam for contradictory/failure-shaped result tests. */
   readonly executeTool?: (
     tool: ReturnType<typeof buildActuatorTools>[number],
@@ -72,82 +91,45 @@ export async function approvePendingApproval(opts: {
   ) => Promise<unknown>;
 }): Promise<ApproveResult> {
   const id = opts.id.trim();
-  const pending = await listPendingApprovals(opts.pendingFile, opts.now);
-  const entry = pending.find((e) => e.id === id);
-  if (!entry) {
-    return { status: "not-found" };
-  }
-  const buildTools = (userId: string) => buildActuatorTools({
-      env: opts.env,
-      io: opts.io,
-      userId,
-      confirmAction: async () => true,
-      isInteractive: () => true,
-      ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-      ...(opts.lookup ? { lookup: opts.lookup } : {})
-    });
-  const tool = buildTools(entry.userId ?? `${entry.providerId}:${entry.source}`).find((candidate) => candidate.definition.name === entry.tool);
-  if (!tool) {
-    return { status: "no-tool", tool: entry.tool };
-  }
-  const claim = await (opts.claimApproval ?? claimPendingApproval)(opts.pendingFile, id, { surface: "cli" }, opts.now);
-  if (!claim.claimedByThisCall) {
-    return claim.state === "not-found" || claim.state === "expired"
-      ? { state: claim.state, status: "not-found" }
-      : conflictResult(entry.tool, claim.state);
-  }
-  const snapshot = claim.approvalSnapshot;
-  const claimedTool = buildTools(snapshot.userId ?? `${snapshot.providerId}:${snapshot.source}`)
-    .find((candidate) => candidate.definition.name === snapshot.tool);
-  if (!claimedTool) {
-    const declined = await (opts.declineClaim ?? declinePendingApprovalClaim)(opts.pendingFile, snapshot.id, claim.claimToken, "tool no longer available", opts.now);
-    return declined.transitioned
-      ? { state: "denied", status: "no-tool", tool: snapshot.tool }
-      : conflictResult(snapshot.tool, declined.state, "tool unavailable and denial CAS did not win");
-  }
   const interactive = opts.isInteractive ?? (() => Boolean(process.stdout.isTTY && process.stdin.isTTY));
   const confirmAction = opts.confirmAction ?? (async (message: string) => {
     const answer = await confirm({ message });
     return !isCancel(answer) && answer;
   });
-  const approved = interactive() && await confirmAction(`Approve ${snapshot.tool}: ${snapshot.draft}?`);
-  if (!approved) {
-    const declined = await (opts.declineClaim ?? declinePendingApprovalClaim)(opts.pendingFile, snapshot.id, claim.claimToken, "user did not confirm", opts.now);
-    return declined.transitioned
-      ? { detail: "user did not confirm", state: "denied", status: "declined", tool: snapshot.tool }
-      : conflictResult(snapshot.tool, declined.state, "confirmation was declined but denial CAS did not win");
-  }
-  const begun = await (opts.beginExecution ?? beginPendingApprovalExecution)(opts.pendingFile, snapshot.id, claim.claimToken, opts.now);
-  if (!begun.transitioned) {
-    return conflictResult(snapshot.tool, begun.state, "execution begin CAS did not win");
-  }
-  let result: unknown;
-  const finalizeExecution = opts.finalizeExecution ?? finalizePendingApprovalExecution;
-  try {
-    result = (await (opts.executeTool ?? ((tool, arguments_, context) => tool.execute(arguments_, context)))(
-      claimedTool,
-      snapshot.arguments as JsonObject,
-      { runId: `approve-${snapshot.id}` }
-    ));
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    const finalized = await finalizeExecution(opts.pendingFile, snapshot.id, claim.claimToken, "unknown", detail, opts.now);
-    return finalized.transitioned
-      ? { detail, state: "unknown", status: "unknown", tool: snapshot.tool }
-      : conflictResult(snapshot.tool, finalized.state, `tool threw (${detail}) and unknown finalization CAS did not win`);
-  }
-  if (classifyPendingApprovalToolOutcome(result) === "succeeded") {
-    const finalized = await finalizeExecution(opts.pendingFile, snapshot.id, claim.claimToken, "succeeded", undefined, opts.now);
-    if (!finalized.transitioned) {
-      return conflictResult(snapshot.tool, finalized.state, "success finalization CAS did not win");
+  const result = await completePendingApproval({
+    actor: { surface: "cli" },
+    file: opts.pendingFile,
+    id,
+    now: opts.now,
+    operations: opts.coordinatorOperations,
+    prepare: async (snapshot) => {
+      const tools = buildActuatorTools({
+        env: opts.env,
+        io: opts.io,
+        userId: snapshot.userId ?? `${snapshot.providerId}:${snapshot.source}`,
+        confirmAction: async () => true,
+        isInteractive: () => true,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+        ...(opts.lookup ? { lookup: opts.lookup } : {})
+      });
+      const tool = tools.find((candidate) => candidate.definition.name === snapshot.tool);
+      if (!tool) {
+        return { detail: "tool no longer available", kind: "decline" };
+      }
+      if (!(interactive() && await confirmAction(`Approve ${snapshot.tool}: ${snapshot.draft}?`))) {
+        return { detail: "user did not confirm", kind: "decline" };
+      }
+      return {
+        execute: async () => (opts.executeTool ?? ((selected, arguments_, context) => selected.execute(arguments_, context)))(
+          tool,
+          snapshot.arguments as JsonObject,
+          { runId: `approve-${snapshot.id}` }
+        ),
+        kind: "execute"
+      };
     }
-    return { state: "succeeded", status: "ran", tool: snapshot.tool };
-  }
-  const detail = "tool did not prove success";
-  const finalized = await finalizeExecution(opts.pendingFile, snapshot.id, claim.claimToken, "unknown", detail, opts.now);
-  return finalized.transitioned
-    ? { detail, state: "unknown", status: "unknown", tool: snapshot.tool }
-    : conflictResult(snapshot.tool, finalized.state, "unknown finalization CAS did not win");
+  });
+  return mapCoordinatorResult(result);
 }
 
 function pendingFile(): string {
@@ -216,8 +198,17 @@ export function registerApprovalsCommands(
           command.error("approvals approve outcome unknown", { exitCode: 1 });
           return;
         case "conflict":
-          io.stderr(commandErrorLine("approvals approve", `Approval state changed to '${result.state ?? "unknown"}' before this command could finish${result.detail ? ` (${result.detail})` : ""}; no additional retry will be attempted.`));
+          io.stderr(commandErrorLine(
+            "approvals approve",
+            result.phase === "finalize"
+              ? `Action may have run, but approval finalization did not win; durable state is '${result.state ?? "unknown"}'; no retry will be attempted.`
+              : `Approval state changed to '${result.state ?? "unknown"}' before this command could finish${result.detail ? ` (${result.detail})` : ""}; no additional retry will be attempted.`
+          ));
           command.error("approvals approve state conflict", { exitCode: 1 });
+          return;
+        case "persistence-uncertain":
+          io.stderr(commandErrorLine("approvals approve", `Approval persistence is uncertain during '${result.phase ?? "unknown"}'${result.state ? ` (observed state: ${result.state})` : ""}${result.detail ? `: ${result.detail}` : ""}; no automatic retry will be attempted.`));
+          command.error("approvals approve persistence uncertain", { exitCode: 1 });
           return;
         default:
           io.stderr(commandErrorLine("approvals approve", `No pending approval with id '${id.trim()}' (it may have expired).`));

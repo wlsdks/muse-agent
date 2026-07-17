@@ -115,7 +115,7 @@ Subcommands (verified via `--help` + live runs):
 
 ### `muse approvals` ✅🧪 (channel-approval pending worklist)
 - **What**: Review or durably deny channel actions awaiting approval (the LIVE pending worklist, distinct from `propose`). `approvals list` shows unexpired pending ids. `approve <id>` claims the exact stored draft before execution, records `succeeded | unknown`, and blocks every replay; `clear <id>` records a durable `denied` tombstone. A channel "yes" only returns the CLI command for that id and never executes the action itself.
-- **Safety**: API and CLI share the `@muse/messaging` claim/CAS store and negative-first outcome classifier. The boundary is at-most-once: a post-claim crash can omit an effect, but the id cannot execute twice. Tombstones are not pruned automatically in this slice.
+- **Safety**: API and CLI call one provider-neutral `@muse/messaging` coordinator; they do not reproduce claim/begin/finalize or outcome logic. The coordinator uses the shared claim/CAS store and negative-first classifier, runs an effect-bearing callback only after begin wins, distinguishes CAS loss from persistence uncertainty, and observes the durable state when possible. The boundary is at-most-once: a post-claim crash can omit an effect, but the id cannot execute twice. Tombstones are not pruned automatically in this slice.
 - Adjacent: `muse approval` (singular) = pending tool-call approvals audit+decide (overlaps the approvals/guard domain). Tests: `commands-approvals.test.ts`, `commands-approval.test.ts`.
 
 ---

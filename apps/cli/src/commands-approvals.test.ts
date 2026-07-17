@@ -144,6 +144,19 @@ describe("muse approvals", () => {
     expect(result.exitCode).toBe(1);
   });
 
+  it("warns that the action may have run when finalization loses its CAS", async () => {
+    const result = await run(file(), ["approve", "finalize-race"], async () => ({
+      phase: "finalize",
+      state: "executing",
+      status: "conflict"
+    }));
+    expect(result.stderr).toContain("Action may have run, but approval finalization did not win");
+    expect(result.stderr).toContain("durable state is 'executing'");
+    expect(result.stderr).toContain("no retry will be attempted");
+    expect(result.stdout).toBe("");
+    expect(result.exitCode).toBe(1);
+  });
+
   it("--json emits a machine-readable envelope", async () => {
     const f = file();
     await recordPendingApproval(f, entry({ id: "j1" }));
@@ -175,7 +188,7 @@ describe("approvePendingApproval — re-run completion", () => {
     // Cleared → a second approve can't re-fire.
     expect(await listPendingApprovals(f)).toHaveLength(0);
     const replay = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "go", io: fakeIo(), pendingFile: f });
-    expect(replay.status).toBe("not-found");
+    expect(replay).toMatchObject({ state: "succeeded", status: "conflict" });
     expect(calls).toHaveLength(1); // no second request
   });
 
@@ -187,7 +200,9 @@ describe("approvePendingApproval — re-run completion", () => {
       confirmAction: async () => true,
       env,
       fetchImpl,
-      finalizeExecution: async () => ({ state: "executing", transitioned: false }),
+      coordinatorOperations: {
+        finalize: async () => ({ state: "executing", transitioned: false })
+      },
       id: "finalize-false",
       io: fakeIo(),
       isInteractive: () => true,
@@ -197,7 +212,7 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(result).toMatchObject({ state: "executing", status: "conflict" });
     expect(calls).toHaveLength(1);
     expect((await claimPendingApproval(f, "finalize-false", { surface: "cli" })).state).toBe("executing");
-    expect((await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "finalize-false", io: fakeIo(), isInteractive: () => true, pendingFile: f })).status).toBe("not-found");
+    expect(await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "finalize-false", io: fakeIo(), isInteractive: () => true, pendingFile: f })).toMatchObject({ state: "executing", status: "conflict" });
     expect(calls).toHaveLength(1);
   });
 
@@ -212,9 +227,11 @@ describe("approvePendingApproval — re-run completion", () => {
       userId: "new-owner"
     });
     const result = await approvePendingApproval({
-      claimApproval: async (pendingFile, id, actor, now) => {
-        await fs.writeFile(pendingFile, JSON.stringify({ pending: [swapped] }), "utf8");
-        return claimPendingApproval(pendingFile, id, actor, now);
+      coordinatorOperations: {
+        claim: async (pendingFile, id, actor, now) => {
+          await fs.writeFile(pendingFile, JSON.stringify({ pending: [swapped] }), "utf8");
+          return claimPendingApproval(pendingFile, id, actor, now);
+        }
       },
       confirmAction: async () => true,
       env: { MUSE_ACTION_LOG_FILE: actionLogFile },
@@ -332,7 +349,7 @@ describe("approvePendingApproval — re-run completion", () => {
       pendingFile: f
     });
 
-    expect(result).toMatchObject({ state: "denied", status: "conflict", tool: "web_action" });
+    expect(result).toMatchObject({ phase: "begin", state: "denied", status: "conflict" });
     expect(effects).toBe(0);
     expect((await claimPendingApproval(f, "confirm-race", { surface: "cli" })).state).toBe("denied");
   });
@@ -341,11 +358,13 @@ describe("approvePendingApproval — re-run completion", () => {
     const claimFile = file();
     await recordPendingApproval(claimFile, webEntry({ id: "claim-loss" }));
     const claimLoss = await approvePendingApproval({
-      claimApproval: async (pendingFile, id, actor, now) => {
-        const winner = await claimPendingApproval(pendingFile, id, actor, now);
-        if (!winner.claimedByThisCall) return winner;
-        await beginPendingApprovalExecution(pendingFile, id, winner.claimToken, now);
-        return claimPendingApproval(pendingFile, id, actor, now);
+      coordinatorOperations: {
+        claim: async (pendingFile, id, actor, now) => {
+          const winner = await claimPendingApproval(pendingFile, id, actor, now);
+          if (!winner.claimedByThisCall) return winner;
+          await beginPendingApprovalExecution(pendingFile, id, winner.claimToken, now);
+          return claimPendingApproval(pendingFile, id, actor, now);
+        }
       },
       confirmAction: async () => true,
       env,
@@ -360,9 +379,11 @@ describe("approvePendingApproval — re-run completion", () => {
     await recordPendingApproval(declineFile, webEntry({ id: "decline-loss" }));
     const declineLoss = await approvePendingApproval({
       confirmAction: async () => false,
-      declineClaim: async (pendingFile, id, token, _detail, now) => {
-        await beginPendingApprovalExecution(pendingFile, id, token, now);
-        return declinePendingApprovalClaim(pendingFile, id, token, undefined, now);
+      coordinatorOperations: {
+        decline: async (pendingFile, id, token, _detail, now) => {
+          await beginPendingApprovalExecution(pendingFile, id, token, now);
+          return declinePendingApprovalClaim(pendingFile, id, token, undefined, now);
+        }
       },
       env,
       id: "decline-loss",
@@ -382,7 +403,9 @@ describe("approvePendingApproval — re-run completion", () => {
         confirmAction: async () => true,
         env,
         executeTool,
-        finalizeExecution: async () => ({ state: "executing", transitioned: false }),
+        coordinatorOperations: {
+          finalize: async () => ({ state: "executing", transitioned: false })
+        },
         id,
         io: fakeIo(),
         isInteractive: () => true,
@@ -393,19 +416,97 @@ describe("approvePendingApproval — re-run completion", () => {
     }
   });
 
+  it("durably records an execution throw as unknown and blocks a second effect", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ id: "execute-throw" }));
+    let effects = 0;
+    const executeTool = async (): Promise<never> => {
+      effects += 1;
+      throw new Error("provider exploded");
+    };
+
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      env,
+      executeTool,
+      id: "execute-throw",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+    expect(result).toMatchObject({ effectAttempted: true, state: "unknown", status: "unknown" });
+    expect((await claimPendingApproval(f, "execute-throw", { surface: "cli" })).state).toBe("unknown");
+
+    const replay = await approvePendingApproval({
+      confirmAction: async () => true,
+      env,
+      executeTool,
+      id: "execute-throw",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+    expect(replay).toMatchObject({ state: "unknown", status: "conflict" });
+    expect(effects).toBe(1);
+  });
+
+  it("surfaces a finalize throw as persistence-uncertain and blocks a second effect", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ id: "finalize-throw" }));
+    let effects = 0;
+    const executeTool = async (): Promise<{ performed: true }> => {
+      effects += 1;
+      return { performed: true };
+    };
+
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      coordinatorOperations: {
+        finalize: async () => { throw new Error("finalize write failed"); }
+      },
+      env,
+      executeTool,
+      id: "finalize-throw",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+    expect(result).toMatchObject({
+      certainty: "observed",
+      effectAttempted: true,
+      phase: "finalize",
+      state: "executing",
+      status: "persistence-uncertain"
+    });
+
+    const replay = await approvePendingApproval({
+      confirmAction: async () => true,
+      env,
+      executeTool,
+      id: "finalize-throw",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+    expect(replay).toMatchObject({ state: "executing", status: "conflict" });
+    expect(effects).toBe(1);
+  });
+
   it("reports the durable state when a claimed no-tool denial CAS loses", async () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ id: "no-tool-loss" }));
     const swapped = webEntry({ id: "no-tool-loss", tool: "muse.unknown" });
     const result = await approvePendingApproval({
-      claimApproval: async (pendingFile, id, actor, now) => {
-        await fs.writeFile(pendingFile, JSON.stringify({ pending: [swapped] }), "utf8");
-        return claimPendingApproval(pendingFile, id, actor, now);
-      },
       confirmAction: async () => true,
-      declineClaim: async (pendingFile, id, token, _detail, now) => {
-        await beginPendingApprovalExecution(pendingFile, id, token, now);
-        return declinePendingApprovalClaim(pendingFile, id, token, undefined, now);
+      coordinatorOperations: {
+        claim: async (pendingFile, id, actor, now) => {
+          await fs.writeFile(pendingFile, JSON.stringify({ pending: [swapped] }), "utf8");
+          return claimPendingApproval(pendingFile, id, actor, now);
+        },
+        decline: async (pendingFile, id, token, _detail, now) => {
+          await beginPendingApprovalExecution(pendingFile, id, token, now);
+          return declinePendingApprovalClaim(pendingFile, id, token, undefined, now);
+        }
       },
       env,
       id: "no-tool-loss",
@@ -413,7 +514,7 @@ describe("approvePendingApproval — re-run completion", () => {
       isInteractive: () => true,
       pendingFile: f
     });
-    expect(result).toMatchObject({ state: "executing", status: "conflict", tool: "muse.unknown" });
+    expect(result).toMatchObject({ phase: "decline", state: "executing", status: "conflict" });
   });
 
   it("DENY at the confirm: no request fires and the approval becomes durably denied", async () => {
@@ -425,7 +526,7 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(calls).toHaveLength(0);
     expect(await listPendingApprovals(f)).toEqual([]);
     expect((await claimPendingApproval(f, "no", { surface: "cli" })).state).toBe("denied");
-    expect((await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "no", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
+    expect(await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "no", io: fakeIo(), pendingFile: f })).toMatchObject({ state: "denied", status: "conflict" });
     expect(calls).toHaveLength(0);
   });
 
@@ -438,15 +539,16 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("a pending entry for a non-actuator tool → no-tool, not cleared", async () => {
+  it("durably denies a pending entry for a non-actuator tool", async () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ id: "x", tool: "muse.notes.save" }));
     const result = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, id: "x", io: fakeIo(), pendingFile: f });
-    expect(result.status).toBe("no-tool");
-    expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["x"]);
+    expect(result).toMatchObject({ state: "denied", status: "no-tool", tool: "muse.notes.save" });
+    expect(await listPendingApprovals(f)).toEqual([]);
+    expect((await claimPendingApproval(f, "x", { surface: "cli" })).state).toBe("denied");
   });
 
-  it("local-only keeps a pending Gmail approval and never reads its credential or sends", async () => {
+  it("local-only durably denies a Gmail approval without reading its credential or sending", async () => {
     const f = file();
     await recordPendingApproval(f, entry({ id: "gmail-local" }));
     let gmailReads = 0;
@@ -471,13 +573,13 @@ describe("approvePendingApproval — re-run completion", () => {
       pendingFile: f
     });
 
-    expect(result).toEqual({ status: "no-tool", tool: "email_send" });
+    expect(result).toMatchObject({ state: "denied", status: "no-tool", tool: "email_send" });
     expect(gmailReads).toBe(0);
     expect(calls).toEqual([]);
-    expect((await listPendingApprovals(f)).map((item) => item.id)).toEqual(["gmail-local"]);
+    expect(await listPendingApprovals(f)).toEqual([]);
   });
 
-  it("local-only keeps a pending remote Home Assistant approval without reading its token or sending", async () => {
+  it("local-only durably denies a remote Home Assistant approval without reading its token or sending", async () => {
     const f = file();
     await recordPendingApproval(f, webEntry({
       arguments: { entity: "light.living_room", service: "light.turn_off" },
@@ -507,9 +609,9 @@ describe("approvePendingApproval — re-run completion", () => {
       isInteractive: () => true,
       pendingFile: f
     });
-    expect(result).toEqual({ status: "no-tool", tool: "home_action" });
+    expect(result).toMatchObject({ state: "denied", status: "no-tool", tool: "home_action" });
     expect(tokenReads).toBe(0);
     expect(calls).toEqual([]);
-    expect((await listPendingApprovals(f)).map((item) => item.id)).toEqual(["home-local"]);
+    expect(await listPendingApprovals(f)).toEqual([]);
   });
 });
