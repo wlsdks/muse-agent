@@ -9,12 +9,26 @@
 | 파일 | 쓰는 쪽 | 읽는(소비하는) 쪽 | 내용 |
 |---|---|---|---|
 | `backlog.md` | improve-muse(◦/✓), scout(`→improve-muse` 태그), grow(미드빌드 부채 태그) | **improve-muse** rung 4 | 살아있는 원장: ★ OPEN → ◦ ready → ✓ done |
-| `capability-parity-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; ✓ 플립도 grow) | 역량 기회 저수지 (231 base + scout 델타) |
-| `capability-parity-judgment.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
+| `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; ✓ 플립도 grow) | 역량 기회 저수지 (231 base + scout 델타) |
+| `judgment-lens.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
 | `rival-watch.md` | **scout 전용** | 다음 scout (워터마크가 델타의 펜스) | 로스터·선반(~/ai 클론, 라이선스, 🚨khoj AGPL)·fire 로그 |
 
 흐름 한 줄: **scout이 두 백로그를 채우고 → grow/improve가 소비하고 ✓ 플립하고 →
 rival-watch가 다음 정찰의 시작점을 기억한다.**
+
+> 2026-07-17 개명: `capability-parity-backlog.md` → `growth-backlog.md`,
+> `capability-parity-judgment.md` → `judgment-lens.md` (아카이브·과거 커밋의
+> 옛 이름은 이 파일들을 가리킨다).
+
+## 스킬 산출물 전체 인벤토리 (이게 전부다)
+
+- **레포 안 (md 3+1):** `backlog.md`·`growth-backlog.md`·`rival-watch.md`에 쓰고,
+  `judgment-lens.md`는 읽기 전용 렌즈(2026-06-23 동결). 스킬이 다른 md를 만들지 않는다.
+- **레포 안 (md 아님):** 코드/테스트 커밋 자체(improve·grow의 슬라이스 — 검증 증거는 커밋
+  본문에), 그리고 스킬 문서 자신들(`.claude/skills/*`).
+- **레포 밖:** `~/ai/<name>` 라이벌 클론(scout; fetch로 유지), `docs/self-eval-scoreboard.json`
+  (gitignored 로컬 — ORIENT의 `pnpm self-eval`이 간접 기록), 세션 메모리 노트(스킬 계약이
+  아니라 에이전트의 자체 기록).
 
 ## 아카이브 / 설계 문서 — 스킬이 쓰지 않는다
 
