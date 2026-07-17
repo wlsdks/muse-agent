@@ -5,9 +5,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  beginPendingApprovalExecution,
+  claimPendingApproval,
   clearPendingApproval,
+  declinePendingApprovalClaim,
+  denyPendingApproval,
   filterUnexpired,
   listPendingApprovals,
+  finalizePendingApprovalExecution,
   type PendingApproval,
   readPendingApprovals,
   recordPendingApproval
@@ -37,24 +42,136 @@ const entry = (id: string, over: Partial<PendingApproval> = {}): PendingApproval
   ...over
 });
 
-describe("readPendingApprovals — tolerant read (corrupt file must degrade to empty, never throw)", () => {
+describe("claimPendingApproval — durable v1 migration and replay guard", () => {
+  it("moves a v1 pending entry to a v2 claimed tombstone and grants only one caller execution authority", async () => {
+    const file = freshFile();
+    const approval = entry("claim-once", { userId: "owner" });
+    await fs.writeFile(file, `${JSON.stringify({ pending: [approval] }, null, 2)}\n`, "utf8");
+
+    const first = await claimPendingApproval(file, approval.id, { requestUserId: "owner", surface: "api" }, () => new Date("2026-06-01T00:00:00Z"));
+    const replay = await claimPendingApproval(file, approval.id, { requestUserId: "owner", surface: "api" }, () => new Date("2026-06-01T00:00:01Z"));
+
+    expect(first).toMatchObject({
+      approvalSnapshot: approval,
+      claimedByThisCall: true,
+      state: "claimed"
+    });
+    expect(first.claimedByThisCall && first.claimToken).toEqual(expect.any(String));
+    expect(replay).toEqual({ claimedByThisCall: false, state: "claimed" });
+    expect(JSON.parse(await fs.readFile(file, "utf8"))).toMatchObject({
+      executions: [{
+        actor: { effectiveUser: "owner", surface: "api" },
+        approvalSnapshot: approval,
+        claimToken: first.claimedByThisCall ? first.claimToken : "",
+        claimedAt: "2026-06-01T00:00:00.000Z",
+        state: "claimed",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      }],
+      pending: [],
+      version: 2
+    });
+  });
+
+  it("preserves unknown legacy pending fields while migrating and executing v1 state", async () => {
+    const file = freshFile();
+    const legacy = { ...entry("legacy-extra"), legacyMetadata: { imported: true } };
+    await fs.writeFile(file, JSON.stringify({ pending: [legacy] }), "utf8");
+    const claim = await claimPendingApproval(file, legacy.id, { surface: "cli" }, () => new Date("2026-06-01T00:00:00.000Z"));
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    expect(claim.approvalSnapshot).toMatchObject({ legacyMetadata: { imported: true } });
+    expect((await beginPendingApprovalExecution(file, legacy.id, claim.claimToken)).transitioned).toBe(true);
+    const persisted = JSON.parse(await fs.readFile(file, "utf8")) as { executions: Array<{ approvalSnapshot: Record<string, unknown> }> };
+    expect(persisted.executions[0]?.approvalSnapshot["legacyMetadata"]).toEqual({ imported: true });
+  });
+
+  it("allows only the winning token to begin and finalize execution", async () => {
+    const file = freshFile();
+    await fs.writeFile(file, JSON.stringify({ pending: [entry("cas")] }), "utf8");
+    const claim = await claimPendingApproval(file, "cas", { surface: "cli" }, () => new Date("2026-06-01T00:00:00Z"));
+    expect(claim.claimedByThisCall).toBe(true);
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+
+    const beforeWrongToken = await fs.readFile(file, "utf8");
+    expect(await beginPendingApprovalExecution(file, "cas", "wrong-token", () => new Date("2026-06-01T00:00:01Z"))).toEqual({ state: "claimed", transitioned: false });
+    expect(await fs.readFile(file, "utf8")).toBe(beforeWrongToken);
+    expect(await beginPendingApprovalExecution(file, "cas", claim.claimToken, () => new Date("2026-06-01T00:00:02Z"))).toEqual({ state: "executing", transitioned: true });
+    expect(await finalizePendingApprovalExecution(file, "cas", claim.claimToken, "succeeded", undefined, () => new Date("2026-06-01T00:00:03Z"))).toEqual({ state: "succeeded", transitioned: true });
+
+    const terminalBytes = await fs.readFile(file, "utf8");
+    expect(await beginPendingApprovalExecution(file, "cas", claim.claimToken)).toEqual({ state: "succeeded", transitioned: false });
+    expect(await finalizePendingApprovalExecution(file, "cas", claim.claimToken, "unknown", "late", () => new Date("2026-06-01T00:00:04Z"))).toEqual({ state: "succeeded", transitioned: false });
+    expect(await fs.readFile(file, "utf8")).toBe(terminalBytes);
+  });
+
+  it("keeps execution timestamps monotonic when begin and finalize receive an older clock", async () => {
+    const file = freshFile();
+    await fs.writeFile(file, JSON.stringify({ pending: [entry("clock-rollback")] }), "utf8");
+    const claimedAt = "2026-06-01T00:00:03.000Z";
+    const claim = await claimPendingApproval(file, "clock-rollback", { surface: "cli" }, () => new Date(claimedAt));
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+
+    expect(await beginPendingApprovalExecution(file, "clock-rollback", claim.claimToken, () => new Date("2026-06-01T00:00:02.000Z"))).toEqual({ state: "executing", transitioned: true });
+    expect(await finalizePendingApprovalExecution(file, "clock-rollback", claim.claimToken, "succeeded", undefined, () => new Date("2026-06-01T00:00:01.000Z"))).toEqual({ state: "succeeded", transitioned: true });
+    expect(await claimPendingApproval(file, "clock-rollback", { surface: "cli" })).toEqual({ claimedByThisCall: false, state: "succeeded" });
+
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as { executions: Array<{ claimedAt: string; updatedAt: string }> };
+    expect(stored.executions[0]).toMatchObject({ claimedAt, updatedAt: claimedAt });
+  });
+
+  it("allows a CLI No only while claimed and never after execution begins", async () => {
+    const file = freshFile();
+    await fs.writeFile(file, JSON.stringify({ pending: [entry("decline")] }), "utf8");
+    const claim = await claimPendingApproval(file, "decline", { surface: "cli" });
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    expect(await declinePendingApprovalClaim(file, "decline", claim.claimToken, "user declined")).toEqual({ state: "denied", transitioned: true });
+    expect(await beginPendingApprovalExecution(file, "decline", claim.claimToken)).toEqual({ state: "denied", transitioned: false });
+  });
+
+  it("serializes approve-vs-deny so exactly one pending transition wins", async () => {
+    const file = freshFile();
+    await fs.writeFile(file, JSON.stringify({ pending: [entry("race")] }), "utf8");
+    const [claim, deny] = await Promise.all([
+      claimPendingApproval(file, "race", { surface: "cli" }),
+      denyPendingApproval(file, "race", { surface: "cli" }, "dismissed")
+    ]);
+    expect(Number(claim.claimedByThisCall) + Number(deny.transitioned)).toBe(1);
+    expect(claim.state).toBe(deny.state);
+    expect(["claimed", "denied"]).toContain(claim.state);
+  });
+
+  it("returns the persisted immutable snapshot to the direct-deny winner", async () => {
+    const file = freshFile();
+    const approval = entry("deny-snapshot", { userId: "owner" });
+    await fs.writeFile(file, JSON.stringify({ pending: [approval] }), "utf8");
+
+    expect(await denyPendingApproval(file, approval.id, { requestUserId: "owner", surface: "api" }, "user denied")).toMatchObject({
+      approvalSnapshot: approval,
+      state: "denied",
+      transitioned: true
+    });
+  });
+});
+
+describe("readPendingApprovals — tolerant display read", () => {
   it("returns [] for a missing file", async () => {
     expect(await readPendingApprovals(join(dir, "nope.json"))).toEqual([]);
   });
 
-  it("quarantines an unparseable file and returns []", async () => {
+  it("preserves an unparseable file and returns []", async () => {
     const file = freshFile();
-    await fs.writeFile(file, "{not valid json");
+    const raw = "{not valid json";
+    await fs.writeFile(file, raw);
     expect(await readPendingApprovals(file)).toEqual([]);
-    const quarantined = (await fs.readdir(dir)).some((f) => f.startsWith("pa-0.json.corrupt-"));
-    expect(quarantined).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe(raw);
+    expect((await fs.readdir(dir)).some((f) => f.includes(".corrupt-"))).toBe(false);
   });
 
-  it("quarantines valid JSON that lacks a pending array", async () => {
+  it("preserves valid JSON that lacks a pending array", async () => {
     const file = freshFile();
-    await fs.writeFile(file, JSON.stringify({ pending: "not-an-array" }));
+    const raw = JSON.stringify({ pending: "not-an-array" });
+    await fs.writeFile(file, raw);
     expect(await readPendingApprovals(file)).toEqual([]);
-    expect((await fs.readdir(dir)).some((f) => f.includes(".corrupt-"))).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe(raw);
   });
 
   it("drops malformed entries, keeping only well-formed ones", async () => {
@@ -72,6 +189,178 @@ describe("readPendingApprovals — tolerant read (corrupt file must degrade to e
       })
     );
     expect((await readPendingApprovals(file)).map((e) => e.id)).toEqual(["ok"]);
+  });
+});
+
+describe("strict mutation parser and tombstones", () => {
+  it("rejects mixed-invalid state without rewriting or quarantining it", async () => {
+    const file = freshFile();
+    const raw = JSON.stringify({ pending: [entry("valid"), { id: "broken" }] });
+    await fs.writeFile(file, raw, "utf8");
+
+    await expect(claimPendingApproval(file, "valid", { surface: "cli" })).rejects.toThrow("invalid pending approval store");
+    await expect(recordPendingApproval(file, entry("new"))).rejects.toThrow("invalid pending approval store");
+    await expect(clearPendingApproval(file, "valid")).rejects.toThrow("invalid pending approval store");
+    expect(await fs.readFile(file, "utf8")).toBe(raw);
+    expect((await fs.readdir(dir)).some((name) => name.includes(".corrupt-"))).toBe(false);
+  });
+
+  it("fails closed on an unparseable expiry at the mutation boundary", async () => {
+    const file = freshFile();
+    const raw = JSON.stringify({ pending: [entry("bad-date", { expiresAt: "not-a-date" })] });
+    await fs.writeFile(file, raw, "utf8");
+    await expect(claimPendingApproval(file, "bad-date", { surface: "cli" })).rejects.toThrow("invalid pending approval store");
+    expect(await fs.readFile(file, "utf8")).toBe(raw);
+  });
+
+  it("rejects a tampered v2 execution with invalid timestamps and empty authority fields without rewriting it", async () => {
+    const file = freshFile();
+    const raw = JSON.stringify({
+      executions: [{
+        actor: { effectiveUser: "", surface: "cli" },
+        approvalSnapshot: entry("tampered-execution"),
+        claimedAt: "not-a-date",
+        claimToken: "",
+        state: "claimed",
+        updatedAt: "not-a-date"
+      }],
+      pending: [],
+      version: 2
+    });
+    await fs.writeFile(file, raw, "utf8");
+
+    await expect(beginPendingApprovalExecution(file, "tampered-execution", "")).rejects.toThrow("invalid pending approval store version");
+    expect(await fs.readFile(file, "utf8")).toBe(raw);
+    expect((await fs.readdir(dir)).some((name) => name.includes(".corrupt-"))).toBe(false);
+  });
+
+  it("rejects unknown execution schema fields and timestamps that move backwards", async () => {
+    const invalidExecutions = [
+      {
+        actor: { effectiveUser: "owner", role: "injected", surface: "cli" },
+        approvalSnapshot: entry("extra-actor"),
+        claimedAt: "2026-06-01T00:00:00.000Z",
+        claimToken: "token",
+        state: "claimed",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      },
+      {
+        actor: { effectiveUser: "owner", surface: "cli" },
+        approvalSnapshot: entry("extra-execution"),
+        claimedAt: "2026-06-01T00:00:00.000Z",
+        claimToken: "token",
+        injected: true,
+        state: "claimed",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      },
+      {
+        actor: { effectiveUser: "owner", surface: "cli" },
+        approvalSnapshot: entry("backwards-time"),
+        claimedAt: "2026-06-01T00:00:01.000Z",
+        claimToken: "token",
+        state: "claimed",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      }
+    ];
+    for (const execution of invalidExecutions) {
+      const file = freshFile();
+      const raw = JSON.stringify({ executions: [execution], pending: [], version: 2 });
+      await fs.writeFile(file, raw, "utf8");
+      await expect(beginPendingApprovalExecution(file, execution.approvalSnapshot.id, "token")).rejects.toThrow("invalid pending approval store version");
+      expect(await fs.readFile(file, "utf8")).toBe(raw);
+    }
+  });
+
+  it("rejects executions claimed before creation or at/after expiry without rewriting them", async () => {
+    const invalidClaims = [
+      { claimedAt: "2025-12-31T23:59:59.000Z", id: "before-created" },
+      { claimedAt: "2031-01-01T00:00:00.000Z", id: "after-expiry" }
+    ];
+    for (const invalid of invalidClaims) {
+      const file = freshFile();
+      const execution = {
+        actor: { effectiveUser: "owner", surface: "cli" },
+        approvalSnapshot: entry(invalid.id),
+        claimedAt: invalid.claimedAt,
+        claimToken: "token",
+        state: "claimed",
+        updatedAt: invalid.claimedAt
+      };
+      const raw = JSON.stringify({ executions: [execution], pending: [], version: 2 });
+      await fs.writeFile(file, raw, "utf8");
+      await expect(beginPendingApprovalExecution(file, invalid.id, "token")).rejects.toThrow("invalid pending approval store version");
+      expect(await fs.readFile(file, "utf8")).toBe(raw);
+    }
+  });
+
+  it("rejects execution actors that do not match the persisted approval owner", async () => {
+    const invalidBindings = [
+      { approval: entry("owned-binding", { userId: "owner" }), effectiveUser: "intruder" },
+      { approval: entry("cli-binding"), effectiveUser: "different-channel" }
+    ];
+    for (const invalid of invalidBindings) {
+      const file = freshFile();
+      const execution = {
+        actor: { effectiveUser: invalid.effectiveUser, surface: "cli" },
+        approvalSnapshot: invalid.approval,
+        claimedAt: "2026-06-01T00:00:00.000Z",
+        claimToken: "token",
+        state: "claimed",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      };
+      const raw = JSON.stringify({ executions: [execution], pending: [], version: 2 });
+      await fs.writeFile(file, raw, "utf8");
+      await expect(beginPendingApprovalExecution(file, invalid.approval.id, "token")).rejects.toThrow("invalid pending approval store version");
+      expect(await fs.readFile(file, "utf8")).toBe(raw);
+    }
+  });
+
+  it("rejects non-UUID and duplicate execution claim tokens without rewriting", async () => {
+    const execution = (id: string, claimToken: string) => ({
+      actor: { effectiveUser: "slack:C1", surface: "cli" },
+      approvalSnapshot: entry(id),
+      claimedAt: "2026-06-01T00:00:00.000Z",
+      claimToken,
+      state: "claimed",
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+    const duplicateToken = "00000000-0000-4000-8000-000000000000";
+    const cases = [
+      [execution("non-uuid", "token")],
+      [execution("duplicate-a", duplicateToken), execution("duplicate-b", duplicateToken)]
+    ];
+    for (const executions of cases) {
+      const file = freshFile();
+      const raw = JSON.stringify({ executions, pending: [], version: 2 });
+      await fs.writeFile(file, raw, "utf8");
+      await expect(beginPendingApprovalExecution(file, executions[0]!.approvalSnapshot.id, executions[0]!.claimToken)).rejects.toThrow("invalid pending approval store version");
+      expect(await fs.readFile(file, "utf8")).toBe(raw);
+    }
+  });
+
+  it("preserves bytes for not-found, expired, and forbidden claims", async () => {
+    const cases = [
+      { actor: { surface: "cli" as const }, approval: entry("present"), id: "missing", state: "not-found" },
+      { actor: { surface: "cli" as const }, approval: entry("expired", { expiresAt: "2020-01-01T00:00:00Z" }), id: "expired", state: "expired" },
+      { actor: { requestUserId: "intruder", surface: "api" as const }, approval: entry("owned", { userId: "owner" }), id: "owned", state: "forbidden" }
+    ];
+    for (const testCase of cases) {
+      const file = freshFile();
+      const raw = JSON.stringify({ pending: [testCase.approval] });
+      await fs.writeFile(file, raw, "utf8");
+      expect(await claimPendingApproval(file, testCase.id, testCase.actor, () => new Date("2026-06-01T00:00:00Z"))).toEqual({ claimedByThisCall: false, state: testCase.state });
+      expect(await fs.readFile(file, "utf8")).toBe(raw);
+    }
+  });
+
+  it("never permits an execution id to be cleared or re-added", async () => {
+    const file = freshFile();
+    await recordPendingApproval(file, entry("tombstone"));
+    const claim = await claimPendingApproval(file, "tombstone", { surface: "cli" });
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    expect(await clearPendingApproval(file, "tombstone")).toBe(false);
+    await expect(recordPendingApproval(file, entry("tombstone"))).rejects.toThrow("approval id has already been used");
+    expect((await claimPendingApproval(file, "tombstone", { surface: "cli" })).state).toBe("claimed");
   });
 });
 
@@ -137,6 +426,22 @@ describe("recordPendingApproval — append with a most-recent cap", () => {
     expect(stored[0]!.id).toBe("e5"); // oldest 5 (e0..e4) dropped by the cap
     expect(stored[stored.length - 1]!.id).toBe("e204");
   });
+
+  it("rejects runtime-invalid new candidates without changing valid persisted state", async () => {
+    const invalidCandidates = [
+      { ...entry("extra-field"), injected: true } as PendingApproval,
+      entry("invalid-created-at", { createdAt: "not-a-date" }),
+      entry("inverted-lifetime", { createdAt: "2031-01-01T00:00:00Z", expiresAt: "2030-01-01T00:00:00Z" })
+    ];
+    for (const candidate of invalidCandidates) {
+      const file = freshFile();
+      await recordPendingApproval(file, entry(`existing-${candidate.id}`));
+      const before = await fs.readFile(file, "utf8");
+      await expect(recordPendingApproval(file, candidate)).rejects.toThrow("invalid pending approval entry");
+      expect(await fs.readFile(file, "utf8")).toBe(before);
+      expect((await claimPendingApproval(file, `existing-${candidate.id}`, { surface: "cli" })).claimedByThisCall).toBe(true);
+    }
+  });
 });
 
 describe("listPendingApprovals — read + filter in one call", () => {
@@ -145,7 +450,7 @@ describe("listPendingApprovals — read + filter in one call", () => {
   it("returns the unexpired worklist, round-tripping the re-run payload (tool + arguments)", async () => {
     const file = freshFile();
     await recordPendingApproval(file, entry("live", { arguments: { subject: "Q3", to: "bob" }, tool: "email_send" }));
-    await recordPendingApproval(file, entry("dead", { expiresAt: "2020-01-01T00:00:00Z" }));
+    await recordPendingApproval(file, entry("dead", { createdAt: "2019-01-01T00:00:00Z", expiresAt: "2020-01-01T00:00:00Z" }));
     const list = await listPendingApprovals(file, now);
     expect(list.map((e) => e.id)).toEqual(["live"]);
     // The re-run payload must survive read+filter so the action can be replayed on approval.
@@ -164,7 +469,7 @@ describe("listPendingApprovals — read + filter in one call", () => {
   });
 });
 
-describe("clearPendingApproval — remove by id, pruning expired as it rewrites", () => {
+describe("clearPendingApproval — durable explicit dismissal", () => {
   const now = () => new Date("2026-06-01T00:00:00Z");
 
   it("removes the matching id and reports true", async () => {
@@ -173,6 +478,7 @@ describe("clearPendingApproval — remove by id, pruning expired as it rewrites"
     await recordPendingApproval(file, entry("remove"));
     expect(await clearPendingApproval(file, "remove", now)).toBe(true);
     expect((await readPendingApprovals(file)).map((e) => e.id)).toEqual(["keep"]);
+    expect((await claimPendingApproval(file, "remove", { surface: "cli" })).state).toBe("denied");
   });
 
   it("reports false and changes nothing when the id is absent and nothing is expired", async () => {
@@ -182,11 +488,12 @@ describe("clearPendingApproval — remove by id, pruning expired as it rewrites"
     expect((await readPendingApprovals(file)).map((e) => e.id)).toEqual(["only"]);
   });
 
-  it("still reports true and prunes expired entries even when the id is absent", async () => {
+  it("does not prune an expired entry as a side effect of a missing-id no-op", async () => {
     const file = freshFile();
     await recordPendingApproval(file, entry("live"));
-    await recordPendingApproval(file, entry("expired", { expiresAt: "2020-01-01T00:00:00Z" }));
-    expect(await clearPendingApproval(file, "ghost", now)).toBe(true);
-    expect((await readPendingApprovals(file)).map((e) => e.id)).toEqual(["live"]);
+    await recordPendingApproval(file, entry("expired", { createdAt: "2019-01-01T00:00:00Z", expiresAt: "2020-01-01T00:00:00Z" }));
+    const before = await fs.readFile(file, "utf8");
+    expect(await clearPendingApproval(file, "ghost", now)).toBe(false);
+    expect(await fs.readFile(file, "utf8")).toBe(before);
   });
 });

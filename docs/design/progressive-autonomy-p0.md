@@ -16,6 +16,25 @@ Live execution persists `prepared` before claiming. One autonomy-file lock reche
 
 The durable store rejects malformed records and cross-record inconsistencies, including duplicate execution/idempotency/receipt identifiers, missing or scope-mismatched grant references, inconsistent action/shadow/undo receipts, and `usedCount` disagreement with durable claims. Every public mutation validates its complete candidate state with those same strict rules before the atomic write, so invalid prepare inputs cannot poison a previously readable store. A `succeeded` receipt must include an observed fingerprint exactly equal to its intended-after fingerprint at both write and reload boundaries; `unknown` retains the actual non-matching observation when available. Undo first validates exact recorded after-state and persists an `undoing` claim under the autonomy lock. A before-state can count as crash recovery only after that durable claim exists; a user-restored before-state without the claim is refused. The task restore and undo receipt are idempotently reconciled after a crash.
 
+## Approval execution prerequisite
+
+Existing channel approvals use a separate shared durability boundary before
+they can become an autonomy input. API and CLI atomically move one pending id
+through `claimed -> executing -> succeeded | unknown`, while an explicit
+refusal moves it to `denied`. Only the winning claim token can advance a state,
+and every terminal or in-flight record is a no-replay tombstone. Tool output is
+classified once in `@muse/messaging`: any explicit error or false outcome marker
+wins over success; output that does not prove success becomes `unknown` and is
+never retried automatically. The store validates complete candidate state,
+owner binding, approval lifetime, monotonic timestamps, unique ids and claim
+tokens before an atomic write. This is fail-closed at-most-once execution, not
+exactly-once: a crash after claim may omit the action, but cannot repeat it.
+
+Inbound channel replies do not execute pending actions. They return the exact
+CLI approval id; the former unused `autoRun -> clear` option was removed because
+it bypassed the durable claim boundary. These receipts improve execution safety
+only and never issue or widen an autonomy grant.
+
 ## Outside P0
 
 P0 has no live-autonomy CLI, API, web, messaging, posting, purchasing, finance, account or credential changes, calendar invitations, browser submission, generic desktop control, irreversible deletion, subagent side effects, new personal-data sources, or outcome-driven permission promotion. CLI and local/authenticated HTTP expose shadow evidence review only; they cannot execute the reviewed action. A web review screen, cross-surface live execution, and every additional action schema require separate reviewed slices.

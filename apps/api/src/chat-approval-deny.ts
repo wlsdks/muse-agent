@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { clearPendingApproval, listPendingApprovals } from "@muse/messaging";
+import { denyPendingApproval } from "@muse/messaging";
 import { appendActionLog as defaultAppendActionLog, type ActionLogEntry } from "@muse/stores";
 
 import type { ChatApprovalExecuteResult } from "./chat-approval-execute.js";
@@ -9,9 +9,10 @@ import type { ChatApprovalExecuteResult } from "./chat-approval-execute.js";
  * Confirm-deny for `POST /api/chat/approvals/:id/deny` (outbound-safety
  * draft-first, fail-close symmetry with `executeChatApproval`): denial can
  * never execute a tool — there is no resolver parameter at all, structurally.
- * The refusal is recorded to the action log FIRST, then the pending entry is
- * cleared, so an action-log append failure leaves the entry pending rather
- * than silently dropping the denial (5xx, no state loss).
+ * The pending entry first wins the same atomic race as approve and becomes a
+ * durable `denied` tombstone. The action log is appended afterwards; if that
+ * audit append fails, the response is 5xx but the denial remains durable and
+ * the approval can never be replayed.
  */
 export async function denyChatApproval(opts: {
   readonly id: string;
@@ -29,14 +30,23 @@ export async function denyChatApproval(opts: {
   const id = opts.id.trim();
   const now = opts.now ?? (() => new Date());
   const append = opts.appendActionLog ?? defaultAppendActionLog;
-  const pending = await listPendingApprovals(opts.pendingFile, now);
-  const entry = pending.find((candidate) => candidate.id === id);
-  if (!entry) {
-    return { statusCode: 404, body: { error: "no pending approval with that id (it may have expired)" } };
+  const denied = await denyPendingApproval(
+    opts.pendingFile,
+    id,
+    { surface: "api", ...(opts.requestUserId ? { requestUserId: opts.requestUserId } : {}) },
+    "denied by the user in chat",
+    now
+  );
+  if (!denied.transitioned) {
+    if (denied.state === "forbidden") {
+      return { statusCode: 403, body: { error: "this approval belongs to a different user", state: "forbidden" } };
+    }
+    if (denied.state === "not-found" || denied.state === "expired") {
+      return { statusCode: 404, body: { error: "no pending approval with that id (it may have expired)", state: denied.state } };
+    }
+    return { statusCode: 409, body: { error: "approval has already been claimed or resolved", state: denied.state } };
   }
-  if (entry.userId !== undefined && opts.requestUserId !== undefined && entry.userId !== opts.requestUserId) {
-    return { statusCode: 403, body: { error: "this approval belongs to a different user" } };
-  }
+  const entry = denied.approvalSnapshot;
 
   try {
     await append(opts.actionLogFile, {
@@ -49,11 +59,8 @@ export async function denyChatApproval(opts: {
       why: "denied by the user in chat — the drafted action was not confirmed"
     });
   } catch {
-    return { statusCode: 500, body: { error: "failed to record the denial — the pending approval was left in place" } };
+    return { statusCode: 500, body: { denied: true, error: "approval was denied but its action log could not be recorded", state: "denied" } };
   }
 
-  // Only cleared AFTER the refusal is durably logged: a denial is never silently
-  // dropped, even if this clear itself fails (the entry then stays pending, safe).
-  await clearPendingApproval(opts.pendingFile, entry.id, now);
-  return { statusCode: 200, body: { denied: true, tool: entry.tool } };
+  return { statusCode: 200, body: { denied: true, state: "denied", tool: entry.tool } };
 }

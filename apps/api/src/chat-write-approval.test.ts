@@ -3,14 +3,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentRunInput } from "@muse/agent-core";
-import { listPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
+import {
+  beginPendingApprovalExecution,
+  declinePendingApprovalClaim,
+  listPendingApprovals,
+  recordPendingApproval,
+  type PendingApproval
+} from "@muse/messaging";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool, ToolExecutionValue } from "@muse/tools";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeChatApproval } from "./chat-approval-execute.js";
 import { runChat } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
+
+vi.mock("@muse/messaging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@muse/messaging")>();
+  return { ...actual, beginPendingApprovalExecution: vi.fn(actual.beginPendingApprovalExecution) };
+});
 
 let dir: string;
 let pendingFile: string;
@@ -172,6 +183,7 @@ describe("executeChatApproval confirm-execute", () => {
 
   it("expired id: 404, no execution", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({
+      createdAt: "2019-12-31T23:59:00.000Z",
       expiresAt: new Date(Date.now() - 1_000).toISOString(),
       id: "expired",
       tool: "muse.tasks.add"
@@ -182,7 +194,7 @@ describe("executeChatApproval confirm-execute", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("replay: a second approve of the same id executes nothing and 404s", async () => {
+  it("replay: a durable succeeded claim blocks a second approve without executing", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "r1", tool: "muse.tasks.add" }));
     const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
 
@@ -190,34 +202,125 @@ describe("executeChatApproval confirm-execute", () => {
     const second = await executeChatApproval({ id: "r1", pendingFile, resolveTool: () => tool });
 
     expect(first.statusCode).toBe(200);
-    expect(second.statusCode).toBe(404);
+    expect(second.statusCode).toBe(409);
+    expect(second.body).toMatchObject({ state: "succeeded" });
     expect(calls).toHaveLength(1);
   });
 
-  it("resolver missing: 409, no execution", async () => {
+  it("resolver missing: closes the claimed approval as unknown and replay cannot execute", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "n1", tool: "muse.tasks.add" }));
     const out = await executeChatApproval({ id: "n1", pendingFile });
     expect(out.statusCode).toBe(409);
-    expect(await listPendingApprovals(pendingFile)).toHaveLength(1);
+    expect(out.body).toMatchObject({ state: "unknown" });
+    expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
+
+    const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
+    const replay = await executeChatApproval({ id: "n1", pendingFile, resolveTool: () => tool });
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(0);
   });
 
-  it("unknown tool: 409, no execution, entry left pending", async () => {
+  it("unknown tool: closes the claimed approval as unknown", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "u1", tool: "muse.tasks.add" }));
     const out = await executeChatApproval({ id: "u1", pendingFile, resolveTool: () => undefined });
     expect(out.statusCode).toBe(409);
-    expect(await listPendingApprovals(pendingFile)).toHaveLength(1);
+    expect(out.body).toMatchObject({ state: "unknown" });
+    expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
   });
 
-  it("error-shaped tool result: ran:false and the entry stays pending", async () => {
+  it("missing tool reports the durable denied state when begin loses its CAS race", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "missing-race", tool: "muse.tasks.add" }));
+    vi.mocked(beginPendingApprovalExecution).mockImplementationOnce(async (file, id, claimToken, now) => {
+      await declinePendingApprovalClaim(file, id, claimToken, "denied during resolver", now);
+      return { state: "denied", transitioned: false };
+    });
+
+    const out = await executeChatApproval({ id: "missing-race", pendingFile, resolveTool: () => undefined });
+    const replay = await executeChatApproval({ id: "missing-race", pendingFile, resolveTool: () => undefined });
+
+    expect(out.statusCode).toBe(409);
+    expect(out.body).toMatchObject({ state: "denied" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "denied" });
+  });
+
+  it("error-shaped tool result: ran:false, durable unknown, and replay does not execute", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "e1", tool: "muse.tasks.add" }));
     const { tool, calls } = recordingTool("muse.tasks.add", { error: "provider down" });
 
     const out = await executeChatApproval({ id: "e1", pendingFile, resolveTool: () => tool });
 
     expect(out.statusCode).toBe(200);
-    expect(out.body).toMatchObject({ ran: false, tool: "muse.tasks.add" });
+    expect(out.body).toMatchObject({ ran: false, state: "unknown", tool: "muse.tasks.add" });
     expect(calls).toHaveLength(1);
-    expect(await listPendingApprovals(pendingFile)).toHaveLength(1);
+    expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
+
+    const replay = await executeChatApproval({ id: "e1", pendingFile, resolveTool: () => tool });
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a contradictory positive marker plus provider error is durable unknown, never succeeded", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "contradictory-1", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { error: "provider failed", ok: true });
+
+    const out = await executeChatApproval({ id: "contradictory-1", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "contradictory-1", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ ran: false, state: "unknown" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a sent result contradicted by performed:false is durable unknown and cannot replay", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "contradictory-performed", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { performed: false, sent: true });
+
+    const out = await executeChatApproval({ id: "contradictory-performed", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "contradictory-performed", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ ran: false, state: "unknown" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a completed result contradicted by sent:false is durable unknown and cannot replay", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "contradictory-sent", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { completed: true, sent: false });
+
+    const out = await executeChatApproval({ id: "contradictory-sent", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "contradictory-sent", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ ran: false, state: "unknown" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a throwing tool is finalized unknown and cannot be retried", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "throw-1", tool: "muse.tasks.add" }));
+    let calls = 0;
+    const tool: MuseTool = {
+      definition: { description: "test", inputSchema: {}, name: "muse.tasks.add", risk: "write" },
+      execute() {
+        calls += 1;
+        throw new Error("provider crashed");
+      }
+    };
+
+    const out = await executeChatApproval({ id: "throw-1", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "throw-1", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(500);
+    expect(out.body).toMatchObject({ state: "unknown" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toBe(1);
   });
 
   it("user-scope: a DIFFERENT authenticated user cannot approve — 403, no execution, entry left pending", async () => {

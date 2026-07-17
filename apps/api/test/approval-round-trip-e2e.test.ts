@@ -4,9 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createChannelApprovalGate, LogMessagingProvider, MessagingProviderRegistry, listPendingApprovals } from "@muse/messaging";
-import { readActionLog } from "@muse/stores";
-import { runActuatorByName } from "@muse/domain-tools";
-import type { JsonObject } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
 import { createChannelPendingRecorder } from "../src/channel-pending-recorder.js";
@@ -15,18 +12,13 @@ import { handleInboundApprovalReply } from "../src/inbound-approval-handler.js";
 // END-TO-END approval round-trip (backlog P2): composes the FOUR real seams the
 // isolated tests each cover separately — the channel approval gate (refuses a
 // risky tool + records the refusal), the pending-approval store (persists the
-// re-run args, channel-scoped, TTL'd), the inbound-approval handler (a "yes"
-// reply resolves it), and runActuatorByName (re-runs the actuator through its own
-// fail-closed gate). Contract-faithful throughout: a REAL MessagingProviderRegistry
-// + LogMessagingProvider for the notice channel, a REAL fetch fake for the
-// actuator HTTP — never a stubbed registry (outbound-safety.md acceptance).
+// action args, channel-scoped, TTL'd), and the inbound-approval handler (a
+// "yes" reply acknowledges the local CLI-by-id completion path without
+// executing or clearing anything). Contract-faithful throughout: a REAL
+// MessagingProviderRegistry + LogMessagingProvider for the notice channel —
+// never a stubbed registry (outbound-safety.md acceptance).
 
 const tmp = (name: string): string => join(mkdtempSync(join(tmpdir(), "muse-appr-e2e-")), name);
-const recordingFetch = (status = 200): { fetchImpl: typeof fetch; calls: string[] } => {
-  const calls: string[] = [];
-  const fetchImpl = (async (url: string | URL) => { calls.push(String(url)); return new Response("{}", { status }); }) as unknown as typeof fetch;
-  return { calls, fetchImpl };
-};
 
 const PROVIDER = "log";
 const SOURCE = "42";
@@ -39,24 +31,10 @@ const buildGate = (pendingFile: string, noticeFile: string) => {
   return createChannelApprovalGate({ providerId: PROVIDER, recordRefusal, registry, source: SOURCE });
 };
 
-// autoRun = the REAL runActuatorByName, auto-approving (the inbound "yes" IS the
-// explicit confirm of the already-shown draft, per outbound-safety draft-first).
-const autoRunVia = (actionLogFile: string, fetchImpl: typeof fetch) =>
-  (entry: { tool: string; arguments: Record<string, unknown> }) =>
-    runActuatorByName(entry.tool, entry.arguments as JsonObject, {
-      actionLogFile,
-      emailApprovalGate: () => ({ approved: true }),
-      fetchImpl,
-      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
-      userId: "telegram:42",
-      webApprovalGate: () => ({ approved: true }),
-    });
-
-describe("approval round-trip e2e (gate refuses+records → inbound yes → real re-run → logged → cleared)", () => {
-  it("a risky web_action is refused & recorded, then an inbound yes re-runs it for real and clears it", async () => {
+describe("approval round-trip e2e (gate refuses+records → inbound yes → CLI-by-id acknowledgement)", () => {
+  it("a risky web_action is refused and recorded, then inbound yes leaves it pending for local approval", async () => {
     const pendingFile = tmp("pending.json");
     const noticeFile = tmp("notice.log");
-    const actionLogFile = tmp("action-log.json");
     const url = "http://x.test/book";
 
     // 1. REFUSAL leg: the gate refuses the write/execute tool and records a pending approval + sends a notice.
@@ -72,10 +50,9 @@ describe("approval round-trip e2e (gate refuses+records → inbound yes → real
     expect(pending[0]).toMatchObject({ providerId: PROVIDER, source: SOURCE, tool: "web_action", arguments: { url } });
     expect(await readFile(noticeFile, "utf8")).toContain("web_action"); // user was told
 
-    // 2. APPROVAL leg: the inbound "yes" resolves the SAME pending entry and re-runs it through runActuatorByName.
-    const { calls, fetchImpl } = recordingFetch();
+    // 2. ACK leg: inbound "yes" identifies the same pending entry but cannot
+    // execute or clear it; the user must confirm locally by id.
     const reply = await handleInboundApprovalReply({
-      autoRun: autoRunVia(actionLogFile, fetchImpl),
       now: NOW,
       pendingFile,
       providerId: PROVIDER,
@@ -83,10 +60,9 @@ describe("approval round-trip e2e (gate refuses+records → inbound yes → real
       text: "yes",
     });
 
-    expect(calls).toEqual([url]); // the real actuator HTTP fired exactly once
-    expect(reply).toContain("Done — ran web_action");
-    expect(await listPendingApprovals(pendingFile, NOW)).toHaveLength(0); // cleared (replay-guard)
-    expect((await readActionLog(actionLogFile)).map((e) => e.result)).toEqual(["performed"]); // recorded
+    expect(reply).toContain("muse approvals approve");
+    expect(reply).toContain(pending[0]!.id);
+    expect(await listPendingApprovals(pendingFile, NOW)).toHaveLength(1);
   });
 
   it("a READ-risk tool sails through the gate — nothing is recorded, nothing to approve", async () => {
@@ -111,9 +87,7 @@ describe("approval round-trip e2e (gate refuses+records → inbound yes → real
     });
     expect(await listPendingApprovals(pendingFile, NOW)).toHaveLength(1);
 
-    const { calls, fetchImpl } = recordingFetch();
     const reply = await handleInboundApprovalReply({
-      autoRun: autoRunVia(tmp("action-log.json"), fetchImpl),
       now: NOW,
       pendingFile,
       providerId: PROVIDER,
@@ -121,7 +95,6 @@ describe("approval round-trip e2e (gate refuses+records → inbound yes → real
       text: "yes",
     });
     expect(reply).toBeUndefined(); // not this channel's approval → falls through to the agent
-    expect(calls).toHaveLength(0); // no external effect
     expect(await listPendingApprovals(pendingFile, NOW)).toHaveLength(1); // still pending for source 42
   });
 });

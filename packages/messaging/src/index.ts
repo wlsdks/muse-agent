@@ -43,15 +43,30 @@ export {
 } from "./channel-approval-gate.js";
 
 export {
+  beginPendingApprovalExecution,
+  claimPendingApproval,
   clearPendingApproval,
+  declinePendingApprovalClaim,
+  denyPendingApproval,
   filterUnexpired,
+  finalizePendingApprovalExecution,
   listPendingApprovals,
   readPendingApprovals,
   recordPendingApproval,
-  type PendingApproval
+  type PendingApproval,
+  type PendingApprovalClaimResult,
+  type PendingApprovalDenyResult,
+  type PendingApprovalExecution,
+  type PendingApprovalExecutionState,
+  type PendingApprovalTransitionResult
 } from "./pending-approval-store.js";
 
 export { isApprovalReply } from "./is-approval-reply.js";
+
+export {
+  classifyPendingApprovalToolOutcome,
+  type PendingApprovalToolOutcome
+} from "./pending-approval-outcome.js";
 
 export { effectiveScope, type ConversationScope } from "./conversation-scope.js";
 

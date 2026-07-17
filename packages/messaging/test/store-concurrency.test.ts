@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -9,10 +12,19 @@ import { advanceInboxInjectionCursor, readInboxInjectionCursor } from "../src/in
 import { appendReplyCursor, readReplyCursor } from "../src/inbox-reply-cursor.js";
 import { appendInbound, readInbox } from "../src/inbox-store.js";
 import { appendThreadTurns, readThread } from "../src/inbound-thread-store.js";
-import { clearPendingApproval, type PendingApproval, readPendingApprovals, recordPendingApproval } from "../src/pending-approval-store.js";
+import {
+  beginPendingApprovalExecution,
+  claimPendingApproval,
+  clearPendingApproval,
+  finalizePendingApprovalExecution,
+  type PendingApproval,
+  readPendingApprovals,
+  recordPendingApproval
+} from "../src/pending-approval-store.js";
 import type { InboundMessage } from "../src/types.js";
 
 let dir: string;
+const execFileAsync = promisify(execFile);
 beforeEach(async () => { dir = await fs.mkdtemp(join(tmpdir(), "store-concurrency-")); });
 afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
@@ -117,5 +129,41 @@ describe("recordPendingApproval under concurrency — no crash / corruption (tmp
     const file = join(dir, "seq.json");
     for (let i = 0; i < 10; i += 1) await recordPendingApproval(file, approval(i));
     expect((await readPendingApprovals(file)).map((p) => p.id).sort()).toEqual(Array.from({ length: 10 }, (_v, i) => `p${i}`).sort());
+  });
+
+  it("grants exactly one claim across independent processes and a fresh reload", async () => {
+    const file = join(dir, "cross-process-claim.json");
+    await recordPendingApproval(file, approval(77));
+    const root = join(process.cwd(), "../..");
+    const tsx = join(root, "node_modules", ".bin", "tsx");
+    const moduleUrl = pathToFileURL(join(process.cwd(), "src", "pending-approval-store.ts")).href;
+    const script = `import { claimPendingApproval } from ${JSON.stringify(moduleUrl)}; void (async () => { const result = await claimPendingApproval(process.argv[1], "p77", { surface: "cli" }); process.stdout.write(JSON.stringify(result)); })();`;
+
+    const outcomes = await Promise.all([
+      execFileAsync(tsx, ["--eval", script, file], { cwd: process.cwd() }),
+      execFileAsync(tsx, ["--eval", script, file], { cwd: process.cwd() })
+    ]);
+    const claims = outcomes.map(({ stdout }) => JSON.parse(stdout) as { claimedByThisCall: boolean; state: string });
+    expect(claims.filter((claim) => claim.claimedByThisCall)).toHaveLength(1);
+    expect(claims.map((claim) => claim.state)).toEqual(["claimed", "claimed"]);
+    expect(await claimPendingApproval(file, "p77", { surface: "cli" })).toEqual({ claimedByThisCall: false, state: "claimed" });
+  });
+
+  it("keeps an executing tombstone when the terminal atomic write fails", async () => {
+    const file = join(dir, "finalize-failure", "pending.json");
+    await recordPendingApproval(file, approval(88));
+    const claim = await claimPendingApproval(file, "p88", { surface: "cli" });
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    expect((await beginPendingApprovalExecution(file, "p88", claim.claimToken)).transitioned).toBe(true);
+
+    const parent = join(dir, "finalize-failure");
+    await fs.chmod(parent, 0o500);
+    try {
+      await expect(finalizePendingApprovalExecution(file, "p88", claim.claimToken, "succeeded")).rejects.toThrow();
+    } finally {
+      await fs.chmod(parent, 0o700);
+    }
+
+    expect(await claimPendingApproval(file, "p88", { surface: "cli" })).toEqual({ claimedByThisCall: false, state: "executing" });
   });
 });
