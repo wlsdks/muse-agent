@@ -5,8 +5,8 @@
 - **작업 이름:** continuity-first-20-batch-dogfood
 - **한 줄 목표:** 현재 9/20인 실제 local Continuity ledger를 20/20까지 닫고, 각 Pack의 실제 사용 결과로 다음 Attunement 투자 결정을 낸다.
 - **제품 맥락:** Slice A의 kill criterion은 첫 20개 eligible Pack 중 used <20% 또는 rejected >30%일 때 자동화를 중단하라고 요구한다. 사용자가 이번 세션에서 남은 11회를 agent가 직접 선택·판정하도록 위임했다. Canonical ledger는 시작 시 delivery 9개 모두 explicit outcome이 있으며(`used` 8, `adjusted` 1), delivery 10을 만들기 전 pending feedback은 0이다.
-- **현재 단계:** `EVAL`
-- **담당(현재):** independent evaluator
+- **현재 단계:** `DONE`
+- **담당(현재):** complete
 
 ## 1. 수용 기준
 
@@ -85,7 +85,12 @@ Episodes 10–17은 dedicated `work`/`life` evaluation thread를 만들어 exact
 
 ## 6. 평가자 판정
 
-- **판정:** 미평가
+- **판정:** PASS
+- **Canonical ledger:** first window는 20 unique delivery / 20 explicit outcome / 0 pending이고, raw counts는 report와 동일한 `used 12`, `adjusted 6`, `ignored 2`, `rejected 0`이다.
+- **Historical strict audit:** delivery 2–6의 linked task `completedAt`은 각 Pack `openedAt`과 outcome `recordedAt` 사이에 있다. Delivery 1은 completion receipt가 없고 task가 open이며, delivery 7의 task는 Pack 전에 이미 completed여서 둘을 `unverified-used`로 빼 strict lower bound 10/20이 맞다.
+- **Concrete/non-use evidence:** delivery 9의 exact-command 수행 후 linked task에 concrete notes가 존재하고, 10의 verified commit `012c6b86d`와 10/18/19/20 task completion은 모두 각 Pack과 outcome 사이에 기록되었다. 18/19는 focused test 결과, 20은 본 report를 receipt로 남겼다. Delivery 11–17 linked task는 모두 open/미완료이며 outcome도 `adjusted` 또는 `ignored`로 정직하게 기록됐다.
+- **Decision integrity:** 13–16의 canonical thread kind는 `life`이지만 grocery/milk 한 domain stress stratum이라는 한계, heterogeneous first/next-five가 non-comparable이라는 한계, same-session agent dogfood가 longitudinal 검증이 아니라는 한계를 명시했다. 물리 구매·회의 행동·이메일 발송·remote push 주장은 없고, 결론은 manual user-invoked Slice A 지속 + automation/Slice B `hold`로 제한된다.
+- **구체적 피드백:** 없음.
 
 ## 열린 질문
 
@@ -97,3 +102,4 @@ Episodes 10–17은 dedicated `work`/`life` evaluation thread를 만들어 exact
 - 2026-07-17 15:06 KST · independent evaluator + Codex worker · PLAN · ninth outcome 완료 상태, strict used rubric, non-comparable cohort, limited life breadth, automation hold를 명시하도록 교정.
 - 2026-07-17 15:10 KST · independent evaluator + Codex worker · PLAN · historical 1–9 audit와 raw/rubric-valid sensitivity 분리, life-stress reporting stratum을 추가.
 - 2026-07-17 15:59 KST · Codex worker · BUILD · deliveries 10–20을 actual action 뒤 explicit outcome으로 닫고 first-20 report와 다음 build order를 작성해 EVAL로 넘김.
+- 2026-07-17 16:06 KST · independent evaluator · EVAL · canonical ledger, strict historical receipts, actual/non-use evidence, decision limits를 대조해 PASS.
