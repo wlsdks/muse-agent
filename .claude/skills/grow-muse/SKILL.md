@@ -46,7 +46,10 @@ not a stub.
    4. **Parity reservoir** — grep `docs/goals/capability-parity-backlog.md`
       filtered by `capability-parity-judgment.md` (build/core/strengthens
       only; never full-load). Cross-check git log + codegraph first —
-      already shipped ⇒ flip ✓, keep sourcing.
+      already shipped ⇒ flip ✓, keep sourcing. Reservoir dry or stale
+      (rival-watch.md watermark weeks old)? The refill is a `scout-rivals`
+      run — never a deeper dig through stale ground, and never scout as a
+      routine prelude: rungs 1–2 (the owner's life) outrank rivals by design.
 
 3. **SCORE (anti-vibes gate)** — score top candidates 1–5 each and record
    the line: **D** daily felt value · **T** trust-floor effect · **N**
