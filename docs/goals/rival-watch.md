@@ -14,9 +14,9 @@
 - **local clones (persistent, owner-designated 2026-07-17):** `/Users/jinan/ai/<name>` —
   fetch, never re-clone (`git -C /Users/jinan/ai/<name> fetch origin`).
 - **roster:**
-  - openclaw — https://github.com/openclaw/openclaw — clone `/Users/jinan/ai/openclaw` — SHA 8fa4867ab (2026-07-17, 383k★)
-  - hermes-agent (Nous) — https://github.com/NousResearch/hermes-agent — clone `/Users/jinan/ai/hermes-agent` — SHA 73ad9136 (2026-07-17, 216k★)
-  - QwenPaw — https://github.com/agentscope-ai/QwenPaw — clone `/Users/jinan/ai/QwenPaw` (blobless) — SHA cc179603 (2026-07-17; 23k★/5mo, v2.0.0 2026-07-10; enrolled this scout, code spot-checked: ReMe memory + console + e2e)
+  - openclaw — https://github.com/openclaw/openclaw — MIT (LICENSE text verified; GitHub misreports NOASSERTION) — clone `/Users/jinan/ai/openclaw` — SHA 8fa4867ab (2026-07-17, 383k★)
+  - hermes-agent (Nous) — https://github.com/NousResearch/hermes-agent — MIT — clone `/Users/jinan/ai/hermes-agent` — SHA 73ad9136 (2026-07-17, 216k★)
+  - QwenPaw — https://github.com/agentscope-ai/QwenPaw — Apache-2.0 — clone `/Users/jinan/ai/QwenPaw` (blobless) — SHA cc179603 (2026-07-17; 23k★/5mo, v2.0.0 2026-07-10; enrolled this scout, code spot-checked: ReMe memory + console + e2e)
 - **queries run last scout:** "new open source personal AI assistant July 2026 local-first"; "personal assistant agent open source 2026 alternative openclaw hermes"
 
 ## Reference shelf (cloned, consulted on demand — NOT delta-watched per fire)
@@ -24,10 +24,13 @@
 > Famous open-source personal-agent codebases kept at `/Users/jinan/ai/<name>`
 > for mechanism lookups (memory, continuity, voice). Fetch with the roster at
 > fire start; promote to the roster only when one meets the enrollment bar.
+> **License rule (all roster+shelf): reference-only, NO verbatim copy —
+> reimplement with attribution. AGPL repos (khoj) are read-only inspiration;
+> copying their code would impose network copyleft on Muse.**
 
-- khoj — https://github.com/khoj-ai/khoj — `/Users/jinan/ai/khoj` (36k★, personal second brain / doc+web memory)
-- letta — https://github.com/letta-ai/letta — `/Users/jinan/ai/letta` (24k★, MemGPT-lineage stateful memory)
-- leon — https://github.com/leon-ai/leon — `/Users/jinan/ai/leon` (17k★, local personal assistant)
+- khoj — https://github.com/khoj-ai/khoj — **AGPL-3.0 ⚠ read-and-reference ONLY, never copy code** — `/Users/jinan/ai/khoj` (36k★, personal second brain / doc+web memory)
+- letta — https://github.com/letta-ai/letta — Apache-2.0 — `/Users/jinan/ai/letta` (24k★, MemGPT-lineage stateful memory)
+- leon — https://github.com/leon-ai/leon — MIT — `/Users/jinan/ai/leon` (17k★, local personal assistant since 2019)
 
 ## Roster changes
 
