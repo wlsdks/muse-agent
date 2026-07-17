@@ -1,5 +1,4 @@
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";

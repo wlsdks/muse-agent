@@ -6,7 +6,6 @@ import {
   type ScheduledJob,
   type ScheduledJobExecution,
   type ScheduledJobExecutionStore,
-  type ScheduledJobInput,
   type ScheduledJobStore,
   type ScheduledJobType,
   type ScheduledJobUpdateInput

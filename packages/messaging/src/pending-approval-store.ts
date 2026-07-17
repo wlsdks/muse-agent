@@ -15,11 +15,9 @@
  * tolerant read, atomic write, corrupt file quarantined aside.
  */
 
-import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 import { atomicWritePrivateFile, withMessagingFileMutation } from "./messaging-file-store.js";
-import { dirname } from "node:path";
 
 export interface PendingApproval {
   readonly id: string;

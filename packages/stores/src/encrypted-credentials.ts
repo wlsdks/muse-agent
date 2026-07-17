@@ -279,25 +279,22 @@ async function readCredentialStore(io: CredentialStoreIO): Promise<CredentialSto
     throw error;
   }
 
-  try {
-    const file = JSON.parse(raw) as unknown;
-    if (!isEncryptedCredentialFile(file)) {
-      throw new Error("Invalid Muse credential store format");
-    }
-
-    const plaintext = decryptCredentialPayload(io, file);
-    const store = JSON.parse(plaintext) as unknown;
-    if (!isCredentialStore(store)) {
-      throw new Error("Invalid Muse credential payload");
-    }
-
-    return store;
-  } catch (error) {
-    // An existing unreadable file can still be recovered with its original
-    // key. Never treat it as an empty store on a write path: that would
-    // replace recoverable encrypted credentials with a new ciphertext.
-    throw error;
+  // An existing unreadable file can still be recovered with its original
+  // key. Never treat it as an empty store on a write path: that would
+  // replace recoverable encrypted credentials with a new ciphertext —
+  // every failure below MUST propagate.
+  const file = JSON.parse(raw) as unknown;
+  if (!isEncryptedCredentialFile(file)) {
+    throw new Error("Invalid Muse credential store format");
   }
+
+  const plaintext = decryptCredentialPayload(io, file);
+  const store = JSON.parse(plaintext) as unknown;
+  if (!isCredentialStore(store)) {
+    throw new Error("Invalid Muse credential payload");
+  }
+
+  return store;
 }
 
 async function writeCredentialStore(io: CredentialStoreIO, store: CredentialStore): Promise<void> {
