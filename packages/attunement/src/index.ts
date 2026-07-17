@@ -1,4 +1,10 @@
-export { buildContinuityPack } from "./continuity-pack.js";
+export { prepareContinuityPack, type ContinuityPreparationOptions } from "./continuity-pack.js";
+export {
+  openPreparedContinuityPack,
+  readPreparedContinuityPack,
+  type ContinuityFilePreparationOptions,
+  type OpenPreparedContinuityPack
+} from "./continuity-preparation.js";
 export {
   CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,

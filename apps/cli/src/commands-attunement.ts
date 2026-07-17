@@ -8,19 +8,19 @@ import { errorMessage } from "@muse/shared";
 import { isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
-  buildContinuityPack,
   computeContinuityEvaluation,
   createLocalArtifactValidator,
+  createLocalExactArtifactResolver,
   createPersonalThread,
   deletePersonalThread,
   inspectThread,
   linkArtifact,
   mcpProviderId,
-  openContinuityDelivery,
+  openPreparedContinuityPack,
+  prepareContinuityPack,
   readAttunementState,
   recordContinuityOutcome,
   resetThreadPolicy,
-  readCanonicalLocalNote,
   undoThreadReset,
   unlinkArtifact,
   type ArtifactLink,
@@ -35,7 +35,6 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
-import { readTaskById } from "@muse/stores";
 import type { Command } from "commander";
 
 import {
@@ -79,11 +78,6 @@ function notesDir(): string {
   return resolveNotesDir(environment());
 }
 
-function boundedTaskNotes(notes: string | undefined): string | undefined {
-  const normalized = notes?.replace(/\s+/gu, " ").trim();
-  return normalized ? normalized.slice(0, 240) : undefined;
-}
-
 function assertChoice(value: string, allowed: readonly string[], name: string): void {
   if (!allowed.includes(value)) throw new AttunementStoreError(`${name} must be one of: ${allowed.join(", ")}`);
 }
@@ -108,6 +102,7 @@ function createArtifactValidator(mcpCaller: McpToolCaller | undefined): Artifact
 }
 
 function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): ExactArtifactResolver {
+  const resolveLocal = createLocalExactArtifactResolver({ notesDir: notesDir(), tasksFile: tasksFile() });
   return async (link) => {
     if (link.artifactType === "resource") {
       // The resolved title/summary is UNTRUSTED external text; it is displayed
@@ -115,38 +110,7 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): Exact
       // undefined ⇒ `unavailable`, never a fabricated placeholder.
       return resolveMcpResourceArtifact(serverFromProviderId(link.providerId), link.artifactId, link.role, mcpCaller);
     }
-    if (link.artifactType === "task") {
-      const task = await readTaskById(tasksFile(), link.artifactId);
-      if (!task) return undefined;
-      const summary = boundedTaskNotes(task.notes);
-      return {
-        artifactId: task.id,
-        artifactType: "task",
-        providerId: "local",
-        role: link.role,
-        ...(summary ? { summary } : {}),
-        ...(task.dueAt ? { taskDueAt: task.dueAt } : {}),
-        taskStatus: task.status,
-        ...(task.tags && task.tags.length > 0 ? { taskTags: task.tags } : {}),
-        title: task.title,
-        updatedAt: task.completedAt ?? task.createdAt
-      };
-    }
-    const note = await readCanonicalLocalNote(notesDir(), link.artifactId);
-    if (!note) return undefined;
-    // The stored canonical ID must remain canonical after re-resolution; a note
-    // moved or symlinked to another in-vault path is unavailable rather than
-    // silently becoming a different source.
-    if (note.artifactId !== link.artifactId) return undefined;
-    return {
-      artifactId: note.artifactId,
-      artifactType: "note",
-      providerId: "local",
-      role: link.role,
-      ...(note.summary ? { summary: note.summary } : {}),
-      title: note.title,
-      updatedAt: note.updatedAt
-    };
+    return resolveLocal(link);
   };
 }
 
@@ -391,14 +355,14 @@ export function formatContinuityReviewQueue(queue: ContinuityReviewQueue): strin
   return `${lines.join("\n")}\n`;
 }
 
-async function formatThreadReview(state: AttunementState, resolveExactArtifact: ExactArtifactResolver): Promise<string> {
+async function formatThreadReview(state: AttunementState, resolveExactArtifact: ExactArtifactResolver, now: () => number): Promise<string> {
   if (state.threads.length === 0) {
     return "No personal threads yet. Start one with `muse thread start <title> --kind <life|work>`.\n";
   }
 
   const lines = ["Personal Continuity review:"];
   for (const thread of state.threads) {
-    const pack = await buildContinuityPack(state, thread.id, resolveExactArtifact);
+    const pack = await prepareContinuityPack(state, thread.id, resolveExactArtifact, { now });
     const availableEvidence = pack.evidence.filter((entry) => entry.status === "available").length;
     const latestFeedback = state.deliveries
       .filter((delivery) => delivery.threadId === thread.id && delivery.outcome)
@@ -438,14 +402,10 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
   return `${lines.join("\n")}\n`;
 }
 
-function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>, nowMs: number): string {
+function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): string {
   const metadata: string[] = [];
-  if (artifact.taskDueAt) {
-    const dueMs = Date.parse(artifact.taskDueAt);
-    if (Number.isFinite(dueMs)) {
-      const label = artifact.taskStatus === "open" && dueMs < nowMs ? "overdue" : "due";
-      metadata.push(`${label}: ${artifact.taskDueAt}`);
-    }
+  if (artifact.taskDueAt && artifact.taskDueState) {
+    metadata.push(`${artifact.taskDueState}: ${artifact.taskDueAt}`);
   }
   if (artifact.taskTags && artifact.taskTags.length > 0) {
     metadata.push(`tags: ${JSON.stringify(artifact.taskTags)}`);
@@ -453,7 +413,7 @@ function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>, n
   return metadata.length > 0 ? ` · ${metadata.join(" · ")}` : "";
 }
 
-function formatEvidence(pack: ContinuityPack, nowMs: number): string[] {
+function formatEvidence(pack: ContinuityPack): string[] {
   return pack.evidence.map((entry) => {
     const prefix = `[${entry.reference.artifactType}:${entry.reference.artifactId}]`;
     if (entry.status === "unavailable") return `  - ${prefix} unavailable`;
@@ -468,12 +428,12 @@ function formatEvidence(pack: ContinuityPack, nowMs: number): string[] {
     const detail = pack.policy.detail === "standard" && artifact.summary && !isContextualNextStep
       ? ` — ${artifact.summary}`
       : "";
-    return `  - ${prefix} ${artifact.title}${detail}${formatTaskMetadata(artifact, nowMs)}`;
+    return `  - ${prefix} ${artifact.title}${detail}${formatTaskMetadata(artifact)}`;
   });
 }
 
-export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string, nowMs = Date.now()): string {
-  const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack, nowMs)];
+export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string): string {
+  const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack)];
   if (pack.previousOutcome) lines.push(`Previous pack: ${pack.previousOutcome}`);
   if (pack.policy.nextStep === "hidden") {
     lines.push("Next step: hidden after your previous feedback.");
@@ -529,22 +489,10 @@ async function runContinue(
   resolveExactArtifact: ExactArtifactResolver,
   now: () => number
 ): Promise<void> {
-  const nowMs = now();
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
-  const state = await readAttunementState(file);
-  const pack = await buildContinuityPack(state, chosenId, resolveExactArtifact);
-  if (!pack.evidence.some((entry) => entry.status === "available")) {
-    throw new AttunementStoreError(
-      `thread '${chosenId}' has no currently available linked evidence; no delivery was recorded. Inspect its links with \`muse thread inspect ${chosenId}\` and relink an available local source.`
-    );
-  }
-  const delivery = await openContinuityDelivery(file, {
-    evidenceRefs: pack.evidenceRefs,
-    expectedPolicyVersion: pack.deliveryPolicyVersion,
-    threadId: chosenId
-  });
-  io.stdout(formatPack(pack, delivery.id, delivery.runId, nowMs));
+  const { delivery, pack } = await openPreparedContinuityPack(file, chosenId, resolveExactArtifact, { now });
+  io.stdout(formatPack(pack, delivery.id, delivery.runId));
 }
 
 async function commandAction(command: Command, io: ProgramIO, label: string, action: () => Promise<void>): Promise<void> {
@@ -681,7 +629,7 @@ Examples:
           return;
         }
         io.stdout(formatContinuityReviewQueue(queue));
-        io.stdout(await formatThreadReview(state, resolveExactArtifact));
+        io.stdout(await formatThreadReview(state, resolveExactArtifact, now));
       });
     });
 

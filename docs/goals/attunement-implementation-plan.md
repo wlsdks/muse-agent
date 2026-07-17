@@ -50,6 +50,9 @@ pack. It does not require desktop observation.
 - ✅ `packages/attunement/` has `PersonalThread`, exact artifact links, Continuity Pack
   construction, delivery/outcome records, reset/undo receipts, and a deterministic display
   policy reducer.
+- ✅ A shared preparation Module now owns canonical local resolution, one-shot due-state
+  derivation, unavailable-only Pack rejection, and policy-version-checked delivery opening.
+  CLI and HTTP use the same open Interface; timing offers use its read-only preview path.
 - ✅ `muse thread start|list|link|unlink|continue|inspect|outcome|reset|undo-reset` and the
   short `muse continue` entry point are available.
 - ✅ Slice A supports only local tasks and local notes. Reminders, calendar events, contacts,
@@ -94,7 +97,9 @@ only a grocery/milk stress stratum, not broad or longitudinal daily-life
 evidence. Keep delivery user-invoked and hold Slice B. Before another promotion
 review, collect matched life/work return moments across dates. The immediate
 follow-up now exposes deterministic due/overdue state and tags from the exact
-linked task and removes duplicated contextual notes; post-window delivery 21
+linked task across CLI/API/web and removes duplicated contextual notes. Hidden
+web next steps retain only the safe exact reference marker; timing preview opens
+no delivery. Post-window delivery 21
 confirmed the rendering but was honestly scored `adjusted`, so automation stays
 held. Full evidence and the raw/strict audit:
 [`../evaluations/continuity-first-20-2026-07-17.md`](../evaluations/continuity-first-20-2026-07-17.md).

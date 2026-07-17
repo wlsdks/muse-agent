@@ -22,6 +22,19 @@ function latestOutcome(state: AttunementState, threadId: string) {
   return deliveries[0]?.outcome?.outcome;
 }
 
+function deriveTaskTemporalState(artifact: ResolvedArtifact, nowMs: number): ResolvedArtifact {
+  if (artifact.artifactType !== "task" || artifact.taskDueAt === undefined) return artifact;
+  const dueMs = Date.parse(artifact.taskDueAt);
+  if (!Number.isFinite(dueMs)) {
+    const { taskDueAt: _invalidDueAt, taskDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
+    return withoutInvalidDue;
+  }
+  return {
+    ...artifact,
+    taskDueState: artifact.taskStatus === "open" && dueMs < nowMs ? "overdue" : "due"
+  };
+}
+
 /**
  * Build only from the selected thread's persisted links. Calling code cannot
  * smuggle a pre-resolved task/note list into this function, which is the core
@@ -30,14 +43,16 @@ function latestOutcome(state: AttunementState, threadId: string) {
 export async function buildContinuityPack(
   state: AttunementState,
   threadId: string,
-  resolveExactArtifact: ExactArtifactResolver
+  resolveExactArtifact: ExactArtifactResolver,
+  nowMs: number
 ): Promise<ContinuityPack> {
   const thread = requireThread(state, threadId);
   const evidence: ContinuityEvidence[] = [];
   const nextCandidates: ResolvedArtifact[] = [];
 
   for (const link of thread.links) {
-    const artifact = await resolveExactArtifact(link);
+    const resolved = await resolveExactArtifact(link);
+    const artifact = resolved ? deriveTaskTemporalState(resolved, nowMs) : undefined;
     evidence.push({
       reference: {
         artifactId: link.artifactId,
@@ -69,4 +84,19 @@ export async function buildContinuityPack(
       : {}),
     thread: { id: thread.id, kind: thread.kind, title: thread.title }
   };
+}
+
+export interface ContinuityPreparationOptions {
+  readonly now?: () => number;
+}
+
+/** Read the preparation clock exactly once, then build from exact linked sources. */
+export async function prepareContinuityPack(
+  state: AttunementState,
+  threadId: string,
+  resolveExactArtifact: ExactArtifactResolver,
+  options: ContinuityPreparationOptions = {}
+): Promise<ContinuityPack> {
+  const nowMs = (options.now ?? Date.now)();
+  return buildContinuityPack(state, threadId, resolveExactArtifact, nowMs);
 }

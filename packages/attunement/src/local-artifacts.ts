@@ -22,6 +22,15 @@ export interface CanonicalLocalNote {
   readonly updatedAt: string;
 }
 
+function boundedTaskNotes(notes: string | undefined): string | undefined {
+  const normalized = notes?.replace(/\s+/gu, " ").trim();
+  return normalized ? normalized.slice(0, 240) : undefined;
+}
+
+function validTaskDueAt(dueAt: string | undefined): string | undefined {
+  return dueAt && Number.isFinite(Date.parse(dueAt)) ? dueAt : undefined;
+}
+
 function assertNoDotDotPath(value: string): void {
   if (value.split(/[\\/]+/u).some((segment) => segment === "..")) {
     throw new AttunementStoreError("note id must not contain '..'");
@@ -100,20 +109,24 @@ export function createLocalExactArtifactResolver(options: LocalArtifactValidator
     if (link.artifactType === "task") {
       const task = await readTaskById(options.tasksFile, link.artifactId);
       if (!task) return undefined;
+      const summary = boundedTaskNotes(task.notes);
+      const taskDueAt = validTaskDueAt(task.dueAt);
       return {
         artifactId: task.id,
         artifactType: "task",
         providerId: "local",
         role: link.role,
-        ...(task.notes ? { summary: task.notes.slice(0, 240) } : {}),
+        ...(summary ? { summary } : {}),
+        ...(taskDueAt ? { taskDueAt } : {}),
         taskStatus: task.status,
+        ...(task.tags && task.tags.length > 0 ? { taskTags: [...task.tags] } : {}),
         title: task.title,
         updatedAt: task.completedAt ?? task.createdAt
       };
     }
     if (link.artifactType === "note") {
       const note = await readCanonicalLocalNote(options.notesDir, link.artifactId);
-      return note ? { ...note, role: link.role } : undefined;
+      return note?.artifactId === link.artifactId ? { ...note, role: link.role } : undefined;
     }
     return undefined;
   };

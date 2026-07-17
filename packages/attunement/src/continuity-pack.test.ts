@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { baselinePolicy, buildContinuityPack, policyForOutcome, type AttunementState, type ArtifactLink } from "./index.js";
+import { baselinePolicy, policyForOutcome, prepareContinuityPack, type AttunementState, type ArtifactLink, type ExactArtifactResolver } from "./index.js";
 
 const taskLink: ArtifactLink = {
   artifactId: "task_finish-invite",
@@ -33,7 +33,52 @@ function state(policy = baselinePolicy()): AttunementState {
   };
 }
 
+function buildContinuityPack(current: AttunementState, threadId: string, resolver: ExactArtifactResolver) {
+  return prepareContinuityPack(current, threadId, resolver, { now: () => Date.parse("2026-07-18T09:00:00.000Z") });
+}
+
 describe("buildContinuityPack", () => {
+  it("captures one preparation time and derives one shared overdue task artifact", async () => {
+    const now = vi.fn(() => Date.parse("2026-07-18T09:00:00.001Z"));
+    const pack = await prepareContinuityPack(state(), "thread_life", async (link) => ({
+      ...link,
+      taskDueAt: link.artifactType === "task" ? "2026-07-18T09:00:00.000Z" : undefined,
+      taskStatus: link.artifactType === "task" ? "open" : undefined,
+      title: link.artifactId
+    }), { now });
+
+    expect(now).toHaveBeenCalledTimes(1);
+    expect(pack.nextStep?.taskDueState).toBe("overdue");
+    expect(pack.evidence.find((entry) => entry.reference.artifactType === "task")?.artifact).toBe(pack.nextStep);
+  });
+
+  it.each([
+    ["2026-07-18T09:00:00.000Z", "due"],
+    ["2026-07-18T09:00:00.001Z", "due"],
+    ["not-a-date", undefined]
+  ] as const)("derives fail-closed due state for %s", async (taskDueAt, expected) => {
+    const pack = await prepareContinuityPack(state(), "thread_life", async (link) => ({
+      ...link,
+      taskDueAt: link.artifactType === "task" ? taskDueAt : undefined,
+      taskStatus: link.artifactType === "task" ? "open" : undefined,
+      title: link.artifactId
+    }), { now: () => Date.parse("2026-07-18T09:00:00.000Z") });
+
+    expect(pack.nextStep?.taskDueState).toBe(expected);
+    if (expected === undefined) expect(pack.nextStep?.taskDueAt).toBeUndefined();
+  });
+
+  it("keeps completed tasks due rather than overdue", async () => {
+    const pack = await prepareContinuityPack(state(), "thread_life", async (link) => ({
+      ...link,
+      taskDueAt: link.artifactType === "task" ? "2026-07-17T09:00:00.000Z" : undefined,
+      taskStatus: link.artifactType === "task" ? "done" : undefined,
+      title: link.artifactId
+    }), { now: () => Date.parse("2026-07-18T09:00:00.000Z") });
+
+    expect(pack.evidence.find((entry) => entry.reference.artifactType === "task")?.artifact?.taskDueState).toBe("due");
+  });
+
   it("resolves only the selected thread's stored links, preserving unavailable references", async () => {
     const calls: string[] = [];
     const pack = await buildContinuityPack(state(), "thread_life", async (link) => {

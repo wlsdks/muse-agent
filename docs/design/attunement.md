@@ -3,16 +3,16 @@ title: Attunement architecture and data contract
 audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
-updated: 2026-07-13
+updated: 2026-07-17
 related: [../strategy/attunement.md, ../goals/attunement-implementation-plan.md, ../privacy-and-data.md]
 ---
 
 # Attunement architecture and data contract
 
-The full Attunement loop is **not shipped**. Slice A is implemented as a local CLI tracer:
-the user creates a `life` or `work` thread, links exact local tasks/notes, opens a pack,
-and records one of four outcomes. Observe, automatic affiliation, additional source adapters,
-and timing-aware help remain roadmap work.
+The full Attunement loop is **not shipped**. Slice A is implemented as a user-invoked tracer:
+the user creates a `life` or `work` thread, links exact sources, opens a pack through the CLI
+or local web/API surface, and records one of four outcomes. Observe, automatic affiliation,
+additional source adapters, and proactive timing-aware help remain roadmap work.
 
 In plain language: start with an unfinished life or work thread the user chooses, build a
 small “where was I?” pack from explicitly linked items, record whether it helped, and change
@@ -67,6 +67,20 @@ Slice A stores the canonical full task ID or a canonical vault-relative note pat
 title-search binding, absolute/`..` note paths, and a note whose resolved realpath leaves the
 vault. A thread has at most one `next-step`, and it must be a user-linked open task. Additional
 artifact types and deterministic bindings are later adapters, not a fallback in this path.
+
+### Continuity preparation module
+
+`@muse/attunement` owns the shared preparation boundary. Its canonical local Adapter resolves
+only already-linked task/note IDs, normalizes bounded task notes, preserves valid stored due
+timestamps and exact tags, and never searches for a replacement. Preparation captures its
+clock once, derives `due|overdue` on the transient artifact, and reuses that same artifact in
+evidence and `nextStep`.
+
+User-open preparation reads state, builds from exact links, rejects Packs with no available
+evidence, and opens a policy-version-checked delivery as one module operation. CLI and HTTP call that
+operation. Timing `offer` uses the sibling read-only preparation Interface and cannot create a
+delivery. Rendering stays surface-local; a hidden next step may expose only its exact
+`artifactType:artifactId` marker, not title, summary, status, due timestamp, or tags.
 
 ## Minimal observation contract
 

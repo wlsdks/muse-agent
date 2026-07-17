@@ -40,9 +40,31 @@ interface ReviewResponse {
   }[];
 }
 
-interface OpenedPack {
+interface OpenedPackArtifact {
+  readonly artifactId: string;
+  readonly artifactType: string;
+  readonly providerId: string;
+  readonly role: string;
+  readonly summary?: string;
+  readonly taskDueAt?: string;
+  readonly taskDueState?: "due" | "overdue";
+  readonly taskStatus?: "open" | "done";
+  readonly taskTags?: readonly string[];
+  readonly title: string;
+}
+
+export interface OpenedPack {
   readonly delivery: { readonly id: string; readonly runId?: string };
-  readonly pack: { readonly evidence: readonly { readonly artifact?: { readonly artifactId: string; readonly title: string }; readonly reference: { readonly artifactId: string; readonly artifactType: string }; readonly status: "available" | "unavailable" }[]; readonly nextStep?: { readonly artifactId: string; readonly title: string }; readonly thread: { readonly kind: Kind; readonly title: string } };
+  readonly pack: {
+    readonly evidence: readonly {
+      readonly artifact?: OpenedPackArtifact;
+      readonly reference: { readonly artifactId: string; readonly artifactType: string; readonly providerId: string; readonly role: string };
+      readonly status: "available" | "unavailable";
+    }[];
+    readonly nextStep?: OpenedPackArtifact;
+    readonly policy: { readonly nextStep: string };
+    readonly thread: { readonly kind: Kind; readonly title: string };
+  };
 }
 
 function rate(part: number, total: number): string {
@@ -80,6 +102,47 @@ function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evalu
       </div>
     </Card>
   );
+}
+
+function artifactMarker(reference: OpenedPack["pack"]["evidence"][number]["reference"]): string {
+  return `${reference.artifactType}:${reference.artifactId}`;
+}
+
+/** Policy-aware Pack surface: hidden next-step artifacts expose only their exact safe marker. */
+export function OpenedPackCard({ openedPack }: { readonly openedPack: OpenedPack }) {
+  const { t } = useI18n();
+  return <Card>
+    <div className="row-title">{t("continuity.packTitle", { title: openedPack.pack.thread.title })}</div>
+    <div className="row-meta">{kindLabel(openedPack.pack.thread.kind)} · {t("continuity.delivery", { id: openedPack.delivery.id })}</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+      {openedPack.pack.evidence.map((entry) => {
+        const marker = artifactMarker(entry.reference);
+        const hidesArtifact = openedPack.pack.policy.nextStep === "hidden" && entry.reference.role === "next-step";
+        if (entry.status === "unavailable" || hidesArtifact || !entry.artifact) {
+          return <div className="row-meta" key={`${entry.reference.providerId}:${marker}:${entry.reference.role}`}>
+            {entry.status === "unavailable" ? `${t("continuity.unavailable")} · ` : ""}{marker}
+          </div>;
+        }
+        const artifact = entry.artifact;
+        return <div key={`${entry.reference.providerId}:${marker}:${entry.reference.role}`}>
+          <div className="row-meta">{artifact.title} · {marker}</div>
+          {artifact.summary ? <div className="row-meta">{artifact.summary}</div> : null}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+            {artifact.taskStatus ? <Badge tone="neutral">{t(`continuity.taskStatus.${artifact.taskStatus}`)}</Badge> : null}
+            {artifact.taskDueAt && artifact.taskDueState
+              ? <Badge tone={artifact.taskDueState === "overdue" ? "warn" : "neutral"}>{t(`continuity.${artifact.taskDueState}`, { timestamp: artifact.taskDueAt })}</Badge>
+              : null}
+            {artifact.taskTags && artifact.taskTags.length > 0
+              ? <Badge tone="neutral">{t("continuity.tags", { tags: artifact.taskTags.join(", ") })}</Badge>
+              : null}
+          </div>
+        </div>;
+      })}
+    </div>
+    {openedPack.pack.policy.nextStep !== "hidden" && openedPack.pack.nextStep
+      ? <div className="row-meta" style={{ marginTop: 12 }}>{t("continuity.nextStep", { title: openedPack.pack.nextStep.title })}</div>
+      : null}
+  </Card>;
 }
 
 function LinkForm({ disabled, onLink }: { readonly disabled: boolean; readonly onLink: (input: { artifactId: string; artifactType: "task" | "note"; role: "context" | "next-step" }) => void }) {
@@ -179,14 +242,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               <KindSummary kind="life" evaluation={data.evaluation.byKind.life} />
               <KindSummary kind="work" evaluation={data.evaluation.byKind.work} />
             </div>
-            {openedPack ? <Card>
-              <div className="row-title">{t("continuity.packTitle", { title: openedPack.pack.thread.title })}</div>
-              <div className="row-meta">{kindLabel(openedPack.pack.thread.kind)} · {t("continuity.delivery", { id: openedPack.delivery.id })}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
-                {openedPack.pack.evidence.map((entry) => <div className="row-meta" key={`${entry.reference.artifactType}:${entry.reference.artifactId}`}>{entry.status === "available" ? entry.artifact?.title : t("continuity.unavailable")} · {entry.reference.artifactType}:{entry.reference.artifactId}</div>)}
-              </div>
-              {openedPack.pack.nextStep ? <div className="row-meta" style={{ marginTop: 12 }}>{t("continuity.nextStep", { title: openedPack.pack.nextStep.title })}</div> : null}
-            </Card> : null}
+            {openedPack ? <OpenedPackCard openedPack={openedPack} /> : null}
 
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.threads")}</h2>
             <Card>

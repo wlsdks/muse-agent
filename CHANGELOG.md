@@ -10,10 +10,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
-- **Continuity Packs expose exact linked task state:** parseable due timestamps
-  are labeled `due` or `overdue` from one captured Pack clock, and exact tags
-  are rendered as escaped JSON. Invalid due values are omitted, hidden next
-  steps remain hidden, and contextual task notes no longer repeat in evidence.
+- **Continuity Pack preparation is now one shared core path:** CLI continue,
+  HTTP continue, and timing-offer preview resolve canonical local artifacts and
+  derive task state through `@muse/attunement`. Parseable due timestamps are
+  labeled `due` or `overdue` from one captured Pack clock, exact tags and
+  normalized notes reach CLI/API/web consistently, unavailable-only Packs and
+  policy races create no delivery, and timing previews stay read-only. The web
+  Pack renders this metadata in Chromium while hidden next steps expose only
+  their safe `type:id` marker.
 - **Adjusted Continuity Packs now change the next help:** a contextual next
   step shows normalized, bounded user-authored task notes instead of repeating
   the task title. When notes are missing, Muse gives the exact local

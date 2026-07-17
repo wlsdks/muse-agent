@@ -145,6 +145,8 @@ export interface AttunementState {
 export interface ResolvedArtifact extends ArtifactReference {
   readonly summary?: string;
   readonly taskDueAt?: string;
+  /** Display-only temporal state derived once by Continuity preparation. */
+  readonly taskDueState?: "due" | "overdue";
   readonly title: string;
   readonly taskStatus?: "open" | "done";
   readonly taskTags?: readonly string[];

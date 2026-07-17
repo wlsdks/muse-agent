@@ -1,14 +1,16 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, buildContinuityPack, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openContinuityDelivery, OUTCOMES, pauseTimingSession, readAttunementState, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
-import type { ContinuityOutcome } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
-interface AttunementRoutesGate {
+export interface AttunementRoutesGate {
   readonly attunementFile: string;
   readonly authService: ServerOptions["authService"];
   readonly notesDir: string;
+  readonly now?: () => number;
+  readonly openContinuityPack?: OpenPreparedContinuityPack;
   readonly tasksFile: string;
 }
 
@@ -70,10 +72,14 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     const candidate = await evaluateTimingSession(timingFile, request.params.sessionId);
     if (candidate.decision !== "offer") return { candidate };
     const timing = inspectTimingSession(await readTimingState(timingFile), request.params.sessionId);
-    const state = await readAttunementState(gate.attunementFile);
     return {
       candidate,
-      pack: await buildContinuityPack(state, timing.session.threadId, createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }))
+      pack: await readPreparedContinuityPack(
+        gate.attunementFile,
+        timing.session.threadId,
+        createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }),
+        gate.now ? { now: gate.now } : {}
+      )
     };
   });
 
@@ -179,16 +185,19 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     if (thread.links.some((link) => link.providerId !== "local")) {
       return reply.code(409).send({ errorMessage: "this thread has an external resource; continue it through the CLI while its MCP connection is verified" });
     }
-    const pack = await buildContinuityPack(state, thread.id, createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }));
-    if (!pack.evidence.some((entry) => entry.status === "available")) {
-      return reply.code(409).send({ errorMessage: "this thread has no currently available linked evidence" });
+    try {
+      return await (gate.openContinuityPack ?? openPreparedContinuityPack)(
+        gate.attunementFile,
+        thread.id,
+        createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }),
+        gate.now ? { now: gate.now } : {}
+      );
+    } catch (cause) {
+      if (cause instanceof AttunementStoreError) {
+        return reply.code(409).send({ errorMessage: cause.message });
+      }
+      throw cause;
     }
-    const delivery = await openContinuityDelivery(gate.attunementFile, {
-      evidenceRefs: pack.evidenceRefs,
-      expectedPolicyVersion: pack.deliveryPolicyVersion,
-      threadId: thread.id
-    });
-    return { delivery, pack };
   });
 
   server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/reset", async (request, reply) => {
