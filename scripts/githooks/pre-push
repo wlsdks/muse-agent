@@ -13,8 +13,10 @@
 #      its immediately-following `git push`) run at a time, instead of
 #      several agents passing their own stale-branch checks simultaneously
 #      and then colliding on push.
-#   2. fail-CLOSED compile gate — `pnpm -s typecheck:fast` (the tsc -b
-#      project-reference graph) plus a direct `tsc --noEmit` for apps/web
+#   2. fail-CLOSED compile+lint gate — `pnpm -s typecheck:fast` (the tsc -b
+#      project-reference graph), a direct `tsc --noEmit` for apps/web,
+#      then `pnpm -s lint` (cached eslint — typecheck-only pushes let a
+#      13-error lint batch land on 2026-07-17)
 #      (intentionally OUTSIDE that reference graph — see
 #      .claude/rules/architecture.md). Unlike the old hook, a push whose
 #      code doesn't compile — or whose environment can't even resolve pnpm
@@ -91,6 +93,15 @@ fi
 echo "pre-push: compile gate — apps/web tsc --noEmit (outside the tsc -b reference graph)" >&2
 if ! pnpm --filter @muse/web exec tsc -p tsconfig.json --noEmit; then
   echo "pre-push: BLOCKED — apps/web typecheck failed (see errors above). Fix them before pushing, or MUSE_SKIP_PREPUSH_ALL=1 for a genuine emergency." >&2
+  exit 1
+fi
+
+# Lint is part of the fail-closed gate: pushes that only typechecked let 13
+# lint errors ride in with a 170-commit batch (2026-07-17) and every next
+# fire paid the cleanup. eslint --cache makes this ~1.5s warm.
+echo "pre-push: lint gate — pnpm -s lint (cached eslint)" >&2
+if ! pnpm -s lint; then
+  echo "pre-push: BLOCKED — lint failed (see errors above). \`pnpm lint:fix\` clears most of these; or MUSE_SKIP_PREPUSH_ALL=1 for a genuine emergency." >&2
   exit 1
 fi
 

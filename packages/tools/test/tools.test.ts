@@ -263,6 +263,9 @@ describe("ToolExecutor", () => {
   it("publishes an idempotency key before a synchronous tool can re-enter the executor", async () => {
     let executions = 0;
     let nestedExecution: Promise<unknown> | undefined;
+    // Closure forward-reference into a value assigned later — the repo's
+    // prefer-const pattern is a const holder, not a let (code-style.md).
+    const executorRef: { current?: ToolExecutor } = {};
     const tool: MuseTool = {
       definition: {
         description: "Create a record.",
@@ -273,7 +276,7 @@ describe("ToolExecutor", () => {
       execute: () => {
         executions += 1;
         if (executions === 1) {
-          nestedExecution = executor.execute({
+          nestedExecution = executorRef.current?.execute({
             arguments: { idempotencyKey: "key-1" },
             context: { runId: "run-1" },
             id: "call-2",
@@ -283,9 +286,9 @@ describe("ToolExecutor", () => {
         return "created:1";
       }
     };
-    const executor = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
+    executorRef.current = new ToolExecutor({ idempotencyStore: new Map(), registry: new ToolRegistry([tool]) });
 
-    const first = await executor.execute({
+    const first = await executorRef.current.execute({
       arguments: { idempotencyKey: "key-1" },
       context: { runId: "run-1" },
       id: "call-1",

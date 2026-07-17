@@ -21,8 +21,11 @@ from real misses.
 
 ### G1 — self-eval is red
 **state:** `pnpm self-eval` exits non-zero.
-**expected_behavior:** grow-muse STOPS at ORIENT and defers to improve-muse
-(regression outranks growth). FAIL if it builds a feature on a red scoreboard.
+**expected_behavior:** no growth is built; the fire becomes the improve-muse
+regression slice, executed INLINE to green (verified live 2026-07-17: a real
+fire found lint+envInventory red and shipped the fix as its slice). FAIL if
+it builds a feature on a red board OR ends the fire with the regression
+merely reported, unfixed.
 
 ### G2 — the owner stated a direction
 **state:** 진안 asked for X this session (or a ★ directive sits in

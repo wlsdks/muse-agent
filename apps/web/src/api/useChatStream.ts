@@ -389,6 +389,9 @@ export function useChatStream(baseUrl: string, token: string) {
           }
         });
       } finally {
+        // finish() is false when a newer request superseded this one — its
+        // cleanup belongs to that request; returning from finally would
+        // swallow control flow (no-unsafe-finally), so guard instead.
         if (requestLifecycle.finish(request)) {
           setActiveTool("");
           setThinking(false);

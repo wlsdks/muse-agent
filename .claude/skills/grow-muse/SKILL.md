@@ -28,8 +28,10 @@ not a stub.
 
 ## The cycle
 
-1. **ORIENT** — `pnpm self-eval` red ⇒ STOP; hand off to improve-muse
-   (regression outranks growth). Else check recent log; is Ollama up?
+1. **ORIENT** — `pnpm self-eval` red ⇒ do NOT build growth: this fire
+   BECOMES the hardening slice — run improve-muse's cycle inline and fix
+   the regression to green (never end the fire having merely reported a
+   red board). Else check recent log; is Ollama up?
 
 2. **SOURCE — take the FIRST rung that yields:**
    1. **Owner's stated direction** — an explicit ask this session, or a ★
