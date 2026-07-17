@@ -8,7 +8,8 @@
 
 | 파일 | 쓰는 쪽 | 읽는(소비하는) 쪽 | 내용 |
 |---|---|---|---|
-| `backlog.md` | improve-muse(◦/✓), scout(`→improve-muse` 태그), grow(미드빌드 부채 태그) | **improve-muse** rung 4 | 살아있는 원장: ★ OPEN → ◦ ready → ✓ done |
+| `backlog.md` | improve-muse(◦ 추가/제거), scout(`→improve-muse` 태그), grow(부채 태그) | **improve-muse** rung 4 | **열린 것만**: ★ open · ◦ ready · ⏳ · Rejected/Blocked (2026-07-17 수명 분리) |
+| `backlog-archive.md` | improve-muse/grow의 완료 ✓ 라인 (완료 시 backlog에서 이쪽으로 이동) | freshness guard·dedup의 grep 대상 | 완료·superseded·exhausted 역사 (append-only) |
 | `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; ✓ 플립도 grow) | 역량 기회 저수지 (231 base + scout 델타) |
 | `judgment-lens.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
 | `rival-watch.md` | **scout 전용** | 다음 scout (워터마크가 델타의 펜스) | 로스터·선반(~/ai 클론, 라이선스, 🚨khoj AGPL)·fire 로그 |

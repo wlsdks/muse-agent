@@ -77,8 +77,8 @@ not a stub.
    named gate/battery moved, or it's `⚠ shipped-but-insufficient`.
 
 6. **SHIP + CURATE** — one Conventional Commit (user story + scores +
-   evidence in body), push on green. Flip the source line ✓, prune ≥1
-   stale line.
+   evidence in body), push on green. Flip the source row ✓ (growth-backlog)
+   or move it to `backlog-archive.md` (backlog items); prune ≥1 stale line.
 
 ## Rationalizations (reject on sight)
 

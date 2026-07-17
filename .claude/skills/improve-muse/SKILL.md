@@ -61,8 +61,9 @@ a coherent unit, not the narrowest edit.
    move is `⚠ shipped-but-insufficient`, not done.
 
 5. **SHIP + CURATE** — one Conventional Commit (evidence in body), push on
-   green. Write-back is curation: ONE delta-bearing ✓ line, prune ≥1 stale
-   line (net ≈ 0).
+   green. Write-back is curation: remove the item from `backlog.md` (open
+   queue) and put ONE delta-bearing ✓ line in `backlog-archive.md`; prune
+   ≥1 stale line (net ≈ 0). Freshness/dedup checks grep BOTH files.
 
 ## Rationalizations (all observed — reject on sight)
 
