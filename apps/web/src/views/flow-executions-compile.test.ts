@@ -5,8 +5,62 @@ import {
   dryRunUrl,
   executionsUrl,
   humanizeDurationMs,
+  resolveExecutionDisplay,
   statusTone
 } from "./flow-executions-compile.js";
+
+describe("resolveExecutionDisplay", () => {
+  const base = { result: null, resultPreview: null, failureReason: null } as const;
+
+  it("shows a FAILED run's clean failureReason as an error (not the raw prefixed result)", () => {
+    const display = resolveExecutionDisplay({
+      ...base,
+      status: "FAILED",
+      result: "Job 'X' failed: MCP server 'muse.messaging' is not connected",
+      failureReason: "MCP server 'muse.messaging' is not connected"
+    });
+    expect(display).toEqual({ text: "MCP server 'muse.messaging' is not connected", tone: "error" });
+  });
+
+  it("falls back to the raw result for a FAILED run with no extractable reason", () => {
+    const display = resolveExecutionDisplay({
+      ...base,
+      status: "FAILED",
+      result: "something went wrong",
+      failureReason: null
+    });
+    expect(display).toEqual({ text: "something went wrong", tone: "output" });
+  });
+
+  it("treats a blank/whitespace failureReason as absent", () => {
+    const display = resolveExecutionDisplay({ ...base, status: "FAILED", result: "raw", failureReason: "   " });
+    expect(display).toEqual({ text: "raw", tone: "output" });
+  });
+
+  it("shows a SUCCESS run's result as plain output, never as an error", () => {
+    const display = resolveExecutionDisplay({
+      ...base,
+      status: "SUCCESS",
+      result: "2026-07-18T00:00:00Z",
+      failureReason: null
+    });
+    expect(display).toEqual({ text: "2026-07-18T00:00:00Z", tone: "output" });
+  });
+
+  it("never styles a non-FAILED status as an error even if a stray failureReason is present", () => {
+    const display = resolveExecutionDisplay({
+      ...base,
+      status: "SUCCESS",
+      result: "ok",
+      failureReason: "leftover"
+    });
+    expect(display.tone).toBe("output");
+  });
+
+  it("returns empty output text when a run has no result at all", () => {
+    expect(resolveExecutionDisplay({ ...base, status: "RUNNING" })).toEqual({ text: "", tone: "output" });
+  });
+});
 
 describe("executionsUrl / dryRunUrl", () => {
   it("builds the exact GET executions url with the default limit", () => {

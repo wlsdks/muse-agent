@@ -30,7 +30,7 @@ const POPULATED: ScheduledJobExecutionsResponse = {
       completedAt: null,
       dryRun: true,
       durationMs: 420,
-      failureReason: "Model timeout",
+      failureReason: `Model timeout ${"y".repeat(200)}`,
       id: "exec_2",
       jobId: JOB_ID,
       jobName: "Morning brief",
@@ -97,6 +97,16 @@ describe("ExecutionsCard — populated state", () => {
     expect(html).toContain(DICTIONARIES.en["auto.flows.executions.showMore"]);
     // the short SUCCESS row's full text renders untruncated, no ellipsis
     expect(html).toContain("오늘 일정: 회의 3건, 마감 1건");
+  });
+
+  it("surfaces a FAILED run's clean failureReason in the danger tone, not the raw 'Job … failed:' result", async () => {
+    const html = await renderExecutions(fakeClient(POPULATED));
+    // The clean reason (failureReason) is what's shown...
+    expect(html).toContain("Model timeout");
+    expect(html).toContain("exec-error");
+    expect(html).toContain("yyy");
+    // ...NOT the raw "Job 'Morning brief' failed: xxx…" result body.
+    expect(html).not.toContain("xxx");
   });
 
   it("does not offer a show-more toggle when every result is already short", async () => {

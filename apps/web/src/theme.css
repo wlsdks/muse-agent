@@ -2213,3 +2213,11 @@ button.status-chip {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* A FAILED execution surfaces its clean reason in the danger tone so a
+   failure reads as a failure, not as muted output text. Selector carries the
+   `.row-meta` class too so it matches the `.row .row-meta` base rule's
+   specificity and wins on source order (a bare `.exec-error` would lose). */
+.row-meta.exec-error {
+  color: var(--danger);
+}

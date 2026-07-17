@@ -44,6 +44,35 @@ export function humanizeDurationMs(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
+export interface ExecutionDisplay {
+  readonly tone: "error" | "output";
+  readonly text: string;
+}
+
+/**
+ * What an execution row should SHOW as its body. A FAILED run surfaces its
+ * clean `failureReason` (the reason the server extracted, without the
+ * redundant "Job 'X' failed:" prefix the FAILED badge already conveys) as an
+ * ERROR — so a failure reads as a failure instead of the same muted text a
+ * success output gets, and the already-computed `failureReason` stops being
+ * dead data on the wire. Every other status (and a FAILED run with no
+ * extractable reason) shows the run's result/preview as plain output.
+ */
+export function resolveExecutionDisplay(execution: {
+  readonly status: ScheduledJobExecutionStatus;
+  readonly result: string | null;
+  readonly resultPreview: string | null;
+  readonly failureReason: string | null;
+}): ExecutionDisplay {
+  if (execution.status === "FAILED") {
+    const reason = execution.failureReason?.trim();
+    if (reason && reason.length > 0) {
+      return { text: reason, tone: "error" };
+    }
+  }
+  return { text: execution.result ?? execution.resultPreview ?? "", tone: "output" };
+}
+
 export interface ClampedPreview {
   readonly text: string;
   readonly clamped: boolean;

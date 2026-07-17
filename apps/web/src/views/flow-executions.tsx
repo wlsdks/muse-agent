@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { relativeAgo } from "./chats-logic.js";
-import { clampPreview, EXECUTIONS_DEFAULT_LIMIT, executionsUrl, humanizeDurationMs, statusTone } from "./flow-executions-compile.js";
+import { clampPreview, EXECUTIONS_DEFAULT_LIMIT, executionsUrl, humanizeDurationMs, resolveExecutionDisplay, statusTone } from "./flow-executions-compile.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ScheduledJobExecutionRow, ScheduledJobExecutionsResponse } from "../api/types.js";
@@ -48,8 +48,8 @@ export function ExecutionsCard({ client, jobId }: { client: ApiClient; jobId: st
 function ExecutionRow({ execution }: { execution: ScheduledJobExecutionRow }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const fullText = execution.result ?? execution.resultPreview ?? "";
-  const preview = clampPreview(fullText);
+  const display = resolveExecutionDisplay(execution);
+  const preview = clampPreview(display.text);
 
   return (
     <div className="row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
@@ -67,9 +67,12 @@ function ExecutionRow({ execution }: { execution: ScheduledJobExecutionRow }) {
         <div className="row-meta">
           {relativeAgo(new Date(execution.startedAt).toISOString(), t)} · {humanizeDurationMs(execution.durationMs)}
         </div>
-        {fullText.length > 0 && (
-          <div className="row-meta" style={{ marginTop: 6, whiteSpace: expanded ? "pre-wrap" : "normal" }}>
-            {expanded ? fullText : preview.text}
+        {display.text.length > 0 && (
+          <div
+            className={`row-meta${display.tone === "error" ? " exec-error" : ""}`}
+            style={{ marginTop: 6, whiteSpace: expanded ? "pre-wrap" : "normal" }}
+          >
+            {expanded ? display.text : preview.text}
             {preview.clamped && (
               <div style={{ marginTop: 4 }}>
                 <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>
