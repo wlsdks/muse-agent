@@ -9,7 +9,7 @@ import { FlowsTab } from "./Flows.js";
 import { I18nProvider } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { FlowDraftResponse, FlowsResponse, LoopbackCatalogResponse, ScheduledJobDetail } from "../api/types.js";
+import type { FlowDraftResponse, FlowsResponse, LoopbackCatalogResponse, MessagingSetupResponse, ScheduledJobDetail } from "../api/types.js";
 
 // No global setup file registers `cleanup()` for this project's browser
 // config yet, so each test must unmount its own tree — several tests in
@@ -101,12 +101,47 @@ function fakeClient(): ApiClient {
       if (path === "/api/flows") return FLOWS_RESPONSE;
       if (path === "/api/scheduler/jobs/job_1") return JOB_DETAIL;
       if (path === "/api/muse/loopback") return LOOPBACK_CATALOG;
+      if (path === "/api/messaging/setup") return { providers: [] };
       throw new Error(`unexpected GET ${path}`);
     }) as unknown as ApiClient["get"],
     patch: vi.fn(async () => ({})) as unknown as ApiClient["patch"],
     post: vi.fn(async () => ({})) as unknown as ApiClient["post"],
     put: vi.fn(async () => ({})) as unknown as ApiClient["put"]
   };
+}
+
+const PAIRED_SETUP: MessagingSetupResponse = {
+  providers: [
+    {
+      configured: true,
+      displayName: "Telegram",
+      docsUrl: "https://example.invalid",
+      id: "telegram",
+      pairedOwner: "424242",
+      registered: true,
+      source: "file"
+    },
+    {
+      configured: true,
+      displayName: "Discord",
+      docsUrl: "https://example.invalid",
+      id: "discord",
+      registered: false,
+      source: "file"
+    }
+  ]
+};
+
+function fakeClientWithChannels(): ApiClient {
+  const client = fakeClient();
+  (client.get as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/flows") return FLOWS_RESPONSE;
+    if (path === "/api/scheduler/jobs/job_1") return JOB_DETAIL;
+    if (path === "/api/muse/loopback") return LOOPBACK_CATALOG;
+    if (path === "/api/messaging/setup") return PAIRED_SETUP;
+    throw new Error(`unexpected GET ${path}`);
+  });
+  return client;
 }
 
 /** Same shape as `fakeClient()` but with an injectable `post` — the 코파일럿
@@ -430,4 +465,30 @@ test("the canvas full-screen toggle adds the overlay class, and Escape exits it"
   // on window, which is where a real keypress with no focused input lands).
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   await expect.poll(() => wrap!.classList.contains("flow-canvas-fullscreen")).toBe(false);
+});
+
+test("the notify picker offers only deliverable channels and fills the resolved provider:destination", async () => {
+  const client = fakeClientWithChannels();
+  const screen = await renderFlows(client);
+
+  await screen.getByText("Execution record", { exact: true }).click();
+
+  // The picker appears (paired Telegram is deliverable); the raw text field
+  // stays alongside it.
+  const picker = screen.getByRole("combobox", { name: "Pick from connected channels" });
+  await expect.element(picker).toBeVisible();
+
+  // Discord is registered:false → not deliverable → never offered.
+  const pickerEl = document.querySelector<HTMLSelectElement>('select[aria-label="Pick from connected channels"]');
+  const optionLabels = [...(pickerEl?.options ?? [])].map((o) => o.textContent);
+  expect(optionLabels.some((l) => l?.includes("Telegram"))).toBe(true);
+  expect(optionLabels.some((l) => l?.includes("Discord"))).toBe(false);
+
+  // Selecting the channel fills the exact provider:destination value.
+  await picker.selectOptions("telegram:424242");
+  const channelInput = screen.getByPlaceholder("e.g. telegram:123456");
+  await expect.element(channelInput).toHaveValue("telegram:424242");
+
+  await screen.getByRole("button", { name: "Save" }).click();
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { notificationChannelId: "telegram:424242" });
 });

@@ -7,6 +7,7 @@ import { Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
+import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
 import {
   draftToPreviewProjection,
   emptyFlowDraft,
@@ -184,6 +185,7 @@ export function FlowCreatePanel({
 
         <label style={{ display: "grid", gap: 4 }}>
           <span className="field-label">{t("auto.flows.edit.notifyLabel")}</span>
+          <NotifyChannelQuickPick client={client} onPick={(value) => setDraft({ ...draft, notificationChannelId: value })} />
           <input
             className="input"
             type="text"

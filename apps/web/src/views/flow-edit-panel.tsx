@@ -22,6 +22,7 @@ import {
   type TriggerEditForm
 } from "./flow-edit-compile.js";
 import { KIND_LABEL_KEY } from "./flow-nodes.js";
+import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { FlowCanvasNode } from "./flow-canvas-mapping.js";
@@ -359,6 +360,7 @@ function OutputEditFields({
     <div style={{ display: "grid", gap: 8 }}>
       <label style={{ display: "grid", gap: 4 }}>
         <span className="field-label">{t("auto.flows.edit.notifyLabel")}</span>
+        <NotifyChannelQuickPick client={client} onPick={(value) => setForm({ notificationChannelId: value })} />
         <input
           className="input"
           type="text"
