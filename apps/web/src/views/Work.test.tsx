@@ -171,9 +171,16 @@ describe("WorkTab — i18n parity", () => {
       "work.outcome.adjusted",
       "work.outcome.ignored"
     ] as const;
+    // Product nouns stay English in BOTH locales (owner call, 2026-07-17):
+    // the automation surfaces are named Flows/Scheduled/Work everywhere.
+    const productNouns = new Set(["nav.work"]);
     for (const key of keys) {
       expect(DICTIONARIES.ko[key], `missing KO string for ${key}`).toBeTruthy();
-      expect(DICTIONARIES.ko[key]).not.toBe(DICTIONARIES.en[key]);
+      if (productNouns.has(key)) {
+        expect(DICTIONARIES.ko[key]).toBe(DICTIONARIES.en[key]);
+      } else {
+        expect(DICTIONARIES.ko[key]).not.toBe(DICTIONARIES.en[key]);
+      }
     }
   });
 });
