@@ -1,7 +1,7 @@
 # Capability-Parity Backlog — Judgment (Muse-fit assessment)
 
 > Generated 2026-06-23 by 21 INDEPENDENT judges (maker≠judge) over all 231 opportunities in
-> [`capability-parity-backlog.md`](capability-parity-backlog.md). The lens is **Muse's identity** —
+> [`growth-backlog.md`](growth-backlog.md). The lens is **Muse's identity** —
 > a single-user, LOCAL, grounded personal companion ("Learns you, not the world") — NOT the
 > multi-tenant hosted gateways openclaw/hermes are. A real competitor feature can still be the
 > wrong thing for Muse; that is what this judgment separates out.

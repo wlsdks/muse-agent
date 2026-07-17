@@ -2,3 +2,12 @@
 # byte-hygiene gate (packages/shared test/repo-byte-hygiene.test.ts) forbids
 # raw CR bytes, so a CRLF checkout on a Windows runner would flag every line.
 * text=auto eol=lf
+
+# Shared work ledgers are append-heavy and written by concurrent
+# loops/worktrees — union merge keeps both sides' additions instead of
+# conflicting on every parallel append (the observed daily pain). Known
+# tradeoff: simultaneous edits of the SAME line can duplicate instead of
+# conflict — the ledgers' curation rule (prune on every write) absorbs it.
+docs/goals/backlog.md merge=union
+docs/goals/growth-backlog.md merge=union
+docs/goals/rival-watch.md merge=union

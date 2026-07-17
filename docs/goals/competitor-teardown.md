@@ -3,7 +3,7 @@
 > Generated 2026-06-23 by an exhaustive 20-theme source teardown + completeness critic.
 > **442 competitor file-reads** (420 distinct) across `/Users/jinan/ai/openclaw`
 > (TS/JS) and `/Users/jinan/ai/hermes-agent` (Python). Reference-only competitive analysis of
-> open-source projects; Muse builds its own designs (see `capability-parity-backlog.md`).
+> open-source projects; Muse builds its own designs (see `growth-backlog.md`).
 >
 > This document explains **how the two reference agents actually work**, theme by theme, grounded
 > in real source. 260 distinct capabilities catalogued. Use it to understand the field;

@@ -12,7 +12,7 @@ its ship is the intelligence itself.
 
 The exhaustive base already exists: the 2026-06-23 teardown
 (`docs/goals/competitor-teardown.md`, 420 files → 231 judged opportunities in
-`capability-parity-backlog.md` + `capability-parity-judgment.md`). Re-deriving
+`growth-backlog.md` + `judgment-lens.md`). Re-deriving
 that ground is the documented waste this skill exists to prevent — scout the
 DELTA, never the base.
 
@@ -67,7 +67,7 @@ DELTA, never the base.
 
 4. **DELIVER (ledger, not essay)** —
    - `build`/`maybe` capability items → append rows to
-     `capability-parity-backlog.md` in its row format, tagged `[scout
+     `growth-backlog.md` in its row format, tagged `[scout
      YYYY-MM-DD]` — `build` rows are grow-muse rung-4 fuel; `maybe` rows
      stage the reservoir until re-judged `build`.
    - Rival hardening/reliability tricks Muse lacks → one ◦ line each in
