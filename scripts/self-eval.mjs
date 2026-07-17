@@ -265,6 +265,7 @@ function main() {
   gates.capabilities = gateExit("pnpm -s check:capabilities");
   gates.promptSeam = gateExit("pnpm -s check:prompt-seam");
   gates.envInventory = gateExit("pnpm -s check:env");
+  gates.ledgerFormat = gateExit("node scripts/check-ledger-format.mjs");
   gates.commentMarkers = gateExit("pnpm -s lint:comments");
   gates.toolchain = gateExit("pnpm -s check:toolchain");
   // Gate runnability: a stale install/dist kills the API server at import

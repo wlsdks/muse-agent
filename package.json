@@ -105,6 +105,7 @@
     "eval:reverify-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-reverify-fix.mjs",
     "eval:channel-rhythm": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/api build && node scripts/eval-channel-rhythm.mjs",
     "check:env": "node scripts/env-inventory.mjs --check",
+    "check:ledger": "node scripts/check-ledger-format.mjs",
     "docs:env": "node scripts/env-inventory.mjs --write",
     "check:toolchain": "node scripts/check-toolchain.mjs"
   },

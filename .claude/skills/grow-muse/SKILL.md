@@ -17,7 +17,8 @@ Working-but-poor UX of an existing surface → here (usable and correct, just
 clunky — slow flows, confusing labels). BROKEN — including failing its
 function without erroring (unreadable, dead affordance, wrong output) →
 improve-muse; hardening debt found mid-build
-gets one ◦ line tagged `→improve-muse`, never absorbed into the slice.
+gets one `- [open] for=improve-muse :: ...` record in backlog.md, never
+absorbed into the slice.
 A loop calling only this skill grows forever — pair with improve-muse.
 
 **Standing authorizations (Jinan 2026-06-27, this skill only):** push on
@@ -77,8 +78,8 @@ not a stub.
    named gate/battery moved, or it's `⚠ shipped-but-insufficient`.
 
 6. **SHIP + CURATE** — one Conventional Commit (user story + scores +
-   evidence in body), push on green. Flip the source line ✓, prune ≥1
-   stale line.
+   evidence in body), push on green. Flip the source row ✓ (growth-backlog)
+   or move it to `backlog-archive.md` (backlog items); prune ≥1 stale line.
 
 ## Rationalizations (reject on sight)
 

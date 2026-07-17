@@ -8,7 +8,8 @@
 
 | 파일 | 쓰는 쪽 | 읽는(소비하는) 쪽 | 내용 |
 |---|---|---|---|
-| `backlog.md` | improve-muse(◦/✓), scout(`→improve-muse` 태그), grow(미드빌드 부채 태그) | **improve-muse** rung 4 | 살아있는 원장: ★ OPEN → ◦ ready → ✓ done |
+| `backlog.md` | improve-muse(◦ 추가/제거), scout(`→improve-muse` 태그), grow(부채 태그) | **improve-muse** rung 4 | **열린 것만**: ★ open · ◦ ready · ⏳ · Rejected/Blocked (2026-07-17 수명 분리) |
+| `backlog-archive.md` | improve-muse/grow의 완료 ✓ 라인 (완료 시 backlog에서 이쪽으로 이동) | freshness guard·dedup의 grep 대상 | 완료·superseded·exhausted 역사 (append-only) |
 | `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; ✓ 플립도 grow) | 역량 기회 저수지 (231 base + scout 델타) |
 | `judgment-lens.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
 | `rival-watch.md` | **scout 전용** | 다음 scout (워터마크가 델타의 펜스) | 로스터·선반(~/ai 클론, 라이선스, 🚨khoj AGPL)·fire 로그 |
@@ -45,6 +46,24 @@ git 공식 드라이버, rebase에도 적용, RED→GREEN 재현 검증됨). 알
 같은 줄을 동시에 고치면 충돌 대신 **중복 줄**이 생길 수 있다 → 큐레이션 규칙이 잡는다.
 동시 작성자가 훨씬 늘면 다음 단계는 GitLab-식 **엔트리-파일 분리**(항목=파일,
 상태=디렉토리 이동; git-bug/ripissue 계열 prior art) — 지금은 과잉이라 미채택.
+
+## 기록 템플릿 (2026-07-17 진안 지시 — 분석 가능한 데이터로)
+
+backlog.md·backlog-archive.md의 모든 최상위 `- ` 줄은 이 문법을 따른다
+(`scripts/check-ledger-format.mjs`가 self-eval 게이트로 강제):
+
+```
+- [status] YYYY-MM-DD key=value ... :: 자유 서술 (제목/내용)
+  이어지는 상세는 2칸 들여쓰기 (여러 줄 허용, 자유 산문)
+```
+
+- **status** (단어만): `open` 해야할 것 · `done` 완료 · `blocked` 막힘 ·
+  `decision` 사람 결정 대기 · `rejected` 기각(재유도 금지) · `superseded` 대체됨
+- **필드** (있는 것만, 공백 구분): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout>`
+  `src=<probe|scout|owner|loop|audit>` `prio=<1-5>` `gate="before->after"`
+  `for=<improve-muse|grow-muse>`
+- **이모지·장식기호 금지** (수학 기호는 허용). 화살표는 `->`.
+- 분석 예: `grep '^- \[done\]' | ...` 로 날짜·커밋·게이트델타가 바로 뽑힌다.
 
 ## 큐레이션 규칙 (모든 장부 공통)
 

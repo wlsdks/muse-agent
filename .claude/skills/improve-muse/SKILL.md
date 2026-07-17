@@ -13,8 +13,8 @@ push. Sibling `grow-muse` builds what doesn't exist yet.
 and broken includes failing its function for the user WITHOUT erroring
 (unreadable text, dead affordance, wrong or misleading output). MISSING
 capability → grow-muse. Working-but-poor (usable and correct, just clunky —
-slow flows, confusing labels) → grow-muse. Cross-finds get one ◦ line tagged
-`→grow-muse`, never built here.
+slow flows, confusing labels) → grow-muse. Cross-finds get one `- [open]
+for=grow-muse :: ...` record in backlog.md, never built here.
 A loop calling only this skill hardens forever — pair it with a grow-muse
 loop to move both axes.
 
@@ -36,12 +36,13 @@ a coherent unit, not the narrowest edit.
       surfaces (one `ask`, `/health`, web loads); skim newest run errors.
       A paper cut found here (silent failure, wrong exit code, lying copy,
       dead affordance) outranks every ledger line. Fixed this fire ⇒ the
-      commit is the record; NOT fixed ⇒ one terse ◦ line so the next probe
-      doesn't re-pick it.
-   4. `docs/goals/backlog.md` — grep the ★ OPEN block then ◦ hardening
-      lines ONLY (never load the whole file). Before committing to any
-      item, cross-check git log + codegraph: already shipped ⇒ flip to ✓
-      and keep finding.
+      commit is the record; NOT fixed ⇒ one terse `- [open]` record so the
+      next probe doesn't re-pick it.
+   4. `docs/goals/backlog.md` — grep `- [open]` records (hardening kinds)
+      ONLY; never load the whole file. Record grammar: docs/goals/README.md
+      (\`- [status] date key=value :: text\`, no emoji). Before committing
+      to any item, cross-check git log + codegraph: already shipped means
+      move it to the archive as [done] and keep finding.
    5. **Subtraction pass:** dead surface, unused flag, lying doc, duplicate
       logic. Net-negative LOC with green gates is a first-class slice.
       (Removing a user-visible feature is a ⏳ product call.)
@@ -61,15 +62,17 @@ a coherent unit, not the narrowest edit.
    move is `⚠ shipped-but-insufficient`, not done.
 
 5. **SHIP + CURATE** — one Conventional Commit (evidence in body), push on
-   green. Write-back is curation: ONE delta-bearing ✓ line, prune ≥1 stale
-   line (net ≈ 0).
+   green. Write-back is curation: remove the item from `backlog.md` (open
+   queue) and put ONE `- [done] date commit= gate= :: ...` record in
+   `backlog-archive.md` (template: goals README); prune
+   ≥1 stale line (net ≈ 0). Freshness/dedup checks grep BOTH files.
 
 ## Rationalizations (all observed — reject on sight)
 
 | Excuse | Reality |
 |---|---|
 | "할 게 없다" | Rungs 3 and 5 never come up empty. Probe, then subtract. |
-| "백로그에 ◦ open이니 할 일" | Freshness first — already-shipped items are a ✓ flip, not work. |
+| "백로그에 [open]이니 할 일" | Freshness first — already-shipped items move to the archive as [done], not work. |
 | "커밋했으니 done" | Done = the gate MOVED. No delta ⇒ shipped-but-insufficient. |
 | "백로그 통째로 읽고 고르기" | Grep the section. Full-loading rots the pick. |
 | "새 기능이 더 가치 있어 보임" | Tag `→grow-muse`, keep hardening. One item, one owner. |

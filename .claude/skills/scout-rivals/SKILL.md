@@ -70,8 +70,9 @@ DELTA, never the base.
      `growth-backlog.md` in its row format, tagged `[scout
      YYYY-MM-DD]` — `build` rows are grow-muse rung-4 fuel; `maybe` rows
      stage the reservoir until re-judged `build`.
-   - Rival hardening/reliability tricks Muse lacks → one ◦ line each in
-     `docs/goals/backlog.md` tagged `→improve-muse`.
+   - Rival hardening/reliability tricks Muse lacks → one `- [open]
+     src=scout for=improve-muse :: ...` record each in
+     `docs/goals/backlog.md` (template: goals README).
    - Update the rival-watch.md watermark (date, SHAs, roster changes,
      queries run) and prune anything the delta obsoleted.
    - Commit the ledger updates (docs commit) and push on green gates.
