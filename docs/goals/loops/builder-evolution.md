@@ -39,3 +39,13 @@ ratchet: scheduler 177(+8) · api scheduler-routes 12(+4) · web browser 19(+1) 
 - 리스크: 이름 유니크 제약 없음(중복 "X (copy)" 허용) — 의도된 동작.
 - lesson: config-복사 매퍼는 필드-바이-필드 감사 필수 — Opus 1차가 webhookUrl 누락(green 스위트가 못 잡은 silent divergence, 배달 타깃 소실) 검출; 원본 인터페이스 열거→매퍼 대조로 20/20 확인 후 PASS. 이후 이런 매퍼엔 "모든 config 필드" 테스트를 처음부터.
 - 라이브: 실브라우저 e2e(격리 데모) 복제 클릭→새 흐름 "Daily brief (사본)" 별 id·enabled=false·원본 무변경, API list 2건 확인.
+
+## fire 5 · 2026-07-18 · skill v2.1.1 · d3482e441
+meta: value-class=ux-fix · pkg=@muse/web · kind=ui-legibility · verdict=PASS(opus) · firesSinceDrill=5
+ratchet: web SSR 549(+7) · compile unit +6 · component +1 · fabrication 0
+- 무엇: 실행 기록 카드가 FAILED 실행의 계산된 failureReason(깨끗한 이유)을 danger 톤으로 표시. resolveExecutionDisplay(순수)가 FAILED+비어있지않은 reason→error 톤, 그 외→output. raw "Job 'X' failed:" 접두는 배지와 중복이라 제거.
+- 왜: 실패 이유(failureReason)가 API엔 계산돼 오는데 UI가 안 써서 dead data였고, FAILED 결과가 성공 출력과 같은 muted 스타일로 묻혀 실패 이유가 안 읽혔음.
+- 리뷰지점: 정보 손실 없음 — schedulerFailureReason은 접두만 스트립, 나머지 전부 reason에 남고 show-more로 전문 노출. 전 status/field 조합 유닛 커버.
+- 리스크: 없음(순수 표시 로직).
+- lesson: 실브라우저 측정이 CSS specificity 버그 검출 — bare `.exec-error`(0,1,0)가 `.row .row-meta`(0,2,0)에 짐→grey. SSR 테스트는 클래스 존재만 확인(계산 색상 못 봄). 2-class `.row-meta.exec-error`로 수정. 교훈: 기존 색을 오버라이드하는 새 클래스는 대상 셀렉터의 specificity를 매칭+뒤 순서, 그리고 실브라우저로 computed color 측정 필수.
+- 라이브: 격리 데모 실패 tool run — .exec-error가 "MCP server ... not connected" (접두 없음) rgb(229,83,75)=danger로 렌더.
