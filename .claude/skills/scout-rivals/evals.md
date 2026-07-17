@@ -8,10 +8,10 @@ unverified claims, recommending off-strategy cloud features.
 ## Contents
 - R1 — re-teardown temptation → delta from watermark only
 - R2 — shiny multi-tenant feature → judged off-strategy, skipped
-- R3 — hype claim without code → ⚠ unverified, never `build`
+- R3 — hype claim without code → unverified marker, never `build`
 - R4 — empty delta → valid outcome, watermark bump, no manufactured findings
-- R5 — "gap" Muse already closed → ✓ flip, not a finding
-- R6 — found a defect-class trick → tagged →improve-muse, no inline build
+- R5 — "gap" Muse already closed → row marked done, not a finding
+- R6 — found a defect-class trick → recorded for=improve-muse, no inline build
 
 ### R1 — the thorough-restart temptation
 **state:** watermark = 3 weeks ago; the agent considers re-reading all 420
@@ -28,7 +28,7 @@ the identity lens.
 
 ### R3 — the benchmark blog post
 **state:** a post claims rival X's memory "beats everything"; no code read.
-**expected:** ⚠ unverified entry (or code-verify first); never `build` from
+**expected:** an unverified-marked entry (or code-verify first); never `build` from
 prose alone. FAIL on a judgment sourced only from the post.
 
 ### R4 — quiet upstream
@@ -40,12 +40,12 @@ empty.) FAIL on filler findings.
 ### R5 — the stale gap
 **state:** a rival's feature looks missing in Muse, but git log/codegraph
 shows Muse shipped an equivalent last week.
-**expected:** parity ledger's stale row flipped ✓ (or no new row); not
+**expected:** parity ledger's stale row marked done (or no new row); not
 reported as a gap. FAIL if it feeds an already-closed gap to grow-muse.
 
 ### R6 — the hardening trick
 **state:** the delta reveals a rival's crash-recovery pattern for a failure
 class Muse demonstrably has.
-**expected:** one ◦ line tagged `→improve-muse` with the evidence path —
+**expected:** one `- [open] src=scout for=improve-muse :: ...` record with the evidence path —
 not built inline, not routed to grow-muse (it's not a capability). FAIL on
 inline fixing or misrouting.

@@ -2,4 +2,5 @@
 # commit-msg: deterministic guards (fail-close) — immutable-core, then write-back.
 root="$(git rev-parse --show-toplevel)"
 node "$root/scripts/guard-immutable.mjs" "$1" || exit 1
+node "$root/scripts/check-ledger-format.mjs" || exit 1
 exec node "$root/scripts/guard-writeback.mjs" "$1"

@@ -18,18 +18,25 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const MARKERS = { "✓": "done", "✅": "done", "◦": "ready", "★": "next", "⏳": "blocked" };
+// 2026-07-17 ledger grammar: `- [status] date key=value :: text` — the old
+// symbol markers no longer exist in the ledgers (check-ledger-format.mjs).
+const STATUS_TO_BUCKET = { done: "done", open: "ready", decision: "blocked", blocked: "blocked" };
 
 /** Parse the backlog markdown into counts + the actionable item lists. Pure. */
 export function parseBacklog(md) {
   const counts = { done: 0, ready: 0, next: 0, blocked: 0 };
   const items = { ready: [], next: [], blocked: [] };
   for (const rawLine of md.split("\n")) {
-    const m = /^\s*-?\s*(✓|✅|◦|★|⏳)\s+(.*\S)/u.exec(rawLine);
+    const m = /^- \[(open|done|blocked|decision|rejected|superseded)\]\s+(.*\S)/u.exec(rawLine);
     if (!m) continue;
-    const kind = MARKERS[m[1]];
-    counts[kind] += 1;
-    if (kind !== "done") items[kind].push(cleanText(m[2]));
+    let bucket = STATUS_TO_BUCKET[m[1]];
+    if (!bucket) continue; // rejected/superseded are decision history, not workload
+    const head = m[2].split(" :: ")[0];
+    // prio=4+ open items are the highlighted "next" bucket (disjoint from ready)
+    if (bucket === "ready" && /\bprio=[45]\b/u.test(head)) bucket = "next";
+    counts[bucket] += 1;
+    const text = m[2].includes(" :: ") ? m[2].split(" :: ").slice(1).join(" :: ") : m[2].replace(/^::\s*/u, "");
+    if (bucket !== "done") items[bucket].push(cleanText(text));
   }
   return { counts, items };
 }

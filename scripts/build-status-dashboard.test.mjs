@@ -13,12 +13,13 @@ import {
 
 test("parseBacklog counts each marker and lists the actionable (non-done) items", () => {
   const md = [
-    "- ✓ shipped thing one",
-    "- ✓ shipped thing two",
-    "- ★ the next priority",
-    "  - ◦ a ready slice",
-    "  - ◦ another ready slice",
-    "- ⏳ blocked on a decision",
+    "- [done] 2026-07-16 commit=abc1234 :: shipped thing one",
+    "- [done] :: shipped thing two",
+    "- [open] prio=5 :: the next priority",
+    "- [open] :: a ready slice",
+    "- [open] kind=fix :: another ready slice",
+    "- [decision] :: blocked on a decision",
+    "- [rejected] :: a rejected direction — counted nowhere",
     "plain prose line — not an item",
     "## a heading"
   ].join("\n");

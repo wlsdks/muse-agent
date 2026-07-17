@@ -8,9 +8,9 @@
 
 | 파일 | 쓰는 쪽 | 읽는(소비하는) 쪽 | 내용 |
 |---|---|---|---|
-| `backlog.md` | improve-muse(◦ 추가/제거), scout(`→improve-muse` 태그), grow(부채 태그) | **improve-muse** rung 4 | **열린 것만**: ★ open · ◦ ready · ⏳ · Rejected/Blocked (2026-07-17 수명 분리) |
+| `backlog.md` | improve-muse([open] 추가/제거), scout(for=improve-muse 레코드), grow(부채 레코드) | **improve-muse** rung 4 | **열린 것만**: [open] · [decision] · [blocked] · [rejected] (2026-07-17 수명 분리) |
 | `backlog-archive.md` | improve-muse/grow의 완료 ✓ 라인 (완료 시 backlog에서 이쪽으로 이동) | freshness guard·dedup의 grep 대상 | 완료·superseded·exhausted 역사 (append-only) |
-| `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; ✓ 플립도 grow) | 역량 기회 저수지 (231 base + scout 델타) |
+| `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; done 처리도 grow) | 역량 기회 저수지 (231 base + scout 델타) — **자체 행 형식 유지, 레코드 문법·체커 대상 아님(명시적 예외)** |
 | `judgment-lens.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
 | `rival-watch.md` | **scout 전용** | 다음 scout (워터마크가 델타의 펜스) | 로스터·선반(~/ai 클론, 라이선스, 🚨khoj AGPL)·fire 로그 |
 
@@ -64,6 +64,11 @@ backlog.md·backlog-archive.md의 모든 최상위 `- ` 줄은 이 문법을 따
   `for=<improve-muse|grow-muse>`
 - **이모지·장식기호 금지** (수학 기호는 허용). 화살표는 `->`.
 - 분석 예: `grep '^- \[done\]' | ...` 로 날짜·커밋·게이트델타가 바로 뽑힌다.
+- **강제**: commit-msg 훅 + self-eval 게이트(`check-ledger-format.mjs`) — 문법·금지기호·
+  kind 닫힌집합·(2026-07-18 이후 날짜의 [done]엔) commit= 필수·들여쓰기 레코드 금지.
+- **범위**: backlog.md + backlog-archive.md만. growth-backlog(자체 행 형식)·rival-watch
+  (워터마크 형식)·judgment-lens(동결)는 명시적 예외. 2026-07-18 이전의 과거 레코드는
+  필드 없는 텍스트 데이터로 남는다(아카이브는 이동 커밋이라 git-blame 날짜 복원 불가).
 
 ## 큐레이션 규칙 (모든 장부 공통)
 

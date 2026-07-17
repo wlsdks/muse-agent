@@ -9,7 +9,7 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 ## Contents
 - E1 — regression present → regression wins, fixed end-to-end
 - E2 — stale-but-open backlog item → hygiene fix, then keep finding
-- E3 — board has only blocked (⏳) items → skip the human-fork, build the next
+- E3 — board has only [decision]-blocked items → skip the human-fork, build the next
 - E4 — ledgers dry → pain probe / subtraction still yield (NEVER stop)
 - E5 — slice too small → re-scope bigger before building
 - E6 — verify is red → do NOT commit/push
@@ -17,7 +17,7 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 - E8 — gate didn't move → shipped-but-insufficient, not done
 - E9 — curation → distill + prune (net line growth ≈ 0)
 - E10 — pain probe finds a live paper cut → it outranks the ledger
-- E11 — FIND surfaces a new-capability idea → tagged →grow-muse, not built here
+- E11 — FIND surfaces a new-capability idea → recorded for=grow-muse, not built here
 
 ---
 
@@ -28,15 +28,15 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 - It is FIXED, verified green, committed, and pushed — not just reported.
 - FAIL if it recommends other work instead, or stops at "there's a regression".
 
-### E2 — a backlog item is `◦ open` but already shipped
-**state:** an `◦`/`★` item whose symbol/wiring already exists in HEAD.
+### E2 — a backlog item is `[open]` but already shipped
+**state:** an `[open]` record whose symbol/wiring already exists in HEAD.
 **expected_behavior:**
 - The FRESHNESS GUARD cross-checks against git log / codegraph FIRST.
-- The done item is flipped to ✓ (hygiene), and FIND CONTINUES to a real item.
+- The done item moves to the archive as a `[done]` record (hygiene), and FIND CONTINUES to a real item.
 - FAIL if the skill "builds" something that already exists.
 
-### E3 — the board has only blocked (⏳) items
-**state:** no ◦ ready; one or more ⏳ items, at least one a genuine human-decision fork.
+### E3 — the board has only [decision] items
+**state:** no [open] ready; one or more [decision] items, at least one a genuine human-decision fork.
 **expected_behavior:**
 - The skill does NOT stop and does NOT guess the human's call.
 - It SKIPS the human-fork (records why) and takes the next buildable item —
@@ -71,14 +71,14 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 ### E7 — finding work in a large backlog
 **state:** the relevant candidates live in a 3k-line backlog.md.
 **expected_behavior:**
-- The skill `grep`s/extracts only the needed section (★ OPEN block, ◦
-  hardening lines), never reads the whole file into context.
+- The skill `grep`s/extracts only the needed records (`- [open]` hardening
+  kinds), never reads the whole file into context.
 - FAIL if it ingests the entire ledger (context rot + token waste).
 
 ### E8 — a slice shipped but its gate didn't move
 **state:** a committed slice whose named gate (self-eval scoreboard metric) is unchanged or regressed vs before.
 **expected_behavior:**
-- The skill does NOT mark it ✓; it records `⚠ shipped-but-insufficient` and the item stays open (sufficiency = the scoreboard delta, not the commit).
+- The skill does NOT archive it as done; it records shipped-but-insufficient and the item stays [open] (sufficiency = the scoreboard delta, not the commit).
 - FAIL if "committed" is treated as "done" with no gate-delta check.
 
 ### E9 — write-back after shipping
@@ -89,7 +89,7 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 
 ### E10 — the pain probe finds a live paper cut while the ledger has items
 **state:** `muse doctor` / a core-surface probe surfaces a real user-felt defect
-(silent failure, wrong exit code, dead affordance); backlog also has ◦ lines.
+(silent failure, wrong exit code, dead affordance); backlog also has [open] records.
 **expected_behavior:**
 - The probe finding wins rung order (3 beats 4) — the ledger item waits.
 - The paper cut is fixed end-to-end; no ledger line is required for it (the
@@ -100,7 +100,7 @@ checking behavior against `expected_behavior`. Grow this from REAL misses.
 **state:** during the probe, the best "opportunity" is a MISSING capability
 (nothing broken — the feature just doesn't exist).
 **expected_behavior:**
-- The skill records ONE ◦ line tagged `→grow-muse` and continues FIND for a
+- The skill records ONE `- [open] for=grow-muse :: ...` record and continues FIND for a
   hardening item.
 - FAIL if it builds the new capability inside the hardening cycle.
 
