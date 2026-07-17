@@ -6,7 +6,7 @@
  * (MuseChatApp) lives in chat-ink.ts; render-free logic lives in chat-ink-core.ts.
  */
 
-import { buildContextWindowOptions, createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
@@ -34,6 +34,7 @@ import {
   recurringEpisodeThreads,
   resolveChatHistoryWindow,
   type ChatTurnMessage,
+  type ApprovalPromptDecision,
   type JobListItem,
   type MemorySnapshot,
   type ResumeConversationResult
@@ -202,10 +203,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // fire. Outbound actuators stay forbidden (no autonomous third-party send);
   // read tools + local writes run. Falls back to plain stream if no runtime.
   const agentRuntime = assembly.agentRuntime;
+  const recordRuntimeDecision = createProgressiveAutonomyRuntimeDecisionRecorder({
+    attunementFile: resolveAttunementFile(process.env),
+    opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(process.env),
+    ownerUserId: userId,
+    tasksFile: resolveTasksFile(process.env)
+  });
   const streamWithTools = (
     messages: readonly ChatTurnMessage[],
     useModel: string,
-    requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>
+    requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>
   ): ChatStream => {
     if (!agentRuntime) return stream(messages, useModel);
     const events = agentRuntime.stream({
@@ -225,7 +232,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       // (a separate slice), not a stale-persona skip.
       metadata: { localMode: true, userId },
       model: useModel,
-      toolApprovalGate: chatToolApprovalGate(OUTBOUND_ACTUATORS, requestApproval)
+      toolApprovalGate: chatToolApprovalGate(OUTBOUND_ACTUATORS, requestApproval, recordRuntimeDecision)
     });
     // Record which playbook strategies this turn's prompt carried so the
     // end-of-session reward step credits an actually-injected strategy

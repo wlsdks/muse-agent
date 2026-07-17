@@ -54,6 +54,7 @@ import {
   runFocusedCompaction,
   undoExchanges,
   type ChatTurnMessage,
+  type ApprovalPromptDecision,
   type InkKeyEvent,
   type InputState,
   type JobListItem,
@@ -239,7 +240,7 @@ export function MuseChatApp(props: {
    */
   readonly cloudTurn?: (message: string, personaBlock: string, groundingBlock: string) => Promise<{ readonly text: string; readonly marker: string } | undefined>;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
-  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly readFile: (relativePath: string) => Promise<string | undefined>;
   readonly readImage?: (relativePath: string) => Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined>;
   readonly saveText: (text: string) => Promise<string | undefined>;
@@ -339,14 +340,18 @@ export function MuseChatApp(props: {
   // write/execute tool, which surfaces a y/n prompt and resolves when the user
   // answers. The detail line shows the exact arguments so the user confirms the
   // content, not just the tool name (outbound-safety.md rule 1).
-  const requestApproval = useCallback(async (name: string, detail: string, kind: "outbound" | "tool"): Promise<boolean> => {
+  const requestApproval = useCallback(async (name: string, detail: string, kind: "outbound" | "tool"): Promise<ApprovalPromptDecision> => {
     const id = approvalRequestIdRef.current + 1;
     approvalRequestIdRef.current = id;
     setPendingApproval({ id, detail, kind, name });
     while (true) {
-      const [decisionId, approved] = await once(approvalBusRef.current, "approvalDecision") as [number, boolean];
-      if (decisionId === id) return approved === true;
+      const [decisionId, decision] = await once(approvalBusRef.current, "approvalDecision") as [number, ApprovalPromptDecision];
+      if (decisionId === id) return decision;
     }
+  }, []);
+
+  useEffect(() => () => {
+    approvalBusRef.current.emit("approvalDecision", approvalRequestIdRef.current, "cancel");
   }, []);
 
   // Animate a spinner while a reply is in flight (until the first token).
@@ -864,19 +869,21 @@ export function MuseChatApp(props: {
     // line and arms; the next quits. Detect both legacy (\x03) and the kitty
     // protocol form. exitOnCtrlC is off so Ink doesn't pre-empt this.
     const isCtrlC = key.ctrl && (rawInput === "c" || rawInput === "\x03");
+    if (pendingApproval) {
+      const decision: ApprovalPromptDecision = rawInput === "y" || rawInput === "Y"
+        ? "approve"
+        : rawInput === "n" || rawInput === "N"
+          ? "deny"
+          : "cancel";
+      approvalBusRef.current.emit("approvalDecision", pendingApproval.id, decision);
+      setPendingApproval(undefined);
+      return;
+    }
     if (isCtrlC) {
       if (ctrlCArmed || exiting) { setExiting(true); return; }
       setCtrlCArmed(true);
       setInputState(emptyInput);
       setSlashIndex(0);
-      return;
-    }
-    // An outbound action is awaiting confirmation: y approves, anything else
-    // (n / Esc / Enter) denies. Fail-closed — only an explicit y sends.
-    if (pendingApproval) {
-      const approved = rawInput === "y" || rawInput === "Y";
-      approvalBusRef.current.emit("approvalDecision", pendingApproval.id, approved);
-      setPendingApproval(undefined);
       return;
     }
     // Esc while replying interrupts the stream (UI stops consuming it).
@@ -1152,7 +1159,7 @@ export function MuseChatApp(props: {
             `⚠ ${pendingApproval.kind === "outbound" ? "Outbound action" : "Tool action"} — ${pendingApproval.name}`),
           h(Text, null, pendingApproval.detail),
           h(Text, { dimColor: true },
-            `${pendingApproval.kind === "outbound" ? "Send this?" : "Run this?"}  y = approve  ·  any other key = cancel`))
+            `${pendingApproval.kind === "outbound" ? "Send this?" : "Run this?"}  y = approve  ·  n = deny  ·  any other key = cancel`))
       : null,
     inputBox,
     menuElement,
@@ -1160,4 +1167,3 @@ export function MuseChatApp(props: {
     hintElement,
     hudElement);
 }
-

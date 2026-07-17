@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { readAttunementState } from "@muse/attunement";
-import { readTaskByIdStrict } from "@muse/stores";
 import {
   FileProgressiveAutonomyOpportunityStore,
   type ProgressiveAutonomyOpportunityReviewDecision,
@@ -9,9 +7,12 @@ import {
   type ProgressiveAutonomyRuntimeOpportunityReceipt
 } from "@muse/stores/host-progressive-autonomy-opportunities";
 
-export type ProgressiveAutonomyCurrentSource =
-  | { readonly state: "exact" }
-  | { readonly reason: string; readonly state: "stale" | "unavailable" };
+import {
+  resolveProgressiveAutonomyCurrentSource,
+  type ProgressiveAutonomyCurrentSource
+} from "./progressive-autonomy-current-source.js";
+
+export type { ProgressiveAutonomyCurrentSource } from "./progressive-autonomy-current-source.js";
 
 export interface ProgressiveAutonomyOpportunityReviewPresentation {
   readonly action: ProgressiveAutonomyRuntimeOpportunityReceipt["envelope"]["action"];
@@ -50,8 +51,15 @@ export class ProgressiveAutonomyOpportunityReviewService {
   }
 
   async review(): Promise<ProgressiveAutonomyOpportunityReviewPresentation | undefined> {
-    const [opportunities, reviews] = await Promise.all([this.store.list(), this.store.listReviews()]);
-    const reviewed = new Set(reviews.map((entry) => entry.opportunityId));
+    const [opportunities, reviews, runtimeDecisions] = await Promise.all([
+      this.store.list(),
+      this.store.listReviews(),
+      this.store.listRuntimeDecisions()
+    ]);
+    const reviewed = new Set([
+      ...reviews.map((entry) => entry.opportunityId),
+      ...runtimeDecisions.map((entry) => entry.opportunityId)
+    ]);
     const opportunity = opportunities
       .filter((entry) => entry.evidenceClass === "organic"
         && entry.envelope.userId === this.options.ownerUserId
@@ -73,6 +81,9 @@ export class ProgressiveAutonomyOpportunityReviewService {
     }
     if (opportunity.evidenceClass !== "organic") {
       throw new TypeError("only organic opportunities can be reviewed");
+    }
+    if ((await this.store.listRuntimeDecisions()).some((entry) => entry.opportunityId === opportunity.id)) {
+      throw new TypeError("progressive autonomy opportunity already has different explicit evidence");
     }
     const reason = normalizeReason(input.reason);
     const existing = (await this.store.listReviews())
@@ -136,28 +147,11 @@ export class ProgressiveAutonomyOpportunityReviewService {
   private async resolveCurrentSource(
     opportunity: ProgressiveAutonomyRuntimeOpportunityReceipt
   ): Promise<ProgressiveAutonomyCurrentSource> {
-    let state: Awaited<ReturnType<typeof readAttunementState>>;
-    let task: Awaited<ReturnType<typeof readTaskByIdStrict>>;
-    try {
-      [state, task] = await Promise.all([
-        readAttunementState(this.options.attunementFile),
-        readTaskByIdStrict(this.options.tasksFile, opportunity.envelope.link.taskId)
-      ]);
-    } catch {
-      return { reason: "recorded source stores cannot be read or validated", state: "unavailable" };
-    }
-    const thread = state.threads.find((entry) => entry.id === opportunity.envelope.threadId);
-    if (!thread) return { reason: "recorded thread is missing", state: "stale" };
-    const link = thread.links.find((entry) => entry.artifactType === "task"
-      && entry.artifactId === opportunity.envelope.link.taskId
-      && entry.providerId === "local"
-      && entry.role === "next-step"
-      && entry.linkedBy === "user"
-      && entry.linkedAt === opportunity.envelope.link.linkedAt);
-    if (!link) return { reason: "exact user-authored local next-step link is stale", state: "stale" };
-    if (!task) return { reason: "recorded task is missing", state: "stale" };
-    if (task.status !== "open") return { reason: "recorded task is no longer open", state: "stale" };
-    return { state: "exact" };
+    return resolveProgressiveAutonomyCurrentSource(opportunity, {
+      attunementFile: this.options.attunementFile,
+      ownerUserId: this.options.ownerUserId,
+      tasksFile: this.options.tasksFile
+    });
   }
 }
 

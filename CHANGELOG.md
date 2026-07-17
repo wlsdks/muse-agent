@@ -136,9 +136,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   crash replay is idempotent, and undo refuses to overwrite later user edits.
   The authority-minting adapter is isolated behind trusted host wiring. CLI and
   local/authenticated HTTP can now review organic runtime opportunities
-  counterfactually without executing them; controlled and legacy-unclassified
-  evidence never satisfies readiness. Live cross-surface execution, web UI, and
-  external actions remain deliberately deferred.
+  counterfactually without executing them. In CLI Ink, an explicit `y` or `n`
+  at the exact task-completion prompt is durably correlated to that organic
+  opportunity, so Muse does not ask for the same preference twice. Cancel,
+  timeout, automatic policy/trust decisions, stale links, and non-CLI surfaces
+  record nothing; controlled and legacy-unclassified evidence never satisfies
+  readiness. Live cross-surface execution, web UI, and external actions remain
+  deliberately deferred.
 
 - **Automation now shows what comes NEXT.** The 자동 활동 view opens on a new
   "예정" (Upcoming) tab: your next evening digest (and its daily hour), how

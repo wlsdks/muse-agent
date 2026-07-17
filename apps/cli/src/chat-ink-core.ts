@@ -325,9 +325,22 @@ export function summarizeToolArgs(args: Record<string, unknown>): string {
 }
 
 export type ApprovalKind = "outbound" | "tool";
+export type ApprovalPromptDecision = "approve" | "deny" | "cancel";
+export interface ExplicitRuntimeDecisionEvidenceInput {
+  readonly decision: "approved" | "denied";
+  readonly ownerUserId: string;
+  readonly recordedAt: string;
+  readonly runId: string;
+  readonly toolCallId: string;
+}
+export type ExplicitRuntimeDecisionEvidenceRecorder = (
+  input: ExplicitRuntimeDecisionEvidenceInput
+) => unknown | Promise<unknown>;
 export interface ApprovalGateCall {
-  readonly toolCall: { readonly name: string; readonly arguments: Record<string, unknown> };
+  readonly toolCall: { readonly name: string; readonly arguments: Record<string, unknown>; readonly id?: string };
   readonly risk: "read" | "write" | "execute";
+  readonly runId?: string;
+  readonly userId?: string;
   /**
    * Set by the runtime's egress-authorization gate (S5) when this call's args
    * carry an http(s)/ws(s) URL that was never observed anywhere Muse read
@@ -369,9 +382,11 @@ export interface ApprovalGateDecision {
  */
 export function chatToolApprovalGate(
   outbound: readonly string[],
-  ask: (name: string, detail: string, kind: ApprovalKind) => Promise<boolean>
+  ask: (name: string, detail: string, kind: ApprovalKind) => Promise<ApprovalPromptDecision | boolean>,
+  recordRuntimeDecision?: ExplicitRuntimeDecisionEvidenceRecorder,
+  now: () => Date = () => new Date()
 ): (input: ApprovalGateCall) => Promise<ApprovalGateDecision> {
-  return async ({ toolCall, risk, egressWarning, egressBlocked }) => {
+  return async ({ toolCall, risk, runId, userId, egressWarning, egressBlocked }) => {
     const isRunCommand = toolCall.name === "run_command";
     const command = typeof toolCall.arguments.command === "string" ? toolCall.arguments.command : "";
     const args = Array.isArray(toolCall.arguments.args)
@@ -394,8 +409,27 @@ export function chatToolApprovalGate(
       topology && !topology.analyzable
         ? `⚠ un-inspectable shell construction (${topology.construct ?? "un-analyzable"}) — its real command can't be checked automatically. ${summary}`
         : summary;
-    const approved = await ask(toolCall.name, detail, kind);
-    if (approved) return { allowed: true };
+    const promptDecision = await ask(toolCall.name, detail, kind);
+    const explicitDecision = promptDecision === "approve" || promptDecision === "deny" ? promptDecision : undefined;
+    if (toolCall.name === "muse.tasks.complete"
+      && explicitDecision
+      && recordRuntimeDecision
+      && runId
+      && toolCall.id
+      && userId) {
+      try {
+        await recordRuntimeDecision({
+          decision: explicitDecision === "approve" ? "approved" : "denied",
+          ownerUserId: userId,
+          recordedAt: now().toISOString(),
+          runId,
+          toolCallId: toolCall.id
+        });
+      } catch {
+        // Fail-soft evidence only: the explicit approval decision still owns execution.
+      }
+    }
+    if (promptDecision === true || promptDecision === "approve") return { allowed: true };
     return { allowed: false, reason: `user declined the ${kind === "outbound" ? "outbound action" : "tool call"}` };
   };
 }

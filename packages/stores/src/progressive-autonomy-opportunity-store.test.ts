@@ -16,6 +16,101 @@ describe("FileProgressiveAutonomyOpportunityStore public evidence contract", () 
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
   });
 
+  it("binds one explicit CLI approval to the exact persisted organic opportunity and writes strict v3", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await store.record(opportunity);
+
+    const result = await store.recordRuntimeDecision({
+      decision: "approved",
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      toolCallId: opportunity.toolCallId
+    });
+    expect(result.kind).toBe("recorded");
+    if (result.kind !== "recorded") throw new Error("expected correlated runtime decision");
+
+    expect(result).toEqual({
+      kind: "recorded",
+      receipt: {
+        action: opportunity.envelope.action,
+        decision: "approved",
+        linkedAt: opportunity.envelope.link.linkedAt,
+        opportunityId: opportunity.id,
+        origin: "runtime-tool-approval",
+        ownerUserId: opportunity.envelope.userId,
+        provenance: "explicit-cli-ink",
+        recordedAt: "2026-07-17T04:00:00.000Z",
+        runId: opportunity.runId,
+        taskId: opportunity.envelope.link.taskId,
+        threadId: opportunity.envelope.threadId,
+        toolCallId: opportunity.toolCallId,
+        toolName: "muse.tasks.complete"
+      }
+    });
+    expect(await store.listRuntimeDecisions()).toEqual([result.receipt]);
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+      runtimeDecisions: [result.receipt],
+      schemaVersion: 3
+    });
+  });
+
+  it("replays runtime evidence without writing, rejects decision changes, and excludes manual evidence both ways", async () => {
+    const first = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await first.store.record(opportunity);
+    const input = {
+      decision: "approved" as const,
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      toolCallId: opportunity.toolCallId
+    };
+    const recorded = await first.store.recordRuntimeDecision(input);
+    const exactBytes = await readFile(first.file, "utf8");
+    expect(await first.store.recordRuntimeDecision({ ...input, recordedAt: "2026-07-17T05:00:00.000Z" }))
+      .toEqual(recorded);
+    expect(await readFile(first.file, "utf8")).toBe(exactBytes);
+    await expect(first.store.recordRuntimeDecision({ ...input, decision: "denied" }))
+      .rejects.toThrow("different explicit evidence");
+    await expect(first.store.recordReview(reviewFor(opportunity)))
+      .rejects.toThrow("different review");
+    expect(await readFile(first.file, "utf8")).toBe(exactBytes);
+
+    const second = await fixture();
+    await second.store.record(opportunity);
+    await second.store.recordReview(reviewFor(opportunity));
+    const manualBytes = await readFile(second.file, "utf8");
+    await expect(second.store.recordRuntimeDecision(input)).rejects.toThrow("different explicit evidence");
+    expect(await readFile(second.file, "utf8")).toBe(manualBytes);
+  });
+
+  it("does not correlate near-miss run, call, owner, or non-organic evidence", async () => {
+    for (const evidenceClass of ["organic", "controlled"] as const) {
+      const { file, store } = await fixture();
+      const opportunity = { ...receipt(), evidenceClass };
+      await store.record(opportunity);
+      const exactBytes = await readFile(file, "utf8");
+      const candidates = evidenceClass === "organic"
+        ? [
+            { ownerUserId: opportunity.envelope.userId, runId: "run-near", toolCallId: opportunity.toolCallId },
+            { ownerUserId: opportunity.envelope.userId, runId: opportunity.runId, toolCallId: "call-near" },
+            { ownerUserId: "different-owner", runId: opportunity.runId, toolCallId: opportunity.toolCallId }
+          ]
+        : [{ ownerUserId: opportunity.envelope.userId, runId: opportunity.runId, toolCallId: opportunity.toolCallId }];
+      for (const candidate of candidates) {
+        expect(await store.recordRuntimeDecision({
+          ...candidate,
+          decision: "approved",
+          recordedAt: "2026-07-17T04:00:00.000Z"
+        })).toEqual({ kind: "not-correlated" });
+      }
+      expect(await store.listRuntimeDecisions()).toEqual([]);
+      expect(await readFile(file, "utf8")).toBe(exactBytes);
+    }
+  });
+
   it("reads schema v1 as unclassified without rewriting bytes", async () => {
     const { file, store } = await fixture();
     const { evidenceClass: _evidenceClass, ...legacy } = receipt();
@@ -43,10 +138,68 @@ describe("FileProgressiveAutonomyOpportunityStore public evidence contract", () 
     const migrated = JSON.parse(await readFile(file, "utf8")) as {
       opportunities: Array<{ evidenceClass: string }>;
       reviews: unknown[];
+      runtimeDecisions: unknown[];
       schemaVersion: number;
     };
-    expect(migrated).toMatchObject({ schemaVersion: 2, reviews: [] });
+    expect(migrated).toMatchObject({ reviews: [], runtimeDecisions: [], schemaVersion: 3 });
     expect(migrated.opportunities.map((entry) => entry.evidenceClass)).toEqual(["unclassified", "unclassified"]);
+  });
+
+  it("reads schema v2 without rewriting and upgrades only on a valid runtime-decision mutation", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    const raw = `${JSON.stringify({
+      opportunities: [opportunity],
+      reviews: [],
+      schemaVersion: 2,
+      traces: [{ envelope: opportunity.envelope, runId: opportunity.runId, toolCallId: opportunity.toolCallId }]
+    }, null, 2)}\n`;
+    await writeFile(file, raw, "utf8");
+
+    expect(await store.list()).toEqual([opportunity]);
+    expect(await store.listRuntimeDecisions()).toEqual([]);
+    expect(await readFile(file, "utf8")).toBe(raw);
+
+    await store.recordRuntimeDecision({
+      decision: "denied",
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      toolCallId: opportunity.toolCallId
+    });
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+      runtimeDecisions: [{ decision: "denied", opportunityId: opportunity.id }],
+      schemaVersion: 3
+    });
+  });
+
+  it("rejects corrupt runtime-decision scope without overwriting v3 bytes", async () => {
+    const { file, store } = await fixture();
+    const opportunity = { ...receipt(), evidenceClass: "organic" as const };
+    await store.record(opportunity);
+    await store.recordRuntimeDecision({
+      decision: "approved",
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      toolCallId: opportunity.toolCallId
+    });
+    const state = JSON.parse(await readFile(file, "utf8")) as {
+      runtimeDecisions: Array<{ taskId: string }>;
+    };
+    state.runtimeDecisions[0]!.taskId = "different-task";
+    const corruptBytes = JSON.stringify(state);
+    await writeFile(file, corruptBytes, "utf8");
+
+    await expect(store.listRuntimeDecisions()).rejects.toThrow("opportunity store is corrupt");
+    await expect(store.recordRuntimeDecision({
+      decision: "approved",
+      ownerUserId: opportunity.envelope.userId,
+      recordedAt: "2026-07-17T05:00:00.000Z",
+      runId: opportunity.runId,
+      toolCallId: opportunity.toolCallId
+    })).rejects.toThrow("opportunity store is corrupt");
+    expect(await readFile(file, "utf8")).toBe(corruptBytes);
   });
 
   it("records one normalized organic review, replays without writing, conflicts on change, and fails closed on cross-record corruption", async () => {
@@ -473,5 +626,23 @@ function receipt(): ProgressiveAutonomyRuntimeOpportunityReceipt {
     shadowAssessment: "wouldConfirm",
     shadowRationale: "no exact active standing grant",
     toolCallId: "call-1"
+  };
+}
+
+function reviewFor(opportunity: ProgressiveAutonomyRuntimeOpportunityReceipt) {
+  return {
+    action: opportunity.envelope.action,
+    decision: "would-approve" as const,
+    evidenceClass: "organic" as const,
+    id: "review-manual",
+    linkedAt: opportunity.envelope.link.linkedAt,
+    opportunityId: opportunity.id,
+    ownerUserId: opportunity.envelope.userId,
+    recordedAt: "2026-07-17T04:00:00.000Z",
+    runId: opportunity.runId,
+    sourceState: "exact" as const,
+    taskId: opportunity.envelope.link.taskId,
+    threadId: opportunity.envelope.threadId,
+    toolCallId: opportunity.toolCallId
   };
 }

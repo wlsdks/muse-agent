@@ -108,6 +108,54 @@ describe("muse autonomy trusted shadow CLI", () => {
     expect(JSON.stringify(report)).not.toMatch(/ready|allowed|promoted/u);
   });
 
+  it("counts explicit runtime approve and deny evidence once as would-approve and would-deny", () => {
+    const opportunities = ["approve", "deny"].map((suffix) => ({
+      enforcementDecision: "confirm" as const,
+      envelope: {
+        action: "muse.tasks.complete-linked-next-step" as const,
+        idempotencyKey: `runtime-opportunity:run-${suffix}:task-${suffix}`,
+        link: { artifactType: "task" as const, linkedAt: "2026-07-17T02:00:00.000Z", providerId: "local" as const, role: "next-step" as const, taskId: `task-${suffix}` },
+        schemaVersion: 1 as const,
+        threadId: `thread-${suffix}`,
+        traceId: `runtime-tool:run-${suffix}:call-1`,
+        transition: { from: "open" as const, to: "done" as const },
+        userId: "dogfood-user"
+      },
+      evidenceClass: "organic" as const,
+      id: `opportunity-${suffix}`,
+      origin: "runtime-opportunity" as const,
+      rationale: "confirm",
+      recordedAt: "2026-07-17T03:00:00.000Z",
+      runId: `run-${suffix}`,
+      shadowAssessment: "wouldConfirm" as const,
+      shadowRationale: "confirm",
+      toolCallId: "call-1"
+    }));
+    const runtimeDecisions = opportunities.map((opportunity, index) => ({
+      action: opportunity.envelope.action,
+      decision: index === 0 ? "approved" as const : "denied" as const,
+      linkedAt: opportunity.envelope.link.linkedAt,
+      opportunityId: opportunity.id,
+      origin: "runtime-tool-approval" as const,
+      ownerUserId: opportunity.envelope.userId,
+      provenance: "explicit-cli-ink" as const,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: opportunity.runId,
+      taskId: opportunity.envelope.link.taskId,
+      threadId: opportunity.envelope.threadId,
+      toolCallId: opportunity.toolCallId,
+      toolName: "muse.tasks.complete" as const
+    }));
+
+    const report = buildShadowReport([], opportunities, [], runtimeDecisions);
+
+    expect(report.review).toMatchObject({
+      decisionDistribution: { "needs-adjustment": 0, "would-approve": 1, "would-deny": 1 },
+      eligibleReviews: 2,
+      unresolvedOrganicOpportunities: 0
+    });
+  });
+
   it("defensively excludes an impossible stale would-approve review from v3 eligibility", () => {
     const opportunity = {
       enforcementDecision: "confirm" as const,

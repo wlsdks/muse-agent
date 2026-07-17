@@ -3,7 +3,7 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { createContextualGroundingLookup } from "./chat-ink-core.js";
+import { createContextualGroundingLookup, type ApprovalPromptDecision } from "./chat-ink-core.js";
 import { MuseChatApp } from "./chat-ink.js";
 
 // Drive the real Ink component (useInput → reduceInput → submit → render)
@@ -83,14 +83,14 @@ describe("MuseChatApp render — slash command echo + output", () => {
   });
 
   it("shows the fail-closed approval box for a gated tool and approves on y", async () => {
-    let decision: boolean | undefined;
+    let decision: ApprovalPromptDecision | undefined;
     const streamWithTools = (
       _messages: unknown,
       _model: string,
-      requestApproval: (name: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>
+      requestApproval: (name: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>
     ): AsyncGenerator<{ type: string; text?: string }> => (async function* () {
       decision = await requestApproval("email_send", "to: bob@x.com · subject: Hi", "outbound");
-      yield { type: "text-delta", text: decision ? "sent." : "cancelled." };
+      yield { type: "text-delta", text: decision === "approve" ? "sent." : "cancelled." };
       yield { type: "done" };
     })();
 
@@ -104,7 +104,57 @@ describe("MuseChatApp render — slash command echo + output", () => {
     stdin.write("y"); // approve
     for (let i = 0; i < 100 && decision === undefined; i += 1) await tick(20);
     unmount();
-    expect(decision).toBe(true);
+    expect(decision).toBe("approve");
+  });
+
+  it.each([
+    ["n", "deny"],
+    ["N", "deny"],
+    ["x", "cancel"],
+    ["\r", "cancel"],
+    ["\x1b", "cancel"],
+    ["\x03", "cancel"]
+  ] as const)("classifies approval input %j as %s", async (input, expected) => {
+    let decision: ApprovalPromptDecision | undefined;
+    const streamWithTools = (
+      _messages: unknown,
+      _model: string,
+      requestApproval: (name: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>
+    ): AsyncGenerator<{ type: string; text?: string }> => (async function* () {
+      decision = await requestApproval("muse.tasks.complete", "id: task-next", "tool");
+      yield { type: "done" };
+    })();
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ streamWithTools })));
+    await tick();
+    stdin.write("/tools"); await tick(); stdin.write("\r"); await tick(80);
+    stdin.write("complete task"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["Tool action — muse.tasks.complete", "id: task-next"]);
+    stdin.write(input);
+    for (let index = 0; index < 100 && decision === undefined; index += 1) await tick(20);
+    unmount();
+    expect(decision).toBe(expected);
+  });
+
+  it("keeps a silent approval pending and resolves teardown as cancel", async () => {
+    let decision: ApprovalPromptDecision | undefined;
+    const streamWithTools = (
+      _messages: unknown,
+      _model: string,
+      requestApproval: (name: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>
+    ): AsyncGenerator<{ type: string; text?: string }> => (async function* () {
+      decision = await requestApproval("muse.tasks.complete", "id: task-next", "tool");
+      yield { type: "done" };
+    })();
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ streamWithTools })));
+    await tick();
+    stdin.write("/tools"); await tick(); stdin.write("\r"); await tick(80);
+    stdin.write("complete task"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["Tool action — muse.tasks.complete", "id: task-next"]);
+    await tick(100);
+    expect(decision).toBeUndefined();
+    unmount();
+    for (let index = 0; index < 100 && decision === undefined; index += 1) await tick(20);
+    expect(decision).toBe("cancel");
   });
 
   it("/remember teaches a fact (echo + confirmation), closing the memory loop", async () => {

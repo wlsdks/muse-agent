@@ -68,4 +68,15 @@ Runtime proposals and explicit reviews are separate evidence. The trusted runtim
 
 `muse autonomy review` and the equivalent HTTP read return the oldest unreviewed organic opportunity with its exact recorded scope and current source state. `would-approve` requires the same user-authored link and an open task; stale evidence may receive only `would-deny` or `needs-adjustment`, while unavailable evidence accepts no decision. Reviews are counterfactual and execute nothing. Only unique, valid explicit organic reviews count toward the 20–50 sample window; reaching 20 changes the status to `audit-required`, never to automatic permission.
 
+CLI Ink does not ask for a duplicate counterfactual review after the user has
+already answered the exact runtime task-completion prompt. Only literal `y/Y`
+and `n/N` produce `explicit-cli-ink` evidence, mapped to `would-approve` and
+`would-deny`. Every cancel-like input, timeout, teardown, silent or policy
+decision, trust/standing authority, API/channel flow, and missing opportunity
+produces no evidence. Before recording, Muse revalidates the same owner,
+user-authored local next-step link including `linkedAt`, and present open task.
+Stale, relinked, missing, closed, or unreadable sources remain in the manual
+review queue. Runtime and manual evidence are mutually exclusive and count at
+most once; neither form changes permission.
+
 Promotion requires zero false `wouldAllowStanding` decisions, zero scope expansion, complete durable receipts, successful crash/replay and safe-undo review, and an explicit human decision. Any false allow, corrupt-state tolerance, unexplained receipt gap, CAS clobber, veto miss, or unsafe undo immediately demotes the action to confirmation or disables it. Sample volume, approval rate, silence, confidence, and Attunement outcomes never promote authority automatically.
