@@ -30,6 +30,16 @@ owner binding, approval lifetime, monotonic timestamps, unique ids and claim
 tokens before an atomic write. This is fail-closed at-most-once execution, not
 exactly-once: a crash after claim may omit the action, but cannot repeat it.
 
+`completePendingApproval` is the single orchestration boundary shared by API
+and CLI. It owns claim, effect-free preparation, begin, the one effect-bearing
+callback, outcome classification, and finalization. API and CLI adapters cannot
+rebuild that sequence; they only resolve or confirm the exact claimed snapshot
+and map the coordinator's discriminated result. CAS loss reports the phase and
+actual durable state. A store exception is distinct from CAS loss and reports
+whether an effect was attempted plus an observed state when a strict follow-up
+read succeeds; otherwise it remains explicitly unobserved and is never retried
+automatically.
+
 Inbound channel replies do not execute pending actions. They return the exact
 CLI approval id; the former unused `autoRun -> clear` option was removed because
 it bypassed the durable claim boundary. These receipts improve execution safety

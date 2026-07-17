@@ -53,6 +53,12 @@ export interface PendingApprovalExecution {
   readonly detail?: string;
 }
 
+export type PendingApprovalActor =
+  | { readonly surface: "api"; readonly requestUserId?: string }
+  | { readonly surface: "cli" };
+
+export type PendingApprovalObservedState = "pending" | PendingApprovalExecutionState | "not-found" | "expired";
+
 interface PendingApprovalStoreV2 {
   readonly version: 2;
   readonly pending: readonly PendingApproval[];
@@ -224,7 +230,7 @@ async function writePendingApprovalStore(file: string, store: PendingApprovalSto
 export async function claimPendingApproval(
   file: string,
   id: string,
-  actor: { readonly surface: "api"; readonly requestUserId?: string } | { readonly surface: "cli" },
+  actor: PendingApprovalActor,
   now: () => Date = () => new Date()
 ): Promise<PendingApprovalClaimResult> {
   return serializePerFile(file, async () => {
@@ -273,7 +279,7 @@ export async function claimPendingApproval(
 export async function denyPendingApproval(
   file: string,
   id: string,
-  actor: { readonly surface: "api"; readonly requestUserId?: string } | { readonly surface: "cli" },
+  actor: PendingApprovalActor,
   detail?: string,
   now: () => Date = () => new Date()
 ): Promise<PendingApprovalDenyResult> {
@@ -403,6 +409,27 @@ export async function readPendingApprovals(file: string): Promise<readonly Pendi
     return [];
   }
   return (parsed as { pending: unknown[] }).pending.filter(isPendingApproval);
+}
+
+/** Strictly observe one approval's durable state without changing the v2 schema. */
+export async function observePendingApprovalState(
+  file: string,
+  id: string,
+  now: () => Date = () => new Date()
+): Promise<PendingApprovalObservedState> {
+  const store = await readMutationStore(file);
+  if (!store) {
+    return "not-found";
+  }
+  const execution = store.executions.find((candidate) => candidate.approvalSnapshot.id === id);
+  if (execution) {
+    return execution.state;
+  }
+  const pending = store.pending.find((candidate) => candidate.id === id);
+  if (!pending) {
+    return "not-found";
+  }
+  return Date.parse(pending.expiresAt) <= now().getTime() ? "expired" : "pending";
 }
 
 // Per-file mutation queue: record/clear are read-modify-write, so two

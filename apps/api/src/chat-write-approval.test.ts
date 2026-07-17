@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentRunInput } from "@muse/agent-core";
 import {
-  beginPendingApprovalExecution,
+  completePendingApproval,
   declinePendingApprovalClaim,
   listPendingApprovals,
   recordPendingApproval,
@@ -20,7 +20,10 @@ import type { ServerOptions } from "./server.js";
 
 vi.mock("@muse/messaging", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@muse/messaging")>();
-  return { ...actual, beginPendingApprovalExecution: vi.fn(actual.beginPendingApprovalExecution) };
+  return {
+    ...actual,
+    completePendingApproval: vi.fn(actual.completePendingApproval)
+  };
 });
 
 let dir: string;
@@ -228,20 +231,66 @@ describe("executeChatApproval confirm-execute", () => {
     expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
   });
 
-  it("missing tool reports the durable denied state when begin loses its CAS race", async () => {
-    await recordPendingApproval(pendingFile, pendingEntry({ id: "missing-race", tool: "muse.tasks.add" }));
-    vi.mocked(beginPendingApprovalExecution).mockImplementationOnce(async (file, id, claimToken, now) => {
-      await declinePendingApprovalClaim(file, id, claimToken, "denied during resolver", now);
-      return { state: "denied", transitioned: false };
+  it("begin loser reports the actual durable state and never invokes the prepared effect", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "begin-race", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
+    const actual = await vi.importActual<typeof import("@muse/messaging")>("@muse/messaging");
+    vi.mocked(completePendingApproval).mockImplementationOnce((options) => {
+      return actual.completePendingApproval({
+        ...options,
+        operations: {
+          begin: async (file, id, claimToken, now) => {
+            await declinePendingApprovalClaim(file, id, claimToken, "denied during begin race", now);
+            return { state: "denied", transitioned: false };
+          }
+        }
+      });
     });
 
-    const out = await executeChatApproval({ id: "missing-race", pendingFile, resolveTool: () => undefined });
-    const replay = await executeChatApproval({ id: "missing-race", pendingFile, resolveTool: () => undefined });
+    const out = await executeChatApproval({ id: "begin-race", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "begin-race", pendingFile, resolveTool: () => tool });
 
     expect(out.statusCode).toBe(409);
     expect(out.body).toMatchObject({ state: "denied" });
     expect(replay.statusCode).toBe(409);
     expect(replay.body).toMatchObject({ state: "denied" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("resolves and executes only from the immutable snapshot claimed by the coordinator", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({
+      arguments: { title: "old" },
+      draft: "title=old",
+      id: "snapshot-race",
+      tool: "muse.tasks.add"
+    }));
+    const replacement = pendingEntry({
+      arguments: { body: "new snapshot" },
+      draft: "body=new snapshot",
+      id: "snapshot-race",
+      tool: "muse.notes.save"
+    });
+    const actual = await vi.importActual<typeof import("@muse/messaging")>("@muse/messaging");
+    vi.mocked(completePendingApproval).mockImplementationOnce(async (options) => {
+      await writeFile(options.file, `${JSON.stringify({ pending: [replacement] }, null, 2)}\n`, "utf8");
+      return actual.completePendingApproval(options);
+    });
+    const { tool, calls } = recordingTool("muse.notes.save", { ok: true });
+    const resolved: string[] = [];
+
+    const out = await executeChatApproval({
+      id: "snapshot-race",
+      pendingFile,
+      resolveTool: (name) => {
+        resolved.push(name);
+        return name === "muse.notes.save" ? tool : undefined;
+      }
+    });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ state: "succeeded", tool: "muse.notes.save" });
+    expect(resolved).toEqual(["muse.notes.save"]);
+    expect(calls).toEqual([{ body: "new snapshot" }]);
   });
 
   it("error-shaped tool result: ran:false, durable unknown, and replay does not execute", async () => {
@@ -323,6 +372,62 @@ describe("executeChatApproval confirm-execute", () => {
     expect(calls).toBe(1);
   });
 
+  it("finalize CAS loser returns 500 with the actual durable state and replay never re-executes", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "finalize-loser", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
+    const actual = await vi.importActual<typeof import("@muse/messaging")>("@muse/messaging");
+    vi.mocked(completePendingApproval).mockImplementationOnce((options) => {
+      return actual.completePendingApproval({
+        ...options,
+        operations: {
+          finalize: async (file, id, claimToken, _state, _detail, now) => {
+            await actual.finalizePendingApprovalExecution(file, id, claimToken, "unknown", "rival finalizer won", now);
+            return { state: "unknown", transitioned: false };
+          }
+        }
+      });
+    });
+
+    const out = await executeChatApproval({ id: "finalize-loser", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "finalize-loser", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(500);
+    expect(out.body).toMatchObject({ phase: "finalize", state: "unknown" });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "unknown" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("finalize throw maps persistence uncertainty to 500 and replay never re-executes", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "finalize-throw", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
+    const actual = await vi.importActual<typeof import("@muse/messaging")>("@muse/messaging");
+    vi.mocked(completePendingApproval).mockImplementationOnce((options) => {
+      return actual.completePendingApproval({
+        ...options,
+        operations: {
+          finalize: async () => {
+            throw new Error("fsync failed");
+          }
+        }
+      });
+    });
+
+    const out = await executeChatApproval({ id: "finalize-throw", pendingFile, resolveTool: () => tool });
+    const replay = await executeChatApproval({ id: "finalize-throw", pendingFile, resolveTool: () => tool });
+
+    expect(out.statusCode).toBe(500);
+    expect(out.body).toMatchObject({
+      certainty: "observed",
+      effectAttempted: true,
+      phase: "finalize",
+      state: "executing"
+    });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.body).toMatchObject({ state: "executing" });
+    expect(calls).toHaveLength(1);
+  });
+
   it("user-scope: a DIFFERENT authenticated user cannot approve — 403, no execution, entry left pending", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "s1", tool: "muse.tasks.add", userId: "owner" }));
     const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
@@ -352,5 +457,26 @@ describe("executeChatApproval confirm-execute", () => {
 
     expect(out.statusCode).toBe(200);
     expect(calls).toHaveLength(1);
+  });
+
+  it("maps persistence uncertainty to 500 and preserves the observed durable state", async () => {
+    vi.mocked(completePendingApproval).mockResolvedValueOnce({
+      certainty: "observed",
+      effectAttempted: true,
+      error: "fsync failed",
+      kind: "persistence-uncertain",
+      phase: "finalize",
+      state: "executing"
+    });
+
+    const out = await executeChatApproval({ id: "uncertain", pendingFile, resolveTool: () => undefined });
+
+    expect(out.statusCode).toBe(500);
+    expect(out.body).toMatchObject({
+      certainty: "observed",
+      effectAttempted: true,
+      phase: "finalize",
+      state: "executing"
+    });
   });
 });

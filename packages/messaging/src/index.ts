@@ -54,12 +54,24 @@ export {
   readPendingApprovals,
   recordPendingApproval,
   type PendingApproval,
+  type PendingApprovalActor,
   type PendingApprovalClaimResult,
   type PendingApprovalDenyResult,
   type PendingApprovalExecution,
   type PendingApprovalExecutionState,
+  type PendingApprovalObservedState,
   type PendingApprovalTransitionResult
 } from "./pending-approval-store.js";
+
+export {
+  completePendingApproval,
+  type CompletePendingApprovalOptions,
+  type CompletePendingApprovalResult,
+  type PendingApprovalCoordinatorOperations,
+  type PendingApprovalCoordinatorPhase,
+  type PendingApprovalCoordinatorState,
+  type PendingApprovalPreparation
+} from "./pending-approval-coordinator.js";
 
 export { isApprovalReply } from "./is-approval-reply.js";
 
