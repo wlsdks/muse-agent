@@ -194,6 +194,11 @@ termination*). So assert at the seam:
   unverified. `eval:agent:offline` owns the deterministic Linux/Windows CI
   contracts without rebuilding the workspace. `self-eval` is
   the regression scoreboard (a tracked count dropping is a fail-close).
+- **Promote evidence, never raw traces.** `eval:evidence candidates` consumes
+  only a complete privacy-safe P0 JSONL artifact. `promote` requires an exact
+  candidate-bound human review with explicit redaction confirmation; `compare`
+  reports case-level improvement/regression/unverified state. Never auto-read a
+  trace ref, auto-redact personal text, or let a new/current failure gate green.
 - **Error-analysis FIRST — the ordering principle, not an afterthought.**
   Before writing a scorer, read 20–50 REAL traces and open-/axial-code the
   failures into categories; the categories that actually recur become the

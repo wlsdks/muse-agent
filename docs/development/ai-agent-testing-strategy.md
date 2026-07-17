@@ -72,7 +72,7 @@ be averaged away by many easy passes.
 | DONE P0 | `muse.eval.trial/v1` and `muse.eval.summary/v1` provide opt-in local JSONL with allowlisted metadata and opaque trace refs | keep prompt/output/detail/fixture out of artifacts and fail closed on writer errors |
 | DONE P0 | common per-attempt setup/teardown guarantees cleanup for opted-in batteries; secret-persistence is the first migrated fixture | teardown failure overrides pass/exclusion; migrate another battery only when it owns mutable trial state |
 | DONE P0 | `eval:agent:offline` runs deterministic eval contracts after the existing build on Linux and Windows; local-Ollama `eval:agent` stays separate | a live skip remains unverified, never a CI pass |
-| GAP P1 | no standard trace-to-dataset loop or baseline experiment comparison exists across the scattered batteries | locally promote reviewed failures into versioned redacted cases and compare per-case deltas |
+| PARTIAL P1 | `eval:evidence` validates complete local artifacts, extracts terminal failures, requires explicit redaction review before case promotion, and compares per-case baseline deltas | use it in weekly dogfood; automatic redaction and dataset insertion remain forbidden |
 | GAP P1 | paraphrase/metamorphic robustness and controlled tool/API fault matrices are present only in isolated tests | add shared perturbation and fault fixtures, beginning with provider routing and Continuity |
 | GAP P1 | Attunement has outcome receipts but not an end-to-end natural-return agent suite | build cases from real life/work returns only after explicit human labels exist |
 
@@ -85,6 +85,33 @@ be averaged away by many easy passes.
 3. **P2 — optional tooling experiments:** only after P0/P1 reveal a concrete
    visualization or adversarial-generation defect the current stack cannot
    economically close.
+
+### Local reviewed-evidence workflow
+
+`eval:evidence` never reads the trace refs carried by a P0 artifact. It validates
+that the artifact is complete, then handles only allowlisted IDs, statuses, and
+opaque refs. Every output path is explicit, local, and exclusive. Outputs use
+mode `0600` on POSIX; Windows removes inherited access and installs a protected
+owner-only ACL because [Node documents that Windows `chmod` cannot express
+owner/group/other modes](https://nodejs.org/api/fs.html#fschmodpath-mode-callback).
+The Windows path uses PowerShell's documented
+[`Set-Acl`](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-acl)
+on the empty exclusive file, verifies the protected access rules and open-file
+identity, and only then writes evidence bytes.
+
+```sh
+pnpm eval:evidence -- candidates --artifact <results.jsonl> --out <candidates.jsonl>
+pnpm eval:evidence -- promote --candidates <candidates.jsonl> --review <review.json> --out <case.json>
+pnpm eval:evidence -- compare --baseline <baseline-results.jsonl> --current <current-results.jsonl> --out <delta.json>
+```
+
+Promotion accepts only a `muse.eval.case-review/v1` record with
+`decision: "promote"`, `redactionConfirmed: true`, and the exact candidate key.
+The human reviewer writes the deliberately redacted `input` and `expected`;
+Muse does not infer that personal text is safe. The committed
+`muse.eval.case/v1` retains an irreversible source fingerprint, not local case
+IDs or trace refs. A delta gates green only when the current artifact's semantic
+gate is green and no case is failed, regressed, removed, or unverified.
 
 ## Library and service assessment
 

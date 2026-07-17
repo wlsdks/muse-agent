@@ -70,6 +70,17 @@ related: [../core/verification-and-guardrails.md, failure-modes-and-observabilit
 skip은 PASS가 아니라 **미검증**입니다. 에이전트 평가는 각 attempt를 격리하고, 실패/예외/재시도에도
 cleanup을 보장하며, 결과 증거에는 원문 prompt·output·detail·fixture를 기본 기록하지 않습니다.
 
+### 6.2 실제 실패를 회귀 case로 만드는 게이트
+
+로컬 trace ref는 **읽기 권한이 아니라 사람이 찾아볼 opaque pointer**입니다. 자동화는 완결된
+privacy-safe trial/summary만 검증해 실패 후보를 만들고, 사람이 redacted input/expected를 작성한 뒤
+명시적으로 승인한 candidate만 versioned case로 승격합니다. 승인 키는 artifact와 실패 증거 전체에
+암호학적으로 묶여야 하며 다른 실행에 재사용되면 안 됩니다.
+
+baseline 비교는 평균 하나로 끝내지 않습니다. `(suite, scenario, case)`별 개선·회귀·신규·미검증을
+보존하고, current semantic gate가 false이거나 현재 실패/회귀/누락/제외가 하나라도 있으면 fail-close합니다.
+raw trace 자동 읽기·자동 PII 판정·외부 업로드는 별도 명시 승인 없이는 금지합니다.
+
 ## 7. 이 하네스 문서 자체의 검증 (지금 적용)
 
 문서 단계의 하네스는 매 갱신 시 **문서 자체 점검**으로 수용 검증합니다:
