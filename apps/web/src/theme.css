@@ -2221,3 +2221,13 @@ button.status-chip {
 .row-meta.exec-error {
   color: var(--danger);
 }
+
+/* Inline validation error text (invalid cron / invalid tool JSON in the
+   Builder's create + edit panels). Uses the real danger token — the earlier
+   `color: var(--err)` referenced an UNDEFINED variable, so the warning
+   silently rendered in the muted `.subtle` grey and did not read as an
+   error. Own class (not `.subtle`) so there is no specificity fight. */
+.field-error {
+  color: var(--danger);
+  font-size: var(--text-xs);
+}

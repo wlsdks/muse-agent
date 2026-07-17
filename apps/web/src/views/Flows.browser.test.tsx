@@ -523,3 +523,43 @@ test("Duplicate POSTs to the job's duplicate endpoint with the localized name su
 
   expect(client.post).toHaveBeenCalledWith("/api/scheduler/jobs/job_1/duplicate", { nameSuffix: " (copy)" });
 });
+
+test("an invalid custom cron shows the field-error warning and blocks Create", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("button", { name: "New flow" }).click();
+  await screen.getByRole("textbox", { name: "Name" }).fill("Bad cron flow");
+  await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("do it");
+
+  await screen.getByRole("combobox").selectOptions("custom");
+  await screen.getByRole("textbox", { name: "Custom cron expression" }).fill("not a cron");
+
+  // The warning renders in the dedicated error class (previously a colorless
+  // `var(--err)` inline style), and Create is blocked.
+  const warning = screen.getByText("Doesn't look like a valid cron expression (needs 5 fields).");
+  await expect.element(warning).toBeVisible();
+  expect((warning.query() as HTMLElement | null)?.className).toContain("field-error");
+  await expect.element(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+
+  // Correcting the cron clears the warning and unblocks Create.
+  await screen.getByRole("textbox", { name: "Custom cron expression" }).fill("0 9 * * *");
+  await expect.element(screen.getByRole("button", { name: "Create" })).toBeEnabled();
+});
+
+test("invalid tool-arguments JSON shows the field-error warning and blocks Create", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("button", { name: "New flow" }).click();
+  await screen.getByRole("textbox", { name: "Name" }).fill("Bad args flow");
+  await screen.getByText("Run a tool", { exact: true }).click();
+
+  const argsField = screen.getByRole("textbox", { name: "Arguments (JSON, optional)" });
+  await argsField.fill("{ not json");
+
+  const warning = screen.getByText("Not valid JSON — must be an object, e.g. {}.");
+  await expect.element(warning).toBeVisible();
+  expect((warning.query() as HTMLElement | null)?.className).toContain("field-error");
+  await expect.element(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+});

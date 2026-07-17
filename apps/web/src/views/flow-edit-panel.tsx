@@ -172,7 +172,7 @@ function TriggerEditFields({
           />
           <span className="subtle" style={{ fontSize: 12 }}>{t("auto.flows.edit.customCronHint")}</span>
           {customInvalid && (
-            <span className="subtle" style={{ color: "var(--err)", fontSize: 12 }}>
+            <span className="field-error">
               {t("auto.flows.edit.customCronInvalid")}
             </span>
           )}
@@ -326,7 +326,7 @@ function ToolActionEditFields({
           onChange={(e) => setForm({ toolArgumentsText: e.target.value })}
         />
         {argsInvalid && (
-          <span className="subtle" style={{ color: "var(--err)", fontSize: 12 }}>
+          <span className="field-error">
             {t("auto.flows.edit.toolArgsInvalid")}
           </span>
         )}
