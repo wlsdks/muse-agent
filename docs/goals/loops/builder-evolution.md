@@ -20,3 +20,12 @@ ratchet: scheduler tests 169(+9) · web 529+browser16 · api e2e 신규 1(outcom
 - 리뷰지점: write 도구는 실행 가능 집합(createLoopbackMcpToolsFromEnv)에 아예 미구성 — 조작 POST로 muse.messaging.send를 등록해도 not-connected로 FAILED, 무인 send 불가(opus 검증). toolArguments는 projection 비투영 유지.
 - 리스크: 무인 write/execute 도구 정책은 [decision]으로 진안에게 — v1은 read-only fail-close.
 - 라이브: 실브라우저(격리 HOME 데모서버) — 피커 14서버, messaging=providers/inbox만·reminders=list/search만(음성 케이스 실증), muse.time/now 흐름 생성→테스트 실행→실행 기록 SUCCESS+실타임스탬프 JSON 렌더.
+
+## fire 3 · 2026-07-18 · skill v2.1.1 · b2b680b78
+meta: value-class=new-capability · pkg=@muse/web · kind=ui-capability · verdict=PASS(opus) · firesSinceDrill=3
+ratchet: web SSR 542(+7) · browser 18(+1) · unit +7 · fabrication 0
+- 무엇: 빌더 출력 노드 알림 채널 피커 — raw `provider:destination` 타이핑 대신, 연결·페어링된 메시징 채널을 골라 정확한 값을 채움. deriveNotifyChannelOptions(순수, configured&&registered&&pairedOwner만) + NotifyChannelQuickPick(react-query /api/messaging/setup, 없으면 null). create+edit 양 패널 배선(형제 감사).
+- 왜: 사용자가 telegram:12345 형식을 알고 타이핑해야 했던 실 UX 부담 — 실행 러너가 이미 parseNotificationChannel로 파싱하는 값이라 runner-지원·결정론.
+- 리뷰지점: registered:false(저장됐지만 non-live)·unpaired는 send 시 실패하므로 절대 미노출(false-positive 0); schedulerDeliveryValue가 matrix double-prefix 처리; 에러/localOnly 403은 null로 우아하게 강등(텍스트필드 유지).
+- 리스크: 없음(피커는 편의 레이어, 텍스트필드가 source of truth). 라이브 POSITIVE는 실 Telegram 등록 필요라 vitest 실Chromium으로 증명, 라이브는 무회귀 케이스 측정.
+- 참고: 인터랙티브로 랜딩된 빌더 슬라이스 2건(fire 2 이후) — tool-execution flows(f2e539321, scheduler+web+api/wiring)·fullscreen+LNB(b2f9652ec, web/ui-affordance) — 다양성(pkg,kind) 카운트에 포함.
