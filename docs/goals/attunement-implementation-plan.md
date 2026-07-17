@@ -105,6 +105,13 @@ confirmed the rendering but was honestly scored `adjusted`, so automation stays
 held. Full evidence and the raw/strict audit:
 [`../evaluations/continuity-first-20-2026-07-17.md`](../evaluations/continuity-first-20-2026-07-17.md).
 
+A shared longitudinal evidence gate now makes the remaining collection gap explicit without
+changing that ledger: the real read-only state is `life 6/10` and `work 15/10` feedback,
+with both kinds spanning `2/2` UTC dates. Status remains `collecting` because life needs four
+more explicit outcomes. Even after numeric coverage, the only next status is
+`audit-required`; code cannot certify natural timing, domain diversity, comparability, or a
+strict action receipt, and it never enables automation.
+
 ## Slice B — safe observation and better timing
 
 **User experience:** after the user explicitly starts a personal thread, Muse can notice a

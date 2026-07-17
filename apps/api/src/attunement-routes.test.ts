@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   AttunementStoreError,
+  computeContinuityEvaluation,
   createLocalArtifactValidator,
   createLocalExactArtifactResolver,
   createPersonalThread,
@@ -218,6 +219,45 @@ describe("GET /api/attunement/review", () => {
       await readAttunementState(attunementFile),
       createLocalExactArtifactResolver({ notesDir, tasksFile })
     ));
+  });
+});
+
+describe("GET /api/attunement/evaluation integrity", () => {
+  it("returns the exact shared longitudinal gate", async () => {
+    const app = server();
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    const deliveryId = opened.json().delivery.id as string;
+    await app.inject({
+      method: "POST",
+      payload: { outcome: "used" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    });
+
+    const response = await app.inject({ method: "GET", url: "/api/attunement/evaluation" });
+    const expected = computeContinuityEvaluation(await readAttunementState(attunementFile));
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(expected);
+    expect(response.json().longitudinalGate).toMatchObject({
+      byKind: { life: { distinctUtcDates: 1, explicitFeedback: 1, remainingFeedback: 9 } },
+      status: "collecting"
+    });
+  });
+
+  it.each(["/api/attunement/evaluation", "/api/attunement/review"])("maps malformed timestamps to the same structured conflict at %s", async (url) => {
+    const app = server();
+    await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    const corrupt = JSON.parse(await readFile(attunementFile, "utf8")) as { deliveries: Array<{ id: string; openedAt: string }> };
+    const deliveryId = corrupt.deliveries[0]!.id;
+    corrupt.deliveries[0]!.openedAt = "not-a-timestamp";
+    await writeFile(attunementFile, `${JSON.stringify(corrupt)}\n`);
+
+    const response = await app.inject({ method: "GET", url });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ errorMessage: `delivery '${deliveryId}' has an invalid openedAt timestamp` });
+    expect(response.json()).not.toHaveProperty("evaluation");
+    expect(response.json()).not.toHaveProperty("reviewQueue");
   });
 });
 

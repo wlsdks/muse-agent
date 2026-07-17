@@ -14,11 +14,16 @@ export {
 export {
   CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
+  CONTINUITY_LONGITUDINAL_DISTINCT_DATES_PER_KIND,
+  CONTINUITY_LONGITUDINAL_FEEDBACK_PER_KIND,
+  ContinuityEvaluationError,
   computeContinuityEvaluation,
   type ContinuityEvaluation,
   type ContinuityFeedbackCohort,
   type ContinuityImprovementGate,
-  type ContinuityKindEvaluation
+  type ContinuityKindEvaluation,
+  type ContinuityLongitudinalGate,
+  type ContinuityLongitudinalKindCoverage
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 export {

@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Continuity evaluation now separates raw outcome thresholds from longitudinal evidence:**
+  the shared Attunement Module reports life/work feedback and feedback-bearing UTC-date
+  coverage, keeps incomplete first-20 windows on hold, and never turns numeric coverage
+  into an automation permission. Malformed timestamps fail closed, while CLI, HTTP, and
+  web render the same collecting-or-human-audit state.
 - **Continuity review now has one meaning across CLI, HTTP, and web:** the
   shared Attunement core selects the same oldest pending first-20 delivery,
   reports the same progress, and resolves only evidence that remains exactly

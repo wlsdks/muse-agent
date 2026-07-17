@@ -1,5 +1,5 @@
 import { AttunementStoreError } from "./attunement-store.js";
-import { CONTINUITY_KILL_CRITERION_FIRST_PACKS } from "./evaluation.js";
+import { CONTINUITY_KILL_CRITERION_FIRST_PACKS, orderContinuityDeliveries } from "./evaluation.js";
 
 import type {
   ArtifactLink,
@@ -46,8 +46,7 @@ export async function prepareContinuityReview(
   state: AttunementState,
   resolveExactArtifact: ExactArtifactResolver
 ): Promise<ContinuityReview> {
-  const eligible = [...state.deliveries]
-    .sort((left, right) => left.openedAt.localeCompare(right.openedAt) || left.id.localeCompare(right.id))
+  const eligible = orderContinuityDeliveries(state.deliveries)
     .slice(0, CONTINUITY_KILL_CRITERION_FIRST_PACKS);
   const reviewedDeliveries = eligible.filter((delivery) => delivery.outcome !== undefined).length;
   const progress = {

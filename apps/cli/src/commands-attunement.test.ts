@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeTasks, type PersistedTask } from "@muse/stores";
-import { createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
+import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -386,15 +386,23 @@ describe("muse thread stats — kill-criterion instrument", () => {
       withOutcome: number;
       outcomes: Record<string, number>;
       firstPacks: { considered: number; used: number; rejected: number };
+      longitudinalGate: { byKind: { work: { distinctUtcDates: number; explicitFeedback: number; remainingFeedback: number } }; status: string };
     };
     expect(parsed.totalDeliveries).toBe(5);
     expect(parsed.withOutcome).toBe(4);
     expect(parsed.outcomes).toEqual({ adjusted: 0, ignored: 1, rejected: 1, used: 2 });
     expect(parsed.firstPacks).toEqual({ considered: 5, rejected: 1, used: 2 });
+    expect(parsed.longitudinalGate).toMatchObject({
+      byKind: { work: { distinctUtcDates: 1, explicitFeedback: 4, remainingFeedback: 6 } },
+      status: "collecting"
+    });
+    expect(parsed).toEqual(computeContinuityEvaluation(await readAttunementState(f.attunementFile)));
 
     const text = await run(f, ["thread", "stats"]);
     expect(text.stdout).toContain("used: 2");
     expect(text.stdout).toContain("rejected 1/5");
+    expect(text.stdout).toContain("Longitudinal evidence: collecting");
+    expect(text.stdout).toContain("work: feedback 4/10 across 1/2 UTC dates; 6 feedback and 1 date remaining");
   });
 
   it("reports zeros on empty state without crashing", async () => {

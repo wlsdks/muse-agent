@@ -1,4 +1,4 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, computeContinuityEvaluation, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, computeContinuityEvaluation, ContinuityEvaluationError, createLocalArtifactValidator, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
@@ -94,7 +94,12 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.get("/api/attunement/evaluation", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    return computeContinuityEvaluation(await readAttunementState(gate.attunementFile));
+    try {
+      return computeContinuityEvaluation(await readAttunementState(gate.attunementFile));
+    } catch (cause) {
+      if (cause instanceof ContinuityEvaluationError) return reply.code(409).send({ errorMessage: cause.message });
+      throw cause;
+    }
   });
 
   server.get("/api/attunement/review", async (request, reply) => {
@@ -145,7 +150,9 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
           }))
       };
     } catch (cause) {
-      if (cause instanceof AttunementStoreError) return reply.code(409).send({ errorMessage: cause.message });
+      if (cause instanceof AttunementStoreError || cause instanceof ContinuityEvaluationError) {
+        return reply.code(409).send({ errorMessage: cause.message });
+      }
       throw cause;
     }
   });

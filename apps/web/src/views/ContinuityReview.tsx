@@ -19,6 +19,19 @@ interface KindEvaluation {
   readonly withOutcome: number;
 }
 
+interface LongitudinalGate {
+  readonly byKind: Readonly<Record<Kind, {
+    readonly distinctUtcDates: number;
+    readonly distinctUtcDatesTarget: number;
+    readonly explicitFeedback: number;
+    readonly explicitFeedbackTarget: number;
+    readonly remainingDates: number;
+    readonly remainingFeedback: number;
+  }>>;
+  readonly reasons: readonly string[];
+  readonly status: "audit-required" | "collecting";
+}
+
 interface ReviewResponse {
   readonly deliveries: readonly {
     readonly evidenceRefs: readonly { readonly artifactId: string; readonly artifactType: string; readonly providerId: string; readonly role: string }[];
@@ -28,7 +41,10 @@ interface ReviewResponse {
     readonly runId?: string;
     readonly thread: { readonly id: string; readonly kind: Kind; readonly title: string };
   }[];
-  readonly evaluation: KindEvaluation & { readonly byKind: Readonly<Record<Kind, KindEvaluation>> };
+  readonly evaluation: KindEvaluation & {
+    readonly byKind: Readonly<Record<Kind, KindEvaluation>>;
+    readonly longitudinalGate: LongitudinalGate;
+  };
   readonly resetReceipts: readonly { readonly id: string; readonly resetPolicyVersion: number; readonly threadId: string; readonly undone: boolean }[];
   readonly reviewQueue: {
     readonly next?: {
@@ -130,6 +146,32 @@ export function PendingReviewCard({
             >{value}</Button>)}
           </div>
         </>}
+  </Card>;
+}
+
+export function LongitudinalEvidenceCard({ gate }: { readonly gate: LongitudinalGate }) {
+  const { t } = useI18n();
+  return <Card>
+    <div style={{ alignItems: "flex-start", display: "flex", gap: 12, justifyContent: "space-between" }}>
+      <div className="row-title">{t("continuity.longitudinalTitle")}</div>
+      <Badge tone="warn">{t(`continuity.longitudinalStatus.${gate.status}`)}</Badge>
+    </div>
+    <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
+      {(["life", "work"] as const).map((kind) => {
+        const coverage = gate.byKind[kind];
+        return <div className="row-meta" key={kind}>{t("continuity.longitudinalCoverage", {
+          dateTarget: coverage.distinctUtcDatesTarget,
+          dates: coverage.distinctUtcDates,
+          feedback: coverage.explicitFeedback,
+          feedbackTarget: coverage.explicitFeedbackTarget,
+          kind: kindLabel(kind)
+        })}</div>;
+      })}
+    </div>
+    <div style={{ display: "grid", gap: 4, marginTop: 10 }}>
+      {gate.reasons.map((reason) => <div className="row-meta" key={reason}>{reason}</div>)}
+    </div>
+    <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.longitudinalNeverPromotes")}</p>
   </Card>;
 }
 
@@ -308,6 +350,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               <KindSummary kind="life" evaluation={data.evaluation.byKind.life} />
               <KindSummary kind="work" evaluation={data.evaluation.byKind.work} />
             </div>
+            <LongitudinalEvidenceCard gate={data.evaluation.longitudinalGate} />
             {openedPack ? <OpenedPackCard openedPack={openedPack} /> : null}
             <PendingReviewCard
               disabled={outcome.isPending}

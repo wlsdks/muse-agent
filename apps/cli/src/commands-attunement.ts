@@ -8,6 +8,8 @@ import { errorMessage } from "@muse/shared";
 import { isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
+  CONTINUITY_IMPROVEMENT_COHORT_SIZE,
+  CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   computeContinuityEvaluation,
   createLocalArtifactValidator,
   createLocalExactArtifactResolver,
@@ -27,6 +29,11 @@ import {
   type ArtifactLink,
   type ArtifactLinkValidator,
   type AttunementState,
+  type ContinuityEvaluation,
+  type ContinuityFeedbackCohort as CoreContinuityFeedbackCohort,
+  type ContinuityImprovementGate as CoreContinuityImprovementGate,
+  type ContinuityKindEvaluation,
+  type ContinuityLongitudinalKindCoverage,
   type ContinuityReview,
   type ContinuityReviewItem,
   type ContinuityOutcome,
@@ -175,46 +182,10 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
   return { artifactId: resourceId, artifactType: "resource", providerId: mcpProviderId(server), role, threadId };
 }
 
-const KILL_CRITERION_FIRST_PACKS = 20;
-const IMPROVEMENT_COHORT_SIZE = 5;
-
-export interface ContinuityFeedbackCohort {
-  readonly rejected: number;
-  readonly used: number;
-}
-
-export interface ContinuityImprovementGate {
-  readonly firstFiveFeedback: ContinuityFeedbackCohort;
-  readonly nextFiveFeedback: ContinuityFeedbackCohort;
-  readonly reason: string;
-  readonly status: "awaiting-feedback" | "improving" | "mixed" | "regressing" | "unchanged";
-}
-
-export interface ContinuityKindStats {
-  readonly totalDeliveries: number;
-  readonly withOutcome: number;
-  readonly outcomes: Record<ContinuityOutcome, number>;
-  readonly firstPacks: {
-    readonly considered: number;
-    readonly used: number;
-    readonly rejected: number;
-  };
-  /** Per-kind first-five versus next-five feedback comparison; never enables delivery. */
-  readonly improvementGate: ContinuityImprovementGate;
-  /**
-   * This is deliberately a release gate, not an automation switch. Passing
-   * the outcome threshold never enables proactive delivery by itself.
-   */
-  readonly automationGate: {
-    readonly reasons: readonly string[];
-    readonly status: "hold" | "manual-only";
-  };
-}
-
-export interface ContinuityStats extends ContinuityKindStats {
-  /** Never aggregate life/work results into a single apparent success. */
-  readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindStats>>;
-}
+export type ContinuityFeedbackCohort = CoreContinuityFeedbackCohort;
+export type ContinuityImprovementGate = CoreContinuityImprovementGate;
+export type ContinuityKindStats = ContinuityKindEvaluation;
+export type ContinuityStats = ContinuityEvaluation;
 
 interface CliContinuityReview extends Omit<ContinuityReview, "next"> {
   readonly next?: ContinuityReviewItem & {
@@ -236,9 +207,15 @@ function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): 
   const { firstPacks, improvementGate, outcomes } = stats;
   return [
     `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
-    `    First ${KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
-    `    Feedback cohorts: first ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.firstFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.firstFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; next ${IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.nextFiveFeedback.used.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.nextFiveFeedback.rejected.toString()}/${IMPROVEMENT_COHORT_SIZE.toString()}; trend ${improvementGate.status} — ${improvementGate.reason}.`
+    `    First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    `    Feedback cohorts: first ${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.firstFiveFeedback.used.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.firstFiveFeedback.rejected.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}; next ${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.nextFiveFeedback.used.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.nextFiveFeedback.rejected.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}; trend ${improvementGate.status} — ${improvementGate.reason}.`
   ];
+}
+
+function formatLongitudinalCoverage(kind: PersonalThreadKind, coverage: ContinuityLongitudinalKindCoverage): string {
+  const feedbackUnit = coverage.remainingFeedback === 1 ? "feedback entry" : "feedback";
+  const dateUnit = coverage.remainingDates === 1 ? "date" : "dates";
+  return `  ${kind}: feedback ${coverage.explicitFeedback.toString()}/${coverage.explicitFeedbackTarget.toString()} across ${coverage.distinctUtcDates.toString()}/${coverage.distinctUtcDatesTarget.toString()} UTC dates; ${coverage.remainingFeedback.toString()} ${feedbackUnit} and ${coverage.remainingDates.toString()} ${dateUnit} remaining.`;
 }
 
 export function formatContinuityStats(stats: ContinuityStats): string {
@@ -246,8 +223,11 @@ export function formatContinuityStats(stats: ContinuityStats): string {
   const lines = [
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
-    `First ${KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
+    `First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
     `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    `Longitudinal evidence: ${stats.longitudinalGate.status} — ${stats.longitudinalGate.reasons.join("; ")}.`,
+    formatLongitudinalCoverage("life", stats.longitudinalGate.byKind.life),
+    formatLongitudinalCoverage("work", stats.longitudinalGate.byKind.work),
     "By thread kind:",
     ...formatKindStats("life", stats.byKind.life),
     ...formatKindStats("work", stats.byKind.work)

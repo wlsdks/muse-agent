@@ -89,6 +89,15 @@ the canonical domain projection and web renders it. A removed link or unavailabl
 shown as unavailable, never searched for, and merely fetching review cannot open a delivery,
 record an outcome, or change policy.
 
+Continuity evaluation is also one read-only core Module. It orders delivery and feedback
+windows by parsed instant plus delivery id, holds the first-20 gate until every eligible Pack
+has explicit feedback, and reports life/work longitudinal numeric coverage separately.
+Only feedback-bearing deliveries contribute UTC opened dates. Ten feedback entries and two
+UTC dates per kind complete the conservative numeric collection target, but the result is
+`audit-required`, never ready or promoted: natural timing, distinct domains, comparability,
+and strict action receipts remain a human evidence review. Invalid `openedAt` or `recordedAt`
+fails closed rather than producing a trend or complete-looking evaluation.
+
 ## Minimal observation contract
 
 The first persisted unit is an app session transition, not a raw screen sample:

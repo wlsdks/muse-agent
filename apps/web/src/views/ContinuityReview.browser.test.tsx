@@ -107,7 +107,18 @@ test("explicit feedback advances the shared oldest-pending review to the next de
       { evidenceRefs: [], id: "delivery_second", openedAt: "2026-07-17T10:00:00.000Z", thread: { id: "thread_work", kind: "work", title: "Second review" } },
       { evidenceRefs: [], id: "delivery_first", openedAt: "2026-07-17T09:00:00.000Z", ...(advanced ? { outcome: { outcome: "used", recordedAt: "2026-07-17T11:00:00.000Z" } } : {}), thread: { id: "thread_work", kind: "work", title: "First review" } }
     ],
-    evaluation: { ...evaluation, byKind: { life: { ...evaluation, totalDeliveries: 0 }, work: evaluation } },
+    evaluation: {
+      ...evaluation,
+      byKind: { life: { ...evaluation, totalDeliveries: 0 }, work: evaluation },
+      longitudinalGate: {
+        byKind: {
+          life: { distinctUtcDates: 0, distinctUtcDatesTarget: 2, explicitFeedback: 0, explicitFeedbackTarget: 10, remainingDates: 2, remainingFeedback: 10 },
+          work: { distinctUtcDates: advanced ? 1 : 0, distinctUtcDatesTarget: 2, explicitFeedback: advanced ? 1 : 0, explicitFeedbackTarget: 10, remainingDates: advanced ? 1 : 2, remainingFeedback: advanced ? 9 : 10 }
+        },
+        reasons: ["life needs more explicit feedback", "work needs more explicit feedback"],
+        status: "collecting"
+      }
+    },
     resetReceipts: [],
     reviewQueue: queue(),
     threads: []
@@ -129,7 +140,11 @@ test("explicit feedback advances the shared oldest-pending review to the next de
 
   await expect.element(screen.getByText("Next review: First review", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("First exact task · task:task_first", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Longitudinal evidence", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Collecting", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Work: 0/10 feedback · 0/2 UTC dates", { exact: true })).toBeVisible();
   await screen.getByRole("button", { name: "Record used for delivery_first" }).click();
   await expect.element(screen.getByText("Next review: Second review", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Second exact task · task:task_second", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Work: 1/10 feedback · 1/2 UTC dates", { exact: true })).toBeVisible();
 });
