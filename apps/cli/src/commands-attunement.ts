@@ -59,6 +59,8 @@ export interface AttunementCommandDeps {
    * closed with a "connect the MCP server first" message.
    */
   readonly mcpResourceCaller?: McpToolCaller;
+  /** One Pack captures this clock exactly once for deterministic due-state rendering. */
+  readonly now?: () => number;
 }
 
 function environment(): Record<string, string | undefined> {
@@ -123,7 +125,9 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): Exact
         providerId: "local",
         role: link.role,
         ...(summary ? { summary } : {}),
+        ...(task.dueAt ? { taskDueAt: task.dueAt } : {}),
         taskStatus: task.status,
+        ...(task.tags && task.tags.length > 0 ? { taskTags: task.tags } : {}),
         title: task.title,
         updatedAt: task.completedAt ?? task.createdAt
       };
@@ -434,19 +438,42 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
   return `${lines.join("\n")}\n`;
 }
 
-function formatEvidence(pack: ContinuityPack): string[] {
+function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>, nowMs: number): string {
+  const metadata: string[] = [];
+  if (artifact.taskDueAt) {
+    const dueMs = Date.parse(artifact.taskDueAt);
+    if (Number.isFinite(dueMs)) {
+      const label = artifact.taskStatus === "open" && dueMs < nowMs ? "overdue" : "due";
+      metadata.push(`${label}: ${artifact.taskDueAt}`);
+    }
+  }
+  if (artifact.taskTags && artifact.taskTags.length > 0) {
+    metadata.push(`tags: ${JSON.stringify(artifact.taskTags)}`);
+  }
+  return metadata.length > 0 ? ` · ${metadata.join(" · ")}` : "";
+}
+
+function formatEvidence(pack: ContinuityPack, nowMs: number): string[] {
   return pack.evidence.map((entry) => {
     const prefix = `[${entry.reference.artifactType}:${entry.reference.artifactId}]`;
     if (entry.status === "unavailable") return `  - ${prefix} unavailable`;
     if (pack.policy.nextStep === "hidden" && entry.reference.role === "next-step") return `  - ${prefix}`;
     const artifact = entry.artifact!;
-    const detail = pack.policy.detail === "standard" && artifact.summary ? ` — ${artifact.summary}` : "";
-    return `  - ${prefix} ${artifact.title}${detail}`;
+    const isContextualNextStep = pack.policy.nextStep === "contextual"
+      && pack.nextStep !== undefined
+      && entry.reference.artifactId === pack.nextStep.artifactId
+      && entry.reference.artifactType === pack.nextStep.artifactType
+      && entry.reference.providerId === pack.nextStep.providerId
+      && entry.reference.role === pack.nextStep.role;
+    const detail = pack.policy.detail === "standard" && artifact.summary && !isContextualNextStep
+      ? ` — ${artifact.summary}`
+      : "";
+    return `  - ${prefix} ${artifact.title}${detail}${formatTaskMetadata(artifact, nowMs)}`;
   });
 }
 
-export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string): string {
-  const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack)];
+export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: string, nowMs = Date.now()): string {
+  const lines = [`${pack.thread.title} [${pack.thread.kind}]`, "Connected context:", ...formatEvidence(pack, nowMs)];
   if (pack.previousOutcome) lines.push(`Previous pack: ${pack.previousOutcome}`);
   if (pack.policy.nextStep === "hidden") {
     lines.push("Next step: hidden after your previous feedback.");
@@ -496,7 +523,13 @@ async function resolveContinueThreadId(threadId: string | undefined): Promise<st
   return selectThreadInteractively((await readAttunementState(attunementFile())).threads);
 }
 
-async function runContinue(io: ProgramIO, threadId: string | undefined, resolveExactArtifact: ExactArtifactResolver): Promise<void> {
+async function runContinue(
+  io: ProgramIO,
+  threadId: string | undefined,
+  resolveExactArtifact: ExactArtifactResolver,
+  now: () => number
+): Promise<void> {
+  const nowMs = now();
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
   const state = await readAttunementState(file);
@@ -511,7 +544,7 @@ async function runContinue(io: ProgramIO, threadId: string | undefined, resolveE
     expectedPolicyVersion: pack.deliveryPolicyVersion,
     threadId: chosenId
   });
-  io.stdout(formatPack(pack, delivery.id, delivery.runId));
+  io.stdout(formatPack(pack, delivery.id, delivery.runId, nowMs));
 }
 
 async function commandAction(command: Command, io: ProgramIO, label: string, action: () => Promise<void>): Promise<void> {
@@ -525,6 +558,7 @@ async function commandAction(command: Command, io: ProgramIO, label: string, act
 
 export function registerAttunementCommands(program: Command, io: ProgramIO, deps: AttunementCommandDeps = {}): void {
   const mcpResourceCaller = deps.mcpResourceCaller ?? defaultMcpResourceCaller();
+  const now = deps.now ?? Date.now;
   const validateArtifact = createArtifactValidator(mcpResourceCaller);
   const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller);
   const thread = program.command("thread").description("Keep an explicitly chosen life or work thread ready to resume");
@@ -617,7 +651,7 @@ Examples:
       .command(`${name} [thread-id]`)
       .description("Prepare a grounded continuity pack from this thread's explicit local links")
       .action(async (threadId: string | undefined, _options: unknown, command: Command) => {
-        await commandAction(command, io, "continue", () => runContinue(io, threadId, resolveExactArtifact));
+        await commandAction(command, io, "continue", () => runContinue(io, threadId, resolveExactArtifact, now));
       });
   };
   registerContinue(thread, "continue");

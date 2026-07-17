@@ -92,9 +92,11 @@ manual Slice A, but it does **not** authorize automation.
 This was agent-operated, mostly same-session batch dogfood. The life sample is
 only a grocery/milk stress stratum, not broad or longitudinal daily-life
 evidence. Keep delivery user-invoked and hold Slice B. Before another promotion
-review, expose deterministic state already on the exact linked task (especially
-due/staleness and tags), remove duplicated contextual notes, and collect matched
-life/work return moments across dates. Full evidence and the raw/strict audit:
+review, collect matched life/work return moments across dates. The immediate
+follow-up now exposes deterministic due/overdue state and tags from the exact
+linked task and removes duplicated contextual notes; post-window delivery 21
+confirmed the rendering but was honestly scored `adjusted`, so automation stays
+held. Full evidence and the raw/strict audit:
 [`../evaluations/continuity-first-20-2026-07-17.md`](../evaluations/continuity-first-20-2026-07-17.md).
 
 ## Slice B — safe observation and better timing

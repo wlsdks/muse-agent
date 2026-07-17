@@ -10,6 +10,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Continuity Packs expose exact linked task state:** parseable due timestamps
+  are labeled `due` or `overdue` from one captured Pack clock, and exact tags
+  are rendered as escaped JSON. Invalid due values are omitted, hidden next
+  steps remain hidden, and contextual task notes no longer repeat in evidence.
 - **Adjusted Continuity Packs now change the next help:** a contextual next
   step shows normalized, bounded user-authored task notes instead of repeating
   the task title. When notes are missing, Muse gives the exact local

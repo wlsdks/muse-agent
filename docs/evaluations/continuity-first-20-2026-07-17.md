@@ -77,10 +77,11 @@ The source-isolation contract is strong enough to keep.
 
 Concrete engineering titles worked well: deliveries 10, 18, and 19 all led to
 completed verification artifacts. Vague personal or communication tasks did
-not. The Pack currently omits deterministic fields already present on the exact
-task—especially `dueAt` and tags—and cannot distinguish stale context. A vague
-note can also appear once in evidence and again as `Next-action notes`, adding
-repetition rather than reducing a decision.
+not. At the end of this window the Pack omitted deterministic fields already
+present on the exact task—especially `dueAt` and tags—and could not distinguish
+overdue context. A vague note could also appear once in evidence and again as
+`Next-action notes`, adding repetition rather than reducing a decision. The
+post-window follow-up below addresses those presentation defects.
 
 ### Adaptation changes form, not usefulness
 
@@ -102,17 +103,35 @@ moments. Record the signal; do not claim measured adaptation regression.
 
 1. **P0 — keep automation held.** Continue only user-invoked Slice A. Do not
    start proactive delivery or Slice B from this batch.
-2. **P1 — make exact task state decision-complete.** Carry and render the linked
-   task's deterministic due/staleness and tags without searching or auto-linking
-   any unselected source.
-3. **P1 — remove contextual duplication.** Show user-authored notes once, then
-   keep the outcome command; do not echo the same vague text as evidence and
-   action.
+2. **P1 — exact task state presentation completed.** Carry and render the linked
+   task's deterministic due/overdue state and tags without searching or
+   auto-linking any unselected source.
+3. **P1 — contextual duplication removal completed.** Show user-authored notes
+   once, then keep the outcome command; do not echo the same vague text as
+   evidence and action.
 4. **P1 — collect a comparable longitudinal set.** Use distinct natural life
    and work return moments across dates. Compare matched first/next cohorts only
    after at least ten comparable interventions.
 5. **P2 — distribution remains downstream.** The source installer can stay the
    single supported path while manual Continuity usefulness is strengthened.
+
+## Post-window delivery 21
+
+After implementing exact task state and scoped contextual-note suppression, one
+additional manual Pack reopened the same exact linked life task
+`task_4eb5262c-7f56-4734-a06c-9aa59f991656`. Delivery
+`delivery_7b2fdebb-a8e4-499d-9336-3581ea5521ac` displayed the stored timestamp
+as `overdue: 2026-06-06T18:00:00.000Z` and the exact escaped tags as
+`["구매"]`. No other task was searched or selected.
+
+The explicit outcome is `adjusted`, not `used`: the extra state fixed the known
+presentation gap but did not produce a concrete purchase decision, artifact, or
+completed action. The task was unlinked after the check. Overall receipts are
+now `used 12 / adjusted 7 / ignored 2 / rejected 0` across 21 deliveries, while
+the canonical first-20 window remains exactly `used 12 / adjusted 6 / ignored 2 /
+rejected 0` and stays manual-only. Repeating the same milk task dozens more
+times would not add independent evidence; the next set should use distinct,
+natural life/work return moments.
 
 ## Promotion rule
 

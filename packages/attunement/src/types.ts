@@ -144,8 +144,10 @@ export interface AttunementState {
 /** An adapter-resolved artifact. The core never asks an adapter to search. */
 export interface ResolvedArtifact extends ArtifactReference {
   readonly summary?: string;
+  readonly taskDueAt?: string;
   readonly title: string;
   readonly taskStatus?: "open" | "done";
+  readonly taskTags?: readonly string[];
   readonly updatedAt?: string;
 }
 

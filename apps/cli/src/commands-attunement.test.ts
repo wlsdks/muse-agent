@@ -106,6 +106,86 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(next.stdout).toContain("Previous pack: ignored");
   });
 
+  it("shows an exact overdue due and safely escaped JSON tags from the linked task", async () => {
+    const f = fixture();
+    const task: PersistedTask = {
+      ...TASK,
+      dueAt: "2026-07-16T10:00:00.000Z",
+      tags: ["errands", "line\nbreak", "\u001b[31mred"]
+    };
+    await writeTasks(f.taskFile, [task]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+
+    const continued = await run(f, ["continue", id], { now: () => Date.parse("2026-07-17T00:00:00.000Z") });
+    expect(continued.stdout).toContain("overdue: 2026-07-16T10:00:00.000Z");
+    expect(continued.stdout).toContain('tags: ["errands","line\\nbreak","\\u001b[31mred"]');
+    expect(continued.stdout).not.toContain("line\nbreak");
+    expect(continued.stdout).not.toContain("\u001b[31mred");
+  });
+
+  it("captures one Pack clock and treats invalid, equal, and future due values deterministically", async () => {
+    const nowMs = Date.parse("2026-07-17T00:00:00.000Z");
+    const cases = [
+      { dueAt: "not-a-date", expected: undefined },
+      { dueAt: "2026-07-17T00:00:00.000Z", expected: "due: 2026-07-17T00:00:00.000Z" },
+      { dueAt: "2026-07-18T00:00:00.000Z", expected: "due: 2026-07-18T00:00:00.000Z" }
+    ] as const;
+
+    for (const { dueAt, expected } of cases) {
+      const f = fixture();
+      await writeTasks(f.taskFile, [{ ...TASK, dueAt }]);
+      const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+      const id = threadId(started.stdout);
+      await run(f, ["thread", "link", id, "task", TASK.id, "--role", "next-step"]);
+      let clockReads = 0;
+      const continued = await run(f, ["continue", id], { now: () => {
+        clockReads += 1;
+        return nowMs;
+      } });
+
+      expect(clockReads).toBe(1);
+      if (expected) {
+        expect(continued.stdout).toContain(expected);
+        expect(continued.stdout).not.toContain(`overdue: ${dueAt}`);
+      } else {
+        expect(continued.stdout).not.toContain(dueAt);
+      }
+    }
+  });
+
+  it("keeps due and tags in compact direct Packs and suppresses them when the next step is hidden", async () => {
+    const f = fixture();
+    const task: PersistedTask = {
+      ...TASK,
+      dueAt: "2026-07-16T10:00:00.000Z",
+      tags: ["birthday"]
+    };
+    const deps: AttunementCommandDeps = { now: () => Date.parse("2026-07-17T00:00:00.000Z") };
+    await writeTasks(f.taskFile, [task]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+
+    const initial = await run(f, ["continue", id], deps);
+    const initialDelivery = initial.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(initialDelivery).toBeTruthy();
+    await run(f, ["thread", "outcome", initialDelivery!, "used"]);
+
+    const compact = await run(f, ["continue", id], deps);
+    expect(compact.stdout).toContain("overdue: 2026-07-16T10:00:00.000Z");
+    expect(compact.stdout).toContain('tags: ["birthday"]');
+    const compactDelivery = compact.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(compactDelivery).toBeTruthy();
+    await run(f, ["thread", "outcome", compactDelivery!, "rejected"]);
+
+    const hidden = await run(f, ["continue", id], deps);
+    expect(hidden.stdout).toContain("Next step: hidden after your previous feedback.");
+    expect(hidden.stdout).not.toContain("2026-07-16T10:00:00.000Z");
+    expect(hidden.stdout).not.toContain('tags: ["birthday"]');
+  });
+
   it("shows normalized user-authored task notes instead of repeating the title for a contextual next step", async () => {
     const f = fixture();
     const task = {
@@ -113,9 +193,11 @@ describe("muse thread / continue — Personal Continuity", () => {
       notes: "  Ask Jamie which flowers they prefer.\nThen send only the matching options.  "
     };
     await writeTasks(f.taskFile, [task]);
+    writeFileSync(join(f.notesDir, "birthday-context.md"), "# Birthday context\nKeep the garden dinner small.\n", "utf8");
     const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
     const id = threadId(started.stdout);
     await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+    await run(f, ["thread", "link", id, "note", "birthday-context.md", "--role", "context"]);
 
     const initial = await run(f, ["continue", id]);
     expect(initial.stdout).toContain(`Next step: ${task.title} [${task.id}]`);
@@ -127,6 +209,8 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(contextual.stdout).toContain(
       `Next-action notes: Ask Jamie which flowers they prefer. Then send only the matching options. [${task.id}]`
     );
+    expect(contextual.stdout.match(/Ask Jamie which flowers they prefer\. Then send only the matching options\./gu)).toHaveLength(1);
+    expect(contextual.stdout).toContain("[note:birthday-context.md] birthday-context.md — Birthday context");
     expect(contextual.stdout).not.toContain(`Linked next step: ${task.title}`);
   });
 
