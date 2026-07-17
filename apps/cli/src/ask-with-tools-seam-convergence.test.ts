@@ -124,6 +124,7 @@ const BASE_SYSTEM_PROMPT_PARAMS = {
   actionBlock: "",
   browsingBlock: "",
   browsingHits: [],
+  query: "",
   calendarBlock: "",
   contactBlock: "",
   episodeBlock: "",

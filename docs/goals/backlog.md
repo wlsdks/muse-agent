@@ -60,6 +60,7 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 
 - [open] 2026-07-02 :: chat REPL(Ink) ESC->AbortController 배선 — DS-1(8ccf4b92) 잔여 (상세: backlog-archive.md delta-scout 2026-07-02)
 - [open] 2026-07-17 kind=fix src=probe prio=4 for=improve-muse :: ask 표면 언어 미러링 미배선 — 영어 질문+English 선호인데 gemma4가 한국어로 답변(데모 라이브 프로브 3/3 재현). prompt-system fire 2 리스크 (A)의 실증: register/brevity PromptLayer가 composeSurfacePrompt("ask")에 미적용. 배선+라이브 검증 필요.
+- [open] 2026-07-17 kind=fix src=probe prio=2 for=improve-muse :: 크로스링구얼 인용정밀 false-flag — EN 답변이 KO 노트를 인용하면(또는 역) lexical coverage가 번역을 못 봐 경고 발화(라이브 재현; KO-KO 교착어미 클래스는 stem-prefix로 해결됨). 임베딩/의미 기반 support 판정 필요 — 문장별 embed 레이턴시 트레이드오프 설계 포함.
 - [open] 2026-07-17 kind=fix src=probe prio=3 for=improve-muse :: 한국어 인용정밀 검사 false-flag — citation-precision(lexical token coverage 0.5)이 한국어 교착어미를 못 맞춰("주문하고" vs "주문,") KO 답변+KO 노트의 올바른 패러프레이즈 인용에 경고 발화(라이브 재현). 한국어 토큰 정규화(어간/조사 스트립) 또는 임베딩-지원 support 판정 필요.
 - [open] 2026-07-17 kind=test src=audit prio=3 for=improve-muse :: eval:knows-me 배터리 미구현 — 구 LEARNING-LOOP-PLAN.md(2026-07-18 삭제, git history) §D의 유일한 미출하 항목(knowsMeRepeatFree/Delta/Prospective; "Muse가 나를 배웠나"를 측정하는 게이트). 레포 전체에 심볼 0건, 이 레코드가 유일한 추적점 (2026-07-17 md 전수조사에서 발굴).
 

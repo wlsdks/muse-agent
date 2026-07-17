@@ -37,6 +37,35 @@ export interface CitationPrecisionReport {
 /** A sentence needs ≥ this fraction of its content tokens in the CITED source to count supported. */
 export const DEFAULT_CITATION_PRECISION_FLOOR = 0.5;
 
+const HANGUL_ONLY_RE = /^\p{Script=Hangul}+$/u;
+
+/**
+ * Korean is agglutinative: the SAME word carries different particles/endings per
+ * sentence ("주문" in a note becomes "주문하고"/"주문하기로" in a faithful answer),
+ * so exact-token coverage structurally under-counts Korean support — a correct
+ * KO paraphrase of a KO note measured 0.267 exact-only coverage against the 0.5
+ * floor (live false-flag, 2026-07-17). Count a Hangul sentence token as covered
+ * when it shares a ≥2-syllable stem prefix with an evidence token (either
+ * direction): the same pair then measures 0.733, while a fabricated KO claim
+ * against the same note measures 0.125 — margin on both sides of the floor.
+ * Two syllables, not one — single-syllable prefixes ("주문" vs "주민" share
+ * only "주") collide across unrelated words.
+ */
+function hangulStemCovered(token: string, evidenceTokens: ReadonlySet<string>): boolean {
+  if (token.length < 2 || !HANGUL_ONLY_RE.test(token)) {
+    return false;
+  }
+  for (const evidence of evidenceTokens) {
+    if (evidence.length < 2 || !HANGUL_ONLY_RE.test(evidence)) {
+      continue;
+    }
+    if (token.startsWith(evidence) || evidence.startsWith(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const CITATION_FROM_RE = /\[from\s+([^\]]+?)\s*\]/giu;
 // Private-use sentinel so a `[from x.md]` marker's internal "." can't split a
 // sentence; the index between sentinels is stripped before tokenizing.
@@ -98,7 +127,7 @@ export function reportCitationPrecision(
         const evidenceTokens = lexicalTokens(text);
         let covered = 0;
         for (const token of sentenceTokens) {
-          if (evidenceTokens.has(token)) covered += 1;
+          if (evidenceTokens.has(token) || hangulStemCovered(token, evidenceTokens)) covered += 1;
         }
         coverage = covered / sentenceTokens.size;
       }

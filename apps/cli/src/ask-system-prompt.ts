@@ -8,6 +8,7 @@
  * side effects; reads only the pre-computed blocks + counts it is handed.
  */
 
+import { buildLanguageMirrorLayer } from "@muse/agent-core";
 import { composeSurfacePrompt } from "@muse/prompts";
 import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
 
@@ -17,6 +18,8 @@ import { formatCurrentContextLine } from "@muse/recall";
 export function buildAskSystemPrompt(params: {
   readonly personaTemplatePreamble: string;
   readonly personaPrompt: string | undefined;
+  /** The user's question this turn — drives the per-turn language-mirror line. */
+  readonly query: string;
   readonly withTools: boolean;
   readonly notesFraming: { readonly guidance?: string | undefined; readonly header: string };
   readonly contextBlock: string;
@@ -46,7 +49,7 @@ export function buildAskSystemPrompt(params: {
   readonly reflectionLines: readonly unknown[];
 }): string {
   const {
-    personaTemplatePreamble, personaPrompt, withTools, notesFraming, contextBlock,
+    personaTemplatePreamble, personaPrompt, query, withTools, notesFraming, contextBlock,
     taskBlock, openTasks, calendarBlock, upcomingEvents, reminderBlock, pendingReminders,
     contactBlock, matchedContacts, memoryBlock, matchedMemories, shellBlock, matchedCommands,
     gitBlock, matchedCommits, actionBlock, matchedActions, episodeBlock, episodeHits,
@@ -102,6 +105,15 @@ export function buildAskSystemPrompt(params: {
         // was breaking that reuse on every turn. The date/time line itself is
         // still ALWAYS present ("anything due today?" needs `now`); when a
         // persona is injected it duplicates buildMusePersona's line — harmless.
+        // Language mirroring is per-turn (query-derived) so it lives in the
+        // volatile zone — the soft "preferred language" line above is ignored
+        // by a Korean-primed 12B on an English turn (measured live 3/3 on the
+        // demo home); this is the same deterministic layer the chat surface
+        // already wires via context-transforms.
+        ...((): string[] => {
+          const mirror = buildLanguageMirrorLayer(query);
+          return mirror ? [mirror.content] : [];
+        })(),
         ...(notesFraming.guidance ? [notesFraming.guidance] : []),
         // Persona already carries its own date/time line (buildMusePersona);
         // only the persona-less path needs this one — the duplicate was ~20

@@ -56,6 +56,36 @@ describe("reportCitationPrecision — ALCE per-citation support (right source, w
     expect(report.precision).toBe(1);
   });
 
+  it("a faithful Korean paraphrase is supported despite agglutinative endings (live false-flag, 2026-07-17)", () => {
+    // The note says "주문"/"예약"; a faithful answer inflects them ("주문하고"/
+    // "예약하기로") — exact-token coverage measured 0.267 (< 0.5 floor) and
+    // false-flagged every Korean ask. The ≥2-syllable stem-prefix match lifts
+    // this pair to 0.733 without touching the shared tokenizer.
+    const report = reportCitationPrecision(
+      "생일 파티를 위해 Butter&Crumb에서 케이크를 주문하고, 미나와 준을 초대하며 토요일에 루프탑 테이블을 예약하기로 했습니다 [from birthday-plan.md].",
+      [match("birthday-plan.md", "생일 파티 준비: Butter&Crumb에서 케이크 주문, 미나랑 준 초대, 토요일 루프탑 테이블 예약.")]
+    );
+    expect(report.pairs[0]!.supported).toBe(true);
+    expect(report.pairs[0]!.coverage).toBeGreaterThan(0.6);
+  });
+
+  it("a fabricated Korean claim against the same note is still flagged (stem match must not wash out the gate)", () => {
+    const report = reportCitationPrecision(
+      "다음 주 화요일 오전에 치과 검진 예약이 있습니다 [from birthday-plan.md].",
+      [match("birthday-plan.md", "생일 파티 준비: Butter&Crumb에서 케이크 주문, 미나랑 준 초대, 토요일 루프탑 테이블 예약.")]
+    );
+    expect(report.pairs[0]!.supported).toBe(false);
+    expect(report.pairs[0]!.coverage).toBeLessThan(0.5);
+  });
+
+  it("single-syllable Hangul prefixes do not collide ('주문' never covers '주민')", () => {
+    const report = reportCitationPrecision(
+      "주민 등록 정보를 갱신했습니다 [from admin.md].",
+      [match("admin.md", "주문 내역: 케이크")]
+    );
+    expect(report.pairs[0]!.supported).toBe(false);
+  });
+
   it("aggregates ALL chunks of a cited source (a sentence supported by a DIFFERENT chunk of the same file is not false-flagged)", () => {
     // The same file is retrieved as two chunks; the SUPPORTING chunk comes first,
     // so a last-wins source map would score the sentence against the non-supporting

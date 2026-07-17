@@ -364,6 +364,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
       pendingReminders,
       personaPrompt,
       personaTemplatePreamble,
+      query,
       reflectionBlock,
       reflectionLines,
       reminderBlock,

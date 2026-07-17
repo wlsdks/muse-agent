@@ -10,6 +10,18 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **`muse ask` answers in the language you asked in.** An English question
+  against a Korean-primed local model came back in Korean (measured 3/3);
+  the ask surface now injects the same deterministic language-mirror layer
+  the chat surface already uses, placed below the stable prompt prefix so
+  KV-cache reuse is unaffected. Verified live 3/3 English.
+- **Korean answers are no longer false-flagged by the citation check.** The
+  citation-precision cue used exact-token coverage, which Korean's
+  particles/endings structurally break (a faithful paraphrase measured 0.267
+  against the 0.5 floor); Hangul tokens now match on a two-syllable shared
+  stem (faithful 0.733 vs fabricated 0.125 — margin on both sides), with
+  English behavior unchanged.
+
 - **`muse ask` semantic grounding works again on v2 note indexes.** The ask
   path parsed `notes-index.json` directly and never hydrated the Float32
   embedding sidecar, so every cosine ranking failed and answers silently
