@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Adjusted Continuity Packs now change the next help:** a contextual next
+  step shows normalized, bounded user-authored task notes instead of repeating
+  the task title. When notes are missing, Muse gives the exact local
+  `muse tasks edit ... --notes ... --local` command rather than inventing an
+  action.
 - **TS7-era testing contract:** Vitest is updated to 4.1.10, high-risk parser
   invariants can use the official fast-check connector, and React interaction
   tests now run in real Chromium through Vitest Browser Mode. The documented

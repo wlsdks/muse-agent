@@ -106,6 +106,86 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(next.stdout).toContain("Previous pack: ignored");
   });
 
+  it("shows normalized user-authored task notes instead of repeating the title for a contextual next step", async () => {
+    const f = fixture();
+    const task = {
+      ...TASK,
+      notes: "  Ask Jamie which flowers they prefer.\nThen send only the matching options.  "
+    };
+    await writeTasks(f.taskFile, [task]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+
+    const initial = await run(f, ["continue", id]);
+    expect(initial.stdout).toContain(`Next step: ${task.title} [${task.id}]`);
+    const deliveryId = initial.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(deliveryId).toBeTruthy();
+    await run(f, ["thread", "outcome", deliveryId!, "adjusted"]);
+
+    const contextual = await run(f, ["continue", id]);
+    expect(contextual.stdout).toContain(
+      `Next-action notes: Ask Jamie which flowers they prefer. Then send only the matching options. [${task.id}]`
+    );
+    expect(contextual.stdout).not.toContain(`Linked next step: ${task.title}`);
+  });
+
+  it("shows the exact local edit command when a contextual next step has only whitespace notes", async () => {
+    const f = fixture();
+    const task = { ...TASK, notes: " \n\t " };
+    await writeTasks(f.taskFile, [task]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+
+    const initial = await run(f, ["continue", id]);
+    const deliveryId = initial.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(deliveryId).toBeTruthy();
+    await run(f, ["thread", "outcome", deliveryId!, "adjusted"]);
+
+    const contextual = await run(f, ["continue", id]);
+    expect(contextual.stdout).toContain(
+      `Next step needs detail: muse tasks edit ${task.id} --notes "<first concrete action>" --local`
+    );
+    expect(contextual.stdout).not.toContain(`Next step: ${task.title}`);
+  });
+
+  it("bounds contextual task notes to 240 code units", async () => {
+    const f = fixture();
+    const task = { ...TASK, notes: `\n${"A".repeat(245)}\n` };
+    await writeTasks(f.taskFile, [task]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", task.id, "--role", "next-step"]);
+
+    const initial = await run(f, ["continue", id]);
+    const deliveryId = initial.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(deliveryId).toBeTruthy();
+    await run(f, ["thread", "outcome", deliveryId!, "adjusted"]);
+
+    const contextual = await run(f, ["continue", id]);
+    expect(contextual.stdout.split("\n").find((line) => line.startsWith("Next-action notes:"))).toBe(
+      `Next-action notes: ${"A".repeat(240)} [${task.id}]`
+    );
+  });
+
+  it("keeps a rejected next step hidden in the public CLI", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    const started = await run(f, ["thread", "start", "Plan", "a", "birthday", "--kind", "life"]);
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", TASK.id, "--role", "next-step"]);
+
+    const initial = await run(f, ["continue", id]);
+    const deliveryId = initial.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
+    expect(deliveryId).toBeTruthy();
+    await run(f, ["thread", "outcome", deliveryId!, "rejected"]);
+
+    const hidden = await run(f, ["continue", id]);
+    expect(hidden.stdout).toContain("Next step: hidden after your previous feedback.");
+    expect(hidden.stdout).not.toContain(`Next step: ${TASK.title}`);
+  });
+
   it("an OPEN task linked as context (not next-step) names the gap + the exact fix, not a misleading 'no task linked' (dogfood)", async () => {
     const f = fixture();
     await writeTasks(f.taskFile, [TASK]);

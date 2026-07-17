@@ -77,6 +77,11 @@ function notesDir(): string {
   return resolveNotesDir(environment());
 }
 
+function boundedTaskNotes(notes: string | undefined): string | undefined {
+  const normalized = notes?.replace(/\s+/gu, " ").trim();
+  return normalized ? normalized.slice(0, 240) : undefined;
+}
+
 function assertChoice(value: string, allowed: readonly string[], name: string): void {
   if (!allowed.includes(value)) throw new AttunementStoreError(`${name} must be one of: ${allowed.join(", ")}`);
 }
@@ -111,12 +116,13 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): Exact
     if (link.artifactType === "task") {
       const task = await readTaskById(tasksFile(), link.artifactId);
       if (!task) return undefined;
+      const summary = boundedTaskNotes(task.notes);
       return {
         artifactId: task.id,
         artifactType: "task",
         providerId: "local",
         role: link.role,
-        ...(task.notes ? { summary: task.notes.slice(0, 240) } : {}),
+        ...(summary ? { summary } : {}),
         taskStatus: task.status,
         title: task.title,
         updatedAt: task.completedAt ?? task.createdAt
@@ -445,8 +451,13 @@ export function formatPack(pack: ContinuityPack, deliveryId: string, runId?: str
   if (pack.policy.nextStep === "hidden") {
     lines.push("Next step: hidden after your previous feedback.");
   } else if (pack.nextStep) {
-    const label = pack.policy.nextStep === "contextual" ? "Linked next step" : "Next step";
-    lines.push(`${label}: ${pack.nextStep.title} [${pack.nextStep.artifactId}]`);
+    if (pack.policy.nextStep === "contextual") {
+      lines.push(pack.nextStep.summary
+        ? `Next-action notes: ${pack.nextStep.summary} [${pack.nextStep.artifactId}]`
+        : `Next step needs detail: muse tasks edit ${pack.nextStep.artifactId} --notes "<first concrete action>" --local`);
+    } else {
+      lines.push(`Next step: ${pack.nextStep.title} [${pack.nextStep.artifactId}]`);
+    }
   } else {
     // A next-step is ONLY populated from a task linked with `--role next-step`
     // (continuity-pack.ts). Saying "no open local task is linked" when a task IS
