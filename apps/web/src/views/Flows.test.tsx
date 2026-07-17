@@ -99,6 +99,11 @@ describe("FlowsTab — empty state", () => {
     const html = await renderFlowsTab(EMPTY);
     expect(html).toContain(DICTIONARIES.en["auto.flows.create.button"]);
   });
+
+  it("still offers the copilot composer at zero flows (describe-to-draft is the first-run path)", async () => {
+    const html = await renderFlowsTab(EMPTY);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.draft.button"]);
+  });
 });
 
 describe("FlowsTab — populated state", () => {

@@ -10,6 +10,7 @@ import { FLOW_EDGE_TYPES } from "./flow-edges.js";
 import {
   draftToPreviewProjection,
   emptyFlowDraft,
+  flowDraftFromCopilot,
   flowDraftToJobInput,
   isFlowDraftValid,
   isValidCronShape,
@@ -23,7 +24,7 @@ import { FLOW_NODE_TYPES } from "./flow-nodes.js";
 import { PRESET_LABEL_KEY } from "./flow-edit-panel.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { ScheduledJobDetail } from "../api/types.js";
+import type { FlowDraftPayloadRow, ScheduledJobDetail } from "../api/types.js";
 
 /**
  * 새 흐름 만들기: a form + a live READ-ONLY preview canvas built client-side
@@ -36,15 +37,19 @@ import type { ScheduledJobDetail } from "../api/types.js";
 export function FlowCreatePanel({
   client,
   onCreated,
-  onCancel
+  onCancel,
+  initialDraft
 }: {
   client: ApiClient;
   onCreated: (jobId: string) => void;
   onCancel: () => void;
+  /** A 코파일럿 초안 (copilot draft) to prefill the form with — the user still
+   * reviews every field and clicks 만들기; nothing is created automatically. */
+  initialDraft?: FlowDraftPayloadRow;
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const [draft, setDraft] = useState<FlowDraft>(emptyFlowDraft());
+  const [draft, setDraft] = useState<FlowDraft>(() => (initialDraft ? flowDraftFromCopilot(initialDraft) : emptyFlowDraft()));
 
   const create = useMutation({
     mutationFn: () => client.post<ScheduledJobDetail>("/api/scheduler/jobs", flowDraftToJobInput(draft)),
@@ -61,6 +66,7 @@ export function FlowCreatePanel({
   return (
     <Card title={t("auto.flows.create.title")} className="lifted">
       <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+        {initialDraft && <div className="banner">{t("auto.flows.draft.panelNotice")}</div>}
         <label style={{ display: "grid", gap: 4 }}>
           <span className="field-label">{t("auto.flows.create.nameLabel")}</span>
           <input

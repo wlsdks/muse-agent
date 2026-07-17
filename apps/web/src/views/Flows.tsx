@@ -11,12 +11,15 @@ import { flowToCanvas } from "./flow-canvas-mapping.js";
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
 import { renameFlowPatch, toggleEnabledPatch } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
+import { FlowDraftComposer } from "./flow-draft-composer.js";
 import { FlowNodeEditPanel } from "./flow-edit-panel.js";
+import { dryRunUrl } from "./flow-executions-compile.js";
+import { ExecutionsCard, executionsQueryKey } from "./flow-executions.js";
 import { formatMetaValue, FLOW_NODE_TYPES } from "./flow-nodes.js";
 
 import type { FlowCanvasEdge, FlowCanvasNode } from "./flow-canvas-mapping.js";
 import type { ApiClient } from "../api/client.js";
-import type { FlowProjection, FlowsResponse } from "../api/types.js";
+import type { FlowDraftPayloadRow, FlowProjection, FlowsResponse } from "../api/types.js";
 
 
 export function FlowsView({ client }: { client: ApiClient }) {
@@ -51,6 +54,8 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const [selectedFlowId, setSelectedFlowId] = useState<string | undefined>(flows[0]?.id);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
+  const [initialDraft, setInitialDraft] = useState<FlowDraftPayloadRow | undefined>(undefined);
+  const [draftVersion, setDraftVersion] = useState(0);
 
   const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) ?? flows[0];
 
@@ -58,20 +63,34 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
     setSelectedNodeId(undefined);
   }, [selectedFlow?.id]);
 
+  const openCreatePanel = () => {
+    setInitialDraft(undefined);
+    setCreating(true);
+  };
+  const handleDrafted = (draft: FlowDraftPayloadRow) => {
+    setInitialDraft(draft);
+    setDraftVersion((version) => version + 1);
+    setCreating(true);
+  };
+
   if (creating) {
     return (
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "280px 1fr" }}>
         <FlowListCard
+          client={client}
           flows={flows}
+          onDrafted={handleDrafted}
           selectedId={selectedFlow?.id}
           onSelect={(id) => {
             setSelectedFlowId(id);
             setCreating(false);
           }}
-          onCreate={() => setCreating(true)}
+          onCreate={openCreatePanel}
         />
         <FlowCreatePanel
+          key={initialDraft ? `draft-${draftVersion.toString()}` : "empty"}
           client={client}
+          initialDraft={initialDraft}
           onCancel={() => setCreating(false)}
           onCreated={(jobId) => {
             setCreating(false);
@@ -91,9 +110,12 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
         <Icon.activity className="nav-icon" />
         <div style={{ fontWeight: 600 }}>{t("auto.flows.emptyTitle")}</div>
         <div className="muted" style={{ fontSize: 13, maxWidth: 420, textAlign: "center" }}>{t("auto.flows.emptyHint")}</div>
-        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+        <Button variant="primary" size="sm" onClick={openCreatePanel}>
           <Icon.plus className="nav-icon" /> {t("auto.flows.create.button")}
         </Button>
+        <div style={{ width: "100%", maxWidth: 460, marginTop: 8 }}>
+          <FlowDraftComposer client={client} onDrafted={handleDrafted} />
+        </div>
       </div>
     );
   }
@@ -102,10 +124,12 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "280px 1fr" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <FlowListCard
+          client={client}
           flows={flows}
+          onDrafted={handleDrafted}
           selectedId={selectedFlow.id}
           onSelect={setSelectedFlowId}
-          onCreate={() => setCreating(true)}
+          onCreate={openCreatePanel}
         />
         <Card title={t("auto.flows.detailTitle")}>
           {selectedNodeId ? (
@@ -119,6 +143,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
             <p className="subtle">{t("auto.flows.detailEmpty")}</p>
           )}
         </Card>
+        <ExecutionsCard client={client} jobId={selectedFlow.id} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -140,15 +165,19 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
 }
 
 function FlowListCard({
+  client,
   flows,
   selectedId,
   onSelect,
-  onCreate
+  onCreate,
+  onDrafted
 }: {
+  client: ApiClient;
   flows: readonly FlowProjection[];
   selectedId: string | undefined;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  onDrafted: (draft: FlowDraftPayloadRow) => void;
 }) {
   const { t, locale } = useI18n();
   return (
@@ -161,6 +190,7 @@ function FlowListCard({
         </Button>
       }
     >
+      <FlowDraftComposer client={client} onDrafted={onDrafted} />
       <div className="flow-list">
         {flows.map((flow) => (
           <button
@@ -257,6 +287,7 @@ function FlowHeaderActions({
   const { t } = useI18n();
   const qc = useQueryClient();
   const invalidateFlows = () => void qc.invalidateQueries({ queryKey: ["flows"] });
+  const invalidateExecutions = () => void qc.invalidateQueries({ queryKey: executionsQueryKey(client, flow.id) });
 
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(flow.name);
@@ -291,7 +322,15 @@ function FlowHeaderActions({
 
   const trigger = useMutation({
     mutationFn: () => client.post<TriggerResult>(`${jobUrl}/trigger`),
-    onSuccess: invalidateFlows
+    onSuccess: () => {
+      invalidateFlows();
+      invalidateExecutions();
+    }
+  });
+
+  const dryRun = useMutation({
+    mutationFn: () => client.post<TriggerResult>(dryRunUrl(flow.id)),
+    onSuccess: invalidateExecutions
   });
 
   const remove = useMutation({
@@ -336,6 +375,9 @@ function FlowHeaderActions({
         <Button variant="secondary" size="sm" disabled={trigger.isPending} onClick={() => trigger.mutate()}>
           {trigger.isPending ? t("auto.flows.header.running") : t("auto.flows.header.runNow")}
         </Button>
+        <Button variant="secondary" size="sm" disabled={dryRun.isPending} onClick={() => dryRun.mutate()}>
+          {dryRun.isPending ? t("auto.flows.header.dryRunning") : t("auto.flows.header.dryRun")}
+        </Button>
         <Button
           variant={confirmingDelete ? "danger" : "ghost"}
           size="sm"
@@ -356,6 +398,10 @@ function FlowHeaderActions({
         <div className="banner">{t("auto.flows.header.runResult", { status: describeTriggerResult(trigger.data) })}</div>
       )}
       {trigger.error && <div className="banner err">{errorMessage(trigger.error, t("auto.flows.header.runFailed"))}</div>}
+      {dryRun.isSuccess && (
+        <div className="banner">{t("auto.flows.header.dryRunResult", { status: describeTriggerResult(dryRun.data) })}</div>
+      )}
+      {dryRun.error && <div className="banner err">{errorMessage(dryRun.error, t("auto.flows.header.dryRunFailed"))}</div>}
       {remove.error && <div className="banner err">{errorMessage(remove.error, t("auto.flows.header.deleteFailed"))}</div>}
     </div>
   );

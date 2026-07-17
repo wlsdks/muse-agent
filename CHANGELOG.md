@@ -10,6 +10,18 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Describe it, and Muse drafts the flow.** Type "평일 아침 8시 반에 오늘
+  첫 일정 알려줘" above the Flows list and Muse sketches the automation —
+  correct cron, cleaned-up prompt, live canvas preview — as a DRAFT you
+  review and confirm; nothing is created until you click 만들기. Runs on
+  your local model with strict validation (unknown fields stripped, one
+  bounded repair retry, honest errors), gated by a new eval:flow-draft
+  battery.
+- **Every flow now shows its runs.** A 실행 기록 card lists recent
+  executions (status, duration, test badge, expandable result preview),
+  and a new 테스트 실행 button dry-runs the flow without waiting for the
+  schedule.
+
 - **Muse Work — one place for one goal.** `muse work start "생일 파티 준비"
   --goal "..."` creates a Work that binds the automations (flows), board
   tasks, and continuity thread serving that goal, records used/adjusted/

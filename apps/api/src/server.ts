@@ -48,6 +48,7 @@ import { registerProactiveRoutes } from "./proactive-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { registerAutomationRoutes } from "./automation-routes.js";
 import { registerFlowsRoutes } from "./flows-routes.js";
+import { registerFlowDraftRoutes } from "./flows-draft-routes.js";
 import { registerWorksRoutes } from "./works-routes.js";
 import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-tick.js";
 import { createFileBackedActivityTracker, createInMemoryActivityTracker } from "./proactive-tick.js";
@@ -483,6 +484,24 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
   });
   registerFlowsRoutes(server, { authService, scheduler: options.scheduler });
+  if (options.modelProvider && options.defaultModel) {
+    const draftModelProvider = options.modelProvider;
+    const draftModel = options.defaultModel;
+    registerFlowDraftRoutes(server, {
+      authService,
+      generateDraft: async (prompt) => {
+        const response = await draftModelProvider.generate({
+          messages: [
+            { content: prompt.system, role: "system" },
+            { content: prompt.user, role: "user" }
+          ],
+          model: draftModel,
+          temperature: 0
+        });
+        return response.output;
+      }
+    });
+  }
   registerBoardRoutes(server);
   registerWorksRoutes(server, {
     attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),

@@ -12,7 +12,7 @@
  * graph-editing surface here by design.
  */
 
-import type { FlowEdge, FlowNode, FlowProjection, ScheduledJobCreateBody, ScheduledJobDetail, ScheduledJobPatchBody } from "../api/types.js";
+import type { FlowDraftPayloadRow, FlowEdge, FlowNode, FlowProjection, ScheduledJobCreateBody, ScheduledJobDetail, ScheduledJobPatchBody } from "../api/types.js";
 
 export type SchedulePresetId = "dailyMorning9" | "dailyEvening6" | "hourly" | "weeklyMonday9" | "weekdays9";
 
@@ -200,6 +200,24 @@ export function flowDraftToJobInput(draft: FlowDraft, timezone: string = default
     notificationChannelId: notificationChannelId.length > 0 ? notificationChannelId : undefined,
     retryOnFailure: draft.retryOnFailure,
     timezone
+  };
+}
+
+/** Maps `POST /api/flows/draft`'s response into the SAME `FlowDraft` shape
+ * the create form edits — the copilot draft is never auto-created, it just
+ * pre-fills this form so the user still reviews + clicks 만들기. A cron the
+ * model returned that matches a known preset resolves to that preset
+ * (`scheduleFormFromCron`); otherwise it lands in the custom-cron field. */
+export function flowDraftFromCopilot(payload: FlowDraftPayloadRow): FlowDraft {
+  return {
+    agentModel: "",
+    agentPrompt: payload.prompt,
+    enabled: true,
+    maxRetryCount: DEFAULT_MAX_RETRY_COUNT,
+    name: payload.name,
+    notificationChannelId: payload.notifyChannel ?? "",
+    retryOnFailure: payload.retry,
+    schedule: scheduleFormFromCron(payload.cronExpression)
   };
 }
 

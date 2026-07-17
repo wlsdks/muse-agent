@@ -65,6 +65,7 @@
     "eval:agent": "pnpm --filter @muse/model build && pnpm --filter @muse/tools build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && pnpm --filter @muse/api build && node scripts/eval-agent.mjs",
     "eval:self-improving": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/eval-self-improving.mjs",
     "eval:rule-conflict": "pnpm --filter @muse/model build && pnpm --filter @muse/agent-core build && node apps/cli/scripts/verify-rule-conflict.mjs",
+    "eval:flow-draft": "pnpm --filter @muse/model build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/scheduler build && pnpm --filter @muse/api build && node apps/cli/scripts/eval-flow-draft.mjs",
     "eval:plan-quality": "pnpm --filter @muse/model build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && node scripts/eval-plan-quality.mjs",
     "eval:whetstone": "pnpm --filter @muse/stores build && node scripts/eval-whetstone.mjs",
     "eval:vision": "pnpm --filter @muse/model build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && node apps/cli/scripts/verify-vision-actions.mjs",

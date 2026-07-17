@@ -512,6 +512,43 @@ export interface SchedulerJobsResponse {
   readonly total: number;
 }
 
+// Mirrors `apps/api`'s `toScheduledJobExecutionResponse` (scheduler-routes.ts) —
+// same duplication reasoning as `SchedulerJobRow` above.
+export type ScheduledJobExecutionStatus = "SUCCESS" | "FAILED" | "RUNNING" | "SKIPPED";
+export interface ScheduledJobExecutionRow {
+  readonly id: string;
+  readonly jobId: string;
+  readonly jobName: string;
+  readonly status: ScheduledJobExecutionStatus;
+  readonly dryRun: boolean;
+  readonly durationMs: number;
+  readonly startedAt: number;
+  readonly completedAt: number | null;
+  readonly result: string | null;
+  readonly resultPreview: string | null;
+  readonly failureReason: string | null;
+}
+export interface ScheduledJobExecutionsResponse {
+  readonly items: readonly ScheduledJobExecutionRow[];
+  readonly limit: number;
+  readonly offset: number;
+  readonly total: number;
+}
+
+// Mirrors `apps/api`'s `FlowDraftPayload` (flows-draft-compile.ts) —
+// `POST /api/flows/draft`'s response. A draft is NEVER auto-created — the
+// user still reviews it in the create panel and clicks 만들기.
+export interface FlowDraftPayloadRow {
+  readonly name: string;
+  readonly cronExpression: string;
+  readonly prompt: string;
+  readonly notifyChannel: string | null;
+  readonly retry: boolean;
+}
+export interface FlowDraftResponse {
+  readonly draft: FlowDraftPayloadRow;
+}
+
 interface WeaknessView {
   axis: string;
   topic: string;

@@ -9,7 +9,7 @@ import { FlowsTab } from "./Flows.js";
 import { I18nProvider } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { FlowsResponse, ScheduledJobDetail } from "../api/types.js";
+import type { FlowDraftResponse, FlowsResponse, ScheduledJobDetail } from "../api/types.js";
 
 // No global setup file registers `cleanup()` for this project's browser
 // config yet, so each test must unmount its own tree — several tests in
@@ -93,6 +93,25 @@ function fakeClient(): ApiClient {
   };
 }
 
+/** Same shape as `fakeClient()` but with an injectable `post` — the 코파일럿
+ * 초안 tests need a `POST /api/flows/draft` response/rejection distinct from
+ * every other mutation this view fires. */
+function fakeClientWithPost(post: ApiClient["post"]): ApiClient {
+  return {
+    baseUrl: "http://fake.invalid",
+    del: vi.fn(async () => undefined) as unknown as ApiClient["del"],
+    get: vi.fn(async (path: string) => {
+      if (path === "/api/flows") return FLOWS_RESPONSE;
+      if (path === "/api/scheduler/jobs/job_1") return JOB_DETAIL;
+      if (path.startsWith("/api/scheduler/jobs/job_1/executions")) return { items: [], limit: 5, offset: 0, total: 0 };
+      throw new Error(`unexpected GET ${path}`);
+    }) as unknown as ApiClient["get"],
+    patch: vi.fn(async () => ({})) as unknown as ApiClient["patch"],
+    post,
+    put: vi.fn(async () => ({})) as unknown as ApiClient["put"]
+  };
+}
+
 async function renderFlows(client: ApiClient) {
   window.localStorage.setItem("muse.lang", "en");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -151,7 +170,10 @@ test("setting a notify channel on the output node PATCHes the trimmed channel id
   const screen = await renderFlows(client);
 
   await screen.getByText("Execution record", { exact: true }).click();
-  const channelInput = screen.getByRole("textbox");
+  // The 코파일럿 초안 composer's input is now ALSO a textbox on this screen
+  // (Flows list card), so a bare `getByRole("textbox")` is no longer unique —
+  // scope by placeholder to the notify-channel field specifically.
+  const channelInput = screen.getByPlaceholder("e.g. telegram:123456");
   await expect.element(channelInput).toBeVisible();
   await channelInput.fill("telegram:999");
 
@@ -200,4 +222,59 @@ test("새 흐름 만들기 (New flow) POSTs the exact compiled create body", asy
     retryOnFailure: false,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
   });
+});
+
+test("'Test run' POSTs to the job's dry-run endpoint with no body", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("button", { name: "Test run" }).click();
+
+  expect(client.post).toHaveBeenCalledWith("/api/scheduler/jobs/job_1/dry-run");
+});
+
+test("초안 그리기 (Draft it) opens the create panel PREFILLED from the parsed draft, and never auto-creates a job", async () => {
+  const draftResponse: FlowDraftResponse = {
+    draft: {
+      cronExpression: "0 9 * * *",
+      name: "Morning wrap",
+      notifyChannel: "telegram:777",
+      prompt: "오늘 하루 요약해줘",
+      retry: false
+    }
+  };
+  const post = vi.fn(async (path: string) => (path === "/api/flows/draft" ? draftResponse : {})) as unknown as ApiClient["post"];
+  const client = fakeClientWithPost(post);
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("textbox", { name: "Describe an automation" }).fill("매일 아침 9시에 하루 요약해줘");
+  await screen.getByRole("button", { name: "Draft it" }).click();
+
+  expect(post).toHaveBeenCalledWith("/api/flows/draft", { text: "매일 아침 9시에 하루 요약해줘" });
+
+  await expect.element(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Morning wrap");
+  await expect.element(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("오늘 하루 요약해줘");
+  await expect.element(screen.getByPlaceholder("e.g. telegram:123456")).toHaveValue("telegram:777");
+  await expect.element(screen.getByText("Muse's draft", { exact: false })).toBeVisible();
+
+  // Draft-first: opening the prefilled panel must NEVER itself create a job —
+  // only the user clicking 만들기 (Create) does that.
+  expect(post).not.toHaveBeenCalledWith("/api/scheduler/jobs", expect.anything());
+});
+
+test("a 422 draft failure shows the reason verbatim and keeps the typed text", async () => {
+  const post = vi.fn(async (path: string) => {
+    if (path === "/api/flows/draft") {
+      throw new Error("422: cronExpression must be a 5-field cron expression (minute hour day month weekday)");
+    }
+    return {};
+  }) as unknown as ApiClient["post"];
+  const client = fakeClientWithPost(post);
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("textbox", { name: "Describe an automation" }).fill("아무말이나 던져봐");
+  await screen.getByRole("button", { name: "Draft it" }).click();
+
+  await expect.element(screen.getByText(/cronExpression must be a 5-field cron expression/)).toBeVisible();
+  await expect.element(screen.getByRole("textbox", { name: "Describe an automation" })).toHaveValue("아무말이나 던져봐");
 });
