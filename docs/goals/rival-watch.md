@@ -19,6 +19,16 @@
   - QwenPaw — https://github.com/agentscope-ai/QwenPaw — clone `/Users/jinan/ai/QwenPaw` (blobless) — SHA cc179603 (2026-07-17; 23k★/5mo, v2.0.0 2026-07-10; enrolled this scout, code spot-checked: ReMe memory + console + e2e)
 - **queries run last scout:** "new open source personal AI assistant July 2026 local-first"; "personal assistant agent open source 2026 alternative openclaw hermes"
 
+## Reference shelf (cloned, consulted on demand — NOT delta-watched per fire)
+
+> Famous open-source personal-agent codebases kept at `/Users/jinan/ai/<name>`
+> for mechanism lookups (memory, continuity, voice). Fetch with the roster at
+> fire start; promote to the roster only when one meets the enrollment bar.
+
+- khoj — https://github.com/khoj-ai/khoj — `/Users/jinan/ai/khoj` (36k★, personal second brain / doc+web memory)
+- letta — https://github.com/letta-ai/letta — `/Users/jinan/ai/letta` (24k★, MemGPT-lineage stateful memory)
+- leon — https://github.com/leon-ai/leon — `/Users/jinan/ai/leon` (17k★, local personal assistant)
+
 ## Roster changes
 
 - 2026-07-17 ENROLLED QwenPaw (evidence: 23k stars in ~5 months, v2.0.0 released in-window 7/10 + 2 patch releases, code spot-check ✓). Deep delta pass pending next scout (this fire recorded enrollment + headline: AgentScope 2.0 Agent-OS rewrite, ReMe v0.4 long-term memory).
