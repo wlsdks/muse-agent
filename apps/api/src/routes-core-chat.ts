@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
 import { denyChatApproval } from "./chat-approval-deny.js";
 import { executeChatApproval } from "./chat-approval-execute.js";
+import { getChatApprovalStatus } from "./chat-approval-status.js";
 import { ChatRateLimiter, clientKeyFromRequest } from "./chat-rate-limiter.js";
 import {
   createOpenApiDocument,
@@ -83,6 +84,35 @@ export function registerChatRoutes(server: FastifyInstance, options: ServerOptio
     const id = (request.params as { id?: string }).id ?? "";
     const requestUserId = getAuthIdentity(request)?.userId;
     const result = await executeChatApproval({
+      id,
+      pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
+      ...(requestUserId ? { requestUserId } : {}),
+      ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
+    });
+    return reply.status(result.statusCode).send(result.body);
+  });
+  server.get("/api/chat/approvals/:id/status", async (request, reply) => {
+    if (!enforce(request, reply)) return reply;
+    const id = (request.params as { id?: string }).id ?? "";
+    const requestUserId = getAuthIdentity(request)?.userId;
+    const result = await getChatApprovalStatus({
+      id,
+      pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
+      ...(requestUserId ? { requestUserId } : {})
+    });
+    return reply.status(result.statusCode).send(result.body);
+  });
+  server.post("/api/chat/approvals/:id/recover", async (request, reply) => {
+    if (!enforce(request, reply)) return reply;
+    const body = request.body;
+    if (body !== undefined && body !== null
+      && (typeof body !== "object" || Array.isArray(body) || Object.keys(body).length > 0)) {
+      return reply.status(400).send({ error: "approval recovery body must be empty" });
+    }
+    const id = (request.params as { id?: string }).id ?? "";
+    const requestUserId = getAuthIdentity(request)?.userId;
+    const result = await executeChatApproval({
+      acquisition: "recover-stale-claim",
       id,
       pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
       ...(requestUserId ? { requestUserId } : {}),

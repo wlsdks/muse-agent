@@ -8,19 +8,23 @@
  * `~/.muse/pending-approvals.json` the API server's inbound gate writes.
  */
 
-import { resolvePendingApprovalsFile } from "@muse/autoconfigure";
-import type { HostLookup } from "@muse/domain-tools";
+import { resolvePendingApprovalsFile, resolveTasksFile } from "@muse/autoconfigure";
+import { createTasksMcpServer, normalizeLocalTaskMutationOutcome, type HostLookup } from "@muse/domain-tools";
+import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import {
   clearPendingApproval,
   completePendingApproval,
+  inspectPendingApprovalStatus,
   listPendingApprovals,
   type CompletePendingApprovalResult,
+  type PendingApprovalAcquisition,
   type PendingApproval,
   type PendingApprovalCoordinatorOperations,
   type PendingApprovalCoordinatorPhase,
   type PendingApprovalCoordinatorState
 } from "@muse/messaging";
 import type { JsonObject } from "@muse/shared";
+import type { MuseTool, ToolExecutionValue } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
@@ -70,7 +74,7 @@ function mapCoordinatorResult(result: CompletePendingApprovalResult): ApproveRes
  * result so a second approve can't re-fire (replay-guard). Pure-ish: the tool
  * builder's `confirmAction` / `fetchImpl` are injectable for tests.
  */
-export async function approvePendingApproval(opts: {
+export interface ApprovePendingApprovalOptions {
   readonly pendingFile: string;
   readonly id: string;
   readonly env: Record<string, string | undefined>;
@@ -82,14 +86,18 @@ export async function approvePendingApproval(opts: {
   /** DNS resolver for the web_action SSRF guard (tests inject a fake public resolver). */
   readonly lookup?: HostLookup;
   readonly now?: () => Date;
+  readonly acquisition?: PendingApprovalAcquisition;
   readonly coordinatorOperations?: PendingApprovalCoordinatorOperations;
+  readonly resolveTool?: (name: string) => MuseTool | undefined;
   /** Tool-result seam for contradictory/failure-shaped result tests. */
   readonly executeTool?: (
-    tool: ReturnType<typeof buildActuatorTools>[number],
+    tool: MuseTool,
     arguments_: JsonObject,
     context: { readonly runId: string }
   ) => Promise<unknown>;
-}): Promise<ApproveResult> {
+}
+
+export async function approvePendingApproval(opts: ApprovePendingApprovalOptions): Promise<ApproveResult> {
   const id = opts.id.trim();
   const interactive = opts.isInteractive ?? (() => Boolean(process.stdout.isTTY && process.stdin.isTTY));
   const confirmAction = opts.confirmAction ?? (async (message: string) => {
@@ -97,22 +105,24 @@ export async function approvePendingApproval(opts: {
     return !isCancel(answer) && answer;
   });
   const result = await completePendingApproval({
+    acquisition: opts.acquisition,
     actor: { surface: "cli" },
     file: opts.pendingFile,
     id,
     now: opts.now,
     operations: opts.coordinatorOperations,
     prepare: async (snapshot) => {
-      const tools = buildActuatorTools({
-        env: opts.env,
-        io: opts.io,
-        userId: snapshot.userId ?? `${snapshot.providerId}:${snapshot.source}`,
-        confirmAction: async () => true,
-        isInteractive: () => true,
-        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-        ...(opts.lookup ? { lookup: opts.lookup } : {})
-      });
-      const tool = tools.find((candidate) => candidate.definition.name === snapshot.tool);
+      const tool = opts.resolveTool?.(snapshot.tool) ?? (opts.resolveTool === undefined
+        ? buildActuatorTools({
+            env: opts.env,
+            io: opts.io,
+            userId: snapshot.userId ?? `${snapshot.providerId}:${snapshot.source}`,
+            confirmAction: async () => true,
+            isInteractive: () => true,
+            ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+            ...(opts.lookup ? { lookup: opts.lookup } : {})
+          }).find((candidate) => candidate.definition.name === snapshot.tool)
+        : undefined);
       if (!tool) {
         return { detail: "tool no longer available", kind: "decline" };
       }
@@ -132,6 +142,28 @@ export async function approvePendingApproval(opts: {
   return mapCoordinatorResult(result);
 }
 
+/** Explicitly recover only the existing local loopback task actuators. */
+export async function recoverPendingApproval(
+  opts: Omit<ApprovePendingApprovalOptions, "acquisition" | "resolveTool">
+): Promise<ApproveResult> {
+  const tools = createLoopbackMcpMuseTools(createTasksMcpServer({
+    file: resolveTasksFile(opts.env),
+    ...(opts.now ? { now: opts.now } : {})
+  })).filter((tool) => tool.definition.name === "muse.tasks.add" || tool.definition.name === "muse.tasks.complete");
+  const recoverableTools = tools.map((tool): MuseTool => ({
+    ...tool,
+    execute: async (arguments_, context): Promise<ToolExecutionValue> => normalizeLocalTaskMutationOutcome(
+      tool.definition.name,
+      await tool.execute(arguments_, context) as ToolExecutionValue
+    )
+  }));
+  return approvePendingApproval({
+    ...opts,
+    acquisition: "recover-stale-claim",
+    resolveTool: (name) => recoverableTools.find((tool) => tool.definition.name === name)
+  });
+}
+
 function pendingFile(): string {
   return resolvePendingApprovalsFile(process.env as Record<string, string | undefined>);
 }
@@ -144,9 +176,15 @@ function formatPending(entry: PendingApproval): string {
 export function registerApprovalsCommands(
   program: Command,
   io: ProgramIO,
-  deps: { readonly approvePendingApproval?: typeof approvePendingApproval } = {}
+  deps: {
+    readonly approvePendingApproval?: typeof approvePendingApproval;
+    readonly recoverPendingApproval?: typeof recoverPendingApproval;
+    readonly inspectPendingApprovalStatus?: typeof inspectPendingApprovalStatus;
+  } = {}
 ): void {
   const approve = deps.approvePendingApproval ?? approvePendingApproval;
+  const recover = deps.recoverPendingApproval ?? recoverPendingApproval;
+  const inspect = deps.inspectPendingApprovalStatus ?? inspectPendingApprovalStatus;
   const approvals = program
     .command("approvals")
     .description("Outbound action worklist — confirm/dismiss draft-first sends awaiting your OK (for tool-call trust see `muse approval`)");
@@ -168,6 +206,76 @@ export function registerApprovalsCommands(
       for (const entry of pending) {
         io.stdout(`${formatPending(entry)}\n`);
       }
+    });
+
+  approvals
+    .command("status")
+    .description("Show safe durable metadata for one approval")
+    .argument("<id>", "Pending approval id")
+    .option("--json", "Print machine-readable status metadata")
+    .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
+      const result = await inspect(pendingFile(), id.trim(), { surface: "cli" });
+      if (!result.found) {
+        io.stderr(commandErrorLine("approvals status", `No approval status for id '${id.trim()}' (state: ${result.state}).`));
+        command.error("approvals status failed", { exitCode: 1 });
+        return;
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify(result.status, null, 2)}\n`);
+        return;
+      }
+      const status = result.status;
+      io.stdout(`${status.id}  ${status.tool}  state=${status.state}  recoverable=${String(status.recoverable)}  effectMayHaveOccurred=${String(status.effectMayHaveOccurred)}\n`);
+      if (status.recoverableAt) io.stdout(`recoverableAt=${status.recoverableAt}\n`);
+      if (status.draft) io.stdout(`draft=${status.draft}\n`);
+    });
+
+  approvals
+    .command("recover")
+    .description("Explicitly recover a stale pre-effect local task claim")
+    .argument("<id>", "Claimed approval id")
+    .option("--json", "Print the coordinator result as JSON")
+    .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
+      const result = await recover({
+        env: process.env as Record<string, string | undefined>,
+        id,
+        io,
+        pendingFile: pendingFile()
+      });
+      if (options.json) {
+        io.stdout(`${JSON.stringify(result)}\n`);
+        if (result.status === "ran") return;
+        command.error("approvals recover failed", { exitCode: 1 });
+        return;
+      }
+      switch (result.status) {
+        case "ran":
+          io.stdout(`Recovered and completed ${result.tool ?? "action"}; replay is blocked.\n`);
+          return;
+        case "declined":
+          io.stderr(commandErrorLine("approvals recover", `Recovery denied${result.detail ? ` (${result.detail})` : ""}; it will not retry automatically.`));
+          break;
+        case "unknown":
+          io.stderr(commandErrorLine("approvals recover", `Recovered action outcome is unknown for '${result.tool ?? "?"}'; it will not be retried automatically.`));
+          break;
+        case "conflict":
+          io.stderr(commandErrorLine(
+            "approvals recover",
+            result.phase === "finalize"
+              ? `Action may have run, but recovery finalization did not win; durable state is '${result.state ?? "unknown"}'; no retry will be attempted.`
+              : `Approval is not recoverable from state '${result.state ?? "unknown"}'; use normal approval for pending work and never retry executing/terminal work.`
+          ));
+          break;
+        case "persistence-uncertain":
+          io.stderr(commandErrorLine("approvals recover", `Recovery persistence is uncertain during '${result.phase ?? "unknown"}'${result.state ? ` (observed state: ${result.state})` : ""}; no retry will be attempted.`));
+          break;
+        case "no-tool":
+          io.stderr(commandErrorLine("approvals recover", `The claimed tool '${result.tool ?? "?"}' is not an available local task actuator.`));
+          break;
+        default:
+          io.stderr(commandErrorLine("approvals recover", `No recoverable approval with id '${id.trim()}'.`));
+      }
+      command.error("approvals recover failed", { exitCode: 1 });
     });
 
   approvals

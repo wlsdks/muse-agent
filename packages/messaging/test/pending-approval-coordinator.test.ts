@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { completePendingApproval } from "../src/pending-approval-coordinator.js";
-import { recordPendingApproval, type PendingApproval } from "../src/pending-approval-store.js";
+import { CLAIM_RECOVERY_LEASE_MS, claimPendingApproval, recordPendingApproval, type PendingApproval } from "../src/pending-approval-store.js";
 
 let dir: string;
 beforeEach(async () => { dir = await fs.mkdtemp(join(tmpdir(), "pending-coordinator-")); });
 afterEach(async () => { await fs.rm(dir, { force: true, recursive: true }); });
 
-const approval = (id: string): PendingApproval => ({
+const approval = (id: string, overrides: Partial<PendingApproval> = {}): PendingApproval => ({
   arguments: { url: "https://example.com" },
   createdAt: "2026-07-18T00:00:00.000Z",
   draft: "POST https://example.com",
@@ -21,7 +21,8 @@ const approval = (id: string): PendingApproval => ({
   risk: "execute",
   source: "42",
   tool: "web_action",
-  userId: "owner"
+  userId: "owner",
+  ...overrides
 });
 
 describe("completePendingApproval", () => {
@@ -61,6 +62,115 @@ describe("completePendingApproval", () => {
     });
     expect(replay).toEqual({ kind: "conflict", phase: "claim", state: "succeeded" });
     expect(effects).toBe(1);
+  });
+
+  it("recovers a stale allowlisted claim and executes only from its immutable snapshot", async () => {
+    const file = join(dir, "recover.json");
+    const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+    await recordPendingApproval(file, approval("recover", {
+      arguments: { title: "snapshot title" },
+      tool: "muse.tasks.add"
+    }));
+    await claimPendingApproval(file, "recover", { requestUserId: "owner", surface: "api" }, () => claimedAt);
+    let effects = 0;
+
+    const result = await completePendingApproval({
+      acquisition: "recover-stale-claim",
+      actor: { requestUserId: "owner", surface: "api" },
+      file,
+      id: "recover",
+      now: () => new Date(claimedAt.getTime() + CLAIM_RECOVERY_LEASE_MS),
+      prepare: async (snapshot) => ({
+        execute: async () => {
+          effects += 1;
+          return { performed: true, title: snapshot.arguments["title"] };
+        },
+        kind: "execute"
+      })
+    });
+
+    expect(result).toMatchObject({
+      approvalSnapshot: { arguments: { title: "snapshot title" }, id: "recover" },
+      kind: "succeeded",
+      output: { performed: true, title: "snapshot title" }
+    });
+    expect(effects).toBe(1);
+  });
+
+  it("reports a refused stale-claim acquisition as a recover conflict", async () => {
+    const result = await completePendingApproval({
+      acquisition: "recover-stale-claim",
+      actor: { surface: "cli" },
+      file: join(dir, "recover-conflict.json"),
+      id: "recover-conflict",
+      operations: {
+        recover: async () => ({ claimedByThisCall: false, state: "claimed" })
+      },
+      prepare: async () => { throw new Error("must not prepare"); }
+    });
+
+    expect(result).toEqual({ kind: "conflict", phase: "recover", state: "claimed" });
+  });
+
+  it("reports a stale-claim acquisition store throw as recover persistence uncertainty", async () => {
+    const result = await completePendingApproval({
+      acquisition: "recover-stale-claim",
+      actor: { surface: "cli" },
+      file: join(dir, "recover-throw.json"),
+      id: "recover-throw",
+      operations: {
+        observe: async () => "claimed",
+        recover: async () => { throw new Error("recovery write failed"); }
+      },
+      prepare: async () => { throw new Error("must not prepare"); }
+    });
+
+    expect(result).toMatchObject({
+      certainty: "observed",
+      effectAttempted: false,
+      kind: "persistence-uncertain",
+      phase: "recover",
+      state: "claimed"
+    });
+  });
+
+  it("keeps recovered finalize CAS loss/throw fail-closed and never retries the effect", async () => {
+    for (const testCase of [
+      {
+        expected: { kind: "conflict", phase: "finalize", state: "executing" },
+        finalize: async () => ({ state: "executing", transitioned: false } as const),
+        id: "recover-finalize-false"
+      },
+      {
+        expected: { certainty: "observed", effectAttempted: true, kind: "persistence-uncertain", phase: "finalize", state: "executing" },
+        finalize: async () => { throw new Error("fsync failed"); },
+        id: "recover-finalize-throw"
+      }
+    ]) {
+      const file = join(dir, `${testCase.id}.json`);
+      const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+      await recordPendingApproval(file, approval(testCase.id, { tool: "muse.tasks.add" }));
+      await claimPendingApproval(file, testCase.id, { requestUserId: "owner", surface: "api" }, () => claimedAt);
+      let effects = 0;
+      const options = {
+        acquisition: "recover-stale-claim" as const,
+        actor: { requestUserId: "owner", surface: "api" as const },
+        file,
+        id: testCase.id,
+        now: () => new Date(claimedAt.getTime() + CLAIM_RECOVERY_LEASE_MS),
+        prepare: async () => ({
+          execute: async () => { effects += 1; return { performed: true }; },
+          kind: "execute" as const
+        })
+      };
+      const result = await completePendingApproval({
+        ...options,
+        operations: { finalize: testCase.finalize }
+      });
+      expect(result).toMatchObject(testCase.expected);
+      expect(await completePendingApproval(options)).toMatchObject({ kind: "conflict", phase: "recover", state: "executing" });
+      expect(effects).toBe(1);
+    }
   });
 
   it.each([

@@ -44,15 +44,18 @@ export {
 
 export {
   beginPendingApprovalExecution,
+  CLAIM_RECOVERY_LEASE_MS,
   claimPendingApproval,
   clearPendingApproval,
   declinePendingApprovalClaim,
   denyPendingApproval,
   filterUnexpired,
   finalizePendingApprovalExecution,
+  inspectPendingApprovalStatus,
   listPendingApprovals,
   readPendingApprovals,
   recordPendingApproval,
+  recoverPendingApprovalClaim,
   type PendingApproval,
   type PendingApprovalActor,
   type PendingApprovalClaimResult,
@@ -60,6 +63,9 @@ export {
   type PendingApprovalExecution,
   type PendingApprovalExecutionState,
   type PendingApprovalObservedState,
+  type PendingApprovalRecoveryResult,
+  type PendingApprovalStatus,
+  type PendingApprovalStatusResult,
   type PendingApprovalTransitionResult
 } from "./pending-approval-store.js";
 
@@ -67,6 +73,7 @@ export {
   completePendingApproval,
   type CompletePendingApprovalOptions,
   type CompletePendingApprovalResult,
+  type PendingApprovalAcquisition,
   type PendingApprovalCoordinatorOperations,
   type PendingApprovalCoordinatorPhase,
   type PendingApprovalCoordinatorState,

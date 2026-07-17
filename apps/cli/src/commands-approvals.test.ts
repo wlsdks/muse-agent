@@ -2,12 +2,12 @@ import { mkdtempSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { beginPendingApprovalExecution, claimPendingApproval, declinePendingApprovalClaim, listPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
-import { readActionLog } from "@muse/stores";
+import { CLAIM_RECOVERY_LEASE_MS, beginPendingApprovalExecution, claimPendingApproval, declinePendingApprovalClaim, listPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
+import { readActionLog, readTasks } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { approvePendingApproval, registerApprovalsCommands } from "./commands-approvals.js";
+import { approvePendingApproval, recoverPendingApproval, registerApprovalsCommands } from "./commands-approvals.js";
 import type { ProgramIO } from "./program.js";
 
 function fakeIo(): ProgramIO {
@@ -41,7 +41,8 @@ function webEntry(overrides: Partial<PendingApproval> = {}): PendingApproval {
 async function run(
   file: string,
   args: string[],
-  approve?: typeof approvePendingApproval
+  approve?: typeof approvePendingApproval,
+  deps: Parameters<typeof registerApprovalsCommands>[2] = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -52,7 +53,10 @@ async function run(
   try {
     const program = new Command();
     program.exitOverride();
-    registerApprovalsCommands(program, io, approve ? { approvePendingApproval: approve } : undefined);
+    registerApprovalsCommands(program, io, {
+      ...deps,
+      ...(approve ? { approvePendingApproval: approve } : {})
+    });
     await program.parseAsync(["node", "muse", "approvals", ...args]);
   } catch (cause) {
     exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
@@ -164,6 +168,36 @@ describe("muse approvals", () => {
     const payload = JSON.parse(r.stdout) as { total: number; pending: PendingApproval[] };
     expect(payload.total).toBe(1);
     expect(payload.pending[0]?.id).toBe("j1");
+  });
+
+  it("status --json emits only bounded safe metadata for an owned stale claim", async () => {
+    const f = file();
+    await recordPendingApproval(f, entry({
+      createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+      draft: "x".repeat(300),
+      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      id: "status-json",
+      tool: "muse.tasks.add"
+    }));
+    const claim = await claimPendingApproval(f, "status-json", { surface: "cli" }, () => new Date(Date.now() - 16 * 60_000));
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+
+    const result = await run(f, ["status", "status-json", "--json"]);
+    const payload = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(payload).toMatchObject({ id: "status-json", recoverable: true, state: "claimed", tool: "muse.tasks.add" });
+    expect((payload["draft"] as string).length).toBe(240);
+    expect(result.stdout).not.toContain(claim.claimToken);
+    expect(result.stdout).not.toContain("arguments");
+    expect(result.stderr).toBe("");
+  });
+
+  it("recover --json exposes the coordinator result without reconstructing lifecycle state", async () => {
+    const result = await run(file(), ["recover", "recover-json", "--json"], undefined, {
+      recoverPendingApproval: async () => ({ state: "succeeded", status: "ran", tool: "muse.tasks.add" })
+    });
+    expect(JSON.parse(result.stdout)).toEqual({ state: "succeeded", status: "ran", tool: "muse.tasks.add" });
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBeUndefined();
   });
 });
 
@@ -613,5 +647,36 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(tokenReads).toBe(0);
     expect(calls).toEqual([]);
     expect(await listPendingApprovals(f)).toEqual([]);
+  });
+});
+
+describe("recoverPendingApproval — stale local task claims", () => {
+  it("reuses the existing loopback task tool and interactive preparation through the coordinator", async () => {
+    const f = file();
+    const tasksFile = join(f, "..", "tasks.json");
+    const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+    await recordPendingApproval(f, webEntry({
+      arguments: { title: "Buy milk" },
+      createdAt: "2026-07-18T00:00:00.000Z",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      id: "recover-task",
+      risk: "write",
+      tool: "muse.tasks.add",
+      userId: "owner"
+    }));
+    await claimPendingApproval(f, "recover-task", { surface: "cli" }, () => claimedAt);
+
+    const result = await recoverPendingApproval({
+      confirmAction: async () => true,
+      env: { MUSE_TASKS_FILE: tasksFile },
+      id: "recover-task",
+      io: fakeIo(),
+      isInteractive: () => true,
+      now: () => new Date(claimedAt.getTime() + CLAIM_RECOVERY_LEASE_MS),
+      pendingFile: f
+    });
+
+    expect(result).toMatchObject({ state: "succeeded", status: "ran", tool: "muse.tasks.add" });
+    expect(await readTasks(tasksFile)).toEqual([expect.objectContaining({ status: "open", title: "Buy milk" })]);
   });
 });

@@ -59,6 +59,30 @@ export type PendingApprovalActor =
 
 export type PendingApprovalObservedState = "pending" | PendingApprovalExecutionState | "not-found" | "expired";
 
+export const CLAIM_RECOVERY_LEASE_MS = 15 * 60 * 1000;
+
+const RECOVERABLE_PENDING_APPROVAL_TOOLS = new Set(["muse.tasks.add", "muse.tasks.complete"]);
+const PENDING_APPROVAL_STATUS_DRAFT_MAX_LENGTH = 240;
+
+export interface PendingApprovalStatus {
+  readonly id: string;
+  readonly tool: string;
+  readonly risk: PendingApproval["risk"];
+  readonly state: "pending" | PendingApprovalExecutionState;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly claimedAt?: string;
+  readonly updatedAt?: string;
+  readonly recoverable: boolean;
+  readonly recoverableAt?: string;
+  readonly effectMayHaveOccurred: boolean;
+  readonly draft?: string;
+}
+
+export type PendingApprovalStatusResult =
+  | { readonly found: true; readonly status: PendingApprovalStatus }
+  | { readonly found: false; readonly state: "not-found" | "expired" | "forbidden" };
+
 interface PendingApprovalStoreV2 {
   readonly version: 2;
   readonly pending: readonly PendingApproval[];
@@ -75,6 +99,13 @@ export type PendingApprovalClaimResult =
   | {
       readonly claimedByThisCall: false;
       readonly state: PendingApprovalExecutionState | "not-found" | "expired" | "forbidden";
+    };
+
+export type PendingApprovalRecoveryResult =
+  | Extract<PendingApprovalClaimResult, { readonly claimedByThisCall: true }>
+  | {
+      readonly claimedByThisCall: false;
+      readonly state: "pending" | PendingApprovalExecutionState | "not-found" | "expired" | "forbidden";
     };
 
 export interface PendingApprovalTransitionResult {
@@ -226,6 +257,83 @@ async function writePendingApprovalStore(file: string, store: PendingApprovalSto
   await atomicWritePrivateFile(file, `${JSON.stringify(store, null, 2)}\n`);
 }
 
+function actorEffectiveUser(actor: PendingApprovalActor, approval: PendingApproval): string {
+  return actor.surface === "api"
+    ? actor.requestUserId ?? approval.userId ?? `${approval.providerId}:${approval.source}`
+    : approval.userId ?? `${approval.providerId}:${approval.source}`;
+}
+
+function actorOwnsApproval(
+  actor: PendingApprovalActor,
+  approval: PendingApproval,
+  execution?: PendingApprovalExecution
+): boolean {
+  if (actor.surface === "cli") {
+    return execution === undefined || actorEffectiveUser(actor, approval) === execution.actor.effectiveUser;
+  }
+  if (execution !== undefined) {
+    return actor.requestUserId !== undefined && actor.requestUserId === execution.actor.effectiveUser;
+  }
+  return approval.userId === undefined || actor.requestUserId === approval.userId;
+}
+
+function publicApprovalStatus(
+  approval: PendingApproval,
+  state: "pending" | PendingApprovalExecutionState,
+  instantMs: number,
+  execution?: PendingApprovalExecution
+): PendingApprovalStatus {
+  const effectMayHaveOccurred = state === "executing" || state === "unknown" || state === "succeeded";
+  const recoveryTool = RECOVERABLE_PENDING_APPROVAL_TOOLS.has(approval.tool);
+  const updatedAtMs = execution === undefined ? undefined : Date.parse(execution.updatedAt);
+  const recoverableAtMs = state === "claimed" && recoveryTool && updatedAtMs !== undefined
+    ? updatedAtMs + CLAIM_RECOVERY_LEASE_MS
+    : undefined;
+  return {
+    createdAt: approval.createdAt,
+    draft: approval.draft.slice(0, PENDING_APPROVAL_STATUS_DRAFT_MAX_LENGTH),
+    effectMayHaveOccurred,
+    expiresAt: approval.expiresAt,
+    id: approval.id,
+    recoverable: recoverableAtMs !== undefined && updatedAtMs !== undefined
+      && instantMs >= updatedAtMs && instantMs >= recoverableAtMs,
+    risk: approval.risk,
+    state,
+    tool: approval.tool,
+    ...(execution === undefined ? {} : { claimedAt: execution.claimedAt, updatedAt: execution.updatedAt }),
+    ...(recoverableAtMs === undefined ? {} : { recoverableAt: new Date(recoverableAtMs).toISOString() })
+  };
+}
+
+/** Read safe approval metadata without exposing execution authority or payload arguments. */
+export async function inspectPendingApprovalStatus(
+  file: string,
+  id: string,
+  actor: PendingApprovalActor,
+  now: () => Date = () => new Date()
+): Promise<PendingApprovalStatusResult> {
+  const instantMs = now().getTime();
+  const store = await readMutationStore(file);
+  if (!store) {
+    return { found: false, state: "not-found" };
+  }
+  const execution = store.executions.find((candidate) => candidate.approvalSnapshot.id === id);
+  const approval = execution?.approvalSnapshot ?? store.pending.find((candidate) => candidate.id === id);
+  if (!approval) {
+    return { found: false, state: "not-found" };
+  }
+  if (Date.parse(approval.expiresAt) <= instantMs) {
+    return { found: false, state: "expired" };
+  }
+  if (!actorOwnsApproval(actor, approval, execution)) {
+    return { found: false, state: "forbidden" };
+  }
+  return {
+    found: true,
+    status: publicApprovalStatus(approval, execution?.state ?? "pending", instantMs, execution)
+  };
+}
+
 /** Atomically acquire execution authority for one pending approval. */
 export async function claimPendingApproval(
   file: string,
@@ -256,9 +364,7 @@ export async function claimPendingApproval(
     }
     const timestamp = instant.toISOString();
     const claimToken = randomUUID();
-    const effectiveUser = actor.surface === "api"
-      ? requestUserId ?? approval.userId ?? `${approval.providerId}:${approval.source}`
-      : approval.userId ?? `${approval.providerId}:${approval.source}`;
+    const effectiveUser = actorEffectiveUser(actor, approval);
     const execution: PendingApprovalExecution = {
       actor: { effectiveUser, surface: actor.surface },
       approvalSnapshot: approval,
@@ -272,6 +378,62 @@ export async function claimPendingApproval(
       pending: store.pending.filter((entry) => entry.id !== id),
       version: 2
     });
+    return { approvalSnapshot: approval, claimedByThisCall: true, claimToken, state: "claimed" };
+  });
+}
+
+/** Atomically rotate authority for one explicitly recovered stale pre-effect claim. */
+export async function recoverPendingApprovalClaim(
+  file: string,
+  id: string,
+  actor: PendingApprovalActor,
+  now: () => Date = () => new Date()
+): Promise<PendingApprovalRecoveryResult> {
+  return serializePerFile(file, async () => {
+    const instant = now();
+    const instantMs = instant.getTime();
+    const store = await readMutationStore(file);
+    if (!store) {
+      return { claimedByThisCall: false, state: "not-found" };
+    }
+    const index = store.executions.findIndex((execution) => execution.approvalSnapshot.id === id);
+    if (index < 0) {
+      const pending = store.pending.find((approval) => approval.id === id);
+      if (pending && Date.parse(pending.expiresAt) <= instantMs) {
+        return { claimedByThisCall: false, state: "expired" };
+      }
+      if (pending && !actorOwnsApproval(actor, pending)) {
+        return { claimedByThisCall: false, state: "forbidden" };
+      }
+      if (pending) {
+        return { claimedByThisCall: false, state: "pending" };
+      }
+      return { claimedByThisCall: false, state: "not-found" };
+    }
+    const current = store.executions[index]!;
+    const approval = current.approvalSnapshot;
+    if (Date.parse(approval.expiresAt) <= instantMs) {
+      return { claimedByThisCall: false, state: "expired" };
+    }
+    if (!actorOwnsApproval(actor, approval, current)) {
+      return { claimedByThisCall: false, state: "forbidden" };
+    }
+    const updatedAtMs = Date.parse(current.updatedAt);
+    if (current.state !== "claimed"
+      || !RECOVERABLE_PENDING_APPROVAL_TOOLS.has(approval.tool)
+      || instantMs < updatedAtMs
+      || instantMs < updatedAtMs + CLAIM_RECOVERY_LEASE_MS) {
+      return { claimedByThisCall: false, state: current.state };
+    }
+    const claimToken = randomUUID();
+    const recovered: PendingApprovalExecution = {
+      ...current,
+      claimToken,
+      updatedAt: instant.toISOString()
+    };
+    const executions = store.executions.slice();
+    executions[index] = recovered;
+    await writePendingApprovalStore(file, { ...store, executions });
     return { approvalSnapshot: approval, claimedByThisCall: true, claimToken, state: "claimed" };
   });
 }
@@ -304,9 +466,7 @@ export async function denyPendingApproval(
     if (approval.userId !== undefined && requestUserId !== undefined && approval.userId !== requestUserId) {
       return { state: "forbidden", transitioned: false };
     }
-    const effectiveUser = actor.surface === "api"
-      ? requestUserId ?? approval.userId ?? `${approval.providerId}:${approval.source}`
-      : approval.userId ?? `${approval.providerId}:${approval.source}`;
+    const effectiveUser = actorEffectiveUser(actor, approval);
     const timestamp = instant.toISOString();
     const execution: PendingApprovalExecution = {
       actor: { effectiveUser, surface: actor.surface },

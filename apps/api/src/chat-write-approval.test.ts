@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import type { AgentRunInput } from "@muse/agent-core";
 import {
+  CLAIM_RECOVERY_LEASE_MS,
+  claimPendingApproval,
   completePendingApproval,
   declinePendingApprovalClaim,
   listPendingApprovals,
@@ -175,6 +177,32 @@ describe("executeChatApproval confirm-execute", () => {
     expect(out.body).toMatchObject({ ran: true, tool: "muse.tasks.add" });
     expect(calls).toEqual([{ title: "Buy milk" }]);
     expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
+  });
+
+  it("explicit recovery re-enters the coordinator for a stale allowlisted pre-effect claim", async () => {
+    const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+    await recordPendingApproval(pendingFile, pendingEntry({
+      createdAt: "2026-07-18T00:00:00.000Z",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      id: "recover-api",
+      tool: "muse.tasks.add",
+      userId: "owner"
+    }));
+    await claimPendingApproval(pendingFile, "recover-api", { requestUserId: "owner", surface: "api" }, () => claimedAt);
+    const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });
+
+    const out = await executeChatApproval({
+      acquisition: "recover-stale-claim",
+      id: "recover-api",
+      now: () => new Date(claimedAt.getTime() + CLAIM_RECOVERY_LEASE_MS),
+      pendingFile,
+      requestUserId: "owner",
+      resolveTool: () => tool
+    });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ ran: true, state: "succeeded", tool: "muse.tasks.add" });
+    expect(calls).toEqual([{ title: "Buy milk" }]);
   });
 
   it("unknown id: 404, no execution", async () => {

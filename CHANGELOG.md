@@ -63,6 +63,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   whether an effect was attempted and whether the durable state could be
   observed. The unused inbound auto-run bypass was removed; a channel reply now
   points to the explicit CLI approval by id.
+- **A stale pre-effect approval claim can now be inspected and explicitly
+  recovered without guessing whether the action ran.** `muse approvals status`
+  and the matching chat API expose bounded, owner-safe metadata without tokens
+  or arguments. After a fixed 15-minute lease, only an unexpired claimed local
+  task mutation can be taken over; recovery atomically rotates execution
+  authority and re-enters the same completion coordinator. Executing and
+  terminal work is never retried, and ambiguous tool output remains `unknown`.
 
 - **Your saved model choice now beats a stale API key.** A dead
   `GEMINI_API_KEY` sitting in the shell used to hijack `muse ask`, briefs,

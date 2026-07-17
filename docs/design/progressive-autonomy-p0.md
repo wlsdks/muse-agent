@@ -40,6 +40,17 @@ whether an effect was attempted plus an observed state when a strict follow-up
 read succeeds; otherwise it remains explicitly unobserved and is never retried
 automatically.
 
+Approval recovery is an explicit pre-effect takeover, not an automatic retry.
+`status` returns bounded metadata but never the claim token, tool arguments,
+internal actor identity, or store path. A `claimed` local task mutation becomes
+eligible only after a fixed 15-minute lease while its immutable snapshot is
+still unexpired. Recovery then atomically rotates the token, preserves the
+original `claimedAt`, and re-enters `completePendingApproval` with acquisition
+phase `recover`. The previous claimant can no longer win `begin`; `executing`,
+`unknown`, `succeeded`, and `denied` records are never recovered. Staleness is
+only eligibility for an explicit takeover, not evidence that the prior process
+crashed.
+
 Inbound channel replies do not execute pending actions. They return the exact
 CLI approval id; the former unused `autoRun -> clear` option was removed because
 it bypassed the durable claim boundary. These receipts improve execution safety
