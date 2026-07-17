@@ -23,9 +23,12 @@ DELTA, never the base.
    SHAs, roster). Everything below is scoped to changes AFTER the watermark.
 
 2. **SWEEP (delta only, verify-in-code)** —
-   - **Named rivals** (roster in rival-watch.md; openclaw + hermes-agent are
-     charter members): shallow-clone/fetch each repo, `git log
-     --since=<watermark>` + release notes → list genuinely NEW capabilities
+   - **Named rivals** (roster in rival-watch.md carries repo URLs + SHAs;
+     openclaw + hermes-agent are charter members): shallow-clone
+     (`--shallow-since=<watermark>`) each repo. High-velocity repos ship
+     thousands of commits per window — sweep RELEASES + CHANGELOG first
+     (observed fire 1: 7.8k commits in 3.5 weeks; raw log is for locating an
+     implementing file, never the survey) → list genuinely NEW capabilities
      and notable architecture changes. Read the implementing file for
      anything you might judge `build` — a claim you didn't see in code is
      recorded ⚠ unverified and never judged build.
