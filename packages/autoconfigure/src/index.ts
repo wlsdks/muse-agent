@@ -125,6 +125,11 @@ export {
 } from "./progressive-autonomy-runtime-observer.js";
 
 export {
+  createProgressiveAutonomyRuntimeDecisionRecorder,
+  type ProgressiveAutonomyRuntimeDecisionRecorder
+} from "./progressive-autonomy-runtime-decision-recorder.js";
+
+export {
   ProgressiveAutonomyOpportunityReviewService,
   type ProgressiveAutonomyCurrentSource,
   type ProgressiveAutonomyOpportunityReviewPresentation,

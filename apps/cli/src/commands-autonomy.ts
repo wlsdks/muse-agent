@@ -14,6 +14,7 @@ import { FileProgressiveAutonomyAdminStore } from "@muse/stores/host-progressive
 import {
   FileProgressiveAutonomyOpportunityStore,
   type ProgressiveAutonomyOpportunityReviewReceipt,
+  type ProgressiveAutonomyRuntimeDecisionReceipt,
   type ProgressiveAutonomyRuntimeOpportunityReceipt
 } from "@muse/stores/host-progressive-autonomy-opportunities";
 import type { ProgressiveAutonomyShadowReceipt } from "@muse/policy";
@@ -64,7 +65,8 @@ function summarizeShadowReceipts(receipts: readonly ReportReceipt[]) {
 export function buildShadowReport(
   manualReceipts: readonly ProgressiveAutonomyShadowReceipt[],
   runtimeReceipts: readonly ProgressiveAutonomyRuntimeOpportunityReceipt[] = [],
-  reviewReceipts: readonly ProgressiveAutonomyOpportunityReviewReceipt[] = []
+  reviewReceipts: readonly ProgressiveAutonomyOpportunityReviewReceipt[] = [],
+  runtimeDecisionReceipts: readonly ProgressiveAutonomyRuntimeDecisionReceipt[] = []
 ) {
   const uniqueRuntime = [...new Map(runtimeReceipts.map((receipt) => [
     `${receipt.runId}\u0000${receipt.envelope.action}\u0000${receipt.envelope.link.taskId}`,
@@ -72,8 +74,13 @@ export function buildShadowReport(
   ])).values()];
   const runtimeById = new Map(uniqueRuntime.map((receipt) => [receipt.id, receipt]));
   const organicOpportunities = uniqueRuntime.filter((receipt) => receipt.evidenceClass === "organic");
+  const validRuntimeDecisions = [...new Map(runtimeDecisionReceipts
+    .filter((decision) => runtimeDecisionMatchesOpportunity(decision, runtimeById.get(decision.opportunityId)))
+    .map((decision) => [decision.opportunityId, decision])).values()];
+  const runtimeDecisionIds = new Set(validRuntimeDecisions.map((entry) => entry.opportunityId));
   const validReviews = [...new Map(reviewReceipts
-    .filter((review) => reviewMatchesOpportunity(review, runtimeById.get(review.opportunityId)))
+    .filter((review) => reviewMatchesOpportunity(review, runtimeById.get(review.opportunityId))
+      && !runtimeDecisionIds.has(review.opportunityId))
     .map((review) => [review.opportunityId, review])).values()];
   const decisions = { "needs-adjustment": 0, "would-approve": 0, "would-deny": 0 };
   const reviewDays = new Set<string>();
@@ -85,12 +92,18 @@ export function buildShadowReport(
     reviewTasks.add(review.taskId);
     reviewThreads.add(review.threadId);
   }
+  for (const runtimeDecision of validRuntimeDecisions) {
+    decisions[runtimeDecision.decision === "approved" ? "would-approve" : "would-deny"] += 1;
+    reviewDays.add(runtimeDecision.recordedAt.slice(0, 10));
+    reviewTasks.add(runtimeDecision.taskId);
+    reviewThreads.add(runtimeDecision.threadId);
+  }
   const byEvidenceClass = {
     controlled: uniqueRuntime.filter((receipt) => receipt.evidenceClass === "controlled").length,
     organic: organicOpportunities.length,
     unclassified: uniqueRuntime.filter((receipt) => receipt.evidenceClass === "unclassified").length
   };
-  const eligibleReviews = validReviews.length;
+  const eligibleReviews = validReviews.length + validRuntimeDecisions.length;
   return {
     review: {
       coverage: organicOpportunities.length === 0 ? 0 : eligibleReviews / organicOpportunities.length,
@@ -141,6 +154,23 @@ function reviewMatchesOpportunity(
     && review.taskId === opportunity.envelope.link.taskId
     && review.threadId === opportunity.envelope.threadId
     && review.linkedAt === opportunity.envelope.link.linkedAt;
+}
+
+function runtimeDecisionMatchesOpportunity(
+  decision: ProgressiveAutonomyRuntimeDecisionReceipt,
+  opportunity: ProgressiveAutonomyRuntimeOpportunityReceipt | undefined
+): boolean {
+  return opportunity?.evidenceClass === "organic"
+    && decision.origin === "runtime-tool-approval"
+    && decision.provenance === "explicit-cli-ink"
+    && decision.toolName === "muse.tasks.complete"
+    && decision.ownerUserId === opportunity.envelope.userId
+    && decision.runId === opportunity.runId
+    && decision.toolCallId === opportunity.toolCallId
+    && decision.action === opportunity.envelope.action
+    && decision.taskId === opportunity.envelope.link.taskId
+    && decision.threadId === opportunity.envelope.threadId
+    && decision.linkedAt === opportunity.envelope.link.linkedAt;
 }
 
 export function registerAutonomyCommands(program: Command, io: ProgramIO): void {
@@ -382,7 +412,8 @@ export function registerAutonomyCommands(program: Command, io: ProgramIO): void 
         const report = buildShadowReport(
           await store.executorStore().listShadowReceipts(),
           await opportunities.list(),
-          await opportunities.listReviews()
+          await opportunities.listReviews(),
+          await opportunities.listRuntimeDecisions()
         );
         if (options.json) {
           io.stdout(`${JSON.stringify(report, null, 2)}\n`);

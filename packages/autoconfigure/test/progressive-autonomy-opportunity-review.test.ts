@@ -40,6 +40,41 @@ describe("ProgressiveAutonomyOpportunityReviewService", () => {
     expect(await fixture.service.review()).toBeUndefined();
   });
 
+  it("does not queue an opportunity that already has explicit runtime approval evidence", async () => {
+    const fixture = await createFixture();
+    const organic = opportunity("organic-runtime-reviewed", "organic", "2026-07-17T03:00:00.000Z");
+    await fixture.store.record(organic);
+    await fixture.store.recordRuntimeDecision({
+      decision: "approved",
+      ownerUserId: organic.envelope.userId,
+      recordedAt: "2026-07-17T04:00:00.000Z",
+      runId: organic.runId,
+      toolCallId: organic.toolCallId
+    });
+
+    expect(await fixture.service.review()).toBeUndefined();
+    await expect(fixture.service.decide(organic.id, { decision: "would-approve" }))
+      .rejects.toThrow("different explicit evidence");
+  });
+
+  it("does not backfill an early decision when the opportunity arrives later", async () => {
+    const fixture = await createFixture();
+    const organic = opportunity("organic-delayed", "organic", "2026-07-17T03:00:00.000Z");
+    expect(await fixture.store.recordRuntimeDecision({
+      decision: "approved",
+      ownerUserId: organic.envelope.userId,
+      recordedAt: "2026-07-17T02:30:00.000Z",
+      runId: organic.runId,
+      toolCallId: organic.toolCallId
+    })).toEqual({ kind: "not-correlated" });
+    await expect(readFile(fixture.opportunitiesFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+    await fixture.store.record(organic);
+
+    expect(await fixture.store.listRuntimeDecisions()).toEqual([]);
+    expect(await fixture.service.review()).toMatchObject({ opportunityId: organic.id });
+  });
+
   it("refuses stale positive and unavailable decisions without a write, but records normalized stale negative evidence", async () => {
     const stale = await createFixture();
     const organic = opportunity("organic-stale", "organic", "2026-07-17T03:00:00.000Z");

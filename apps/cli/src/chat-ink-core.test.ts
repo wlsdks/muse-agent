@@ -427,6 +427,79 @@ describe("chatToolApprovalGate", () => {
     ]);
   });
 
+  it("records only explicit approve or deny for the exact tasks.complete runtime call", async () => {
+    const recorded: unknown[] = [];
+    const gateInput = {
+      risk: "write" as const,
+      runId: "run-1",
+      toolCall: { arguments: { id: "task-next" }, id: "call-1", name: "muse.tasks.complete" },
+      userId: "dogfood-user"
+    };
+    const record = async (input: unknown) => { recorded.push(input); };
+
+    expect(await chatToolApprovalGate(outbound, async () => "approve", record, () => new Date("2026-07-17T04:00:00.000Z"))(gateInput))
+      .toEqual({ allowed: true });
+    expect(await chatToolApprovalGate(outbound, async () => "deny", record, () => new Date("2026-07-17T05:00:00.000Z"))({
+      ...gateInput, runId: "run-2", toolCall: { ...gateInput.toolCall, id: "call-2" }
+    })).toEqual({ allowed: false, reason: "user declined the tool call" });
+    expect(await chatToolApprovalGate(outbound, async () => "cancel", record)(
+      { ...gateInput, runId: "run-3", toolCall: { ...gateInput.toolCall, id: "call-3" } }
+    )).toEqual({ allowed: false, reason: "user declined the tool call" });
+
+    expect(recorded).toEqual([
+      {
+        decision: "approved",
+        ownerUserId: "dogfood-user",
+        recordedAt: "2026-07-17T04:00:00.000Z",
+        runId: "run-1",
+        toolCallId: "call-1"
+      },
+      {
+        decision: "denied",
+        ownerUserId: "dogfood-user",
+        recordedAt: "2026-07-17T05:00:00.000Z",
+        runId: "run-2",
+        toolCallId: "call-2"
+      }
+    ]);
+  });
+
+  it("keeps approve/deny effect counts when the evidence recorder fails and ignores non-explicit paths", async () => {
+    let effects = 0;
+    let recorderCalls = 0;
+    const failingRecorder = async () => {
+      recorderCalls += 1;
+      throw new Error("evidence store unavailable");
+    };
+    const input = {
+      risk: "write" as const,
+      runId: "run-1",
+      toolCall: { arguments: { id: "task-next" }, id: "call-1", name: "muse.tasks.complete" },
+      userId: "dogfood-user"
+    };
+    const approved = await chatToolApprovalGate(outbound, async () => "approve", failingRecorder)(input);
+    if (approved.allowed) effects += 1;
+    const denied = await chatToolApprovalGate(outbound, async () => "deny", failingRecorder)(
+      { ...input, runId: "run-2", toolCall: { ...input.toolCall, id: "call-2" } }
+    );
+    if (denied.allowed) effects += 1;
+    await chatToolApprovalGate(outbound, async () => "cancel", failingRecorder)(
+      { ...input, runId: "run-3", toolCall: { ...input.toolCall, id: "call-3" } }
+    );
+    await chatToolApprovalGate(outbound, async () => true, failingRecorder)(
+      { ...input, runId: "run-4", toolCall: { ...input.toolCall, id: "call-4" } }
+    );
+    await chatToolApprovalGate(outbound, async () => { throw new Error("read should not ask"); }, failingRecorder)({
+      ...input,
+      risk: "read"
+    });
+
+    expect(approved).toEqual({ allowed: true });
+    expect(denied).toEqual({ allowed: false, reason: "user declined the tool call" });
+    expect(effects).toBe(1);
+    expect(recorderCalls).toBe(2);
+  });
+
   it("gates an un-analyzable run_command (shell construct hides the real command) even when declared read", async () => {
     const seenDetails: string[] = [];
     let asked = false;

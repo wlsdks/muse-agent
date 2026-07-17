@@ -118,6 +118,10 @@ Subcommands (verified via `--help` + live runs):
 - **Safety**: API and CLI call one provider-neutral `@muse/messaging` coordinator; they do not reproduce claim/begin/finalize or outcome logic. The coordinator uses the shared claim/CAS store and negative-first classifier, runs an effect-bearing callback only after begin wins, distinguishes CAS loss from persistence uncertainty, and observes the durable state when possible. Recovery requires the same owner, an unexpired immutable snapshot, and a fixed 15-minute stale-claim lease; it rotates the old token before preparation and never retries executing or terminal work. Public status omits tokens, arguments, internal actors, and paths. The boundary is at-most-once: a post-claim crash can omit an effect, but the id cannot execute twice. Tombstones are not pruned automatically in this slice.
 - Adjacent: `muse approval` (singular) = pending tool-call approvals audit+decide (overlaps the approvals/guard domain). Tests: `commands-approvals.test.ts`, `commands-approval.test.ts`.
 
+### `muse autonomy` ✅🧪 (progressive-autonomy evidence)
+- **What**: Issue/list/revoke an exact bounded local next-step grant, record shadow opportunities, review or decide unresolved organic evidence, and report readiness. CLI Ink reuses an explicit `y`/`n` answer for the exact `muse.tasks.complete` opportunity instead of asking for the same preference again.
+- **Safety**: Runtime evidence is CLI-only, explicit-user-only, exact run/call/owner bound, and revalidates the current user-authored link plus open task before recording. Cancel, automatic policy/trust decisions, stale or unreadable sources, API/channel approvals, and missing correlations write nothing. Manual and runtime evidence are mutually exclusive, never issue permission, and reaching the sample threshold still requires an independent audit and explicit promotion decision.
+
 ---
 
 ## H. Accountability: action log + undo
