@@ -544,7 +544,6 @@ const en = {
   "auto.flows.edit.saveFailed": "Couldn't save.",
   "auto.flows.edit.toolArgsLabel": "Arguments (JSON)",
   "auto.flows.edit.toolArgsInvalid": "Not valid JSON — must be an object, e.g. {}.",
-  "auto.flows.edit.toolChangeHint": "Changing which server/tool this flow calls isn't supported here yet — edit the arguments below, or recreate the flow to change the tool.",
 
   "auto.flows.header.enable": "Turn on",
   "auto.flows.header.disable": "Turn off",
@@ -1443,7 +1442,6 @@ const ko: Strings = {
   "auto.flows.edit.saveFailed": "저장하지 못했어요.",
   "auto.flows.edit.toolArgsLabel": "인자 (JSON)",
   "auto.flows.edit.toolArgsInvalid": "올바른 JSON이 아니에요 — 객체여야 해요, 예: {}.",
-  "auto.flows.edit.toolChangeHint": "이 흐름이 호출하는 서버/도구를 바꾸는 건 아직 여기서 지원하지 않아요 — 아래에서 인자만 수정하거나, 도구를 바꾸려면 흐름을 새로 만드세요.",
 
   "auto.flows.header.enable": "켜기",
   "auto.flows.header.disable": "끄기",

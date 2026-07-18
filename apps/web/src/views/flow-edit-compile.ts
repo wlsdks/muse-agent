@@ -137,10 +137,11 @@ export interface ActionEditForm {
   readonly maxRetryCount: number;
 }
 
-/** Editing an existing `action.tool` node's arguments — v1 leaves server/tool
- * read-only (changing which tool a live flow calls is a v2 concern), so this
- * form carries only the args textarea. */
+/** Editing an existing `action.tool` node — the read-risk cascade re-points
+ * server/tool and the args textarea PATCHes with them as one body. */
 export interface ToolActionEditForm {
+  readonly toolServerName: string;
+  readonly toolName: string;
   readonly toolArgumentsText: string;
 }
 
@@ -196,8 +197,14 @@ export function outputFormFromJob(job: Pick<ScheduledJobDetail, "notificationCha
   return { notificationChannelId: job.notificationChannelId ?? "" };
 }
 
-export function toolActionFormFromJob(job: Pick<ScheduledJobDetail, "toolArguments">): ToolActionEditForm {
-  return { toolArgumentsText: JSON.stringify(job.toolArguments ?? {}, null, 2) };
+export function toolActionFormFromJob(
+  job: Pick<ScheduledJobDetail, "mcpServerName" | "toolArguments" | "toolName">
+): ToolActionEditForm {
+  return {
+    toolArgumentsText: JSON.stringify(job.toolArguments ?? {}, null, 2),
+    toolName: job.toolName ?? "",
+    toolServerName: job.mcpServerName ?? ""
+  };
 }
 
 export function flowEditToJobPatch(kind: "trigger", form: TriggerEditForm): ScheduledJobPatchBody;
@@ -225,7 +232,11 @@ export function flowEditToJobPatch(
   if (kind === "tool") {
     const toolForm = form as ToolActionEditForm;
     const parsed = parseToolArgumentsText(toolForm.toolArgumentsText);
-    return { toolArguments: parsed.ok ? parsed.value : {} };
+    return {
+      mcpServerName: toolForm.toolServerName.trim(),
+      toolArguments: parsed.ok ? parsed.value : {},
+      toolName: toolForm.toolName.trim()
+    };
   }
   const outputForm = form as OutputEditForm;
   return {

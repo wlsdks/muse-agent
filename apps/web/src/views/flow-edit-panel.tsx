@@ -24,10 +24,11 @@ import {
 } from "./flow-edit-compile.js";
 import { KIND_LABEL_KEY } from "./flow-nodes.js";
 import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
+import { readRiskToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { FlowCanvasNode } from "./flow-canvas-mapping.js";
-import type { ScheduledJobDetail } from "../api/types.js";
+import type { LoopbackCatalogResponse, ScheduledJobDetail } from "../api/types.js";
 import type { StringKey } from "../i18n/index.js";
 
 export const PRESET_LABEL_KEY: Record<string, StringKey> = {
@@ -296,9 +297,12 @@ function ActionEditFields({
 }
 
 /**
- * Editing an `action.tool` node — server/tool stay READ-ONLY text in v1
- * (changing which tool a live flow calls is a v2 concern); only the JSON
- * arguments textarea is editable, PATCHed as `{ toolArguments }`.
+ * Editing an `action.tool` node — the tool pair is editable through the SAME
+ * read-risk loopback cascade (server → tool) the create panel uses, so a
+ * live flow can be re-pointed only at a tool that actually exists in the
+ * runtime registry; changing the tool resets the args textarea to {} (the
+ * old arguments belong to the old tool's schema). PATCHes
+ * `{ mcpServerName, toolName, toolArguments }` together.
  */
 function ToolActionEditFields({
   client,
@@ -314,6 +318,23 @@ function ToolActionEditFields({
   const { t } = useI18n();
   const qc = useQueryClient();
   const { dirty, form, markSaved, setForm } = useSavableForm<ToolActionEditForm>(toolActionFormFromJob(job));
+  const catalog = useQuery({
+    queryFn: () => client.get<LoopbackCatalogResponse>("/api/muse/loopback"),
+    queryKey: ["loopback-catalog", client.baseUrl],
+    retry: 0
+  });
+  const options = catalog.data ? readRiskToolOptions(catalog.data) : [];
+  const serverNames = uniqueServerNames(options);
+  const toolOptions = toolsForServer(options, form.toolServerName);
+  // A job may reference a tool the registry no longer exposes (server down,
+  // loopback off) — keep the stored pair selectable so opening the panel
+  // never silently blanks a live flow's target.
+  const serverChoices = serverNames.includes(form.toolServerName) || form.toolServerName.length === 0
+    ? serverNames
+    : [form.toolServerName, ...serverNames];
+  const toolChoices = toolOptions.some((option) => option.toolName === form.toolName) || form.toolName.length === 0
+    ? toolOptions.map((option) => option.toolName)
+    : [form.toolName, ...toolOptions.map((option) => option.toolName)];
 
   const save = useMutation({
     mutationFn: () => client.patch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}`, flowEditToJobPatch("tool", form)),
@@ -325,19 +346,49 @@ function ToolActionEditFields({
   });
 
   const argsInvalid = !parseToolArgumentsText(form.toolArgumentsText).ok;
-  const canSave = dirty && !argsInvalid && !save.isPending;
+  const pairMissing = form.toolServerName.trim().length === 0 || form.toolName.trim().length === 0;
+  const canSave = dirty && !argsInvalid && !pairMissing && !save.isPending;
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div className="row-meta">{t("auto.flows.meta.server")}: {job.mcpServerName ?? ""}</div>
-      <div className="row-meta">{t("auto.flows.meta.tool")}: {job.toolName ?? ""}</div>
+      <label style={{ display: "grid", gap: 4 }}>
+        <span className="field-label">{t("auto.flows.create.toolServerLabel")}</span>
+        <select
+          className="input"
+          aria-label={t("auto.flows.create.toolServerLabel")}
+          value={form.toolServerName}
+          onChange={(e) => setForm({ ...form, toolArgumentsText: "{}", toolName: "", toolServerName: e.target.value })}
+        >
+          {serverChoices.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </label>
+      <label style={{ display: "grid", gap: 4 }}>
+        <span className="field-label">{t("auto.flows.create.toolNameLabel")}</span>
+        <select
+          className="input"
+          aria-label={t("auto.flows.create.toolNameLabel")}
+          value={form.toolName}
+          onChange={(e) => {
+            if (e.target.value !== form.toolName) {
+              setForm({ ...form, toolArgumentsText: "{}", toolName: e.target.value });
+            }
+          }}
+        >
+          {form.toolName.length === 0 && <option value="">{t("auto.flows.create.toolNamePlaceholder")}</option>}
+          {toolChoices.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </label>
       <label style={{ display: "grid", gap: 4 }}>
         <span className="field-label">{t("auto.flows.edit.toolArgsLabel")}</span>
         <textarea
           className="input"
           rows={4}
           value={form.toolArgumentsText}
-          onChange={(e) => setForm({ toolArgumentsText: e.target.value })}
+          onChange={(e) => setForm({ ...form, toolArgumentsText: e.target.value })}
         />
         {argsInvalid && (
           <span className="field-error">
@@ -345,7 +396,6 @@ function ToolActionEditFields({
           </span>
         )}
       </label>
-      <span className="subtle" style={{ fontSize: 12 }}>{t("auto.flows.edit.toolChangeHint")}</span>
       <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
         <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
           {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}

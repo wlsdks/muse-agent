@@ -819,3 +819,82 @@ test("double-clicking the notify edge detaches the channel (PATCH null); structu
   await expect.poll(() => (client.patch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_n", { notificationChannelId: null });
 });
+
+test("editing a TOOL node re-points the tool pair via the read-risk cascade and resets args — PATCH carries mcpServerName+toolName+toolArguments", async () => {
+  const toolFlow = {
+    edges: [
+      { from: "job_t::trigger", id: "job_t::edge-trigger-action", to: "job_t::action" }
+    ],
+    enabled: true,
+    id: "job_t",
+    name: "Hourly clock",
+    nextRunAtIso: null,
+    nodes: [
+      { id: "job_t::trigger", kind: "trigger.schedule", label: "trigger.schedule", meta: { cronExpression: "0 * * * *", nextRunAtIso: null, timezone: "UTC" } },
+      { id: "job_t::action", kind: "action.tool", label: "action.tool", meta: { server: "muse.url", tool: "parse" } }
+    ],
+    source: "scheduler"
+  };
+  const toolJobDetail = {
+    agentModel: null,
+    agentSystemPrompt: null,
+    agentPrompt: "",
+    cronExpression: "0 * * * *",
+    enabled: true,
+    id: "job_t",
+    jobType: "MCP_TOOL",
+    maxRetryCount: 3,
+    mcpServerName: "muse.url",
+    name: "Hourly clock",
+    notificationChannelId: null,
+    retryOnFailure: false,
+    timezone: "UTC",
+    toolArguments: { url: "https://a.com" },
+    toolName: "parse"
+  };
+  const multiServerCatalog = {
+    servers: [
+      {
+        description: "URL utilities.",
+        name: "muse.url",
+        optIn: false,
+        tools: [{ description: "Parses a URL.", name: "parse", risk: "read" }]
+      },
+      {
+        description: "Clock utilities.",
+        name: "muse.time",
+        optIn: false,
+        tools: [
+          { description: "Returns the current ISO timestamp.", name: "now", risk: "read" },
+          { description: "Millisecond diff.", name: "diff_ms", risk: "read" }
+        ]
+      }
+    ],
+    total: 2
+  };
+  const client = fakeClient();
+  (client.get as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/flows") return { flows: [toolFlow] };
+    if (path === "/api/scheduler/jobs/job_t") return toolJobDetail;
+    if (path === "/api/muse/loopback") return multiServerCatalog;
+    if (path === "/api/messaging/setup") return { providers: [] };
+    throw new Error(`unexpected GET ${path}`);
+  });
+  const screen = await renderFlows(client);
+
+  await screen.getByText("Tool call", { exact: true }).click();
+
+  const serverSelect = screen.getByRole("combobox", { name: "Tool server" });
+  await expect.element(serverSelect).toBeVisible();
+  await serverSelect.selectOptions("muse.time");
+  const toolSelect = screen.getByRole("combobox", { name: "Tool", exact: true });
+  await toolSelect.selectOptions("now");
+
+  await screen.getByRole("button", { name: "Save" }).click();
+
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_t", {
+    mcpServerName: "muse.time",
+    toolArguments: {},
+    toolName: "now"
+  });
+});

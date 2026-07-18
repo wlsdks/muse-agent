@@ -495,6 +495,8 @@ export type ScheduledJobPatchBody = {
   readonly maxRetryCount?: number;
   readonly enabled?: boolean;
   readonly toolArguments?: Record<string, unknown>;
+  readonly mcpServerName?: string;
+  readonly toolName?: string;
 };
 
 // Mirrors `apps/api`'s `GET /api/muse/loopback` response (registerToolsRoutes

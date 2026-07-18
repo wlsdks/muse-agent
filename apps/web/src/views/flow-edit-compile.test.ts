@@ -9,6 +9,7 @@ import {
   emptyFlowDraft,
   flowDraftFromCopilot,
   flowDraftToCopilotPayload,
+  toolActionFormFromJob,
   flowDraftToJobInput,
   flowEditToJobPatch,
   isFlowDraftValid,
@@ -619,3 +620,35 @@ describe("copilot tool-arguments prefill", () => {
     expect(flowDraftToCopilotPayload(draft).toolArguments).toEqual({});
   });
 });
+
+describe("flowEditToJobPatch — tool node with an editable tool pair", () => {
+  it("PATCHes mcpServerName + toolName + parsed toolArguments together", () => {
+    const patch = flowEditToJobPatch("tool", {
+      toolArgumentsText: '{"url": "https://a.com"}',
+      toolName: "parse",
+      toolServerName: "muse.url"
+    });
+    expect(patch).toEqual({
+      mcpServerName: "muse.url",
+      toolArguments: { url: "https://a.com" },
+      toolName: "parse"
+    });
+  });
+
+  it("trims the pair and degrades unparseable args to {}", () => {
+    const patch = flowEditToJobPatch("tool", {
+      toolArgumentsText: "{not json",
+      toolName: "  now  ",
+      toolServerName: "  muse.time  "
+    });
+    expect(patch).toEqual({ mcpServerName: "muse.time", toolArguments: {}, toolName: "now" });
+  });
+
+  it("toolActionFormFromJob seeds the pair from the job detail", () => {
+    const form = toolActionFormFromJob({ mcpServerName: "muse.url", toolArguments: { url: "x" }, toolName: "parse" });
+    expect(form.toolServerName).toBe("muse.url");
+    expect(form.toolName).toBe("parse");
+    expect(JSON.parse(form.toolArgumentsText)).toEqual({ url: "x" });
+  });
+});
+
