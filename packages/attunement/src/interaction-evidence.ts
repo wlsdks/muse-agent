@@ -4,6 +4,7 @@ import type {
   AttunementState,
   ContinuityInteractionAnchor,
   ContinuityInteractionReceipt,
+  ContinuityEvidenceClass,
   ContinuityOutcome,
   PersonalThreadKind
 } from "./types.js";
@@ -55,7 +56,19 @@ export interface ContinuityInteractionReport {
   readonly audit: ContinuityInteractionAudit;
   readonly digest: ContinuityInteractionDigest;
   readonly interactions: readonly ContinuityInteractionProjectionItem[];
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
+  readonly technicalEvidence: ContinuityInteractionTechnicalEvidenceDigest;
+}
+
+export interface ContinuityInteractionTechnicalEvidenceSlice {
+  readonly deliveries: Readonly<Record<ContinuityEvidenceClass, number>>;
+  readonly receipts: Readonly<Record<ContinuityEvidenceClass, number>>;
+  readonly states: Readonly<Record<ContinuityInteractionState, number>>;
+}
+
+export interface ContinuityInteractionTechnicalEvidenceDigest {
+  readonly byThreadKind: Readonly<Record<PersonalThreadKind, ContinuityInteractionTechnicalEvidenceSlice>>;
+  readonly overall: ContinuityInteractionTechnicalEvidenceSlice;
 }
 
 export interface ContinuityTaskInteractionSource {
@@ -71,6 +84,7 @@ export type ContinuityTaskInteractionSourceResolver = (
 
 export interface ContinuityInteractionProjectionItem {
   readonly deliveryId: string;
+  readonly deliveryEvidenceClass: ContinuityEvidenceClass;
   readonly explicitOutcome?: ContinuityOutcome;
   readonly interaction: {
     readonly receipt?: ContinuityInteractionReceipt;
@@ -109,6 +123,7 @@ export async function buildContinuityInteractionProjection(
       if (!thread) throw new Error(`delivery '${delivery.id}' references a missing personal thread`);
       const base = {
         deliveryId: delivery.id,
+        deliveryEvidenceClass: delivery.evidenceClass,
         ...(delivery.outcome ? { explicitOutcome: delivery.outcome.outcome } : {}),
         openedAt: delivery.openedAt,
         ...(delivery.runId ? { runId: delivery.runId } : {}),
@@ -227,7 +242,12 @@ export function buildContinuityInteractionAudit(
   buildContinuityInteractionDigest(interactions);
 
   const slice = (kind: PersonalThreadKind): ContinuityInteractionKindAudit => {
-    const exact = interactions.filter((item) => item.threadKind === kind && item.interaction.state === "exact");
+    const exact = interactions.filter((item) =>
+      item.threadKind === kind &&
+      item.deliveryEvidenceClass === "organic" &&
+      item.interaction.state === "exact" &&
+      item.interaction.receipt?.evidenceClass === "organic"
+    );
     const distinctDates = new Set(exact.map((item) => new Date(Date.parse(item.openedAt)).toISOString().slice(0, 10)));
     return {
       distinctUtcOpenedDates: distinctDates.size,
@@ -259,12 +279,41 @@ export async function buildContinuityInteractionReport(
   resolveCurrentTask: ContinuityTaskInteractionSourceResolver
 ): Promise<ContinuityInteractionReport> {
   const interactions = await buildContinuityInteractionProjection(state, resolveCurrentTask);
+  const naturalInteractions = interactions.filter((item) =>
+    item.deliveryEvidenceClass === "organic" &&
+    (item.interaction.state !== "exact" || item.interaction.receipt?.evidenceClass === "organic")
+  );
   return {
-    audit: buildContinuityInteractionAudit(interactions),
-    digest: buildContinuityInteractionDigest(interactions),
+    audit: buildContinuityInteractionAudit(naturalInteractions),
+    digest: buildContinuityInteractionDigest(naturalInteractions),
     interactions,
-    schemaVersion: 1
+    schemaVersion: 2,
+    technicalEvidence: buildInteractionTechnicalEvidence(interactions)
   };
+}
+
+function buildInteractionTechnicalEvidence(
+  interactions: readonly ContinuityInteractionProjectionItem[]
+): ContinuityInteractionTechnicalEvidenceDigest {
+  const classes: readonly ContinuityEvidenceClass[] = ["organic", "controlled", "unclassified"];
+  const slice = (kind?: PersonalThreadKind): ContinuityInteractionTechnicalEvidenceSlice => {
+    const entries = kind ? interactions.filter((item) => item.threadKind === kind) : interactions;
+    const deliveries = { controlled: 0, organic: 0, unclassified: 0 };
+    const receipts = { controlled: 0, organic: 0, unclassified: 0 };
+    const states = { exact: 0, none: 0, unavailable: 0 };
+    for (const item of entries) {
+      deliveries[item.deliveryEvidenceClass] += 1;
+      states[item.interaction.state] += 1;
+      const receiptClass = item.interaction.receipt?.evidenceClass;
+      if (receiptClass) receipts[receiptClass] += 1;
+    }
+    return {
+      deliveries: Object.fromEntries(classes.map((value) => [value, deliveries[value]])) as Record<ContinuityEvidenceClass, number>,
+      receipts: Object.fromEntries(classes.map((value) => [value, receipts[value]])) as Record<ContinuityEvidenceClass, number>,
+      states
+    };
+  };
+  return { byThreadKind: { life: slice("life"), work: slice("work") }, overall: slice() };
 }
 
 function latencyDigest(sorted: readonly number[]): ContinuityInteractionLatencyDigest {

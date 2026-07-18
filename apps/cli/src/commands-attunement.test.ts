@@ -122,11 +122,13 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(readFileSync(f.attunementFile, "utf8")).toBe(beforeInteractions);
 
     const interactionText = await run(f, ["thread", "interactions"]);
+    expect(interactionText.stdout).toContain("Production-authorized interaction coverage");
     expect(interactionText.stdout).toContain("Interaction digest: 1 delivery; exact=0 none=1 unavailable=0");
     expect(interactionText.stdout).toContain("life: 1 delivery; exact=0 none=1 unavailable=0");
     expect(interactionText.stdout).toContain("Interaction audit: collecting");
     expect(interactionText.stdout).toContain("life: exact=0/10 opened UTC dates=0/2");
     expect(interactionText.stdout).toContain("does not certify natural timing, usefulness, or permission");
+    expect(interactionText.stdout).toContain("All recorded technical interaction evidence");
 
     const outcome = await run(f, ["thread", "outcome", deliveryId!, "ignored"]);
     expect(outcome.stdout).toContain("Recorded ignored");
@@ -426,10 +428,12 @@ describe("muse thread stats — kill-criterion instrument", () => {
     expect(parsed).toEqual(computeContinuityEvaluation(await readAttunementState(f.attunementFile)));
 
     const text = await run(f, ["thread", "stats"]);
+    expect(text.stdout).toContain("Production-authorized numeric readiness");
     expect(text.stdout).toContain("used: 2");
     expect(text.stdout).toContain("rejected 1/5");
     expect(text.stdout).toContain("Longitudinal evidence: collecting");
     expect(text.stdout).toContain("work: feedback 4/10 across 1/2 UTC dates; 6 feedback and 1 date remaining");
+    expect(text.stdout).toContain("All recorded technical evidence");
   });
 
   it("reports zeros on empty state without crashing", async () => {

@@ -5,7 +5,10 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./host": { "types": "./dist/host.d.ts", "import": "./dist/host.js" }
+  },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },
   "dependencies": {
     "@muse/policy": "workspace:*",

@@ -20,11 +20,9 @@ import {
   inspectThread,
   linkArtifact,
   mcpProviderId,
-  openPreparedContinuityPack,
   prepareContinuityPack,
   prepareContinuityReview,
   readAttunementState,
-  recordContinuityOutcome,
   resetThreadPolicy,
   undoThreadReset,
   unlinkArtifact,
@@ -44,6 +42,7 @@ import {
   type PersonalThread,
   type PersonalThreadKind,
 } from "@muse/attunement";
+import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -222,7 +221,12 @@ function formatLongitudinalCoverage(kind: PersonalThreadKind, coverage: Continui
 
 export function formatContinuityStats(stats: ContinuityStats): string {
   const { outcomes, firstPacks } = stats;
+  const technical = stats.technicalEvidence.overall;
+  const technicalOutcomeCount = Object.values(technical.outcomes)
+    .flatMap((byOutcome) => Object.values(byOutcome))
+    .reduce((total, count) => total + count, 0);
   const lines = [
+    "Production-authorized numeric readiness (organic-authorized evidence; not verified natural behavior):",
     `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
     `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
     `First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
@@ -232,7 +236,9 @@ export function formatContinuityStats(stats: ContinuityStats): string {
     formatLongitudinalCoverage("work", stats.longitudinalGate.byKind.work),
     "By thread kind:",
     ...formatKindStats("life", stats.byKind.life),
-    ...formatKindStats("work", stats.byKind.work)
+    ...formatKindStats("work", stats.byKind.work),
+    "All recorded technical evidence (excluded from readiness unless both sides are organic-authorized):",
+    `  deliveries: organic=${technical.deliveries.organic.toString()} controlled=${technical.deliveries.controlled.toString()} unclassified=${technical.deliveries.unclassified.toString()}; outcomes=${technicalOutcomeCount.toString()}.`
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -418,7 +424,7 @@ async function runContinue(
 ): Promise<void> {
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
-  const { delivery, pack } = await openPreparedContinuityPack(file, chosenId, resolveExactArtifact, { now });
+  const { delivery, pack } = await openProductionAuthorizedContinuityPack(file, chosenId, resolveExactArtifact, { now });
   io.stdout(formatPack(pack, delivery.id, delivery.runId));
 }
 
@@ -563,6 +569,7 @@ Examples:
             : `latency n=${slice.completionLatencyMs.sampleSize.toString()} median=${slice.completionLatencyMs.medianMs!.toString()}ms p95=${slice.completionLatencyMs.p95Ms!.toString()}ms`;
           return `${label}: ${slice.totalDeliveries.toString()} ${slice.totalDeliveries === 1 ? "delivery" : "deliveries"}; exact=${slice.states.exact.count.toString()} none=${slice.states.none.count.toString()} unavailable=${slice.states.unavailable.count.toString()}; ${latency}`;
         };
+        io.stdout("Production-authorized interaction coverage (organic-authorized pairs; not verified natural behavior):\n");
         io.stdout(`${formatSlice("Interaction digest", report.digest.overall)}\n`);
         io.stdout(`  ${formatSlice("life", report.digest.byThreadKind.life)}\n`);
         io.stdout(`  ${formatSlice("work", report.digest.byThreadKind.work)}\n`);
@@ -572,6 +579,9 @@ Examples:
           io.stdout(`  ${kind}: exact=${coverage.exactInteractions.toString()}/${coverage.exactInteractionsTarget.toString()} opened UTC dates=${coverage.distinctUtcOpenedDates.toString()}/${coverage.distinctUtcOpenedDatesTarget.toString()}\n`);
         }
         io.stdout("  Numeric coverage does not certify natural timing, usefulness, or permission.\n");
+        const technical = report.technicalEvidence.overall;
+        io.stdout("All recorded technical interaction evidence (excluded from numeric coverage unless both sides are organic-authorized):\n");
+        io.stdout(`  deliveries organic=${technical.deliveries.organic.toString()} controlled=${technical.deliveries.controlled.toString()} unclassified=${technical.deliveries.unclassified.toString()}; receipts organic=${technical.receipts.organic.toString()} controlled=${technical.receipts.controlled.toString()} unclassified=${technical.receipts.unclassified.toString()}.\n`);
         if (report.interactions.length === 0) {
           io.stdout("No Continuity deliveries have interaction evidence yet.\n");
           return;
@@ -623,7 +633,11 @@ Examples:
       await commandAction(command, io, "thread outcome", async () => {
         const canonicalOutcome = outcome.trim().toLowerCase();
         assertChoice(canonicalOutcome, OUTCOMES, "outcome");
-        const recorded = await recordContinuityOutcome(attunementFile(), deliveryId.trim(), canonicalOutcome as (typeof OUTCOMES)[number]);
+        const recorded = await recordProductionAuthorizedContinuityOutcome(
+          attunementFile(),
+          deliveryId.trim(),
+          canonicalOutcome as (typeof OUTCOMES)[number]
+        );
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
       });
     });

@@ -6,6 +6,14 @@ import { errorMessage, isRecord, parseJson } from "@muse/shared";
 import { atomicWriteFile, readTaskByIdStrict } from "@muse/stores";
 
 import { recordContinuityTaskCompletionInteraction } from "./attunement-store.js";
+import {
+  CONTINUITY_EVIDENCE_CLASSES,
+  createOrganicContinuityWriteAuthority,
+  createPersistedContinuityWriteAuthority,
+  resolveContinuityEvidenceClass,
+  type ContinuityEvidenceClass,
+  type ContinuityEvidenceWriteOptions
+} from "./evidence-provenance.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 
 export const CONTINUITY_INTERACTION_OUTBOX_MAX_PENDING = 256;
@@ -15,6 +23,7 @@ export interface ContinuityInteractionOutboxEvent {
   readonly attempts: number;
   readonly completedAt: string;
   readonly eventId: string;
+  readonly evidenceClass: ContinuityEvidenceClass;
   readonly lastAttemptAt?: string;
   readonly lastError?: string;
   readonly preparedAt: string;
@@ -23,7 +32,7 @@ export interface ContinuityInteractionOutboxEvent {
 
 export interface ContinuityInteractionOutboxState {
   readonly entries: readonly ContinuityInteractionOutboxEvent[];
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
 }
 
 export interface PrepareContinuityTaskCompletionInput {
@@ -31,7 +40,7 @@ export interface PrepareContinuityTaskCompletionInput {
   readonly taskId: string;
 }
 
-export interface ContinuityInteractionOutboxOptions {
+export interface ContinuityInteractionOutboxOptions extends ContinuityEvidenceWriteOptions {
   readonly now?: () => Date;
 }
 
@@ -54,7 +63,7 @@ export class ContinuityInteractionOutboxError extends Error {
   }
 }
 
-const EMPTY_STATE: ContinuityInteractionOutboxState = { entries: [], schemaVersion: 1 };
+const EMPTY_STATE: ContinuityInteractionOutboxState = { entries: [], schemaVersion: 2 };
 
 function isIsoTimestamp(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
@@ -64,13 +73,16 @@ function isNodeErrorCode(cause: unknown, code: string): boolean {
   return typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
 }
 
-function isEvent(value: unknown): value is ContinuityInteractionOutboxEvent {
+function isEvent(value: unknown, requireEvidenceClass = false): value is ContinuityInteractionOutboxEvent {
   return isRecord(value)
     && Number.isSafeInteger(value.attempts)
     && typeof value.attempts === "number"
     && value.attempts >= 0
     && isIsoTimestamp(value.completedAt)
     && typeof value.eventId === "string"
+    && (requireEvidenceClass
+      ? typeof value.evidenceClass === "string" && CONTINUITY_EVIDENCE_CLASSES.includes(value.evidenceClass as ContinuityEvidenceClass)
+      : value.evidenceClass === undefined || typeof value.evidenceClass === "string" && CONTINUITY_EVIDENCE_CLASSES.includes(value.evidenceClass as ContinuityEvidenceClass))
     && (value.lastAttemptAt === undefined || isIsoTimestamp(value.lastAttemptAt))
     && (value.lastError === undefined || (typeof value.lastError === "string" && value.lastError.length <= 1_000))
     && isIsoTimestamp(value.preparedAt)
@@ -81,17 +93,18 @@ function isEvent(value: unknown): value is ContinuityInteractionOutboxEvent {
 
 function parseState(value: unknown): ContinuityInteractionOutboxState {
   if (!isRecord(value)
-    || value.schemaVersion !== 1
+    || (value.schemaVersion !== 1 && value.schemaVersion !== 2)
     || !Array.isArray(value.entries)
     || value.entries.length > CONTINUITY_INTERACTION_OUTBOX_MAX_PENDING
-    || !value.entries.every(isEvent)) {
+    || !value.entries.every((entry) => isEvent(entry, value.schemaVersion === 2))) {
     throw new ContinuityInteractionOutboxError("continuity interaction outbox is invalid; refusing to overwrite it");
   }
-  const entries = value.entries as unknown as readonly ContinuityInteractionOutboxEvent[];
+  const entries = (value.entries as unknown as readonly ContinuityInteractionOutboxEvent[])
+    .map((entry) => ({ ...entry, evidenceClass: entry.evidenceClass ?? "unclassified" as const }));
   if (new Set(entries.map((entry) => entry.eventId)).size !== entries.length) {
     throw new ContinuityInteractionOutboxError("continuity interaction outbox has duplicate event ids");
   }
-  return { entries, schemaVersion: 1 };
+  return { entries, schemaVersion: 2 };
 }
 
 function eventId(taskId: string, completedAt: string): string {
@@ -162,6 +175,7 @@ export async function prepareContinuityTaskCompletionInteraction(
     attempts: 0,
     completedAt: input.completedAt,
     eventId: eventId(input.taskId, input.completedAt),
+    evidenceClass: resolveContinuityEvidenceClass(options),
     preparedAt: nowIso(options),
     taskId: input.taskId
   };
@@ -179,8 +193,20 @@ export async function prepareContinuityTaskCompletionInteraction(
     return {
       changed: true,
       result: pending,
-      state: { entries: [...state.entries, pending], schemaVersion: 1 }
+      state: { entries: [...state.entries, pending], schemaVersion: 2 }
     };
+  });
+}
+
+/** Exact production operation: authority is consumed by this one outbox prepare. */
+export function prepareProductionAuthorizedContinuityTaskCompletionInteraction(
+  attunementFile: string,
+  input: PrepareContinuityTaskCompletionInput,
+  options: Omit<ContinuityInteractionOutboxOptions, "evidenceAuthority" | "evidenceClass"> = {}
+): ReturnType<typeof prepareContinuityTaskCompletionInteraction> {
+  return prepareContinuityTaskCompletionInteraction(attunementFile, input, {
+    ...options,
+    evidenceAuthority: createOrganicContinuityWriteAuthority()
   });
 }
 
@@ -203,7 +229,9 @@ async function attemptEvent(
   if (task.status === "open") return { kind: "pending" };
   if (task.completedAt !== event.completedAt) return { kind: "terminal", recorded: false };
   try {
-    const result = await recordContinuityTaskCompletionInteraction(attunementFile, tasksFile, event.taskId);
+    const result = await recordContinuityTaskCompletionInteraction(attunementFile, tasksFile, event.taskId, {
+      evidenceAuthority: createPersistedContinuityWriteAuthority(event.evidenceClass)
+    });
     if (result.kind === "unavailable") return { error: "continuity interaction source is unavailable", kind: "pending" };
     return { kind: "terminal", recorded: result.kind === "recorded" };
   } catch (cause) {
@@ -237,7 +265,7 @@ export async function retryContinuityTaskCompletionInteractions(
         return {
           changed: true,
           result: undefined,
-          state: { entries: state.entries.filter((entry) => entry.eventId !== event.eventId), schemaVersion: 1 }
+          state: { entries: state.entries.filter((entry) => entry.eventId !== event.eventId), schemaVersion: 2 }
         };
       }
       const updated: ContinuityInteractionOutboxEvent = {
@@ -251,7 +279,7 @@ export async function retryContinuityTaskCompletionInteractions(
         result: undefined,
         state: {
           entries: state.entries.map((entry) => entry.eventId === event.eventId ? updated : entry),
-          schemaVersion: 1
+          schemaVersion: 2
         }
       };
     });

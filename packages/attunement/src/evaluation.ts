@@ -1,4 +1,10 @@
-import type { AttunementState, ContinuityDelivery, ContinuityOutcome, PersonalThreadKind } from "./types.js";
+import type {
+  AttunementState,
+  ContinuityDelivery,
+  ContinuityEvidenceClass,
+  ContinuityOutcome,
+  PersonalThreadKind
+} from "./types.js";
 
 export const CONTINUITY_KILL_CRITERION_FIRST_PACKS = 20;
 export const CONTINUITY_IMPROVEMENT_COHORT_SIZE = 5;
@@ -34,6 +40,18 @@ export interface ContinuityEvaluation extends ContinuityKindEvaluation {
   /** Consumers must render this split rather than treating aggregate results as success. */
   readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityKindEvaluation>>;
   readonly longitudinalGate: ContinuityLongitudinalGate;
+  readonly schemaVersion: 2;
+  readonly technicalEvidence: ContinuityTechnicalEvidenceDigest;
+}
+
+export interface ContinuityTechnicalEvidenceSlice {
+  readonly deliveries: Readonly<Record<ContinuityEvidenceClass, number>>;
+  readonly outcomes: Readonly<Record<ContinuityEvidenceClass, Readonly<Record<ContinuityOutcome, number>>>>;
+}
+
+export interface ContinuityTechnicalEvidenceDigest {
+  readonly byKind: Readonly<Record<PersonalThreadKind, ContinuityTechnicalEvidenceSlice>>;
+  readonly overall: ContinuityTechnicalEvidenceSlice;
 }
 
 export interface ContinuityLongitudinalKindCoverage {
@@ -81,7 +99,7 @@ function orderContinuityFeedback(deliveries: readonly ContinuityDelivery[]): rea
 }
 
 function longitudinalCoverage(deliveries: readonly ContinuityDelivery[]): ContinuityLongitudinalKindCoverage {
-  const feedback = deliveries.filter((delivery) => delivery.outcome !== undefined);
+  const feedback = deliveries.filter(isOrganicOutcomePair);
   const distinctUtcDates = new Set(feedback.map(utcOpenedDate)).size;
   return {
     distinctUtcDates,
@@ -118,10 +136,11 @@ function feedbackCohort(deliveries: readonly ContinuityDelivery[]): ContinuityFe
 }
 
 function evaluateKind(deliveries: readonly ContinuityDelivery[]): ContinuityKindEvaluation {
+  const organicDeliveries = deliveries.filter((delivery) => delivery.evidenceClass === "organic");
   const outcomes: Record<ContinuityOutcome, number> = { adjusted: 0, ignored: 0, rejected: 0, used: 0 };
-  for (const delivery of deliveries) if (delivery.outcome) outcomes[delivery.outcome.outcome] += 1;
-  const firstPacks = orderContinuityDeliveries(deliveries).slice(0, CONTINUITY_KILL_CRITERION_FIRST_PACKS);
-  const feedback = orderContinuityFeedback(deliveries);
+  const feedback = orderContinuityFeedback(deliveries.filter(isOrganicOutcomePair));
+  for (const delivery of feedback) outcomes[delivery.outcome!.outcome] += 1;
+  const firstPacks = orderContinuityDeliveries(organicDeliveries).slice(0, CONTINUITY_KILL_CRITERION_FIRST_PACKS);
   const firstFiveFeedback = feedbackCohort(feedback.slice(0, CONTINUITY_IMPROVEMENT_COHORT_SIZE));
   const nextFiveFeedback = feedbackCohort(feedback.slice(CONTINUITY_IMPROVEMENT_COHORT_SIZE, CONTINUITY_IMPROVEMENT_COHORT_SIZE * 2));
   const improvementGate: ContinuityImprovementGate = feedback.length < CONTINUITY_IMPROVEMENT_COHORT_SIZE * 2
@@ -131,9 +150,9 @@ function evaluateKind(deliveries: readonly ContinuityDelivery[]): ContinuityKind
       : nextFiveFeedback.used <= firstFiveFeedback.used && nextFiveFeedback.rejected >= firstFiveFeedback.rejected
         ? { firstFiveFeedback, nextFiveFeedback, reason: "the next five feedback outcomes have lower use or higher rejection; fix pack usefulness before automation", status: "regressing" }
         : { firstFiveFeedback, nextFiveFeedback, reason: "the next five feedback outcomes trade higher use for higher rejection, or the reverse; inspect the packs before automation", status: "mixed" };
-  const used = firstPacks.filter((delivery) => delivery.outcome?.outcome === "used").length;
-  const rejected = firstPacks.filter((delivery) => delivery.outcome?.outcome === "rejected").length;
-  const firstPacksWithFeedback = firstPacks.filter((delivery) => delivery.outcome !== undefined).length;
+  const used = firstPacks.filter((delivery) => isOrganicOutcomePair(delivery) && delivery.outcome.outcome === "used").length;
+  const rejected = firstPacks.filter((delivery) => isOrganicOutcomePair(delivery) && delivery.outcome.outcome === "rejected").length;
+  const firstPacksWithFeedback = firstPacks.filter(isOrganicOutcomePair).length;
   const reasons: string[] = [];
   if (firstPacks.length < CONTINUITY_KILL_CRITERION_FIRST_PACKS) reasons.push(`need ${String(CONTINUITY_KILL_CRITERION_FIRST_PACKS - firstPacks.length)} more eligible deliveries before evaluating automation`);
   else if (firstPacksWithFeedback < CONTINUITY_KILL_CRITERION_FIRST_PACKS) reasons.push(`need ${String(CONTINUITY_KILL_CRITERION_FIRST_PACKS - firstPacksWithFeedback)} more explicit feedback entries in the first 20 before evaluating automation`);
@@ -146,7 +165,7 @@ function evaluateKind(deliveries: readonly ContinuityDelivery[]): ContinuityKind
     firstPacks: { considered: firstPacks.length, rejected, used },
     improvementGate,
     outcomes,
-    totalDeliveries: deliveries.length,
+    totalDeliveries: organicDeliveries.length,
     withOutcome: feedback.length
   };
 }
@@ -158,6 +177,39 @@ export function computeContinuityEvaluation(state: AttunementState): ContinuityE
   return {
     ...evaluateKind(state.deliveries),
     byKind: { life: evaluateKind(byKindDeliveries.life), work: evaluateKind(byKindDeliveries.work) },
-    longitudinalGate: longitudinalGate(byKindDeliveries)
+    longitudinalGate: longitudinalGate(byKindDeliveries),
+    schemaVersion: 2,
+    technicalEvidence: {
+      byKind: {
+        life: technicalEvidenceSlice(byKindDeliveries.life),
+        work: technicalEvidenceSlice(byKindDeliveries.work)
+      },
+      overall: technicalEvidenceSlice(state.deliveries)
+    }
+  };
+}
+
+function isOrganicOutcomePair(delivery: ContinuityDelivery): delivery is ContinuityDelivery & {
+  readonly outcome: NonNullable<ContinuityDelivery["outcome"]>;
+} {
+  return delivery.evidenceClass === "organic" && delivery.outcome?.evidenceClass === "organic";
+}
+
+function technicalEvidenceSlice(deliveries: readonly ContinuityDelivery[]): ContinuityTechnicalEvidenceSlice {
+  const classes: readonly ContinuityEvidenceClass[] = ["organic", "controlled", "unclassified"];
+  const emptyOutcomes = (): Record<ContinuityOutcome, number> => ({ adjusted: 0, ignored: 0, rejected: 0, used: 0 });
+  const deliveryCounts: Record<ContinuityEvidenceClass, number> = { controlled: 0, organic: 0, unclassified: 0 };
+  const outcomeCounts: Record<ContinuityEvidenceClass, Record<ContinuityOutcome, number>> = {
+    controlled: emptyOutcomes(),
+    organic: emptyOutcomes(),
+    unclassified: emptyOutcomes()
+  };
+  for (const delivery of deliveries) {
+    deliveryCounts[delivery.evidenceClass] += 1;
+    if (delivery.outcome) outcomeCounts[delivery.outcome.evidenceClass][delivery.outcome.outcome] += 1;
+  }
+  return {
+    deliveries: Object.fromEntries(classes.map((value) => [value, deliveryCounts[value]])) as Record<ContinuityEvidenceClass, number>,
+    outcomes: Object.fromEntries(classes.map((value) => [value, outcomeCounts[value]])) as Record<ContinuityEvidenceClass, Record<ContinuityOutcome, number>>
   };
 }

@@ -22,16 +22,20 @@ import {
   type ContinuityInteractionProjectionItem,
   type PersonalThreadKind
 } from "./index.js";
+import { createOrganicContinuityWriteAuthority } from "./evidence-provenance.js";
 
 function projectionItem(input: {
   readonly completedAt?: string;
+  readonly deliveryEvidenceClass?: "organic" | "controlled" | "unclassified";
   readonly deliveryId: string;
   readonly openedAt: string;
   readonly state: "exact" | "none" | "unavailable";
+  readonly receiptEvidenceClass?: "organic" | "controlled" | "unclassified";
   readonly threadKind: PersonalThreadKind;
 }): ContinuityInteractionProjectionItem {
   return {
     deliveryId: input.deliveryId,
+    deliveryEvidenceClass: input.deliveryEvidenceClass ?? "organic",
     interaction: input.state === "exact"
       ? {
           receipt: {
@@ -40,6 +44,7 @@ function projectionItem(input: {
             deliveryId: input.deliveryId,
             doneStateFingerprint: "a".repeat(64),
             eventId: `event_${input.deliveryId}`,
+            evidenceClass: input.receiptEvidenceClass ?? "organic",
             id: `receipt_${input.deliveryId}`,
             linkedAt: input.openedAt,
             openStateFingerprint: "b".repeat(64),
@@ -63,6 +68,35 @@ function projectionItem(input: {
 }
 
 describe("Continuity interaction evidence", () => {
+  it("counts exact readiness only when both delivery and receipt are organic", () => {
+    const organic = projectionItem({
+      completedAt: "2026-07-18T00:00:00.001Z",
+      deliveryId: "organic-pair",
+      openedAt: "2026-07-18T00:00:00.000Z",
+      state: "exact",
+      threadKind: "life"
+    });
+    const controlledDelivery = projectionItem({
+      completedAt: "2026-07-19T00:00:00.001Z",
+      deliveryEvidenceClass: "controlled",
+      deliveryId: "controlled-delivery",
+      openedAt: "2026-07-19T00:00:00.000Z",
+      state: "exact",
+      threadKind: "life"
+    });
+    const controlledReceipt = projectionItem({
+      completedAt: "2026-07-20T00:00:00.001Z",
+      deliveryId: "controlled-receipt",
+      openedAt: "2026-07-20T00:00:00.000Z",
+      receiptEvidenceClass: "controlled",
+      state: "exact",
+      threadKind: "life"
+    });
+
+    expect(buildContinuityInteractionAudit([organic, controlledDelivery, controlledReceipt]).byThreadKind.life)
+      .toMatchObject({ distinctUtcOpenedDates: 1, exactInteractions: 1, remainingExactInteractions: 9 });
+  });
+
   it("reports an explicit finite collection gap for an empty interaction set", () => {
     expect(buildContinuityInteractionAudit([])).toEqual({
       byThreadKind: {
@@ -306,11 +340,16 @@ describe("Continuity interaction evidence", () => {
       now: () => new Date("2026-07-18T00:30:00.000Z"),
       validateArtifact: createLocalArtifactValidator({ notesDir, tasksFile })
     });
+    const organic = createOrganicContinuityWriteAuthority();
     const opened = await openPreparedContinuityPack(
       attunementFile,
       thread.id,
       createLocalExactArtifactResolver({ notesDir, tasksFile }),
-      { idFactory: () => "opened", now: () => Date.parse("2026-07-18T01:00:00.000Z") }
+      {
+        evidenceAuthority: organic,
+        idFactory: () => "opened",
+        now: () => Date.parse("2026-07-18T01:00:00.000Z")
+      }
     );
 
     expect(opened.delivery.interactionAnchor).toMatchObject({
@@ -325,7 +364,12 @@ describe("Continuity interaction evidence", () => {
     await mutateTasks(tasksFile, (tasks) => tasks.map((task) => task.id === "task_exact"
       ? { ...task, completedAt: "2026-07-18T02:00:00.000Z", status: "done" as const }
       : task));
-    const recorded = await recordContinuityTaskCompletionInteraction(attunementFile, tasksFile, "task_exact");
+    const recorded = await recordContinuityTaskCompletionInteraction(
+      attunementFile,
+      tasksFile,
+      "task_exact",
+      { evidenceAuthority: organic }
+    );
     expect(recorded.kind).toBe("recorded");
 
     const state = await readAttunementState(attunementFile);
@@ -354,7 +398,7 @@ describe("Continuity interaction evidence", () => {
         overall: { completionLatencyMs: { sampleSize: 1 }, states: { exact: { count: 1 } }, totalDeliveries: 1 }
       },
       interactions: [expect.objectContaining({ threadKind: "work" })],
-      schemaVersion: 1
+      schemaVersion: 2
     });
 
     const beforeReplay = await readFile(attunementFile, "utf8");
@@ -486,11 +530,11 @@ describe("Continuity interaction evidence", () => {
     await writeFile(file, legacy, { mode: 0o600 });
 
     const read = await readAttunementState(file);
-    expect(read).toMatchObject({ interactionReceipts: [], schemaVersion: 2 });
+    expect(read).toMatchObject({ interactionReceipts: [], schemaVersion: 3 });
     expect(await readFile(file, "utf8")).toBe(legacy);
 
     await createPersonalThread(file, { kind: "work", title: "Migrate once" });
     const migrated = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(migrated).toMatchObject({ interactionReceipts: [], schemaVersion: 2 });
+    expect(migrated).toMatchObject({ interactionReceipts: [], schemaVersion: 3 });
   });
 });

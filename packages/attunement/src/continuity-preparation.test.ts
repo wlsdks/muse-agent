@@ -45,7 +45,7 @@ function state(): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 2,
+    schemaVersion: 3,
     threads: [{
       createdAt: "2026-07-14T00:00:00.000Z",
       id: "thread_life",
@@ -175,10 +175,11 @@ describe("openPreparedContinuityPack", () => {
     await writeAttunementState(file, {
       ...initial,
       deliveries: [{
+        evidenceClass: "unclassified",
         evidenceRefs: [taskLink],
         id: "delivery_seed",
         openedAt: "2026-07-17T08:00:00.000Z",
-        outcome: { outcome: "ignored", policyVersion: 1, recordedAt: "2026-07-17T08:01:00.000Z" },
+        outcome: { evidenceClass: "unclassified", outcome: "ignored", policyVersion: 1, recordedAt: "2026-07-17T08:01:00.000Z" },
         policyVersion: 0,
         threadId: "thread_life"
       }],

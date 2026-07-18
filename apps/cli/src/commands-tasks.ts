@@ -15,10 +15,8 @@ import { isErrorLike } from "@muse/shared";
 import { randomUUID } from "node:crypto";
 
 import { openLoops, type OpenLoop } from "@muse/agent-core";
-import {
-  prepareContinuityTaskCompletionInteraction,
-  retryContinuityTaskCompletionInteractions
-} from "@muse/attunement";
+import { retryContinuityTaskCompletionInteractions } from "@muse/attunement";
+import { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "@muse/attunement/host";
 import { resolveAttunementFile, resolveTasksFile } from "@muse/autoconfigure";
 import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, resolveTaskRef, serializeTask, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
@@ -367,7 +365,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
             return current;
           }
           const completedAt = new Date().toISOString();
-          await prepareContinuityTaskCompletionInteraction(attunementFile, {
+          await prepareProductionAuthorizedContinuityTaskCompletionInteraction(attunementFile, {
             completedAt,
             taskId: existing.id
           });

@@ -2,9 +2,10 @@ import { AttunementStoreError, openContinuityDelivery, readAttunementState } fro
 import { buildContinuityPack } from "./continuity-pack.js";
 
 import type { AttunementStoreOptions } from "./attunement-store.js";
+import { createOrganicContinuityWriteAuthority, type ContinuityEvidenceWriteOptions } from "./evidence-provenance.js";
 import type { ContinuityDelivery, ContinuityPack, ExactArtifactResolver } from "./types.js";
 
-export interface ContinuityFilePreparationOptions {
+export interface ContinuityFilePreparationOptions extends ContinuityEvidenceWriteOptions {
   readonly idFactory?: AttunementStoreOptions["idFactory"];
   /** Milliseconds since the Unix epoch. Read once per preparation. */
   readonly now?: () => number;
@@ -58,6 +59,8 @@ export async function openPreparedContinuityPack(
     ...(pack.interactionAnchor ? { interactionAnchor: pack.interactionAnchor } : {}),
     threadId
   }, {
+    ...(options.evidenceAuthority ? { evidenceAuthority: options.evidenceAuthority } : {}),
+    ...(options.evidenceClass ? { evidenceClass: options.evidenceClass } : {}),
     ...(options.idFactory ? { idFactory: options.idFactory } : {}),
     now: () => new Date(nowMs)
   });
@@ -65,3 +68,16 @@ export async function openPreparedContinuityPack(
 }
 
 export type OpenPreparedContinuityPack = typeof openPreparedContinuityPack;
+
+/** Exact production operation: authority is consumed by this one delivery write. */
+export function openProductionAuthorizedContinuityPack(
+  file: string,
+  threadId: string,
+  resolveExactArtifact: ExactArtifactResolver,
+  options: Omit<ContinuityFilePreparationOptions, "evidenceAuthority" | "evidenceClass"> = {}
+): ReturnType<typeof openPreparedContinuityPack> {
+  return openPreparedContinuityPack(file, threadId, resolveExactArtifact, {
+    ...options,
+    evidenceAuthority: createOrganicContinuityWriteAuthority()
+  });
+}

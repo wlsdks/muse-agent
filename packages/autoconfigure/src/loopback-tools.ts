@@ -14,9 +14,9 @@
  */
 
 import {
-  prepareContinuityTaskCompletionInteraction,
   retryContinuityTaskCompletionInteractions
 } from "@muse/attunement";
+import { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "@muse/attunement/host";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -133,8 +133,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               deps.attunementFile!, deps.tasksFile
             ).then(() => undefined),
             onTaskCompletionPrepared: (taskId: string, completedAt: string) =>
-              prepareContinuityTaskCompletionInteraction(
-                deps.attunementFile!, { completedAt, taskId }
+              prepareProductionAuthorizedContinuityTaskCompletionInteraction(
+                deps.attunementFile!,
+                { completedAt, taskId }
               ).then(() => undefined)
           } : {})
         })

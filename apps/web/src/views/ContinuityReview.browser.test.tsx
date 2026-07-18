@@ -9,9 +9,57 @@ import {
   ContinuityReviewView,
   InteractionEvidenceCard,
   OpenedPackCard,
+  PendingReviewCard,
+  RecentDeliveryCard,
   type InteractionReport,
   type OpenedPack
 } from "./ContinuityReview.js";
+
+test("recent deliveries cannot bypass the canonical provenance-aware review queue", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const base = {
+    evidenceRefs: [],
+    id: "delivery_technical",
+    openedAt: "2026-07-18T00:00:00.000Z",
+    thread: { id: "thread_work", kind: "work" as const, title: "Technical delivery" }
+  };
+  const screen = await render(<I18nProvider><>
+    <RecentDeliveryCard delivery={{ ...base, evidenceClass: "unclassified" }} locale="en-US" />
+    <RecentDeliveryCard delivery={{
+      ...base,
+      evidenceClass: "organic",
+      id: "delivery_mixed",
+      outcome: { evidenceClass: "controlled", outcome: "used", recordedAt: "2026-07-18T01:00:00.000Z" }
+    }} locale="en-US" />
+  </></I18nProvider>);
+
+  await expect.element(screen.getByText(/unclassified delivery is technical-only/u)).toBeVisible();
+  await expect.element(screen.getByText(/existing controlled feedback is technical-only/u)).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "used", exact: true })).not.toBeInTheDocument();
+});
+
+test("mixed-provenance feedback stays visible but cannot mint organic review evidence", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const onOutcome = vi.fn();
+  const screen = await render(<I18nProvider><PendingReviewCard
+    disabled={false}
+    onOutcome={onOutcome}
+    reviewQueue={{
+      next: {
+        deliveryId: "delivery_mixed",
+        evidence: [],
+        ineligibleReason: "existing controlled feedback is technical-only and immutable; this delivery cannot receive organic feedback",
+        openedAt: "2026-07-18T00:00:00.000Z",
+        thread: { id: "thread_work", kind: "work", title: "Mixed evidence" }
+      },
+      progress: { eligibleDeliveries: 1, remainingFeedback: 1, remainingPacks: 19, reviewedDeliveries: 0, target: 20 }
+    }}
+  /></I18nProvider>);
+
+  await expect.element(screen.getByText(/existing controlled feedback is technical-only/u)).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Record used for delivery_mixed" })).toBeDisabled();
+  expect(onOutcome).not.toHaveBeenCalled();
+});
 
 function interactionReport(input: {
   readonly exact?: number;
@@ -56,7 +104,13 @@ function interactionReport(input: {
     interactions: input.includeDelivery === false
       ? []
       : [{ deliveryId: "delivery_browser", interaction: { state: interactionState }, threadKind: "life" }],
-    schemaVersion: 1
+    schemaVersion: 2,
+    technicalEvidence: {
+      overall: {
+        deliveries: { controlled: 0, organic: hasDelivery ? 1 : 0, unclassified: 0 },
+        receipts: { controlled: 0, organic: exact, unclassified: 0 }
+      }
+    }
   };
 }
 
@@ -166,6 +220,7 @@ test("factual interaction coverage renders separately from outcome evidence", as
     "Numeric interaction coverage does not certify natural timing, usefulness, outcomes, causality, permission, or promotion.",
     { exact: true }
   )).toBeVisible();
+  await expect.element(screen.getByText(/All recorded technical evidence — deliveries:/u)).toBeVisible();
 });
 
 test("a completed task does not claim a receipt when refreshed interaction coverage stays unchanged", async () => {
@@ -210,7 +265,7 @@ test("opening a Pack then completing its canonical current next step refreshes e
   } as const;
   const review = () => ({
     deliveries: packOpened
-      ? [{ evidenceRefs: [], id: "delivery_browser", openedAt: "2026-07-18T05:00:00.000Z", thread: { id: "thread_life", kind: "life", title: "Prepare birthday" } }]
+      ? [{ evidenceClass: "organic", evidenceRefs: [], id: "delivery_browser", openedAt: "2026-07-18T05:00:00.000Z", thread: { id: "thread_life", kind: "life", title: "Prepare birthday" } }]
       : [],
     evaluation: {
       ...evaluation,
@@ -222,6 +277,16 @@ test("opening a Pack then completing its canonical current next step refreshes e
         },
         reasons: ["needs natural feedback"],
         status: "collecting"
+      },
+      technicalEvidence: {
+        overall: {
+          deliveries: { controlled: 0, organic: packOpened ? 1 : 0, unclassified: 0 },
+          outcomes: {
+            controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            organic: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+          }
+        }
       }
     },
     resetReceipts: [],
@@ -264,6 +329,9 @@ test("opening a Pack then completing its canonical current next step refreshes e
       <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
     </QueryClientProvider>
   );
+
+  await expect.element(screen.getByText(/Production-authorized numeric readiness/u)).toBeVisible();
+  await expect.element(screen.getByText("All recorded technical evidence", { exact: true })).toBeVisible();
 
   await screen.getByRole("button", { name: "Open pack" }).click();
   await expect.element(screen.getByRole("button", { name: "Mark next step done" })).toBeVisible();
@@ -308,6 +376,16 @@ test("an interaction query failure stays scoped and fail-closes task completion 
         },
         reasons: ["needs evidence"],
         status: "collecting"
+      },
+      technicalEvidence: {
+        overall: {
+          deliveries: { controlled: 0, organic: 0, unclassified: 0 },
+          outcomes: {
+            controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            organic: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+          }
+        }
       }
     },
     resetReceipts: [],
@@ -387,8 +465,8 @@ test("explicit feedback advances the shared oldest-pending review to the next de
   } as const;
   const response = () => ({
     deliveries: [
-      { evidenceRefs: [], id: "delivery_second", openedAt: "2026-07-17T10:00:00.000Z", thread: { id: "thread_work", kind: "work", title: "Second review" } },
-      { evidenceRefs: [], id: "delivery_first", openedAt: "2026-07-17T09:00:00.000Z", ...(advanced ? { outcome: { outcome: "used", recordedAt: "2026-07-17T11:00:00.000Z" } } : {}), thread: { id: "thread_work", kind: "work", title: "First review" } }
+      { evidenceClass: "organic", evidenceRefs: [], id: "delivery_second", openedAt: "2026-07-17T10:00:00.000Z", thread: { id: "thread_work", kind: "work", title: "Second review" } },
+      { evidenceClass: "organic", evidenceRefs: [], id: "delivery_first", openedAt: "2026-07-17T09:00:00.000Z", ...(advanced ? { outcome: { evidenceClass: "organic", outcome: "used", recordedAt: "2026-07-17T11:00:00.000Z" } } : {}), thread: { id: "thread_work", kind: "work", title: "First review" } }
     ],
     evaluation: {
       ...evaluation,
@@ -400,6 +478,16 @@ test("explicit feedback advances the shared oldest-pending review to the next de
         },
         reasons: ["numeric outcome coverage requires human audit"],
         status: "audit-required"
+      },
+      technicalEvidence: {
+        overall: {
+          deliveries: { controlled: 0, organic: 2, unclassified: 0 },
+          outcomes: {
+            controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            organic: { adjusted: 0, ignored: 0, rejected: 0, used: advanced ? 1 : 0 },
+            unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+          }
+        }
       }
     },
     resetReceipts: [],

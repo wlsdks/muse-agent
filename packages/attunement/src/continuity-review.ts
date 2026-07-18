@@ -19,6 +19,7 @@ export interface ContinuityReviewEvidence {
 export interface ContinuityReviewItem {
   readonly deliveryId: string;
   readonly evidence: readonly ContinuityReviewEvidence[];
+  readonly ineligibleReason?: string;
   readonly openedAt: string;
   readonly thread: Pick<PersonalThread, "id" | "kind" | "title">;
 }
@@ -47,8 +48,9 @@ export async function prepareContinuityReview(
   resolveExactArtifact: ExactArtifactResolver
 ): Promise<ContinuityReview> {
   const eligible = orderContinuityDeliveries(state.deliveries)
+    .filter((delivery) => delivery.evidenceClass === "organic")
     .slice(0, CONTINUITY_KILL_CRITERION_FIRST_PACKS);
-  const reviewedDeliveries = eligible.filter((delivery) => delivery.outcome !== undefined).length;
+  const reviewedDeliveries = eligible.filter((delivery) => delivery.outcome?.evidenceClass === "organic").length;
   const progress = {
     eligibleDeliveries: eligible.length,
     remainingFeedback: eligible.length - reviewedDeliveries,
@@ -56,7 +58,7 @@ export async function prepareContinuityReview(
     reviewedDeliveries,
     target: CONTINUITY_KILL_CRITERION_FIRST_PACKS
   };
-  const pending = eligible.find((delivery) => delivery.outcome === undefined);
+  const pending = eligible.find((delivery) => delivery.outcome?.evidenceClass !== "organic");
   if (!pending) return { progress };
 
   const thread = state.threads.find((candidate) => candidate.id === pending.threadId);
@@ -74,6 +76,9 @@ export async function prepareContinuityReview(
     next: {
       deliveryId: pending.id,
       evidence,
+      ...(pending.outcome
+        ? { ineligibleReason: `existing ${pending.outcome.evidenceClass} feedback is technical-only and immutable; this delivery cannot receive organic feedback` }
+        : {}),
       openedAt: pending.openedAt,
       thread: { id: thread.id, kind: thread.kind, title: thread.title }
     },

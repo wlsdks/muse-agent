@@ -111,6 +111,18 @@ Neither is a promise of arbitrary desktop autonomy. Near-term computer use is de
 limited to the browser and Muse-owned artifacts, where targets can be observed and actions
 can fail closed.
 
+### Evidence provenance trust boundary
+
+Continuity readiness distinguishes production-authorized evidence from controlled and
+unclassified records. The ordinary `@muse/attunement` package surface cannot mint or
+perform production-authorized writes. Muse's CLI, authenticated local API, and production
+loopback assembly use the explicit `@muse/attunement/host` seam, whose imports are checked
+against a small repository allowlist. This prevents accidental evidence laundering by
+ordinary package consumers; it is not a security boundary against malicious same-process
+code that deliberately imports the host seam, reads private workspace files, or edits the
+owner's local JSON. Defending that stronger threat requires a separately managed key/MAC
+or process boundary and is not a shipped claim.
+
 ## Success and failure
 
 Attunement succeeds only when people carry less context in their heads and its help becomes
