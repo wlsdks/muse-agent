@@ -180,7 +180,7 @@ ratchet: unit flow-edit-compile 62(+3) · browser 46(+1) · related 238 · fabri
 - 라이브: 격리 데모(3808) — 실 레지스트리 13서버 캐스케이드 시딩→muse.url/parse→muse.time/now 전환(도구 옵션 캐스케이드·args 리셋 실측)→저장 영속→재실행 SUCCESS.
 - self-eval 노트: fire 시작 시 apiBoot:fail은 신규 worktree stale-dist(autoconfigure 미빌드)로 판명 — tsc -b 후 green, 회귀 아님.
 
-## fire 19 · 2026-07-18 · skill v2.1.1 · (4 commits, 아래 pin) (인터랙티브 "sonnet 검수+정리+LNB" 지시)
+## fire 19 · 2026-07-18 · skill v2.1.1 · bc90a8ad6 (4 commits) (인터랙티브 "sonnet 검수+정리+LNB" 지시)
 meta: value-class=fix+ia+refactor · pkg=@muse/web · kind=review-remediation · verdict=PASS(opus, 4커밋 일괄) · firesSinceDrill=3 · consecutiveAllPASS=4
 ratchet: unit 592 · browser 50(+5) · Flows.tsx 707→336 · LNB 15→13행 · fabrication 0
 - 무엇: Sonnet 검수 3방향(결함/정리/LNB) 발견 반영 4커밋 — ①P1 결함 6건 fix(blank-panel 400·revision 필드소실·detach 무단서·고스트 키보드·링크실패 침묵·중복 무효화) ②LNB 1단계(Scheduled→Builder "스케줄" 탭 흡수+행 삭제, 연동 advanced 강등, Work eyebrow 진실화, Autonomy EN 충돌 해소) ③기계 정리(미사용 i18n 8쌍·SaveRow 추출·safe-storage·Flows 3분할) ④진안 라이브 피드백: 코파일럿을 진짜 채팅형으로(하단 고정 composer·Enter 전송·IME-safe·버블·pending·ack·빈상태).
