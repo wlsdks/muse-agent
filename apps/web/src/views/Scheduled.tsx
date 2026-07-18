@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Button, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { safeSessionStorage } from "../lib/safe-storage.js";
 import { relativeAgo } from "./chats-logic.js";
 import { toggleEnabledPatch } from "./flow-edit-compile.js";
 import { statusTone } from "./flow-executions-compile.js";
@@ -64,7 +65,7 @@ export function ScheduleTable({
       onOpenFlow(id);
       return;
     }
-    writeBuilderFocusHint(typeof window === "undefined" ? undefined : window.sessionStorage, id);
+    writeBuilderFocusHint(safeSessionStorage(), id);
     onNavigate?.("flows");
   };
 

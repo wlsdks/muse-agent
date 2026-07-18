@@ -4,6 +4,7 @@ import { errorMessage } from "@muse/shared/browser";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { safeSessionStorage } from "../lib/safe-storage.js";
 import { formatMetaValue } from "./flow-nodes.js";
 import { writeBuilderCreateForWorkHint, writeBuilderFocusHint } from "./scheduled-logic.js";
 import { linkableFlows, linkableTasks, linkableThreads } from "./work-logic.js";
@@ -326,7 +327,7 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
                   className="sched-name"
                   title={t("scheduled.openInBuilder")}
                   onClick={() => {
-                    writeBuilderFocusHint(typeof window === "undefined" ? undefined : window.sessionStorage, flow.id);
+                    writeBuilderFocusHint(safeSessionStorage(), flow.id);
                     onNavigate?.("flows");
                   }}
                 >
@@ -357,7 +358,7 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
             variant="ghost"
             size="sm"
             onClick={() => {
-              writeBuilderCreateForWorkHint(typeof window === "undefined" ? undefined : window.sessionStorage, work.id);
+              writeBuilderCreateForWorkHint(safeSessionStorage(), work.id);
               onNavigate?.("flows");
             }}
           >

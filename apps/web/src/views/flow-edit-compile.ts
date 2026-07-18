@@ -69,7 +69,7 @@ export function defaultTimezone(): string {
  * compile an invalid timezone — the scheduler evaluates the cron in this zone
  * (`computeNextRunAt` passes it to cron-parser), so a bad value would misfire
  * the schedule. */
-export const COMMON_TIMEZONES: readonly string[] = [
+const COMMON_TIMEZONES: readonly string[] = [
   "UTC",
   "Asia/Seoul",
   "Asia/Tokyo",

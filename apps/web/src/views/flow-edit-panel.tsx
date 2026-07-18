@@ -115,6 +115,29 @@ function invalidateFlowQueries(client: ApiClient, jobId: string, qc: ReturnType<
   void qc.invalidateQueries({ queryKey: ["scheduler-job-detail", client.baseUrl, jobId] });
 }
 
+function SaveRow({
+  canSave,
+  dirty,
+  save
+}: {
+  canSave: boolean;
+  dirty: boolean;
+  save: { isPending: boolean; isSuccess: boolean; error: unknown; mutate: () => void };
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+        <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
+          {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}
+        </Button>
+        {!dirty && save.isSuccess && <Badge tone="ok">{t("auto.flows.edit.saved")}</Badge>}
+      </div>
+      {save.error && <div className="banner err">{errorMessage(save.error, t("auto.flows.edit.saveFailed"))}</div>}
+    </>
+  );
+}
+
 function TriggerEditFields({
   client,
   jobId,
@@ -194,13 +217,7 @@ function TriggerEditFields({
           ))}
         </select>
       </label>
-      <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-        <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
-          {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}
-        </Button>
-        {!dirty && save.isSuccess && <Badge tone="ok">{t("auto.flows.edit.saved")}</Badge>}
-      </div>
-      {save.error && <div className="banner err">{errorMessage(save.error, t("auto.flows.edit.saveFailed"))}</div>}
+      <SaveRow save={save} dirty={dirty} canSave={canSave} />
     </div>
   );
 }
@@ -285,13 +302,7 @@ function ActionEditFields({
           />
         </label>
       )}
-      <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-        <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
-          {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}
-        </Button>
-        {!dirty && save.isSuccess && <Badge tone="ok">{t("auto.flows.edit.saved")}</Badge>}
-      </div>
-      {save.error && <div className="banner err">{errorMessage(save.error, t("auto.flows.edit.saveFailed"))}</div>}
+      <SaveRow save={save} dirty={dirty} canSave={canSave} />
     </div>
   );
 }
@@ -396,13 +407,7 @@ function ToolActionEditFields({
           </span>
         )}
       </label>
-      <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-        <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
-          {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}
-        </Button>
-        {!dirty && save.isSuccess && <Badge tone="ok">{t("auto.flows.edit.saved")}</Badge>}
-      </div>
-      {save.error && <div className="banner err">{errorMessage(save.error, t("auto.flows.edit.saveFailed"))}</div>}
+      <SaveRow save={save} dirty={dirty} canSave={canSave} />
     </div>
   );
 }
@@ -445,13 +450,7 @@ function OutputEditFields({
         />
         <span className="subtle" style={{ fontSize: 12 }}>{t("auto.flows.edit.notifyHint")}</span>
       </label>
-      <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-        <Button variant="primary" size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}
-        </Button>
-        {!dirty && save.isSuccess && <Badge tone="ok">{t("auto.flows.edit.saved")}</Badge>}
-      </div>
-      {save.error && <div className="banner err">{errorMessage(save.error, t("auto.flows.edit.saveFailed"))}</div>}
+      <SaveRow save={save} dirty={dirty} canSave={dirty && !save.isPending} />
     </div>
   );
 }
