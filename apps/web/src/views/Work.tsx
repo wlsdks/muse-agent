@@ -229,41 +229,6 @@ function EntityLinkPicker({
   );
 }
 
-function LinkPicker({
-  placeholder,
-  buttonLabel,
-  onLink,
-  disabled
-}: {
-  placeholder: string;
-  buttonLabel: string;
-  onLink: (value: string) => void;
-  disabled: boolean;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-      <input
-        className="input"
-        style={{ flex: 1 }}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={disabled || value.trim().length === 0}
-        onClick={() => {
-          onLink(value.trim());
-          setValue("");
-        }}
-      >
-        {buttonLabel}
-      </Button>
-    </div>
-  );
-}
 
 function OutcomeTimeline({ outcomes, t }: { outcomes: readonly WorkOutcomeRow[]; t: Translate }) {
   if (outcomes.length === 0) {

@@ -139,3 +139,13 @@ ratchet: web SSR 575(+3) · browser 34(+3) · unit +3 · fabrication 0
 - 리스크: 없음.
 - 라이브: 격리 데모 전 사이클 — 피커 링크→행(다음 실행 표시)→이름 클릭→빌더가 그 흐름으로→언링크→행 소멸+피커 후보 복귀 실측.
 - 오너 큐 상태: ①Scheduled(f13)·②Work(f14) 완료. 잔여 후속: threads 목록 API+스레드 피커, Work 헤더의 새 흐름 직생성(빌더 프리필 핸드오프).
+
+## fire 15 · 2026-07-18 · skill v2.1.1 · 380812f91 (인터랙티브 "한번에 크게" 지시)
+meta: value-class=new-capability · pkg=@muse/api+@muse/web · kind=integration · verdict=PASS(opus, 2차) · firesSinceDrill=7 · consecutiveAllPASS=7*
+ratchet: api attunement 13(+1) · web SSR 577(+2) · browser 38(+4) · unit +2 · fabrication 0
+- 무엇: Work↔Builder 통합 — ①GET /api/attunement/threads(피커 피드) + Work 스레드 피커/행/해제(마지막 raw-id 입력 소멸) ②"이 Work용 새 흐름" 원샷 핸드오프: 빌더가 create 패널 열고 생성 흐름을 Work에 자동 링크(베스트-에포트).
+- 왜: fire 14의 기록된 후속 2건을 한 번에(진안 "이어서 한번에 크게").
+- 리뷰지점: **opus 1차 FAIL이 실결함 검출** — Work 바인딩이 Cancel을 살아남아 이후 무관한 흐름도 자동 링크(놀람 뮤테이션). 수리=취소/흐름전환/수동 새흐름 전부 바인딩 해제, pre-fix에 red인 회귀 테스트. 재게이트가 코파일럿-after-Cancel 엣지까지 traced PASS.
+- 리스크: 링크 실패는 무피드백 침묵(사용자가 빌더에 있고 수동 링크 가능해 수용, opus 판단). Autonomy 중복 의혹은 조사 결과 무근(탭 구성 상이) — C 슬라이스 불요 확인.
+- 라이브: 스레드 시딩→피커 링크→행 / 새 흐름 핸드오프→자동 링크 행 복귀 전 사이클 실측.
+- *consecutiveAllPASS 계산 노트: 1차 FAIL은 게이트가 작동한 것(출하 전 검출·수리·재PASS)이라 출하 기준 PASS 연속으로 집계하되, 다음 fire(16)에서 8 도달 시 JUDGE-DRILL 실행.
