@@ -166,6 +166,17 @@ function fakeClientWithPost(post: ApiClient["post"]): ApiClient {
   };
 }
 
+/** The create entry point moved into the flow-switcher dropdown (n8n
+ * grammar): open the switcher, then click New flow. Uses native clicks —
+ * the always-mounted animated menu keeps Playwright's stability waiter
+ * spinning even though the button's box never moves. */
+async function openCreatePanel(screen: Awaited<ReturnType<typeof renderFlows>>) {
+  document.querySelector<HTMLButtonElement>(".flowpick-btn")!.click();
+  await expect.poll(() => document.querySelector(".flowpick.open") !== null).toBe(true);
+  document.querySelector<HTMLButtonElement>(".flowpick-new")!.click();
+  await expect.element(screen.getByRole("textbox", { name: "Name" })).toBeVisible();
+}
+
 async function renderFlows(client: ApiClient) {
   window.localStorage.setItem("muse.lang", "en");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -188,7 +199,7 @@ test("selecting the trigger node and choosing a new preset PATCHes exactly the r
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await expect.element(screen.getByRole("heading", { name: "Morning brief" })).toBeVisible();
+  await expect.poll(() => document.querySelector(".flowpick-name")?.textContent).toBe("Morning brief");
   await screen.getByText("Schedule trigger", { exact: true }).click();
 
   const scheduleSelect = screen.getByRole("combobox", { name: "Schedule" });
@@ -296,7 +307,7 @@ test("새 흐름 만들기 (New flow) POSTs the exact compiled create body", asy
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await screen.getByRole("button", { name: "New flow" }).click();
+  await openCreatePanel(screen);
   await screen.getByRole("textbox", { name: "Name" }).fill("Evening wrap-up");
   await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("오늘 하루 마무리 정리해줘");
 
@@ -318,7 +329,7 @@ test("도구 실행 (Run a tool) flow: New flow -> Run a tool -> pick server+too
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await screen.getByRole("button", { name: "New flow" }).click();
+  await openCreatePanel(screen);
   await screen.getByRole("textbox", { name: "Name" }).fill("Time check");
   await screen.getByRole("radio", { name: "Run a tool" }).click();
 
@@ -356,7 +367,7 @@ test("도구 실행 (Run a tool) mode keeps the copilot composer available (it d
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await screen.getByRole("button", { name: "New flow" }).click();
+  await openCreatePanel(screen);
   await screen.getByRole("radio", { name: "Run a tool" }).click();
 
   // The composer stays a live chat box in tool mode — no disabled note.
@@ -499,7 +510,7 @@ test("a 422 draft failure shows the reason verbatim and keeps the typed text", a
 test("the canvas full-screen toggle adds the overlay class, and Escape exits it", async () => {
   const client = fakeClient();
   const screen = await renderFlows(client);
-  await expect.element(screen.getByRole("heading", { name: "Morning brief" })).toBeVisible();
+  await expect.poll(() => document.querySelector(".flowpick-name")?.textContent).toBe("Morning brief");
 
   const wrap = document.querySelector(".flow-canvas-wrap");
   expect(wrap).not.toBeNull();
@@ -558,7 +569,7 @@ test("an invalid custom cron shows the field-error warning and blocks Create", a
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await screen.getByRole("button", { name: "New flow" }).click();
+  await openCreatePanel(screen);
   await screen.getByRole("textbox", { name: "Name" }).fill("Bad cron flow");
   await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("do it");
 
@@ -581,7 +592,7 @@ test("invalid tool-arguments JSON shows the field-error warning and blocks Creat
   const client = fakeClient();
   const screen = await renderFlows(client);
 
-  await screen.getByRole("button", { name: "New flow" }).click();
+  await openCreatePanel(screen);
   await screen.getByRole("textbox", { name: "Name" }).fill("Bad args flow");
   await screen.getByText("Run a tool", { exact: true }).click();
 
@@ -647,4 +658,18 @@ test("a persisted node layout is applied on mount (dragged positions survive rel
   } finally {
     window.localStorage.removeItem("muse.flowNodePositions.job_1");
   }
+});
+
+test("full-workspace (zen) mode sets the root attribute the chrome CSS keys on, and Escape exits", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  const zenBtn = screen.getByRole("button", { name: "Full workspace" });
+  await expect.element(zenBtn).toBeVisible();
+  document.querySelector<HTMLButtonElement>(".ws-zen-btn")!.click();
+  await expect.poll(() => document.documentElement.getAttribute("data-builder-zen")).toBe("true");
+  await expect.element(screen.getByRole("button", { name: "Exit full workspace (Esc)" })).toBeVisible();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await expect.poll(() => document.documentElement.getAttribute("data-builder-zen")).toBeNull();
 });

@@ -136,13 +136,16 @@ export function SidebarNav({
   taskCount,
   t,
   onSelect,
-  devMode = false
+  devMode = false,
+  collapsed = false
 }: {
   readonly view: ViewId;
   readonly taskCount: number;
   readonly t: Translate;
   readonly onSelect: (id: ViewId) => void;
   readonly devMode?: boolean;
+  /** Rail mode: labels are hidden, so each item carries a native tooltip. */
+  readonly collapsed?: boolean;
 }) {
   const visible = (group: GroupKey) => NAV.filter((n) => n.group === group && (devMode || !n.advanced));
   return (
@@ -158,6 +161,7 @@ export function SidebarNav({
                 key={n.id}
                 className={`nav-item${current ? " active" : ""}`}
                 aria-current={current ? "page" : undefined}
+                title={collapsed ? t(n.labelKey) : undefined}
                 onClick={() => onSelect(n.id)}
               >
                 <NavIcon />
@@ -283,7 +287,7 @@ function Console() {
       setView(target.id);
     }
   }, []);
-  useShortcuts({ onLeader, onTogglePalette: () => setPaletteOpen((p) => !p) });
+  useShortcuts({ onLeader, onTogglePalette: () => setPaletteOpen((p) => !p), onToggleSidebar: toggleSidebar });
 
   const commands = useMemo<readonly Command[]>(
     () =>
@@ -314,28 +318,31 @@ function Console() {
   return (
     <div className={shellClassName(sidebarCollapsed)}>
       <aside className="sidebar">
-        <Brand tagline={tagline.data?.tagline} t={t} />
+        <div className="sidebar-top">
+          <Brand tagline={tagline.data?.tagline} t={t} />
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={toggleSidebar}
+            aria-expanded={!sidebarCollapsed}
+            aria-label={t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")}
+            title={`${t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")} (⌘B)`}
+          >
+            <Icon.panel />
+          </button>
+        </div>
 
-        <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} devMode={devMode} />
+        <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} devMode={devMode} collapsed={sidebarCollapsed} />
 
         <div className="sidebar-foot">
           <LangToggle lang={lang} onChange={setLang} />
           <ConnectionBadge connected={connected} loading={health.isLoading} t={t} title={apiUrl} />
         </div>
       </aside>
+      <button type="button" className="sidebar-rail" onClick={toggleSidebar} aria-hidden="true" tabIndex={-1} />
 
       <main className="main">
         <header className="topbar">
-          <button
-            type="button"
-            className="sidebar-toggle"
-            onClick={toggleSidebar}
-            aria-expanded={!sidebarCollapsed}
-            aria-label={t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")}
-            title={t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")}
-          >
-            <Icon.menu />
-          </button>
           <h2>{t(active.labelKey)}</h2>
           <span className="spacer" />
           <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} title={t("cmd.open")}>
@@ -343,7 +350,7 @@ function Console() {
             <kbd>⌘K</kbd>
           </button>
         </header>
-        <section className="content">
+        <section className={`content${active.id === "flows" ? " content-flush" : ""}`}>
           <div className="view" key={view}>
             {view === "settings" ? (
               <SettingsView client={client} apiUrl={apiUrl} token={token} onSave={updateConnection} />

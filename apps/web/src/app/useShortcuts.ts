@@ -13,8 +13,10 @@ export const LEADER_KEY = "g";
 export function useShortcuts(opts: {
   onTogglePalette: () => void;
   onLeader: (key: string) => void;
+  /** ⌘B / Ctrl+B — the industry-standard sidebar toggle (shadcn/VS Code). */
+  onToggleSidebar?: () => void;
 }): void {
-  const { onLeader, onTogglePalette } = opts;
+  const { onLeader, onTogglePalette, onToggleSidebar } = opts;
 
   useEffect(() => {
     let leaderUntil = 0;
@@ -34,6 +36,11 @@ export function useShortcuts(opts: {
         onTogglePalette();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && onToggleSidebar) {
+        e.preventDefault();
+        onToggleSidebar();
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) {
         return;
       }
@@ -50,5 +57,5 @@ export function useShortcuts(opts: {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onLeader, onTogglePalette]);
+  }, [onLeader, onTogglePalette, onToggleSidebar]);
 }

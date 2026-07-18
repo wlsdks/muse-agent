@@ -5,7 +5,7 @@ import { errorMessage } from "@muse/shared/browser";
 
 import "@xyflow/react/dist/style.css";
 
-import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
+import { AsyncBlock, Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
 import { readNodePositions, writeNodePosition } from "./flow-node-positions.js";
@@ -25,12 +25,8 @@ import type { FlowDraftPayloadRow, FlowProjection, FlowsResponse } from "../api/
 
 
 export function FlowsView({ client }: { client: ApiClient }) {
-  const { t } = useI18n();
   return (
-    <div className="content-narrow">
-      <p className="eyebrow">{t("group.workspace")}</p>
-      <h1 className="page-title">{t("nav.flows")}</h1>
-      <p className="muted" style={{ marginTop: 4, marginBottom: 16 }}>{t("flows.subtitle")}</p>
+    <div className="builder-ws">
       <FlowsTab client={client} />
     </div>
   );
@@ -50,6 +46,8 @@ export function FlowsTab({ client }: { client: ApiClient }) {
   );
 }
 
+type SideTab = "chat" | "node" | "exec";
+
 function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowProjection[] }) {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -58,6 +56,35 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const [creating, setCreating] = useState(false);
   const [initialDraft, setInitialDraft] = useState<FlowDraftPayloadRow | undefined>(undefined);
   const [draftVersion, setDraftVersion] = useState(0);
+  const [sideTab, setSideTab] = useState<SideTab>("chat");
+  const [zen, setZen] = useState(false);
+
+  // Full-workspace mode: the builder hides the app chrome (sidebar + topbar)
+  // via a root attribute so the CSS can reach OUTSIDE this subtree. Cleaned
+  // up on unmount so leaving the Builder view always restores the chrome.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (zen) {
+      root.setAttribute("data-builder-zen", "true");
+    } else {
+      root.removeAttribute("data-builder-zen");
+    }
+    return () => root.removeAttribute("data-builder-zen");
+  }, [zen]);
+  useEffect(() => {
+    if (!zen) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      // The canvas's own fullscreen overlay owns Escape while it's open —
+      // one Escape should peel one layer, not both.
+      if (event.key === "Escape" && !document.querySelector(".flow-canvas-fullscreen")) {
+        setZen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zen]);
   // The create panel's LIVE form values, mirrored up via `onDraftChange` —
   // this (not the last server-returned draft) is what a follow-up
   // conversational revision turn sends as `currentDraft`, so a manual form
@@ -84,21 +111,17 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
     setCreating(false);
     setLiveDraft(undefined);
   };
-  // The copilot drafts BOTH kinds now (agent prompts and read-risk tool
-  // flows), so a revision turn always carries the live form state —
-  // whichever action kind the form is in.
+  // The copilot drafts BOTH kinds (agent prompts and read-risk tool flows),
+  // so a revision turn always carries the live form state.
   const currentDraft = creating && liveDraft
     ? flowDraftToCopilotPayload(liveDraft)
     : undefined;
 
-  if (creating) {
-    return (
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "280px 1fr" }}>
-        <FlowListCard
-          client={client}
+  return (
+    <>
+      <header className="ws-head">
+        <FlowSwitcher
           flows={flows}
-          onDrafted={handleDrafted}
-          currentDraft={currentDraft}
           selectedId={selectedFlow?.id}
           onSelect={(id) => {
             setSelectedFlowId(id);
@@ -106,139 +129,212 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           }}
           onCreate={openCreatePanel}
         />
-        <FlowCreatePanel
-          key={initialDraft ? `draft-${draftVersion.toString()}` : "empty"}
-          client={client}
-          initialDraft={initialDraft}
-          onDraftChange={setLiveDraft}
-          onCancel={closeCreatePanel}
-          onCreated={(jobId) => {
-            closeCreatePanel();
-            setSelectedFlowId(jobId);
-          }}
-        />
-      </div>
-    );
-  }
+        <span className="ws-spacer" />
+        <button
+          type="button"
+          className="ws-zen-btn"
+          aria-pressed={zen}
+          aria-label={t(zen ? "auto.flows.zen.exit" : "auto.flows.zen.enter")}
+          title={t(zen ? "auto.flows.zen.exit" : "auto.flows.zen.enter")}
+          onClick={() => setZen((value) => !value)}
+        >
+          {zen ? <Icon.shrink /> : <Icon.expand />}
+        </button>
+      </header>
 
-  if (!selectedFlow) {
-    // Zero flows must still offer the create entry point — routing this
-    // through AsyncBlock's generic empty state hid the whole body, so a
-    // first-run user could only create a flow from the CLI.
-    return (
-      <div className="empty-block" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "40px 0" }}>
-        <Icon.activity className="nav-icon" />
-        <div style={{ fontWeight: 600 }}>{t("auto.flows.emptyTitle")}</div>
-        <div className="muted" style={{ fontSize: 13, maxWidth: 420, textAlign: "center" }}>{t("auto.flows.emptyHint")}</div>
-        <Button variant="primary" size="sm" onClick={openCreatePanel}>
-          <Icon.plus className="nav-icon" /> {t("auto.flows.create.button")}
-        </Button>
-        <div style={{ width: "100%", maxWidth: 460, marginTop: 8 }}>
-          <FlowDraftComposer client={client} onDrafted={handleDrafted} />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "280px 1fr" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <FlowListCard
-          client={client}
-          flows={flows}
-          onDrafted={handleDrafted}
-          selectedId={selectedFlow.id}
-          onSelect={setSelectedFlowId}
-          onCreate={openCreatePanel}
-        />
-        <Card title={t("auto.flows.detailTitle")}>
-          {selectedNodeId ? (
-            <FlowNodeDetailHost
-              client={client}
-              flow={selectedFlow}
-              nodeId={selectedNodeId}
-              onSaved={() => void qc.invalidateQueries({ queryKey: ["flows"] })}
-            />
+      <div className="ws-body">
+        <div className="ws-main">
+          {creating ? (
+            <div className="ws-create">
+              <FlowCreatePanel
+                key={initialDraft ? `draft-${draftVersion.toString()}` : "empty"}
+                client={client}
+                initialDraft={initialDraft}
+                onDraftChange={setLiveDraft}
+                onCancel={closeCreatePanel}
+                onCreated={(jobId) => {
+                  closeCreatePanel();
+                  setSelectedFlowId(jobId);
+                }}
+              />
+            </div>
+          ) : !selectedFlow ? (
+            // Zero flows must still offer the create entry point; the copilot
+            // stays available in the side panel.
+            <div className="empty-block" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "40px 0" }}>
+              <Icon.activity className="nav-icon" />
+              <div style={{ fontWeight: 600 }}>{t("auto.flows.emptyTitle")}</div>
+              <div className="muted" style={{ fontSize: 13, maxWidth: 420, textAlign: "center" }}>{t("auto.flows.emptyHint")}</div>
+              <Button variant="primary" size="sm" onClick={openCreatePanel}>
+                <Icon.plus className="nav-icon" /> {t("auto.flows.create.button")}
+              </Button>
+            </div>
           ) : (
-            <p className="subtle">{t("auto.flows.detailEmpty")}</p>
+            <>
+              <FlowHeaderActions
+                client={client}
+                flow={selectedFlow}
+                onDeleted={() => {
+                  setSelectedFlowId(flows.find((flow) => flow.id !== selectedFlow.id)?.id);
+                }}
+                onDuplicated={(jobId) => setSelectedFlowId(jobId)}
+              />
+              <div className="ws-main-canvas">
+                <FlowCanvasArea
+                  flow={selectedFlow}
+                  onSelectNode={(id) => {
+                    setSelectedNodeId(id);
+                    setSideTab("node");
+                  }}
+                  onDeselectNode={() => setSelectedNodeId(undefined)}
+                />
+              </div>
+            </>
           )}
-        </Card>
-        <ExecutionsCard client={client} jobId={selectedFlow.id} />
-      </div>
+        </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <FlowHeaderActions
-          client={client}
-          flow={selectedFlow}
-          onDeleted={() => {
-            setSelectedFlowId(flows.find((flow) => flow.id !== selectedFlow.id)?.id);
-          }}
-          onDuplicated={(jobId) => setSelectedFlowId(jobId)}
-        />
-        <FlowCanvasArea
-          flow={selectedFlow}
-          onSelectNode={(id) => setSelectedNodeId(id)}
-          onDeselectNode={() => setSelectedNodeId(undefined)}
-        />
+        <aside className="ws-side">
+          <div className="ws-side-tabs" role="tablist">
+            <button role="tab" aria-selected={sideTab === "chat"} className={sideTab === "chat" ? "on" : ""} onClick={() => setSideTab("chat")}>
+              ✦ {t("auto.flows.side.copilot")}
+            </button>
+            <button role="tab" aria-selected={sideTab === "node"} className={sideTab === "node" ? "on" : ""} onClick={() => setSideTab("node")}>
+              {t("auto.flows.detailTitle")}
+            </button>
+            <button role="tab" aria-selected={sideTab === "exec"} className={sideTab === "exec" ? "on" : ""} onClick={() => setSideTab("exec")}>
+              {t("auto.flows.executions.title")}
+            </button>
+          </div>
+          <div className="ws-side-body">
+            {sideTab === "chat" && (
+              <FlowDraftComposer client={client} onDrafted={handleDrafted} currentDraft={currentDraft} />
+            )}
+            {sideTab === "node" && (
+              selectedFlow && selectedNodeId ? (
+                <FlowNodeDetailHost
+                  client={client}
+                  flow={selectedFlow}
+                  nodeId={selectedNodeId}
+                  onSaved={() => void qc.invalidateQueries({ queryKey: ["flows"] })}
+                />
+              ) : (
+                <p className="subtle">{t("auto.flows.detailEmpty")}</p>
+              )
+            )}
+            {sideTab === "exec" && (
+              selectedFlow ? (
+                <ExecutionsCard client={client} jobId={selectedFlow.id} />
+              ) : (
+                <p className="subtle">{t("auto.flows.detailEmpty")}</p>
+              )
+            )}
+          </div>
+        </aside>
       </div>
-    </div>
+    </>
   );
 }
 
-function FlowListCard({
-  client,
+/** The n8n-style flow switcher: the editor focuses on ONE flow; switching,
+ * filtering, and creating live in the flow-name dropdown in the workspace
+ * header. The menu stays in the DOM (visibility via the `open` class) so
+ * its rows are SSR-testable and the open/close animates. */
+export function FlowSwitcher({
   flows,
   selectedId,
   onSelect,
-  onCreate,
-  onDrafted,
-  currentDraft
+  onCreate
 }: {
-  client: ApiClient;
   flows: readonly FlowProjection[];
   selectedId: string | undefined;
   onSelect: (id: string) => void;
   onCreate: () => void;
-  onDrafted: (draft: FlowDraftPayloadRow) => void;
-  /** Present only while the create panel is open — turns the composer into
-   * a revision turn against the panel's LIVE form values. */
-  currentDraft?: FlowDraftPayloadRow;
 }) {
   const { t, locale } = useI18n();
-  return (
-    <Card
-      title={t("auto.flows.listTitle")}
-      count={flows.length}
-      action={
-        <Button variant="ghost" size="sm" onClick={onCreate}>
-          <Icon.plus className="nav-icon" /> {t("auto.flows.create.button")}
-        </Button>
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const selected = flows.find((flow) => flow.id === selectedId);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onDocClick = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest(".flowpick")) {
+        setOpen(false);
       }
-    >
-      <FlowDraftComposer client={client} onDrafted={onDrafted} currentDraft={currentDraft} />
-      <div className="flow-list">
-        {flows.map((flow) => (
-          <button
-            type="button"
-            key={flow.id}
-            className={`flow-list-item${flow.id === selectedId ? " active" : ""}`}
-            onClick={() => onSelect(flow.id)}
-          >
-            <span className={`dot${flow.enabled ? " on" : ""}`} />
-            <span className="flow-list-item-main">
-              <span className="flow-list-item-title">{flow.name}</span>
-              <span className="flow-list-item-meta">
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const visible = flows.filter((flow) => flow.name.toLowerCase().includes(filter.trim().toLowerCase()));
+
+  return (
+    <div className={`flowpick${open ? " open" : ""}`}>
+      <button
+        type="button"
+        className="flowpick-btn"
+        aria-expanded={open}
+        aria-label={t("auto.flows.switcher.label")}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="flowpick-crumb">{t("nav.flows")} ▸</span>
+        <span className="flowpick-name">{selected ? selected.name : t("auto.flows.emptyTitle")}</span>
+        {selected && <span className={`dot${selected.enabled ? " on" : ""}`} />}
+        <span className="flowpick-caret">▾</span>
+      </button>
+      <div className="flowpick-menu" role="listbox" aria-label={t("auto.flows.listTitle")}>
+        <input
+          className="input"
+          placeholder={t("auto.flows.switcher.filter")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <div className="flowpick-rows">
+          {visible.map((flow) => (
+            <button
+              type="button"
+              key={flow.id}
+              className={`flowpick-row${flow.id === selectedId ? " active" : ""}`}
+              onClick={() => {
+                onSelect(flow.id);
+                setOpen(false);
+              }}
+            >
+              <span className={`dot${flow.enabled ? " on" : ""}`} />
+              <span className="flowpick-row-name">{flow.name}</span>
+              <span className="flowpick-row-meta">
                 {!flow.enabled
                   ? t("auto.flows.paused")
                   : flow.nextRunAtIso
                     ? formatMetaValue("nextRunAtIso", flow.nextRunAtIso, locale)
-                    : t("auto.flows.selectHint")}
+                    : ""}
               </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="flowpick-new"
+          onClick={() => {
+            onCreate();
+            setOpen(false);
+          }}
+        >
+          <Icon.plus className="nav-icon" /> {t("auto.flows.create.button")}
+        </button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -443,12 +539,11 @@ function FlowHeaderActions({
             </Button>
           </>
         ) : (
-          <>
-            <h2 className="page-title" style={{ fontSize: 20, margin: 0 }}>{flow.name}</h2>
-            <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
-              {t("auto.flows.header.rename")}
-            </Button>
-          </>
+          // The flow's name already heads the workspace (the switcher) — the
+          // actions row only carries the rename affordance, not a second title.
+          <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
+            {t("auto.flows.header.rename")}
+          </Button>
         )}
         <Button variant="secondary" size="sm" disabled={toggleEnabled.isPending} onClick={() => toggleEnabled.mutate()}>
           {t(flow.enabled ? "auto.flows.header.disable" : "auto.flows.header.enable")}

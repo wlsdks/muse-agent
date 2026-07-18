@@ -121,9 +121,20 @@ describe("FlowsTab — populated state", () => {
     expect(html).toContain(DICTIONARIES.en["auto.flows.paused"]);
   });
 
-  it("shows the node-detail empty hint before any node is selected", async () => {
+  it("renders the workspace side-panel tabs with the copilot tab active by default", async () => {
     const html = await renderFlowsTab(POPULATED);
-    expect(html).toContain(DICTIONARIES.en["auto.flows.detailEmpty"]);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.side.copilot"]);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.detailTitle"]);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.executions.title"]);
+    // Default tab is the copilot — its composer textarea is present.
+    expect(html).toContain(DICTIONARIES.en["auto.flows.draft.placeholder"] ?? "");
+  });
+
+  it("renders the flow switcher with the selected flow's name and the Paused row for the disabled flow", async () => {
+    const html = await renderFlowsTab(POPULATED);
+    expect(html).toContain("flowpick");
+    expect(html).toContain(DICTIONARIES.en["auto.flows.paused"]);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.create.button"]);
   });
 });
 

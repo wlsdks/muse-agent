@@ -169,6 +169,7 @@ button {
 /* ── App shell ───────────────────────────────────────────── */
 
 .shell {
+  position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   /* minmax(0, 1fr) caps the row at the container height; a default `auto` row
@@ -187,6 +188,73 @@ button {
   background: color-mix(in srgb, var(--canvas) 82%, #000);
   border-right: 1px solid var(--hairline);
   overflow-y: auto;
+  transition: padding 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-top .brand {
+  flex: 1;
+  min-width: 0;
+}
+/* The sidebar toggle lives IN the sidebar's brand row (ChatGPT/Notion/shadcn
+   grammar) so it sits in the same spot expanded or collapsed. */
+.sidebar-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+.sidebar-collapse-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.sidebar-collapse-btn:active {
+  transform: scale(0.92);
+}
+
+/* Border strip between sidebar and main — a SECONDARY click-to-toggle
+   (Linear border-click / shadcn SidebarRail); highlights on hover only. */
+.sidebar-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--sidebar-w);
+  width: 7px;
+  margin-left: -4px;
+  z-index: 30;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: left 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.shell.sidebar-collapsed .sidebar-rail {
+  left: 56px;
+}
+.sidebar-rail::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+.sidebar-rail:hover::after {
+  background: var(--primary);
 }
 
 .brand {
@@ -611,30 +679,39 @@ button {
   }
 }
 
-/* User-collapsed sidebar (여닫이) — the same icon-rail look as the ≤860px
-   breakpoint, but driven by the topbar toggle at ANY viewport width so the
-   main view (the Builder canvas above all) gets more room on demand. */
+/* User-collapsed sidebar (여닫이) — a tidy icon rail (VS Code activity bar /
+   shadcn collapsible=icon grammar): the toggle alone tops the rail, items
+   become centered squares, section labels become thin dividers. Driven by
+   the brand-row toggle / ⌘B / the border rail at ANY viewport width. */
 .shell.sidebar-collapsed {
   grid-template-columns: 56px 1fr;
 }
 .shell.sidebar-collapsed .sidebar {
-  padding: var(--s-sm) var(--s-xs);
+  padding: var(--s-sm) 10px var(--s-md);
 }
-.shell.sidebar-collapsed .brand-name,
-.shell.sidebar-collapsed .brand-sub,
-.shell.sidebar-collapsed .nav-group-label,
+.shell.sidebar-collapsed .brand,
 .shell.sidebar-collapsed .nav-item span,
 .shell.sidebar-collapsed .nav-badge,
 .shell.sidebar-collapsed .lang-toggle {
   display: none;
 }
-.shell.sidebar-collapsed .brand {
+.shell.sidebar-collapsed .sidebar-top {
   justify-content: center;
-  padding: var(--s-xs) 0 var(--s-md);
+  padding-bottom: 4px;
+}
+.shell.sidebar-collapsed .nav-group-label {
+  font-size: 0;
+  height: 1px;
+  padding: 0;
+  margin: 9px 2px;
+  background: var(--hairline);
 }
 .shell.sidebar-collapsed .nav-item {
   justify-content: center;
-  padding: 9px 0;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  margin: 1px 0;
 }
 .shell.sidebar-collapsed .sidebar-foot {
   justify-content: center;
@@ -2230,4 +2307,273 @@ button.status-chip {
 .field-error {
   color: var(--danger);
   font-size: var(--text-xs);
+}
+
+
+/* ── Builder workspace (n8n-style: slim header, edge-to-edge canvas,
+     right tab panel) ─────────────────────────────────────── */
+
+/* The builder escapes .content's document padding — the canvas owns the
+   viewport like an editor, not a page. */
+.content.content-flush {
+  padding: 0;
+  overflow: hidden;
+}
+.content.content-flush .view {
+  height: 100%;
+  animation: none;
+}
+.builder-ws {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Standalone mounts (tests, a future embed) have no %-height chain — the
+     floor keeps the header/canvas real instead of collapsing to 0. */
+  min-height: 480px;
+}
+.builder-ws > div:not(.ws-body):not(.ws-head) {
+  /* AsyncBlock loading/error wrapper */
+  padding: var(--s-lg);
+}
+.ws-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--canvas) 78%, transparent);
+}
+.ws-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.ws-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+.ws-main-canvas {
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+.ws-main-canvas .flow-canvas-wrap {
+  flex: 1;
+  height: auto;
+  min-height: 320px;
+}
+.ws-create {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+.ws-side {
+  width: 304px;
+  flex: none;
+  border-left: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: color-mix(in srgb, var(--canvas) 90%, #000);
+}
+.ws-side-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.ws-side-tabs button {
+  flex: 1;
+  font-size: var(--text-ui);
+  padding: 7px 0 9px;
+  border: 0;
+  background: none;
+  color: var(--ink-subtle);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ws-side-tabs button:hover {
+  color: var(--ink);
+}
+.ws-side-tabs button.on {
+  color: var(--ink);
+  border-bottom-color: var(--primary);
+}
+.ws-side-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* Flow switcher — the flow name IS the list (n8n grammar) */
+.flowpick {
+  position: relative;
+  min-width: 0;
+}
+.flowpick-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  font-size: var(--text-md);
+  font-weight: 650;
+  background: none;
+  border: 0;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 5px 9px;
+  border-radius: var(--r-md);
+}
+.flowpick-btn:hover {
+  background: var(--surface-2);
+}
+.flowpick-crumb {
+  color: var(--ink-tertiary);
+  font-weight: 500;
+  flex: none;
+}
+.flowpick-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flowpick-caret {
+  color: var(--ink-tertiary);
+  font-size: 10px;
+  flex: none;
+}
+.flowpick-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 280px;
+  z-index: 40;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top left;
+  pointer-events: none;
+  transition: opacity 0.16s cubic-bezier(0.23, 1, 0.32, 1), transform 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.flowpick.open .flowpick-menu {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.flowpick-menu > .input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+}
+.flowpick-rows {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.flowpick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  font-size: var(--text-body);
+  cursor: pointer;
+  text-align: left;
+}
+.flowpick-row:hover {
+  background: var(--surface-3);
+}
+.flowpick-row.active {
+  background: var(--accent-soft);
+}
+.flowpick-row-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flowpick-row-meta {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--ink-tertiary);
+}
+.flowpick-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 9px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: none;
+  color: var(--primary-hover);
+  font-size: var(--text-body);
+  cursor: pointer;
+  text-align: left;
+}
+.flowpick-new:hover {
+  background: var(--surface-3);
+}
+
+
+/* ── Builder full-workspace (zen) mode ───────────────────── */
+.ws-spacer {
+  flex: 1;
+}
+.ws-zen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-subtle);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+}
+.ws-zen-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+.ws-zen-btn:active {
+  transform: scale(0.94);
+}
+.ws-zen-btn[aria-pressed="true"] {
+  color: var(--primary-hover);
+  border-color: var(--primary);
+  background: var(--accent-soft);
+}
+/* zen: the builder owns the whole window — app chrome folds away. */
+:root[data-builder-zen] .shell {
+  /* The sidebar is display:none here, so the remaining .main must land on a
+     full-width track — a `0 1fr` template would seat it on the 0 track. */
+  grid-template-columns: 1fr;
+}
+:root[data-builder-zen] .sidebar,
+:root[data-builder-zen] .sidebar-rail,
+:root[data-builder-zen] .topbar {
+  display: none;
 }

@@ -336,6 +336,14 @@ export const Icon = {
       </>
     ),
   menu: (p: IconProps) => base(p, <path d="M4 6h16M4 12h16M4 18h16" />),
+  panel: (p: IconProps) =>
+    base(
+      p,
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="M9.5 4v16" />
+      </>
+    ),
   expand: (p: IconProps) =>
     base(p, <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />),
   shrink: (p: IconProps) =>
