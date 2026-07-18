@@ -343,7 +343,8 @@ function Console() {
 
       <main className="main">
         <header className="topbar">
-          <h2>{t(active.labelKey)}</h2>
+          {/* No view title here — every view heads itself (eyebrow + h1),
+              so a topbar title was always a duplicate ("오늘" twice). */}
           <span className="spacer" />
           <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} title={t("cmd.open")}>
             <span>{t("cmd.search")}</span>
