@@ -2,8 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { ScheduledView } from "./Scheduled.js";
-import { AutonomyView, UpcomingSections } from "./Autonomy.js";
+import { AutonomyView, UpcomingSections, UpcomingTab } from "./Autonomy.js";
 import { DICTIONARIES } from "../i18n/strings.js";
 import { I18nProvider } from "../i18n/index.js";
 import { createApiClient } from "../api/client.js";
@@ -148,7 +147,7 @@ describe("AutonomyView — connected to an injected fetch fake, no real network"
     renderToStaticMarkup(
       <QueryClientProvider client={qc}>
         <I18nProvider>
-          <ScheduledView client={fakeClient} />
+          <UpcomingTab client={fakeClient} />
         </I18nProvider>
       </QueryClientProvider>
     );

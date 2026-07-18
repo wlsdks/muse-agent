@@ -925,3 +925,26 @@ test("the notify ghost activates from the keyboard (Enter opens the channel popo
   ghost!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
   await expect.poll(() => document.querySelector(".flow-notify-pop") !== null).toBe(true);
 });
+
+test("the Schedule tab lists operational rows and a row name click returns to the canvas focused on that flow", async () => {
+  const client = fakeClient();
+  const baseGet = client.get as ReturnType<typeof vi.fn>;
+  const passthrough = baseGet.getMockImplementation() as (path: string) => Promise<unknown>;
+  baseGet.mockImplementation(async (path: string) => {
+    if (path === "/api/scheduler/jobs?limit=100") {
+      return { items: [{ cadenceSummary: null, id: "job_1", lastRunAt: null, lastStatus: null }] };
+    }
+    if (path.startsWith("/api/autonomy") || path.startsWith("/api/digest") || path.startsWith("/api/reminders")) {
+      return {};
+    }
+    return await passthrough(path);
+  });
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("tab", { name: "Schedule" }).click();
+  await expect.poll(() => document.querySelector(".sched-name")?.textContent).toBe("Morning brief");
+
+  document.querySelector<HTMLButtonElement>(".sched-name")!.click();
+  await expect.poll(() => document.querySelector(".react-flow") !== null).toBe(true);
+  await expect.element(screen.getByRole("tab", { name: "Canvas" })).toHaveAttribute("aria-selected", "true");
+});

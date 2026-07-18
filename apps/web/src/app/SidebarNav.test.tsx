@@ -35,12 +35,15 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
     expect(defaultHtml).not.toContain("nav.dashboard");
     expect(defaultHtml).not.toContain("nav.promptLab");
     expect(defaultHtml).not.toContain("nav.scheduler");
+    // demoted to advanced (2026-07-18 LNB reduction): setup-hub, not daily-life
+    expect(defaultHtml).not.toContain("nav.integrations");
+    // folded into the Builder as its Schedule tab (same reduction)
+    expect(defaultHtml).not.toContain("nav.scheduled");
     // the companion core + life data stays
     for (const core of [
       "nav.home",
       "nav.chat",
       "nav.today",
-      "nav.integrations",
       "nav.tasks",
       "nav.calendar",
       "nav.reminders",
@@ -64,11 +67,9 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
         "autonomy",
         "calendar",
         "flows",
-        "scheduled",
         "chat",
         "continuity",
         "home",
-        "integrations",
         "memory",
         "notes",
         "reminders",
@@ -96,7 +97,7 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
     expect(groupOrder.indexOf("group.automation")).toBeLessThan(groupOrder.indexOf("group.knowledge"));
     expect(groupOrder.indexOf("group.knowledge")).toBeLessThan(groupOrder.indexOf("group.system"));
 
-    for (const id of ["flows", "scheduled", "work"] as const) {
+    for (const id of ["flows", "work"] as const) {
       const entry = NAV.find((n) => n.id === id);
       expect(entry?.group).toBe("group.automation");
       expect(entry?.advanced).toBeFalsy();

@@ -14,7 +14,6 @@ import { BoardView } from "../views/Board.js";
 import { CalendarView } from "../views/Calendar.js";
 import { ContinuityReviewView } from "../views/ContinuityReview.js";
 import { AutonomyView } from "../views/Autonomy.js";
-import { ScheduledView } from "../views/Scheduled.js";
 
 // The canvas stack (@xyflow/react) is the single heaviest dependency in the
 // bundle; lazy-splitting the Flows view keeps it out of the main chunk every
@@ -71,7 +70,6 @@ type ViewId =
   | "activity"
   | "autonomy"
   | "flows"
-  | "scheduled"
   | "work"
   | "dashboard"
   | "tools"
@@ -103,12 +101,11 @@ export const NAV: readonly NavEntry[] = [
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", advanced: true, key: "b", labelKey: "nav.board" },
   { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", advanced: true, key: "x", labelKey: "nav.agents" },
   { Component: MessagingView, group: "group.workspace", icon: Icon.mail, id: "messaging", advanced: true, key: "i", labelKey: "nav.messaging" },
-  { Component: IntegrationsView, group: "group.workspace", icon: Icon.plug, id: "integrations", key: "e", labelKey: "nav.integrations" },
+  { advanced: true, Component: IntegrationsView, group: "group.workspace", icon: Icon.plug, id: "integrations", key: "e", labelKey: "nav.integrations" },
   { Component: TasksView, group: "group.life", icon: Icon.task, id: "tasks", key: "k", labelKey: "nav.tasks" },
   { Component: CalendarView, group: "group.life", icon: Icon.calendar, id: "calendar", key: "l", labelKey: "nav.calendar" },
   { Component: RemindersView, group: "group.life", icon: Icon.bell, id: "reminders", key: "r", labelKey: "nav.reminders" },
   { Component: FlowsView, group: "group.automation", icon: Icon.activity, id: "flows", key: "w", labelKey: "nav.flows" },
-  { Component: ScheduledView, group: "group.automation", icon: Icon.clock, id: "scheduled", key: "3", labelKey: "nav.scheduled" },
   { Component: WorkView, group: "group.automation", icon: Icon.task, id: "work", key: "2", labelKey: "nav.work" },
   { Component: NotesView, group: "group.knowledge", icon: Icon.note, id: "notes", key: "n", labelKey: "nav.notes" },
   { Component: MemoryView, group: "group.knowledge", icon: Icon.brain, id: "memory", key: "m", labelKey: "nav.memory" },

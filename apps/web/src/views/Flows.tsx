@@ -14,6 +14,8 @@ import { consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./sche
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
 import { flowDraftToCopilotPayload, flowEditToJobPatch, isFlowDraftValid, renameFlowPatch, toggleEnabledPatch } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
+import { ScheduleTable } from "./Scheduled.js";
+import { UpcomingTab } from "./Autonomy.js";
 import { FlowDraftComposer } from "./flow-draft-composer.js";
 import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
 import { FlowNodeEditPanel } from "./flow-edit-panel.js";
@@ -66,6 +68,9 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const [draftVersion, setDraftVersion] = useState(0);
   const [sideTab, setSideTab] = useState<SideTab>("chat");
   const [zen, setZen] = useState(false);
+  // Builder workspace mode: the canvas editor, or the operational schedule
+  // list (the former standalone Scheduled view, folded in as a tab).
+  const [wsMode, setWsMode] = useState<"canvas" | "list">("canvas");
   // Work → Builder handoff: arrive with the create panel open and, once the
   // flow is created, link it back to that Work automatically (one-shot).
   const [createForWorkId, setCreateForWorkId] = useState<string | undefined>(() =>
@@ -161,6 +166,14 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           }}
           onCreate={openCreatePanel}
         />
+        <div className="ws-mode" role="tablist">
+          <button type="button" role="tab" aria-selected={wsMode === "canvas"} className={wsMode === "canvas" ? "on" : ""} onClick={() => setWsMode("canvas")}>
+            {t("auto.flows.mode.canvas")}
+          </button>
+          <button type="button" role="tab" aria-selected={wsMode === "list"} className={wsMode === "list" ? "on" : ""} onClick={() => setWsMode("list")}>
+            {t("auto.flows.mode.list")}
+          </button>
+        </div>
         <span className="ws-spacer" />
         <button
           type="button"
@@ -174,6 +187,21 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
         </button>
       </header>
 
+      {wsMode === "list" ? (
+        <div className="ws-list">
+          <ScheduleTable
+            client={client}
+            onOpenFlow={(id) => {
+              setSelectedFlowId(id);
+              setWsMode("canvas");
+            }}
+            onNavigate={undefined}
+          />
+          <div style={{ marginTop: 24 }}>
+            <UpcomingTab client={client} />
+          </div>
+        </div>
+      ) : (
       <div className="ws-body">
         <div className="ws-main">
           {workLinkFailed && (
@@ -287,6 +315,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           </div>
         </aside>
       </div>
+      )}
     </>
   );
 }

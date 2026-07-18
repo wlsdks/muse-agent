@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Button, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
-import { UpcomingTab } from "./Autonomy.js";
 import { relativeAgo } from "./chats-logic.js";
 import { toggleEnabledPatch } from "./flow-edit-compile.js";
 import { statusTone } from "./flow-executions-compile.js";
@@ -20,22 +19,17 @@ import type { FlowsResponse, SchedulerJobsResponse } from "../api/types.js";
  * the row (on/off, run now, open in Builder). The upcoming digest/budget/
  * reminder summary stays below as secondary context.
  */
-export function ScheduledView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
-  const { t } = useI18n();
-  return (
-    <div className="content-narrow">
-      <p className="eyebrow">{t("group.automation")}</p>
-      <h1 className="page-title">{t("nav.scheduled")}</h1>
-      <p className="muted" style={{ marginTop: 4, marginBottom: 16 }}>{t("scheduled.subtitle")}</p>
-      <ScheduleTable client={client} onNavigate={onNavigate} />
-      <div style={{ marginTop: 24 }}>
-        <UpcomingTab client={client} />
-      </div>
-    </div>
-  );
-}
-
-export function ScheduleTable({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
+export function ScheduleTable({
+  client,
+  onNavigate,
+  onOpenFlow
+}: {
+  client: ApiClient;
+  onNavigate?: (view: string) => void;
+  /** Embedded (Builder list tab) override — select the flow in place instead
+   * of navigating views. */
+  onOpenFlow?: (id: string) => void;
+}) {
   const { t, locale } = useI18n();
   const qc = useQueryClient();
   const flowsQuery = useQuery({
@@ -66,6 +60,10 @@ export function ScheduleTable({ client, onNavigate }: { client: ApiClient; onNav
   const active = rows.filter((row) => row.enabled).length;
 
   const openInBuilder = (id: string) => {
+    if (onOpenFlow) {
+      onOpenFlow(id);
+      return;
+    }
     writeBuilderFocusHint(typeof window === "undefined" ? undefined : window.sessionStorage, id);
     onNavigate?.("flows");
   };
