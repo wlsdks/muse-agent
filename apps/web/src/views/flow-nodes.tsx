@@ -116,7 +116,29 @@ export function ActionNode({ data, selected }: FlowNodeProps) {
 }
 
 export function OutputNode({ data, selected }: FlowNodeProps) {
+  const { t } = useI18n();
+  if (data.ghost) {
+    return (
+      <div className="flow-node flow-node-ghost" role="button" title={t("auto.flows.connect.ghostTitle")}>
+        <Handle type="target" position={Position.Left} style={{ visibility: "hidden" }} />
+        <div className="flow-node-head">
+          <span className="flow-node-ic" aria-hidden="true">
+            <KindIconFor kind={data.kind} />
+          </span>
+          <div>
+            <div className="flow-node-eyebrow">{t("auto.flows.category.output")}</div>
+            <div className="flow-node-title">{t("auto.flows.connect.ghostLabel")}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return <FlowNodeShell categoryKey="auto.flows.category.output" kind={data.kind} data={data} selected={selected} />;
+}
+
+function KindIconFor({ kind }: { kind: FlowNodeKind }) {
+  const NodeIcon = KIND_ICON[kind];
+  return <NodeIcon />;
 }
 
 export const FLOW_NODE_TYPES = {

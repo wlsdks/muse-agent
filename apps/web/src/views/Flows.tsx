@@ -7,13 +7,15 @@ import "@xyflow/react/dist/style.css";
 
 import { AsyncBlock, Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { canvasWithNotifyGhost, classifyEdgeRemoval, isNotifyGhostId } from "./flow-connection-logic.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
 import { readNodePositions, writeNodePosition } from "./flow-node-positions.js";
 import { consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./scheduled-logic.js";
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
-import { flowDraftToCopilotPayload, renameFlowPatch, toggleEnabledPatch } from "./flow-edit-compile.js";
+import { flowDraftToCopilotPayload, flowEditToJobPatch, renameFlowPatch, toggleEnabledPatch } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
 import { FlowDraftComposer } from "./flow-draft-composer.js";
+import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
 import { FlowNodeEditPanel } from "./flow-edit-panel.js";
 import { dryRunUrl } from "./flow-executions-compile.js";
 import { ExecutionsCard, executionsQueryKey } from "./flow-executions.js";
@@ -213,6 +215,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
               />
               <div className="ws-main-canvas">
                 <FlowCanvasArea
+                  client={client}
                   flow={selectedFlow}
                   onSelectNode={(id) => {
                     setSelectedNodeId(id);
@@ -371,17 +374,34 @@ export function FlowSwitcher({
 }
 
 function FlowCanvasArea({
+  client,
   flow,
   onSelectNode,
   onDeselectNode
 }: {
+  client: ApiClient;
   flow: FlowProjection;
   onSelectNode: (id: string) => void;
   onDeselectNode: () => void;
 }) {
   const { t } = useI18n();
-  const canvas = flowToCanvas(flow);
+  const qc = useQueryClient();
+  const canvas = canvasWithNotifyGhost(flow);
   const storage = typeof window === "undefined" ? undefined : window.localStorage;
+  const [notifyPickOpen, setNotifyPickOpen] = useState(false);
+  const [notifyDraft, setNotifyDraft] = useState("");
+  const notifyPatch = useMutation({
+    mutationFn: (channelId: string) =>
+      client.patch(
+        `/api/scheduler/jobs/${encodeURIComponent(flow.id)}`,
+        flowEditToJobPatch("output", { notificationChannelId: channelId })
+      ),
+    onSuccess: () => {
+      setNotifyPickOpen(false);
+      setNotifyDraft("");
+      void qc.invalidateQueries({ queryKey: ["flows"] });
+    }
+  });
   const [nodes, setNodes] = useState<FlowCanvasNode[]>(() => {
     const saved = readNodePositions(storage, flow.id);
     return canvas.nodes.map((node) => ({ ...node, draggable: true, position: saved[node.id] ?? node.position }));
@@ -410,14 +430,14 @@ function FlowCanvasArea({
   // persisted layout) — positions are UI state, never sent to the server.
   useEffect(() => {
     setNodes((previous) => {
-      const freshCanvas = flowToCanvas(flow);
+      const freshCanvas = canvasWithNotifyGhost(flow);
       const saved = readNodePositions(storage, flow.id);
       return freshCanvas.nodes.map((node) => {
         const existing = previous.find((candidate) => candidate.id === node.id);
         return { ...node, draggable: true, position: existing?.position ?? saved[node.id] ?? node.position };
       });
     });
-    setEdges(flowToCanvas(flow).edges);
+    setEdges(canvasWithNotifyGhost(flow).edges);
   }, [flow]);
 
   const onNodesChange = (changes: NodeChange[]) => {
@@ -458,11 +478,49 @@ function FlowCanvasArea({
           elementsSelectable
           deleteKeyCode={null}
           onNodesChange={onNodesChange}
-          onNodeClick={(_event, node) => onSelectNode(node.id)}
+          onNodeClick={(_event, node) => {
+            if (isNotifyGhostId(node.id)) {
+              setNotifyPickOpen(true);
+              return;
+            }
+            onSelectNode(node.id);
+          }}
+          onEdgeDoubleClick={(_event, edge) => {
+            if (classifyEdgeRemoval(edge, nodes) === "notify-detach") {
+              notifyPatch.mutate("");
+            }
+          }}
           onPaneClick={onDeselectNode}
           proOptions={{ hideAttribution: true }}
         />
       </ReactFlowProvider>
+      {notifyPickOpen && (
+        <div className="flow-notify-pop">
+          <div className="flow-notify-pop-title">{t("auto.flows.connect.pickTitle")}</div>
+          <p className="subtle" style={{ margin: "0 0 8px" }}>{t("auto.flows.connect.pickHint")}</p>
+          <NotifyChannelQuickPick client={client} onPick={(value) => setNotifyDraft(value)} />
+          <input
+            className="input"
+            aria-label={t("auto.flows.connect.pickTitle")}
+            placeholder="telegram:12345"
+            value={notifyDraft}
+            onChange={(event) => setNotifyDraft(event.target.value)}
+          />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={notifyDraft.trim().length === 0 || notifyPatch.isPending}
+              onClick={() => notifyPatch.mutate(notifyDraft.trim())}
+            >
+              {t("auto.flows.connect.attach")}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setNotifyPickOpen(false)}>
+              {t("auto.flows.connect.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

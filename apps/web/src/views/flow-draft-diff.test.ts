@@ -13,7 +13,8 @@ const BASE: FlowDraftPayloadRow = {
   retry: false,
   action: "agent",
   toolServer: null,
-  toolName: null
+  toolName: null,
+  toolArguments: {}
 };
 
 function tFor(lang: "en" | "ko") {

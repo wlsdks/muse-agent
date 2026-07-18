@@ -160,3 +160,12 @@ ratchet: api compile 40(+8) · routes 15 · web flow-edit-compile 59(+3) · brow
 - 리스크: revision 턴에서 unparseable 텍스트영역은 {}로 강등(문서화, 채팅 비차단). 발견(기존 결함, 이 슬라이스 아님): 빈 create 패널 수동 오픈 후 코파일럿 요청 시 blank form이 revision currentDraft로 투영돼 400 — backlog ◦ 기록.
 - 라이브: 격리 데모(3806) 전 사이클 — HTTP 초안(args 포함)→실브라우저 코파일럿→create 패널 프리필({"url":...}, muse.url/parse, 이름)→만들기→MCP_TOOL 잡에 toolArguments 영속→수동 트리거→lastStatus SUCCESS.
 - lesson: 미커밋 편집 위 뮤테이션 원복에 `git checkout --` 사용 금지(작업 소실, 컨텍스트에서 전량 재구성으로 복구) — cp 백업 원칙 재확인([[project_main_worktree_git_hazards]]).
+
+## fire 17 · 2026-07-18 · skill v2.1.1 · (this commit) (인터랙티브 "전부다" 지시 — 큐 마지막 항목)
+meta: value-class=new-capability · pkg=@muse/web · kind=ui-capability · verdict=PASS(opus) · firesSinceDrill=1 · consecutiveAllPASS=2
+ratchet: unit flow-connection-logic 6(신규) · browser 40(+2) · fabrication 0
+- 무엇: 캔버스 연결 시맨틱 — 러너가 소비하는 유일한 의미-연결(action→output.notify=notificationChannelId)에 제스처 쌍 부여: 채널 없는 흐름엔 점선 고스트 "알림 연결하기"(클릭→채널 팝오버→연결=PATCH), 실제 알림 엣지 더블클릭=해제(PATCH null). 구조 엣지는 불활성(classifyEdgeRemoval). 고스트 위치는 출력 컬럼 최하단+140px(겹침 금지 룰 — browser 스위트가 개발 중 실제 겹침을 검출해 수정).
+- 왜: 진안 "박스 연결" 요청의 러너-지원 범위 구현 — 임의 그래프는 러너 미지원이라 장식 연결 대신 의미 있는 연결만. 드래그-연결은 숨김 핸들 재작업 필요로 스코프 아웃(후속 후보).
+- 리뷰지점: PATCH는 기존 flowEditToJobPatch("output") 시임 재사용(2중 문법 없음); 고스트는 UI-only(서버 페이로드 불침투, opus 검증); 상세패널 열림+해제 동시 상태는 empty-state 폴백(no crash).
+- 리스크(비게이팅, opus 지적): detachTitle i18n 키 미참조(디스커버러빌리티 후속에서 사용 예정); 고스트 드래그 위치가 attach 후 localStorage에 무해한 스테일 엔트리로 잔존.
+- 라이브: 격리 데모(3807) 양방향 실측 — 고스트(겹침 0 측정)→팝오버→연결→실노드+엣지 / 더블클릭→고스트 복귀+서버 channelId null(종결상태).

@@ -21,6 +21,10 @@ export interface FlowCanvasNodeData extends Record<string, unknown> {
   readonly meta: Record<string, string | number | boolean | null>;
   readonly flowEnabled: boolean;
   readonly showDisabledBadge: boolean;
+  /** UI-only placeholder (the click-to-connect notify ghost) — never a
+   * server node; clicking it opens the channel picker instead of the
+   * node-detail panel. */
+  readonly ghost?: boolean;
 }
 
 export type FlowCanvasNodeType = "triggerNode" | "actionNode" | "outputNode";

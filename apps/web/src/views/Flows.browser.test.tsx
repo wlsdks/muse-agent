@@ -766,3 +766,56 @@ test("cancelling a Work-bound create panel ends the binding — a later unrelate
     window.sessionStorage.removeItem("muse.builderCreateForWork");
   }
 });
+
+test("clicking the notify GHOST opens the channel popover and Connect PATCHes the channel", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByText("Connect a notification", { exact: true }).click();
+  const popInput = screen.getByPlaceholder("telegram:12345");
+  await expect.element(popInput).toBeVisible();
+  await popInput.fill("  telegram:777  ");
+  await screen.getByRole("button", { name: "Connect", exact: true }).click();
+
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { notificationChannelId: "telegram:777" });
+});
+
+test("double-clicking the notify edge detaches the channel (PATCH null); structural edges stay inert", async () => {
+  const notifyFlow = {
+    edges: [
+      { from: "job_n::trigger", id: "job_n::edge-trigger-action", to: "job_n::action" },
+      { from: "job_n::action", id: "job_n::edge-action-output", to: "job_n::output" }
+    ],
+    enabled: true,
+    id: "job_n",
+    name: "Notify flow",
+    nextRunAtIso: null,
+    nodes: [
+      { id: "job_n::trigger", kind: "trigger.schedule", label: "trigger.schedule", meta: { cronExpression: "0 9 * * *", nextRunAtIso: null, timezone: "UTC" } },
+      { id: "job_n::action", kind: "action.agent", label: "action.agent", meta: { maxToolCalls: null, model: null, prompt: "요약" } },
+      { id: "job_n::output", kind: "output.notify", label: "output.notify", meta: { channelId: "telegram:1" } }
+    ],
+    source: "scheduler"
+  };
+  const client = fakeClient();
+  (client.get as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/flows") return { flows: [notifyFlow] };
+    if (path === "/api/muse/loopback") return LOOPBACK_CATALOG;
+    if (path === "/api/messaging/setup") return { providers: [] };
+    throw new Error(`unexpected GET ${path}`);
+  });
+  await renderFlows(client);
+
+  // No ghost on a flow that already has a notify output.
+  await expect.poll(() => document.querySelector(".flow-node-ghost")).toBeNull();
+
+  const structural = document.querySelector<SVGGElement>("[data-testid='rf__edge-job_n::edge-trigger-action']");
+  structural!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(client.patch).not.toHaveBeenCalled();
+
+  const notifyEdge = document.querySelector<SVGGElement>("[data-testid='rf__edge-job_n::edge-action-output']");
+  notifyEdge!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  await expect.poll(() => (client.patch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_n", { notificationChannelId: null });
+});
