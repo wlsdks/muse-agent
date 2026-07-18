@@ -21,9 +21,9 @@ import { isErrorLike } from "@muse/shared";
 import { randomUUID } from "node:crypto";
 
 import {
-  prepareContinuityTaskCompletionInteraction,
   retryContinuityTaskCompletionInteractions
 } from "@muse/attunement";
+import { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "@muse/attunement/host";
 import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, type PersistedTask } from "@muse/stores";
 import { type TasksProviderRegistry } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
@@ -160,7 +160,10 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
         return current;
       }
       const completedAt = new Date().toISOString();
-      await prepareContinuityTaskCompletionInteraction(gate.attunementFile, { completedAt, taskId: existing.id });
+      await prepareProductionAuthorizedContinuityTaskCompletionInteraction(
+        gate.attunementFile,
+        { completedAt, taskId: existing.id }
+      );
       completed = { ...existing, completedAt, status: "done" };
       const next = [...current];
       next[index] = completed;

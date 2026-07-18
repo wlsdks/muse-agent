@@ -22,14 +22,16 @@ function state(): AttunementState {
   return {
     deliveries: [
       {
+        evidenceClass: "organic",
         evidenceRefs: [link],
         id: "delivery_reviewed",
         openedAt: "2026-07-17T08:00:00.000Z",
-        outcome: { outcome: "used", policyVersion: 0, recordedAt: "2026-07-17T08:05:00.000Z" },
+        outcome: { evidenceClass: "organic", outcome: "used", policyVersion: 0, recordedAt: "2026-07-17T08:05:00.000Z" },
         policyVersion: 0,
         threadId: "thread_work"
       },
       {
+        evidenceClass: "organic",
         evidenceRefs: [link],
         id: "delivery_pending",
         openedAt: "2026-07-17T09:00:00.000Z",
@@ -40,7 +42,7 @@ function state(): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 2,
+    schemaVersion: 3,
     threads: [{
       createdAt: "2026-07-17T07:00:00.000Z",
       id: "thread_work",
@@ -54,6 +56,33 @@ function state(): AttunementState {
 }
 
 describe("prepareContinuityReview", () => {
+  it("ignores non-organic deliveries and marks mixed feedback as technical-only rather than actionable", async () => {
+    const current = state();
+    const pending = current.deliveries[1]!;
+    const mixed = {
+      ...pending,
+      id: "delivery_mixed",
+      outcome: {
+        evidenceClass: "controlled" as const,
+        outcome: "used" as const,
+        policyVersion: 2,
+        recordedAt: "2026-07-17T09:05:00.000Z"
+      }
+    };
+    const controlled = { ...pending, evidenceClass: "controlled" as const, id: "delivery_controlled" };
+
+    const review = await prepareContinuityReview({
+      ...current,
+      deliveries: [controlled, current.deliveries[0]!, mixed]
+    }, async (currentLink) => ({ ...currentLink, title: "Exact task" }));
+
+    expect(review.progress).toMatchObject({ eligibleDeliveries: 2, reviewedDeliveries: 1, remainingFeedback: 1 });
+    expect(review.next).toMatchObject({
+      deliveryId: "delivery_mixed",
+      ineligibleReason: "existing controlled feedback is technical-only and immutable; this delivery cannot receive organic feedback"
+    });
+  });
+
   it("selects the oldest pending first-20 delivery and resolves its exact current link", async () => {
     const resolver = vi.fn(async (current: ArtifactLink) => ({
       ...current,
@@ -127,10 +156,11 @@ describe("prepareContinuityReview", () => {
   it("never reviews beyond the first 20 after deterministic ordering", async () => {
     const current = state();
     const deliveries = Array.from({ length: 21 }, (_, index) => ({
+      evidenceClass: "organic" as const,
       evidenceRefs: [link],
       id: `delivery_${index.toString().padStart(2, "0")}`,
       openedAt: "2026-07-17T09:00:00.000Z",
-      ...(index < 20 ? { outcome: { outcome: "used" as const, policyVersion: index, recordedAt: `2026-07-17T10:${index.toString().padStart(2, "0")}:00.000Z` } } : {}),
+      ...(index < 20 ? { outcome: { evidenceClass: "organic" as const, outcome: "used" as const, policyVersion: index, recordedAt: `2026-07-17T10:${index.toString().padStart(2, "0")}:00.000Z` } } : {}),
       policyVersion: index,
       threadId: "thread_work"
     })).reverse();

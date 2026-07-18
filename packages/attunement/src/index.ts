@@ -1,5 +1,10 @@
 export { prepareContinuityPack, type ContinuityPreparationOptions } from "./continuity-pack.js";
 export {
+  CONTINUITY_EVIDENCE_CLASSES,
+  type ContinuityEvidenceClass,
+  type ContinuityEvidenceWriteOptions
+} from "./evidence-provenance.js";
+export {
   CONTINUITY_INTERACTION_DISTINCT_DATES_PER_KIND,
   CONTINUITY_INTERACTION_EXACT_PER_KIND,
   buildContinuityInteractionAudit,
@@ -14,6 +19,8 @@ export {
   type ContinuityInteractionLatencyDigest,
   type ContinuityInteractionProjectionItem,
   type ContinuityInteractionReport,
+  type ContinuityInteractionTechnicalEvidenceDigest,
+  type ContinuityInteractionTechnicalEvidenceSlice,
   type ContinuityTaskInteractionSource,
   type ContinuityTaskInteractionSourceResolver
 } from "./interaction-evidence.js";
@@ -56,7 +63,9 @@ export {
   type ContinuityImprovementGate,
   type ContinuityKindEvaluation,
   type ContinuityLongitudinalGate,
-  type ContinuityLongitudinalKindCoverage
+  type ContinuityLongitudinalKindCoverage,
+  type ContinuityTechnicalEvidenceDigest,
+  type ContinuityTechnicalEvidenceSlice
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 export {

@@ -105,6 +105,7 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
+    expect(body.delivery.evidenceClass).toBe("organic");
     expect(body.pack.nextStep).toMatchObject({
       summary: "Ask Jamie which flowers they prefer. Then send matching options.",
       taskDueAt: TASK.dueAt,
@@ -233,6 +234,10 @@ describe("GET /api/attunement/review", () => {
 
     expect(recorded.statusCode).toBe(200);
     expect(after.json().reviewQueue.next.deliveryId).toBe(expectedNext);
+    expect(after.json().deliveries.find((delivery: { id: string }) => delivery.id === firstPending)).toMatchObject({
+      evidenceClass: "organic",
+      outcome: { evidenceClass: "organic", outcome: "used" }
+    });
     expect(after.json().reviewQueue.progress).toMatchObject({ remainingFeedback: 1, reviewedDeliveries: 1 });
     expect(after.json().reviewQueue).toEqual(await prepareContinuityReview(
       await readAttunementState(attunementFile),

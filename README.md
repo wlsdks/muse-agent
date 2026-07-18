@@ -54,6 +54,7 @@ Every number is reproducible from this repo — the command that generates it is
 | Grounding-gate delta, SQuAD-2.0 slice | **+0.63 faithfulness** at **0.00 false-refusal** | `pnpm eval:grounding-delta:squad` → [`RESULTS-squad.md`](docs/benchmarks/RESULTS-squad.md) |
 | Test suite | **18,484 passing cases** across 1,624 test files (verified 2026-07-17) | `pnpm check` |
 | Agent eval batteries | **41 live `eval:*` batteries** (tool selection, adversarial refusal, plan quality, judge meta-eval, …) | `pnpm eval:agent` and `grep -o '"eval:[a-z-]*"' package.json \| sort -u` |
+| Continuity provenance isolation | **10,080 controlled in-memory exact pairs** stay technical-only; **1,000 ordinary-input classifications** yield 0 organic / 1,000 unclassified | `pnpm eval:continuity-provenance` → [`evaluation`](docs/evaluations/continuity-evidence-provenance-2026-07-18.md) |
 | HTTP surface smoke | **51 endpoints** exercised with a key-free diagnostic provider | `pnpm smoke:broad` |
 | Real-LLM round-trip | model→tool→model loop asserted end-to-end on local Ollama | `pnpm smoke:live` |
 | Workspace | **37 packages + 4 apps** (CLI, API server, web console, macOS desktop), TypeScript strict | `ls packages apps` |

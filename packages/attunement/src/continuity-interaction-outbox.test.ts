@@ -14,6 +14,7 @@ import {
   resolveContinuityInteractionOutboxFile,
   retryContinuityTaskCompletionInteractions
 } from "./continuity-interaction-outbox.js";
+import { createOrganicContinuityWriteAuthority, type ContinuityWriteAuthority } from "./evidence-provenance.js";
 import {
   createPersonalThread,
   linkArtifact,
@@ -28,7 +29,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
 });
 
-async function fixture(taskId: string) {
+async function fixture(taskId: string, evidenceAuthority?: ContinuityWriteAuthority) {
   const root = await mkdtemp(join(tmpdir(), "muse-continuity-outbox-"));
   roots.push(root);
   const attunementFile = join(root, "attunement.json");
@@ -44,7 +45,10 @@ async function fixture(taskId: string) {
     attunementFile,
     thread.id,
     createLocalExactArtifactResolver({ notesDir, tasksFile }),
-    { now: () => Date.parse("2026-07-18T01:00:00.000Z") }
+    {
+      ...(evidenceAuthority ? { evidenceAuthority } : {}),
+      now: () => Date.parse("2026-07-18T01:00:00.000Z")
+    }
   );
   return { attunementFile, root, tasksFile };
 }
@@ -63,6 +67,37 @@ function pendingEvent(index: number) {
 }
 
 describe("Continuity interaction outbox", () => {
+  it("freezes organic provenance at prepare and carries it through retry to the receipt", async () => {
+    const organic = createOrganicContinuityWriteAuthority();
+    const { attunementFile, tasksFile } = await fixture("task_provenance", organic);
+    const completedAt = "2026-07-18T02:00:00.000Z";
+    const prepared = await prepareContinuityTaskCompletionInteraction(
+      attunementFile,
+      { completedAt, taskId: "task_provenance" },
+      { evidenceAuthority: organic }
+    );
+    const conflictingReplay = await prepareContinuityTaskCompletionInteraction(
+      attunementFile,
+      { completedAt, taskId: "task_provenance" },
+      { evidenceClass: "controlled" }
+    );
+    expect(prepared).toMatchObject({ evidenceClass: "organic" });
+    expect(conflictingReplay).toEqual(prepared);
+    expect(await readContinuityInteractionOutbox(attunementFile)).toMatchObject({
+      entries: [{ evidenceClass: "organic" }],
+      schemaVersion: 2
+    });
+
+    await mutateTasks(tasksFile, (tasks) => tasks.map((task) => task.id === "task_provenance"
+      ? { ...task, completedAt, status: "done" }
+      : task));
+    await retryContinuityTaskCompletionInteractions(attunementFile, tasksFile);
+
+    const state = await readAttunementState(attunementFile);
+    expect(state.deliveries[0]?.evidenceClass).toBe("organic");
+    expect(state.interactionReceipts[0]?.evidenceClass).toBe("organic");
+  });
+
   it("is owner-only and refuses to overwrite corrupt or full pending state", async () => {
     const root = await mkdtemp(join(tmpdir(), "muse-continuity-outbox-strict-"));
     roots.push(root);
@@ -92,6 +127,36 @@ describe("Continuity interaction outbox", () => {
       taskId: "task_over_capacity"
     })).rejects.toThrow("refusing to drop pending evidence");
     expect(await readFile(outboxFile, "utf8")).toBe(fullBytes);
+  });
+
+  it("normalizes a schema 1 event without rewriting bytes, then migrates it on mutation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-continuity-outbox-legacy-"));
+    roots.push(root);
+    const attunementFile = join(root, "attunement.json");
+    const outboxFile = resolveContinuityInteractionOutboxFile(attunementFile);
+    const legacyEvent = pendingEvent(0);
+    const legacyBytes = `${JSON.stringify({ entries: [legacyEvent], schemaVersion: 1 })}\n`;
+    await writeFile(outboxFile, legacyBytes, { mode: 0o600 });
+
+    expect(await readContinuityInteractionOutbox(attunementFile)).toEqual({
+      entries: [{ ...legacyEvent, evidenceClass: "unclassified" }],
+      schemaVersion: 2
+    });
+    expect(await readFile(outboxFile, "utf8")).toBe(legacyBytes);
+
+    await prepareContinuityTaskCompletionInteraction(attunementFile, {
+      completedAt: "2026-07-18T03:00:00.000Z",
+      taskId: "task_migration_trigger"
+    }, { evidenceClass: "controlled" });
+    const migrated = JSON.parse(await readFile(outboxFile, "utf8")) as {
+      entries: Array<{ evidenceClass: string; eventId: string }>;
+      schemaVersion: number;
+    };
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ evidenceClass: "unclassified", eventId: legacyEvent.eventId }),
+      expect.objectContaining({ evidenceClass: "controlled" })
+    ]));
   });
 
   it("retains open work, removes mismatches, and replays a receipt without duplication after record-before-ack", async () => {

@@ -4,10 +4,12 @@ import { baselinePolicy, computeContinuityEvaluation, ContinuityEvaluationError,
 
 function delivery(kind: PersonalThreadKind, index: number, day: 16 | 17): ContinuityDelivery {
   return {
+    evidenceClass: "organic",
     evidenceRefs: [],
     id: `delivery_${kind}_${index.toString().padStart(2, "0")}`,
     openedAt: `2026-07-${day.toString()}T09:00:00.000Z`,
     outcome: {
+      evidenceClass: "organic",
       outcome: "used",
       policyVersion: index,
       recordedAt: `2026-07-${day.toString()}T10:${index.toString().padStart(2, "0")}:00.000Z`
@@ -23,7 +25,7 @@ function state(deliveries: readonly ContinuityDelivery[]): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 2,
+    schemaVersion: 3,
     threads: (["life", "work"] as const).map((kind) => ({
       createdAt: "2026-07-16T00:00:00.000Z",
       id: `thread_${kind}`,
@@ -37,6 +39,43 @@ function state(deliveries: readonly ContinuityDelivery[]): AttunementState {
 }
 
 describe("computeContinuityEvaluation longitudinal evidence", () => {
+  it("fixes the denominator to the first 20 organic deliveries and counts only organic outcome pairs", () => {
+    const firstWindow = Array.from({ length: 20 }, (_, index) => ({
+      ...delivery("work", index, 16),
+      outcome: index < 10
+        ? { ...delivery("work", index, 16).outcome!, evidenceClass: "controlled" as const }
+        : undefined
+    }));
+    const laterOrganicPairs = Array.from({ length: 20 }, (_, index) => ({
+      ...delivery("work", index + 20, 17),
+      id: `delivery_later_${index.toString().padStart(2, "0")}`
+    }));
+    const technical = {
+      ...delivery("life", 9, 17),
+      evidenceClass: "controlled" as const,
+      id: "delivery_controlled",
+      outcome: { ...delivery("life", 9, 17).outcome!, evidenceClass: "organic" as const }
+    };
+
+    const evaluation = computeContinuityEvaluation(state([...firstWindow, ...laterOrganicPairs, technical]));
+
+    expect(evaluation.firstPacks).toEqual({ considered: 20, rejected: 0, used: 0 });
+    expect(evaluation.automationGate).toEqual({
+      reasons: ["need 20 more explicit feedback entries in the first 20 before evaluating automation"],
+      status: "hold"
+    });
+    expect(evaluation.withOutcome).toBe(20);
+    expect(evaluation.longitudinalGate.byKind.work).toMatchObject({ distinctUtcDates: 1, explicitFeedback: 20 });
+    expect(evaluation.technicalEvidence.overall).toMatchObject({
+      deliveries: { controlled: 1, organic: 40, unclassified: 0 },
+      outcomes: {
+        controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 10 },
+        organic: { adjusted: 0, ignored: 0, rejected: 0, used: 21 },
+        unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+      }
+    });
+  });
+
   it("reports empty life and work coverage without implying readiness", () => {
     const evaluation = computeContinuityEvaluation(state([]));
 

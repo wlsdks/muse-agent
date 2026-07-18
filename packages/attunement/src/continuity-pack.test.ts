@@ -28,7 +28,7 @@ function state(policy = baselinePolicy()): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 2,
+    schemaVersion: 3,
     threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_life", kind: "life", links: [noteLink, taskLink], policy, title: "Plan a birthday" }],
     undoResetReceipts: []
   };
@@ -154,7 +154,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 2,
+      schemaVersion: 3,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink, taskLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };
@@ -189,7 +189,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 2,
+      schemaVersion: 3,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };
@@ -204,10 +204,11 @@ describe("buildContinuityPack", () => {
     const withDelivery: AttunementState = {
       ...base,
       deliveries: [{
+        evidenceClass: "unclassified",
         evidenceRefs: [],
         id: "delivery_previous",
         openedAt: "2026-07-14T00:00:00.000Z",
-        outcome: { outcome: "ignored", policyVersion: 1, recordedAt: "2026-07-14T01:00:00.000Z" },
+        outcome: { evidenceClass: "unclassified", outcome: "ignored", policyVersion: 1, recordedAt: "2026-07-14T01:00:00.000Z" },
         policyVersion: 0,
         threadId: "thread_life"
       }]

@@ -184,6 +184,18 @@ or oracle mismatches. Its generated corpus is ignored synthetic evidence only;
 it does not change natural coverage, outcomes, policy, or permission. Evidence:
 [`../evaluations/continuity-provider-boundary-2026-07-18.md`](../evaluations/continuity-provider-boundary-2026-07-18.md).
 
+Continuity evidence now carries durable provenance independently on delivery,
+outcome, interaction receipt, and the crash-recovery outbox. Readiness requires
+matching production-authorized pairs; controlled and legacy-unclassified data
+remain visible only in technical digests. This supersedes earlier raw ledger
+counts as a promotion signal: the actual current organic readiness is 0, while
+the historical 22 deliveries and 21 outcomes remain preserved as unclassified
+technical evidence. A reproducible aggregate evaluation kept 10,080 controlled
+exact pairs at readiness 0 and classified 1,000 ordinary-input attempts as
+unclassified, with no change to the real local store. This still does not
+authorize Slice B, proactive delivery, or autonomy. Evidence:
+[`../evaluations/continuity-evidence-provenance-2026-07-18.md`](../evaluations/continuity-evidence-provenance-2026-07-18.md).
+
 ## Slice B — safe observation and better timing
 
 **User experience:** after the user explicitly starts a personal thread, Muse can notice a

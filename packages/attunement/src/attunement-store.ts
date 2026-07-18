@@ -8,6 +8,12 @@ import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-red
 import { fingerprintContinuityTaskState } from "./interaction-evidence.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import {
+  CONTINUITY_EVIDENCE_CLASSES,
+  createOrganicContinuityWriteAuthority,
+  resolveContinuityEvidenceClass,
+  type ContinuityEvidenceWriteOptions
+} from "./evidence-provenance.js";
+import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
   DETAIL_LEVELS,
@@ -37,7 +43,7 @@ export class AttunementStoreError extends Error {
   }
 }
 
-export interface AttunementStoreOptions {
+export interface AttunementStoreOptions extends ContinuityEvidenceWriteOptions {
   readonly idFactory?: () => string;
   readonly now?: () => Date;
 }
@@ -106,7 +112,7 @@ const EMPTY_STATE: AttunementState = {
   interactionReceipts: [],
   nextPolicyVersion: 1,
   resetReceipts: [],
-  schemaVersion: 2,
+  schemaVersion: 3,
   threads: [],
   undoResetReceipts: []
 };
@@ -178,7 +184,11 @@ function isThread(value: unknown): value is PersonalThread {
     && isNonEmptyString(value.title);
 }
 
-function isDelivery(value: unknown): value is ContinuityDelivery {
+function isEvidenceClass(value: unknown): boolean {
+  return isOneOf(value, CONTINUITY_EVIDENCE_CLASSES);
+}
+
+function isDelivery(value: unknown, requireEvidenceClass = false): value is ContinuityDelivery {
   if (!isRecord(value)
     || !Array.isArray(value.evidenceRefs)
     || !value.evidenceRefs.every(isReference)
@@ -187,12 +197,14 @@ function isDelivery(value: unknown): value is ContinuityDelivery {
     || !isSafeVersion(value.policyVersion)
     || !isNonEmptyString(value.threadId)
     || (value.runId !== undefined && !isNonEmptyString(value.runId))
+    || (requireEvidenceClass ? !isEvidenceClass(value.evidenceClass) : value.evidenceClass !== undefined && !isEvidenceClass(value.evidenceClass))
     || (value.interactionAnchor !== undefined && !isInteractionAnchor(value.interactionAnchor))) {
     return false;
   }
   if (value.outcome === undefined) return true;
   return isRecord(value.outcome)
     && isOneOf(value.outcome.outcome, OUTCOMES)
+    && (requireEvidenceClass ? isEvidenceClass(value.outcome.evidenceClass) : value.outcome.evidenceClass === undefined || isEvidenceClass(value.outcome.evidenceClass))
     && isSafeVersion(value.outcome.policyVersion)
     && isNonEmptyString(value.outcome.recordedAt);
 }
@@ -208,13 +220,14 @@ function isInteractionAnchor(value: unknown): value is ContinuityInteractionAnch
     && value.role === "next-step";
 }
 
-function isInteractionReceipt(value: unknown): value is ContinuityInteractionReceipt {
+function isInteractionReceipt(value: unknown, requireEvidenceClass = false): value is ContinuityInteractionReceipt {
   return isRecord(value)
     && isNonEmptyString(value.artifactId)
     && isIsoTimestamp(value.completedAt)
     && isNonEmptyString(value.deliveryId)
     && isFingerprint(value.doneStateFingerprint)
     && isNonEmptyString(value.eventId)
+    && (requireEvidenceClass ? isEvidenceClass(value.evidenceClass) : value.evidenceClass === undefined || isEvidenceClass(value.evidenceClass))
     && isNonEmptyString(value.id)
     && isIsoTimestamp(value.linkedAt)
     && isFingerprint(value.openStateFingerprint)
@@ -248,29 +261,37 @@ function isUndoResetReceipt(value: unknown): value is UndoResetReceipt {
 
 function parseState(value: unknown): AttunementState {
   if (!isRecord(value)
-    || (value.schemaVersion !== 1 && value.schemaVersion !== 2)
+    || (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3)
     || !Array.isArray(value.threads)
     || !value.threads.every(isThread)
     || !Array.isArray(value.deliveries)
-    || !value.deliveries.every(isDelivery)
+    || !value.deliveries.every((delivery) => isDelivery(delivery, value.schemaVersion === 3))
     || !Array.isArray(value.resetReceipts)
     || !value.resetReceipts.every(isResetReceipt)
     || !Array.isArray(value.undoResetReceipts)
     || !value.undoResetReceipts.every(isUndoResetReceipt)
-    || (value.schemaVersion === 2
-      && (!Array.isArray(value.interactionReceipts) || !value.interactionReceipts.every(isInteractionReceipt)))
+    || ((value.schemaVersion === 2 || value.schemaVersion === 3)
+      && (!Array.isArray(value.interactionReceipts)
+        || !value.interactionReceipts.every((receipt) => isInteractionReceipt(receipt, value.schemaVersion === 3))))
     || !isSafeVersion(value.nextPolicyVersion)
     || value.nextPolicyVersion < 1) {
     throw new AttunementStoreError("attunement store is invalid; refusing to guess or overwrite it");
   }
   const state: AttunementState = {
-    deliveries: value.deliveries,
-    interactionReceipts: value.schemaVersion === 2
-      ? value.interactionReceipts as unknown as readonly ContinuityInteractionReceipt[]
+    deliveries: (value.deliveries as unknown as readonly ContinuityDelivery[]).map((delivery) => ({
+      ...delivery,
+      evidenceClass: delivery.evidenceClass ?? "unclassified",
+      ...(delivery.outcome
+        ? { outcome: { ...delivery.outcome, evidenceClass: delivery.outcome.evidenceClass ?? "unclassified" } }
+        : {})
+    })),
+    interactionReceipts: value.schemaVersion === 2 || value.schemaVersion === 3
+      ? (value.interactionReceipts as unknown as readonly ContinuityInteractionReceipt[])
+          .map((receipt) => ({ ...receipt, evidenceClass: receipt.evidenceClass ?? "unclassified" }))
       : [],
     nextPolicyVersion: value.nextPolicyVersion,
     resetReceipts: value.resetReceipts,
-    schemaVersion: 2,
+    schemaVersion: 3,
     threads: value.threads,
     undoResetReceipts: value.undoResetReceipts
   };
@@ -639,6 +660,7 @@ export async function openContinuityDelivery(
       interactionAnchor = { ...input.interactionAnchor, observedAt: openedAt };
     }
     const delivery: ContinuityDelivery = {
+      evidenceClass: resolveContinuityEvidenceClass(options),
       evidenceRefs: expectedRefs,
       id: newId("delivery", options),
       ...(interactionAnchor ? { interactionAnchor } : {}),
@@ -673,7 +695,12 @@ export async function recordContinuityOutcome(
     const policy = policyForOutcome(outcome, version);
     const updatedDelivery: ContinuityDelivery = {
       ...delivery,
-      outcome: { outcome, policyVersion: version, recordedAt: nowIso(options) }
+      outcome: {
+        evidenceClass: resolveContinuityEvidenceClass(options),
+        outcome,
+        policyVersion: version,
+        recordedAt: nowIso(options)
+      }
     };
     const deliveries = [...state.deliveries];
     deliveries[deliveryIndex] = updatedDelivery;
@@ -686,6 +713,19 @@ export async function recordContinuityOutcome(
   });
 }
 
+/** Exact production operation: authority is consumed by this one outcome write. */
+export function recordProductionAuthorizedContinuityOutcome(
+  file: string,
+  deliveryId: string,
+  outcome: ContinuityOutcome,
+  options: Omit<AttunementStoreOptions, "evidenceAuthority" | "evidenceClass"> = {}
+): ReturnType<typeof recordContinuityOutcome> {
+  return recordContinuityOutcome(file, deliveryId, outcome, {
+    ...options,
+    evidenceAuthority: createOrganicContinuityWriteAuthority()
+  });
+}
+
 /**
  * Observe a task completion that already succeeded through a trusted local
  * composition root. The task store and delivery anchor supply every durable
@@ -694,7 +734,8 @@ export async function recordContinuityOutcome(
 export async function recordContinuityTaskCompletionInteraction(
   file: string,
   tasksFile: string,
-  taskId: string
+  taskId: string,
+  options: ContinuityEvidenceWriteOptions = {}
 ): Promise<RecordContinuityTaskCompletionInteractionResult> {
   let task: Awaited<ReturnType<typeof readTaskByIdStrict>>;
   try {
@@ -752,6 +793,7 @@ export async function recordContinuityTaskCompletionInteraction(
       deliveryId: delivery.id,
       doneStateFingerprint,
       eventId,
+      evidenceClass: resolveContinuityEvidenceClass(options),
       id: `continuity_interaction_${createHash("sha256")
         .update(`${eventId}\u0000${delivery.id}`).digest("hex").slice(0, 24)}`,
       linkedAt: anchor.linkedAt,
@@ -766,7 +808,7 @@ export async function recordContinuityTaskCompletionInteraction(
     return {
       changed: true,
       result: { kind: "recorded", receipt },
-      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 2 }
+      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 3 }
     };
   });
 }

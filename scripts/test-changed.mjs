@@ -5,7 +5,9 @@
  *
  * For each git-changed `.ts/.tsx` file, vitest's `related` resolves the tests whose
  * Vite module graph touches it (a changed test file runs directly). One `vitest
- * related` invocation per affected package. Zero changed files ⇒ exit 0 (nothing to
+ * related` invocation per affected package. Browser suites are excluded from the
+ * normal fork pool and, when a package has a browser config, run separately in
+ * real Browser Mode. Zero changed files ⇒ exit 0 (nothing to
  * prove). This OPERATIONALIZES the "run the narrowest test that proves THIS change"
  * rule (testing.md) — the per-edit gate; `pnpm check` stays the pre-merge gate.
  *
@@ -74,8 +76,8 @@ const orphans = [];
 for (const file of changed) {
   const pkg = nearestPackage(file);
   if (!pkg) { orphans.push(file); continue; }
-  if (!byPackage.has(pkg.name)) byPackage.set(pkg.name, []);
-  byPackage.get(pkg.name).push(pkg.rel);
+  if (!byPackage.has(pkg.name)) byPackage.set(pkg.name, { dir: pkg.dir, files: [] });
+  byPackage.get(pkg.name).files.push(pkg.rel);
 }
 
 if (orphans.length > 0) {
@@ -88,16 +90,30 @@ if (byPackage.size === 0) {
 
 console.log(`[test:changed] ${changed.size.toString()} changed file(s) across ${byPackage.size.toString()} package(s); running each package's RELATED tests only:`);
 let failed = false;
-for (const [name, files] of byPackage) {
+for (const [name, entry] of byPackage) {
+  const { dir, files } = entry;
+  const browserConfig = join(dir, "vitest.browser.config.ts");
+  const hasBrowserConfig = existsSync(browserConfig);
   console.log(`\n── ${name} ── vitest related ${files.join(" ")}`);
   try {
     execFileSync(
       "pnpm",
-      ["--filter", name, "exec", "vitest", "related", ...files, "--run"],
+      ["--filter", name, "exec", "vitest", "related", ...files, "--run", ...(hasBrowserConfig ? ["--exclude", "**/*.browser.test.tsx"] : [])],
       { cwd: ROOT, stdio: "inherit" }
     );
   } catch {
     failed = true; // a non-zero exit (a failing/erroring test) — surface it, keep going across packages
+  }
+  if (!hasBrowserConfig) continue;
+  console.log(`\n── ${name} browser ── vitest Browser Mode related`);
+  try {
+    execFileSync(
+      "pnpm",
+      ["--filter", name, "exec", "vitest", "related", ...files, "--run", "--config", "vitest.browser.config.ts"],
+      { cwd: ROOT, stdio: "inherit" }
+    );
+  } catch {
+    failed = true;
   }
 }
 process.exit(failed ? 1 : 0);

@@ -45,6 +45,7 @@ describe("task completion Continuity composition", () => {
       expect(state.interactionReceipts).toContainEqual(expect.objectContaining({
         artifactId: "task_api_done",
         deliveryId: opened.delivery.id,
+        evidenceClass: "organic",
         transition: "open-to-done"
       }));
       expect(state.deliveries[0]?.outcome).toBeUndefined();

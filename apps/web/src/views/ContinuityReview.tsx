@@ -9,6 +9,7 @@ import type { TaskRow } from "../api/types.js";
 
 export type Outcome = "used" | "adjusted" | "ignored" | "rejected";
 export type Kind = "life" | "work";
+type EvidenceClass = "organic" | "controlled" | "unclassified";
 export const OUTCOMES: readonly Outcome[] = ["used", "adjusted", "ignored", "rejected"];
 
 interface KindEvaluation {
@@ -62,21 +63,34 @@ export interface InteractionReport {
     readonly interaction: { readonly state: "exact" | "none" | "unavailable" };
     readonly threadKind: Kind;
   }[];
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
+  readonly technicalEvidence: {
+    readonly overall: {
+      readonly deliveries: Readonly<Record<EvidenceClass, number>>;
+      readonly receipts: Readonly<Record<EvidenceClass, number>>;
+    };
+  };
 }
 
 interface ReviewResponse {
   readonly deliveries: readonly {
+    readonly evidenceClass: EvidenceClass;
     readonly evidenceRefs: readonly { readonly artifactId: string; readonly artifactType: string; readonly providerId: string; readonly role: string }[];
     readonly id: string;
     readonly openedAt: string;
-    readonly outcome?: { readonly outcome: Outcome; readonly recordedAt: string };
+    readonly outcome?: { readonly evidenceClass: EvidenceClass; readonly outcome: Outcome; readonly recordedAt: string };
     readonly runId?: string;
     readonly thread: { readonly id: string; readonly kind: Kind; readonly title: string };
   }[];
   readonly evaluation: KindEvaluation & {
     readonly byKind: Readonly<Record<Kind, KindEvaluation>>;
     readonly longitudinalGate: LongitudinalGate;
+    readonly technicalEvidence: {
+      readonly overall: {
+        readonly deliveries: Readonly<Record<EvidenceClass, number>>;
+        readonly outcomes: Readonly<Record<EvidenceClass, Readonly<Record<Outcome, number>>>>;
+      };
+    };
   };
   readonly resetReceipts: readonly { readonly id: string; readonly resetPolicyVersion: number; readonly threadId: string; readonly undone: boolean }[];
   readonly reviewQueue: {
@@ -88,6 +102,7 @@ interface ReviewResponse {
         readonly status: "available" | "unavailable";
       }[];
       readonly openedAt: string;
+      readonly ineligibleReason?: string;
       readonly thread: { readonly id: string; readonly kind: Kind; readonly title: string };
     };
     readonly progress: {
@@ -171,13 +186,14 @@ export function PendingReviewCard({
             <span className="row-meta">{t("continuity.recordOutcome")}</span>
             {OUTCOMES.map((value) => <Button
               ariaLabel={t("continuity.recordOutcomeFor", { id: next.deliveryId, outcome: value })}
-              disabled={disabled}
+              disabled={disabled || Boolean(next.ineligibleReason)}
               key={value}
               size="sm"
               variant="ghost"
               onClick={() => onOutcome(next.deliveryId, value)}
             >{value}</Button>)}
           </div>
+          {next.ineligibleReason ? <p className="banner warn" style={{ marginBottom: 0 }}>{next.ineligibleReason}</p> : null}
         </>}
   </Card>;
 }
@@ -233,6 +249,14 @@ export function InteractionEvidenceCard({ report }: { readonly report: Interacti
       unavailable: report.digest.overall.states.unavailable.count
     })}</p>
     <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.interactionNeverPromotes")}</p>
+    <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.interactionTechnicalTotals", {
+      controlled: report.technicalEvidence.overall.deliveries.controlled,
+      organic: report.technicalEvidence.overall.deliveries.organic,
+      receiptControlled: report.technicalEvidence.overall.receipts.controlled,
+      receiptOrganic: report.technicalEvidence.overall.receipts.organic,
+      receiptUnclassified: report.technicalEvidence.overall.receipts.unclassified,
+      unclassified: report.technicalEvidence.overall.deliveries.unclassified
+    })}</p>
   </Card>;
 }
 
@@ -271,6 +295,52 @@ function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evalu
       </div>
     </Card>
   );
+}
+
+function TechnicalEvidenceCard({ evaluation }: { readonly evaluation: ReviewResponse["evaluation"] }) {
+  const { t } = useI18n();
+  const evidence = evaluation.technicalEvidence.overall;
+  const outcomes = Object.values(evidence.outcomes).flatMap((counts) => Object.values(counts)).reduce((sum, count) => sum + count, 0);
+  return <Card>
+    <div className="row-title">{t("continuity.technicalTitle")}</div>
+    <p className="row-meta">{t("continuity.technicalTotals", {
+      controlled: evidence.deliveries.controlled,
+      organic: evidence.deliveries.organic,
+      outcomes,
+      unclassified: evidence.deliveries.unclassified
+    })}</p>
+    <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.technicalExcluded")}</p>
+  </Card>;
+}
+
+export function RecentDeliveryCard({ delivery, locale }: {
+  readonly delivery: ReviewResponse["deliveries"][number];
+  readonly locale: string;
+}) {
+  const { t } = useI18n();
+  const technicalOnlyReason = delivery.evidenceClass !== "organic"
+    ? t("continuity.recentTechnicalDelivery", { evidenceClass: delivery.evidenceClass })
+    : delivery.outcome && delivery.outcome.evidenceClass !== "organic"
+      ? t("continuity.recentTechnicalOutcome", { evidenceClass: delivery.outcome.evidenceClass })
+      : undefined;
+  return <Card>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, justifyContent: "space-between" }}>
+      <div>
+        <div className="row-title">{delivery.thread.title}</div>
+        <div className="row-meta">{kindLabel(delivery.thread.kind)} · {new Date(delivery.openedAt).toLocaleString(locale)}</div>
+      </div>
+      <Badge tone={outcomeTone(delivery.outcome?.outcome)}>{delivery.outcome?.outcome ?? t("continuity.awaiting")}</Badge>
+    </div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+      {delivery.evidenceRefs.map((ref) => <Badge key={`${ref.providerId}:${ref.artifactType}:${ref.artifactId}:${ref.role}`} tone="neutral">{ref.artifactType}:{ref.artifactId}</Badge>)}
+    </div>
+    {delivery.runId ? <div className="row-meta mono" style={{ marginTop: 10 }}>run {delivery.runId}</div> : null}
+    {technicalOnlyReason
+      ? <p className="banner warn" style={{ marginBottom: 0 }}>{technicalOnlyReason}</p>
+      : !delivery.outcome
+        ? <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.recentCanonicalOnly")}</p>
+        : null}
+  </Card>;
 }
 
 function artifactMarker(reference: OpenedPack["pack"]["evidence"][number]["reference"]): string {
@@ -491,10 +561,12 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
       <AsyncBlock loading={review.isLoading} error={review.error} empty={false}>
         {data ? (
           <>
+            <p className="row-meta" style={{ marginTop: 16 }}>{t("continuity.productionEvidenceLabel")}</p>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", marginTop: 16 }}>
               <KindSummary kind="life" evaluation={data.evaluation.byKind.life} />
               <KindSummary kind="work" evaluation={data.evaluation.byKind.work} />
             </div>
+            <TechnicalEvidenceCard evaluation={data.evaluation} />
             <LongitudinalEvidenceCard gate={data.evaluation.longitudinalGate} />
             {interactions.error ? <Card>
               <div className="row-title">{t("continuity.interactionTitle")}</div>
@@ -580,33 +652,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.recent")}</h2>
             {data.deliveries.length === 0 ? (
               <p className="muted" style={{ marginTop: 8 }}>{t("continuity.empty")}</p>
-            ) : data.deliveries.map((delivery) => (
-              <Card key={delivery.id}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12, justifyContent: "space-between" }}>
-                  <div>
-                    <div className="row-title">{delivery.thread.title}</div>
-                    <div className="row-meta">{kindLabel(delivery.thread.kind)} · {new Date(delivery.openedAt).toLocaleString(locale)}</div>
-                  </div>
-                  <Badge tone={outcomeTone(delivery.outcome?.outcome)}>{delivery.outcome?.outcome ?? t("continuity.awaiting")}</Badge>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-                  {delivery.evidenceRefs.map((ref) => <Badge key={`${ref.providerId}:${ref.artifactType}:${ref.artifactId}:${ref.role}`} tone="neutral">{ref.artifactType}:{ref.artifactId}</Badge>)}
-                </div>
-                {delivery.runId ? <div className="row-meta mono" style={{ marginTop: 10 }}>run {delivery.runId}</div> : null}
-                {!delivery.outcome ? (
-                  <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-                    <span className="row-meta">{t("continuity.recordOutcome")}</span>
-                    {OUTCOMES.map((value) => (
-                      <Button key={value} disabled={outcome.isPending} size="sm" variant="ghost" onClick={() => {
-                        if (window.confirm(t("continuity.outcomeConfirm", { outcome: value }))) outcome.mutate({ deliveryId: delivery.id, value });
-                      }}>
-                        {value}
-                      </Button>
-                    ))}
-                  </div>
-                ) : null}
-              </Card>
-            ))}
+            ) : data.deliveries.map((delivery) => <RecentDeliveryCard delivery={delivery} key={delivery.id} locale={locale} />)}
             {outcome.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.outcomeError")}</p> : null}
             {thread.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.threadError")}</p> : null}
             {reset.error ? <p className="banner err" style={{ marginTop: 12 }}>{t("continuity.resetError")}</p> : null}

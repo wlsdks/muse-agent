@@ -22,6 +22,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/coverage/**",
       "**/.muse/**",
+      "**/.muse-dev/**",
       "**/playwright-report/**",
       "**/test-results/**",
       "**/scripts/**",
@@ -52,9 +53,25 @@ export default tseslint.config(
       "no-prototype-builtins": "error",
       "no-debugger": "error",
       "no-eval": "error",
+      "no-restricted-imports": ["error", {
+        paths: [{
+          message: "The Attunement host seam is restricted to the five audited production composition roots.",
+          name: "@muse/attunement/host"
+        }]
+      }],
       "no-with": "error",
       "prefer-const": "error"
     }
+  },
+  {
+    files: [
+      "apps/api/src/attunement-routes.ts",
+      "apps/api/src/tasks-routes.ts",
+      "apps/cli/src/commands-attunement.ts",
+      "apps/cli/src/commands-tasks.ts",
+      "packages/autoconfigure/src/loopback-tools.ts"
+    ],
+    rules: { "no-restricted-imports": "off" }
   },
   {
     files: ["**/*.test.ts", "**/test/**/*.ts"],

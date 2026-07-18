@@ -48,6 +48,8 @@ export type ArtifactRole = (typeof ARTIFACT_ROLES)[number];
 
 export const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
 export type ContinuityOutcome = (typeof OUTCOMES)[number];
+export type { ContinuityEvidenceClass } from "./evidence-provenance.js";
+import type { ContinuityEvidenceClass } from "./evidence-provenance.js";
 
 export const DETAIL_LEVELS = ["standard", "compact"] as const;
 export type ContinuityDetailLevel = (typeof DETAIL_LEVELS)[number];
@@ -94,6 +96,7 @@ export interface PersonalThread {
 }
 
 export interface ContinuityOutcomeRecord {
+  readonly evidenceClass: ContinuityEvidenceClass;
   readonly outcome: ContinuityOutcome;
   readonly policyVersion: number;
   readonly recordedAt: string;
@@ -117,6 +120,7 @@ export interface ContinuityInteractionReceipt {
   readonly deliveryId: string;
   readonly doneStateFingerprint: string;
   readonly eventId: string;
+  readonly evidenceClass: ContinuityEvidenceClass;
   readonly id: string;
   readonly linkedAt: string;
   readonly openStateFingerprint: string;
@@ -130,6 +134,7 @@ export interface ContinuityInteractionReceipt {
 
 /** A delivery is opened before feedback; its outcome can be recorded once. */
 export interface ContinuityDelivery {
+  readonly evidenceClass: ContinuityEvidenceClass;
   readonly evidenceRefs: readonly ArtifactReference[];
   readonly id: string;
   readonly interactionAnchor?: ContinuityInteractionAnchor;
@@ -167,7 +172,7 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }

@@ -1,4 +1,5 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, computeContinuityEvaluation, ContinuityEvaluationError, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, openPreparedContinuityPack, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordContinuityOutcome, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, computeContinuityEvaluation, ContinuityEvaluationError, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
@@ -130,6 +131,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
             const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
             if (!thread) throw new Error(`delivery '${delivery.id}' references a missing personal thread`);
             return {
+              evidenceClass: delivery.evidenceClass,
               evidenceRefs: delivery.evidenceRefs,
               id: delivery.id,
               openedAt: delivery.openedAt,
@@ -218,7 +220,8 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       return reply.code(409).send({ errorMessage: "this thread has an external resource; continue it through the CLI while its MCP connection is verified" });
     }
     try {
-      return await (gate.openContinuityPack ?? openPreparedContinuityPack)(
+      const open = gate.openContinuityPack ?? openProductionAuthorizedContinuityPack;
+      return await open(
         gate.attunementFile,
         thread.id,
         createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }),
@@ -253,7 +256,11 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     if (typeof outcome !== "string" || !OUTCOMES.includes(outcome as ContinuityOutcome)) {
       return reply.code(400).send({ errorMessage: "outcome must be used, adjusted, ignored, or rejected" });
     }
-    const result = await recordContinuityOutcome(gate.attunementFile, request.params.deliveryId, outcome as ContinuityOutcome);
+    const result = await recordProductionAuthorizedContinuityOutcome(
+      gate.attunementFile,
+      request.params.deliveryId,
+      outcome as ContinuityOutcome
+    );
     return { applied: result.applied, delivery: result.delivery, policy: result.policy };
   });
 
