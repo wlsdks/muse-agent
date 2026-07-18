@@ -25,6 +25,10 @@ export interface FlowDraftPayload {
   readonly action: "agent" | "tool";
   readonly toolServer: string | null;
   readonly toolName: string | null;
+  /** Arguments for a tool draft, validated against the tool's inputSchema
+   * (unknown keys / missing required / wrong primitive type all fail into
+   * the repair retry). Always {} for agent drafts. */
+  readonly toolArguments: Record<string, unknown>;
 }
 
 /** One tool the 코파일럿 may draft an `action: "tool"` flow for — offered to
@@ -36,6 +40,11 @@ export interface DraftableTool {
   readonly server: string;
   readonly tool: string;
   readonly description: string;
+  /** The tool's JSON-Schema input contract when the runtime registry
+   * declares one — drives the prompt's per-tool args hint AND the
+   * deterministic toolArguments validation. Absent/null ⇒ the tool takes
+   * no arguments and only {} is accepted. */
+  readonly inputSchema?: Record<string, unknown> | null;
 }
 
 export interface FlowDraftPrompt {
@@ -47,7 +56,7 @@ const AGENT_ONLY_SCHEMA_LINE =
   'Respond with ONLY a single JSON object, no prose, no code fence: {"name": string, "cronExpression": string (5-field cron: minute hour day month weekday), "prompt": string, "notifyChannel": string|null, "retry": boolean, "action": "agent", "toolServer": null, "toolName": null}.';
 
 const TOOL_SCHEMA_LINE =
-  'Respond with ONLY a single JSON object, no prose, no code fence: {"name": string, "cronExpression": string (5-field cron: minute hour day month weekday), "prompt": string, "notifyChannel": string|null, "retry": boolean, "action": "agent"|"tool", "toolServer": string|null, "toolName": string|null}. Use action "tool" ONLY when the request directly matches one tool from the Available tools list — then set toolServer/toolName to that entry and prompt to "". For everything else use action "agent" with toolServer/toolName null.';
+  'Respond with ONLY a single JSON object, no prose, no code fence: {"name": string, "cronExpression": string (5-field cron: minute hour day month weekday), "prompt": string, "notifyChannel": string|null, "retry": boolean, "action": "agent"|"tool", "toolServer": string|null, "toolName": string|null, "toolArguments": object}. Use action "tool" ONLY when the request directly matches one tool from the Available tools list — then set toolServer/toolName to that entry, prompt to "", and toolArguments to that tool\'s arguments using ONLY the parameter names shown in its args list, copying literal values (URLs, texts, expressions) EXACTLY from the request; use {} when the tool takes no arguments. For everything else use action "agent" with toolServer/toolName null and toolArguments {}.';
 
 const FEW_SHOT_EXAMPLES = `Example 1
 Input: 매일 아침 9시에 일정 요약해서 알려줘
@@ -55,14 +64,38 @@ Output: {"name": "아침 일정 요약", "cronExpression": "0 9 * * *", "prompt"
 
 Example 2
 Input: every monday at 9am summarize my week and send it to telegram:555
-Output: {"name": "Weekly summary", "cronExpression": "0 9 * * 1", "prompt": "Summarize my week", "notifyChannel": "telegram:555", "retry": false, "action": "agent", "toolServer": null, "toolName": null}`;
+Output: {"name": "Weekly summary", "cronExpression": "0 9 * * 1", "prompt": "Summarize my week", "notifyChannel": "telegram:555", "retry": false, "action": "agent", "toolServer": null, "toolName": null, "toolArguments": {}}`;
 
 const TOOL_FEW_SHOT_EXAMPLE = `Example 3
 Input: 매시간 정각에 현재 시각 기록해줘
-Output: {"name": "매시간 시각 기록", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now"}`;
+Output: {"name": "매시간 시각 기록", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now", "toolArguments": {}}
+
+Example 4
+Input: 매시간 https://news.ycombinator.com 주소 파싱해서 기록해줘
+Output: {"name": "매시간 URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": {"url": "https://news.ycombinator.com"}}`;
+
+function formatToolArgsHint(schema: Record<string, unknown> | null | undefined): string {
+  const properties = schema && typeof schema === "object" ? schema.properties : undefined;
+  if (properties === null || typeof properties !== "object" || Array.isArray(properties)) {
+    return " (no args)";
+  }
+  const entries = Object.entries(properties as Record<string, unknown>);
+  if (entries.length === 0) {
+    return " (no args)";
+  }
+  const parts = entries.map(([key, value]) => {
+    const property = value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    const type = typeof property.type === "string" ? property.type : "string";
+    const description = typeof property.description === "string" && property.description.length > 0 ? ` — ${property.description}` : "";
+    return `${key}: ${type}${description}`;
+  });
+  return ` (args: ${parts.join("; ")})`;
+}
 
 function formatDraftableTools(draftableTools: readonly DraftableTool[]): string {
-  return draftableTools.map((entry) => `${entry.server}.${entry.tool} — ${entry.description}`).join("\n");
+  return draftableTools
+    .map((entry) => `${entry.server}.${entry.tool} — ${entry.description}${formatToolArgsHint(entry.inputSchema)}`)
+    .join("\n");
 }
 
 function buildDraftSchemaSystemPrompt(draftableTools: readonly DraftableTool[]): string {
@@ -111,17 +144,17 @@ Output: {"name": "Weekly summary", "cronExpression": "0 9 * * 1", "prompt": "Sum
 Example 3
 Current draft: {"name": "매시간 시각 기록", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now"}
 User request: 30분마다로 바꿔줘
-Output: {"name": "매시간 시각 기록", "cronExpression": "*/30 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now"}`;
+Output: {"name": "매시간 시각 기록", "cronExpression": "*/30 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now", "toolArguments": {}}`;
 
 function buildRevisionSystemPrompt(draftableTools: readonly DraftableTool[]): string {
   const schemaLine = draftableTools.length === 0 ? AGENT_ONLY_SCHEMA_LINE : TOOL_SCHEMA_LINE;
   const toolsBlock = draftableTools.length === 0 ? "" : `\n\nAvailable tools:\n${formatDraftableTools(draftableTools)}`;
-  return `Here is the current draft JSON for a scheduled-job automation. Apply the user's requested change and return the FULL updated JSON — all 8 fields, in the same shape — changing ONLY what the user asked and leaving every other field EXACTLY as it was.\n${schemaLine}${toolsBlock}\n\n${REVISION_FEW_SHOT_EXAMPLES}`;
+  return `Here is the current draft JSON for a scheduled-job automation. Apply the user's requested change and return the FULL updated JSON — all 9 fields, in the same shape — changing ONLY what the user asked and leaving every other field EXACTLY as it was.\n${schemaLine}${toolsBlock}\n\n${REVISION_FEW_SHOT_EXAMPLES}`;
 }
 
 /** The system+user pair for a REVISION turn — the user keeps talking after
  * an earlier draft ("아니 8시 반으로 바꿔줘") and the model must return the
- * SAME 8-field shape with only the requested field(s) changed. */
+ * SAME 9-field shape with only the requested field(s) changed. */
 export function buildFlowDraftRevisionPrompt(
   text: string,
   currentDraft: FlowDraftPayload,
@@ -145,7 +178,7 @@ export function buildFlowDraftRevisionRepairPrompt(
 ): FlowDraftPrompt {
   return {
     system: buildRevisionSystemPrompt(draftableTools),
-    user: `Current draft: ${JSON.stringify(currentDraft)}\nUser request: ${text}\nYour previous answer was invalid: ${validationError}\nPrevious answer: ${previousRaw}\nReturn ONLY the corrected JSON object matching the schema above, with ALL 8 fields.\nOutput:`
+    user: `Current draft: ${JSON.stringify(currentDraft)}\nUser request: ${text}\nYour previous answer was invalid: ${validationError}\nPrevious answer: ${previousRaw}\nReturn ONLY the corrected JSON object matching the schema above, with ALL 9 fields.\nOutput:`
   };
 }
 
@@ -155,7 +188,7 @@ export type FlowDraftParseResult =
 
 const CRON_FIELD_SHAPE_RE = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/u;
 
-const DRAFT_FIELD_NAMES = ["name", "cronExpression", "prompt", "notifyChannel", "retry", "action", "toolServer", "toolName"] as const;
+const DRAFT_FIELD_NAMES = ["name", "cronExpression", "prompt", "notifyChannel", "retry", "action", "toolServer", "toolName", "toolArguments"] as const;
 
 /** Fields a revision response must echo back. The tool pair is only
  * meaningful when `action === "tool"` (checked separately), so the
@@ -201,6 +234,67 @@ function resolveToolFields(
     return { error: `${toolServer}.${toolName} is not in the Available tools list`, ok: false };
   }
   return { action, ok: true, toolName, toolServer };
+}
+
+const PRIMITIVE_SCHEMA_TYPES: Record<string, (value: unknown) => boolean> = {
+  boolean: (value) => typeof value === "boolean",
+  integer: (value) => typeof value === "number" && Number.isInteger(value),
+  number: (value) => typeof value === "number",
+  string: (value) => typeof value === "string"
+};
+
+/** Validates a tool draft's toolArguments against the matched tool's
+ * inputSchema — deterministic anti-fabrication: an argument name the schema
+ * doesn't declare, a missing required argument, or a wrong primitive type is
+ * a validation failure fed into the repair retry, never stored. A tool
+ * without a schema accepts only {}. */
+function resolveToolArguments(
+  record: Record<string, unknown>,
+  matchedTool: DraftableTool | undefined
+): { readonly ok: true; readonly value: Record<string, unknown> } | { readonly ok: false; readonly error: string } {
+  const raw = record.toolArguments;
+  if (raw !== undefined && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
+    return { error: "toolArguments must be a JSON object", ok: false };
+  }
+  const args = (raw ?? {}) as Record<string, unknown>;
+
+  const schema = matchedTool?.inputSchema;
+  const properties = schema && typeof schema === "object" && schema.properties !== null
+    && typeof schema.properties === "object" && !Array.isArray(schema.properties)
+    ? (schema.properties as Record<string, unknown>)
+    : undefined;
+
+  if (!properties) {
+    const strayKeys = Object.keys(args);
+    if (strayKeys.length > 0) {
+      return { error: `toolArguments has argument(s) this tool does not take: ${strayKeys.join(", ")}`, ok: false };
+    }
+    return { ok: true, value: {} };
+  }
+
+  const unknownKeys = Object.keys(args).filter((key) => !Object.hasOwn(properties, key));
+  if (unknownKeys.length > 0) {
+    return { error: `toolArguments has argument(s) not in the tool's args list: ${unknownKeys.join(", ")}`, ok: false };
+  }
+
+  const required = Array.isArray(schema?.required) ? schema.required.filter((key): key is string => typeof key === "string") : [];
+  const missing = required.filter((key) => !Object.hasOwn(args, key));
+  if (missing.length > 0) {
+    return { error: `toolArguments is missing required argument(s): ${missing.join(", ")}`, ok: false };
+  }
+
+  for (const [key, value] of Object.entries(args)) {
+    const property = properties[key];
+    const declaredType = property !== null && typeof property === "object" && !Array.isArray(property)
+      ? (property as Record<string, unknown>).type
+      : undefined;
+    const check = typeof declaredType === "string" ? PRIMITIVE_SCHEMA_TYPES[declaredType] : undefined;
+    if (check && !check(value)) {
+      return { error: `toolArguments.${key} must be a ${String(declaredType)}`, ok: false };
+    }
+  }
+
+  return { ok: true, value: args };
 }
 
 /** Parses + validates a raw model completion against `FlowDraftPayload`.
@@ -254,6 +348,18 @@ export function parseFlowDraftResponse(raw: string, options?: ParseFlowDraftResp
     return { error: toolFields.error, ok: false };
   }
 
+  let toolArguments: Record<string, unknown> = {};
+  if (toolFields.action === "tool") {
+    const matchedTool = options?.allowedTools?.find(
+      (entry) => entry.server === toolFields.toolServer && entry.tool === toolFields.toolName
+    );
+    const resolvedArguments = resolveToolArguments(record, matchedTool);
+    if (!resolvedArguments.ok) {
+      return { error: resolvedArguments.error, ok: false };
+    }
+    toolArguments = resolvedArguments.value;
+  }
+
   const prompt = typeof record.prompt === "string" ? record.prompt.trim() : "";
   if (toolFields.action === "agent" && prompt.length === 0) {
     return { error: "prompt must be a non-empty string", ok: false };
@@ -278,6 +384,7 @@ export function parseFlowDraftResponse(raw: string, options?: ParseFlowDraftResp
       // payload shape stays total either way.
       prompt: toolFields.action === "tool" ? "" : prompt,
       retry,
+      toolArguments,
       toolName: toolFields.toolName,
       toolServer: toolFields.toolServer
     }
@@ -346,6 +453,15 @@ export function parseCurrentDraftInput(value: unknown): FlowDraftParseResult {
     return { error: "currentDraft.retry must be a boolean", ok: false };
   }
 
+  // Schema validation is not possible here (the runtime tool registry is a
+  // route concern) — the client echo only guarantees the SHAPE; a plain
+  // object passes through, anything else is a 400.
+  if (record.toolArguments !== undefined
+    && (record.toolArguments === null || typeof record.toolArguments !== "object" || Array.isArray(record.toolArguments))) {
+    return { error: "currentDraft.toolArguments must be a JSON object", ok: false };
+  }
+  const toolArguments = toolFields.action === "tool" ? ((record.toolArguments ?? {}) as Record<string, unknown>) : {};
+
   return {
     ok: true,
     value: {
@@ -355,6 +471,7 @@ export function parseCurrentDraftInput(value: unknown): FlowDraftParseResult {
       notifyChannel,
       prompt: toolFields.action === "tool" ? "" : record.prompt.trim(),
       retry: record.retry,
+      toolArguments,
       toolName: toolFields.toolName,
       toolServer: toolFields.toolServer
     }

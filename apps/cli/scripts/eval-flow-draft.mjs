@@ -50,11 +50,59 @@ const modelProvider = new OllamaProvider({ baseUrl: OLLAMA_BASE });
 // battery deterministic (the live route derives the full set at runtime).
 const DRAFTABLE_TOOLS = [
   { description: "Returns the current date/time (ISO timestamp, weekday).", server: "muse.time", tool: "now" },
-  { description: "Millisecond difference between two ISO timestamps.", server: "muse.time", tool: "diff_ms" },
-  { description: "Character/word/line statistics for a text.", server: "muse.text", tool: "stats" },
-  { description: "Evaluates an arithmetic expression.", server: "muse.math", tool: "evaluate" },
-  { description: "Pretty-prints a JSON document.", server: "muse.json", tool: "format" },
-  { description: "Parses a URL into components.", server: "muse.url", tool: "parse" }
+  {
+    description: "Millisecond difference between two ISO timestamps.",
+    inputSchema: {
+      properties: {
+        from: { description: "Start ISO timestamp, e.g. '2026-01-01T00:00:00Z'", type: "string" },
+        to: { description: "End ISO timestamp, e.g. '2026-01-02T00:00:00Z'", type: "string" }
+      },
+      required: ["from", "to"],
+      type: "object"
+    },
+    server: "muse.time",
+    tool: "diff_ms"
+  },
+  {
+    description: "Character/word/line statistics for a text.",
+    inputSchema: {
+      properties: { text: { description: "The text to analyze", type: "string" } },
+      required: ["text"],
+      type: "object"
+    },
+    server: "muse.text",
+    tool: "stats"
+  },
+  {
+    description: "Evaluates an arithmetic expression.",
+    inputSchema: {
+      properties: { expression: { description: "Arithmetic expression, e.g. '2*(3+4)'", type: "string" } },
+      required: ["expression"],
+      type: "object"
+    },
+    server: "muse.math",
+    tool: "evaluate"
+  },
+  {
+    description: "Pretty-prints a JSON document.",
+    inputSchema: {
+      properties: { json: { description: "The JSON text to pretty-print", type: "string" } },
+      required: ["json"],
+      type: "object"
+    },
+    server: "muse.json",
+    tool: "format"
+  },
+  {
+    description: "Parses a URL into components.",
+    inputSchema: {
+      properties: { url: { description: "The URL to parse, e.g. 'https://example.com/a?b=1'", type: "string" } },
+      required: ["url"],
+      type: "object"
+    },
+    server: "muse.url",
+    tool: "parse"
+  }
 ];
 
 const CASES = [
@@ -182,14 +230,47 @@ const TOOL_CASE = {
     const actionOk = parsed.value.action === "tool";
     const pairOk = parsed.value.toolServer === TOOL_CASE.expectedServer && parsed.value.toolName === TOOL_CASE.expectedTool;
     const cronOk = parsed.value.cronExpression === TOOL_CASE.expectedCron;
-    const ok = actionOk && pairOk && cronOk;
+    const argsOk = JSON.stringify(parsed.value.toolArguments) === "{}";
+    const ok = actionOk && pairOk && cronOk && argsOk;
     if (ok) {
       passed += 1;
     }
     console.log(
       `${ok ? "PASS" : "FAIL"} [${TOOL_CASE.label}] action=${actionOk ? "ok" : `WRONG (${parsed.value.action})`} `
         + `tool=${pairOk ? "ok" : `WRONG (${String(parsed.value.toolServer)}.${String(parsed.value.toolName)})`} `
-        + `cron=${cronOk ? "ok" : `WRONG (${parsed.value.cronExpression})`}`
+        + `cron=${cronOk ? "ok" : `WRONG (${parsed.value.cronExpression})`} `
+        + `args=${argsOk ? "ok" : `WRONG (${JSON.stringify(parsed.value.toolArguments)})`}`
+    );
+  }
+}
+
+// Tool-ARGUMENT case: the request carries a literal the model must COPY into
+// toolArguments (prompt-derived literal per agent-testing.md — never grade a
+// model-invented value). The deterministic schema gate already rejects
+// fabricated keys/missing required; this case proves the model actually
+// FILLS the argument in one shot (repair allowed, same as the route).
+const TOOL_ARGS_CASE = {
+  expectedArguments: { url: "https://news.ycombinator.com" },
+  expectedServer: "muse.url",
+  expectedTool: "parse",
+  label: "KO tool-args draft (hourly URL parse, literal copy)",
+  text: "매시간 https://news.ycombinator.com 주소 파싱해서 기록해줘"
+};
+{
+  const parsed = await draftFor(TOOL_ARGS_CASE.text);
+  if (!parsed.ok) {
+    console.log(`FAIL [${TOOL_ARGS_CASE.label}] — model never returned a valid draft: ${parsed.error}`);
+  } else {
+    const pairOk = parsed.value.toolServer === TOOL_ARGS_CASE.expectedServer && parsed.value.toolName === TOOL_ARGS_CASE.expectedTool;
+    const argsOk = JSON.stringify(parsed.value.toolArguments) === JSON.stringify(TOOL_ARGS_CASE.expectedArguments);
+    const ok = parsed.value.action === "tool" && pairOk && argsOk;
+    if (ok) {
+      passed += 1;
+    }
+    console.log(
+      `${ok ? "PASS" : "FAIL"} [${TOOL_ARGS_CASE.label}] `
+        + `tool=${pairOk ? "ok" : `WRONG (${String(parsed.value.toolServer)}.${String(parsed.value.toolName)})`} `
+        + `args=${argsOk ? "ok" : `WRONG (${JSON.stringify(parsed.value.toolArguments)})`}`
     );
   }
 }
@@ -213,7 +294,7 @@ if (!revisionParsed.ok) {
   );
 }
 
-const totalCases = CASES.length + 2;
+const totalCases = CASES.length + 3;
 const rate = passed / totalCases;
 console.log(`\neval:flow-draft — ${passed}/${totalCases} cases passed on ${MODEL} (threshold ${THRESHOLD})`);
 process.exit(rate >= THRESHOLD ? 0 : 1);

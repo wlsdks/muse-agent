@@ -351,7 +351,10 @@ export function flowDraftFromCopilot(payload: FlowDraftPayloadRow): FlowDraft {
     notificationChannelId: payload.notifyChannel ?? "",
     retryOnFailure: payload.retry,
     schedule: scheduleFormFromCron(payload.cronExpression),
-    toolArgumentsText: "",
+    toolArgumentsText:
+      payload.action === "tool" && payload.toolArguments && Object.keys(payload.toolArguments).length > 0
+        ? JSON.stringify(payload.toolArguments, null, 2)
+        : "",
     toolName: payload.action === "tool" ? (payload.toolName ?? "") : "",
     toolServerName: payload.action === "tool" ? (payload.toolServer ?? "") : ""
   };
@@ -365,6 +368,7 @@ export function flowDraftFromCopilot(payload: FlowDraftPayloadRow): FlowDraft {
 export function flowDraftToCopilotPayload(draft: FlowDraft): FlowDraftPayloadRow {
   const notifyChannel = draft.notificationChannelId.trim();
   const isTool = draft.actionKind === "tool";
+  const parsedArguments = isTool ? parseToolArgumentsText(draft.toolArgumentsText) : undefined;
   return {
     action: isTool ? "tool" : "agent",
     cronExpression: resolveScheduleCron(draft.schedule),
@@ -372,6 +376,9 @@ export function flowDraftToCopilotPayload(draft: FlowDraft): FlowDraftPayloadRow
     notifyChannel: notifyChannel.length > 0 ? notifyChannel : null,
     prompt: isTool ? "" : draft.agentPrompt.trim(),
     retry: draft.retryOnFailure,
+    // An unparseable args textarea degrades to {} — the revision turn just
+    // proceeds without the args context rather than blocking the chat.
+    toolArguments: parsedArguments?.ok ? parsedArguments.value : {},
     toolName: isTool ? draft.toolName.trim() || null : null,
     toolServer: isTool ? draft.toolServerName.trim() || null : null
   };

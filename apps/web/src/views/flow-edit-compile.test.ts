@@ -489,6 +489,7 @@ describe("flowDraftToCopilotPayload — the create panel's LIVE form values, pro
       notifyChannel: "telegram:999",
       prompt: "이번 주 할 일 알려줘",
       retry: true,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     };
@@ -504,6 +505,7 @@ describe("flowDraftToCopilotPayload — the create panel's LIVE form values, pro
       notifyChannel: null,
       prompt: "",
       retry: false,
+      toolArguments: {},
       toolName: "now",
       toolServer: "muse.time"
     };
@@ -537,6 +539,7 @@ describe("flowDraftToCopilotPayload — the create panel's LIVE form values, pro
       notifyChannel: null,
       prompt: "일정 요약",
       retry: false,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     });
@@ -562,5 +565,57 @@ describe("flowDraftToCopilotPayload — the create panel's LIVE form values, pro
     expect(payload.name).toBe("아침 브리핑");
     expect(payload.prompt).toBe("일정 요약");
     expect(payload.notifyChannel).toBeNull();
+  });
+});
+
+describe("copilot tool-arguments prefill", () => {
+  it("a drafted tool flow's toolArguments prefill the args textarea as pretty JSON", () => {
+    const payload: FlowDraftPayloadRow = {
+      action: "tool",
+      cronExpression: "0 * * * *",
+      name: "매시간 URL 파싱",
+      notifyChannel: null,
+      prompt: "",
+      retry: false,
+      toolArguments: { url: "https://news.ycombinator.com" },
+      toolName: "parse",
+      toolServer: "muse.url"
+    };
+    const draft = flowDraftFromCopilot(payload);
+    expect(JSON.parse(draft.toolArgumentsText)).toEqual({ url: "https://news.ycombinator.com" });
+    expect(flowDraftToCopilotPayload(draft)).toEqual(payload);
+  });
+
+  it("an agent draft leaves the args textarea blank and projects toolArguments {}", () => {
+    const payload: FlowDraftPayloadRow = {
+      action: "agent",
+      cronExpression: "0 9 * * *",
+      name: "브리핑",
+      notifyChannel: null,
+      prompt: "요약해줘",
+      retry: false,
+      toolArguments: {},
+      toolName: null,
+      toolServer: null
+    };
+    const draft = flowDraftFromCopilot(payload);
+    expect(draft.toolArgumentsText).toBe("");
+    expect(flowDraftToCopilotPayload(draft).toolArguments).toEqual({});
+  });
+
+  it("an unparseable args textarea degrades to {} in the revision payload", () => {
+    const payload: FlowDraftPayloadRow = {
+      action: "tool",
+      cronExpression: "0 * * * *",
+      name: "매시간 시각 기록",
+      notifyChannel: null,
+      prompt: "",
+      retry: false,
+      toolArguments: {},
+      toolName: "now",
+      toolServer: "muse.time"
+    };
+    const draft = { ...flowDraftFromCopilot(payload), toolArgumentsText: "{not json" };
+    expect(flowDraftToCopilotPayload(draft).toolArguments).toEqual({});
   });
 });

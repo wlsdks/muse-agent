@@ -522,11 +522,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         if (catalog instanceof Promise) {
           return [];
         }
-        const draftable: { server: string; tool: string; description: string }[] = [];
+        const draftable: { server: string; tool: string; description: string; inputSchema: Record<string, unknown> | null }[] = [];
         for (const entry of catalog) {
           const match = LOOPBACK_TOOL_NAME_RE.exec(entry.name);
           if (match && entry.risk === "read") {
-            draftable.push({ description: entry.description, server: match[1]!, tool: match[2]! });
+            draftable.push({
+              description: entry.description,
+              inputSchema: entry.inputSchema ?? null,
+              server: match[1]!,
+              tool: match[2]!
+            });
           }
         }
         return draftable;

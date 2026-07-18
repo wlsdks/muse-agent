@@ -18,6 +18,7 @@ const SAMPLE_DRAFT: FlowDraftPayload = {
   notifyChannel: null,
   prompt: "오늘 일정을 요약해서 알려줘",
   retry: false,
+  toolArguments: {},
   toolName: null,
   toolServer: null
 };
@@ -53,6 +54,7 @@ describe("parseFlowDraftResponse", () => {
         notifyChannel: null,
         prompt: "오늘 일정을 요약해서 알려줘",
         retry: false,
+        toolArguments: {},
         toolName: null,
         toolServer: null
       });
@@ -261,7 +263,7 @@ describe("parseCurrentDraftInput", () => {
     const result = parseCurrentDraftInput(VALID);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual({ ...VALID, action: "agent", toolName: null, toolServer: null });
+      expect(result.value).toEqual({ ...VALID, action: "agent", toolArguments: {}, toolName: null, toolServer: null });
     }
   });
 
@@ -330,5 +332,117 @@ describe("parseCurrentDraftInput", () => {
     if (result.ok) {
       expect(result.value.notifyChannel).toBeNull();
     }
+  });
+});
+
+const URL_PARSE_TOOL = {
+  description: "Parses a URL into components.",
+  inputSchema: {
+    properties: { url: { description: "The URL to parse, e.g. 'https://example.com/a?b=1'", type: "string" } },
+    required: ["url"],
+    type: "object"
+  },
+  server: "muse.url",
+  tool: "parse"
+} as const;
+
+const TIME_NOW_TOOL = { description: "Returns the current date/time.", server: "muse.time", tool: "now" } as const;
+
+describe("tool-argument drafting", () => {
+  it("the system prompt lists each schema-bearing tool's parameters with description", () => {
+    const prompt = buildFlowDraftPrompt("x", [URL_PARSE_TOOL, TIME_NOW_TOOL]);
+    expect(prompt.system).toContain("toolArguments");
+    expect(prompt.system).toContain("url: string");
+    expect(prompt.system).toContain("The URL to parse");
+  });
+
+  it("accepts a tool draft whose toolArguments match the tool's schema", () => {
+    const raw = '{"name": "URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": {"url": "https://news.ycombinator.com"}}';
+    const result = parseFlowDraftResponse(raw, { allowedTools: [URL_PARSE_TOOL, TIME_NOW_TOOL] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.toolArguments).toEqual({ url: "https://news.ycombinator.com" });
+    }
+  });
+
+  it("rejects a fabricated argument key the tool's schema does not declare", () => {
+    const raw = '{"name": "URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": {"url": "https://a.com", "depth": 3}}';
+    const result = parseFlowDraftResponse(raw, { allowedTools: [URL_PARSE_TOOL] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("depth");
+    }
+  });
+
+  it("rejects a tool draft missing a required argument", () => {
+    const raw = '{"name": "URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": {}}';
+    const result = parseFlowDraftResponse(raw, { allowedTools: [URL_PARSE_TOOL] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("url");
+    }
+  });
+
+  it("rejects a declared-type mismatch (string schema, number value)", () => {
+    const raw = '{"name": "URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": {"url": 42}}';
+    const result = parseFlowDraftResponse(raw, { allowedTools: [URL_PARSE_TOOL] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("url");
+    }
+  });
+
+  it("defaults toolArguments to {} for a schema-less tool and for agent drafts", () => {
+    const toolRaw = '{"name": "시각 기록", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.time", "toolName": "now"}';
+    const toolResult = parseFlowDraftResponse(toolRaw, { allowedTools: [TIME_NOW_TOOL] });
+    expect(toolResult.ok).toBe(true);
+    if (toolResult.ok) {
+      expect(toolResult.value.toolArguments).toEqual({});
+    }
+    const agentRaw = '{"name": "브리핑", "cronExpression": "0 9 * * *", "prompt": "요약해줘", "notifyChannel": null, "retry": false, "action": "agent", "toolServer": null, "toolName": null, "toolArguments": {"stray": 1}}';
+    const agentResult = parseFlowDraftResponse(agentRaw);
+    expect(agentResult.ok).toBe(true);
+    if (agentResult.ok) {
+      expect(agentResult.value.toolArguments).toEqual({});
+    }
+  });
+
+  it("rejects a non-object toolArguments", () => {
+    const raw = '{"name": "URL 파싱", "cronExpression": "0 * * * *", "prompt": "", "notifyChannel": null, "retry": false, "action": "tool", "toolServer": "muse.url", "toolName": "parse", "toolArguments": ["https://a.com"]}';
+    const result = parseFlowDraftResponse(raw, { allowedTools: [URL_PARSE_TOOL] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("toolArguments");
+    }
+  });
+
+  it("parseCurrentDraftInput accepts toolArguments on a tool draft and rejects a non-object", () => {
+    const good = parseCurrentDraftInput({
+      action: "tool",
+      cronExpression: "0 * * * *",
+      name: "URL 파싱",
+      notifyChannel: null,
+      prompt: "",
+      retry: false,
+      toolArguments: { url: "https://a.com" },
+      toolName: "parse",
+      toolServer: "muse.url"
+    });
+    expect(good.ok).toBe(true);
+    if (good.ok) {
+      expect(good.value.toolArguments).toEqual({ url: "https://a.com" });
+    }
+    const bad = parseCurrentDraftInput({
+      action: "tool",
+      cronExpression: "0 * * * *",
+      name: "URL 파싱",
+      notifyChannel: null,
+      prompt: "",
+      retry: false,
+      toolArguments: "url=a",
+      toolName: "parse",
+      toolServer: "muse.url"
+    });
+    expect(bad.ok).toBe(false);
   });
 });

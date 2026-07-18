@@ -30,6 +30,7 @@ describe("POST /api/flows/draft", () => {
         notifyChannel: null,
         prompt: "오늘 일정을 요약해서 알려줘",
         retry: false,
+        toolArguments: {},
         toolName: null,
         toolServer: null
       }
@@ -129,6 +130,7 @@ const NORMALIZED_CURRENT_DRAFT = {
   notifyChannel: null,
   prompt: "오늘 일정을 요약해서 알려줘",
   retry: false,
+  toolArguments: {},
   toolName: null,
   toolServer: null
 };
@@ -157,6 +159,7 @@ describe("POST /api/flows/draft — revision mode (currentDraft present)", () =>
         notifyChannel: null,
         prompt: "오늘 일정을 요약해서 알려줘",
         retry: false,
+        toolArguments: {},
         toolName: null,
         toolServer: null
       }

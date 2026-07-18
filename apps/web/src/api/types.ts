@@ -585,6 +585,7 @@ export interface FlowDraftPayloadRow {
   readonly action: "agent" | "tool";
   readonly toolServer: string | null;
   readonly toolName: string | null;
+  readonly toolArguments: Record<string, unknown>;
 }
 export interface FlowDraftResponse {
   readonly draft: FlowDraftPayloadRow;

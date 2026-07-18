@@ -393,6 +393,7 @@ test("초안 그리기 (Draft it) opens the create panel PREFILLED from the pars
       notifyChannel: "telegram:777",
       prompt: "오늘 하루 요약해줘",
       retry: false,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     }
@@ -425,6 +426,7 @@ test("multi-turn: after drafting, a manual form edit + a follow-up revision turn
       notifyChannel: null,
       prompt: "오늘 하루 요약해줘",
       retry: false,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     }
@@ -437,6 +439,7 @@ test("multi-turn: after drafting, a manual form edit + a follow-up revision turn
       notifyChannel: null,
       prompt: "오늘 하루 요약해줘",
       retry: false,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     }
@@ -475,6 +478,7 @@ test("multi-turn: after drafting, a manual form edit + a follow-up revision turn
       notifyChannel: null,
       prompt: "오늘 하루 요약해줘",
       retry: false,
+      toolArguments: {},
       toolName: null,
       toolServer: null
     },
@@ -614,6 +618,7 @@ test("a TOOL draft from the copilot prefills the create panel in tool mode (serv
       notifyChannel: null,
       prompt: "",
       retry: false,
+      toolArguments: {},
       toolName: "now",
       toolServer: "muse.time"
     }

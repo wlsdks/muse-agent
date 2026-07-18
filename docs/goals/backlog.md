@@ -41,6 +41,7 @@
 - [done] :: digest-lock EACCES 코너 — response-experience fire 19 (stat-프로브: exists->contended[win32 보존], ENOENT/stat-err->fail-open; 드릴 스펙 1:1)
 - [done] :: ack 카피/톤 개선 — response-experience fire 16 (관측-진단 기반 프롬프트 재작성: 격식 preamble 금지·동일언어 마무리 약속, 판별력 검증된 token-set 스코어러 pin)
 
+- [open] 2026-07-18 kind=fix src=probe prio=3 for=improve-muse :: builder 코파일럿 — 빈 create 패널을 수동으로 연 뒤 첫 요청 시 blank form이 revision currentDraft로 투영돼 400("currentDraft.name must be a non-empty string"). 픽스 방향: 폼이 비어있으면(이름/프롬프트 공백) currentDraft 생략(fresh 턴) 또는 서버가 blank-draft를 fresh로 강등. 발견: builder-evolution fire 16 라이브 e2e.
 - [open] 2026-06-29 :: COMPETITOR-PARITY loop (2026-06-29, Jinan: study openclaw + hermes, fill Muse's gaps in BIG chunks). Journal deleted 2026-07-18 (loop closed; git history). Candidate · gaps (each fire VERIFIES vs Muse first — freshness guard — then reimplements the pattern, MIT/Apache-attributed, NO verbatim copy): plugin-SDK/extension-contract (openclaw plugin-sdk) · context-compression depth (hermes context_engine.py) · A2A/ACP interop depth (openclaw acp-core). Big-chunk units (a capability + tests + wiring + docs together), not single slices.
 
 - [rejected] :: **B3** multi-agent on a single GPU is a *phantom* (no true parallelism) — a hardware
