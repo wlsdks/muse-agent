@@ -429,3 +429,31 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     expect(prepared.systemPrompt).not.toContain("(no relevant notes found)");
   });
 });
+
+describe("language mirroring in the default recall prompt", () => {
+  const captureSystem = async (query: string, extras?: GroundedRecallInput["extras"]) => {
+    let seenSystem = "";
+    await runGroundedRecall({
+      ...input("ok", query),
+      ...(extras !== undefined ? { extras } : {}),
+      runtime: { embedFn: fakeEmbed, generateAnswer: async ({ system }) => { seenSystem = system; return "ok"; } }
+    });
+    return seenSystem;
+  };
+
+  it("an English query injects the deterministic language-mirror line into the system prompt", async () => {
+    expect(await captureSystem("what MTU does my VPN use?")).toContain("reply entirely in that same language");
+  });
+
+  it("a Korean query stays on the Korean default (no mirror line)", async () => {
+    expect(await captureSystem("내 VPN MTU가 뭐지?")).not.toContain("reply entirely in that same language");
+  });
+
+  it("a caller composeSystemPrompt override is untouched (no injected mirror)", async () => {
+    const system = await captureSystem("what MTU does my VPN use?", {
+      composeSystemPrompt: (args) => `CUSTOM\n${args.contextBlock}`
+    });
+    expect(system.startsWith("CUSTOM")).toBe(true);
+    expect(system).not.toContain("reply entirely in that same language");
+  });
+});

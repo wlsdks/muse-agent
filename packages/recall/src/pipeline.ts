@@ -15,6 +15,7 @@
  */
 
 import {
+  buildLanguageMirrorLayer,
   citedSourcesIn,
   detectEvidenceContradictions,
   enforceAnswerCitations,
@@ -229,13 +230,21 @@ function composeDefaultRecallSystemPrompt(args: {
   readonly framing: { readonly header: string; readonly guidance?: string };
   readonly contextBlock: string;
   readonly extraSections?: readonly GroundedRecallExtraSection[];
+  readonly query?: string;
 }): string {
   const extraLines = groundingSectionLines(
     (args.extraSections ?? []).map((section) => ({ ...section, present: section.present && section.body.trim().length > 0 }))
   );
+  // Same deterministic language-mirror layer the chat and CLI-ask surfaces
+  // wire: an all-Latin query gets an explicit "answer in that language" line
+  // in the VOLATILE zone (query-derived, so it can't sit in the stable
+  // prefix without breaking KV-cache reuse). A Korean-primed 12B ignores the
+  // identity block's soft language line on English turns — measured 3/3.
+  const mirror = args.query === undefined ? undefined : buildLanguageMirrorLayer(args.query);
   return composeSurfacePrompt("recall", {
     basePrompt: CITATION_INSTRUCTION_LINES.join("\n"),
     providerDynamicSuffix: [
+      ...(mirror ? [mirror.content] : []),
       ...(args.framing.guidance ? [args.framing.guidance] : []),
       "",
       args.framing.header,
@@ -355,7 +364,9 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
     allowedNotes: [...new Set(contextChunks.map((s) => relativizeNoteSource(s.file, sources.notesDir)))],
     notesUnavailable,
     scored: contextChunks,
-    systemPrompt: (extras?.composeSystemPrompt ?? composeDefaultRecallSystemPrompt)({ contextBlock, extraSections, framing }),
+    systemPrompt: extras?.composeSystemPrompt
+      ? extras.composeSystemPrompt({ contextBlock, extraSections, framing })
+      : composeDefaultRecallSystemPrompt({ contextBlock, extraSections, framing, query: input.query }),
     verdict: framing.verdict
   };
 }
