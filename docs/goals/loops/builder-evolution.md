@@ -129,3 +129,13 @@ ratchet: web SSR 572(+3) · browser 31(+5) · unit +6 · fabrication 0
 - 리스크: jobs limit=100 초과 시 꼬리 행 stats 공란(개인 스케일 무해). SSR "1" 카운트 어설션 약함(요약 문자열이 실질 방어) — opus 노트.
 - 라이브: 격리 데모 2흐름(에이전트+도구/실행 1회) — 행에 muse.time.now·매시간·SUCCESS·실행된 적 없음 렌더, 끄기→paused, 이름 클릭→빌더가 그 흐름으로 열림 실측.
 - 오너 큐 잔여: ②Work 빌더급 — 다음 fire.
+
+## fire 14 · 2026-07-18 · skill v2.1.1 · 2287757ee
+meta: value-class=new-capability · pkg=@muse/web · kind=ui-capability(owner-directed) · verdict=PASS(opus) · firesSinceDrill=6 · consecutiveAllPASS=6
+ratchet: web SSR 575(+3) · browser 34(+3) · unit +3 · fabrication 0
+- 무엇: Work 링크 UX 빌더급(오너 큐 ②) — raw id 타이핑(LinkPicker) → 이름 선택 피커(EntityLinkPicker, 미링크 후보만·없으면 숨김), 연결 흐름은 미니 운영 행(상태점·이름 클릭=빌더 포커스 핸드오프(fire 13 시임 재사용)·다음실행/일시정지·연결 해제), 태스크 행+해제. ApiClient.del에 옵셔널 body(works unlink 계약 DELETE+body; 기존 12개 콜사이트 무영향 검증).
+- 왜: 진안 "work도 마찬가지야" — id를 알아야 링크되는 표면은 빌더급이 아님.
+- 리뷰지점: 스레드 링크는 raw id 유지(threads 목록 API 부재 — 정직한 스코프 컷, 후속 기록). SSR "unrelated 미누출" 어설션은 삭제 아닌 정제(행엔 없음+옵션엔 정확 마크업 양방향). 참조-부패 시 undercount는 pre-existing(store가 삭제 시 prune).
+- 리스크: 없음.
+- 라이브: 격리 데모 전 사이클 — 피커 링크→행(다음 실행 표시)→이름 클릭→빌더가 그 흐름으로→언링크→행 소멸+피커 후보 복귀 실측.
+- 오너 큐 상태: ①Scheduled(f13)·②Work(f14) 완료. 잔여 후속: threads 목록 API+스레드 피커, Work 헤더의 새 흐름 직생성(빌더 프리필 핸드오프).
