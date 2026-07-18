@@ -170,7 +170,7 @@ ratchet: unit flow-connection-logic 6(신규) · browser 40(+2) · fabrication 0
 - 리스크(비게이팅, opus 지적): detachTitle i18n 키 미참조(디스커버러빌리티 후속에서 사용 예정); 고스트 드래그 위치가 attach 후 localStorage에 무해한 스테일 엔트리로 잔존.
 - 라이브: 격리 데모(3807) 양방향 실측 — 고스트(겹침 0 측정)→팝오버→연결→실노드+엣지 / 더블클릭→고스트 복귀+서버 channelId null(종결상태).
 
-## fire 18 · 2026-07-18 · skill v2.1.1 · (this commit)
+## fire 18 · 2026-07-18 · skill v2.1.1 · 37ab54474
 meta: value-class=new-capability · pkg=@muse/web · kind=ui-capability · verdict=PASS(opus) · firesSinceDrill=2 · consecutiveAllPASS=3
 ratchet: unit flow-edit-compile 62(+3) · browser 46(+1) · related 238 · fabrication 0
 - 무엇: 도구 흐름의 도구 RE-POINT — 노드 상세의 read-only server/tool("v1/v2 concern" 보류)을 생성 패널과 같은 read-risk 캐스케이드 피커로 편집 가능하게. PATCH {mcpServerName, toolName, toolArguments} 일괄, 도구/서버 변경 시 args "{}" 리셋(구 스키마 인자 이월 차단), 쌍 미완성/args 무효/미변경/저장중엔 저장 불가(fail-close). 레지스트리서 사라진 도구를 참조하는 잡은 저장된 쌍을 선택지에 유지(라이브 흐름 타깃의 침묵 소거 방지).
