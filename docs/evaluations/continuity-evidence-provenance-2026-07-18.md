@@ -65,7 +65,7 @@ ordinary package surface. They are classification checks, not claims that
 | Changed-file API tests | PASS — 239/239 |
 | Changed-file CLI tests | PASS — 373/373 |
 | Changed-file web unit tests | PASS — 196/196 |
-| Chromium Browser Mode | PASS — 76/76 related; 10/10 focused |
+| Chromium Browser Mode | PASS — 82/82 related after latest-main integration; 10/10 focused |
 | Changed-file Attunement tests | PASS — 95/95 |
 | Changed-file autoconfigure tests | PASS — 388/388 |
 | TS7 `typecheck:fast`, lint, build, diff check | PASS |
