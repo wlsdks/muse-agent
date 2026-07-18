@@ -2869,3 +2869,15 @@ button.status-chip {
   background: var(--surface-2, rgba(127, 127, 127, 0.15));
   color: var(--text);
 }
+
+/* drag-connect handles: visible only where a user-drawn edge means something
+   (action source -> notify ghost target); everything else stays hidden */
+.flow-handle {
+  width: 9px;
+  height: 9px;
+  background: var(--accent, #6366f1);
+  border: 2px solid var(--surface);
+}
+.flow-handle.hidden {
+  visibility: hidden;
+}

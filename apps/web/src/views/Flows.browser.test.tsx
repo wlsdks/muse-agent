@@ -1012,3 +1012,24 @@ test("copilot EDIT chat: a revision on the SELECTED flow shows an Apply bar, and
   await expect.poll(() => (client.patch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { cronExpression: "30 8 * * *" });
 });
+
+test("drag-connect handles: visible on the action source and the ghost target, hidden elsewhere", async () => {
+  const client = fakeClient();
+  await renderFlows(client);
+
+  await expect.poll(() => document.querySelectorAll(".flow-handle").length).toBeGreaterThan(0);
+  const actionNode = document.querySelector("[data-id='job_1::action']");
+  const actionSource = actionNode?.querySelector(".react-flow__handle-right");
+  expect(actionSource?.classList.contains("hidden")).toBe(false);
+
+  const ghostNode = document.querySelector("[data-id='job_1::notify-ghost']");
+  const ghostTarget = ghostNode?.querySelector(".react-flow__handle-left");
+  expect(ghostTarget?.classList.contains("hidden")).toBe(false);
+
+  const triggerNode = document.querySelector("[data-id='job_1::trigger']");
+  const triggerSource = triggerNode?.querySelector(".react-flow__handle-right");
+  expect(triggerSource?.classList.contains("hidden")).toBe(true);
+
+  // The functional gate is isValidConnection/classifyConnection (unit
+  // matrix) — here we pin the AFFORDANCE: only meaningful endpoints show.
+});

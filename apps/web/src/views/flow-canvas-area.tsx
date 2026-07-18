@@ -7,7 +7,7 @@ import "@xyflow/react/dist/style.css";
 import { Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeLocalStorage } from "../lib/safe-storage.js";
-import { canvasWithNotifyGhost, classifyEdgeRemoval, isNotifyGhostId } from "./flow-connection-logic.js";
+import { canvasWithNotifyGhost, classifyConnection, classifyEdgeRemoval, isNotifyGhostId } from "./flow-connection-logic.js";
 import { readNodePositions, writeNodePosition } from "./flow-node-positions.js";
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
 import { flowEditToJobPatch } from "./flow-edit-compile.js";
@@ -49,7 +49,12 @@ export function FlowCanvasArea({
   });
   const [nodes, setNodes] = useState<FlowCanvasNode[]>(() => {
     const saved = readNodePositions(storage, flow.id);
-    return canvas.nodes.map((node) => ({ ...node, draggable: true, position: saved[node.id] ?? node.position }));
+    return canvas.nodes.map((node) => ({
+      ...node,
+      connectable: node.data.kind.startsWith("action.") || node.data.ghost === true,
+      draggable: true,
+      position: saved[node.id] ?? node.position
+    }));
   });
   const [edges, setEdges] = useState<readonly FlowCanvasEdge[]>(canvas.edges);
   const [fullscreen, setFullscreen] = useState(false);
@@ -79,7 +84,12 @@ export function FlowCanvasArea({
       const saved = readNodePositions(storage, flow.id);
       return freshCanvas.nodes.map((node) => {
         const existing = previous.find((candidate) => candidate.id === node.id);
-        return { ...node, draggable: true, position: existing?.position ?? saved[node.id] ?? node.position };
+        return {
+          ...node,
+          connectable: node.data.kind.startsWith("action.") || node.data.ghost === true,
+          draggable: true,
+          position: existing?.position ?? saved[node.id] ?? node.position
+        };
       });
     });
     setEdges(freshCanvas.edges);
@@ -119,10 +129,21 @@ export function FlowCanvasArea({
           fitViewOptions={{ maxZoom: 1.1, padding: 0.25 }}
           panOnScroll
           nodesDraggable
-          nodesConnectable={false}
+          nodesConnectable
           elementsSelectable
           deleteKeyCode={null}
           onNodesChange={onNodesChange}
+          isValidConnection={(connection) =>
+            classifyConnection(connection.source, connection.target, nodes) === "notify-attach"
+          }
+          onConnect={(connection) => {
+            // The drop itself never persists an edge — attaching means
+            // choosing a channel, so the drop opens the same picker the
+            // ghost click uses (confirm → PATCH → refetch draws the edge).
+            if (classifyConnection(connection.source, connection.target, nodes) === "notify-attach") {
+              setNotifyPickOpen(true);
+            }
+          }}
           onNodeClick={(_event, node) => {
             if (isNotifyGhostId(node.id)) {
               setNotifyPickOpen(true);

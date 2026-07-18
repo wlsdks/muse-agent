@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canvasWithNotifyGhost, classifyEdgeRemoval, isNotifyGhostId, notifyGhostId } from "./flow-connection-logic.js";
+import { canvasWithNotifyGhost, classifyConnection, classifyEdgeRemoval, isNotifyGhostId, notifyGhostId } from "./flow-connection-logic.js";
 
 import type { FlowProjection } from "../api/types.js";
 
@@ -76,5 +76,31 @@ describe("detachable edge marking", () => {
     );
     expect(canvas.edges.find((edge) => edge.id === "e1")?.data?.detachable).toBe(true);
     expect(canvas.edges.find((edge) => edge.id === "e0")?.data?.detachable).toBeUndefined();
+  });
+});
+
+describe("classifyConnection (drag-connect gate)", () => {
+  const canvas = canvasWithNotifyGhost(flowWith([TRIGGER, ACTION]));
+  const ghostId = notifyGhostId("flow-1");
+
+  it("accepts action → notify ghost", () => {
+    expect(classifyConnection(ACTION.id, ghostId, canvas.nodes)).toBe("notify-attach");
+  });
+
+  it("rejects trigger → ghost, action → trigger, and ghost → action", () => {
+    expect(classifyConnection(TRIGGER.id, ghostId, canvas.nodes)).toBe("reject");
+    expect(classifyConnection(ACTION.id, TRIGGER.id, canvas.nodes)).toBe("reject");
+    expect(classifyConnection(ghostId, ACTION.id, canvas.nodes)).toBe("reject");
+  });
+
+  it("rejects action → REAL notify output (its edge already exists)", () => {
+    const withOutput = canvasWithNotifyGhost(flowWith([TRIGGER, ACTION, OUTPUT]));
+    expect(classifyConnection(ACTION.id, OUTPUT.id, withOutput.nodes)).toBe("reject");
+  });
+
+  it("rejects null endpoints and unknown ids", () => {
+    expect(classifyConnection(null, ghostId, canvas.nodes)).toBe("reject");
+    expect(classifyConnection(ACTION.id, null, canvas.nodes)).toBe("reject");
+    expect(classifyConnection("nope", ghostId, canvas.nodes)).toBe("reject");
   });
 });

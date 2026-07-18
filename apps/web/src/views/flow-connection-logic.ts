@@ -79,3 +79,24 @@ export function classifyEdgeRemoval(
   }
   return target.data.kind === "output.notify" ? "notify-detach" : "keep";
 }
+
+/**
+ * Drag-connect gate: the ONE meaningful user-drawn edge is action → notify
+ * GHOST (attach a channel). A real output.notify already has its edge, and
+ * every other pair is structural — rejected, so the canvas can never draw a
+ * connection the runner wouldn't honor.
+ */
+export function classifyConnection(
+  sourceId: string | null,
+  targetId: string | null,
+  nodes: readonly FlowCanvasNode[]
+): "notify-attach" | "reject" {
+  if (!sourceId || !targetId) {
+    return "reject";
+  }
+  const source = nodes.find((node) => node.id === sourceId);
+  if (!source || !source.data.kind.startsWith("action.")) {
+    return "reject";
+  }
+  return isNotifyGhostId(targetId) ? "notify-attach" : "reject";
+}

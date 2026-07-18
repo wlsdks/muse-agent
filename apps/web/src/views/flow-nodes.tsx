@@ -82,7 +82,7 @@ function FlowNodeShell({
       className={`flow-node${selected ? " selected" : ""}`}
       style={{ opacity: data.flowEnabled ? 1 : 0.55 }}
     >
-      <Handle type="target" position={Position.Left} style={{ visibility: "hidden" }} />
+      <Handle type="target" position={Position.Left} className="flow-handle hidden" />
       <div className="flow-node-head">
         <span className="flow-node-ic" aria-hidden="true">
           <NodeIcon />
@@ -102,7 +102,11 @@ function FlowNodeShell({
           ))}
         </div>
       )}
-      <Handle type="source" position={Position.Right} style={{ visibility: "hidden" }} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={`flow-handle${data.kind.startsWith("action.") ? "" : " hidden"}`}
+      />
     </div>
   );
 }
@@ -131,7 +135,7 @@ export function OutputNode({ data, selected }: FlowNodeProps) {
           }
         }}
       >
-        <Handle type="target" position={Position.Left} style={{ visibility: "hidden" }} />
+        <Handle type="target" position={Position.Left} className="flow-handle" />
         <div className="flow-node-head">
           <span className="flow-node-ic" aria-hidden="true">
             <KindIconFor kind={data.kind} />
