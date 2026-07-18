@@ -80,3 +80,12 @@ ratchet: web SSR 552(+2) · browser 23(+1) · fabrication 0
 - 리스크: 없음.
 - lesson: JUDGE-DRILL은 maker=judge 천장에서 필수 보상통제 — 평가자가 runtime-wiring.ts를 실제로 읽어 runner-소비를 검증함을 확인(고정 체크리스트 아닌 적응형). 새 빌더 필드는 항상 실행기 소비 경로를 grep으로 검증 후 노출.
 - 라이브: 격리 데모 tz 편집 라운드트립 + nextRun 이동 실측.
+
+## fire 9 · 2026-07-18 · skill v2.1.1 · 43f28951c
+meta: value-class=ux-fix · pkg=@muse/api+@muse/web · kind=correctness · verdict=PASS(opus) · firesSinceDrill=1 · consecutiveAllPASS=1
+ratchet: api flow-projection 15(+1) · web SSR 553(+1) · fabrication 0
+- 무엇: 비활성 흐름이 리스트+트리거 캔버스 노드에 "다음 실행 9:00" 표시(안 도는데) — 정직-상태 위반. 수정: flow-projection이 enabled일 때만 nextRunAtIso 계산(disabled→null), 리스트는 "Paused/일시정지됨" 라벨. cron/timezone은 유지(paused여도 스케줄 설정 보임), 노드는 next-run chip 자동 생략.
+- 왜: 제품 honest-state floor — disabled 흐름은 발화 안 하므로 "다음 실행 X"는 거짓 상태. 단일 서버 프로젝션 변경으로 두 빌더 표면(리스트+캔버스) 동시 수정.
+- 리뷰지점: compareFlows null 양측 안전(disabled는 이미 enabled 뒤 정렬), 모든 nextRunAtIso 소비자(Work·Autonomy) truthy-guard라 파손 없음(opus 검증). formatMetaValue null→chip 필터.
+- 리스크: 없음.
+- 라이브: 격리 데모 흐름 disable→API nextRun null·리스트 "일시정지됨"·트리거 노드 cron+tz만(next-run chip 없음) 실측.
