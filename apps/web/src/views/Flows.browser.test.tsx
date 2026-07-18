@@ -948,3 +948,18 @@ test("the Schedule tab lists operational rows and a row name click returns to th
   await expect.poll(() => document.querySelector(".react-flow") !== null).toBe(true);
   await expect.element(screen.getByRole("tab", { name: "Canvas" })).toHaveAttribute("aria-selected", "true");
 });
+
+test("copilot chat: Enter sends, and the thread shows the user bubble + first-draft ack", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  const composer = screen.getByLabelText("Describe an automation");
+  await composer.fill("매일 아침 9시에 일정 요약해서 알려줘");
+  await composer.click();
+  document.querySelector<HTMLTextAreaElement>(".copilot-composer textarea")!
+    .dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+
+  await expect.poll(() => (client.post as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+  await expect.poll(() => document.querySelectorAll(".chat-bubble.user").length).toBe(1);
+  await expect.poll(() => document.querySelectorAll(".chat-bubble.assistant:not(.pending)").length).toBe(1);
+});

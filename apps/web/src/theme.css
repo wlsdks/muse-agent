@@ -2749,3 +2749,87 @@ button.status-chip {
   overflow-y: auto;
   min-height: 0;
 }
+
+/* copilot chat — thread above, composer pinned below (chat grammar) */
+.ws-side-body.chat {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.copilot-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.copilot-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.copilot-empty {
+  margin: auto;
+  text-align: center;
+  padding: 0 16px;
+}
+.copilot-empty-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.chat-bubble {
+  max-width: 88%;
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--accent-soft, rgba(99, 102, 241, 0.18));
+  border-bottom-right-radius: 4px;
+}
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  border-bottom-left-radius: 4px;
+  color: var(--muted);
+}
+.chat-bubble.pending {
+  opacity: 0.7;
+}
+.copilot-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.copilot-composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  field-sizing: content;
+}
+.copilot-send {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--accent, #6366f1);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.copilot-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

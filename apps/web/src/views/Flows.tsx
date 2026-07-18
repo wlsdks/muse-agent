@@ -281,7 +281,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
               {t("auto.flows.executions.title")}
             </button>
           </div>
-          <div className="ws-side-body">
+          <div className={`ws-side-body${sideTab === "chat" ? " chat" : ""}`}>
             {sideTab === "chat" && (
               <FlowDraftComposer client={client} onDrafted={handleDrafted} currentDraft={currentDraft} />
             )}

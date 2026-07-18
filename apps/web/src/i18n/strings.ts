@@ -597,6 +597,8 @@ const en = {
   "auto.flows.create.toolCatalogEmpty": "No read-only tools are available to schedule yet.",
 
   "auto.flows.draft.inputLabel": "Describe an automation",
+  "auto.flows.draft.emptyTitle": "What should Muse automate?",
+  "auto.flows.draft.firstAck": "Draft filled in — review the form and press Create.",
   "auto.flows.draft.placeholder": "e.g. every morning at 9am, summarize my schedule",
   "auto.flows.draft.revisionPlaceholder": "Keep talking — e.g. change it to 8:30",
   "auto.flows.draft.button": "Draft it",
@@ -1490,6 +1492,8 @@ const ko: Strings = {
   "auto.flows.create.toolCatalogEmpty": "아직 예약 실행할 수 있는 읽기 전용 도구가 없어요.",
 
   "auto.flows.draft.inputLabel": "자동화 설명",
+  "auto.flows.draft.emptyTitle": "무엇을 자동화할까요?",
+  "auto.flows.draft.firstAck": "초안을 채웠어요 — 폼을 확인하고 만들기를 누르세요.",
   "auto.flows.draft.placeholder": "예: 매일 아침 9시에 일정 요약해서 알려줘",
   "auto.flows.draft.revisionPlaceholder": "이어서 바꿔 말해보세요 — 예: 8시 반으로 바꿔줘",
   "auto.flows.draft.button": "초안 그리기",
