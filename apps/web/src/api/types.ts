@@ -480,6 +480,8 @@ export interface ScheduledJobDetail {
   readonly mcpServerName?: string | null;
   readonly toolName?: string | null;
   readonly toolArguments?: Record<string, unknown>;
+  /** Inbound webhook-trigger secret (owner console only); null = webhook off. */
+  readonly webhookTriggerToken?: string | null;
 }
 
 /** Exact `POST /api/scheduler/jobs` body this view sends to create a flow. A

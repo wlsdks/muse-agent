@@ -47,6 +47,10 @@ export interface ScheduledJob {
   readonly tags: readonly string[];
   readonly notificationChannelId?: string;
   readonly webhookUrl?: string;
+  /** Secret for the INBOUND webhook trigger (`POST /api/hooks/flows/:token`)
+   * — server-minted, never user-chosen; absent = webhook trigger off.
+   * Distinct from `webhookUrl`, the OUTBOUND completion-notify target. */
+  readonly webhookTriggerToken?: string;
   readonly retryOnFailure: boolean;
   readonly maxRetryCount: number;
   readonly executionTimeoutMs?: number;
@@ -76,6 +80,7 @@ export interface ScheduledJobInput {
   readonly tags?: readonly string[];
   readonly notificationChannelId?: string | null;
   readonly webhookUrl?: string | null;
+  readonly webhookTriggerToken?: string | null;
   readonly retryOnFailure?: boolean;
   readonly maxRetryCount?: number;
   readonly executionTimeoutMs?: number | null;

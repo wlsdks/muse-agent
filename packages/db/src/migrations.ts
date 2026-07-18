@@ -355,6 +355,7 @@ export const migrations: readonly SqlMigration[] = [
         tags JSONB NOT NULL DEFAULT '[]'::jsonb,
         notification_channel_id VARCHAR(255),
         webhook_url TEXT,
+        webhook_trigger_token VARCHAR(128),
         retry_on_failure BOOLEAN NOT NULL DEFAULT FALSE,
         max_retry_count INTEGER NOT NULL DEFAULT 3,
         execution_timeout_ms BIGINT,
@@ -415,6 +416,17 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_conversation_summaries_user_id
         ON conversation_summaries(user_id)
         WHERE user_id IS NOT NULL;
+    `
+  },
+  {
+    down: `
+      ALTER TABLE IF EXISTS scheduled_jobs
+        DROP COLUMN IF EXISTS webhook_trigger_token;
+    `,
+    name: "0003_scheduled_jobs_webhook_trigger_token",
+    up: `
+      ALTER TABLE scheduled_jobs
+        ADD COLUMN IF NOT EXISTS webhook_trigger_token VARCHAR(128);
     `
   }
 ];

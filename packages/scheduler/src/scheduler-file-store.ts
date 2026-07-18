@@ -152,6 +152,7 @@ function reviveScheduledJob(raw: unknown): ScheduledJob | undefined {
     toolArguments: toJsonObject(r.toolArguments as JsonValue),
     toolName: optionalString(r.toolName),
     updatedAt,
+    webhookTriggerToken: optionalString(r.webhookTriggerToken),
     webhookUrl: optionalString(r.webhookUrl)
   };
 }

@@ -231,6 +231,7 @@ export interface ScheduledJobTable {
   readonly agent_max_tool_calls: number | null;
   readonly tags: JsonColumn;
   readonly notification_channel_id: string | null;
+  readonly webhook_trigger_token: string | null;
   readonly webhook_url: string | null;
   readonly retry_on_failure: boolean;
   readonly max_retry_count: number;

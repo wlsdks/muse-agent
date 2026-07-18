@@ -110,6 +110,65 @@ export function FlowNodeEditPanel({
   );
 }
 
+/** The trigger node's inbound-webhook controls: mint/copy/rotate/revoke the
+ * secret URL. The token is server-minted; this panel never invents one. */
+function WebhookSection({ client, jobId, job }: { client: ApiClient; jobId: string; job: ScheduledJobDetail }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const token = job.webhookTriggerToken ?? null;
+  const mint = useMutation({
+    mutationFn: () => client.post<{ token: string; urlPath: string }>(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/webhook-token`),
+    onSuccess: () => {
+      setCopied(false);
+      invalidateFlowQueries(client, jobId, qc);
+    }
+  });
+  const revoke = useMutation({
+    mutationFn: () => client.del(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/webhook-token`),
+    onSuccess: () => {
+      setCopied(false);
+      invalidateFlowQueries(client, jobId, qc);
+    }
+  });
+  const url = token ? `${client.baseUrl}/api/hooks/flows/${token}` : null;
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border)", display: "grid", gap: 6, marginTop: 4, paddingTop: 10 }}>
+      <span className="field-label">{t("auto.flows.webhook.title")}</span>
+      {url ? (
+        <>
+          <code className="webhook-url" title={url}>{url}</code>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard?.writeText(url).then(() => setCopied(true));
+              }}
+            >
+              {t(copied ? "auto.flows.webhook.copied" : "auto.flows.webhook.copy")}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={mint.isPending} onClick={() => mint.mutate()}>
+              {t("auto.flows.webhook.rotate")}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={revoke.isPending} onClick={() => revoke.mutate()}>
+              {t("auto.flows.webhook.revoke")}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div>
+          <Button variant="secondary" size="sm" disabled={mint.isPending} onClick={() => mint.mutate()}>
+            {t("auto.flows.webhook.enable")}
+          </Button>
+        </div>
+      )}
+      <span className="subtle" style={{ fontSize: 12 }}>{t("auto.flows.webhook.hint")}</span>
+    </div>
+  );
+}
+
 function invalidateFlowQueries(client: ApiClient, jobId: string, qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["flows"] });
   void qc.invalidateQueries({ queryKey: ["scheduler-job-detail", client.baseUrl, jobId] });
@@ -217,6 +276,7 @@ function TriggerEditFields({
           ))}
         </select>
       </label>
+      <WebhookSection client={client} jobId={jobId} job={job} />
       <SaveRow save={save} dirty={dirty} canSave={canSave} />
     </div>
   );

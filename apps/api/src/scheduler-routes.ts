@@ -323,6 +323,7 @@ function toScheduledJobResponse(job: ScheduledJob) {
     cadenceSummary: summarizeCadence(job.cronExpression),
     createdAt: job.createdAt.getTime(),
     cronExpression: job.cronExpression,
+    webhookTriggerToken: job.webhookTriggerToken ?? null,
     description: job.description ?? null,
     enabled: job.enabled,
     executionTimeoutMs: job.executionTimeoutMs ?? null,
@@ -418,7 +419,7 @@ function deriveJobNameFromPrompt(prompt: string): string {
   return collapsed.length <= 60 ? collapsed : `${collapsed.slice(0, 59).trimEnd()}…`;
 }
 
-function parseScheduledJobInput(value: unknown, existing?: ScheduledJob): ParseResult<ScheduledJobUpdateInput> {
+export function parseScheduledJobInput(value: unknown, existing?: ScheduledJob): ParseResult<ScheduledJobUpdateInput> {
   if (!isRecord(value)) {
     return invalid("INVALID_SCHEDULED_JOB", "Body must be an object");
   }
@@ -492,6 +493,9 @@ function parseScheduledJobInput(value: unknown, existing?: ScheduledJob): ParseR
       timezone: readString(value, "timezone", existing?.timezone),
       toolArguments: toolArguments === undefined ? undefined : toolArguments,
       toolName: readNullableString(value, "toolName", existing?.toolName),
+      // NEVER read from the body: the inbound-trigger secret is server-minted
+      // via its own route only — but it must survive an unrelated PATCH.
+      webhookTriggerToken: existing?.webhookTriggerToken ?? undefined,
       webhookUrl: readNullableString(value, "webhookUrl", existing?.webhookUrl)
     }
   };

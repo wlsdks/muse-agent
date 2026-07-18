@@ -94,3 +94,8 @@ describe("buildDuplicateJobInput", () => {
     expect(input.tags).not.toBe(source.tags);
   });
 });
+
+it("NEVER copies the inbound webhook trigger token — a duplicate must mint its own or stay tokenless", () => {
+  const input = buildDuplicateJobInput(job({ webhookTriggerToken: "tok_secret" } as never), { nameSuffix: " (copy)" });
+  expect((input as { webhookTriggerToken?: string }).webhookTriggerToken).toBeUndefined();
+});

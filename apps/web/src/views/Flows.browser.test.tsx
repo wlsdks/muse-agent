@@ -1033,3 +1033,35 @@ test("drag-connect handles: visible on the action source and the ghost target, h
   // The functional gate is isValidConnection/classifyConnection (unit
   // matrix) — here we pin the AFFORDANCE: only meaningful endpoints show.
 });
+
+test("trigger node detail: webhook section mints a URL, and revoke returns to the enable button", async () => {
+  const client = fakeClient();
+  let token: string | null = null;
+  (client.get as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/flows") return FLOWS_RESPONSE;
+    if (path === "/api/scheduler/jobs/job_1") return { ...JOB_DETAIL, webhookTriggerToken: token };
+    if (path === "/api/muse/loopback") return LOOPBACK_CATALOG;
+    if (path === "/api/messaging/setup") return { providers: [] };
+    throw new Error(`unexpected GET ${path}`);
+  });
+  (client.post as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/scheduler/jobs/job_1/webhook-token") {
+      token = "wht_browsertest_000000000000";
+      return { token, urlPath: `/api/hooks/flows/${token}` };
+    }
+    return {};
+  });
+  (client.del as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/scheduler/jobs/job_1/webhook-token") token = null;
+    return undefined;
+  });
+  const screen = await renderFlows(client);
+
+  await screen.getByText("Schedule trigger", { exact: true }).click();
+  await screen.getByRole("button", { name: "Create webhook URL" }).click();
+  await expect.poll(() => document.querySelector(".webhook-url")?.textContent ?? "").toContain("wht_browsertest");
+
+  await screen.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect.poll(() => document.querySelector(".webhook-url")).toBeNull();
+  await expect.element(screen.getByRole("button", { name: "Create webhook URL" })).toBeVisible();
+});

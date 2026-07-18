@@ -83,6 +83,7 @@ import { defaultConversationsFile, FileConversationStore } from "@muse/stores";
 
 import { DiscordProvider, MatrixProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
+import { registerWebhookTriggerRoutes } from "./webhook-trigger-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
 import { registerJourneyRoutes } from "./journey-routes.js";
@@ -257,6 +258,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     scheduler: options.scheduler,
     worksFile: options.worksFile ?? resolveWorksFile(process.env)
+  });
+  registerWebhookTriggerRoutes(server, {
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
+    scheduler: options.scheduler
   });
   registerMcpRoutes(server, {
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),

@@ -190,3 +190,27 @@ describe("FileScheduledJobStore — round-trip persistence", () => {
     expect(list.map((j) => j.name).sort()).toEqual(["a", "b"]);
   });
 });
+
+describe("webhookTriggerToken persistence", () => {
+  it("round-trips the inbound webhook trigger token through a fresh store instance", async () => {
+    const file = tmpFile();
+    const store = new FileScheduledJobStore({ file, idFactory: () => "job-1" });
+    await store.save({
+      agentPrompt: "p",
+      cronExpression: "0 9 * * *",
+      jobType: "agent",
+      name: "j",
+      webhookTriggerToken: "tok_abc123"
+    });
+    const reopened = new FileScheduledJobStore({ file });
+    expect((await reopened.findById("job-1"))?.webhookTriggerToken).toBe("tok_abc123");
+  });
+
+  it("a job saved without a token loads with the field absent", async () => {
+    const file = tmpFile();
+    const store = new FileScheduledJobStore({ file, idFactory: () => "job-1" });
+    await store.save({ agentPrompt: "p", cronExpression: "0 9 * * *", jobType: "agent", name: "j" });
+    const reopened = new FileScheduledJobStore({ file });
+    expect((await reopened.findById("job-1"))?.webhookTriggerToken).toBeUndefined();
+  });
+});

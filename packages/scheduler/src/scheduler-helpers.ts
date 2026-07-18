@@ -104,6 +104,7 @@ export function normalizeScheduledJob(
     toolArguments: input.toolArguments ?? {},
     toolName: blankToUndefined(input.toolName),
     updatedAt,
+    webhookTriggerToken: blankToUndefined(input.webhookTriggerToken),
     webhookUrl: blankToUndefined(input.webhookUrl)
   };
 }
@@ -225,6 +226,7 @@ export function mapScheduledJobRow(row: ScheduledJobRow): ScheduledJob {
     toolArguments: toJsonObject(row.tool_arguments),
     toolName: row.tool_name ?? undefined,
     updatedAt: toDate(row.updated_at),
+    webhookTriggerToken: row.webhook_trigger_token ?? undefined,
     webhookUrl: row.webhook_url ?? undefined
   };
 }
@@ -270,6 +272,7 @@ function scheduledJobToRow(job: ScheduledJob): ScheduledJobInsert {
     tool_arguments: job.toolArguments,
     tool_name: job.toolName ?? null,
     updated_at: job.updatedAt,
+    webhook_trigger_token: job.webhookTriggerToken ?? null,
     webhook_url: job.webhookUrl ?? null
   };
 }
