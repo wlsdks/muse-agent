@@ -4,24 +4,27 @@ import { errorMessage } from "@muse/shared/browser";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { formatMetaValue } from "./flow-nodes.js";
+import { writeBuilderFocusHint } from "./scheduled-logic.js";
+import { linkableFlows, linkableTasks } from "./work-logic.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { BoardResponse, FlowsResponse, WorkOutcomeRow, WorkRow, WorksResponse } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 
-export function WorkView({ client }: { client: ApiClient }) {
+export function WorkView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { t } = useI18n();
   return (
     <div className="content-narrow">
       <p className="eyebrow">{t("group.workspace")}</p>
       <h1 className="page-title">{t("nav.work")}</h1>
       <p className="muted" style={{ marginTop: 4, marginBottom: 16 }}>{t("work.subtitle")}</p>
-      <WorkTab client={client} />
+      <WorkTab client={client} onNavigate={onNavigate} />
     </div>
   );
 }
 
-export function WorkTab({ client }: { client: ApiClient }) {
+export function WorkTab({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const q = useQuery({
     queryFn: () => client.get<WorksResponse>("/api/works"),
     queryKey: ["works", client.baseUrl]
@@ -29,7 +32,7 @@ export function WorkTab({ client }: { client: ApiClient }) {
   const works = q.data?.works ?? [];
   return (
     <AsyncBlock loading={q.isLoading} error={q.error} empty={false}>
-      <WorkBody client={client} works={works} />
+      <WorkBody client={client} works={works} onNavigate={onNavigate} />
     </AsyncBlock>
   );
 }
@@ -40,7 +43,7 @@ function statusTone(status: WorkRow["status"]): "neutral" | "ok" | "warn" {
   return "neutral";
 }
 
-function WorkBody({ client, works }: { client: ApiClient; works: readonly WorkRow[] }) {
+function WorkBody({ client, works, onNavigate }: { client: ApiClient; works: readonly WorkRow[]; onNavigate?: (view: string) => void }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | undefined>(works[0]?.id);
@@ -101,7 +104,7 @@ function WorkBody({ client, works }: { client: ApiClient; works: readonly WorkRo
   return (
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "280px 1fr" }}>
       <WorkListCard works={works} selectedId={selected.id} onSelect={setSelectedId} onCreate={() => setCreating(true)} t={t} />
-      <WorkDetail client={client} work={selected} onDeleted={() => setSelectedId(undefined)} />
+      <WorkDetail client={client} work={selected} onDeleted={() => setSelectedId(undefined)} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -187,6 +190,45 @@ function WorkCreatePanel({
   );
 }
 
+/** Builder-grammar link picker: choose an existing entity by NAME — never
+ * type a raw id. Renders nothing when no unlinked candidate exists. */
+function EntityLinkPicker({
+  label,
+  options,
+  disabled,
+  onPick
+}: {
+  label: string;
+  options: readonly { id: string; label: string }[];
+  disabled: boolean;
+  onPick: (id: string) => void;
+}) {
+  if (options.length === 0) {
+    return null;
+  }
+  return (
+    <select
+      className="input"
+      style={{ marginTop: 8 }}
+      aria-label={label}
+      disabled={disabled}
+      value=""
+      onChange={(event) => {
+        if (event.target.value) {
+          onPick(event.target.value);
+        }
+      }}
+    >
+      <option value="">{label}</option>
+      {options.map((option) => (
+        <option key={option.id} value={option.id}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function LinkPicker({
   placeholder,
   buttonLabel,
@@ -239,8 +281,8 @@ function OutcomeTimeline({ outcomes, t }: { outcomes: readonly WorkOutcomeRow[];
   );
 }
 
-function WorkDetail({ client, work, onDeleted }: { client: ApiClient; work: WorkRow; onDeleted: () => void }) {
-  const { t } = useI18n();
+function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient; work: WorkRow; onDeleted: () => void; onNavigate?: (view: string) => void }) {
+  const { locale, t } = useI18n();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["works"] });
 
@@ -258,6 +300,11 @@ function WorkDetail({ client, work, onDeleted }: { client: ApiClient; work: Work
   const link = useMutation({
     mutationFn: (input: { kind: "flow" | "task" | "thread"; id: string }) =>
       client.post(`/api/works/${work.id}/link`, { id: input.id, kind: input.kind }),
+    onSuccess: invalidate
+  });
+  const unlink = useMutation({
+    mutationFn: (input: { kind: "flow" | "task"; id: string }) =>
+      client.del(`/api/works/${work.id}/link`, { id: input.id, kind: input.kind }),
     onSuccess: invalidate
   });
   const outcome = useMutation({
@@ -299,20 +346,40 @@ function WorkDetail({ client, work, onDeleted }: { client: ApiClient; work: Work
         {linkedFlows.length === 0 ? (
           <p className="subtle">{t("work.section.flows.empty")}</p>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <div className="work-links">
             {linkedFlows.map((flow) => (
-              <li key={flow.id}>
-                {flow.name}
-                {flow.nextRunAtIso ? ` — ${t("work.nextRun")}: ${flow.nextRunAtIso}` : ""}
-              </li>
+              <div key={flow.id} className="work-link-row">
+                <span className={`dot${flow.enabled ? " on" : ""}`} />
+                <button
+                  type="button"
+                  className="sched-name"
+                  title={t("scheduled.openInBuilder")}
+                  onClick={() => {
+                    writeBuilderFocusHint(typeof window === "undefined" ? undefined : window.sessionStorage, flow.id);
+                    onNavigate?.("flows");
+                  }}
+                >
+                  {flow.name}
+                </button>
+                <span className="sched-sub">
+                  {!flow.enabled
+                    ? t("auto.flows.paused")
+                    : flow.nextRunAtIso
+                      ? formatMetaValue("nextRunAtIso", flow.nextRunAtIso, locale)
+                      : ""}
+                </span>
+                <Button variant="ghost" size="sm" disabled={unlink.isPending} onClick={() => unlink.mutate({ id: flow.id, kind: "flow" })}>
+                  {t("work.unlink")}
+                </Button>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-        <LinkPicker
-          placeholder={t("work.linkFlowPlaceholder")}
-          buttonLabel={t("work.link")}
+        <EntityLinkPicker
+          label={t("work.linkFlowPick")}
+          options={linkableFlows(flowsQuery.data?.flows ?? [], work)}
           disabled={link.isPending}
-          onLink={(id) => link.mutate({ id, kind: "flow" })}
+          onPick={(id) => link.mutate({ id, kind: "flow" })}
         />
       </Card>
 
@@ -320,15 +387,23 @@ function WorkDetail({ client, work, onDeleted }: { client: ApiClient; work: Work
         {linkedTasks.length === 0 ? (
           <p className="subtle">{t("work.section.tasks.empty")}</p>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {linkedTasks.map((task) => <li key={task.id}>{task.title}</li>)}
-          </ul>
+          <div className="work-links">
+            {linkedTasks.map((task) => (
+              <div key={task.id} className="work-link-row">
+                <span className="dot on" />
+                <span style={{ flex: 1, minWidth: 0 }}>{task.title}</span>
+                <Button variant="ghost" size="sm" disabled={unlink.isPending} onClick={() => unlink.mutate({ id: task.id, kind: "task" })}>
+                  {t("work.unlink")}
+                </Button>
+              </div>
+            ))}
+          </div>
         )}
-        <LinkPicker
-          placeholder={t("work.linkTaskPlaceholder")}
-          buttonLabel={t("work.link")}
+        <EntityLinkPicker
+          label={t("work.linkTaskPick")}
+          options={linkableTasks(boardQuery.data?.tasks ?? [], work)}
           disabled={link.isPending}
-          onLink={(id) => link.mutate({ id, kind: "task" })}
+          onPick={(id) => link.mutate({ id, kind: "task" })}
         />
       </Card>
 

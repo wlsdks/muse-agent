@@ -9,13 +9,13 @@ export interface ApiClient {
   readonly post: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly put: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly patch: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
-  readonly del: <T>(path: string) => Promise<T>;
+  readonly del: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
 }
 
 export function createApiClient(baseUrl: string, token: string): ApiClient {
   return {
     baseUrl,
-    del: (path) => request(baseUrl, token, path, undefined, "DELETE"),
+    del: (path, body) => request(baseUrl, token, path, body, "DELETE"),
     get: (path) => request(baseUrl, token, path, undefined, "GET"),
     patch: (path, body) => request(baseUrl, token, path, body, "PATCH"),
     post: (path, body) => request(baseUrl, token, path, body, "POST"),

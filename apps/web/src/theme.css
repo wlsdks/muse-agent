@@ -2666,3 +2666,20 @@ button.status-chip {
     display: none;
   }
 }
+
+
+/* Work: linked-entity rows (mini operational rows, builder grammar) */
+.work-links {
+  display: flex;
+  flex-direction: column;
+}
+.work-link-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--hairline);
+}
+.work-link-row:last-child {
+  border-bottom: 0;
+}

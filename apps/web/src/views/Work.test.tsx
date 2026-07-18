@@ -128,11 +128,15 @@ describe("WorkTab — populated state", () => {
     expect(html).toContain(DICTIONARIES.en["work.section.thread"]);
     // Linked flow/task resolved by name/title, not just the raw id — and the
     // UNLINKED flow/task from the same /api/flows and /api/board responses
-    // must NOT leak into this Work's sections (this is the filter under test).
+    // must NOT leak into this Work's LINKED rows — but it now legitimately
+    // appears as a link-picker OPTION (the builder-grammar picker offers
+    // exactly the not-yet-linked candidates). (filter under test).
     expect(html).toContain("Party reminders");
-    expect(html).not.toContain("Unrelated automation");
+    const linkedRows = html.split("work-links")[1]?.split("<select")[0] ?? "";
+    expect(linkedRows).not.toContain("Unrelated automation");
+    expect(html).toContain('<option value="job_unrelated">Unrelated automation</option>');
     expect(html).toContain("Book the venue");
-    expect(html).not.toContain("Unrelated board task");
+    expect(html).toContain('<option value="board_unrelated">Unrelated board task</option>');
     expect(html).toContain("thread_1");
     // The outcome timeline entry.
     expect(html).toContain("helped");
