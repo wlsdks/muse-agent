@@ -676,6 +676,14 @@ export interface MessagingSetupProvider {
   /** One-time pairing code to send to the bot — present only while configured AND unpaired. */
   readonly pairingCode?: string;
 }
+export interface ThreadPickRow {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: string;
+}
+export interface ThreadsResponse {
+  readonly threads: readonly ThreadPickRow[];
+}
 export interface MessagingSetupResponse {
   readonly providers: readonly MessagingSetupProvider[];
 }

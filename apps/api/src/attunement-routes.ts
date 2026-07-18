@@ -102,6 +102,14 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     }
   });
 
+  server.get("/api/attunement/threads", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const state = await readAttunementState(gate.attunementFile);
+    // A lean picker feed (id/title/kind) — the Work view links a thread by
+    // PICKING it, never by typing a raw id.
+    return { threads: state.threads.map((thread) => ({ id: thread.id, kind: thread.kind, title: thread.title })) };
+  });
+
   server.get("/api/attunement/interactions", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     return buildContinuityInteractionReport(

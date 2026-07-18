@@ -9,7 +9,7 @@ import { AsyncBlock, Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
 import { readNodePositions, writeNodePosition } from "./flow-node-positions.js";
-import { consumeBuilderFocusHint } from "./scheduled-logic.js";
+import { consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./scheduled-logic.js";
 import { FLOW_EDGE_TYPES } from "./flow-edges.js";
 import { flowDraftToCopilotPayload, renameFlowPatch, toggleEnabledPatch } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
@@ -63,6 +63,17 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const [draftVersion, setDraftVersion] = useState(0);
   const [sideTab, setSideTab] = useState<SideTab>("chat");
   const [zen, setZen] = useState(false);
+  // Work → Builder handoff: arrive with the create panel open and, once the
+  // flow is created, link it back to that Work automatically (one-shot).
+  const [createForWorkId, setCreateForWorkId] = useState<string | undefined>(() =>
+    consumeBuilderCreateForWorkHint(typeof window === "undefined" ? undefined : window.sessionStorage)
+  );
+  useEffect(() => {
+    if (createForWorkId) {
+      setCreating(true);
+    }
+    // mount-only: the hint is consumed exactly once by the state initializer
+  }, []);
 
   // Full-workspace mode: the builder hides the app chrome (sidebar + topbar)
   // via a root attribute so the CSS can reach OUTSIDE this subtree. Cleaned
@@ -105,6 +116,8 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const openCreatePanel = () => {
     setInitialDraft(undefined);
     setLiveDraft(undefined);
+    // A MANUAL open is never Work-bound — only the hint-opened panel is.
+    setCreateForWorkId(undefined);
     setCreating(true);
   };
   const handleDrafted = (draft: FlowDraftPayloadRow) => {
@@ -115,6 +128,9 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   const closeCreatePanel = () => {
     setCreating(false);
     setLiveDraft(undefined);
+    // Cancelling ends the Work binding — a flow created LATER in this
+    // session must not silently link back to that Work.
+    setCreateForWorkId(undefined);
   };
   // The copilot drafts BOTH kinds (agent prompts and read-risk tool flows),
   // so a revision turn always carries the live form state.
@@ -160,6 +176,17 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
                 onCreated={(jobId) => {
                   closeCreatePanel();
                   setSelectedFlowId(jobId);
+                  if (createForWorkId) {
+                    const workId = createForWorkId;
+                    setCreateForWorkId(undefined);
+                    void client
+                      .post(`/api/works/${workId}/link`, { id: jobId, kind: "flow" })
+                      .then(() => void qc.invalidateQueries({ queryKey: ["works"] }))
+                      .catch(() => {
+                        /* linking is best-effort sugar — the flow itself was
+                           created; the user can still link it from the Work view */
+                      });
+                  }
                 }}
               />
             </div>

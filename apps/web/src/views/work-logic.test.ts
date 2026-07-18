@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { linkableFlows, linkableTasks } from "./work-logic.js";
+import { linkableFlows, linkableTasks, linkableThreads } from "./work-logic.js";
 
 import type { BoardResponse, FlowProjection, WorkRow } from "../api/types.js";
 
@@ -39,5 +39,23 @@ describe("linkable candidates — only the not-yet-linked", () => {
   it("empty stores yield empty option lists (picker hides itself)", () => {
     expect(linkableFlows([], WORK)).toEqual([]);
     expect(linkableTasks([], WORK)).toEqual([]);
+  });
+});
+
+describe("linkableThreads — one thread per Work", () => {
+  const THREADS = [
+    { id: "th1", kind: "life", title: "Birthday" },
+    { id: "th2", kind: "work", title: "Q3 deck" }
+  ];
+
+  it("offers every thread while none is linked", () => {
+    expect(linkableThreads(THREADS, { ...WORK, threadId: null } as never)).toEqual([
+      { id: "th1", label: "Birthday" },
+      { id: "th2", label: "Q3 deck" }
+    ]);
+  });
+
+  it("offers nothing once a thread is linked (a Work links exactly one)", () => {
+    expect(linkableThreads(THREADS, { ...WORK, threadId: "th1" } as never)).toEqual([]);
   });
 });

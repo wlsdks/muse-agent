@@ -62,7 +62,7 @@ export function mergeScheduleRows(
   });
 }
 
-/* ── "open in Builder" one-shot focus hint ─────────────────── */
+/* ── one-shot Builder handoffs (focus / create-for-work) ───── */
 
 const FOCUS_KEY = "muse.builderFocusFlow";
 
@@ -76,6 +76,33 @@ export function writeBuilderFocusHint(storage: Pick<Storage, "setItem"> | undefi
 
 /** Reads AND clears the hint — a one-shot handoff, so a later manual visit
  * to the Builder never snaps back to a stale selection. */
+const CREATE_FOR_WORK_KEY = "muse.builderCreateForWork";
+
+/** Work → Builder: open the create panel and auto-link the created flow
+ * back to this Work. One-shot, same discipline as the focus hint. */
+export function writeBuilderCreateForWorkHint(storage: Pick<Storage, "setItem"> | undefined, workId: string): void {
+  try {
+    storage?.setItem(CREATE_FOR_WORK_KEY, workId);
+  } catch {
+    /* storage unavailable — the Builder just opens normally */
+  }
+}
+
+export function consumeBuilderCreateForWorkHint(
+  storage: (Pick<Storage, "getItem"> & Pick<Storage, "removeItem">) | undefined
+): string | undefined {
+  try {
+    const value = storage?.getItem(CREATE_FOR_WORK_KEY);
+    if (value) {
+      storage?.removeItem(CREATE_FOR_WORK_KEY);
+      return value;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function consumeBuilderFocusHint(
   storage: (Pick<Storage, "getItem"> & Pick<Storage, "removeItem">) | undefined
 ): string | undefined {

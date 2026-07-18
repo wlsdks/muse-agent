@@ -707,3 +707,57 @@ test("the Builder consumes Scheduled's one-shot focus hint and opens THAT flow (
     window.sessionStorage.removeItem("muse.builderFocusFlow");
   }
 });
+
+test("arriving with a create-for-work hint opens the create panel and auto-links the created flow to that Work", async () => {
+  window.sessionStorage.setItem("muse.builderCreateForWork", "work_7");
+  const post = vi.fn(async (path: string) => {
+    if (path === "/api/scheduler/jobs") return { id: "job_new" };
+    return {};
+  }) as unknown as ApiClient["post"];
+  const client = fakeClientWithPost(post);
+  try {
+    const screen = await renderFlows(client);
+
+    // The panel is ALREADY open (no clicks) — the hint did it, one-shot.
+    await expect.element(screen.getByRole("textbox", { name: "Name" })).toBeVisible();
+    expect(window.sessionStorage.getItem("muse.builderCreateForWork")).toBeNull();
+
+    await screen.getByRole("textbox", { name: "Name" }).fill("Work-bound flow");
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("do the work thing");
+    await screen.getByRole("button", { name: "Create" }).click();
+
+    // The created flow is linked back to the Work automatically.
+    await expect.poll(() => (post as ReturnType<typeof vi.fn>).mock.calls.some(
+      ([path, body]) => path === "/api/works/work_7/link"
+        && JSON.stringify(body) === JSON.stringify({ id: "job_new", kind: "flow" })
+    )).toBe(true);
+  } finally {
+    window.sessionStorage.removeItem("muse.builderCreateForWork");
+  }
+});
+
+test("cancelling a Work-bound create panel ends the binding — a later unrelated flow is NOT auto-linked", async () => {
+  window.sessionStorage.setItem("muse.builderCreateForWork", "work_7");
+  const post = vi.fn(async (path: string) => {
+    if (path === "/api/scheduler/jobs") return { id: "job_other" };
+    return {};
+  }) as unknown as ApiClient["post"];
+  const client = fakeClientWithPost(post);
+  try {
+    const screen = await renderFlows(client);
+    await expect.element(screen.getByRole("textbox", { name: "Name" })).toBeVisible();
+
+    // Cancel the Work-bound panel…
+    await screen.getByRole("button", { name: "Cancel" }).click();
+    // …then manually create an unrelated flow in the SAME session.
+    await openCreatePanel(screen);
+    await screen.getByRole("textbox", { name: "Name" }).fill("Unrelated flow");
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("unrelated");
+    await screen.getByRole("button", { name: "Create" }).click();
+
+    await expect.poll(() => (post as ReturnType<typeof vi.fn>).mock.calls.some(([path]) => path === "/api/scheduler/jobs")).toBe(true);
+    expect((post as ReturnType<typeof vi.fn>).mock.calls.some(([path]) => String(path).includes("/api/works/"))).toBe(false);
+  } finally {
+    window.sessionStorage.removeItem("muse.builderCreateForWork");
+  }
+});

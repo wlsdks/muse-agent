@@ -4,7 +4,7 @@
  * raw id, so the pickers must offer exactly the not-yet-linked candidates.
  */
 
-import type { BoardResponse, FlowProjection, WorkRow } from "../api/types.js";
+import type { BoardResponse, FlowProjection, ThreadPickRow, WorkRow } from "../api/types.js";
 
 export interface LinkOption {
   readonly id: string;
@@ -16,6 +16,15 @@ export function linkableFlows(flows: readonly FlowProjection[], work: WorkRow): 
   return flows
     .filter((flow) => !work.flowIds.includes(flow.id))
     .map((flow) => ({ id: flow.id, label: flow.name }));
+}
+
+/** Continuity threads as picker options — a Work links ONE thread, so any
+ * thread is a candidate only while none is linked. */
+export function linkableThreads(threads: readonly ThreadPickRow[], work: WorkRow): readonly LinkOption[] {
+  if (work.threadId) {
+    return [];
+  }
+  return threads.map((thread) => ({ id: thread.id, label: thread.title }));
 }
 
 /** Board tasks not already linked to this Work, as picker options. */

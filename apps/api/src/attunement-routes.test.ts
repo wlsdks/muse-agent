@@ -309,3 +309,15 @@ describe("POST /api/attunement/timing/sessions/:sessionId/evaluate", () => {
     expect(after).toBe(before);
   });
 });
+
+describe("GET /api/attunement/threads — the Work view's thread-picker feed", () => {
+  it("returns each thread's id/title/kind and nothing else (lean picker rows)", async () => {
+    const app = server();
+    const res = await app.inject({ method: "GET", url: "/api/attunement/threads" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { threads: readonly Record<string, unknown>[] };
+    expect(body.threads).toHaveLength(1);
+    expect(body.threads[0]).toEqual({ id: threadId, kind: "life", title: "Prepare birthday" });
+    await app.close();
+  });
+});

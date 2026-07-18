@@ -5,11 +5,11 @@ import { errorMessage } from "@muse/shared/browser";
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { formatMetaValue } from "./flow-nodes.js";
-import { writeBuilderFocusHint } from "./scheduled-logic.js";
-import { linkableFlows, linkableTasks } from "./work-logic.js";
+import { writeBuilderCreateForWorkHint, writeBuilderFocusHint } from "./scheduled-logic.js";
+import { linkableFlows, linkableTasks, linkableThreads } from "./work-logic.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { BoardResponse, FlowsResponse, WorkOutcomeRow, WorkRow, WorksResponse } from "../api/types.js";
+import type { BoardResponse, FlowsResponse, ThreadsResponse, WorkOutcomeRow, WorkRow, WorksResponse } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 
 export function WorkView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
@@ -294,6 +294,12 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
     queryFn: () => client.get<BoardResponse>("/api/board"),
     queryKey: ["board", client.baseUrl]
   });
+  const threadsQuery = useQuery({
+    queryFn: () => client.get<ThreadsResponse>("/api/attunement/threads"),
+    queryKey: ["attunement-threads", client.baseUrl],
+    retry: 0
+  });
+  const linkedThread = (threadsQuery.data?.threads ?? []).find((thread) => thread.id === work.threadId);
   const linkedFlows = (flowsQuery.data?.flows ?? []).filter((flow) => work.flowIds.includes(flow.id));
   const linkedTasks = (boardQuery.data?.tasks ?? []).filter((task) => work.boardTaskIds.includes(task.id));
 
@@ -303,7 +309,7 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
     onSuccess: invalidate
   });
   const unlink = useMutation({
-    mutationFn: (input: { kind: "flow" | "task"; id: string }) =>
+    mutationFn: (input: { kind: "flow" | "task" | "thread"; id: string }) =>
       client.del(`/api/works/${work.id}/link`, { id: input.id, kind: input.kind }),
     onSuccess: invalidate
   });
@@ -381,6 +387,18 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
           disabled={link.isPending}
           onPick={(id) => link.mutate({ id, kind: "flow" })}
         />
+        <div style={{ marginTop: 8 }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              writeBuilderCreateForWorkHint(typeof window === "undefined" ? undefined : window.sessionStorage, work.id);
+              onNavigate?.("flows");
+            }}
+          >
+            <Icon.plus className="nav-icon" /> {t("work.newFlowForWork")}
+          </Button>
+        </div>
       </Card>
 
       <Card title={t("work.section.tasks")} count={linkedTasks.length}>
@@ -408,15 +426,29 @@ function WorkDetail({ client, work, onDeleted, onNavigate }: { client: ApiClient
       </Card>
 
       <Card title={t("work.section.thread")}>
-        <p className="subtle">
-          {work.threadId ? t("work.section.thread.linked", { id: work.threadId }) : t("work.section.thread.empty")}
-        </p>
-        <LinkPicker
-          placeholder={t("work.linkThreadPlaceholder")}
-          buttonLabel={t("work.link")}
-          disabled={link.isPending}
-          onLink={(id) => link.mutate({ id, kind: "thread" })}
-        />
+        {work.threadId ? (
+          <div className="work-links">
+            <div className="work-link-row">
+              <span className="dot on" />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {linkedThread ? linkedThread.title : work.threadId}
+              </span>
+              <Button variant="ghost" size="sm" disabled={unlink.isPending} onClick={() => unlink.mutate({ id: work.threadId ?? "", kind: "thread" })}>
+                {t("work.unlink")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="subtle">{t("work.section.thread.empty")}</p>
+            <EntityLinkPicker
+              label={t("work.linkThreadPick")}
+              options={linkableThreads(threadsQuery.data?.threads ?? [], work)}
+              disabled={link.isPending}
+              onPick={(id) => link.mutate({ id, kind: "thread" })}
+            />
+          </>
+        )}
       </Card>
 
       {link.error && <div className="banner err">{errorMessage(link.error, t("work.linkFailed"))}</div>}

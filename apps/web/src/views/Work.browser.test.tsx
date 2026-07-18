@@ -66,6 +66,7 @@ function fakeClient(): ApiClient {
       if (path === "/api/works") return WORKS;
       if (path === "/api/flows") return FLOWS;
       if (path === "/api/board") return BOARD;
+      if (path === "/api/attunement/threads") return { threads: [{ id: "th1", kind: "life", title: "Birthday thread" }] };
       throw new Error(`unexpected GET ${path}`);
     }) as unknown as ApiClient["get"],
     patch: vi.fn(),
@@ -116,4 +117,28 @@ test("clicking a linked flow's name hands off to the Builder (one-shot focus hin
 
   expect(navigate).toHaveBeenCalledWith("flows");
   expect(consumeBuilderFocusHint(window.sessionStorage)).toBe("job_linked");
+});
+
+
+test("picking a continuity thread POSTs the link with kind thread", async () => {
+  const client = fakeClient();
+  const screen = await renderWork(client);
+
+  const picker = screen.getByRole("combobox", { name: "Link a continuity thread…" });
+  await picker.selectOptions("th1");
+
+  expect(client.post).toHaveBeenCalledWith("/api/works/work_1/link", { id: "th1", kind: "thread" });
+});
+
+test("'New flow for this Work' writes the create-for-work hint and navigates to the Builder", async () => {
+  window.sessionStorage.removeItem("muse.builderCreateForWork");
+  const client = fakeClient();
+  const navigate = vi.fn();
+  const screen = await renderWork(client, navigate);
+
+  await screen.getByRole("button", { name: "New flow for this Work" }).click();
+
+  expect(navigate).toHaveBeenCalledWith("flows");
+  expect(window.sessionStorage.getItem("muse.builderCreateForWork")).toBe("work_1");
+  window.sessionStorage.removeItem("muse.builderCreateForWork");
 });
