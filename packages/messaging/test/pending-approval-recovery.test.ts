@@ -160,7 +160,12 @@ describe("recoverPendingApprovalClaim", () => {
     if (!recovered.claimedByThisCall) throw new Error("expected recovery");
     expect(recovered.claimToken).not.toBe(original.claimToken);
     expect(await beginPendingApprovalExecution(file, "recover", original.claimToken)).toEqual({ state: "claimed", transitioned: false });
-    expect(await beginPendingApprovalExecution(file, "recover", recovered.claimToken)).toEqual({ state: "executing", transitioned: true });
+    expect(await beginPendingApprovalExecution(
+      file,
+      "recover",
+      recovered.claimToken,
+      () => new Date(claimedAt.getTime() + CLAIM_RECOVERY_LEASE_MS)
+    )).toEqual({ state: "executing", transitioned: true });
     const stored = JSON.parse(await fs.readFile(file, "utf8")) as { executions: Array<{ claimedAt: string; updatedAt: string }> };
     expect(stored.executions[0]).toMatchObject({
       claimedAt: claimedAt.toISOString(),
