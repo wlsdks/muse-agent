@@ -42,5 +42,5 @@
 | `programmatic-tool-calling` | PTC (programmatic tool calling) | journal deleted 2026-07-18 (git history) | 7 | — | v1.x | DONE — "WIND-DOWN, PTC complete + documented", cron `71f46b2d` deleted (2026-06-30) |
 | `secret-source` | SecretSource redaction/masking 하드닝 | journal deleted 2026-07-18 (git history) | — | — | v1.x | closed (2026-06-30) — red-team 2라운드 PASS |
 
-| `builder-evolution` | Builder/자동화 트랙 지속 개선 + 체감 기능 갭 발굴 (worktree `/tmp/muse-builder-evolution`, Tier2+ 진안승인 main push) | [builder-evolution.md](builder-evolution.md) | 12 | `f76295948` | v2.1.1 | **active** (cron `55ad6e29`, session-only 60m) |
+| `builder-evolution` | Builder/자동화 트랙 지속 개선 + 체감 기능 갭 발굴 (worktree `/tmp/muse-builder-evolution`, Tier2+ 진안승인 main push) | [builder-evolution.md](builder-evolution.md) | 13 | `6c19b6e80` | v2.1.1 | **active** (cron `55ad6e29`, session-only 60m) |
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
