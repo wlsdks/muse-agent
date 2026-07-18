@@ -64,6 +64,41 @@ export function defaultTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
+/** A curated set of IANA zones for the trigger's timezone picker. Offering a
+ * fixed valid list (rather than free text) means the Builder can never
+ * compile an invalid timezone — the scheduler evaluates the cron in this zone
+ * (`computeNextRunAt` passes it to cron-parser), so a bad value would misfire
+ * the schedule. */
+export const COMMON_TIMEZONES: readonly string[] = [
+  "UTC",
+  "Asia/Seoul",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Asia/Kolkata",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Los_Angeles",
+  "Australia/Sydney"
+];
+
+/** The timezone select's options for a job currently on `currentTz`: the
+ * curated set, plus the job's own zone (and the browser's local zone) if not
+ * already present, so an unusual persisted timezone is never dropped from the
+ * dropdown (which would silently reset it on the next save). */
+export function timezoneOptions(currentTz: string): readonly string[] {
+  const options = [...COMMON_TIMEZONES];
+  for (const tz of [currentTz, defaultTimezone()]) {
+    if (tz && tz.trim().length > 0 && !options.includes(tz)) {
+      options.push(tz);
+    }
+  }
+  return options;
+}
+
 export interface ScheduleFormState {
   readonly kind: ScheduleKind;
   readonly customCron: string;
@@ -91,6 +126,7 @@ function clampRetryCount(count: number): number {
 
 export interface TriggerEditForm {
   readonly schedule: ScheduleFormState;
+  readonly timezone: string;
 }
 
 export interface ActionEditForm {
@@ -140,8 +176,8 @@ export interface OutputEditForm {
   readonly notificationChannelId: string;
 }
 
-export function triggerFormFromJob(job: Pick<ScheduledJobDetail, "cronExpression">): TriggerEditForm {
-  return { schedule: scheduleFormFromCron(job.cronExpression) };
+export function triggerFormFromJob(job: Pick<ScheduledJobDetail, "cronExpression" | "timezone">): TriggerEditForm {
+  return { schedule: scheduleFormFromCron(job.cronExpression), timezone: job.timezone };
 }
 
 export function actionFormFromJob(
@@ -173,7 +209,8 @@ export function flowEditToJobPatch(
   form: TriggerEditForm | ActionEditForm | OutputEditForm | ToolActionEditForm
 ): ScheduledJobPatchBody {
   if (kind === "trigger") {
-    return { cronExpression: resolveScheduleCron((form as TriggerEditForm).schedule) };
+    const triggerForm = form as TriggerEditForm;
+    return { cronExpression: resolveScheduleCron(triggerForm.schedule), timezone: triggerForm.timezone };
   }
   if (kind === "action") {
     const actionForm = form as ActionEditForm;

@@ -189,13 +189,28 @@ test("selecting the trigger node and choosing a new preset PATCHes exactly the r
   await expect.element(screen.getByRole("heading", { name: "Morning brief" })).toBeVisible();
   await screen.getByText("Schedule trigger", { exact: true }).click();
 
-  const scheduleSelect = screen.getByRole("combobox");
+  const scheduleSelect = screen.getByRole("combobox", { name: "Schedule" });
   await expect.element(scheduleSelect).toBeVisible();
   await scheduleSelect.selectOptions("hourly");
 
   await screen.getByRole("button", { name: "Save" }).click();
 
-  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { cronExpression: "0 * * * *" });
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { cronExpression: "0 * * * *", timezone: "UTC" });
+});
+
+test("changing the trigger timezone PATCHes cronExpression + the chosen timezone", async () => {
+  const client = fakeClient();
+  const screen = await renderFlows(client);
+
+  await screen.getByText("Schedule trigger", { exact: true }).click();
+  const tzSelect = screen.getByRole("combobox", { name: "Timezone" });
+  await expect.element(tzSelect).toBeVisible();
+  await tzSelect.selectOptions("Asia/Seoul");
+
+  await screen.getByRole("button", { name: "Save" }).click();
+
+  // The job stays on its 0 9 * * * cron but now fires in Seoul, not UTC.
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { cronExpression: "0 9 * * *", timezone: "Asia/Seoul" });
 });
 
 test("toggling retry on the action node PATCHes retryOnFailure + a real maxRetryCount, prompt/model unchanged", async () => {

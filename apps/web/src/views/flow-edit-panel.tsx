@@ -13,6 +13,7 @@ import {
   outputFormFromJob,
   parseToolArgumentsText,
   SCHEDULE_PRESETS,
+  timezoneOptions,
   toolActionFormFromJob,
   triggerFormFromJob,
   type ActionEditForm,
@@ -149,7 +150,7 @@ function TriggerEditFields({
           value={form.schedule.kind}
           onChange={(e) => {
             const kind = e.target.value as ScheduleKind;
-            setForm({ schedule: { customCron: kind === "custom" ? form.schedule.customCron : "", kind } });
+            setForm({ ...form, schedule: { customCron: kind === "custom" ? form.schedule.customCron : "", kind } });
           }}
         >
           {SCHEDULE_PRESETS.map((preset) => (
@@ -168,7 +169,7 @@ function TriggerEditFields({
             type="text"
             placeholder="0 9 * * *"
             value={form.schedule.customCron}
-            onChange={(e) => setForm({ schedule: { customCron: e.target.value, kind: "custom" } })}
+            onChange={(e) => setForm({ ...form, schedule: { customCron: e.target.value, kind: "custom" } })}
           />
           <span className="subtle" style={{ fontSize: 12 }}>{t("auto.flows.edit.customCronHint")}</span>
           {customInvalid && (
@@ -178,7 +179,20 @@ function TriggerEditFields({
           )}
         </label>
       )}
-      <div className="row-meta">{t("auto.flows.meta.timezone")}: {job.timezone}</div>
+      <label style={{ display: "grid", gap: 4 }}>
+        <span className="field-label">{t("auto.flows.meta.timezone")}</span>
+        <select
+          className="input"
+          value={form.timezone}
+          onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+        >
+          {timezoneOptions(form.timezone).map((tz) => (
+            <option key={tz} value={tz}>
+              {tz}
+            </option>
+          ))}
+        </select>
+      </label>
       <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
         <Button variant="primary" size="sm" disabled={!canSave} onClick={() => save.mutate()}>
           {save.isPending ? t("auto.flows.edit.saving") : t("auto.flows.edit.save")}

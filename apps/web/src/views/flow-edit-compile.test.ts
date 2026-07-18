@@ -22,6 +22,7 @@ import {
   resolveScheduleCron,
   SCHEDULE_PRESETS,
   scheduleFormFromCron,
+  timezoneOptions,
   toggleEnabledPatch,
   triggerFormFromJob,
   type ActionEditForm,
@@ -121,10 +122,14 @@ describe("ScheduleFormState round-trip", () => {
 });
 
 describe("triggerFormFromJob / actionFormFromJob / outputFormFromJob — job -> edit form initial values", () => {
-  it("trigger form derives the preset (or custom) from the job's cron", () => {
-    expect(triggerFormFromJob(BASE_JOB)).toEqual({ schedule: { customCron: "", kind: "dailyMorning9" } });
-    expect(triggerFormFromJob({ cronExpression: "*/10 * * * *" })).toEqual({
-      schedule: { customCron: "*/10 * * * *", kind: "custom" }
+  it("trigger form derives the preset (or custom) from the job's cron and carries the job's timezone", () => {
+    expect(triggerFormFromJob(BASE_JOB)).toEqual({
+      schedule: { customCron: "", kind: "dailyMorning9" },
+      timezone: "Asia/Seoul"
+    });
+    expect(triggerFormFromJob({ cronExpression: "*/10 * * * *", timezone: "UTC" })).toEqual({
+      schedule: { customCron: "*/10 * * * *", kind: "custom" },
+      timezone: "UTC"
     });
   });
 
@@ -162,15 +167,29 @@ describe("triggerFormFromJob / actionFormFromJob / outputFormFromJob — job -> 
   });
 });
 
-describe("flowEditToJobPatch — exact PATCH body per node kind (field-name fidelity against the server contract)", () => {
-  it("trigger edit patches ONLY cronExpression", () => {
-    const form: TriggerEditForm = { schedule: { customCron: "", kind: "hourly" } };
-    expect(flowEditToJobPatch("trigger", form)).toEqual({ cronExpression: "0 * * * *" });
+describe("timezoneOptions — the trigger timezone picker's option list", () => {
+  it("includes the job's current timezone even when it is not in the curated set (never silently drops it)", () => {
+    const options = timezoneOptions("Pacific/Chatham");
+    expect(options).toContain("Pacific/Chatham");
+    expect(options).toContain("UTC");
+    expect(options).toContain("Asia/Seoul");
   });
 
-  it("trigger edit resolves a custom cron verbatim", () => {
-    const form: TriggerEditForm = { schedule: { customCron: "15 3 * * 2", kind: "custom" } };
-    expect(flowEditToJobPatch("trigger", form)).toEqual({ cronExpression: "15 3 * * 2" });
+  it("does not duplicate a current timezone that is already curated", () => {
+    const options = timezoneOptions("Asia/Seoul");
+    expect(options.filter((tz) => tz === "Asia/Seoul")).toHaveLength(1);
+  });
+});
+
+describe("flowEditToJobPatch — exact PATCH body per node kind (field-name fidelity against the server contract)", () => {
+  it("trigger edit patches the resolved cron AND the chosen timezone", () => {
+    const form: TriggerEditForm = { schedule: { customCron: "", kind: "hourly" }, timezone: "Asia/Seoul" };
+    expect(flowEditToJobPatch("trigger", form)).toEqual({ cronExpression: "0 * * * *", timezone: "Asia/Seoul" });
+  });
+
+  it("trigger edit resolves a custom cron verbatim and carries the timezone", () => {
+    const form: TriggerEditForm = { schedule: { customCron: "15 3 * * 2", kind: "custom" }, timezone: "UTC" };
+    expect(flowEditToJobPatch("trigger", form)).toEqual({ cronExpression: "15 3 * * 2", timezone: "UTC" });
   });
 
   it("action edit with retry OFF sends retryOnFailure: false and a clamped maxRetryCount", () => {

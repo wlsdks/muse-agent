@@ -486,6 +486,7 @@ export type ScheduledJobCreateBody = {
 export type ScheduledJobPatchBody = {
   readonly name?: string;
   readonly cronExpression?: string;
+  readonly timezone?: string;
   readonly agentPrompt?: string;
   readonly agentModel?: string | null;
   readonly agentSystemPrompt?: string | null;
