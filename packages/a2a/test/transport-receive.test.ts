@@ -49,6 +49,16 @@ describe("receiveFromPeer — inbound peer-message safety gate (quarantine | rej
     expect(bad).toMatchObject({ disposition: "reject", reason: "invalid signature — envelope tampered or wrong secret" });
   });
 
+  it("rejects content changed after the sender signed the envelope", () => {
+    const signature = signEnvelope(envelope, SECRET);
+    const tampered = { ...envelope, content: "rm -rf / disguised as a skill" };
+    const decision = receiveFromPeer({ env: ENV, rawBody: bodyFor(tampered), registry, signature });
+    expect(decision).toMatchObject({
+      disposition: "reject",
+      reason: "invalid signature — envelope tampered or wrong secret"
+    });
+  });
+
   it("rejects a correctly-signed message whose kind is NOT shareable know-how (safety core has the final say)", () => {
     const ask = { ...envelope, kind: "ask" as const };
     const decision = receiveFromPeer({ env: ENV, rawBody: bodyFor(ask), registry, signature: signEnvelope(ask, SECRET) });

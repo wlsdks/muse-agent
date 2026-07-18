@@ -706,7 +706,13 @@ export async function buildTieredOrchestration(
             fastModel: tierModels.fast,
             heavyModel: tierModels.heavy,
             runtime,
-            spec: { description: spec.description, id: spec.name, specId: spec.id, ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {}) }
+            spec: {
+              description: spec.description,
+              id: spec.name,
+              specId: spec.id,
+              toolNames: spec.toolNames,
+              ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {})
+            }
           })
         : createSpecWorker(spec, runtime, modelByName.get(spec.name))
     )
@@ -733,6 +739,7 @@ function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime, model?: string
       description: spec.description,
       id: spec.name,
       specId: spec.id,
+      toolNames: spec.toolNames,
       ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {})
     }
   });

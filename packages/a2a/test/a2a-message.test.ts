@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { envelopeToA2AMessage, envelopeToSendRequest, extractEnvelopeFromA2ABody } from "../src/a2a-message.js";
+import { KNOW_HOW_ONLY_EXT_URI } from "../src/agent-card.js";
 
 const envelope = { content: "a useful skill", fromPeerId: "peer-a", kind: "skill" as const, label: "lbl", redacted: false };
 
@@ -11,7 +12,21 @@ describe("envelopeToA2AMessage", () => {
     expect(msg.parts).toHaveLength(1);
     expect(msg.parts[0]?.kind).toBe("data");
     expect(msg.parts[0]?.data).toBe(envelope); // the canonical payload, by reference
-    expect(msg.parts[0]?.metadata).toMatchObject({ "muse:payloadKind": "skill", "muse:redacted": false });
+    expect(msg.parts[0]?.metadata).toMatchObject({
+      "muse:ext": KNOW_HOW_ONLY_EXT_URI,
+      "muse:payloadKind": "skill",
+      "muse:redacted": false
+    });
+  });
+});
+
+describe("envelopeToSendRequest", () => {
+  it("frames the message as the standard A2A JSON-RPC message/send method", () => {
+    expect(envelopeToSendRequest(envelope, "msg-1", "rpc-1")).toMatchObject({
+      id: "rpc-1",
+      jsonrpc: "2.0",
+      method: "message/send"
+    });
   });
 });
 

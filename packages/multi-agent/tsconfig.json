@@ -23,6 +23,9 @@
       "path": "../model"
     },
     {
+      "path": "../policy"
+    },
+    {
       "path": "../shared"
     },
     {

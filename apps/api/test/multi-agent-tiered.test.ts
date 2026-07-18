@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildTieredOrchestration, resolveOrchestrateTierModels, resolveTierCapacityProbe } from "../src/multi-agent-routes.js";
 
-function spec(name: string, description: string): AgentSpec {
+function spec(name: string, description: string, toolNames: readonly string[] = []): AgentSpec {
   return {
     createdAt: new Date(0),
     description,
@@ -15,7 +15,7 @@ function spec(name: string, description: string): AgentSpec {
     keywords: [],
     mode: "react",
     name,
-    toolNames: [],
+    toolNames: [...toolNames],
     updatedAt: new Date(0)
   };
 }
@@ -73,8 +73,13 @@ describe("resolveTierCapacityProbe", () => {
 
 describe("buildTieredOrchestration", () => {
   it("when the host holds both tiers, each worker runs on the model classified from its role — two tiers in one run", async () => {
-    const { workers, collapsedToHeavy } = await buildTieredOrchestration(SPECS, echoRuntime, MODELS, () => true);
+    const specs = [
+      spec("researcher", "Look up facts and definitions quickly", ["safe.read"]),
+      spec("analyst", "Analyze the trade-offs and reason about the design", [])
+    ];
+    const { workers, collapsedToHeavy } = await buildTieredOrchestration(specs, echoRuntime, MODELS, () => true);
     expect(collapsedToHeavy).toBe(false);
+    expect(workers.map((worker) => worker.toolNames)).toEqual([["safe.read"], []]);
     const byId = await modelsOf(workers);
     expect(byId.researcher).toBe("ollama/qwen3:8b");
     expect(byId.analyst).toBe("ollama/qwen3.6:35b-a3b");
@@ -130,8 +135,13 @@ describe("buildTieredOrchestration — opt-in cascade (MUSE_TIERED_CASCADE)", ()
   it("escalates a LOW-confidence fast worker to the heavy model (runs fast, then heavy)", async () => {
     vi.stubEnv("MUSE_TIERED_CASCADE", "1");
     const env = confidenceRuntime({ [MODELS.fast]: -2.0, [MODELS.heavy]: -0.1 }); // fast below the -1.0 threshold
-    const { workers } = await buildTieredOrchestration(SPECS, env.runtime, MODELS, () => true);
+    const specs = [
+      spec("researcher", "Look up facts and definitions quickly", ["safe.read"]),
+      spec("analyst", "Analyze the trade-offs and reason about the design", [])
+    ];
+    const { workers } = await buildTieredOrchestration(specs, env.runtime, MODELS, () => true);
     const researcher = workers.find((w) => w.id === "researcher")!;
+    expect(researcher.toolNames).toEqual(["safe.read"]);
     const result = await researcher.run(RESEARCHER_INPUT);
     expect(env.calls).toEqual([MODELS.fast, MODELS.heavy]); // cascade: fast first, then escalate
     expect(result.response.model).toBe(MODELS.heavy);

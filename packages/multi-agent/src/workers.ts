@@ -14,6 +14,8 @@ export interface AgentWorker {
    * the run-default `input.model` (single-model behaviour unchanged).
    */
   readonly model?: string;
+  /** Optional child allowlist. Undefined inherits the parent ceiling; [] denies all tools. */
+  readonly toolNames?: readonly string[];
   canHandle(input: AgentRunInput): number;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
@@ -31,7 +33,8 @@ export class RuntimeAgentWorker implements AgentWorker {
     readonly description: string,
     private readonly runtime: AgentRuntime,
     private readonly matcher: (input: AgentRunInput) => number,
-    readonly model?: string
+    readonly model?: string,
+    readonly toolNames?: readonly string[]
   ) {}
 
   canHandle(input: AgentRunInput): number {
@@ -49,6 +52,8 @@ export interface RuntimeAgentWorkerSpec {
   /** Stable persisted spec id; omitted for an ad-hoc runtime worker. */
   readonly specId?: string;
   readonly systemPrompt?: string;
+  /** Preserve omission versus an explicit empty AgentSpec allowlist. */
+  readonly toolNames?: readonly string[];
 }
 
 export interface RuntimeAgentWorkerOptions {
@@ -86,6 +91,7 @@ export function createRuntimeAgentWorker(options: RuntimeAgentWorkerOptions): Ag
     description: spec.description,
     id: spec.id,
     ...(model ? { model } : {}),
+    ...(spec.toolNames !== undefined ? { toolNames: [...spec.toolNames] } : {}),
     run: (input) => runtime.run(prepareRuntimeWorkerInput(input, spec))
   };
 }
@@ -104,6 +110,7 @@ export function createCascadeRuntimeAgentWorker(options: CascadeRuntimeAgentWork
     description: spec.description,
     id: spec.id,
     model: fastModel,
+    ...(spec.toolNames !== undefined ? { toolNames: [...spec.toolNames] } : {}),
     async run(input) {
       const baseInput = prepareRuntimeWorkerInput(input, spec, { logprobs: true });
       const outcome = await runCascade<AgentRunResult>({

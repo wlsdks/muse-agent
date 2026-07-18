@@ -662,6 +662,9 @@ importers:
       '@muse/model':
         specifier: workspace:*
         version: link:../model
+      '@muse/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
