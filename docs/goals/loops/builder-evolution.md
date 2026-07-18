@@ -89,3 +89,12 @@ ratchet: api flow-projection 15(+1) · web SSR 553(+1) · fabrication 0
 - 리뷰지점: compareFlows null 양측 안전(disabled는 이미 enabled 뒤 정렬), 모든 nextRunAtIso 소비자(Work·Autonomy) truthy-guard라 파손 없음(opus 검증). formatMetaValue null→chip 필터.
 - 리스크: 없음.
 - 라이브: 격리 데모 흐름 disable→API nextRun null·리스트 "일시정지됨"·트리거 노드 cron+tz만(next-run chip 없음) 실측.
+
+## fire 10 · 2026-07-18 · skill v2.1.1 · 162846891
+meta: value-class=new-capability · pkg=@muse/api+@muse/web · kind=llm-capability · verdict=PASS(opus) · firesSinceDrill=2 · consecutiveAllPASS=2
+ratchet: api 1327(+18: compile 32·routes 15) · web SSR 554 · browser 24(+2) · eval:flow-draft 5케이스 5/5×3 STABLE · fabrication 0
+- 무엇: 코파일럿이 TOOL 흐름 초안 — FlowDraftPayload에 action/toolServer/toolName, 라우트가 런타임 레지스트리의 read-risk muse.* 루프백 도구를 허용목록으로 주입(4개 parse 경로 전부 멤버십 fail-close, 목록 밖 쌍=422), 웹은 tool 초안을 tool 모드로 프리필+컴포저 tool 모드 활성화+diff ack 확장, eval:flow-draft에 tool 골든+오발화 가드.
+- 왜: 이전에 DECOMPOSE로 이연된 최대 빌더 갭 — 자연어로 도구 흐름을 못 만들었음. 허용목록=스케줄러 extraTools가 실제 실행하는 집합이라 유효-비실행 불가(구성으로 보장, fire 8 드릴 교훈).
+- 리뷰지점: 신뢰불가 모델 출력이 write/execute 잡을 만들 경로 없음(opus가 빈-목록 fail-close·stray-pair 정규화·이름 regex 11엣지 직접 실행 검증). 리비전은 action echo 필수(tool→agent 침묵 플립 불가). 레거시 5필드 클라이언트 하위호환.
+- 리스크: 런타임 도구 목록(~25)이 eval의 6개 서브셋보다 큼 — 라이브 e2e는 실제 전체 목록으로 성공했으나 선택 품질은 eval이 계속 감시.
+- 라이브: 실 gemma4 e2e 완주 — 컴포저 "매시간 정각에 현재 시각 기록해줘"→tool 초안(muse.time/now, 0 * * * *)→TOOL 모드 프리필→만들기→테스트 실행→실행 기록 성공+실 타임스탬프.
