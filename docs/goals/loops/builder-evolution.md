@@ -190,7 +190,7 @@ ratchet: unit 592 · browser 50(+5) · Flows.tsx 707→336 · LNB 15→13행 · 
 - 라이브: 데모 2회 실측 — LNB 13행+스케줄 탭 왕복 / 채팅 composer 하단고정(<4px)·즉시buble·pending·ack·gemma4 실왕복 폼 채움.
 - 잘한것(검수 확인): compile-seam 분리·bounded repair-retry·useSavableForm 패턴 — 타 표면 재사용 후보로 기록.
 
-## fire 20 · 2026-07-18 · skill v2.1.1 · (this commit)
+## fire 20 · 2026-07-18 · skill v2.1.1 · 969e5d6a7
 meta: value-class=new-capability · pkg=@muse/web · kind=llm-capability(edit-copilot) · verdict=PASS(opus, 2차 — 1차 FAIL 실검출) · firesSinceDrill=4 · consecutiveAllPASS=5*
 ratchet: unit flow-edit-compile 72(+8)·flow-draft-diff 13(+2)·web 602 · browser 51(+1) · eval:flow-draft 6/6 · fabrication 0
 - 무엇: 코파일럿 채팅이 **선택된 기존 흐름을 수정** — copilotPayloadFromJob(기존 잡→9필드 투영, 기존 revision LLM 경로 재사용), patchFromDraftRevision(결정적 changed-fields→PATCH; tool 쌍/args는 한 유닛; no-change·action-flip 거부), EditFlowCopilot(제안→적용/버리기 바, draft-first — 적용 클릭 전 PATCH 없음). 형제-감사: flow-draft-diff가 f16의 9번째 필드(toolArguments)를 몰랐음 → JSON 값비교로 추가.
