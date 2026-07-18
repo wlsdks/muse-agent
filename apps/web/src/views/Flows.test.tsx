@@ -116,6 +116,11 @@ describe("FlowsTab — populated state", () => {
     expect(html).toContain('class="react-flow');
   });
 
+  it("shows a Paused label (not a misleading next-run) on a disabled flow's list row", async () => {
+    const html = await renderFlowsTab(POPULATED);
+    expect(html).toContain(DICTIONARIES.en["auto.flows.paused"]);
+  });
+
   it("shows the node-detail empty hint before any node is selected", async () => {
     const html = await renderFlowsTab(POPULATED);
     expect(html).toContain(DICTIONARIES.en["auto.flows.detailEmpty"]);

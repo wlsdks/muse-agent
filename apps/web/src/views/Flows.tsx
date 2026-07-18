@@ -239,7 +239,11 @@ function FlowListCard({
             <span className="flow-list-item-main">
               <span className="flow-list-item-title">{flow.name}</span>
               <span className="flow-list-item-meta">
-                {flow.nextRunAtIso ? formatMetaValue("nextRunAtIso", flow.nextRunAtIso, locale) : t("auto.flows.selectHint")}
+                {!flow.enabled
+                  ? t("auto.flows.paused")
+                  : flow.nextRunAtIso
+                    ? formatMetaValue("nextRunAtIso", flow.nextRunAtIso, locale)
+                    : t("auto.flows.selectHint")}
               </span>
             </span>
           </button>

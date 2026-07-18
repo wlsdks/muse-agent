@@ -48,7 +48,11 @@ export function projectFlow(job: ScheduledJob, now: Date = new Date()): FlowProj
   const actionId = `${job.id}::action`;
   const outputId = `${job.id}::output`;
 
-  const nextRunAtIso = safeNextRunAtIso(job, now);
+  // A disabled flow does NOT fire, so it has no next run — computing one
+  // would make the list + trigger node show a "Next run 9:00 AM" for a flow
+  // that will never run (a dishonest state). The cron/timezone stay in the
+  // meta so the schedule config is still visible while paused.
+  const nextRunAtIso = job.enabled ? safeNextRunAtIso(job, now) : null;
 
   const nodes: FlowNode[] = [
     {

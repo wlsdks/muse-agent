@@ -37,6 +37,16 @@ describe("projectFlow — trigger node", () => {
     expect(flow.nodes[0]!.meta.nextRunAtIso).toBeNull();
     expect(flow.nextRunAtIso).toBeNull();
   });
+
+  it("reports NO next-run for a disabled flow (it will not fire — showing a next-run would be dishonest), while keeping the cron/timezone visible", () => {
+    const flow = projectFlow({ ...BASE_JOB, enabled: false }, NOW);
+    expect(flow.enabled).toBe(false);
+    expect(flow.nextRunAtIso).toBeNull();
+    expect(flow.nodes[0]!.meta.nextRunAtIso).toBeNull();
+    // the schedule config is still shown while paused
+    expect(flow.nodes[0]!.meta.cronExpression).toBe("0 9 * * *");
+    expect(flow.nodes[0]!.meta.timezone).toBe("UTC");
+  });
 });
 
 describe("projectFlow — action node variants", () => {
