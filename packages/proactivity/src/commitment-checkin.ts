@@ -26,6 +26,7 @@ import {
   withFileMutationQueue,
   withProcessLock
 } from "@muse/stores";
+import { neutralizeProactivityDeliveryText } from "./delivery-text.js";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
@@ -430,8 +431,9 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
 
   for (const checkin of due) {
     try {
+      const deliveryText = neutralizeProactivityDeliveryText(checkin.question);
       const deliver = (): Promise<void> =>
-        options.registry.send(options.providerId, { destination: options.destination, text: checkin.question }).then(() => undefined);
+        options.registry.send(options.providerId, { destination: options.destination, text: deliveryText }).then(() => undefined);
       let digested = false;
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;

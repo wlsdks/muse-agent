@@ -92,6 +92,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **Stored proactive text can no longer carry forged instructions into an
+  immediate delivery.** Pattern notices, commitment check-ins, and ambient
+  notices now neutralize injection spans and forged system/grounding markers at
+  the live channel or notice sink. Clean wording is preserved exactly, while
+  stored source and digest-queue text remain raw for the existing digest render
+  boundary to sanitize later.
+
 - **`muse serve` now heals itself.** If the API process dies unexpectedly,
   the supervisor restarts it with exponential backoff (up to 5 attempts in
   a 10-minute window, forgiven after a healthy minute) and tells you what

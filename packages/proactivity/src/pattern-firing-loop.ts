@@ -38,6 +38,7 @@ import { errorMessage } from "@muse/shared";
 import { sendWithRetry } from "@muse/mcp-shared";
 import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired, withProcessLock } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
+import { neutralizeProactivityDeliveryText } from "./delivery-text.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
 export interface RunDuePatternNoticesOptions {
@@ -165,9 +166,10 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
         const composed = await options.composeSuggestion(match).catch(() => undefined);
         if (composed && composed.trim().length > 0) text = composed.trim();
       }
+      const deliveryText = neutralizeProactivityDeliveryText(text);
       const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
-        text
+        text: deliveryText
       }).then(() => undefined);
       let outcome: "delivered" | "digested" | "skipped" = "delivered";
       if (options.interruptionBudget) {
@@ -211,7 +213,7 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
             generatedAt: now().toISOString(),
             kind: "pattern",
             sourceId: match.id,
-            text
+            text: deliveryText
           });
         } catch (cause) {
           errors.push(`${match.id} broker: ${errorMessage(cause)}`);

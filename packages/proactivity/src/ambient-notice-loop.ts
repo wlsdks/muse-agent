@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { avoidedSourceKeys, readTrustLedger } from "@muse/stores";
 
+import { neutralizeProactivityDeliveryText } from "./delivery-text.js";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
@@ -303,8 +304,9 @@ export function createAmbientNoticeRunner(options: {
     sourceId: string,
     avoidedSources: ReadonlySet<string> | undefined
   ): Promise<{ readonly digested: boolean }> => {
+    const deliveryNotice = { ...notice, text: neutralizeProactivityDeliveryText(notice.text) };
     if (!options.interruptionBudget) {
-      await options.sink.deliver(notice);
+      await options.sink.deliver(deliveryNotice);
       return { digested: false };
     }
     const budget = options.interruptionBudget;
@@ -312,7 +314,7 @@ export function createAmbientNoticeRunner(options: {
       avoidedSources,
       caps: resolveInterruptionBudgetCaps(budget),
       deliver: async () => {
-        await options.sink.deliver(notice);
+        await options.sink.deliver(deliveryNotice);
       },
       digestFile: budget.digestFile,
       ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
@@ -443,7 +445,11 @@ export async function runAmbientNoticeTick(
     if (fired.has(notice.ruleId)) {
       continue;
     }
-    await options.sink.deliver({ kind: notice.kind, text: notice.text, title: notice.title });
+    await options.sink.deliver({
+      kind: notice.kind,
+      text: neutralizeProactivityDeliveryText(notice.text),
+      title: notice.title
+    });
     newlyFired.push(notice.ruleId);
   }
   return { delivered: newlyFired.length, firedRuleIds: [...fired, ...newlyFired] };
