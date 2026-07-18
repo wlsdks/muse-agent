@@ -24,6 +24,9 @@ import { parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 import { type AgentWorker, NoAgentWorkerError } from "./workers.js";
 import type { SubAgentRunRegistry } from "./subagent-run-registry.js";
 import type { BackgroundOrchestrationHandle, BackgroundOrchestrationStore } from "./background-orchestration.js";
+import { dispatchDelegatedWorker, OrchestrationCancelledError } from "./delegated-dispatch.js";
+
+export { OrchestrationCancelledError } from "./delegated-dispatch.js";
 
 function asError(value: unknown): Error {
   if (value !== null && typeof value === "object" && "message" in value) {
@@ -135,13 +138,13 @@ export class SupervisorAgent {
 
       try {
         const worker = this.requireWorker(decision.to);
-        const result = await worker.run({
+        const result = await dispatchDelegatedWorker(worker, {
           ...currentInput,
           metadata: {
             ...currentInput.metadata,
             selectedAgentId: worker.id
           }
-        });
+        }, () => currentInput.signal?.aborted === true);
 
         const parsedResult = parseWorkerResult(result);
         if (!parsedResult.ok) {
@@ -159,6 +162,9 @@ export class SupervisorAgent {
           selectedAgentId: worker.id
         };
       } catch (error) {
+        if (error instanceof OrchestrationCancelledError) {
+          throw error;
+        }
         excluded.add(decision.to);
 
         if (attempt >= this.maxHandoffs || excluded.size >= this.workers.length) {
@@ -180,14 +186,6 @@ export class SupervisorAgent {
     }
 
     return worker;
-  }
-}
-
-/** Thrown when a run stops because the user cancelled it — callers show "stopped", not "broke". */
-export class OrchestrationCancelledError extends Error {
-  constructor(runId: string) {
-    super(`orchestration ${runId} cancelled by user`);
-    this.name = "OrchestrationCancelledError";
   }
 }
 
@@ -255,7 +253,15 @@ export class MultiAgentOrchestrator {
   }
 
   private async runWorkerWithDeadline(worker: AgentWorker, input: AgentRunInput): Promise<AgentRunResult> {
-    return withDeadline(() => worker.run(input), this.workerTimeoutMs, `worker "${worker.id}"`);
+    return withDeadline(
+      () => dispatchDelegatedWorker(
+        worker,
+        input,
+        () => this.isCancelled(input.runId!) || input.signal?.aborted === true
+      ),
+      this.workerTimeoutMs,
+      `worker "${worker.id}"`
+    );
   }
 
   async run(input: AgentRunInput, options: OrchestrationRunOptions = {}): Promise<MultiAgentOrchestrationResult> {

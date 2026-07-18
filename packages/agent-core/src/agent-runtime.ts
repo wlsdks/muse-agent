@@ -48,7 +48,8 @@ import {
 import {
   resolveToolExposureAuthority,
   selectToolNamesForExposureAuthority,
-  type GuardBlockRateMonitor
+  type GuardBlockRateMonitor,
+  type ResolvedToolExposureAuthority
 } from "@muse/policy";
 import { createRunId, errorMessage, type JsonObject } from "@muse/shared";
 import {
@@ -1039,12 +1040,13 @@ export class AgentRuntime {
     const recentToolNames = stringListMetadata(context.input.metadata?.recentToolNames);
     const callerMaxTools = numberMetadata(context.input.metadata?.maxTools);
     const availableTools = this.toolRegistry.list();
+    const safeDefaultToolNames = availableTools
+      .filter((tool) => tool.definition.risk === "read" && !tool.definition.scopes?.includes("local"))
+      .map((tool) => tool.definition.name);
     const requestedAuthority = context.input.toolExposureAuthority;
-    const authority = requestedAuthority === undefined
+    const authority: ResolvedToolExposureAuthority | undefined = requestedAuthority === undefined
       ? {
-          allowedToolNames: availableTools
-            .filter((tool) => tool.definition.risk === "read" && !tool.definition.scopes?.includes("local"))
-            .map((tool) => tool.definition.name),
+          allowedToolNames: safeDefaultToolNames,
           localMode: false
         }
       : resolveToolExposureAuthority(requestedAuthority);
@@ -1053,12 +1055,17 @@ export class AgentRuntime {
       return [];
     }
 
+    const safeDefaultCandidates = authority.safeDefaultOnly === true
+      ? new Set(authority.allowedToolNames)
+      : undefined;
     const allowedToolNames = requestedAuthority === undefined
       ? authority.allowedToolNames
-      : selectToolNamesForExposureAuthority(
-          authority,
-          availableTools.map((tool) => tool.definition.name)
-        );
+      : safeDefaultCandidates
+        ? safeDefaultToolNames.filter((toolName) => safeDefaultCandidates.has(toolName))
+        : selectToolNamesForExposureAuthority(
+            authority,
+            availableTools.map((tool) => tool.definition.name)
+          );
 
     // `ToolExposurePolicy` treats an empty allowlist as unrestricted. An
     // authority/profile empty allowlist is the opposite: it is an explicit
@@ -1070,7 +1077,7 @@ export class AgentRuntime {
     const tools = this.toolRegistry
       .planForContext({
         allowedToolNames,
-        localMode: authority.localMode,
+        localMode: authority.safeDefaultOnly === true ? false : authority.localMode,
         maxTools: callerMaxTools,
         prompt: userMessage,
         recentToolNames

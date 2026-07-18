@@ -19,6 +19,8 @@ export interface ResolvedToolExposureAuthority {
   readonly allowedToolNames: readonly string[];
   readonly localMode: boolean;
   readonly profileId?: string;
+  /** Internal ceiling minted only while attenuating an absent parent authority. */
+  readonly safeDefaultOnly?: true;
 }
 
 const authorityRecords = new WeakMap<object, ResolvedToolExposureAuthority>();
@@ -37,17 +39,25 @@ function normalizedProfileId(profileId: string | undefined): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-/** Creates an immutable token whose authority cannot survive serialization. */
-export function createToolExposureAuthority(input: ToolExposureAuthorityInput = {}): ToolExposureAuthority {
+function createAuthorityToken(
+  input: ToolExposureAuthorityInput,
+  safeDefaultOnly = false
+): ToolExposureAuthority {
   const token = Object.freeze({}) as ToolExposureAuthority;
   const profileId = normalizedProfileId(input.profileId);
   const record = Object.freeze({
     allowedToolNames: copyToolNames(input.allowedToolNames),
     localMode: input.localMode === true,
-    ...(profileId ? { profileId } : {})
+    ...(profileId ? { profileId } : {}),
+    ...(safeDefaultOnly ? { safeDefaultOnly: true as const } : {})
   });
   authorityRecords.set(token, record);
   return token;
+}
+
+/** Creates an immutable token whose authority cannot survive serialization. */
+export function createToolExposureAuthority(input: ToolExposureAuthorityInput = {}): ToolExposureAuthority {
+  return createAuthorityToken(input);
 }
 
 /** Resolves only a token produced by {@link createToolExposureAuthority}. */
@@ -56,6 +66,47 @@ export function resolveToolExposureAuthority(value: unknown): ResolvedToolExposu
     return undefined;
   }
   return authorityRecords.get(value);
+}
+
+/**
+ * Derives a fresh opaque authority for a delegated worker. Delegation may only
+ * retain or remove parent capabilities; it can never turn a missing, null, or
+ * forged parent token into positive authority.
+ *
+ * `childAllowedToolNames === undefined` means no additional child restriction.
+ * An explicit empty list means zero tools. With no parent token and an explicit
+ * child list, a private marker preserves those names only as candidates beneath
+ * the runtime's existing non-local-read safe default. Null or forged parent
+ * values never receive that marker and fail closed to zero authority.
+ */
+export function attenuateToolExposureAuthority(
+  parentAuthority: unknown,
+  childAllowedToolNames: readonly string[] | undefined
+): ToolExposureAuthority | undefined {
+  if (parentAuthority === undefined && childAllowedToolNames === undefined) {
+    return undefined;
+  }
+
+  if (parentAuthority === undefined) {
+    return childAllowedToolNames!.length === 0
+      ? createToolExposureAuthority({ allowedToolNames: [], localMode: false })
+      : createAuthorityToken({ allowedToolNames: childAllowedToolNames, localMode: false }, true);
+  }
+
+  const parent = resolveToolExposureAuthority(parentAuthority);
+  if (!parent) {
+    return createToolExposureAuthority({ allowedToolNames: [], localMode: false });
+  }
+
+  const childAllowed = childAllowedToolNames === undefined ? undefined : new Set(childAllowedToolNames);
+  const allowedToolNames = childAllowed === undefined
+    ? parent.allowedToolNames
+    : parent.allowedToolNames.filter((toolName) => childAllowed.has(toolName));
+  return createAuthorityToken({
+    allowedToolNames,
+    localMode: parent.localMode,
+    ...(parent.profileId ? { profileId: parent.profileId } : {})
+  }, parent.safeDefaultOnly === true);
 }
 
 /**
