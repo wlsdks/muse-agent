@@ -65,7 +65,7 @@ function formatDraftableTools(draftableTools: readonly DraftableTool[]): string 
   return draftableTools.map((entry) => `${entry.server}.${entry.tool} — ${entry.description}`).join("\n");
 }
 
-function buildSystemPrompt(draftableTools: readonly DraftableTool[]): string {
+function buildDraftSchemaSystemPrompt(draftableTools: readonly DraftableTool[]): string {
   if (draftableTools.length === 0) {
     return `You turn a one-line description of a recurring automation into a scheduled-job draft.\n${AGENT_ONLY_SCHEMA_LINE}\n\n${FEW_SHOT_EXAMPLES}`;
   }
@@ -77,7 +77,7 @@ function buildSystemPrompt(draftableTools: readonly DraftableTool[]): string {
  * model may draft a direct tool flow; empty keeps the agent-only contract. */
 export function buildFlowDraftPrompt(text: string, draftableTools: readonly DraftableTool[] = []): FlowDraftPrompt {
   return {
-    system: buildSystemPrompt(draftableTools),
+    system: buildDraftSchemaSystemPrompt(draftableTools),
     user: `Input: ${text}\nOutput:`
   };
 }
