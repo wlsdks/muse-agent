@@ -80,6 +80,16 @@ export class ScheduledMcpToolInvoker {
     const fullName = `${serverName}.${toolName}`;
 
     const tool = this.findExtraTool(fullName) ?? await this.resolveMcpManagerTool(serverName, fullName);
+    // Runner-level backstop mirroring the Builder picker's policy (진안
+    // 2026-07-18): execute-class never runs unattended, and a write tool on
+    // an outbound-capable server would be an autonomous third-party send.
+    // The picker/copilot already refuse to CREATE such jobs — this guard
+    // keeps the floor even for a job created through the raw API or a
+    // future surface, independent of any per-tool approval gate.
+    const risk = tool.definition.risk;
+    if (risk === "execute" || (risk === "write" && serverName === "muse.messaging")) {
+      throw new SchedulerExecutionError(`Tool '${fullName}' is not schedulable unattended (risk: ${risk})`);
+    }
     const args = resolveTemplateJson(job.toolArguments, job);
     const output = await tool.execute(args, {
       runId: `scheduler_${job.id}_${Date.now()}`,

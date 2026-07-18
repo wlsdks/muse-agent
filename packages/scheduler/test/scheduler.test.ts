@@ -990,3 +990,59 @@ function createUnusedMcpInvoker(): ScheduledMcpToolInvoker {
     })
   );
 }
+
+describe("ScheduledMcpToolInvoker — runner-level risk backstop (mirrors the Builder picker)", () => {
+  function noOpManager(): McpManager {
+    return new McpManager(new InMemoryMcpServerStore(), {
+      connector: { connect: async (): Promise<McpConnection> => ({ listTools: async () => [] }) }
+    });
+  }
+  const executeTool: MuseTool = {
+    definition: { description: "Run a shell command.", inputSchema: {}, name: "muse.shell.run", risk: "execute" },
+    execute: () => "ran"
+  };
+  const outboundSend: MuseTool = {
+    definition: { description: "Send a message.", inputSchema: {}, name: "muse.messaging.send", risk: "write" },
+    execute: () => "sent"
+  };
+  const localWrite: MuseTool = {
+    definition: { description: "Add a reminder.", inputSchema: {}, name: "muse.reminders.add", risk: "write" },
+    execute: () => "added"
+  };
+
+  function jobFor(server: string, tool: string) {
+    return normalizeScheduledJob(
+      {
+        cronExpression: "0 * * * * *",
+        id: "job-risk",
+        jobType: "mcp_tool",
+        mcpServerName: server,
+        name: "risk probe",
+        toolArguments: {},
+        toolName: tool
+      },
+      { id: "job-risk", now: () => new Date("2026-05-05T00:00:00.000Z") }
+    );
+  }
+
+  it("REFUSES an execute-risk tool even when it is resolvable — and the tool never runs", async () => {
+    let ran = false;
+    const spyTool = { ...executeTool, execute: () => { ran = true; return "ran"; } };
+    const invoker = new ScheduledMcpToolInvoker(noOpManager(), { extraTools: () => [spyTool] });
+    await expect(invoker.invoke(jobFor("muse.shell", "run"))).rejects.toThrow(/not schedulable/u);
+    expect(ran).toBe(false);
+  });
+
+  it("REFUSES an outbound write (muse.messaging) — and the tool never runs", async () => {
+    let ran = false;
+    const spyTool = { ...outboundSend, execute: () => { ran = true; return "sent"; } };
+    const invoker = new ScheduledMcpToolInvoker(noOpManager(), { extraTools: () => [spyTool] });
+    await expect(invoker.invoke(jobFor("muse.messaging", "send"))).rejects.toThrow(/not schedulable/u);
+    expect(ran).toBe(false);
+  });
+
+  it("still runs a LOCAL write tool (the 진안-approved class)", async () => {
+    const invoker = new ScheduledMcpToolInvoker(noOpManager(), { extraTools: () => [localWrite] });
+    await expect(invoker.invoke(jobFor("muse.reminders", "add"))).resolves.toBe("added");
+  });
+});

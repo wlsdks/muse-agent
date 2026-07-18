@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
-import { mintWebhookTriggerToken, registerWebhookTriggerRoutes, webhookTokensEqual } from "./webhook-trigger-routes.js";
+import { mintWebhookTriggerToken, registerWebhookTriggerRoutes, WEBHOOK_FIRE_COOLDOWN_MS, webhookTokensEqual } from "./webhook-trigger-routes.js";
 
 import type { ScheduledJob } from "@muse/scheduler";
 
@@ -186,5 +186,28 @@ describe("generic PATCH cannot touch the webhook trigger token", () => {
     expect(withToken.ok && withToken.value.webhookTriggerToken).toBe("wht_livetoken_0000000000000000");
     const without = parseScheduledJobInput({ name: "새 이름" }, job());
     expect(without.ok && without.value.webhookTriggerToken).toBeUndefined();
+  });
+});
+
+describe("per-token fire cooldown", () => {
+  it("a second fire within the cooldown is 429 and does NOT trigger; after the window it fires again", async () => {
+    const jobs = [job({ webhookTriggerToken: "wht_cooldown_00000000000000000" })];
+    const server = Fastify();
+    const service = fakeService(jobs);
+    let clock = 1_000_000;
+    registerWebhookTriggerRoutes(server, {
+      nowMs: () => clock,
+      requireAuthenticated: () => true,
+      scheduler: { service } as never
+    });
+    const url = "/api/hooks/flows/wht_cooldown_00000000000000000";
+    expect((await server.inject({ method: "POST", url })).statusCode).toBe(200);
+    const blocked = await server.inject({ method: "POST", url });
+    expect(blocked.statusCode).toBe(429);
+    expect(service.trigger).toHaveBeenCalledTimes(1);
+    clock += WEBHOOK_FIRE_COOLDOWN_MS + 1;
+    expect((await server.inject({ method: "POST", url })).statusCode).toBe(200);
+    expect(service.trigger).toHaveBeenCalledTimes(2);
+    await server.close();
   });
 });

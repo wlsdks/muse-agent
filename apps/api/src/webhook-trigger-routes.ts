@@ -28,7 +28,13 @@ interface WebhookTriggerRouteOptions {
     reply: { status(statusCode: number): { send(payload: unknown): void } }
   ) => boolean;
   readonly scheduler: ServerOptions["scheduler"];
+  /** Test seam for the per-token cooldown clock. */
+  readonly nowMs?: () => number;
 }
+
+/** Minimum gap between fires of the SAME token — a leaked URL can annoy,
+ * not saturate (each fire may be a full agent run on the local model). */
+export const WEBHOOK_FIRE_COOLDOWN_MS = 5_000;
 
 export function mintWebhookTriggerToken(): string {
   return `wht_${randomBytes(24).toString("base64url")}`;
@@ -43,6 +49,8 @@ export function webhookTokensEqual(a: string, b: string): boolean {
 }
 
 export function registerWebhookTriggerRoutes(server: FastifyInstance, options: WebhookTriggerRouteOptions): void {
+  const nowMs = options.nowMs ?? Date.now;
+  const lastFiredAtMs = new Map<string, number>();
   server.post("/api/scheduler/jobs/:jobId/webhook-token", async (request, reply) => {
     if (!options.requireAuthenticated(request, reply)) {
       return reply;
@@ -99,6 +107,12 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     if (!matched || !matched.enabled) {
       return reply.status(404).send({ error: "Not found" });
     }
+    const previous = lastFiredAtMs.get(matched.id);
+    const at = nowMs();
+    if (previous !== undefined && at - previous < WEBHOOK_FIRE_COOLDOWN_MS) {
+      return reply.status(429).send({ error: "Too many requests" });
+    }
+    lastFiredAtMs.set(matched.id, at);
     // ACK ONLY — the token grants RUN, never READ. Returning the execution
     // result here would turn a leaked trigger URL (third-party scheduler
     // logs, proxies) into an on-demand personal-data read channel; the

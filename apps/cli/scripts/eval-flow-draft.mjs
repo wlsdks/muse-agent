@@ -102,6 +102,19 @@ const DRAFTABLE_TOOLS = [
     },
     server: "muse.url",
     tool: "parse"
+  },
+  {
+    description: "Add a reminder. `text` is the reminder body; `dueAt` accepts an ISO timestamp or a relative phrase ('내일 오전 8시', 'in 3 hours').",
+    inputSchema: {
+      properties: {
+        dueAt: { description: "When it is due, e.g. '내일 오전 8시' or '2026-07-19T08:00:00+09:00'", type: "string" },
+        text: { description: "Reminder body, e.g. '물 마시기'", type: "string" }
+      },
+      required: ["text"],
+      type: "object"
+    },
+    server: "muse.reminders",
+    tool: "add"
   }
 ];
 
@@ -275,6 +288,35 @@ const TOOL_ARGS_CASE = {
   }
 }
 
+// WRITE-tool case (진안 2026-07-18 ruling opened write tools to the copilot):
+// the model must pick the write tool AND copy the reminder body literal.
+const WRITE_TOOL_CASE = {
+  expectedServer: "muse.reminders",
+  expectedTool: "add",
+  label: "KO write-tool draft (daily water reminder)",
+  text: "매일 아침 8시에 물 마시기 리마인더 만들어줘",
+  textKeyword: "물"
+};
+{
+  const parsed = await draftFor(WRITE_TOOL_CASE.text);
+  if (!parsed.ok) {
+    console.log(`FAIL [${WRITE_TOOL_CASE.label}] — model never returned a valid draft: ${parsed.error}`);
+  } else {
+    const pairOk = parsed.value.toolServer === WRITE_TOOL_CASE.expectedServer && parsed.value.toolName === WRITE_TOOL_CASE.expectedTool;
+    const textArg = typeof parsed.value.toolArguments.text === "string" ? parsed.value.toolArguments.text : "";
+    const argsOk = textArg.includes(WRITE_TOOL_CASE.textKeyword);
+    const ok = parsed.value.action === "tool" && pairOk && argsOk;
+    if (ok) {
+      passed += 1;
+    }
+    console.log(
+      `${ok ? "PASS" : "FAIL"} [${WRITE_TOOL_CASE.label}] `
+        + `tool=${pairOk ? "ok" : `WRONG (${String(parsed.value.toolServer)}.${String(parsed.value.toolName)})`} `
+        + `args=${argsOk ? "ok" : `WRONG (${JSON.stringify(parsed.value.toolArguments)})`}`
+    );
+  }
+}
+
 const revisionParsed = await revisionDraftFor(REVISION_CASE.text, REVISION_CASE.currentDraft);
 if (!revisionParsed.ok) {
   console.log(`FAIL [${REVISION_CASE.label}] — model never returned a valid revision: ${revisionParsed.error}`);
@@ -294,7 +336,7 @@ if (!revisionParsed.ok) {
   );
 }
 
-const totalCases = CASES.length + 3;
+const totalCases = CASES.length + 4;
 const rate = passed / totalCases;
 console.log(`\neval:flow-draft — ${passed}/${totalCases} cases passed on ${MODEL} (threshold ${THRESHOLD})`);
 process.exit(rate >= THRESHOLD ? 0 : 1);
