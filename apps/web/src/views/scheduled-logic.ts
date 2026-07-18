@@ -117,3 +117,31 @@ export function consumeBuilderFocusHint(
     return undefined;
   }
 }
+
+/** Chat → Builder: a chat reply's `builderHint` (chat-automation-honesty.ts)
+ *  seeds the Flows create-mode copilot composer with the user's original
+ *  automation ask. One-shot, same discipline as the focus hint. */
+const COPILOT_SEED_KEY = "muse.builderCopilotSeed";
+
+export function writeBuilderCopilotSeed(storage: Pick<Storage, "setItem"> | undefined, text: string): void {
+  try {
+    storage?.setItem(COPILOT_SEED_KEY, text);
+  } catch {
+    /* storage unavailable — the Builder composer just opens empty */
+  }
+}
+
+export function consumeBuilderCopilotSeed(
+  storage: (Pick<Storage, "getItem"> & Pick<Storage, "removeItem">) | undefined
+): string | undefined {
+  try {
+    const value = storage?.getItem(COPILOT_SEED_KEY);
+    if (value) {
+      storage?.removeItem(COPILOT_SEED_KEY);
+      return value;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}

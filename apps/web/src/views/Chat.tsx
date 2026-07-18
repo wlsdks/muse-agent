@@ -10,8 +10,10 @@ import { useI18n } from "../i18n/index.js";
 import { readLocationSeed, stripCompanionSeed } from "../lib/companion-seed.js";
 import { modelChip } from "../lib/model-chip.js";
 import { readToken } from "../lib/token-storage.js";
+import { safeSessionStorage } from "../lib/safe-storage.js";
 import { shouldStickToBottom } from "./chat-autoscroll.js";
 import { ChatsView } from "./Chats.js";
+import { writeBuilderCopilotSeed } from "./scheduled-logic.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ModelsResponse } from "../api/types.js";
@@ -136,6 +138,20 @@ export function ModelChipBadge({ chip, t }: { chip: { name: string; locality: "l
   );
 }
 
+/** The automation-honesty pointer (`chat-automation-honesty.ts`'s
+ * `builderHint`): chat has no way to register a RECURRING automation
+ * itself, so this action hands the user's original ask to the Builder's
+ * copilot composer via a one-shot session-storage seed, then navigates
+ * there. Takes `onCreate` as a prop (no hooks) so it renders directly in a
+ * test, mirroring `StarterChips`. */
+export function CreateInBuilderButton({ onCreate, t }: { onCreate: () => void; t: Translate }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onCreate}>
+      {t("chat.automation.createInBuilder")}
+    </Button>
+  );
+}
+
 /** The chat empty state: welcome copy + starter chips. Hidden once a
  * conversation has messages (`hasMessages`), so a returning user with a
  * transcript never sees onboarding chips. */
@@ -203,7 +219,7 @@ export function ChatView({ client, onNavigate }: { client: ApiClient; onNavigate
         </button>
       </div>
       {tab === "chat" ? (
-        <ChatSession key={epoch} client={client} />
+        <ChatSession key={epoch} client={client} onNavigate={onNavigate} />
       ) : (
         <ChatsView client={client} onNavigate={handleHistoryNavigate} />
       )}
@@ -211,7 +227,7 @@ export function ChatView({ client, onNavigate }: { client: ApiClient; onNavigate
   );
 }
 
-export function ChatSession({ client }: { client: ApiClient }) {
+export function ChatSession({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { t } = useI18n();
   const token = readToken();
   const { activeTool, approve, approving, deny, error, pending, reset, send, thinking, turns } = useChatStream(
@@ -312,6 +328,11 @@ export function ChatSession({ client }: { client: ApiClient }) {
 
   const pickStarter = (prompt: string) => applyStarterPrompt(prompt, setDraft, textareaRef);
 
+  const createInBuilder = (hint: string) => {
+    writeBuilderCopilotSeed(safeSessionStorage(), hint);
+    onNavigate?.("flows");
+  };
+
   return (
     <div className="chat">
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
@@ -355,6 +376,11 @@ export function ChatSession({ client }: { client: ApiClient }) {
                     errorText={error}
                     t={t}
                   />
+                )}
+                {turn.role === "assistant" && turn.builderHint && (
+                  <div style={{ marginTop: 8 }}>
+                    <CreateInBuilderButton onCreate={() => createInBuilder(turn.builderHint!)} t={t} />
+                  </div>
                 )}
                 {(turn.citations?.length ?? 0) > 0 && (
                   <div className="citations">

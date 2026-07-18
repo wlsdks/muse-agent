@@ -2,6 +2,7 @@ import { enforceAnswerCitations, guardAgainstUnbackedActionClaim, type AgentRunt
 import { chatAllowedCitations, createCitationStreamFilter, gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
+import { applyAutomationHonesty } from "./chat-automation-honesty.js";
 import { formatApprovalNotice, type ChatPendingDraft, type PersistedApproval } from "./chat-approval-gate.js";
 
 export function parseMultipartBody(contentType: string | string[] | undefined, body: Buffer): JsonObject {
@@ -224,10 +225,15 @@ export async function* toSseStream(
       if (grounding.conversation) {
         await grounding.conversation.persistTurn(honest.response.output);
       }
+      // Honesty post-pass on the FINAL streamed result only (never per-delta —
+      // deltas already flashed by; this is the authoritative answer before
+      // `done`), same rule as the buffered `/api/chat` path.
+      const automation = applyAutomationHonesty({ replyText: honest.response.output, userText: grounding.question });
       yield `event: grounding\ndata: ${sseData(JSON.stringify({
-        answer: honest.response.output,
+        answer: automation.content,
+        builderHint: automation.builderHint,
         ...(grounding.conversation ? { conversationId: grounding.conversation.conversationId } : {}),
-        gated: gate.gated || honest.response.output !== gate.answer,
+        gated: gate.gated || honest.response.output !== gate.answer || automation.content !== honest.response.output,
         strippedCitations: gate.strippedCitations,
         verdict: gate.groundingVerdict
       }))}\n\n`;

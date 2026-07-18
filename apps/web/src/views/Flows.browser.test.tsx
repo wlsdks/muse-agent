@@ -731,6 +731,31 @@ test("the Builder consumes Scheduled's one-shot focus hint and opens THAT flow (
   }
 });
 
+// Chat → Builder handoff (chat-automation-honesty.ts's `builderHint`, the
+// "Create in Builder" action on a false-done automation reply): the Builder
+// opens the create panel with the copilot composer PRE-FILLED from the
+// chat ask — draft-first still holds, the user still presses send.
+test("arriving with a copilot seed opens the create panel with the composer PRE-FILLED (draft-first: still requires Send)", async () => {
+  const seedText = "매일 아침 9시에 오늘 일정 요약해주는 자동화 만들어줘";
+  window.sessionStorage.setItem("muse.builderCopilotSeed", seedText);
+  const client = fakeClient();
+  try {
+    const screen = await renderFlows(client);
+
+    // The panel is ALREADY open (no clicks) — the hint did it, one-shot.
+    await expect.element(screen.getByRole("textbox", { name: "Name" })).toBeVisible();
+    expect(window.sessionStorage.getItem("muse.builderCopilotSeed")).toBeNull();
+
+    // The copilot composer's textarea carries the seed text already.
+    await expect.element(screen.getByRole("textbox", { name: "Describe an automation" })).toHaveValue(seedText);
+
+    // Draft-first: pre-filling never itself drafts or creates anything.
+    expect(client.post).not.toHaveBeenCalled();
+  } finally {
+    window.sessionStorage.removeItem("muse.builderCopilotSeed");
+  }
+});
+
 test("arriving with a create-for-work hint opens the create panel and auto-links the created flow to that Work", async () => {
   window.sessionStorage.setItem("muse.builderCreateForWork", "work_7");
   const post = vi.fn(async (path: string) => {

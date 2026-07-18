@@ -42,6 +42,7 @@ import {
   verifyPairingCodeAttempt
 } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
+import { applyAutomationHonesty } from "./chat-automation-honesty.js";
 import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
@@ -431,7 +432,12 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         // MAY draw on), the "PASS" sentinel for a genuine ask, and
         // `classifyChannelIntent`'s conservative default.
         const chatGate = gateChatAnswerGrounding({ answer: chatReply, evidence: personaSnapshot, question: latestUserText });
-        return chatGate.answer;
+        // Channel-reply parity with the API /chat surface's honesty post-pass
+        // (chat-automation-honesty.ts): this fast-path composer has no
+        // scheduling capability either, so a reply CLAIMING a registered
+        // recurring automation is corrected the same way before it reaches
+        // the channel.
+        return applyAutomationHonesty({ replyText: chatGate.answer, userText: latestUserText }).content;
       }
     }
     // Delegation ack (S2, "the assistant rhythm"): a non-casual request is a
@@ -518,8 +524,14 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       firstResult: { response: { output: gate.answer }, toolsUsed: result.toolsUsed ?? [] },
       query: latestUserText
     });
+    // Chat-automation honesty post-pass (parity with the API /chat surface):
+    // a channel reply has the same false-done risk — claiming a recurring
+    // automation got registered when the channel has no way to create one.
+    // Applied to the FINAL text only, before the remember-intent branches
+    // below so every return path downstream sees the corrected content.
+    const honestOutput = applyAutomationHonesty({ replyText: honest.response.output, userText: latestUserText }).content;
     if (!rememberIntent) {
-      return honest.response.output;
+      return honestOutput;
     }
     // Deterministic user-side scheduling runs BEFORE the caveat
     // check, so the caveat's before/after count naturally sees whatever it
@@ -535,9 +547,9 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     const scheduledAfter = await countScheduledFollowups(followupsFile, runUserId);
     if (scheduledAfter > scheduledBefore) {
       return scheduledFromUser
-        ? appendScheduledConfirmation(honest.response.output, scheduledFromUser, latestUserText)
-        : honest.response.output;
+        ? appendScheduledConfirmation(honestOutput, scheduledFromUser, latestUserText)
+        : honestOutput;
     }
-    return appendUnscheduledRememberCaveat(honest.response.output, latestUserText);
+    return appendUnscheduledRememberCaveat(honestOutput, latestUserText);
   };
 }

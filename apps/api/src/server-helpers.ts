@@ -27,6 +27,7 @@ import { parseBoolean, resolvePendingApprovalsFile } from "@muse/autoconfigure";
 import { createToolExposureAuthority, type ToolExposureAuthority } from "@muse/policy";
 import { gateChatAnswerGrounding } from "@muse/recall";
 
+import { applyAutomationHonesty } from "./chat-automation-honesty.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChatApprovalGate, formatApprovalNotice, type ChatPendingDraft, type PersistedApproval } from "./chat-approval-gate.js";
 import { resolveChatConversationPlan, withPriorConversationTurns } from "./chat-conversation-continuity.js";
@@ -218,10 +219,18 @@ export async function runChat(
     const delivered = writeWiring && writeWiring.drafts.length > 0
       ? await withApprovalNotice(finalResult, writeWiring, chatUserId(runInput, authUserId))
       : { pendingApprovals: [] as readonly PersistedApproval[], result: finalResult };
+    // Honesty post-pass (chat-automation-honesty.ts): the chat surface has no
+    // scheduling capability of its own, so a reply that CLAIMS it registered a
+    // recurring automation ("규칙을 등록해둘게") is a false-done — correct it and
+    // point the user at the Builder, which the client renders from `builderHint`.
+    const automation = applyAutomationHonesty({ replyText: delivered.result.response.output, userText: question });
+    const honestDelivered = automation.content === delivered.result.response.output
+      ? delivered.result
+      : { ...delivered.result, response: { ...delivered.result.response, output: automation.content } };
     const conversationField = conversationPlan ? { conversationId: conversationPlan.conversationId } : {};
     return responseMode === "compat"
-      ? { ...toCompatChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField }
-      : { ...toExtendedChatResponse(delivered.result, finalGate, delivered.pendingApprovals), ...conversationField };
+      ? { ...toCompatChatResponse(honestDelivered, finalGate, delivered.pendingApprovals, automation.builderHint), ...conversationField }
+      : { ...toExtendedChatResponse(honestDelivered, finalGate, delivered.pendingApprovals, automation.builderHint), ...conversationField };
   } catch (error) {
     return sendAgentError(reply, error, responseMode);
   }

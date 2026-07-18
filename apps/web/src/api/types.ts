@@ -31,6 +31,14 @@ export interface ChatResponse {
   readonly pendingApprovals?: readonly PendingApproval[];
   /** S3b: the shared-conversation-store id this turn was appended to (server-issued if the client omitted one). */
   readonly conversationId?: string;
+  /**
+   * Set (to the user's original ask) when this reply is about a RECURRING
+   * automation chat cannot register itself — `chat-automation-honesty.ts`'s
+   * post-pass. The Chat view renders a "Create in Builder" action that seeds
+   * the Flows copilot composer with this text; `null`/absent means no
+   * automation context applies to this turn.
+   */
+  readonly builderHint?: string | null;
 }
 
 export interface ConversationSummary {

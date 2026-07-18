@@ -16,6 +16,9 @@ export interface ChatTurn {
   citations?: readonly Citation[];
   tools?: readonly string[];
   pendingApprovals?: readonly PendingApproval[];
+  /** Set (to the user's original ask) when this reply is about a recurring
+   *  automation chat cannot register itself — see `ChatResponse.builderHint`. */
+  builderHint?: string | null;
 }
 
 /** @deprecated Import `createStreamRequestLifecycle` for new streaming surfaces. */
@@ -346,6 +349,7 @@ export function useChatStream(baseUrl: string, token: string) {
             t.citations = body.citations ?? [];
             t.tools = body.toolsUsed ?? [];
             t.pendingApprovals = readPendingApprovals(body);
+            t.builderHint = body.builderHint ?? null;
           });
           if (body.conversationId) {
             setConversationId(body.conversationId);
@@ -476,6 +480,12 @@ export function handleEvent(
     if (typeof answer === "string" && answer.length > 0) {
       commit((t) => {
         t.text = answer;
+      });
+    }
+    if (isRecord(payload) && (isRecordString(payload.builderHint) || payload.builderHint === null)) {
+      const builderHint = payload.builderHint as string | null;
+      commit((t) => {
+        t.builderHint = builderHint;
       });
     }
     if (isRecord(payload) && isRecordString(payload.conversationId) && payload.conversationId.length > 0) {

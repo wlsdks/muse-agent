@@ -33,7 +33,8 @@ interface DraftRequest {
 export function FlowDraftComposer({
   client,
   onDrafted,
-  currentDraft
+  currentDraft,
+  initialText
 }: {
   client: ApiClient;
   onDrafted: (draft: FlowDraftPayloadRow) => void;
@@ -41,9 +42,14 @@ export function FlowDraftComposer({
    * shape — undefined before any draft exists (first-turn mode), present
    * once the panel is open (every further turn is a revision). */
   currentDraft?: FlowDraftPayloadRow;
+  /** A one-shot pre-fill (e.g. from the Chat view's "Create in Builder"
+   * handoff, `chat-automation-honesty.ts`'s `builderHint`) — seeds the
+   * textarea on FIRST render only; the user still presses send
+   * (draft-first stays intact). */
+  initialText?: string;
 }) {
   const { t } = useI18n();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => initialText ?? "");
   const [thread, setThread] = useState<readonly ThreadEntry[]>([]);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const isRevision = currentDraft !== undefined;

@@ -9,6 +9,7 @@ import { resolveToolExposureAuthority } from "@muse/policy";
 import { appendLastProactiveDelivery, avoidedSourceKeys, readFollowups, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
+import { AUTOMATION_CORRECTION_BLOCK_KO } from "../src/chat-automation-honesty.js";
 import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST, createInboundAgentRun } from "../src/inbound-agent-run.js";
 
 // The channel reply surface (Telegram et al.) answers with the FULL agent, so
@@ -244,6 +245,33 @@ describe("createInboundAgentRun honest-action gate (channel-reply parity with /c
       source: "42"
     });
     expect(reply).toBe(answer);
+  });
+});
+
+// Chat-automation honesty post-pass (chat-automation-honesty.ts), wired at
+// the SAME seam as the honest-action gate above: a channel reply has no
+// scheduling capability either, so a claim it registered a RECURRING
+// automation is a false-done and must be corrected before it reaches the
+// user — the live-reproduced report was "규칙을 등록해둘게" on a "매일 아침 9시에
+// … 자동화 만들어줘" ask.
+describe("createInboundAgentRun chat-automation honesty (channel-reply parity with /chat)", () => {
+  it("corrects a false recurring-automation registration claim", async () => {
+    const query = "매일 아침 9시에 오늘 일정 요약해주는 자동화 만들어줘";
+    const claim = "네, 규칙을 등록해둘게요!";
+    const run = buildRun({ output: claim, toolsUsed: [] });
+    const reply = await run({ messages: [{ content: query, role: "user" }], providerId: "log", scope: "direct", source: "42" });
+    expect(reply).toContain(AUTOMATION_CORRECTION_BLOCK_KO);
+  });
+
+  it("still passes a BACKED one-time appointment claim through unchanged (no automation-noun false positive)", async () => {
+    const run = buildRun({ output: KO_CLAIM, toolsUsed: ["calendar.create"] });
+    const reply = await run({
+      messages: [{ content: KO_QUERY, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).toBe(KO_CLAIM);
   });
 });
 

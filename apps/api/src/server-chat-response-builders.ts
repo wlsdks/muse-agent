@@ -25,13 +25,15 @@ export interface ChatPendingApprovalView {
 export function toCompatChatResponse(
   result: AgentRunResult,
   grounding?: ChatGroundingReport,
-  pendingApprovals: readonly ChatPendingApprovalView[] = []
+  pendingApprovals: readonly ChatPendingApprovalView[] = [],
+  builderHint: string | null = null
 ) {
   const tokenUsage = compatTokenUsage(result.response.usage);
   const metadata = compatResponseMetadata(result);
 
   return {
     blockReason: typeof metadata.blockReason === "string" ? metadata.blockReason : null,
+    builderHint,
     citations: result.response.citations ?? [],
     content: result.response.output,
     durationMs: null,
@@ -68,10 +70,11 @@ function previewText(value: string, maxLength: number): string {
 export function toExtendedChatResponse(
   result: AgentRunResult,
   grounding?: ChatGroundingReport,
-  pendingApprovals: readonly ChatPendingApprovalView[] = []
+  pendingApprovals: readonly ChatPendingApprovalView[] = [],
+  builderHint: string | null = null
 ) {
   return {
-    ...toCompatChatResponse(result, grounding, pendingApprovals),
+    ...toCompatChatResponse(result, grounding, pendingApprovals, builderHint),
     agentSpec: result.agentSpec,
     contextWindow: result.contextWindow,
     fromCache: result.fromCache ?? false,

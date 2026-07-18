@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeBuilderFocusHint, mergeScheduleRows, writeBuilderFocusHint } from "./scheduled-logic.js";
+import {
+  consumeBuilderCopilotSeed,
+  consumeBuilderFocusHint,
+  mergeScheduleRows,
+  writeBuilderCopilotSeed,
+  writeBuilderFocusHint
+} from "./scheduled-logic.js";
 
 import type { FlowProjection, SchedulerJobRow } from "../api/types.js";
 
@@ -105,5 +111,35 @@ describe("builder focus hint", () => {
     };
     expect(consumeBuilderFocusHint(throwing)).toBeUndefined();
     expect(() => writeBuilderFocusHint(throwing, "x")).not.toThrow();
+  });
+});
+
+describe("builder copilot seed (chat → Builder handoff)", () => {
+  function memoryStorage() {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      removeItem: (k: string) => void map.delete(k),
+      setItem: (k: string, v: string) => void map.set(k, v)
+    };
+  }
+
+  it("is a ONE-SHOT handoff: consumed once, gone after", () => {
+    const store = memoryStorage();
+    writeBuilderCopilotSeed(store, "매일 아침 9시에 오늘 일정 요약해주는 자동화 만들어줘");
+    expect(consumeBuilderCopilotSeed(store)).toBe("매일 아침 9시에 오늘 일정 요약해주는 자동화 만들어줘");
+    expect(consumeBuilderCopilotSeed(store)).toBeUndefined();
+  });
+
+  it("fail-safe on absent/throwing storage", () => {
+    expect(consumeBuilderCopilotSeed(undefined)).toBeUndefined();
+    expect(() => writeBuilderCopilotSeed(undefined, "x")).not.toThrow();
+    const throwing = {
+      getItem: () => { throw new Error("blocked"); },
+      removeItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); }
+    };
+    expect(consumeBuilderCopilotSeed(throwing)).toBeUndefined();
+    expect(() => writeBuilderCopilotSeed(throwing, "x")).not.toThrow();
   });
 });

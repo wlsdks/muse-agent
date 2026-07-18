@@ -5,7 +5,7 @@ import { AsyncBlock, Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeSessionStorage } from "../lib/safe-storage.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
-import { consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./scheduled-logic.js";
+import { consumeBuilderCopilotSeed, consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./scheduled-logic.js";
 import { flowDraftToCopilotPayload, isFlowDraftValid } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
 import { ScheduleTable } from "./Scheduled.js";
@@ -71,8 +71,13 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
     consumeBuilderCreateForWorkHint(safeSessionStorage())
   );
   const [workLinkFailed, setWorkLinkFailed] = useState(false);
+  // Chat → Builder handoff: chat-automation-honesty.ts's `builderHint`
+  // (a recurring-automation ask chat could not register itself) seeds the
+  // copilot composer's first turn — one-shot, same discipline as the other
+  // Builder hints above.
+  const [copilotSeed] = useState<string | undefined>(() => consumeBuilderCopilotSeed(safeSessionStorage()));
   useEffect(() => {
-    if (createForWorkId) {
+    if (createForWorkId || copilotSeed) {
       setCreating(true);
     }
     // mount-only: the hint is consumed exactly once by the state initializer
@@ -285,7 +290,12 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           <div className={`ws-side-body${sideTab === "chat" ? " chat" : ""}`}>
             {sideTab === "chat" && (
               creating || !selectedFlow ? (
-                <FlowDraftComposer client={client} onDrafted={handleDrafted} currentDraft={currentDraft} />
+                <FlowDraftComposer
+                  client={client}
+                  onDrafted={handleDrafted}
+                  currentDraft={currentDraft}
+                  initialText={currentDraft === undefined ? copilotSeed : undefined}
+                />
               ) : (
                 <EditFlowCopilot client={client} flowId={selectedFlow.id} />
               )

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState, ModelChipBadge, PendingApprovals } from "./Chat.js";
+import { STARTER_PROMPTS, StarterChips, applyStarterPrompt, ChatEmptyState, CreateInBuilderButton, ModelChipBadge, PendingApprovals } from "./Chat.js";
 import { DICTIONARIES } from "../i18n/strings.js";
 import { I18nProvider } from "../i18n/index.js";
 
@@ -225,6 +225,22 @@ describe("ChatEmptyState — starter chips only appear in the empty state", () =
     const html = render(true);
     expect(html).toBe("");
     expect(html).not.toContain("starter-chips");
+  });
+});
+
+describe("CreateInBuilderButton — the automation-honesty Builder pointer", () => {
+  it("renders the localized label", () => {
+    const html = renderToStaticMarkup(<CreateInBuilderButton onCreate={() => {}} t={identityT} />);
+    expect(html).toContain("chat.automation.createInBuilder");
+  });
+
+  it("clicking invokes onCreate exactly once", () => {
+    const onCreate = vi.fn();
+    const tree = CreateInBuilderButton({ onCreate, t: identityT });
+    const clickable = collectMatching(tree, (el) => typeof (el.props as { onClick?: unknown }).onClick === "function");
+    expect(clickable).toHaveLength(1);
+    (clickable[0]!.props as { onClick: () => void }).onClick();
+    expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });
 
