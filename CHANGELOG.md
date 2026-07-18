@@ -92,6 +92,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **Shared presence is now monotonic, private, and fail-closed.** Multiple Muse
+  processes on one filesystem merge activity under a cross-process lock instead
+  of letting an older writer erase newer presence. Invalid or future timestamps
+  cannot unlock terminal routing or agent-written reminder/proactive text, the
+  local sidecar is owner-only, and best-effort persistence no longer delays chat
+  requests. A fixed-seed isolated evaluator covers 12,123 logical, durable, and
+  separate-process cases without touching natural user state.
+
 - **Continuity now rejects provider identity drift before opening a Pack.** An
   exact resolver must return the same artifact id, type, provider, and role as
   the user's link; mismatches and provider failures cannot create a delivery or

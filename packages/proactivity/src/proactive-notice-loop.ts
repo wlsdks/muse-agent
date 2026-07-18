@@ -22,6 +22,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { errorMessage, redactSecretsInText } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
+import { isRecentProactiveActivity } from "./presence.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 import {
   collectImminentCalendar,
@@ -112,27 +113,29 @@ export type ProactiveSinkChoice = "terminal" | "messaging";
 /**
  * Route a proactive notice to the surface the user is looking at:
  * the terminal sink when one is wired AND the activity source has
- * seen the user on a local surface, messaging otherwise. Staleness
- * of that presence (a backgrounded terminal) is handled elsewhere;
- * here "recorded at all" is sufficient.
+ * seen the user recently on a local surface, messaging otherwise.
+ * Invalid or stale presence fails closed to messaging.
  */
 export function selectProactiveSink(
   activitySource: ProactiveActivitySource | undefined,
   hasTerminalSink: boolean,
-  freshness?: { readonly nowMs: number; readonly maxAgeMs: number }
+  freshness?: { readonly nowMs: number; readonly maxAgeMs?: number }
 ): ProactiveSinkChoice {
   if (!hasTerminalSink) {
     return "messaging";
   }
   const last = activitySource?.lastActivityMs();
-  if (last === undefined) {
+  if (last === undefined || !Number.isFinite(last) || last < 0) {
+    return "messaging";
+  }
+  if (!freshness && last > Date.now()) {
     return "messaging";
   }
   // A backgrounded / abandoned terminal still reports a (now stale)
   // lastActivityMs; routing to it would render the notice into a
   // surface nobody is watching and the user never gets the ping.
   // Presence older than the window is treated as absent → messaging.
-  if (freshness && freshness.nowMs - last > freshness.maxAgeMs) {
+  if (freshness && !isRecentProactiveActivity(last, freshness.nowMs, freshness.maxAgeMs)) {
     return "messaging";
   }
   return "terminal";
@@ -453,14 +456,10 @@ async function runDueProactiveNoticesUnderLock(
   // the window. Re-checking per-item would let the window expire
   // mid-tick.
   const phaseDActive = isActiveSessionWindow(nowDate, options);
-  const terminalPresenceMaxAgeMs =
-    typeof options.activeSessionWindowMs === "number" && Number.isFinite(options.activeSessionWindowMs)
-      ? options.activeSessionWindowMs
-      : DEFAULT_ACTIVE_WINDOW_MS;
   const sinkChoice = selectProactiveSink(
     options.activitySource,
     options.terminalSink !== undefined,
-    { maxAgeMs: terminalPresenceMaxAgeMs, nowMs: nowDate.getTime() }
+    { maxAgeMs: options.activeSessionWindowMs, nowMs: nowDate.getTime() }
   );
 
   for (const item of sortImminentByStart(imminent)) {
@@ -648,21 +647,13 @@ async function deliverImminentItem(
   }
 }
 
-const DEFAULT_ACTIVE_WINDOW_MS = 5 * 60_000;
-
 function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions): boolean {
   if ((!options.modelProvider && !options.agentRuntime) || !options.agentModel || !options.activitySource) {
     return false;
   }
-  const lastMs = options.activitySource.lastActivityMs();
-  if (lastMs === undefined) {
-    return false;
-  }
-  // Same non-finite guard as leadMinutes: a NaN window makes
-  // `delta <= NaN` always false, silently disabling synthesis.
-  const window = typeof options.activeSessionWindowMs === "number" && Number.isFinite(options.activeSessionWindowMs)
-    ? options.activeSessionWindowMs
-    : DEFAULT_ACTIVE_WINDOW_MS;
-  return now.getTime() - lastMs <= window;
+  return isRecentProactiveActivity(
+    options.activitySource.lastActivityMs(),
+    now.getTime(),
+    options.activeSessionWindowMs
+  );
 }
-

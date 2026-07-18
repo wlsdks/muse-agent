@@ -89,8 +89,8 @@ The store already supports the read side (`status: "pending" |
   `MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS` (default 5 min). The
   activity tracker is shared with the proactive daemon — a single
   `onRequest` hook on `/api/chat*` unlocks both. The file-backed
-  tracker (`MUSE_PROACTIVE_PRESENCE_FILE`) covers the
-  multi-process / multi-device case.
+  tracker (`MUSE_PROACTIVE_PRESENCE_FILE`) covers multiple Muse
+  processes that share the same filesystem.
 - Fail-open: synthesis throw / empty reply / stale window all fall
   back to the raw `reminder.text` so the reminder never gets lost.
   Synthesis errors surface in `summary.errors` for audit; history

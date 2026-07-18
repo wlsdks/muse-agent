@@ -5935,6 +5935,42 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
     expect(msg.sent[0]?.text).toBe("Pay rent");
   });
 
+  it("fails closed to raw reminder text for invalid presence inputs", async () => {
+    const { runDueReminders } = await import("@muse/proactivity");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const cases = [
+      { lastMs: fixedNow.getTime() + 1, name: "future", windowMs: 300_000 },
+      { lastMs: -1, name: "negative", windowMs: 300_000 },
+      { lastMs: Number.NaN, name: "non-finite activity", windowMs: 300_000 },
+      { lastMs: fixedNow.getTime() - 1, name: "negative window", windowMs: -1 },
+      { lastMs: fixedNow.getTime() - 1, name: "non-finite window", windowMs: Number.NaN }
+    ];
+
+    for (const testCase of cases) {
+      const dir = mkdtempSync(join(tmpdir(), `muse-reminder-presence-${testCase.name}-`));
+      const file = join(dir, "reminders.json");
+      seedReminders(file);
+      let agentCalls = 0;
+      const msg = makeFakeRegistry();
+      await runDueReminders({
+        activeSessionWindowMs: testCase.windowMs,
+        activitySource: { lastActivityMs: () => testCase.lastMs },
+        agentModel: "test-model",
+        agentRuntime: { run: async () => { agentCalls += 1; return { response: { output: "synthesized" } }; } },
+        destination: "@me",
+        file,
+        now: () => fixedNow,
+        providerId: "telegram",
+        registry: msg.registry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+      });
+      expect(agentCalls, testCase.name).toBe(0);
+      expect(msg.sent[0]?.text, testCase.name).toBe("Pay rent");
+    }
+  });
+
   it("records the synthesis error in summary + still delivers the flat text", async () => {
     const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
@@ -6865,6 +6901,45 @@ describe("runDueProactiveNotices", () => {
     expect(summary.fired).toBe(1);
     expect(runCalled).toBe(false);
     expect(msg.sent[0]?.text).toBe("⏰ Standup in 5 min");
+  });
+
+  it("Phase D: fails closed to raw proactive text for invalid presence inputs", async () => {
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cases = [
+      { lastMs: fixedNow.getTime() + 1, name: "future", windowMs: 300_000 },
+      { lastMs: -1, name: "negative", windowMs: 300_000 },
+      { lastMs: Number.POSITIVE_INFINITY, name: "non-finite activity", windowMs: 300_000 },
+      { lastMs: fixedNow.getTime() - 1, name: "negative window", windowMs: -1 },
+      { lastMs: fixedNow.getTime() - 1, name: "non-finite window", windowMs: Number.NaN }
+    ];
+
+    for (const testCase of cases) {
+      const dir = mkdtempSync(join(tmpdir(), `muse-proactive-presence-${testCase.name}-`));
+      const sidecarFile = join(dir, "proactive-fired.json");
+      const cal = makeFakeCalendarRegistry([
+        { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-presence", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+      ]);
+      const msg = makeFakeMessagingRegistry();
+      let agentCalls = 0;
+      await runDueProactiveNotices({
+        activeSessionWindowMs: testCase.windowMs,
+        activitySource: { lastActivityMs: () => testCase.lastMs },
+        agentModel: "test-model",
+        agentRuntime: { run: async () => { agentCalls += 1; return { response: { output: "synthesized" } }; } },
+        calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+        destination: "@me",
+        messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+        now: () => fixedNow,
+        providerId: "telegram",
+        sidecarFile
+      });
+      expect(agentCalls, testCase.name).toBe(0);
+      expect(msg.sent[0]?.text, testCase.name).toBe("⏰ Standup in 5 min");
+    }
   });
 
   it("Phase D: falls back to flat text + records error when synthesis throws", async () => {

@@ -14,7 +14,8 @@ import { errorMessage } from "@muse/shared";
  * to [5s, 1h] for the same reason reminder-tick clamps.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
@@ -22,6 +23,7 @@ import { buildGroundingReverify } from "@muse/agent-core";
 import { runDueProactiveNotices, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type ProactiveModelProviderLike } from "@muse/proactivity";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
@@ -208,23 +210,36 @@ function clampInterval(raw: number): number {
  * around right now?".
  */
 export interface InMemoryActivityTracker extends ProactiveActivitySource {
-  record(at?: number): void;
+  record(at?: number): Promise<void>;
 }
 
-export function createInMemoryActivityTracker(): InMemoryActivityTracker {
+export interface InMemoryActivityTrackerOptions {
+  /** Test seam — defaults to `() => Date.now()`. */
+  readonly now?: () => number;
+}
+
+function isValidActivityTimestamp(value: number, nowMs: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= nowMs;
+}
+
+export function createInMemoryActivityTracker(options: InMemoryActivityTrackerOptions = {}): InMemoryActivityTracker {
+  const now = options.now ?? (() => Date.now());
   let lastMs: number | undefined;
   return {
     lastActivityMs: () => lastMs,
-    record: (at?: number) => {
-      lastMs = at ?? Date.now();
+    record: async (at?: number) => {
+      const nowMs = now();
+      const value = at ?? nowMs;
+      if (!isValidActivityTimestamp(value, nowMs)) return;
+      lastMs = lastMs === undefined ? value : Math.max(lastMs, value);
     }
   };
 }
 
 /**
- * File-backed presence tracker for multi-process / multi-device
- * Phase D. Two processes pointing at the same file (e.g. apps/api on
- * machine A + a future `muse listen` daemon on the same `~/.muse`)
+ * File-backed presence tracker for multiple processes sharing one
+ * filesystem. Two local processes pointing at the same file (e.g.
+ * apps/api + a future `muse listen` daemon on the same `~/.muse`)
  * see each other's activity through the shared JSON blob. The format
  * is intentionally minimal — just `{ lastActivityMs: number }`.
  *
@@ -249,12 +264,13 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
   let pendingWriteMs: number | undefined;
   let lastWriteAtMs = 0;
   let writeTimer: ReturnType<typeof setTimeout> | undefined;
+  let observedHighWater: number | undefined;
 
-  const readFromDisk = (): number | undefined => {
+  const readFromDisk = (nowMs: number): number | undefined => {
     try {
       const raw = readFileSync(options.file, "utf8");
       const parsed = JSON.parse(raw) as { readonly lastActivityMs?: unknown };
-      if (typeof parsed.lastActivityMs === "number" && Number.isFinite(parsed.lastActivityMs)) {
+      if (typeof parsed.lastActivityMs === "number" && isValidActivityTimestamp(parsed.lastActivityMs, nowMs)) {
         return parsed.lastActivityMs;
       }
     } catch {
@@ -263,16 +279,32 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
     return undefined;
   };
 
-  const flushWrite = (): void => {
+  const persistHighWater = async (candidate: number): Promise<void> => {
+    await mkdir(dirname(options.file), { mode: 0o700, recursive: true });
+    await withFileMutationQueue(options.file, () => withFileLock(options.file, async () => {
+      let diskLastMs: number | undefined;
+      try {
+        const parsed = JSON.parse(await readFile(options.file, "utf8")) as { readonly lastActivityMs?: unknown };
+        const nowMs = now();
+        if (typeof parsed.lastActivityMs === "number" && isValidActivityTimestamp(parsed.lastActivityMs, nowMs)) {
+          diskLastMs = parsed.lastActivityMs;
+        }
+      } catch {
+        // Missing/corrupt/unreadable is not a valid competing high-water.
+      }
+      const durable = diskLastMs === undefined ? candidate : Math.max(candidate, diskLastMs);
+      observedHighWater = observedHighWater === undefined ? durable : Math.max(observedHighWater, durable);
+      await atomicWriteFile(options.file, `${JSON.stringify({ lastActivityMs: durable })}\n`, { mode: 0o600 });
+    }));
+  };
+
+  const flushWrite = async (): Promise<void> => {
     if (pendingWriteMs === undefined) return;
     const value = pendingWriteMs;
     pendingWriteMs = undefined;
     lastWriteAtMs = now();
     try {
-      const tmp = `${options.file}.tmp-${process.pid.toString()}-${lastWriteAtMs.toString()}`;
-      mkdirSync(dirname(options.file), { recursive: true });
-      writeFileSync(tmp, `${JSON.stringify({ lastActivityMs: value })}\n`, "utf8");
-      renameSync(tmp, options.file);
+      await persistHighWater(value);
     } catch {
       // Best-effort — the daemon will see a slightly older value
       // until the next successful write. Don't crash the request hook.
@@ -285,7 +317,11 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
       if (cachedLastMs !== undefined && nowMs - cachedAtMs < debounceMs) {
         return cachedLastMs;
       }
-      cachedLastMs = readFromDisk();
+      const diskLastMs = readFromDisk(nowMs);
+      if (diskLastMs !== undefined) {
+        observedHighWater = observedHighWater === undefined ? diskLastMs : Math.max(observedHighWater, diskLastMs);
+      }
+      cachedLastMs = observedHighWater;
       cachedAtMs = nowMs;
       // The in-flight pending value (if any) wins over the on-disk
       // value — otherwise a daemon tick that lands between record()
@@ -295,21 +331,24 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
       }
       return cachedLastMs;
     },
-    record: (at?: number) => {
-      const value = at ?? now();
-      pendingWriteMs = pendingWriteMs === undefined ? value : Math.max(pendingWriteMs, value);
+    record: async (at?: number) => {
+      const nowMs = now();
+      const value = at ?? nowMs;
+      if (!isValidActivityTimestamp(value, nowMs)) return;
+      observedHighWater = observedHighWater === undefined ? value : Math.max(observedHighWater, value);
+      pendingWriteMs = pendingWriteMs === undefined ? observedHighWater : Math.max(pendingWriteMs, observedHighWater);
       // Invalidate the read cache so the next lastActivityMs() picks
       // up the new value even if we haven't flushed yet.
       cachedAtMs = 0;
       const elapsed = now() - lastWriteAtMs;
       if (elapsed >= debounceMs) {
-        flushWrite();
+        await flushWrite();
         return;
       }
       if (writeTimer) return;
       writeTimer = setTimeout(() => {
         writeTimer = undefined;
-        flushWrite();
+        void flushWrite();
       }, debounceMs - elapsed);
       // Don't keep the process alive solely to flush activity.
       if (typeof writeTimer.unref === "function") {
@@ -318,4 +357,3 @@ export function createFileBackedActivityTracker(options: FileBackedActivityTrack
     }
   };
 }
-

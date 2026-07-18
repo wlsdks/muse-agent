@@ -15,6 +15,7 @@ import type {
   ProactiveActivitySource,
   ProactiveAgentRuntimeLike
 } from "./proactive-notice-loop.js";
+import { isRecentProactiveActivity } from "./presence.js";
 
 /**
  * Phase B firing engine — see `docs/design/reminder-firing.md`.
@@ -191,18 +192,15 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
   return { delivered, due: due.length, errors, fired };
 }
 
-const DEFAULT_ACTIVE_WINDOW_MS = 5 * 60_000;
-
 function isActiveSessionWindow(now: Date, options: RunDueRemindersOptions): boolean {
   if (!options.agentRuntime || !options.agentModel || !options.activitySource) {
     return false;
   }
-  const lastMs = options.activitySource.lastActivityMs();
-  if (lastMs === undefined) {
-    return false;
-  }
-  const window = options.activeSessionWindowMs ?? DEFAULT_ACTIVE_WINDOW_MS;
-  return now.getTime() - lastMs <= window;
+  return isRecentProactiveActivity(
+    options.activitySource.lastActivityMs(),
+    now.getTime(),
+    options.activeSessionWindowMs
+  );
 }
 
 export const REMINDER_PHASE_D_SYSTEM_PROMPT = composeIdentityPrompt(
