@@ -30,6 +30,21 @@ export {
   type ContinuityReviewItem
 } from "./continuity-review.js";
 export {
+  CONTINUITY_INTERACTION_OUTBOX_MAX_PENDING,
+  CONTINUITY_INTERACTION_OUTBOX_RETRY_BATCH,
+  ContinuityInteractionOutboxError,
+  prepareContinuityTaskCompletionInteraction,
+  readContinuityInteractionOutbox,
+  resolveContinuityInteractionOutboxFile,
+  retryContinuityTaskCompletionInteractions,
+  type ContinuityInteractionOutboxEvent,
+  type ContinuityInteractionOutboxOptions,
+  type ContinuityInteractionOutboxState,
+  type PrepareContinuityTaskCompletionInput,
+  type RetryContinuityInteractionOutboxOptions,
+  type RetryContinuityInteractionOutboxSummary
+} from "./continuity-interaction-outbox.js";
+export {
   CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   CONTINUITY_LONGITUDINAL_DISTINCT_DATES_PER_KIND,

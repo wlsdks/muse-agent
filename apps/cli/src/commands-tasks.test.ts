@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,7 +8,8 @@ import {
   createPersonalThread,
   linkArtifact,
   openPreparedContinuityPack,
-  readAttunementState
+  readAttunementState,
+  readContinuityInteractionOutbox
 } from "@muse/attunement";
 import { errorMessage } from "@muse/shared";
 
@@ -194,6 +196,7 @@ describe("muse tasks — API-unreachable falls back to the local store (local-fi
   it("complete: an unreachable API marks the task done in the LOCAL store", async () => {
     const file = join(mkdtempSync(join(tmpdir(), "muse-tasks-fb-cmp-")), "tasks.json");
     process.env.MUSE_TASKS_FILE = file;
+    process.env.MUSE_ATTUNEMENT_FILE = join(file, "..", "attunement.json");
     await writeTasks(file, [{ createdAt: new Date().toISOString(), id: "task_abc1234", status: "open", title: "ship it" }]);
     const error = await runWith(unreachable, ["complete", "task_abc1234"]);
     expect(error).toBeUndefined();
@@ -203,12 +206,14 @@ describe("muse tasks — API-unreachable falls back to the local store (local-fi
   it("complete: re-completing an ALREADY-done task PRESERVES the original completedAt (idempotent, no silent rewrite)", async () => {
     const file = join(mkdtempSync(join(tmpdir(), "muse-tasks-redo-")), "tasks.json");
     process.env.MUSE_TASKS_FILE = file;
+    process.env.MUSE_ATTUNEMENT_FILE = join(file, "..", "attunement.json");
     const originalCompletedAt = "2026-01-15T10:00:00.000Z";
     await writeTasks(file, [{ completedAt: originalCompletedAt, createdAt: "2026-01-01T00:00:00.000Z", id: "task_done9", status: "done", title: "shipped" }]);
     const error = await runWith(async () => ({}), ["complete", "task_done9", "--local"]);
     expect(error).toBeUndefined();
     // the original "when it was done" is intact, NOT rewritten to now
     expect((await readTasks(file))[0]?.completedAt).toBe(originalCompletedAt);
+    expect((await readContinuityInteractionOutbox(process.env.MUSE_ATTUNEMENT_FILE!)).entries).toHaveLength(0);
   });
 
   it("complete --local records factual Continuity evidence only after the open task becomes done", async () => {
@@ -231,6 +236,39 @@ describe("muse tasks — API-unreachable falls back to the local store (local-fi
     );
 
     expect(await runWith(async () => ({}), ["complete", "task_cli_evidence", "--local"])).toBeUndefined();
+    const state = await readAttunementState(attunementFile);
+    expect(state.interactionReceipts).toHaveLength(1);
+    expect(state.deliveries[0]?.outcome).toBeUndefined();
+  });
+
+  it("complete --local retries an existing pending receipt for an already-done task without rewriting completedAt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tasks-continuity-retry-"));
+    const file = join(dir, "tasks.json");
+    const attunementFile = join(dir, "attunement.json");
+    const notesDir = join(dir, "notes");
+    process.env.MUSE_TASKS_FILE = file;
+    process.env.MUSE_ATTUNEMENT_FILE = attunementFile;
+    await writeTasks(file, [{ createdAt: "2026-01-01T00:00:00.000Z", id: "task_cli_retry", status: "open", title: "CLI retry" }]);
+    const thread = await createPersonalThread(attunementFile, { kind: "work", title: "CLI retry root" });
+    await linkArtifact(attunementFile, {
+      artifactId: "task_cli_retry", artifactType: "task", role: "next-step", threadId: thread.id
+    }, { validateArtifact: createLocalArtifactValidator({ notesDir, tasksFile: file }) });
+    await openPreparedContinuityPack(
+      attunementFile,
+      thread.id,
+      createLocalExactArtifactResolver({ notesDir, tasksFile: file }),
+      { now: () => Date.parse("2026-01-02T00:00:00.000Z") }
+    );
+    const validBytes = await readFile(attunementFile, "utf8");
+    await writeFile(attunementFile, "{\"invalid\":true}\n");
+
+    expect(await runWith(async () => ({}), ["complete", "task_cli_retry", "--local"])).toBeUndefined();
+    const completedAt = (await readTasks(file))[0]?.completedAt;
+    expect(completedAt).toBeDefined();
+
+    await writeFile(attunementFile, validBytes);
+    expect(await runWith(async () => ({}), ["complete", "task_cli_retry", "--local"])).toBeUndefined();
+    expect((await readTasks(file))[0]?.completedAt).toBe(completedAt);
     const state = await readAttunementState(attunementFile);
     expect(state.interactionReceipts).toHaveLength(1);
     expect(state.deliveries[0]?.outcome).toBeUndefined();

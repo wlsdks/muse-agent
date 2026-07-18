@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,11 +9,12 @@ import {
   createPersonalThread,
   linkArtifact,
   openPreparedContinuityPack,
-  readAttunementState
+  readAttunementState,
+  resolveContinuityInteractionOutboxFile
 } from "@muse/attunement";
 import { CalendarProviderRegistry } from "@muse/calendar";
 import { MessagingProviderRegistry } from "@muse/messaging";
-import { writeTasks } from "@muse/stores";
+import { readTasks, writeTasks } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { buildLoopbackTools, type LoopbackToolsBundle, type LoopbackToolsDeps } from "../src/loopback-tools.js";
@@ -170,6 +172,61 @@ describe("buildLoopbackTools — gating", () => {
     const state = await readAttunementState(attunementFile);
     expect(state.interactionReceipts).toHaveLength(1);
     expect(state.deliveries[0]?.outcome).toBeUndefined();
+  });
+
+  it("retries a pending loopback completion without rewriting the already-done task timestamp", async () => {
+    const testDir = mkdtempSync(join(tmpdir(), "muse-loopback-continuity-retry-"));
+    const tasksFile = join(testDir, "tasks.json");
+    const attunementFile = join(testDir, "attunement.json");
+    const notesDir = join(testDir, "notes");
+    await writeTasks(tasksFile, [{
+      createdAt: "2026-01-01T00:00:00.000Z", id: "task_mcp_retry", status: "open", title: "MCP retry"
+    }]);
+    const thread = await createPersonalThread(attunementFile, { kind: "work", title: "MCP retry root" });
+    await linkArtifact(attunementFile, {
+      artifactId: "task_mcp_retry", artifactType: "task", role: "next-step", threadId: thread.id
+    }, { validateArtifact: createLocalArtifactValidator({ notesDir, tasksFile }) });
+    await openPreparedContinuityPack(
+      attunementFile,
+      thread.id,
+      createLocalExactArtifactResolver({ notesDir, tasksFile }),
+      { now: () => Date.parse("2026-01-02T00:00:00.000Z") }
+    );
+    const validBytes = await readFile(attunementFile, "utf8");
+    await writeFile(attunementFile, "{\"invalid\":true}\n");
+    const bundle = buildLoopbackTools(baseDeps({ attunementFile, notesDir, tasksFile }));
+    const complete = bundle.tasks.find((tool) => tool.definition.name.endsWith("complete"));
+    expect(complete).toBeDefined();
+
+    await complete!.execute({ id: "task_mcp_retry" }, {} as never);
+    const completedAt = (await readTasks(tasksFile))[0]?.completedAt;
+    expect(completedAt).toBeDefined();
+
+    await writeFile(attunementFile, validBytes);
+    await complete!.execute({ id: "task_mcp_retry" }, {} as never);
+    expect((await readTasks(tasksFile))[0]?.completedAt).toBe(completedAt);
+    const state = await readAttunementState(attunementFile);
+    expect(state.interactionReceipts).toHaveLength(1);
+    expect(state.deliveries[0]?.outcome).toBeUndefined();
+  });
+
+  it("surfaces a loopback prepare error and leaves the task open when the outbox is corrupt", async () => {
+    const testDir = mkdtempSync(join(tmpdir(), "muse-loopback-continuity-corrupt-"));
+    const tasksFile = join(testDir, "tasks.json");
+    const attunementFile = join(testDir, "attunement.json");
+    const outboxFile = resolveContinuityInteractionOutboxFile(attunementFile);
+    const corruptBytes = "{\"schemaVersion\":999,\"entries\":[]}\n";
+    await writeTasks(tasksFile, [{
+      createdAt: "2026-01-01T00:00:00.000Z", id: "task_mcp_corrupt", status: "open", title: "MCP corrupt"
+    }]);
+    await writeFile(outboxFile, corruptBytes);
+    const bundle = buildLoopbackTools(baseDeps({ attunementFile, tasksFile }));
+    const complete = bundle.tasks.find((tool) => tool.definition.name.endsWith("complete"));
+    const result = await complete!.execute({ id: "task_mcp_corrupt" }, {} as never) as { readonly error?: string };
+
+    expect(result.error).toContain("outbox");
+    expect((await readTasks(tasksFile))[0]).toMatchObject({ id: "task_mcp_corrupt", status: "open" });
+    expect(await readFile(outboxFile, "utf8")).toBe(corruptBytes);
   });
 
   it("consent pin: MUSE_APPLE_REMINDERS_MIRROR absent ⇒ no Apple mirror is wired (add produces no mirrorNote, zero osascript)", async () => {

@@ -10,6 +10,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity task evidence now survives recorder failures and restarts.**
+  API, CLI-local, and loopback task completion share an owner-only durable
+  outbox: the exact task and completion timestamp are prepared before the task
+  write, then delivered idempotently after commit or on API startup. Corrupt or
+  full queues never discard pending intent, and recovery still cannot create an
+  outcome or widen permission.
+
 - **Continuity now turns a real next-step completion into visible evidence.**
   The web review starts its interaction audit independently, shows life/work
   exact coverage without mixing it with outcomes, and lets the user complete

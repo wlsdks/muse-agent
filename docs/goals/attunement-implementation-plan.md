@@ -152,6 +152,17 @@ audit remains life `0/10`, work `0/10`, and `0/2` dates for both, so the next
 evidence must come from ordinary use rather than fixtures. Evidence:
 [`../evaluations/continuity-natural-evidence-loop-2026-07-18.md`](../evaluations/continuity-natural-evidence-loop-2026-07-18.md).
 
+The factual completion path is now crash-recoverable rather than best-effort.
+API, local CLI, and loopback completion prepare an exact bounded sidecar event
+inside the serialized task mutation before the done write, then retry the shared
+recorder after commit. API startup drains a bounded snapshot without blocking
+readiness on corrupt state; corrupt/full outboxes remain byte-preserved and stop
+new untracked completions before their task write. Tests cover restart recovery,
+old-done no-synthesis, open/mismatch classification, recorder-success-before-ack
+replay, queue bounds, and exact-one receipts. This improves evidence durability
+only; actual natural coverage remains unchanged. Evidence:
+[`../evaluations/continuity-interaction-outbox-2026-07-18.md`](../evaluations/continuity-interaction-outbox-2026-07-18.md).
+
 ## Slice B — safe observation and better timing
 
 **User experience:** after the user explicitly starts a personal thread, Muse can notice a

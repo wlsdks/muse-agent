@@ -20,7 +20,10 @@ import { isErrorLike } from "@muse/shared";
 
 import { randomUUID } from "node:crypto";
 
-import { recordContinuityTaskCompletionInteraction } from "@muse/attunement";
+import {
+  prepareContinuityTaskCompletionInteraction,
+  retryContinuityTaskCompletionInteractions
+} from "@muse/attunement";
 import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, type PersistedTask } from "@muse/stores";
 import { type TasksProviderRegistry } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
@@ -45,6 +48,18 @@ interface TasksRoutesGate {
 
 export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGate): void {
   const { tasksFile } = gate;
+  const retryContinuityInteractions = async (): Promise<void> => {
+    try {
+      const summary = await retryContinuityTaskCompletionInteractions(gate.attunementFile, tasksFile);
+      for (const error of summary.errors) {
+        server.log.warn({ error, eventId: error.eventId }, "continuity interaction evidence recording failed");
+      }
+    } catch (error) {
+      server.log.warn({ error }, "continuity interaction outbox retry failed");
+    }
+  };
+
+  server.addHook("onReady", retryContinuityInteractions);
 
   server.get("/api/tasks", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
@@ -136,13 +151,23 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     }
     const { id } = request.params as { readonly id: string };
     let completed: PersistedTask | undefined;
-    let changedToDone = false;
-    await mutateTasks(tasksFile, (current) => { const index = current.findIndex((task) => task.id === id); if (index < 0) return current; const existing = current[index]!; if (existing.status === "done") { completed = existing; return current; } changedToDone = true; completed = { ...existing, completedAt: new Date().toISOString(), status: "done" }; const next = [...current]; next[index] = completed; return next; });
+    await mutateTasks(tasksFile, async (current) => {
+      const index = current.findIndex((task) => task.id === id);
+      if (index < 0) return current;
+      const existing = current[index]!;
+      if (existing.status === "done") {
+        completed = existing;
+        return current;
+      }
+      const completedAt = new Date().toISOString();
+      await prepareContinuityTaskCompletionInteraction(gate.attunementFile, { completedAt, taskId: existing.id });
+      completed = { ...existing, completedAt, status: "done" };
+      const next = [...current];
+      next[index] = completed;
+      return next;
+    });
     if (!completed) return reply.status(404).send({ code: "TASK_NOT_FOUND", message: `task not found: ${id}` });
-    if (changedToDone) {
-      await recordContinuityTaskCompletionInteraction(gate.attunementFile, tasksFile, completed.id)
-        .catch((error: unknown) => request.log.warn({ error }, "continuity interaction evidence recording failed"));
-    }
+    await retryContinuityInteractions();
     return completed;
   });
 

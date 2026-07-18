@@ -15,7 +15,10 @@ import { isErrorLike } from "@muse/shared";
 import { randomUUID } from "node:crypto";
 
 import { openLoops, type OpenLoop } from "@muse/agent-core";
-import { recordContinuityTaskCompletionInteraction } from "@muse/attunement";
+import {
+  prepareContinuityTaskCompletionInteraction,
+  retryContinuityTaskCompletionInteractions
+} from "@muse/attunement";
 import { resolveAttunementFile, resolveTasksFile } from "@muse/autoconfigure";
 import { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTasks, readTaskStatusFilter, resolveTaskRef, serializeTask, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
@@ -349,8 +352,10 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       let alreadyDone = false;
       const completeLocal = async (): Promise<Record<string, unknown>> => {
         const file = localTasksFile();
+        const attunementFile = resolveAttunementFile(process.env);
         let completed: PersistedTask | undefined;
-        await mutateTasks(file, (current) => {
+        await retryContinuityTaskCompletionInteractions(attunementFile, file).catch(() => undefined);
+        await mutateTasks(file, async (current) => {
           const resolved = resolveLocalTaskId(id, current);
           const index = current.findIndex((task) => task.id === resolved);
           const existing = current[index]!;
@@ -361,16 +366,15 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
             completed = existing;
             return current;
           }
-          completed = { ...existing, completedAt: new Date().toISOString(), status: "done" };
+          const completedAt = new Date().toISOString();
+          await prepareContinuityTaskCompletionInteraction(attunementFile, {
+            completedAt,
+            taskId: existing.id
+          });
+          completed = { ...existing, completedAt, status: "done" };
           return current.map((task, taskIndex) => taskIndex === index ? completed! : task);
         });
-        if (!alreadyDone) {
-          await recordContinuityTaskCompletionInteraction(
-            resolveAttunementFile(process.env),
-            file,
-            completed!.id
-          ).catch(() => undefined);
-        }
+        await retryContinuityTaskCompletionInteractions(attunementFile, file).catch(() => undefined);
         return serializeTask(completed!);
       };
       const completeApi = async (): Promise<Record<string, unknown>> => (await helpers.apiRequest(

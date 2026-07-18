@@ -181,6 +181,20 @@ the refreshed report remains unchanged, the UI does not claim an exact receipt.
 Loading, missing, errored, unavailable, exact, hidden, relinked, and completed
 states all fail closed. This path never writes an outcome or expands permission.
 
+Factual receipt delivery uses a bounded, owner-only sidecar outbox shared by the
+API, local CLI, and loopback task surface. For a new `open → done` transition,
+the task's serialized mutation chooses `completedAt` once and durably prepares
+the exact `taskId + completedAt` event before writing the task. Recorder failure
+therefore leaves a retryable event without rolling back the user's completed
+task. API startup and later completion paths retry a bounded snapshot; delivery
+is idempotent because the receipt and pending event IDs are deterministic.
+Already-done tasks preserve their original timestamp and may deliver only an
+existing matching event—Muse never synthesizes historical intent from a replay.
+Open and unreadable sources remain pending; missing, timestamp-mismatched, and
+not-correlated events terminate without a receipt. A corrupt or full outbox is
+never overwritten: startup logs and remains available, while a new completion
+fails before the task write so it cannot create another untracked effect.
+
 Slice A adaptation may change only:
 
 - detail (`standard` or `compact`);

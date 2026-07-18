@@ -36,6 +36,8 @@ export interface TasksMcpServerOptions {
   readonly maxListEntries?: number;
   readonly maxQueryLength?: number;
   readonly now?: () => Date;
+  /** Durable pre-commit guard. Runs under the serialized task mutation before the done write. */
+  readonly onTaskCompletionPrepared?: (taskId: string, completedAt: string) => Promise<void>;
   /** Trusted post-commit observer; it cannot alter the tool's completion result. */
   readonly onTaskCompleted?: (taskId: string) => Promise<void>;
 }
@@ -216,26 +218,28 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           if (resolution.status !== "resolved") {
             return { error: `task not found: ${ref}` };
           }
-          const index = tasks.findIndex((task) => task.id === resolution.task.id);
-          const completed: PersistedTask = {
-            ...tasks[index]!,
-            completedAt: now().toISOString(),
-            status: "done"
-          };
+          let completed: PersistedTask | undefined;
           try {
-            await mutateTasks(file, (current) => {
+            await mutateTasks(file, async (current) => {
               const i = current.findIndex((task) => task.id === resolution.task.id);
               if (i < 0) return current;
+              const existing = current[i]!;
+              if (existing.status === "done") {
+                completed = existing;
+                return current;
+              }
+              const completedAt = now().toISOString();
+              await options.onTaskCompletionPrepared?.(existing.id, completedAt);
+              completed = { ...existing, completedAt, status: "done" };
               const updatedList = [...current];
-              updatedList[i] = { ...current[i]!, completedAt: completed.completedAt, status: "done" };
+              updatedList[i] = completed;
               return updatedList;
             });
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          if (resolution.task.status === "open") {
-            await options.onTaskCompleted?.(completed.id).catch(() => undefined);
-          }
+          if (!completed) return { error: `task not found: ${ref}` };
+          await options.onTaskCompleted?.(completed.id).catch(() => undefined);
           return { task: serializeTaskForModel(completed, now) as JsonValue };
         },
         inputSchema: {

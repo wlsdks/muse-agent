@@ -13,7 +13,10 @@
  * later (assigned after `activeContextProvider` is built).
  */
 
-import { recordContinuityTaskCompletionInteraction } from "@muse/attunement";
+import {
+  prepareContinuityTaskCompletionInteraction,
+  retryContinuityTaskCompletionInteractions
+} from "@muse/attunement";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -126,9 +129,13 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           file: deps.tasksFile,
           maxListEntries: parseInteger(env.MUSE_TASKS_LIST_MAX, 12),
           ...(deps.attunementFile ? {
-            onTaskCompleted: (taskId: string) => recordContinuityTaskCompletionInteraction(
-              deps.attunementFile!, deps.tasksFile, taskId
-            ).then(() => undefined)
+            onTaskCompleted: () => retryContinuityTaskCompletionInteractions(
+              deps.attunementFile!, deps.tasksFile
+            ).then(() => undefined),
+            onTaskCompletionPrepared: (taskId: string, completedAt: string) =>
+              prepareContinuityTaskCompletionInteraction(
+                deps.attunementFile!, { completedAt, taskId }
+              ).then(() => undefined)
           } : {})
         })
       )
