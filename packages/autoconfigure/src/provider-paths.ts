@@ -229,6 +229,11 @@ export function resolvePatternsFiredFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json");
 }
 
+/** Rejected Builder automation proposals ("사양할게요") — a rejected pattern id never re-proposes. */
+export function resolveRejectedProposalsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_AUTOMATION_REJECTED_PROPOSALS_FILE", "automation-rejected-proposals.json");
+}
+
 export function resolveRecallHitsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_RECALL_HITS_FILE", "recall-hits.json");
 }

@@ -9,7 +9,15 @@ import { FlowsTab } from "./Flows.js";
 import { I18nProvider } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { FlowDraftResponse, FlowProjection, FlowsResponse, LoopbackCatalogResponse, MessagingSetupResponse, ScheduledJobDetail } from "../api/types.js";
+import type {
+  AutomationProposalsResponse,
+  FlowDraftResponse,
+  FlowProjection,
+  FlowsResponse,
+  LoopbackCatalogResponse,
+  MessagingSetupResponse,
+  ScheduledJobDetail
+} from "../api/types.js";
 
 // No global setup file registers `cleanup()` for this project's browser
 // config yet, so each test must unmount its own tree — several tests in
@@ -990,6 +998,45 @@ test("the Schedule tab lists operational rows and a row name click returns to th
   document.querySelector<HTMLButtonElement>(".sched-name")!.click();
   await expect.poll(() => document.querySelector(".react-flow") !== null).toBe(true);
   await expect.element(screen.getByRole("tab", { name: "Canvas" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("Schedule tab: 흐름 초안 열기 on a pattern-proposal card opens the create panel with the composer prefilled", async () => {
+  const client = fakeClient();
+  const baseGet = client.get as ReturnType<typeof vi.fn>;
+  const passthrough = baseGet.getMockImplementation() as (path: string) => Promise<unknown>;
+  const proposalsResponse: AutomationProposalsResponse = {
+    proposals: [
+      {
+        category: "time-of-day-action",
+        cronExpression: "0 9 * * 1",
+        id: "tod-1",
+        receipt: { confidence: 0.9, distinctCount: 3, distinctUnit: "days", examples: [], observationCount: 3 },
+        suggestionText: "매주 월요일 오전 9시에 저널을 정리하시는군요.",
+        title: "월요일 오전 9시 루틴"
+      }
+    ]
+  };
+  baseGet.mockImplementation(async (path: string) => {
+    if (path === "/api/automation/proposals") return proposalsResponse;
+    if (path === "/api/scheduler/jobs?limit=100") {
+      return { items: [{ cadenceSummary: null, id: "job_1", lastRunAt: null, lastStatus: null }] };
+    }
+    if (path.startsWith("/api/autonomy") || path.startsWith("/api/digest") || path.startsWith("/api/reminders")) {
+      return {};
+    }
+    return await passthrough(path);
+  });
+  const screen = await renderFlows(client);
+
+  await screen.getByRole("tab", { name: "Schedule" }).click();
+  await expect.element(screen.getByText("월요일 오전 9시 루틴")).toBeVisible();
+
+  await screen.getByRole("button", { name: "Open flow draft" }).click();
+
+  await expect.element(screen.getByRole("tab", { name: "Canvas" })).toHaveAttribute("aria-selected", "true");
+  await expect
+    .element(screen.getByLabelText("Describe an automation"))
+    .toHaveValue("매주 월요일 오전 9시에 저널을 정리하시는군요.");
 });
 
 test("copilot chat: Enter sends, and the thread shows the user bubble + first-draft ack", async () => {

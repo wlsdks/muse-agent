@@ -5,7 +5,12 @@ import { AsyncBlock, Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeSessionStorage } from "../lib/safe-storage.js";
 import { flowToCanvas } from "./flow-canvas-mapping.js";
-import { consumeBuilderCopilotSeed, consumeBuilderCreateForWorkHint, consumeBuilderFocusHint } from "./scheduled-logic.js";
+import {
+  consumeBuilderCopilotSeed,
+  consumeBuilderCreateForWorkHint,
+  consumeBuilderFocusHint,
+  writeBuilderCopilotSeed
+} from "./scheduled-logic.js";
 import { flowDraftToCopilotPayload, isFlowDraftValid } from "./flow-edit-compile.js";
 import { FlowCreatePanel } from "./flow-create-panel.js";
 import { ScheduleTable } from "./Scheduled.js";
@@ -17,6 +22,7 @@ import { ExecutionsCard } from "./flow-executions.js";
 import { FlowSwitcher } from "./flow-switcher.js";
 import { FlowCanvasArea } from "./flow-canvas-area.js";
 import { FlowHeaderActions } from "./flow-header-actions.js";
+import { PatternProposalCards } from "./pattern-proposals.js";
 
 import type { FlowDraft } from "./flow-edit-compile.js";
 import type { ApiClient } from "../api/client.js";
@@ -75,7 +81,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
   // (a recurring-automation ask chat could not register itself) seeds the
   // copilot composer's first turn — one-shot, same discipline as the other
   // Builder hints above.
-  const [copilotSeed] = useState<string | undefined>(() => consumeBuilderCopilotSeed(safeSessionStorage()));
+  const [copilotSeed, setCopilotSeed] = useState<string | undefined>(() => consumeBuilderCopilotSeed(safeSessionStorage()));
   useEffect(() => {
     if (createForWorkId || copilotSeed) {
       setCreating(true);
@@ -127,6 +133,19 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
     // A MANUAL open is never Work-bound — only the hint-opened panel is.
     setCreateForWorkId(undefined);
     setCreating(true);
+  };
+  // Pattern-proposal "흐름 초안 열기": the SAME write→consume seed pair the
+  // Chat → Builder handoff uses, just triggered explicitly instead of at
+  // mount — this component is already mounted (list mode, not a fresh
+  // navigation), so the mount-time `copilotSeed` initializer won't re-fire.
+  const openProposalDraft = (suggestionText: string) => {
+    writeBuilderCopilotSeed(safeSessionStorage(), suggestionText);
+    setCopilotSeed(consumeBuilderCopilotSeed(safeSessionStorage()));
+    setInitialDraft(undefined);
+    setLiveDraft(undefined);
+    setCreateForWorkId(undefined);
+    setCreating(true);
+    setWsMode("canvas");
   };
   const handleDrafted = (draft: FlowDraftPayloadRow) => {
     setInitialDraft(draft);
@@ -188,6 +207,7 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
 
       {wsMode === "list" ? (
         <div className="ws-list">
+          <PatternProposalCards client={client} onOpenDraft={openProposalDraft} />
           <ScheduleTable
             client={client}
             onOpenFlow={(id) => {

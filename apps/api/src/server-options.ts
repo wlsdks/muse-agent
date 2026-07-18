@@ -216,6 +216,13 @@ export interface ServerOptions {
    */
   readonly patternsFiredFile?: string;
   /**
+   * Path to the rejected-automation-proposals store (default
+   * ~/.muse/automation-rejected-proposals.json). `GET /api/automation/proposals`
+   * filters these ids out; `POST /api/automation/proposals/:id/reject`
+   * appends to it so a dismissed pattern proposal never resurfaces.
+   */
+  readonly rejectedProposalsFile?: string;
+  /**
    * Path to the episodes store (default ~/.muse/episodes.json).
    * Read by `/api/history` to surface prior-session summaries
    * alongside reminder / proactive / followup / pattern firings.

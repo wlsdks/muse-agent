@@ -14,6 +14,7 @@ export * from "./objective-evaluation-loop.js";
 export * from "./objective-evaluator.js";
 export * from "./objective-evidence.js";
 export * from "./pattern-firing-loop.js";
+export * from "./pattern-flow-proposal.js";
 export * from "./presence.js";
 export * from "./proactive-notice-loop.js";
 export * from "./proposed-action-confirm.js";

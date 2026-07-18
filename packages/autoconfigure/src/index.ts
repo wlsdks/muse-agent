@@ -47,6 +47,7 @@ export {
   resolveDigestSentFile,
   resolveLastProactiveDeliveryFile,
   resolvePatternsFiredFile,
+  resolveRejectedProposalsFile,
   resolveRecallHitsFile,
   resolveFactRecallHitsFile,
   resolveCheckinsFile,

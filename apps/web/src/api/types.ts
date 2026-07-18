@@ -630,6 +630,30 @@ export interface FlowDraftResponse {
   readonly draft: FlowDraftPayloadRow;
 }
 
+// Mirrors `@muse/proactivity`'s `FlowProposal` (pattern-flow-proposal.ts) —
+// `GET /api/automation/proposals`'s response. A proposal never creates a
+// flow by itself — "흐름 초안 열기" prefills the Builder create panel and
+// "사양할게요" (`POST /api/automation/proposals/:id/reject`) permanently
+// drops it.
+export interface FlowProposalReceiptRow {
+  readonly observationCount: number;
+  readonly distinctCount: number;
+  readonly distinctUnit: "days" | "weeks";
+  readonly examples: readonly string[];
+  readonly confidence: number;
+}
+export interface FlowProposalRow {
+  readonly id: string;
+  readonly title: string;
+  readonly suggestionText: string;
+  readonly cronExpression: string;
+  readonly category: "time-of-day-action" | "weekly-task";
+  readonly receipt: FlowProposalReceiptRow;
+}
+export interface AutomationProposalsResponse {
+  readonly proposals: readonly FlowProposalRow[];
+}
+
 interface WeaknessView {
   axis: string;
   topic: string;

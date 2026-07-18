@@ -2593,6 +2593,58 @@ button.status-chip {
 
 
 /* ── Scheduled: builder-grade operational table ──────────── */
+.pattern-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.pattern-proposal-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+  background: var(--surface-1);
+  padding: 12px 14px;
+}
+.pattern-proposal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+}
+.pattern-proposal-conf {
+  font-size: var(--text-xs);
+  color: var(--ink-tertiary);
+  font-weight: 500;
+}
+.pattern-proposal-line {
+  margin: 6px 0 2px;
+}
+.pattern-proposal-summary {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.pattern-proposal-examples {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: var(--text-xs);
+  color: var(--ink-tertiary);
+}
+.pattern-proposal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pattern-proposal-toggle {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent, #6366f1);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
 .sched-table {
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);

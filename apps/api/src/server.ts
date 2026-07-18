@@ -17,6 +17,7 @@ import {
   resolveMuseCliConfigFilePath,
   resolveNotesIndexFile,
   resolveObjectivesFile,
+  resolveRejectedProposalsFile,
   resolveProgressiveAutonomyOpportunitiesFile,
   resolveVetoesFile,
   resolvePlaybookFile,
@@ -51,6 +52,7 @@ import { registerHistoryRoutes } from "./history-routes.js";
 import { registerProactiveRoutes } from "./proactive-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { registerAutomationRoutes } from "./automation-routes.js";
+import { registerAutomationProposalsRoutes } from "./automation-proposals-routes.js";
 import { registerFlowsRoutes } from "./flows-routes.js";
 import { registerFlowDraftRoutes } from "./flows-draft-routes.js";
 import { registerWorksRoutes } from "./works-routes.js";
@@ -506,6 +508,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     env: process.env,
     scheduler: options.scheduler,
     ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
+  });
+  registerAutomationProposalsRoutes(server, {
+    authService,
+    notesDir: options.notesDir ?? resolveNotesDir(process.env),
+    rejectedProposalsFile: options.rejectedProposalsFile ?? resolveRejectedProposalsFile(process.env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(process.env)
   });
   registerFlowsRoutes(server, { authService, scheduler: options.scheduler });
   if (options.modelProvider && options.defaultModel) {

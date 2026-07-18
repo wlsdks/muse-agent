@@ -104,6 +104,14 @@ export { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTaskById, readT
 export type { PersistedTask } from "./personal-tasks-store.js";
 export { hasVeto, queryVetoes, readVetoes, recordVeto, removeVeto, serializeVeto } from "./personal-veto-store.js";
 export type { ActionVeto } from "./personal-veto-store.js";
+export {
+  readRejectedProposals,
+  recordRejectedProposal,
+  rejectedProposalIds,
+  serializeRejectedProposal,
+  writeRejectedProposals
+} from "./automation-rejected-proposals-store.js";
+export type { RejectedProposal } from "./automation-rejected-proposals-store.js";
 export { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock } from "./proactive-notice-store.js";
 export type { ProactiveFiredEntry, ProactiveFiredKind, SessionLockPayload } from "./proactive-notice-store.js";
 export { appendSurfaced, avoidedSourceKeys, computeTrustScore, isSourceAvoided, readTrustLedger, recordOutcome, sourceKey, withinDailyCap } from "./proactive-trust-ledger.js";
