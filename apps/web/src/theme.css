@@ -2892,3 +2892,8 @@ button.status-chip {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.banner.warn {
+  border-color: var(--warn, #d97706);
+  color: var(--warn, #d97706);
+}

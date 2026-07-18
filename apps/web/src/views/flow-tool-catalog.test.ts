@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readRiskToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
+import { isWriteToolSelection, schedulableToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
 
 import type { LoopbackCatalogResponse } from "../api/types.js";
 
@@ -37,44 +37,78 @@ const CATALOG: LoopbackCatalogResponse = {
   total: 3
 };
 
-describe("readRiskToolOptions — fail-closed read-only picker filter", () => {
-  it("keeps only risk: 'read' tools, dropping write/execute AND unrisked tools", () => {
-    const options = readRiskToolOptions(CATALOG);
+describe("schedulableToolOptions — the read+write picker filter (진안 2026-07-18 ruling)", () => {
+  it("keeps read AND write tools with their risk, dropping execute AND unrisked tools", () => {
+    const options = schedulableToolOptions(CATALOG);
     expect(options).toEqual([
-      { serverDescription: "Built-in clock and date utilities (loopback MCP).", serverName: "muse.time", toolDescription: "Returns the current ISO timestamp.", toolName: "now" },
-      { serverDescription: "Built-in clock and date utilities (loopback MCP).", serverName: "muse.time", toolDescription: "Duration in ms between two ISO timestamps.", toolName: "diff_ms" },
-      { serverDescription: "Contacts store.", serverName: "muse.contacts", toolDescription: "Look up a contact.", toolName: "find" }
+      { risk: "read", serverDescription: "Built-in clock and date utilities (loopback MCP).", serverName: "muse.time", toolDescription: "Returns the current ISO timestamp.", toolName: "now" },
+      { risk: "read", serverDescription: "Built-in clock and date utilities (loopback MCP).", serverName: "muse.time", toolDescription: "Duration in ms between two ISO timestamps.", toolName: "diff_ms" },
+      { risk: "read", serverDescription: "Contacts store.", serverName: "muse.contacts", toolDescription: "Look up a contact.", toolName: "find" },
+      { risk: "write", serverDescription: "Contacts store.", serverName: "muse.contacts", toolDescription: "Create a contact.", toolName: "create" }
     ]);
   });
 
-  it("MUTATION-RED: a write tool must never appear in the read-only picker", () => {
-    const options = readRiskToolOptions(CATALOG);
-    expect(options.some((option) => option.toolName === "create")).toBe(false);
+  it("MUTATION-RED: execute-class and undeclared-risk tools must never be schedulable", () => {
+    const options = schedulableToolOptions(CATALOG);
     expect(options.some((option) => option.toolName === "delete")).toBe(false);
     expect(options.some((option) => option.toolName === "mystery")).toBe(false);
   });
 
   it("an empty catalog yields an empty option list", () => {
-    expect(readRiskToolOptions({ servers: [], total: 0 })).toEqual([]);
+    expect(schedulableToolOptions({ servers: [], total: 0 })).toEqual([]);
+  });
+});
+
+describe("isWriteToolSelection — drives the one-time state-change confirmation", () => {
+  it("true only for the write pair, false for read pairs and unknown pairs", () => {
+    const options = schedulableToolOptions(CATALOG);
+    expect(isWriteToolSelection(options, "muse.contacts", "create")).toBe(true);
+    expect(isWriteToolSelection(options, "muse.contacts", "find")).toBe(false);
+    expect(isWriteToolSelection(options, "muse.time", "now")).toBe(false);
+    expect(isWriteToolSelection(options, "muse.fs", "delete")).toBe(false);
+    expect(isWriteToolSelection(options, "", "")).toBe(false);
   });
 });
 
 describe("uniqueServerNames / toolsForServer — cascading select derivation", () => {
   it("uniqueServerNames returns each server exactly once, in first-seen order", () => {
-    const options = readRiskToolOptions(CATALOG);
+    const options = schedulableToolOptions(CATALOG);
     expect(uniqueServerNames(options)).toEqual(["muse.time", "muse.contacts"]);
   });
 
-  it("toolsForServer scopes to the chosen server's read tools only", () => {
-    const options = readRiskToolOptions(CATALOG);
-    const timeTools = toolsForServer(options, "muse.time");
-    expect(timeTools.map((tool) => tool.toolName)).toEqual(["now", "diff_ms"]);
-    const contactsTools = toolsForServer(options, "muse.contacts");
-    expect(contactsTools.map((tool) => tool.toolName)).toEqual(["find"]);
+  it("toolsForServer scopes to the chosen server's schedulable tools", () => {
+    const options = schedulableToolOptions(CATALOG);
+    expect(toolsForServer(options, "muse.time").map((tool) => tool.toolName)).toEqual(["now", "diff_ms"]);
+    expect(toolsForServer(options, "muse.contacts").map((tool) => tool.toolName)).toEqual(["find", "create"]);
   });
 
-  it("toolsForServer returns an empty list for a server not present among read tools", () => {
-    const options = readRiskToolOptions(CATALOG);
+  it("toolsForServer returns an empty list for a server with no schedulable tools", () => {
+    const options = schedulableToolOptions(CATALOG);
     expect(toolsForServer(options, "muse.fs")).toEqual([]);
+  });
+});
+
+describe("outbound write exclusion (outbound-safety floor)", () => {
+  it("a write tool on muse.messaging is NEVER schedulable, while other write tools are", () => {
+    const catalog: LoopbackCatalogResponse = {
+      servers: [
+        {
+          description: "Messaging.",
+          name: "muse.messaging",
+          optIn: false,
+          tools: [{ description: "Send a message.", name: "send", risk: "write" }]
+        },
+        {
+          description: "Reminders.",
+          name: "muse.reminders",
+          optIn: false,
+          tools: [{ description: "Add a reminder.", name: "add", risk: "write" }]
+        }
+      ],
+      total: 2
+    };
+    const options = schedulableToolOptions(catalog);
+    expect(options.some((option) => option.serverName === "muse.messaging")).toBe(false);
+    expect(options.some((option) => option.serverName === "muse.reminders" && option.toolName === "add")).toBe(true);
   });
 });

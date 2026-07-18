@@ -530,7 +530,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         const draftable: { server: string; tool: string; description: string; inputSchema: Record<string, unknown> | null }[] = [];
         for (const entry of catalog) {
           const match = LOOPBACK_TOOL_NAME_RE.exec(entry.name);
-          if (match && entry.risk === "read") {
+          // Outbound-capable write servers (messaging) stay un-schedulable — an
+          // unattended send toward an arbitrary destination is draft-first
+          // territory, never a cron job (outbound-safety.md).
+          const writeAllowed = entry.risk === "write" && match?.[1] !== "muse.messaging";
+          if (match && (entry.risk === "read" || writeAllowed)) {
             draftable.push({
               description: entry.description,
               inputSchema: entry.inputSchema ?? null,

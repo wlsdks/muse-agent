@@ -325,7 +325,7 @@ test("새 흐름 만들기 (New flow) POSTs the exact compiled create body", asy
   });
 });
 
-test("도구 실행 (Run a tool) flow: New flow -> Run a tool -> pick server+tool -> Create POSTs jobType 'mcp_tool', write tools never offered", async () => {
+test("도구 실행 (Run a tool) flow: New flow -> Run a tool -> pick server+tool -> Create POSTs jobType 'mcp_tool'; a WRITE tool is offered WITH the one-time confirmation banner", async () => {
   const client = fakeClient();
   const screen = await renderFlows(client);
 
@@ -340,12 +340,18 @@ test("도구 실행 (Run a tool) flow: New flow -> Run a tool -> pick server+too
   const toolSelect = screen.getByRole("combobox", { exact: true, name: "Tool" });
   await toolSelect.selectOptions("now");
 
-  // The write-risk tool in the fixture (create_reminder) must never appear —
-  // the picker is fail-closed to risk: "read" only.
+  // 진안 2026-07-18 ruling: write tools ARE schedulable (execute never) —
+  // picking one surfaces the one-time state-change confirmation banner, and
+  // a read pick shows none.
   const toolOptionValues = [...document.querySelectorAll<HTMLOptionElement>("select[aria-label='Tool'] option")].map(
     (option) => option.value
   );
-  expect(toolOptionValues).not.toContain("create_reminder");
+  expect(toolOptionValues).toContain("create_reminder");
+  expect(document.querySelector(".write-confirm")).toBeNull();
+  await screen.getByRole("combobox", { exact: true, name: "Tool" }).selectOptions("create_reminder");
+  await expect.poll(() => document.querySelector(".write-confirm")?.textContent ?? "").toContain("one-time approval");
+  await screen.getByRole("combobox", { exact: true, name: "Tool" }).selectOptions("now");
+  await expect.poll(() => document.querySelector(".write-confirm")).toBeNull();
 
   await screen.getByRole("button", { name: "Create" }).click();
 

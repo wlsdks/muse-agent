@@ -24,7 +24,7 @@ import {
 } from "./flow-edit-compile.js";
 import { KIND_LABEL_KEY } from "./flow-nodes.js";
 import { NotifyChannelQuickPick } from "./flow-notify-picker.js";
-import { readRiskToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
+import { isWriteToolSelection, schedulableToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { FlowCanvasNode } from "./flow-canvas-mapping.js";
@@ -394,7 +394,7 @@ function ToolActionEditFields({
     queryKey: ["loopback-catalog", client.baseUrl],
     retry: 0
   });
-  const options = catalog.data ? readRiskToolOptions(catalog.data) : [];
+  const options = catalog.data ? schedulableToolOptions(catalog.data) : [];
   const serverNames = uniqueServerNames(options);
   const toolOptions = toolsForServer(options, form.toolServerName);
   // A job may reference a tool the registry no longer exposes (server down,
@@ -419,9 +419,15 @@ function ToolActionEditFields({
   const argsInvalid = !parseToolArgumentsText(form.toolArgumentsText).ok;
   const pairMissing = form.toolServerName.trim().length === 0 || form.toolName.trim().length === 0;
   const canSave = dirty && !argsInvalid && !pairMissing && !save.isPending;
+  const writeSelected = isWriteToolSelection(options, form.toolServerName, form.toolName);
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
+      {writeSelected && (
+        <div className="banner warn write-confirm" role="alert">
+          {t("auto.flows.writeConfirm.banner")}
+        </div>
+      )}
       <label style={{ display: "grid", gap: 4 }}>
         <span className="field-label">{t("auto.flows.create.toolServerLabel")}</span>
         <select

@@ -25,7 +25,7 @@ import {
 } from "./flow-edit-compile.js";
 import { FLOW_NODE_TYPES } from "./flow-nodes.js";
 import { PRESET_LABEL_KEY } from "./flow-edit-panel.js";
-import { readRiskToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
+import { isWriteToolSelection, schedulableToolOptions, toolsForServer, uniqueServerNames } from "./flow-tool-catalog.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { FlowDraftPayloadRow, LoopbackCatalogResponse, ScheduledJobDetail } from "../api/types.js";
@@ -269,10 +269,10 @@ export function FlowCreatePanel({
 }
 
 /** The tool-action half of the create form: cascading server->tool selects
- * populated from `GET /api/muse/loopback`, restricted to `risk: "read"` tools
- * only (`readRiskToolOptions` — a scheduled job runs unattended, so a
- * write/execute tool is never offered here), plus an optional JSON arguments
- * textarea with client-side validation. */
+ * populated from `GET /api/muse/loopback`, offering read AND write tools
+ * (`schedulableToolOptions` — execute-class stays excluded; picking a WRITE
+ * tool surfaces the one-time state-change confirmation, 진안 2026-07-18),
+ * plus an optional JSON arguments textarea with client-side validation. */
 function ToolActionFields({
   client,
   draft,
@@ -295,7 +295,7 @@ function ToolActionFields({
     return <div className="banner err">{t("auto.flows.create.toolCatalogFailed")}</div>;
   }
 
-  const options = readRiskToolOptions(catalog.data);
+  const options = schedulableToolOptions(catalog.data);
   if (options.length === 0) {
     return <p className="subtle">{t("auto.flows.create.toolCatalogEmpty")}</p>;
   }
@@ -304,9 +304,15 @@ function ToolActionFields({
   const toolOptions = toolsForServer(options, draft.toolServerName);
   const argsResult = parseToolArgumentsText(draft.toolArgumentsText);
   const argsInvalid = !argsResult.ok;
+  const writeSelected = isWriteToolSelection(options, draft.toolServerName, draft.toolName);
 
   return (
     <>
+      {writeSelected && (
+        <div className="banner warn write-confirm" role="alert">
+          {t("auto.flows.writeConfirm.banner")}
+        </div>
+      )}
       <label style={{ display: "grid", gap: 4 }}>
         <span className="field-label">{t("auto.flows.create.toolServerLabel")}</span>
         <select

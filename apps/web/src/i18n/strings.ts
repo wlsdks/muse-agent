@@ -527,6 +527,7 @@ const en = {
   "auto.flows.preset.weekdays9": "Weekdays at 9am",
   "auto.flows.preset.custom": "Custom (cron expression)",
 
+  "auto.flows.writeConfirm.banner": "This tool CHANGES state (creates/edits data). The flow will run it unattended on its schedule — creating the flow is your one-time approval.",
   "auto.flows.webhook.title": "Run via webhook",
   "auto.flows.webhook.hint": "POST this URL from any external service to run this flow. Keep it secret — anyone with the URL can run the flow while it is enabled.",
   "auto.flows.webhook.enable": "Create webhook URL",
@@ -1454,6 +1455,7 @@ const ko: Strings = {
   "auto.flows.preset.weekdays9": "평일 아침 9시",
   "auto.flows.preset.custom": "직접 입력 (cron 표현식)",
 
+  "auto.flows.writeConfirm.banner": "이 도구는 상태를 변경해요(데이터 생성/수정). 흐름은 스케줄대로 무인 실행되며, 만들기가 1회 승인입니다.",
   "auto.flows.webhook.title": "웹훅으로 실행",
   "auto.flows.webhook.hint": "외부 서비스에서 이 URL로 POST하면 흐름이 실행돼요. URL은 비밀로 — 켜져 있는 동안 URL을 아는 누구나 실행할 수 있어요.",
   "auto.flows.webhook.enable": "웹훅 URL 만들기",
