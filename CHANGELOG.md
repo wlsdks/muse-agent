@@ -10,6 +10,8 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- Add a fail-closed, one-shot `dogfood:continuity-natural-cycle` runner that starts one actual user-linked work collection cycle, proves the task and receipt outbox are unchanged, and emits only aggregate non-identifying evidence.
+
 - **Continuity task evidence now survives recorder failures and restarts.**
   API, CLI-local, and loopback task completion share an owner-only durable
   outbox: the exact task and completion timestamp are prepared before the task

@@ -82,6 +82,7 @@
     "dogfood:phase-d": "pnpm --filter @muse/mcp build && pnpm --filter @muse/autoconfigure build && node scripts/dogfood-phase-d.mjs",
     "dogfood:continuity-interactions": "pnpm --filter @muse/attunement build && pnpm --filter @muse/cli build && node scripts/dogfood-continuity-interactions.mjs --dogfood-run",
     "dogfood:continuity-interaction-audit:local": "pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/attunement build && node scripts/audit-continuity-interaction-local.mjs --audit-run",
+    "dogfood:continuity-natural-cycle": "pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/attunement build && pnpm --filter @muse/cli build && node scripts/dogfood-continuity-natural-cycle.mjs --cycle-run",
     "test:e2e": "pnpm build && pnpm --filter @muse/web test:e2e",
     "test:e2e:live": "pnpm build && pnpm --filter @muse/web test:e2e -- live-api.spec.ts",
     "test": "node --test scripts/install-source.test.mjs && pnpm -r --sort --if-present test",

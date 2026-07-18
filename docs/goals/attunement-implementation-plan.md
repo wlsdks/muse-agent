@@ -163,6 +163,16 @@ replay, queue bounds, and exact-one receipts. This improves evidence durability
 only; actual natural coverage remains unchanged. Evidence:
 [`../evaluations/continuity-interaction-outbox-2026-07-18.md`](../evaluations/continuity-interaction-outbox-2026-07-18.md).
 
+The first actual post-outbox collection cycle is now open on the sole existing
+user-authored work next-step that was still exact and open. A fail-closed
+one-shot runner rechecked the candidate and all source bytes immediately before
+invoking the public CLI command once. The actual ledger moved from 21 to 22
+deliveries and from zero to one `none` interaction; tasks and the receipt outbox
+were unchanged, no receipt or outcome was created, and exact coverage remains
+life `0/10`, work `0/10`. This is collection readiness, not natural completion
+evidence or permission. Evidence:
+[`../evaluations/continuity-natural-collection-cycle-1-2026-07-18.md`](../evaluations/continuity-natural-collection-cycle-1-2026-07-18.md).
+
 ## Slice B — safe observation and better timing
 
 **User experience:** after the user explicitly starts a personal thread, Muse can notice a
