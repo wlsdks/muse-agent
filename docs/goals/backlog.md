@@ -41,6 +41,8 @@
 - [done] :: digest-lock EACCES 코너 — response-experience fire 19 (stat-프로브: exists->contended[win32 보존], ENOENT/stat-err->fail-open; 드릴 스펙 1:1)
 - [done] :: ack 카피/톤 개선 — response-experience fire 16 (관측-진단 기반 프롬프트 재작성: 격식 preamble 금지·동일언어 마무리 약속, 판별력 검증된 token-set 스코어러 pin)
 
+- [open] 2026-07-18 kind=fix src=probe prio=5 for=improve-muse :: 채팅 자동화 거짓 약속(false-done) — "매일 아침 9시 요약 자동화 만들어줘"에 채팅이 "규칙을 등록해둘게"라 답하지만 실제로 아무것도 등록 안 됨(라이브 프로브 재현). 채팅엔 흐름 생성 능력 없음. 후보: 자동화-의도 감지시 정직 안내+빌더 딥링크(코파일럿 프리필 힌트 재사용), 또는 chat 게이트에 등록-약속 패턴 결정론 검출. honest-state 플로어 클래스.
+- [open] 2026-07-18 kind=feat src=probe prio=4 for=grow-muse :: ask가 흐름(자동화)을 grounding 못 함 — "내 자동화 뭐 등록돼 있어?"에 모른다고 답함(라이브 프로브). flows/스케줄 잡 요약을 ask grounding 소스로 추가(grounding 3-시임 규칙 준수: selection+PROMPT BLOCK+grounding-evidence, 인용 마커 신설, positive+negative 라이브 검증).
 - [open] 2026-07-18 kind=fix src=probe prio=3 for=improve-muse :: builder 코파일럿 — 빈 create 패널을 수동으로 연 뒤 첫 요청 시 blank form이 revision currentDraft로 투영돼 400("currentDraft.name must be a non-empty string"). 픽스 방향: 폼이 비어있으면(이름/프롬프트 공백) currentDraft 생략(fresh 턴) 또는 서버가 blank-draft를 fresh로 강등. 발견: builder-evolution fire 16 라이브 e2e.
 - [open] 2026-06-29 :: COMPETITOR-PARITY loop (2026-06-29, Jinan: study openclaw + hermes, fill Muse's gaps in BIG chunks). Journal deleted 2026-07-18 (loop closed; git history). Candidate · gaps (each fire VERIFIES vs Muse first — freshness guard — then reimplements the pattern, MIT/Apache-attributed, NO verbatim copy): plugin-SDK/extension-contract (openclaw plugin-sdk) · context-compression depth (hermes context_engine.py) · A2A/ACP interop depth (openclaw acp-core). Big-chunk units (a capability + tests + wiring + docs together), not single slices.
 
