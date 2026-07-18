@@ -597,6 +597,10 @@ const en = {
   "auto.flows.create.toolCatalogEmpty": "No read-only tools are available to schedule yet.",
 
   "auto.flows.draft.inputLabel": "Describe an automation",
+  "auto.flows.editChat.apply": "Apply",
+  "auto.flows.editChat.discard": "Discard",
+  "auto.flows.editChat.applied": "Applied to the flow.",
+  "auto.flows.editChat.actionFlip": "Chat can't switch between agent and tool actions — create a new flow instead.",
   "auto.flows.draft.emptyTitle": "What should Muse automate?",
   "auto.flows.draft.firstAck": "Draft filled in — review the form and press Create.",
   "auto.flows.draft.placeholder": "e.g. every morning at 9am, summarize my schedule",
@@ -1492,6 +1496,10 @@ const ko: Strings = {
   "auto.flows.create.toolCatalogEmpty": "아직 예약 실행할 수 있는 읽기 전용 도구가 없어요.",
 
   "auto.flows.draft.inputLabel": "자동화 설명",
+  "auto.flows.editChat.apply": "적용",
+  "auto.flows.editChat.discard": "버리기",
+  "auto.flows.editChat.applied": "흐름에 반영했어요.",
+  "auto.flows.editChat.actionFlip": "채팅으로는 에이전트↔도구 액션을 바꿀 수 없어요 — 새 흐름을 만들어 주세요.",
   "auto.flows.draft.emptyTitle": "무엇을 자동화할까요?",
   "auto.flows.draft.firstAck": "초안을 채웠어요 — 폼을 확인하고 만들기를 누르세요.",
   "auto.flows.draft.placeholder": "예: 매일 아침 9시에 일정 요약해서 알려줘",

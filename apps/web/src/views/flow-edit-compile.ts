@@ -12,6 +12,8 @@
  * graph-editing surface here by design.
  */
 
+import { changedDraftFields } from "./flow-draft-diff.js";
+
 import type { FlowDraftPayloadRow, FlowEdge, FlowNode, FlowProjection, ScheduledJobCreateBody, ScheduledJobDetail, ScheduledJobPatchBody } from "../api/types.js";
 
 export type SchedulePresetId = "dailyMorning9" | "dailyEvening6" | "hourly" | "weeklyMonday9" | "weekdays9";
@@ -465,4 +467,68 @@ export function draftToPreviewProjection(draft: FlowDraft): FlowProjection {
     nodes,
     source: "scheduler"
   };
+}
+
+/** Projects an EXISTING scheduled job into the copilot's payload shape, so
+ * the chat can run REVISION turns against a live flow (not just the create
+ * panel). Same 9 fields the draft route validates. */
+export function copilotPayloadFromJob(job: ScheduledJobDetail): FlowDraftPayloadRow {
+  const isTool = job.jobType.toLowerCase() === "mcp_tool";
+  return {
+    action: isTool ? "tool" : "agent",
+    cronExpression: job.cronExpression,
+    name: job.name,
+    notifyChannel: job.notificationChannelId ?? null,
+    prompt: isTool ? "" : (job.agentPrompt ?? ""),
+    retry: job.retryOnFailure,
+    toolArguments: isTool ? (job.toolArguments ?? {}) : {},
+    toolName: isTool ? (job.toolName ?? null) : null,
+    toolServer: isTool ? (job.mcpServerName ?? null) : null
+  };
+}
+
+export type DraftRevisionPatchResult =
+  | { readonly ok: true; readonly patch: ScheduledJobPatchBody }
+  | { readonly ok: false; readonly reason: "no-change" | "action-flip" };
+
+/** Deterministic revision → PATCH mapping for editing an existing flow via
+ * the copilot: only fields the model actually changed are PATCHed; a tool
+ * pair/args change ships as ONE unit (pair + args — arguments belong to a
+ * specific tool); an agent↔tool action flip is refused here, never guessed
+ * into a jobType migration. Draft-first: the caller PATCHes only after the
+ * user confirms. */
+export function patchFromDraftRevision(
+  previous: FlowDraftPayloadRow,
+  next: FlowDraftPayloadRow
+): DraftRevisionPatchResult {
+  const changed = changedDraftFields(previous, next);
+  if (changed.length === 0) {
+    return { ok: false, reason: "no-change" };
+  }
+  if (changed.includes("action")) {
+    return { ok: false, reason: "action-flip" };
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (changed.includes("name")) {
+    patch.name = next.name.trim();
+  }
+  if (changed.includes("cronExpression")) {
+    patch.cronExpression = next.cronExpression.trim();
+  }
+  if (changed.includes("prompt") && next.action === "agent") {
+    patch.agentPrompt = next.prompt.trim();
+  }
+  if (changed.includes("notifyChannel")) {
+    patch.notificationChannelId = next.notifyChannel;
+  }
+  if (changed.includes("retry")) {
+    patch.retryOnFailure = next.retry;
+  }
+  if (next.action === "tool" && (changed.includes("toolServer") || changed.includes("toolName") || changed.includes("toolArguments"))) {
+    patch.mcpServerName = next.toolServer ?? "";
+    patch.toolName = next.toolName ?? "";
+    patch.toolArguments = next.toolArguments;
+  }
+  return { ok: true, patch: patch as ScheduledJobPatchBody };
 }

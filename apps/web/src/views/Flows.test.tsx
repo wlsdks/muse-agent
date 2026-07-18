@@ -126,8 +126,11 @@ describe("FlowsTab — populated state", () => {
     expect(html).toContain(DICTIONARIES.en["auto.flows.side.copilot"]);
     expect(html).toContain(DICTIONARIES.en["auto.flows.detailTitle"]);
     expect(html).toContain(DICTIONARIES.en["auto.flows.executions.title"]);
-    // Default tab is the copilot — its composer textarea is present.
-    expect(html).toContain(DICTIONARIES.en["auto.flows.draft.placeholder"] ?? "");
+    // Default tab is the copilot. With a flow SELECTED it is the EDIT chat
+    // (fire 20 contract) — in SSR the job detail hasn't loaded yet, so the
+    // edit copilot renders its loading fallback, not the create composer.
+    expect(html).toContain(DICTIONARIES.en["auto.flows.detailEmpty"]);
+    expect(html).not.toContain(DICTIONARIES.en["auto.flows.draft.placeholder"]);
   });
 
   it("renders the flow switcher with the selected flow's name and the Paused row for the disabled flow", async () => {

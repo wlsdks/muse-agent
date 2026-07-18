@@ -96,3 +96,18 @@ describe("describeDraftRevision", () => {
     expect(text).toContain("…");
   });
 });
+
+describe("toolArguments in the draft diff (sibling of the 9th field)", () => {
+  it("detects an arguments-only change and previews compact JSON", () => {
+    const previous = { ...BASE, action: "tool" as const, prompt: "", toolArguments: { url: "https://a.com" }, toolName: "parse", toolServer: "muse.url" };
+    const next = { ...previous, toolArguments: { url: "https://b.com" } };
+    expect(changedDraftFields(previous, next)).toEqual(["toolArguments"]);
+    expect(describeDraftRevision(previous, next, tFor("en"))).toContain('"url"');
+  });
+
+  it("identical arguments (different object identity) are NOT a change", () => {
+    const previous = { ...BASE, action: "tool" as const, prompt: "", toolArguments: { url: "https://a.com" }, toolName: "parse", toolServer: "muse.url" };
+    const next = { ...previous, toolArguments: { url: "https://a.com" } };
+    expect(changedDraftFields(previous, next)).toEqual([]);
+  });
+});

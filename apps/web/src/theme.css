@@ -2833,3 +2833,18 @@ button.status-chip {
   opacity: 0.4;
   cursor: default;
 }
+
+.copilot-apply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.copilot-apply-text {
+  flex: 1;
+  font-size: 12.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

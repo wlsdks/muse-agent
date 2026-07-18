@@ -402,6 +402,9 @@ test("초안 그리기 (Draft it) opens the create panel PREFILLED from the pars
   const client = fakeClientWithPost(post);
   const screen = await renderFlows(client);
 
+  // The chat tab now edits the SELECTED flow — creation drafting happens with the create panel open.
+  await openCreatePanel(screen);
+
   await screen.getByRole("textbox", { name: "Describe an automation" }).fill("매일 아침 9시에 하루 요약해줘");
   await screen.getByRole("button", { name: "Draft it" }).click();
 
@@ -455,6 +458,9 @@ test("multi-turn: after drafting, a manual form edit + a follow-up revision turn
   const client = fakeClientWithPost(post);
   const screen = await renderFlows(client);
 
+  // The chat tab now edits the SELECTED flow — creation drafting happens with the create panel open.
+  await openCreatePanel(screen);
+
   await screen.getByRole("textbox", { name: "Describe an automation" }).fill("매일 아침 9시에 하루 요약해줘");
   await screen.getByRole("button", { name: "Draft it" }).click();
 
@@ -503,6 +509,9 @@ test("a 422 draft failure shows the reason verbatim and keeps the typed text", a
   }) as unknown as ApiClient["post"];
   const client = fakeClientWithPost(post);
   const screen = await renderFlows(client);
+
+  // The chat tab now edits the SELECTED flow — creation drafting happens with the create panel open.
+  await openCreatePanel(screen);
 
   await screen.getByRole("textbox", { name: "Describe an automation" }).fill("아무말이나 던져봐");
   await screen.getByRole("button", { name: "Draft it" }).click();
@@ -626,6 +635,9 @@ test("a TOOL draft from the copilot prefills the create panel in tool mode (serv
   const post = vi.fn(async (path: string) => (path === "/api/flows/draft" ? toolDraft : {})) as unknown as ApiClient["post"];
   const client = fakeClientWithPost(post);
   const screen = await renderFlows(client);
+
+  // The chat tab now edits the SELECTED flow — creation drafting happens with the create panel open.
+  await openCreatePanel(screen);
 
   await screen.getByRole("textbox", { name: "Describe an automation" }).fill("매시간 정각에 현재 시각 기록해줘");
   await screen.getByRole("button", { name: "Draft it" }).click();
@@ -953,6 +965,9 @@ test("copilot chat: Enter sends, and the thread shows the user bubble + first-dr
   const client = fakeClient();
   const screen = await renderFlows(client);
 
+  // The chat tab now edits the SELECTED flow — creation drafting happens with the create panel open.
+  await openCreatePanel(screen);
+
   const composer = screen.getByLabelText("Describe an automation");
   await composer.fill("매일 아침 9시에 일정 요약해서 알려줘");
   await composer.click();
@@ -962,4 +977,38 @@ test("copilot chat: Enter sends, and the thread shows the user bubble + first-dr
   await expect.poll(() => (client.post as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
   await expect.poll(() => document.querySelectorAll(".chat-bubble.user").length).toBe(1);
   await expect.poll(() => document.querySelectorAll(".chat-bubble.assistant:not(.pending)").length).toBe(1);
+});
+
+test("copilot EDIT chat: a revision on the SELECTED flow shows an Apply bar, and Apply PATCHes only the changed fields", async () => {
+  const revised = {
+    action: "agent",
+    cronExpression: "30 8 * * *",
+    name: "Morning brief",
+    notifyChannel: null,
+    prompt: "오늘 일정 요약해서 보내줘",
+    retry: false,
+    toolArguments: {},
+    toolName: null,
+    toolServer: null
+  };
+  const client = fakeClient();
+  (client.post as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/flows/draft") return { draft: revised };
+    return {};
+  });
+  const screen = await renderFlows(client);
+
+  const composer = screen.getByLabelText("Describe an automation");
+  await composer.fill("8시 반으로 바꿔줘");
+  document.querySelector<HTMLTextAreaElement>(".copilot-composer textarea")!
+    .dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+
+  // the edit turn sends the LIVE job's projection as currentDraft
+  await expect.poll(() => (client.post as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  const body = (client.post as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { currentDraft?: { cronExpression: string } };
+  expect(body.currentDraft?.cronExpression).toBe("0 9 * * *");
+
+  await screen.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect.poll(() => (client.patch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  expect(client.patch).toHaveBeenCalledWith("/api/scheduler/jobs/job_1", { cronExpression: "30 8 * * *" });
 });

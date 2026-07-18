@@ -189,3 +189,13 @@ ratchet: unit 592 · browser 50(+5) · Flows.tsx 707→336 · LNB 15→13행 · 
 - 리스크: 코파일럿 재시도 시 사용자 버블 2개(별개 제출로 정당, opus 수용); nav.scheduled 키는 부재-어설션 테스트가 참조해 보존.
 - 라이브: 데모 2회 실측 — LNB 13행+스케줄 탭 왕복 / 채팅 composer 하단고정(<4px)·즉시buble·pending·ack·gemma4 실왕복 폼 채움.
 - 잘한것(검수 확인): compile-seam 분리·bounded repair-retry·useSavableForm 패턴 — 타 표면 재사용 후보로 기록.
+
+## fire 20 · 2026-07-18 · skill v2.1.1 · (this commit)
+meta: value-class=new-capability · pkg=@muse/web · kind=llm-capability(edit-copilot) · verdict=PASS(opus, 2차 — 1차 FAIL 실검출) · firesSinceDrill=4 · consecutiveAllPASS=5*
+ratchet: unit flow-edit-compile 72(+8)·flow-draft-diff 13(+2)·web 602 · browser 51(+1) · eval:flow-draft 6/6 · fabrication 0
+- 무엇: 코파일럿 채팅이 **선택된 기존 흐름을 수정** — copilotPayloadFromJob(기존 잡→9필드 투영, 기존 revision LLM 경로 재사용), patchFromDraftRevision(결정적 changed-fields→PATCH; tool 쌍/args는 한 유닛; no-change·action-flip 거부), EditFlowCopilot(제안→적용/버리기 바, draft-first — 적용 클릭 전 PATCH 없음). 형제-감사: flow-draft-diff가 f16의 9번째 필드(toolArguments)를 몰랐음 → JSON 값비교로 추가.
+- 왜: ② (a) 빌더 능력 1순위 — "우측에서 대화하며 조작"의 편집 반쪽이 비어 있었음(생성 전용). 다양성: 순수 ui가 아닌 llm-capability.
+- 리뷰지점: **opus 1차 FAIL이 실검출** — 계약 변경이 미갱신 SSR 테스트(Flows.test.tsx)를 RED로 남김(browser 5건만 갱신하고 전체 web 유닛 스위트를 안 돌린 누락). 수리=양방향 계약 핀으로 갱신, 재게이트서 평가자가 자체 뮤테이션-RED로 비-공허 확인 후 PASS.
+- lesson: 계약 변경 fire는 test:changed+browser만으론 부족 — 만진 패키지의 **전체 유닛 스위트**를 게이트에 포함(f19는 돌렸고 f20이 생략했다 물림).
+- 리스크: 채팅탭 계약 변경(선택 흐름=편집; 생성 드래프팅은 패널 열림/흐름 0일 때) — 5개 브라우저 테스트 의도 보존 갱신. 동시 외부 편집 시 제안-적용 사이 스테일 가능성은 resolved.patch가 fetch된 detail 기준이라 PATCH는 명시 필드만 — 수용.
+- 라이브: 격리 데모(3810) — "이거 8시 반으로 바꾸고 텔레그램 777로도 보내줘" → gemma4 revision → 적용바가 정확히 두 필드 명시 → 적용 → 서버 cron/notify 변경+프롬프트 무손상 실측.

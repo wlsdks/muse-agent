@@ -8,7 +8,9 @@ import {
   draftToPreviewProjection,
   emptyFlowDraft,
   flowDraftFromCopilot,
+  copilotPayloadFromJob,
   flowDraftToCopilotPayload,
+  patchFromDraftRevision,
   toolActionFormFromJob,
   flowDraftToJobInput,
   flowEditToJobPatch,
@@ -707,5 +709,114 @@ describe("flowDraftFromCopilot — revision base preservation", () => {
     expect(draft.agentModel).toBe("");
     expect(draft.agentSystemPrompt).toBe("");
     expect(draft.enabled).toBe(true);
+  });
+});
+
+describe("copilotPayloadFromJob / patchFromDraftRevision — editing an EXISTING flow through the copilot", () => {
+  const AGENT_JOB = {
+    agentModel: null,
+    agentPrompt: "오늘 일정 요약해줘",
+    agentSystemPrompt: null,
+    cronExpression: "0 9 * * *",
+    enabled: true,
+    id: "job_1",
+    jobType: "AGENT",
+    maxRetryCount: 3,
+    name: "아침 브리핑",
+    notificationChannelId: null,
+    retryOnFailure: false,
+    timezone: "UTC"
+  } as never;
+  const TOOL_JOB = {
+    agentModel: null,
+    agentPrompt: "",
+    agentSystemPrompt: null,
+    cronExpression: "0 * * * *",
+    enabled: true,
+    id: "job_2",
+    jobType: "MCP_TOOL",
+    maxRetryCount: 3,
+    mcpServerName: "muse.url",
+    name: "URL 파싱",
+    notificationChannelId: "telegram:1",
+    retryOnFailure: true,
+    timezone: "UTC",
+    toolArguments: { url: "https://a.com" },
+    toolName: "parse"
+  } as never;
+
+  it("projects an agent job into the copilot payload shape", () => {
+    expect(copilotPayloadFromJob(AGENT_JOB)).toEqual({
+      action: "agent",
+      cronExpression: "0 9 * * *",
+      name: "아침 브리핑",
+      notifyChannel: null,
+      prompt: "오늘 일정 요약해줘",
+      retry: false,
+      toolArguments: {},
+      toolName: null,
+      toolServer: null
+    });
+  });
+
+  it("projects a tool job (pair + args + notify + retry)", () => {
+    expect(copilotPayloadFromJob(TOOL_JOB)).toEqual({
+      action: "tool",
+      cronExpression: "0 * * * *",
+      name: "URL 파싱",
+      notifyChannel: "telegram:1",
+      prompt: "",
+      retry: true,
+      toolArguments: { url: "https://a.com" },
+      toolName: "parse",
+      toolServer: "muse.url"
+    });
+  });
+
+  it("maps changed fields to the exact PATCH body (agent: cron + notify)", () => {
+    const previous = copilotPayloadFromJob(AGENT_JOB);
+    const next = { ...previous, cronExpression: "30 8 * * *", notifyChannel: "telegram:9" };
+    const result = patchFromDraftRevision(previous, next);
+    expect(result).toEqual({ ok: true, patch: { cronExpression: "30 8 * * *", notificationChannelId: "telegram:9" } });
+  });
+
+  it("maps a tool-pair + args change to mcpServerName/toolName/toolArguments together", () => {
+    const previous = copilotPayloadFromJob(TOOL_JOB);
+    const next = { ...previous, toolArguments: { from: "a", to: "b" }, toolName: "diff_ms", toolServer: "muse.time" };
+    const result = patchFromDraftRevision(previous, next);
+    expect(result).toEqual({
+      ok: true,
+      patch: { mcpServerName: "muse.time", toolArguments: { from: "a", to: "b" }, toolName: "diff_ms" }
+    });
+  });
+
+  it("a changed tool pair WITHOUT changed args still re-sends the args (one PATCH unit)", () => {
+    const previous = copilotPayloadFromJob(TOOL_JOB);
+    const next = { ...previous, toolName: "encode_query" };
+    const result = patchFromDraftRevision(previous, next);
+    expect(result).toEqual({
+      ok: true,
+      patch: { mcpServerName: "muse.url", toolArguments: { url: "https://a.com" }, toolName: "encode_query" }
+    });
+  });
+
+  it("no change → { ok: false, reason: 'no-change' }", () => {
+    const previous = copilotPayloadFromJob(AGENT_JOB);
+    expect(patchFromDraftRevision(previous, { ...previous })).toEqual({ ok: false, reason: "no-change" });
+  });
+
+  it("an agent↔tool action flip is refused deterministically", () => {
+    const previous = copilotPayloadFromJob(AGENT_JOB);
+    const next = { ...previous, action: "tool" as const, prompt: "", toolArguments: {}, toolName: "now", toolServer: "muse.time" };
+    expect(patchFromDraftRevision(previous, next)).toEqual({ ok: false, reason: "action-flip" });
+  });
+
+  it("a name + prompt + retry change maps to name/agentPrompt/retryOnFailure", () => {
+    const previous = copilotPayloadFromJob(AGENT_JOB);
+    const next = { ...previous, name: "저녁 브리핑", prompt: "저녁 요약해줘", retry: true };
+    expect(patchFromDraftRevision(previous, next)).toEqual({
+      ok: true,
+      patch: { agentPrompt: "저녁 요약해줘", name: "저녁 브리핑", retryOnFailure: true }
+    });
   });
 });

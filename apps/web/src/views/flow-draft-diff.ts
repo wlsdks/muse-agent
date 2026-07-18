@@ -9,9 +9,9 @@
 import type { FlowDraftPayloadRow } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 
-export type DraftFieldKey = "name" | "cronExpression" | "prompt" | "notifyChannel" | "retry" | "action" | "toolServer" | "toolName";
+export type DraftFieldKey = "name" | "cronExpression" | "prompt" | "notifyChannel" | "retry" | "action" | "toolServer" | "toolName" | "toolArguments";
 
-const DRAFT_FIELD_ORDER: readonly DraftFieldKey[] = ["name", "cronExpression", "prompt", "notifyChannel", "retry", "action", "toolServer", "toolName"];
+const DRAFT_FIELD_ORDER: readonly DraftFieldKey[] = ["name", "cronExpression", "prompt", "notifyChannel", "retry", "action", "toolServer", "toolName", "toolArguments"];
 
 const DRAFT_FIELD_LABEL_KEY: Record<DraftFieldKey, StringKey> = {
   action: "auto.flows.create.actionKindLabel",
@@ -20,6 +20,7 @@ const DRAFT_FIELD_LABEL_KEY: Record<DraftFieldKey, StringKey> = {
   notifyChannel: "auto.flows.edit.notifyLabel",
   prompt: "auto.flows.edit.promptLabel",
   retry: "auto.flows.edit.retryLabel",
+  toolArguments: "auto.flows.edit.toolArgsLabel",
   toolName: "auto.flows.create.toolNameLabel",
   toolServer: "auto.flows.create.toolServerLabel"
 };
@@ -39,13 +40,23 @@ function previewValue(field: DraftFieldKey, next: FlowDraftPayloadRow, t: Transl
   if (field === "toolServer" || field === "toolName") {
     return next[field] ?? "";
   }
+  if (field === "toolArguments") {
+    const json = JSON.stringify(next.toolArguments);
+    return json.length > VALUE_PREVIEW_MAX_LENGTH ? `${json.slice(0, VALUE_PREVIEW_MAX_LENGTH - 1)}…` : json;
+  }
   const raw = next[field];
   return raw.length > VALUE_PREVIEW_MAX_LENGTH ? `${raw.slice(0, VALUE_PREVIEW_MAX_LENGTH - 1)}…` : raw;
 }
 
 /** Which of the whitelisted draft fields differ between `previous` and `next`. */
 export function changedDraftFields(previous: FlowDraftPayloadRow, next: FlowDraftPayloadRow): DraftFieldKey[] {
-  return DRAFT_FIELD_ORDER.filter((field) => previous[field] !== next[field]);
+  return DRAFT_FIELD_ORDER.filter((field) =>
+    // toolArguments is the one object field — value-compare it, or two
+    // identical arg sets with different identities would read as a change.
+    field === "toolArguments"
+      ? JSON.stringify(previous.toolArguments) !== JSON.stringify(next.toolArguments)
+      : previous[field] !== next[field]
+  );
 }
 
 /** The one-line ack a revision turn shows in the conversation thread —

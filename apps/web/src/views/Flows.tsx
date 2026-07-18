@@ -11,6 +11,7 @@ import { FlowCreatePanel } from "./flow-create-panel.js";
 import { ScheduleTable } from "./Scheduled.js";
 import { UpcomingTab } from "./Autonomy.js";
 import { FlowDraftComposer } from "./flow-draft-composer.js";
+import { EditFlowCopilot } from "./flow-edit-copilot.js";
 import { FlowNodeEditPanel } from "./flow-edit-panel.js";
 import { ExecutionsCard } from "./flow-executions.js";
 import { FlowSwitcher } from "./flow-switcher.js";
@@ -283,7 +284,11 @@ function FlowsBody({ client, flows }: { client: ApiClient; flows: readonly FlowP
           </div>
           <div className={`ws-side-body${sideTab === "chat" ? " chat" : ""}`}>
             {sideTab === "chat" && (
-              <FlowDraftComposer client={client} onDrafted={handleDrafted} currentDraft={currentDraft} />
+              creating || !selectedFlow ? (
+                <FlowDraftComposer client={client} onDrafted={handleDrafted} currentDraft={currentDraft} />
+              ) : (
+                <EditFlowCopilot client={client} flowId={selectedFlow.id} />
+              )
             )}
             {sideTab === "node" && (
               selectedFlow && selectedNodeId ? (
