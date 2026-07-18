@@ -22,7 +22,6 @@ const FlowsView = lazy(async () => ({ default: (await import("../views/Flows.js"
 import { ChatView } from "../views/Chat.js";
 import { ChatsView } from "../views/Chats.js";
 import { DashboardView } from "../views/Dashboard.js";
-import { MemoryView } from "../views/Memory.js";
 import { IntegrationsView } from "../views/Integrations.js";
 import { JourneyView } from "../views/Journey.js";
 import { MessagingView } from "../views/Messaging.js";
@@ -32,7 +31,6 @@ import { RemindersView } from "../views/Reminders.js";
 import { SchedulerView } from "../views/Scheduler.js";
 import { SettingsView } from "../views/Settings.js";
 import { TasksView } from "../views/Tasks.js";
-import { TodayView } from "../views/Today.js";
 import { HomeView } from "../views/Home.js";
 import { WorkView } from "../views/Work.js";
 import { McpServersView } from "../views/McpServers.js";
@@ -53,7 +51,6 @@ const queryClient = new QueryClient({
 
 type ViewId =
   | "home"
-  | "today"
   | "chat"
   | "chats"
   | "tasks"
@@ -64,7 +61,6 @@ type ViewId =
   | "messaging"
   | "integrations"
   | "notes"
-  | "memory"
   | "continuity"
   | "journey"
   | "activity"
@@ -79,7 +75,7 @@ type ViewId =
   | "prompt-lab"
   | "scheduler"
   | "settings";
-type GroupKey = "group.workspace" | "group.life" | "group.automation" | "group.knowledge" | "group.system";
+type GroupKey = "group.workspace" | "group.life" | "group.continuity" | "group.automation" | "group.knowledge" | "group.system";
 
 interface NavEntry {
   readonly id: ViewId;
@@ -96,7 +92,6 @@ interface NavEntry {
 export const NAV: readonly NavEntry[] = [
   { Component: HomeView, group: "group.workspace", icon: Icon.home, id: "home", key: "z", labelKey: "nav.home" },
   { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", key: "c", labelKey: "nav.chat" },
-  { Component: TodayView, group: "group.workspace", icon: Icon.calendar, id: "today", key: "t", labelKey: "nav.today" },
   { Component: ChatsView, group: "group.workspace", icon: Icon.clock, id: "chats", advanced: true, key: "h", labelKey: "nav.chats" },
   { Component: BoardView, group: "group.workspace", icon: Icon.chart, id: "board", advanced: true, key: "b", labelKey: "nav.board" },
   { Component: AgentsView, group: "group.workspace", icon: Icon.brain, id: "agents", advanced: true, key: "x", labelKey: "nav.agents" },
@@ -105,11 +100,10 @@ export const NAV: readonly NavEntry[] = [
   { Component: TasksView, group: "group.life", icon: Icon.task, id: "tasks", key: "k", labelKey: "nav.tasks" },
   { Component: CalendarView, group: "group.life", icon: Icon.calendar, id: "calendar", key: "l", labelKey: "nav.calendar" },
   { Component: RemindersView, group: "group.life", icon: Icon.bell, id: "reminders", key: "r", labelKey: "nav.reminders" },
+  { Component: ContinuityReviewView, group: "group.continuity", icon: Icon.clock, id: "continuity", key: "q", labelKey: "nav.continuity" },
+  { Component: WorkView, group: "group.continuity", icon: Icon.task, id: "work", key: "2", labelKey: "nav.work" },
   { Component: FlowsView, group: "group.automation", icon: Icon.activity, id: "flows", key: "w", labelKey: "nav.flows" },
-  { Component: WorkView, group: "group.automation", icon: Icon.task, id: "work", key: "2", labelKey: "nav.work" },
   { Component: NotesView, group: "group.knowledge", icon: Icon.note, id: "notes", key: "n", labelKey: "nav.notes" },
-  { Component: MemoryView, group: "group.knowledge", icon: Icon.brain, id: "memory", key: "m", labelKey: "nav.memory" },
-  { Component: ContinuityReviewView, group: "group.knowledge", icon: Icon.clock, id: "continuity", key: "q", labelKey: "nav.continuity" },
   { Component: JourneyView, group: "group.knowledge", icon: Icon.clock, id: "journey", advanced: true, key: "u", labelKey: "nav.journey" },
   { Component: ActivityView, group: "group.knowledge", icon: Icon.activity, id: "activity", advanced: true, key: "a", labelKey: "nav.activity" },
   { Component: AutonomyView, group: "group.system", icon: Icon.shield, id: "autonomy", key: "y", labelKey: "nav.autonomy" },
@@ -123,7 +117,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", key: "s", labelKey: "nav.settings" }
 ];
 
-const GROUPS: readonly GroupKey[] = ["group.workspace", "group.life", "group.automation", "group.knowledge", "group.system"];
+const GROUPS: readonly GroupKey[] = ["group.workspace", "group.life", "group.continuity", "group.automation", "group.knowledge", "group.system"];
 
 // Primary sidebar nav. Pure + i18n-free (t injected) so the a11y semantics —
 // the navigation landmark and aria-current="page" on the active view — are

@@ -25,7 +25,9 @@ export function memorySubtitle(t: Translate, locale: string, updatedAt?: string)
  * (transparency, not editing): there is no per-fact delete on the API,
  * and curation belongs to the agent/CLI path.
  */
-export function MemoryView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
+/** The "what Muse knows" surface, rendered as the 기억 tab inside Notes —
+ * the standalone Memory view folded in (both are knowledge surfaces). */
+export function MemorySections({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { lang, locale, t } = useI18n();
   const [userId, setUserId] = useState("default");
 
@@ -47,9 +49,7 @@ export function MemoryView({ client, onNavigate }: { client: ApiClient; onNaviga
   const topics = memory.data?.recentTopics ?? [];
 
   return (
-    <div className="content-narrow">
-      <p className="eyebrow">{t("group.knowledge")}</p>
-      <h1 className="page-title">{t("nav.memory")}</h1>
+    <div>
       <p className="muted" style={{ marginTop: 4 }}>
         {memorySubtitle(t, locale, memory.data?.updatedAt)}
       </p>

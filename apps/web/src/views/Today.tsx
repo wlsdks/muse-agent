@@ -35,7 +35,10 @@ function isOverdue(iso: string): boolean {
   return !Number.isNaN(ms) && ms < -60_000;
 }
 
-export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
+/** Today's actionable detail — stats, task/event/reminder cards, proactive
+ * notices — rendered inside Home (the standalone Today view merged into it;
+ * both consumed the same /api/today, and react-query dedupes the fetch). */
+export function TodaySections({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { locale, t } = useI18n();
   const brief = useQuery({
     queryFn: () => client.get<TodayBriefingResponse>("/api/today"),
@@ -53,14 +56,8 @@ export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigat
   const noticeList = notices.data?.entries ?? notices.data?.items ?? [];
 
   return (
-    <div className="content-narrow">
-      <p className="eyebrow">{t("nav.today")}</p>
-      <h1 className="page-title">{t("today.greetingLine", { greeting: t(greetingKey()) })}</h1>
-      <p className="muted" style={{ marginTop: 4 }}>
-        {t("today.summary", { events: events.length, reminders: reminders.length, tasks: tasks.length })}
-      </p>
-
-      <div className="grid grid-3" style={{ margin: "28px 0" }}>
+    <>
+      <div className="grid grid-3" style={{ margin: "16px 0" }}>
         <Card>
           <Stat value={tasks.length} label={t("today.openTasks")} icon={<Icon.task />} />
         </Card>
@@ -169,6 +166,6 @@ export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigat
           </Card>
         </div>
       )}
-    </div>
+    </>
   );
 }

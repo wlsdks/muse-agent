@@ -5,7 +5,7 @@ import { useI18n } from "../i18n/index.js";
 import { modelChip } from "../lib/model-chip.js";
 import { factLabel } from "../lib/memory-labels.js";
 import { homeCapabilities, seedChat } from "./home-logic.js";
-import { greetingKey } from "./Today.js";
+import { greetingKey, TodaySections } from "./Today.js";
 
 import type { ApiClient } from "../api/client.js";
 import type {
@@ -14,7 +14,6 @@ import type {
   HealthResponse,
   MessagingSetupResponse,
   ModelsResponse,
-  TodayBriefingResponse,
   UserMemoryResponse
 } from "../api/types.js";
 import type { Translate } from "../i18n/index.js";
@@ -113,11 +112,6 @@ export function HomeView({ client, onNavigate }: { client: ApiClient; onNavigate
     },
     queryKey: ["memory", client.baseUrl, "default"]
   });
-  const brief = useQuery({
-    queryFn: () => client.get<TodayBriefingResponse>("/api/today"),
-    queryKey: ["today", client.baseUrl]
-  });
-
   const chip = modelChip(models.data?.defaultModel ?? models.data?.active);
   const telegram = messaging.data?.providers.find((p) => p.id === "telegram");
   const replyDaemon = daemons.data?.flags?.find((f) => f.key === "MUSE_INBOUND_REPLY_ENABLED");
@@ -127,10 +121,6 @@ export function HomeView({ client, onNavigate }: { client: ApiClient; onNavigate
     emailConfigured: email.data?.configured === true,
     threadCount: review.data?.threads?.length ?? 0
   });
-
-  const tasks = brief.data?.tasks?.length ?? 0;
-  const events = brief.data?.events?.length ?? 0;
-  const reminders = brief.data?.reminders?.length ?? 0;
 
   const ask = (prompt: string) => seedChat(prompt, navigate);
 
@@ -225,7 +215,7 @@ export function HomeView({ client, onNavigate }: { client: ApiClient; onNavigate
                 <LearnedRow key={k} factKey={k} value={v} lang={lang} t={t} onAsk={ask} />
               ))}
               <div style={{ marginTop: 8 }}>
-                <Button variant="ghost" size="sm" onClick={() => navigate("memory")}>
+                <Button variant="ghost" size="sm" onClick={() => navigate("notes")}>
                   {t("home.learned.all")}
                 </Button>
               </div>
@@ -234,12 +224,7 @@ export function HomeView({ client, onNavigate }: { client: ApiClient; onNavigate
         </Card>
       </div>
 
-      <div className="todayline" style={{ marginTop: 16 }}>
-        <span>{t("home.today.line", { events, reminders, tasks })}</span>
-        <button type="button" className="status-chip-link" onClick={() => navigate("today")} style={{ marginLeft: "auto" }}>
-          {t("home.today.more")}
-        </button>
-      </div>
+      <TodaySections client={client} onNavigate={onNavigate} />
     </div>
   );
 }

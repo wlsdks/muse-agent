@@ -2848,3 +2848,24 @@ button.status-chip {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.seg-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.seg-tabs button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.seg-tabs button.on {
+  background: var(--surface-2, rgba(127, 127, 127, 0.15));
+  color: var(--text);
+}

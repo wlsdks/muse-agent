@@ -17,7 +17,7 @@ export function WorkView({ client, onNavigate }: { client: ApiClient; onNavigate
   const { t } = useI18n();
   return (
     <div className="content-narrow">
-      <p className="eyebrow">{t("group.automation")}</p>
+      <p className="eyebrow">{t("group.continuity")}</p>
       <h1 className="page-title">{t("nav.work")}</h1>
       <p className="muted" style={{ marginTop: 4, marginBottom: 16 }}>{t("work.subtitle")}</p>
       <WorkTab client={client} onNavigate={onNavigate} />

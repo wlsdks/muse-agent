@@ -5,6 +5,7 @@ import { useAskStream } from "../api/useAskStream.js";
 import { Markdown } from "../components/markdown.js";
 import { AsyncBlock, Badge, Button, Card, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { MemorySections } from "./Memory.js";
 import { readToken } from "../lib/token-storage.js";
 
 import type { ApiClient } from "../api/client.js";
@@ -100,7 +101,8 @@ function AskPanel({ client, onOpenNote, t }: { client: ApiClient; onOpenNote: (n
   );
 }
 
-export function NotesView({ client }: { client: ApiClient }) {
+export function NotesView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
+  const [knowledgeTab, setKnowledgeTab] = useState<"notes" | "memory">("notes");
   const { t } = useI18n();
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
@@ -165,6 +167,19 @@ export function NotesView({ client }: { client: ApiClient }) {
       <p className="eyebrow">{t("group.knowledge")}</p>
       <h1 className="page-title">{t("notes.title")}</h1>
 
+      <div className="seg-tabs" role="tablist" style={{ margin: "12px 0" }}>
+        <button type="button" role="tab" aria-selected={knowledgeTab === "notes"} className={knowledgeTab === "notes" ? "on" : ""} onClick={() => setKnowledgeTab("notes")}>
+          {t("nav.notes")}
+        </button>
+        <button type="button" role="tab" aria-selected={knowledgeTab === "memory"} className={knowledgeTab === "memory" ? "on" : ""} onClick={() => setKnowledgeTab("memory")}>
+          {t("nav.memory")}
+        </button>
+      </div>
+
+      {knowledgeTab === "memory" ? (
+        <MemorySections client={client} onNavigate={onNavigate} />
+      ) : (
+        <>
       <AskPanel
         client={client}
         onOpenNote={(name) => {
@@ -289,6 +304,8 @@ export function NotesView({ client }: { client: ApiClient }) {
           )}
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

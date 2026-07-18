@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { MemoryView } from "./Memory.js";
+import { MemorySections } from "./Memory.js";
 import { NotesView } from "./Notes.js";
 import { ToolsView } from "./Tools.js";
 import { createApiClient } from "../api/client.js";
@@ -39,8 +39,8 @@ describe("console inputs — accessible names against the real views (WCAG 4.1.2
     expect(html).toMatch(/<input\b[^>]*\baria-label="Search across all notes[^"]*"/);
   });
 
-  it("MemoryView userId input carries an aria-label", () => {
-    const html = renderView(MemoryView);
+  it("MemorySections userId input carries an aria-label", () => {
+    const html = renderView(MemorySections);
     expect(html).toMatch(/<input\b[^>]*\baria-label="User"/);
   });
 });

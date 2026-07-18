@@ -14,7 +14,7 @@ function activeLabel(html: string): string | undefined {
 
 describe("SidebarNav — a11y semantics for the primary navigation", () => {
   it("exposes a navigation landmark", () => {
-    const html = renderToStaticMarkup(<SidebarNav view="today" taskCount={0} t={t} onSelect={() => {}} />);
+    const html = renderToStaticMarkup(<SidebarNav view="chat" taskCount={0} t={t} onSelect={() => {}} />);
     expect(html).toContain("<nav");
     expect(html).toContain('aria-label="nav.primary"');
   });
@@ -39,16 +39,18 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
     expect(defaultHtml).not.toContain("nav.integrations");
     // folded into the Builder as its Schedule tab (same reduction)
     expect(defaultHtml).not.toContain("nav.scheduled");
+    // LNB stage 2 (2026-07-18): Today merged into Home, Memory folded into
+    // Notes' 기억 tab — neither is a nav row anymore.
+    expect(defaultHtml).not.toContain("nav.today");
+    expect(defaultHtml).not.toContain("nav.memory");
     // the companion core + life data stays
     for (const core of [
       "nav.home",
       "nav.chat",
-      "nav.today",
       "nav.tasks",
       "nav.calendar",
       "nav.reminders",
       "nav.notes",
-      "nav.memory",
       "nav.continuity",
       "nav.settings"
     ]) {
@@ -70,12 +72,10 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
         "chat",
         "continuity",
         "home",
-        "memory",
         "notes",
         "reminders",
         "settings",
         "tasks",
-        "today",
         "work"
       ].sort()
     );
@@ -97,9 +97,11 @@ describe("SidebarNav — a11y semantics for the primary navigation", () => {
     expect(groupOrder.indexOf("group.automation")).toBeLessThan(groupOrder.indexOf("group.knowledge"));
     expect(groupOrder.indexOf("group.knowledge")).toBeLessThan(groupOrder.indexOf("group.system"));
 
-    for (const id of ["flows", "work"] as const) {
+    expect(NAV.find((n) => n.id === "flows")?.group).toBe("group.automation");
+    // The north-star pair lives in its own group (LNB stage 2).
+    for (const id of ["continuity", "work"] as const) {
       const entry = NAV.find((n) => n.id === id);
-      expect(entry?.group).toBe("group.automation");
+      expect(entry?.group).toBe("group.continuity");
       expect(entry?.advanced).toBeFalsy();
     }
   });
