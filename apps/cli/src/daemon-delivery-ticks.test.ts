@@ -3,14 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { setSchedulerPaused } from "@muse/stores";
+import { writeDayRhythmConfig } from "@muse/autoconfigure";
+import { addObjective, setSchedulerPaused } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeDailyBriefTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import { makeBriefingTick, makeDailyBriefTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
 import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
 import type { JobExecutionStatus, ScheduledJob, ScheduledJobInput, ScheduledJobStore } from "@muse/scheduler";
+import type { UserMemoryStore, UserModel, UserModelSlot } from "@muse/memory";
 
 function job(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
   return {
@@ -274,6 +276,236 @@ describe("makeSchedulerTick", () => {
 
     expect(runJobCalls).toBe(1);
     expect(store.updateCalls.some((c) => c.status === "skipped" && (c.result ?? "").includes("previous run still in progress"))).toBe(true);
+  });
+});
+
+describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm question (S6)", () => {
+  function fixtures() {
+    const dir = mkdtempSync(join(tmpdir(), "muse-briefing-tick-"));
+    return {
+      answeredFile: join(dir, "reconfirm-answered.json"),
+      channelOwnersFile: join(dir, "channel-owners.json"),
+      configFile: join(dir, "config.json"),
+      deliveryFile: join(dir, "reconfirm-delivery.json"),
+      dir,
+      objectivesFile: join(dir, "objectives.json"),
+      sidecarFile: join(dir, "briefing-fired.json")
+    };
+  }
+
+  function reconfirmableSlot(): UserModelSlot {
+    return { category: "말투", confidence: 0.1, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-05-01T00:00:00.000Z"), value: "간결한 답변" };
+  }
+
+  function fakeUserMemoryStore(slot: UserModelSlot | undefined): UserMemoryStore {
+    const model: UserModel = {
+      goals: slot?.kind === "goal" ? [slot] : [],
+      preferences: slot?.kind === "preference" ? [slot] : [],
+      schedule: slot?.kind === "schedule" ? [slot] : [],
+      vetoes: slot?.kind === "veto" ? [slot] : []
+    };
+    return {
+      deleteByUserId: async () => false,
+      findByUserId: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u", userModel: model }),
+      upsertFact: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" }),
+      upsertPreference: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" })
+    };
+  }
+
+  const NOW = new Date(2026, 6, 16, 9, 0, 0); // 09:00 local — inside an 08:00-10:00 morning window
+
+  async function seedDayRhythm(configFile: string, morningHour = 8): Promise<void> {
+    await writeDayRhythmConfig(configFile, { enabled: true, eveningHour: 18, morningHour });
+  }
+
+  it("appends the reconfirm question + reply instruction when day-rhythm fires with an eligible slot, and records the delivery", async () => {
+    const f = fixtures();
+    await seedDayRhythm(f.configFile);
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
+    });
+    const messaging = fakeMessaging();
+    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+
+    const tick = makeBriefingTick({
+      calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: "555",
+      env: { MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark" },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: registry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: "telegram",
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: () => undefined,
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: fakeUserMemoryStore(reconfirmableSlot())
+    });
+
+    await tick();
+
+    expect(messaging.sent).toHaveLength(1);
+    expect(messaging.sent[0]?.text).toContain("[Muse가 확인하고 싶은 것]");
+    expect(messaging.sent[0]?.text).toContain("말투");
+    expect(messaging.sent[0]?.text).toContain("아니야");
+
+    const { readReconfirmCardDelivery } = await import("@muse/stores");
+    const delivery = await readReconfirmCardDelivery(f.deliveryFile);
+    expect(delivery?.slotId).toBe("pref-tone");
+  });
+
+  it("byte-identical briefing when no reconfirmable slot exists", async () => {
+    const f = fixtures();
+    await seedDayRhythm(f.configFile);
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
+    });
+    const messaging = fakeMessaging();
+    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+
+    const tick = makeBriefingTick({
+      calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: "555",
+      env: { MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark" },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: registry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: "telegram",
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: () => undefined,
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: fakeUserMemoryStore(undefined)
+    });
+
+    await tick();
+
+    expect(messaging.sent).toHaveLength(1);
+    expect(messaging.sent[0]?.text).not.toContain("Muse가 확인하고 싶은 것");
+  });
+
+  it("byte-identical briefing when the day is already answered (shared gate with the Home card)", async () => {
+    const f = fixtures();
+    await seedDayRhythm(f.configFile);
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
+    });
+    const { markReconfirmCardAnswered } = await import("@muse/stores");
+    await markReconfirmCardAnswered(f.answeredFile, NOW);
+    const messaging = fakeMessaging();
+    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+
+    const tick = makeBriefingTick({
+      calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: "555",
+      env: { MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark" },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: registry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: "telegram",
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: () => undefined,
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: fakeUserMemoryStore(reconfirmableSlot())
+    });
+
+    await tick();
+
+    expect(messaging.sent).toHaveLength(1);
+    expect(messaging.sent[0]?.text).not.toContain("Muse가 확인하고 싶은 것");
+  });
+
+  it("the legacy MUSE_BRIEFING_ENABLED env path (not day-rhythm-driven) never appends the reconfirm addendum, even with an eligible slot", async () => {
+    const f = fixtures();
+    // dayRhythm left disabled — envEnabled drives this tick instead.
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
+    });
+    const messaging = fakeMessaging();
+    const registry = { list: () => [], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+
+    const tick = makeBriefingTick({
+      calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: "@me",
+      env: { MUSE_BRIEFING_ENABLED: "true", MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark" },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: registry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: "log",
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: () => undefined,
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: fakeUserMemoryStore(reconfirmableSlot())
+    });
+
+    await tick();
+
+    expect(messaging.sent).toHaveLength(1);
+    expect(messaging.sent[0]?.text).not.toContain("Muse가 확인하고 싶은 것");
+  });
+
+  it("no dayRhythm/env enabled at all → no send, reconfirm resolver never consulted", async () => {
+    const f = fixtures();
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
+    });
+    const messaging = fakeMessaging();
+    const registry = { list: () => [], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    let storeCalled = false;
+    const store = fakeUserMemoryStore(reconfirmableSlot());
+
+    const tick = makeBriefingTick({
+      calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: "@me",
+      env: { MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark" },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: registry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: "log",
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: () => undefined,
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: {
+        ...store,
+        findByUserId: async () => {
+          storeCalled = true;
+          return store.findByUserId("stark");
+        }
+      }
+    });
+
+    await tick();
+
+    expect(messaging.sent).toHaveLength(0);
+    expect(storeCalled).toBe(false);
   });
 });
 

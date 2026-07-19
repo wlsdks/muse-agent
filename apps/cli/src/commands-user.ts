@@ -9,7 +9,7 @@
 
 import { detectCorrections, findSupersededPreferenceId, inferPreferenceFromCorrection } from "@muse/agent-core";
 import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { FileUserMemoryStore, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
+import { FileUserMemoryStore, findUserModelSlotById, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
 import { readLastChatHistory, type LastChatLine } from "./chat-history.js";
@@ -288,11 +288,6 @@ export interface UserModelReviewResult {
   readonly rejected?: string;
 }
 
-/** Find a slot by id across all four kinds. */
-function findSlotById(model: UserModel, id: string): UserModelSlot | undefined {
-  return [...model.preferences, ...model.schedule, ...model.vetoes, ...model.goals].find((slot) => slot.id === id);
-}
-
 /**
  * The re-confirm engine behind `muse user model review`. No flags → list the
  * inferred slots that have faded below trust (`selectReconfirmableSlots`).
@@ -314,7 +309,7 @@ export async function runUserModelReview(
   if (options.confirm !== undefined) {
     const id = options.confirm.trim();
     const snap = await store.findByUserId(userId);
-    const slot = snap?.userModel ? findSlotById(snap.userModel, id) : undefined;
+    const slot = snap?.userModel ? findUserModelSlotById(snap.userModel, id) : undefined;
     if (!slot) return { action: "confirm", confirmTarget: id };
     const { confidence: _wasInferred, ...rest } = slot;
     const asserted = { ...rest, updatedAt: now() } as UserModelSlot;

@@ -31,6 +31,8 @@ import {
   resolveNotesDir,
   resolveObjectivesFile,
   resolveProactiveHistoryFile,
+  resolveReconfirmCardAnsweredFile,
+  resolveReconfirmCardDeliveryFile,
   resolveRemindersFile,
   resolveTasksFile,
   resolveHomeAssistantEnvironment,
@@ -937,6 +939,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         messagingRegistry,
         objectivesFile,
         provider,
+        reconfirmCardAnsweredFile: resolveReconfirmCardAnsweredFile(e),
+        reconfirmCardDeliveryFile: resolveReconfirmCardDeliveryFile(e),
         stdout: io.stdout,
         tasksFile
       });

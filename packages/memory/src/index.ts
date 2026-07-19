@@ -608,7 +608,9 @@ export {
   EMPTY_USER_MODEL,
   composeUserModelSnapshot,
   effectiveConfidence,
+  findUserModelSlotById,
   removeUserModelSlot,
+  reviveUserModelSlotDates,
   selectReconfirmableSlots,
   upsertUserModelSlot,
   type ReconfirmOptions,
@@ -621,6 +623,12 @@ export {
   type UserScheduleSlot,
   type UserVetoSlot
 } from "./user-model-slots.js";
+
+export {
+  buildReconfirmCard,
+  type ReconfirmableEntry,
+  type ReconfirmCard
+} from "./user-model-reconfirm-card.js";
 
 export {
   createUserMemoryAutoExtractHook,

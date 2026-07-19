@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
-import type { UserMemory, UserMemoryStore } from "@muse/memory";
+import type { UserMemory, UserMemoryStore, UserModel, UserModelSlot } from "@muse/memory";
 import { LogMessagingProvider, MessagingProviderRegistry, listPendingApprovals, recordPendingApproval } from "@muse/messaging";
 import { resolveToolExposureAuthority } from "@muse/policy";
-import { appendLastProactiveDelivery, avoidedSourceKeys, readFollowups, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
+import { appendLastProactiveDelivery, avoidedSourceKeys, markReconfirmCardDelivered, readFollowups, readTrustLedger, writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { AUTOMATION_CORRECTION_BLOCK_KO } from "../src/chat-automation-honesty.js";
@@ -714,6 +714,159 @@ describe("createInboundAgentRun channel-veto reply", () => {
     expect(reply).not.toBe(casualResponseFor("greeting"));
     expect(reply).toContain("journal habit");
     expect(agentCalls).toHaveLength(0);
+  });
+});
+
+// Reconfirm reply ("맞아"/"아니야"): the channel answer to the day's PUSHED
+// "Muse가 확인하고 싶은 것" question (S6). Runs AFTER the pairing + approval +
+// veto gates, BEFORE the casual fast-path — a match applies the SAME
+// confirm/reject mutation the Home web card uses and the agent never runs;
+// anything else falls through untouched.
+describe("createInboundAgentRun reconfirm reply (S6, day-rhythm briefing push)", () => {
+  function reconfirmStore(slot: UserModelSlot | undefined) {
+    const calls = { removes: [] as string[], upserts: [] as UserModelSlot[] };
+    const model: UserModel = {
+      goals: slot?.kind === "goal" ? [slot] : [],
+      preferences: slot?.kind === "preference" ? [slot] : [],
+      schedule: slot?.kind === "schedule" ? [slot] : [],
+      vetoes: slot?.kind === "veto" ? [slot] : []
+    };
+    const store: UserMemoryStore = {
+      deleteByUserId: async () => false,
+      findByUserId: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u", userModel: model }),
+      removeUserModelSlot: (async (_userId: string, id: string) => {
+        calls.removes.push(id);
+        return { facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" } as UserMemory;
+      }) as UserMemoryStore["upsertUserModelSlot"],
+      upsertFact: async (_u, _k, _v) => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" }),
+      upsertPreference: async (_u, _k, _v) => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" }),
+      upsertUserModelSlot: async (_userId: string, upserted) => {
+        calls.upserts.push(upserted);
+        return { facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" };
+      }
+    };
+    return { calls, store };
+  }
+
+  function buildReconfirm(dir: string, agentCalls: string[], userMemoryStore: UserMemoryStore, extraEnv: Record<string, string> = {}) {
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        agentCalls.push("run");
+        return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
+      }
+    };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      MUSE_RECONFIRM_CARD_ANSWERED_FILE: join(dir, "reconfirm-answered.json"),
+      MUSE_RECONFIRM_CARD_DELIVERY_FILE: join(dir, "reconfirm-delivery.json"),
+      MUSE_USER_ID: "stark",
+      ...extraEnv
+    };
+    return { env, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry, userMemoryStore }) };
+  }
+
+  it("a matching reconfirm phrase with a recent delivery on record applies the mutation, and the agent never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { calls, store } = reconfirmStore({
+      confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise"
+    });
+    const { env, run } = buildReconfirm(dir, agentCalls, store);
+    await markReconfirmCardDelivered(env.MUSE_RECONFIRM_CARD_DELIVERY_FILE, "pref-tone", NOW());
+
+    const reply = await run({ messages: [{ content: "맞아", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    expect(reply).toBe("고마워요 — 반영했어요.");
+    expect(agentCalls).toHaveLength(0);
+    expect(calls.upserts).toHaveLength(1);
+    expect(calls.upserts[0]).toMatchObject({ id: "pref-tone", value: "concise" });
+  });
+
+  it("no delivery on record → falls through to the normal agent turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { store } = reconfirmStore({ confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise" });
+    const { run } = buildReconfirm(dir, agentCalls, store);
+
+    const reply = await run({ messages: [{ content: "아니야", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(agentCalls).toHaveLength(1);
+    expect(reply).toContain("answer");
+  });
+
+  it("shared (group) scope: a reconfirm phrase never mutates anything, even with a fresh delivery on record", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { calls, store } = reconfirmStore({ confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise" });
+    const { env, run } = buildReconfirm(dir, agentCalls, store, { MUSE_CHANNEL_ALLOWED_CHATS: "log:-100999", MUSE_CHANNEL_GROUP_ENABLED: "true" });
+    await markReconfirmCardDelivered(env.MUSE_RECONFIRM_CARD_DELIVERY_FILE, "pref-tone", NOW());
+
+    const reply = await run({ messages: [{ content: "맞아", role: "user" }], providerId: "log", scope: "shared", source: "-100999" });
+    expect(agentCalls).toHaveLength(1); // fell through to the agent, not the reconfirm handler
+    expect(reply).toContain("answer");
+    expect(calls.upserts).toHaveLength(0);
+  });
+
+  it("gate ordering: an unpaired stranger's reconfirm phrase still gets the pairing refusal, not a reconfirm ack", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { calls, store } = reconfirmStore({ confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise" });
+    const { env, run } = buildReconfirm(dir, agentCalls, store);
+    await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // the seeded owner's turn
+    await markReconfirmCardDelivered(env.MUSE_RECONFIRM_CARD_DELIVERY_FILE, "pref-tone", NOW());
+
+    const strangerReply = await run({ messages: [{ content: "맞아", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    expect(calls.upserts).toHaveLength(0);
+  });
+
+  it("gate ordering: a pure approval word with a pending approval resolves as the approval ack, never a reconfirm answer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { calls, store } = reconfirmStore({ confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise" });
+    const { env, run } = buildReconfirm(dir, agentCalls, store);
+    await recordPendingApproval(env.MUSE_PENDING_APPROVALS_FILE, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    await markReconfirmCardDelivered(env.MUSE_RECONFIRM_CARD_DELIVERY_FILE, "pref-tone", NOW());
+
+    const reply = await run({ messages: [{ content: "ok", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("muse approvals approve pending-1");
+    expect(agentCalls).toHaveLength(0);
+    expect(calls.upserts).toHaveLength(0);
+  });
+
+  it("veto phrase '그만' is unaffected — the reconfirm handler never intercepts it (regression)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-reconfirm-"));
+    const agentCalls: string[] = [];
+    const { calls, store } = reconfirmStore({ confidence: 0.2, id: "pref-tone", kind: "preference", updatedAt: new Date("2026-06-01T00:00:00.000Z"), value: "concise" });
+    const { env, run } = buildReconfirm(dir, agentCalls, store, {
+      MUSE_LAST_PROACTIVE_FILE: join(dir, "last-delivery.json"),
+      MUSE_PROACTIVE_TRUST_FILE: join(dir, "trust.json")
+    });
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, { at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1" });
+    await markReconfirmCardDelivered(env.MUSE_RECONFIRM_CARD_DELIVERY_FILE, "pref-tone", NOW());
+
+    const reply = await run({ messages: [{ content: "그만", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("pattern-firing:pat-1");
+    expect(calls.upserts).toHaveLength(0);
+    const avoided = avoidedSourceKeys(await readTrustLedger(env.MUSE_PROACTIVE_TRUST_FILE));
+    expect(avoided.has("pattern-firing:pat-1")).toBe(true);
   });
 });
 

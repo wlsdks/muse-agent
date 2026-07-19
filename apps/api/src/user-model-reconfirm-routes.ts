@@ -25,7 +25,7 @@
  */
 
 import { markReconfirmCardAnswered, reconfirmCardAlreadyAnsweredToday } from "@muse/stores";
-import { selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
+import { findUserModelSlotById, reviveUserModelSlotDates, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -56,12 +56,6 @@ export interface UserModelReconfirmRoutesOptions {
   readonly reconfirmCardAnsweredFile: string;
   /** Injectable clock for tests; defaults to the real `Date.now`. */
   readonly now?: () => Date;
-}
-
-/** Find a slot by id across all four kinds — mirrors
- *  apps/cli/src/commands-user.ts's private `findSlotById` exactly. */
-function findSlotById(model: UserModel, id: string): UserModelSlot | undefined {
-  return [...model.preferences, ...model.schedule, ...model.vetoes, ...model.goals].find((slot) => slot.id === id);
 }
 
 export function registerUserModelReconfirmRoutes(server: FastifyInstance, options: UserModelReconfirmRoutesOptions): void {
@@ -98,7 +92,7 @@ export function registerUserModelReconfirmRoutes(server: FastifyInstance, option
 
     const at = now();
     const model = await loadUserModel(options);
-    const slot = model ? findSlotById(model, slotId) : undefined;
+    const slot = model ? findUserModelSlotById(model, slotId) : undefined;
     if (!slot) {
       return reply.status(404).send({ code: "SLOT_NOT_FOUND", message: `no slot [${slotId}]` });
     }
@@ -120,21 +114,9 @@ async function loadUserModel(options: UserModelReconfirmRoutesOptions): Promise<
   const snap = await Promise.resolve(options.userMemoryStore.findByUserId(options.defaultUserId)).catch(() => undefined);
   const model = snap?.userModel;
   if (!model) return undefined;
-  return reviveSlotDates(model);
-}
-
-/** The file store round-trips slot `updatedAt` as an ISO STRING — the
- * selection math needs real Dates, and the in-memory fakes tests use hand
- * it Dates already, so normalize both shapes here (the live 500 this fixes
- * only appeared against the real serialized store). */
-function reviveSlotDates(model: UserModel): UserModel {
-  const revive = <T extends UserModelSlot>(slots: readonly T[]): readonly T[] =>
-    slots.map((slot) => (slot.updatedAt instanceof Date ? slot : { ...slot, updatedAt: new Date(slot.updatedAt as unknown as string) }));
-  return {
-    ...model,
-    goals: revive(model.goals ?? []),
-    preferences: revive(model.preferences ?? []),
-    schedule: revive(model.schedule ?? []),
-    vetoes: revive(model.vetoes ?? [])
-  };
+  // The file store round-trips slot `updatedAt` as an ISO STRING — the
+  // selection math needs real Dates, and the in-memory fakes tests use hand
+  // it Dates already, so normalize both shapes here (the live 500 this fixes
+  // only appeared against the real serialized store).
+  return reviveUserModelSlotDates(model);
 }

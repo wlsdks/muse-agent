@@ -35,6 +35,12 @@ export {
   readReconfirmCardAnsweredDate
 } from "./reconfirm-card-answered-store.js";
 export type { ReconfirmCardAnsweredState } from "./reconfirm-card-answered-store.js";
+export {
+  isReconfirmCardDeliveryRecent,
+  markReconfirmCardDelivered,
+  readReconfirmCardDelivery
+} from "./reconfirm-card-delivery-store.js";
+export type { ReconfirmCardDeliveryState } from "./reconfirm-card-delivery-store.js";
 export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "./digest-lock.js";
 export type { DigestLockOutcome, ProcessLockOutcome } from "./digest-lock.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildReconfirmCard } from "./user-model-reconfirm-card.js";
 
-import type { UserModelSlot } from "@muse/memory";
+import type { UserModelSlot } from "./user-model-slots.js";
 
 const BASE_DATE = new Date("2026-06-01T00:00:00.000Z");
 

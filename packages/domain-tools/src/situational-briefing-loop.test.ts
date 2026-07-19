@@ -187,6 +187,196 @@ describe("runDueSituationalBriefing — contract-faithful real-channel delivery,
     expect(weatherFetched).toBe(false);
   });
 
+  // S6: the reconfirm-question addendum (the day-rhythm briefing's PUSH
+  // counterpart of the Home "Muse가 확인하고 싶은 것" pull card). The caller
+  // (`makeBriefingTick`) supplies `reconfirmCard` ONLY for a day-rhythm-driven
+  // tick — these tests exercise the addendum's own contract in isolation.
+  describe("reconfirmCard addendum (S6)", () => {
+    it("appends the question + reply instruction when eligible, and records delivery ONLY after the send", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective());
+      const posts: { url: string; body: string }[] = [];
+      const delivered: { slotId: string; at: Date }[] = [];
+
+      const summary = await runDueSituationalBriefing({
+        destination: "555",
+        imminent,
+        messagingRegistry: new MessagingProviderRegistry([telegram(posts)]),
+        now: () => NOW,
+        objectivesFile,
+        onReconfirmDelivered: async (slotId, at) => {
+          delivered.push({ at, slotId });
+        },
+        providerId: "telegram",
+        reconfirmCard: () => ({ question: "진안의 말투 — 이렇게 추측하고 있어요: '간결한 답변'. 아직 맞나요?", slotId: "pref-tone" }),
+        sidecarFile
+      });
+
+      expect(summary).toEqual({ delivered: 1 });
+      const body = JSON.parse(posts[0]!.body) as { text: string };
+      expect(body.text).toContain("[Briefing]");
+      expect(body.text).toContain("in 15 min: Q3 review"); // the normal briefing content is intact
+      expect(body.text).toContain("[Muse가 확인하고 싶은 것]");
+      expect(body.text).toContain("진안의 말투");
+      expect(body.text).toContain("아니야");
+      expect(delivered).toEqual([{ at: NOW, slotId: "pref-tone" }]);
+    });
+
+    it("byte-identical briefing when reconfirmCard is omitted entirely (legacy env-flag path parity)", async () => {
+      const fixturesA = fixtures();
+      const fixturesB = fixtures();
+      await addObjective(fixturesA.objectivesFile, objective());
+      await addObjective(fixturesB.objectivesFile, objective());
+      const withoutAddendum: { url: string; body: string }[] = [];
+      const withAddendum: { url: string; body: string }[] = [];
+
+      await runDueSituationalBriefing({
+        destination: "555", imminent, messagingRegistry: new MessagingProviderRegistry([telegram(withoutAddendum)]),
+        now: () => NOW, objectivesFile: fixturesA.objectivesFile, providerId: "telegram", sidecarFile: fixturesA.sidecarFile
+      });
+      // Same inputs, but with a reconfirmCard resolver present — since it
+      // returns undefined (no card), the sent text must be byte-identical.
+      await runDueSituationalBriefing({
+        destination: "555", imminent, messagingRegistry: new MessagingProviderRegistry([telegram(withAddendum)]),
+        now: () => NOW, objectivesFile: fixturesB.objectivesFile, providerId: "telegram",
+        reconfirmCard: () => undefined,
+        sidecarFile: fixturesB.sidecarFile
+      });
+
+      const bodyA = JSON.parse(withoutAddendum[0]!.body) as { text: string };
+      const bodyB = JSON.parse(withAddendum[0]!.body) as { text: string };
+      expect(bodyB.text).toBe(bodyA.text);
+      expect(bodyA.text).not.toContain("Muse가 확인하고 싶은 것");
+    });
+
+    it("byte-identical briefing when the resolver returns undefined (no reconfirmable slot / already answered today)", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective());
+      const posts: { url: string; body: string }[] = [];
+      let resolverCalled = false;
+
+      const summary = await runDueSituationalBriefing({
+        destination: "555",
+        imminent,
+        messagingRegistry: new MessagingProviderRegistry([telegram(posts)]),
+        now: () => NOW,
+        objectivesFile,
+        providerId: "telegram",
+        reconfirmCard: () => {
+          resolverCalled = true;
+          return undefined;
+        },
+        sidecarFile
+      });
+
+      expect(summary).toEqual({ delivered: 1 });
+      expect(resolverCalled).toBe(true);
+      const body = JSON.parse(posts[0]!.body) as { text: string };
+      expect(body.text).not.toContain("Muse가 확인하고 싶은 것");
+      expect(body.text).toContain("[Briefing]");
+    });
+
+    it("does not consult the resolver (or send an addendum) when there is nothing to brief", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective({ status: "done" }));
+      const posts: { url: string; body: string }[] = [];
+      let resolverCalled = false;
+
+      const summary = await runDueSituationalBriefing({
+        destination: "555",
+        imminent: [],
+        messagingRegistry: new MessagingProviderRegistry([telegram(posts)]),
+        now: () => NOW,
+        objectivesFile,
+        providerId: "telegram",
+        reconfirmCard: () => {
+          resolverCalled = true;
+          return { question: "should never appear", slotId: "x" };
+        },
+        sidecarFile
+      });
+
+      expect(summary).toEqual({ delivered: 0, reason: "nothing-to-say" });
+      expect(resolverCalled).toBe(false);
+      expect(posts).toHaveLength(0);
+    });
+
+    it("a resolver throw is treated as no card — the briefing still sends, unaffected", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective());
+      const posts: { url: string; body: string }[] = [];
+
+      const summary = await runDueSituationalBriefing({
+        destination: "555",
+        imminent,
+        messagingRegistry: new MessagingProviderRegistry([telegram(posts)]),
+        now: () => NOW,
+        objectivesFile,
+        providerId: "telegram",
+        reconfirmCard: () => {
+          throw new Error("store unavailable");
+        },
+        sidecarFile
+      });
+
+      expect(summary).toEqual({ delivered: 1 });
+      const body = JSON.parse(posts[0]!.body) as { text: string };
+      expect(body.text).not.toContain("Muse가 확인하고 싶은 것");
+    });
+
+    it("onReconfirmDelivered is NOT called when the send itself fails", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective());
+      const failingProvider = new TelegramProvider({
+        baseUrl: "https://tg.test",
+        fetch: async () => {
+          throw new Error("network down");
+        },
+        token: "BOT-TOK"
+      });
+      const delivered: string[] = [];
+
+      await expect(runDueSituationalBriefing({
+        destination: "555",
+        imminent,
+        messagingRegistry: new MessagingProviderRegistry([failingProvider]),
+        now: () => NOW,
+        objectivesFile,
+        onReconfirmDelivered: async (slotId) => {
+          delivered.push(slotId);
+        },
+        providerId: "telegram",
+        reconfirmCard: () => ({ question: "q", slotId: "pref-tone" }),
+        sidecarFile
+      })).rejects.toThrow();
+
+      expect(delivered).toEqual([]);
+    });
+
+    it("a delivery-record write failure never undoes the already-sent message", async () => {
+      const { objectivesFile, sidecarFile } = fixtures();
+      await addObjective(objectivesFile, objective());
+      const posts: { url: string; body: string }[] = [];
+
+      const summary = await runDueSituationalBriefing({
+        destination: "555",
+        imminent,
+        messagingRegistry: new MessagingProviderRegistry([telegram(posts)]),
+        now: () => NOW,
+        objectivesFile,
+        onReconfirmDelivered: async () => {
+          throw new Error("sidecar write failed");
+        },
+        providerId: "telegram",
+        reconfirmCard: () => ({ question: "q", slotId: "pref-tone" }),
+        sidecarFile
+      });
+
+      expect(summary).toEqual({ delivered: 1 });
+      expect(posts).toHaveLength(1);
+    });
+  });
+
   it("re-briefs once the situation-window has elapsed", async () => {
     const { objectivesFile, sidecarFile } = fixtures();
     await addObjective(objectivesFile, objective());

@@ -27,6 +27,7 @@ import {
   parseBoolean,
   readDayRhythmConfigSafe,
   resolveContactsFile,
+  resolveDefaultUserId,
   resolveEpisodesFile,
   resolvePatternsFiredFile,
   resolveProactiveHistoryFile,
@@ -34,7 +35,7 @@ import {
 } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { runDueSituationalBriefing } from "@muse/domain-tools";
-import type { PatternMatch } from "@muse/memory";
+import { buildReconfirmCard, FileUserMemoryStore, reviveUserModelSlotDates, selectReconfirmableSlots, type PatternMatch, type UserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
   deriveBriefingImminent,
@@ -61,7 +62,16 @@ import {
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
-import { formatBirthdayBriefLine, isSchedulerPaused, queryContacts, readEpisodes, readProactiveHistory, resolveUpcomingBirthdays } from "@muse/stores";
+import {
+  formatBirthdayBriefLine,
+  isSchedulerPaused,
+  markReconfirmCardDelivered,
+  queryContacts,
+  reconfirmCardAlreadyAnsweredToday,
+  readEpisodes,
+  readProactiveHistory,
+  resolveUpcomingBirthdays
+} from "@muse/stores";
 
 import { backgroundStoreFile } from "./commands-background.js";
 import { checkinsFile } from "./commands-checkins.js";
@@ -541,8 +551,52 @@ export interface MakeBriefingTickDeps {
   readonly dayRhythmConfigFile: string;
   /** `~/.muse/channel-owners.json` — day-rhythm's auto-route source when `provider` is still the "log" default. */
   readonly channelOwnersFile: string;
+  /**
+   * S6 — the day-rhythm briefing's PUSHED reconfirm question. Both sidecars
+   * are SHARED with the Home "Muse가 확인하고 싶은 것" pull card
+   * (`apps/api/src/user-model-reconfirm-routes.ts`): `reconfirmCardAnsweredFile`
+   * is the per-day "already answered" gate, `reconfirmCardDeliveryFile`
+   * records this tick's own push so the channel reply handler
+   * (`apps/api/src/inbound-reconfirm-handler.ts`) can resolve a bare
+   * "맞아"/"아니야" reply back to the right slot within a 24h window.
+   */
+  readonly reconfirmCardAnsweredFile: string;
+  readonly reconfirmCardDeliveryFile: string;
+  /** Test seam — defaults to a real `FileUserMemoryStore()` (`~/.muse/user-memory.json`, the SAME file `apps/api`'s server reads/writes). */
+  readonly userMemoryStore?: UserMemoryStore;
   /** Test seam — defaults to `() => new Date()`. */
   readonly now?: () => Date;
+}
+
+/**
+ * Resolve today's PUSH reconfirm card, mirroring
+ * `apps/api/src/user-model-reconfirm-routes.ts`'s GET route exactly (same
+ * per-day gate, same `selectReconfirmableSlots` top-1, same
+ * `buildReconfirmCard`) — `undefined` on ANY of: no store, already answered
+ * today, no reconfirmable slot, or a read error (fail-soft: the briefing
+ * itself must never fail because this couldn't resolve).
+ */
+async function resolveTodaysReconfirmCard(
+  userMemoryStore: UserMemoryStore,
+  defaultUserId: string,
+  answeredFile: string,
+  now: Date
+): Promise<{ readonly slotId: string; readonly question: string } | undefined> {
+  const alreadyAnswered = await reconfirmCardAlreadyAnsweredToday(answeredFile, now).catch(() => true);
+  if (alreadyAnswered) {
+    return undefined;
+  }
+  const snap = await Promise.resolve(userMemoryStore.findByUserId(defaultUserId)).catch(() => undefined);
+  const model = snap?.userModel ? reviveUserModelSlotDates(snap.userModel) : undefined;
+  if (!model) {
+    return undefined;
+  }
+  const top = selectReconfirmableSlots(model, { now })[0];
+  if (!top) {
+    return undefined;
+  }
+  const card = buildReconfirmCard(top);
+  return { question: card.question, slotId: card.slotId };
 }
 
 /**
@@ -557,8 +611,9 @@ export interface MakeBriefingTickDeps {
  * (fail-close — day rhythm never guesses a recipient).
  */
 export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void> {
-  const { env: e, tasksFile, leadMinutes, calendarRegistry, briefingCalendarLister, knowledgeEnrich, destination, messagingRegistry, objectivesFile, provider, stdout, dayRhythmConfigFile, channelOwnersFile } = deps;
+  const { env: e, tasksFile, leadMinutes, calendarRegistry, briefingCalendarLister, knowledgeEnrich, destination, messagingRegistry, objectivesFile, provider, stdout, dayRhythmConfigFile, channelOwnersFile, reconfirmCardAnsweredFile, reconfirmCardDeliveryFile } = deps;
   const nowFn = deps.now ?? (() => new Date());
+  const userMemoryStore = deps.userMemoryStore ?? new FileUserMemoryStore();
   return async (): Promise<void> => {
     const envEnabled = parseBoolean(e.MUSE_BRIEFING_ENABLED, false);
     const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
@@ -619,7 +674,15 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
       sidecarFile: e.MUSE_BRIEFING_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_BRIEFING_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "briefing-fired.json"),
-      ...(knowledgeEnrich ? { relatedKnowledge: knowledgeEnrich } : {})
+      ...(knowledgeEnrich ? { relatedKnowledge: knowledgeEnrich } : {}),
+      // S6 — ONLY for a day-rhythm-driven tick, never the legacy env-flag
+      // path (byte-compatible for existing MUSE_BRIEFING_ENABLED users).
+      ...(dayRhythmDriven
+        ? {
+            onReconfirmDelivered: (slotId: string, at: Date) => markReconfirmCardDelivered(reconfirmCardDeliveryFile, slotId, at),
+            reconfirmCard: () => resolveTodaysReconfirmCard(userMemoryStore, resolveDefaultUserId(e), reconfirmCardAnsweredFile, now)
+          }
+        : {})
     });
     stdout(`[${now.toISOString()}] briefing: ${summary.delivered > 0 ? "delivered" : "quiet (deduped or nothing to say)"}\n`);
   };

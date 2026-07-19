@@ -88,6 +88,29 @@ export interface RunDueSituationalBriefingOptions {
    * the rest of today" line. Fail-soft.
    */
   readonly availabilityLine?: () => Promise<string | undefined> | string | undefined;
+  /**
+   * Optional reconfirm-question resolver — the day-rhythm morning
+   * briefing's PUSH counterpart of the Home "Muse가 확인하고 싶은 것" pull card
+   * (S6). Only the CALLER (`apps/cli/src/daemon-delivery-ticks.ts`'s
+   * `makeBriefingTick`) decides when this applies — it is passed ONLY for
+   * a day-rhythm-driven tick, never the legacy env-flag path, so that path
+   * stays byte-identical. Same posture as the other supplementary
+   * resolvers: only consulted when the briefing already has content, and
+   * NEVER a trigger on its own — an empty/undefined result appends
+   * nothing. Unlike the string-returning resolvers above, this carries the
+   * `slotId` too so a successful send can be recorded via
+   * `onReconfirmDelivered`.
+   */
+  readonly reconfirmCard?: () => Promise<{ readonly slotId: string; readonly question: string } | undefined> | { readonly slotId: string; readonly question: string } | undefined;
+  /**
+   * Invoked with the delivered slot's id + `now` ONLY after the combined
+   * message (briefing + reconfirm addendum) is actually sent — mirrors
+   * this function's own lastFiredAt-after-send discipline: a failed send
+   * throws before this is ever reached, so a question is marked delivered
+   * only when it truly was. Fail-soft: a bookkeeping write failure here
+   * must not undo an already-sent message.
+   */
+  readonly onReconfirmDelivered?: (slotId: string, at: Date) => Promise<void>;
 }
 
 export interface RunDueSituationalBriefingSummary {
@@ -201,7 +224,10 @@ export async function runDueSituationalBriefing(
   const availability = hasContent && options.availabilityLine
     ? await resolveLineSafely(options.availabilityLine)
     : undefined;
-  const text = composeSituationalBriefing({
+  const reconfirm = hasContent && options.reconfirmCard
+    ? await resolveReconfirmCardSafely(options.reconfirmCard)
+    : undefined;
+  const composed = composeSituationalBriefing({
     imminent: options.imminent,
     now: nowDate,
     objectives,
@@ -213,9 +239,10 @@ export async function runDueSituationalBriefing(
     ...(tasksDue ? { tasksDue } : {}),
     ...(availability ? { availability } : {})
   });
-  if (!text) {
+  if (!composed) {
     return { delivered: 0, reason: "nothing-to-say" };
   }
+  const text = reconfirm ? appendReconfirmAddendum(composed, reconfirm.question) : composed;
 
   const lastFiredMs = await readLastFiredAt(options.sidecarFile);
   if (lastFiredMs !== undefined && nowDate.getTime() - lastFiredMs < windowMs) {
@@ -227,5 +254,25 @@ export async function runDueSituationalBriefing(
     text
   });
   await writeLastFiredAt(options.sidecarFile, nowDate.toISOString());
+  if (reconfirm && options.onReconfirmDelivered) {
+    // Fail-soft bookkeeping — the message already sent successfully; a
+    // delivery-record write blip must not be treated as a send failure.
+    await options.onReconfirmDelivered(reconfirm.slotId, nowDate).catch(() => undefined);
+  }
   return { delivered: 1 };
+}
+
+async function resolveReconfirmCardSafely(
+  resolve: () => Promise<{ readonly slotId: string; readonly question: string } | undefined> | { readonly slotId: string; readonly question: string } | undefined
+): Promise<{ readonly slotId: string; readonly question: string } | undefined> {
+  try {
+    const card = await resolve();
+    return card && card.question.trim().length > 0 && card.slotId.trim().length > 0 ? card : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function appendReconfirmAddendum(text: string, question: string): string {
+  return `${text}\n\n[Muse가 확인하고 싶은 것]\n${question}\n"맞아" 또는 "아니야"라고 답장해줘.`;
 }

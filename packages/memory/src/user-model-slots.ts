@@ -191,6 +191,31 @@ export function removeUserModelSlot(model: UserModel, id: string): UserModel {
   };
 }
 
+/** Find a slot by id across all four kinds. Shared by every surface that
+ *  resolves a reconfirm-card slotId back to its slot (web route, channel
+ *  reply handler, `muse user model review`). */
+export function findUserModelSlotById(model: UserModel, id: string): UserModelSlot | undefined {
+  return [...model.preferences, ...model.schedule, ...model.vetoes, ...model.goals].find((slot) => slot.id === id);
+}
+
+/** The file store round-trips slot `updatedAt` (and a goal's `dueAt`) as an
+ *  ISO STRING — the effective-confidence age math needs real `Date`s, so
+ *  any caller that loads a `UserModel` straight from a `UserMemoryStore`
+ *  snapshot (rather than an in-memory fixture that already hands back real
+ *  Dates) must revive it first, or `effectiveConfidence`'s
+ *  `now.getTime() - updatedAt.getTime()` silently produces `NaN` math. */
+export function reviveUserModelSlotDates(model: UserModel): UserModel {
+  const revive = <T extends UserModelSlot>(slots: readonly T[]): readonly T[] =>
+    slots.map((slot) => (slot.updatedAt instanceof Date ? slot : { ...slot, updatedAt: new Date(slot.updatedAt as unknown as string) }));
+  return {
+    ...model,
+    goals: revive(model.goals ?? []),
+    preferences: revive(model.preferences ?? []),
+    schedule: revive(model.schedule ?? []),
+    vetoes: revive(model.vetoes ?? [])
+  };
+}
+
 export interface UserModelComposeOptions {
   /**
    * Per-slot-type cap. Each of the four arrays is sliced to this

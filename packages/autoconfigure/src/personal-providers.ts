@@ -90,6 +90,7 @@ export {
   resolveProgressiveAutonomyFile,
   resolveProgressiveAutonomyOpportunitiesFile,
   resolveReconfirmCardAnsweredFile,
+  resolveReconfirmCardDeliveryFile,
   resolveReminderHistoryFile,
   resolveRemindersFile,
   resolveSessionLockFile,

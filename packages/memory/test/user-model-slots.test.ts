@@ -4,7 +4,9 @@ import {
   EMPTY_USER_MODEL,
   composeUserModelSnapshot,
   effectiveConfidence,
+  findUserModelSlotById,
   removeUserModelSlot,
+  reviveUserModelSlotDates,
   selectReconfirmableSlots,
   upsertUserModelSlot,
   type UserModel,
@@ -102,5 +104,56 @@ describe("composeUserModelSnapshot", () => {
     expect(gated).toContain("veto.food.v1=no eggs"); // safety constraint never decay-dropped
     expect(gated).toContain("sched.s1=wake"); // asserted (no confidence) survives
     expect(gated).not.toContain("pref.style.p1"); // faded inferred preference dropped
+  });
+});
+
+describe("findUserModelSlotById", () => {
+  it("finds a slot across every kind", () => {
+    let model: UserModel = EMPTY_USER_MODEL;
+    model = upsertUserModelSlot(model, slot("preference", "p1", "concise"));
+    model = upsertUserModelSlot(model, slot("schedule", "s1", "wake"));
+    model = upsertUserModelSlot(model, slot("veto", "v1", "no eggs"));
+    model = upsertUserModelSlot(model, slot("goal", "g1", "ship v1"));
+    expect(findUserModelSlotById(model, "s1")?.value).toBe("wake");
+    expect(findUserModelSlotById(model, "v1")?.kind).toBe("veto");
+    expect(findUserModelSlotById(model, "g1")?.value).toBe("ship v1");
+  });
+
+  it("returns undefined for an id that doesn't exist", () => {
+    const model = upsertUserModelSlot(EMPTY_USER_MODEL, slot("preference", "p1", "concise"));
+    expect(findUserModelSlotById(model, "ghost")).toBeUndefined();
+  });
+});
+
+describe("reviveUserModelSlotDates", () => {
+  it("converts a serialized ISO-string updatedAt back into a real Date", () => {
+    const serialized = {
+      goals: [],
+      preferences: [{ id: "p1", kind: "preference", updatedAt: "2026-06-01T09:00:00.000Z", value: "concise" }],
+      schedule: [],
+      vetoes: []
+    } as unknown as UserModel;
+    const revived = reviveUserModelSlotDates(serialized);
+    expect(revived.preferences[0]?.updatedAt).toBeInstanceOf(Date);
+    expect(revived.preferences[0]?.updatedAt.getTime()).toBe(new Date("2026-06-01T09:00:00.000Z").getTime());
+  });
+
+  it("leaves an already-real Date untouched (idempotent, no double-parse)", () => {
+    const model = upsertUserModelSlot(EMPTY_USER_MODEL, slot("preference", "p1", "concise"));
+    const revived = reviveUserModelSlotDates(model);
+    expect(revived.preferences[0]?.updatedAt).toBe(t0);
+  });
+
+  it("revives every kind's updatedAt, not just preferences", () => {
+    const serialized = {
+      goals: [{ id: "g1", kind: "goal", updatedAt: "2026-06-01T00:00:00.000Z", value: "ship v1" }],
+      preferences: [],
+      schedule: [{ id: "s1", kind: "schedule", updatedAt: "2026-06-02T00:00:00.000Z", value: "wake" }],
+      vetoes: [{ id: "v1", kind: "veto", updatedAt: "2026-06-03T00:00:00.000Z", value: "no eggs" }]
+    } as unknown as UserModel;
+    const revived = reviveUserModelSlotDates(serialized);
+    expect(revived.goals[0]?.updatedAt).toBeInstanceOf(Date);
+    expect(revived.schedule[0]?.updatedAt).toBeInstanceOf(Date);
+    expect(revived.vetoes[0]?.updatedAt).toBeInstanceOf(Date);
   });
 });

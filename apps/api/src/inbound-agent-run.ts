@@ -13,9 +13,12 @@ import {
 import {
   parseBoolean,
   resolveActionLogFile,
+  resolveDefaultUserId,
   resolveFollowupsFile,
   resolveLastProactiveDeliveryFile,
   resolvePendingApprovalsFile,
+  resolveReconfirmCardAnsweredFile,
+  resolveReconfirmCardDeliveryFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
 import type { UserMemoryStore } from "@muse/memory";
@@ -47,6 +50,7 @@ import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
+import { handleInboundReconfirmReply } from "./inbound-reconfirm-handler.js";
 import { handleInboundSlashCommand, type SlashConversationStore } from "./inbound-slash-commands.js";
 import { handleInboundVetoReply } from "./inbound-veto-handler.js";
 import { detectUnscheduledRememberIntent } from "./remember-intent.js";
@@ -373,6 +377,27 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         });
     if (vetoAck !== undefined) {
       return vetoAck;
+    }
+    // Reconfirm reply ("맞아"/"아니야"): the one-word channel answer to the
+    // day's PUSHED "Muse가 확인하고 싶은 것" question (S6, the Home card's push
+    // counterpart via the day-rhythm morning briefing) — owner 1:1 only,
+    // adjacent to the veto handler above for the SAME reason: a shared/group
+    // chat's "아니야" must never mutate the OWNER's personal user model. Runs
+    // AFTER approval/veto so neither can be shadowed by a reconfirm match
+    // (their phrase sets don't overlap today, but the ordering is the
+    // contract, not a coincidence).
+    const reconfirmAck = scope === "shared"
+      ? undefined
+      : await handleInboundReconfirmReply({
+          answeredFile: resolveReconfirmCardAnsweredFile(env),
+          defaultUserId: resolveDefaultUserId(env),
+          deliveryFile: resolveReconfirmCardDeliveryFile(env),
+          now: new Date(),
+          text: latestUserText,
+          userMemoryStore
+        });
+    if (reconfirmAck !== undefined) {
+      return reconfirmAck;
     }
     // Deterministic casual fast-path (parity with `muse ask`): a bare
     // greeting/thanks/farewell is not a question about the user's notes, so

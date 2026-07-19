@@ -281,6 +281,14 @@ export function resolveReconfirmCardAnsweredFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_RECONFIRM_CARD_ANSWERED_FILE", "reconfirm-card-answered.json");
 }
 
+/** The sidecar recording the reconfirm question last PUSHED via the
+ *  day-rhythm morning briefing (slotId + deliveredAt) — the channel reply
+ *  handler's 24h recency window
+ *  (`packages/stores/reconfirm-card-delivery-store.ts`). */
+export function resolveReconfirmCardDeliveryFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_RECONFIRM_CARD_DELIVERY_FILE", "reconfirm-card-delivery.json");
+}
+
 /** The sidecar recording each UNASKED loop's most recent delivered/digested
  *  notice, read by the channel-veto reply handler to resolve "what did Muse
  *  just send me" (`packages/stores/last-proactive-delivery-store.ts`). */
