@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **583** variables.
+Total: **586** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -57,6 +57,7 @@ Total: **583** variables.
 | `MUSE_AUTH_JWT_SECRET` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_MAX_USERS` | packages/autoconfigure |
 | `MUSE_AUTH_SECRETS_FILE` | apps/cli, packages/autoconfigure |
+| `MUSE_AUTOMATION_REJECTED_PROPOSALS_FILE` | packages/autoconfigure |
 | `MUSE_AUX_` | packages/autoconfigure |
 | `MUSE_AUX_COMPACTION` | packages/autoconfigure |
 | `MUSE_AUX_COMPACTION_MODEL` | packages/autoconfigure |
@@ -83,7 +84,7 @@ Total: **583** variables.
 | `MUSE_BOARD_SYNTHESIS_HEADROOM` | apps/cli |
 | `MUSE_BRIEFING_BIRTHDAY_DAYS` | apps/api |
 | `MUSE_BRIEFING_DESTINATION` | apps/api |
-| `MUSE_BRIEFING_ENABLED` | apps/cli |
+| `MUSE_BRIEFING_ENABLED` | apps/cli, packages/autoconfigure |
 | `MUSE_BRIEFING_HOME_ALERTS` | apps/api, apps/cli |
 | `MUSE_BRIEFING_LEAD_MINUTES` | apps/api |
 | `MUSE_BRIEFING_PROVIDER` | apps/api |
@@ -441,6 +442,8 @@ Total: **583** variables.
 | `MUSE_RECAP_ENABLED` | apps/cli |
 | `MUSE_RECAP_HOUR` | apps/cli |
 | `MUSE_RECAP_SIDECAR_FILE` | apps/cli |
+| `MUSE_RECONFIRM_CARD_ANSWERED_FILE` | packages/autoconfigure |
+| `MUSE_RECONFIRM_CARD_DELIVERY_FILE` | packages/autoconfigure |
 | `MUSE_REFLECTIONS_FILE` | packages/autoconfigure |
 | `MUSE_REFLECTION_ENABLED` | apps/cli |
 | `MUSE_REFLECTION_INTERVAL_MS` | apps/cli |
