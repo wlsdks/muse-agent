@@ -72,6 +72,7 @@ export {
   resolveProactiveHistoryFile,
   resolveProgressiveAutonomyFile,
   resolveProgressiveAutonomyOpportunitiesFile,
+  resolveReconfirmCardAnsweredFile,
   resolveReminderHistoryFile,
   resolveWeaknessesFile,
   resolveSessionLockFile,

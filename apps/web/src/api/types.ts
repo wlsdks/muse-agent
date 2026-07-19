@@ -761,6 +761,15 @@ export interface DayRhythmStateResponse {
   readonly eveningHour: number;
   readonly pairedChannel: DayRhythmPairedChannel | null;
 }
+export interface ReconfirmCard {
+  readonly slotId: string;
+  readonly question: string;
+  readonly category: string;
+  readonly evidence?: string;
+}
+export interface ReconfirmCardResponse {
+  readonly card: ReconfirmCard | null;
+}
 export interface MessagingConnectResponse {
   readonly ok: boolean;
   readonly account?: string;

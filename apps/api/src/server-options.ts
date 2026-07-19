@@ -158,6 +158,14 @@ export interface ServerOptions {
    */
   readonly proactiveHistoryFile?: string;
   /**
+   * Optional per-day gate sidecar for the Home "Muse가 확인하고 싶은 것"
+   * reconfirm card (default ~/.muse/reconfirm-card-answered.json). Records
+   * the local date the card was last ANSWERED (confirm or reject) — mere
+   * viewing never consumes the day. When set, the API registers
+   * `GET/POST /api/user-model/reconfirm-card*`.
+   */
+  readonly reconfirmCardAnsweredFile?: string;
+  /**
    * Path to the session-lock marker (default
    * `~/.muse/session-lock.json`). When set, the proactive tick
    * daemon reads it every cycle; an active lock skips firing and

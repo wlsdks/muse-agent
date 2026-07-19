@@ -275,6 +275,12 @@ export function resolveDigestSentFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_DIGEST_SENT_FILE", "digest-sent.json");
 }
 
+/** The once-per-day "already answered" sidecar the Home reconfirm card
+ *  dedupes against (`packages/stores/reconfirm-card-answered-store.ts`). */
+export function resolveReconfirmCardAnsweredFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_RECONFIRM_CARD_ANSWERED_FILE", "reconfirm-card-answered.json");
+}
+
 /** The sidecar recording each UNASKED loop's most recent delivered/digested
  *  notice, read by the channel-veto reply handler to resolve "what did Muse
  *  just send me" (`packages/stores/last-proactive-delivery-store.ts`). */

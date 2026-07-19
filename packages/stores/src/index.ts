@@ -29,6 +29,12 @@ export { appendDigestItem, drainDigestQueue, readDigestQueue } from "./digest-qu
 export type { DigestQueueItem } from "./digest-queue.js";
 export { digestAlreadySentToday, localDateKey, markDigestSent, readDigestSentDate } from "./digest-sent-store.js";
 export type { DigestSentState } from "./digest-sent-store.js";
+export {
+  markReconfirmCardAnswered,
+  reconfirmCardAlreadyAnsweredToday,
+  readReconfirmCardAnsweredDate
+} from "./reconfirm-card-answered-store.js";
+export type { ReconfirmCardAnsweredState } from "./reconfirm-card-answered-store.js";
 export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "./digest-lock.js";
 export type { DigestLockOutcome, ProcessLockOutcome } from "./digest-lock.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";

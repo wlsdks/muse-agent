@@ -19,6 +19,7 @@ import {
   resolveObjectivesFile,
   resolveRejectedProposalsFile,
   resolveProgressiveAutonomyOpportunitiesFile,
+  resolveReconfirmCardAnsweredFile,
   resolveVetoesFile,
   resolvePlaybookFile,
   resolveWeaknessesFile,
@@ -99,6 +100,7 @@ import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
 import { registerPromptRoutes } from "./prompt-routes.js";
 import { registerProgressiveAutonomyRoutes } from "./progressive-autonomy-routes.js";
+import { registerUserModelReconfirmRoutes } from "./user-model-reconfirm-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -481,6 +483,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {}),
     ...(taglineModel ? { model: taglineModel } : {})
+  });
+  registerUserModelReconfirmRoutes(server, {
+    authService,
+    defaultUserId: resolveDefaultUserId(options.env ?? process.env),
+    reconfirmCardAnsweredFile: options.reconfirmCardAnsweredFile ?? resolveReconfirmCardAnsweredFile(options.env ?? process.env),
+    ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {})
   });
   registerPromptRoutes(server, {
     authService,

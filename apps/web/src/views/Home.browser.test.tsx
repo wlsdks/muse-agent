@@ -4,10 +4,10 @@ import { cleanup, render } from "vitest-browser-react";
 
 import { writeAutoContinueThread } from "./home-logic.js";
 import type { ApiClient } from "../api/client.js";
-import type { DayRhythmStateResponse, MessagingSetupResponse } from "../api/types.js";
+import type { DayRhythmStateResponse, MessagingSetupResponse, ReconfirmCard as ReconfirmCardData } from "../api/types.js";
 import type { OpenedPack, ReviewThreadSummary } from "./continuity-shared.js";
 import { I18nProvider, useI18n } from "../i18n/index.js";
-import { DayRhythmCard, HomeView } from "./Home.js";
+import { DayRhythmCard, HomeView, ReconfirmCard } from "./Home.js";
 
 afterEach(cleanup);
 
@@ -163,6 +163,7 @@ function homeGet(overrides: { readonly threads?: readonly ReviewThreadSummary[] 
     if (path === "/api/day-rhythm") return { enabled: false, eveningHour: 18, morningHour: 8, pairedChannel: null };
     if (path === "/api/user-memory/default") return { facts: {} };
     if (path === "/api/attunement/review") return { threads: overrides.threads ?? [RESUMABLE_THREAD] };
+    if (path === "/api/user-model/reconfirm-card") return { card: null };
     return {};
   });
 }
@@ -265,4 +266,97 @@ test("a chat handoff to a thread BELOW the top-2 slice still renders its pack in
   await expect.poll(() =>
     [...document.querySelectorAll("button")].some((button) => /used|썼어요/iu.test(button.textContent ?? ""))
   ).toBe(true);
+});
+
+function TestReconfirmCard(props: { readonly client: ApiClient }) {
+  const { t } = useI18n();
+  return <ReconfirmCard client={props.client} t={t} />;
+}
+
+function renderReconfirmCard(props: {
+  readonly get: (path: string) => Promise<unknown>;
+  readonly post: (path: string, body?: Record<string, unknown>) => Promise<unknown>;
+}) {
+  window.localStorage.setItem("muse.lang", "en");
+  const forbidden = vi.fn(async () => {
+    throw new Error("unexpected mutating API call");
+  });
+  const client = {
+    baseUrl: "http://reconfirm-card.test",
+    del: forbidden,
+    get: props.get,
+    patch: forbidden,
+    post: props.post,
+    put: forbidden
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider>
+        <TestReconfirmCard client={client} />
+      </I18nProvider>
+    </QueryClientProvider>
+  );
+}
+
+const RECONFIRM_FIXTURE: ReconfirmCardData = {
+  category: "preference",
+  evidence: "추측의 신뢰도가 12%로 옅어졌어요.",
+  question: "진안은 말투에서 '간결한 답변'을(를) 선호한다고 추측하고 있어요 — 맞나요?",
+  slotId: "pref-tone"
+};
+
+test("reconfirm card: renders NOTHING when the API returns { card: null } — silent, no empty shell", async () => {
+  const get = vi.fn(async () => ({ card: null }));
+  const post = vi.fn(async () => { throw new Error("should not POST when there is no card"); });
+
+  const screen = await renderReconfirmCard({ get, post });
+
+  await expect.poll(() => get.mock.calls.length).toBeGreaterThan(0);
+  expect(screen.container.textContent).toBe("");
+});
+
+test("reconfirm card: shows the 추론 label, the question, evidence, and both buttons when a card is present", async () => {
+  const get = vi.fn(async () => ({ card: RECONFIRM_FIXTURE }));
+  const post = vi.fn(async () => { throw new Error("should not POST before a click"); });
+
+  const screen = await renderReconfirmCard({ get, post });
+
+  await expect.element(screen.getByText("Guess", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(RECONFIRM_FIXTURE.question, { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(RECONFIRM_FIXTURE.evidence!, { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Yes, that's right" })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "No, that's wrong" })).toBeVisible();
+});
+
+test("reconfirm card: 맞아요/confirm POSTs the exact verdict body then swaps to the confirmed acknowledgment", async () => {
+  const get = vi.fn(async () => ({ card: RECONFIRM_FIXTURE }));
+  const post = vi.fn(async (path: string, body?: Record<string, unknown>) => {
+    expect(path).toBe(`/api/user-model/reconfirm-card/${RECONFIRM_FIXTURE.slotId}`);
+    expect(body).toEqual({ verdict: "confirm" });
+    return { recorded: true, verdict: "confirm" };
+  });
+
+  const screen = await renderReconfirmCard({ get, post });
+  await screen.getByRole("button", { name: "Yes, that's right" }).click();
+
+  expect(post).toHaveBeenCalledTimes(1);
+  await expect.element(screen.getByText("Thanks — noted.", { exact: true })).toBeVisible();
+  expect(screen.container.textContent).not.toContain(RECONFIRM_FIXTURE.question);
+});
+
+test("reconfirm card: 아니에요/reject POSTs the exact verdict body then swaps to the rejected acknowledgment", async () => {
+  const get = vi.fn(async () => ({ card: RECONFIRM_FIXTURE }));
+  const post = vi.fn(async (path: string, body?: Record<string, unknown>) => {
+    expect(path).toBe(`/api/user-model/reconfirm-card/${RECONFIRM_FIXTURE.slotId}`);
+    expect(body).toEqual({ verdict: "reject" });
+    return { recorded: true, verdict: "reject" };
+  });
+
+  const screen = await renderReconfirmCard({ get, post });
+  await screen.getByRole("button", { name: "No, that's wrong" }).click();
+
+  expect(post).toHaveBeenCalledTimes(1);
+  await expect.element(screen.getByText("Thanks for the correction — I won't guess that again.", { exact: true })).toBeVisible();
+  expect(screen.container.textContent).not.toContain(RECONFIRM_FIXTURE.question);
 });
