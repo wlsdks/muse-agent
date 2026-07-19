@@ -26,7 +26,8 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendActionLog, verifyActionLogChainFile, undoLoggedAction, readVetoes } from "../packages/mcp/dist/index.js";
+import { undoLoggedAction } from "../packages/proactivity/dist/index.js";
+import { appendActionLog, readVetoes, verifyActionLogChainFile } from "../packages/stores/dist/index.js";
 
 let failures = 0;
 function check(label, cond) {

@@ -14,14 +14,15 @@
  * LOCAL OLLAMA ONLY; skips (exit 0) when Ollama or the muse-runner binary is
  * unavailable.  MUSE_EVAL_REPEAT=3 node scripts/eval-edit-run-verify.mjs
  */
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
-import { createRustRunnerTool } from "../packages/tools/dist/index.js";
-import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { completionLine, skipLine } from "./eval-skip.mjs";
+import { createEvalRunnerTool, resolveEvalRunnerIsolationSkip } from "./lib/eval-runner-isolation.mjs";
+import { createEvalTrialEnvironment } from "./lib/eval-trial-environment.mjs";
+import { allowEvalToolCall, createEvalToolExposureAuthority } from "./lib/eval-tool-authority.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -32,12 +33,23 @@ try {
   if (!probe.ok) throw new Error(`status ${probe.status}`);
 } catch (cause) {
   console.log(`SKIP: Ollama unreachable (${cause instanceof Error ? cause.message : cause})`);
+  console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
   process.exit(0);
 }
 try {
   await access(RUNNER);
 } catch {
   console.log(`SKIP: muse-runner binary not found at ${RUNNER} (cargo build --release)`);
+  console.log(skipLine("runner-missing", "compiled runner unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "runner-missing" }));
+  process.exit(0);
+}
+const isolationSkip = resolveEvalRunnerIsolationSkip();
+if (isolationSkip) {
+  console.log(`SKIP: ${isolationSkip.message}`);
+  console.log(skipLine(isolationSkip.code, isolationSkip.message));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: isolationSkip.code }));
   process.exit(0);
 }
 
@@ -73,11 +85,15 @@ const logTool = (tool) => ({
 });
 
 let failures = 0;
+let completedRuns = 0;
+let runtimeUnavailable = false;
 let dir;
+let trial;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
-    dir = await mkdtemp(join(tmpdir(), "muse-edit-run-verify-"));
+    await trial?.dispose();
+    trial = await createEvalTrialEnvironment({ prefix: "muse-edit-run-verify-" });
+    dir = trial.fixtureDir;
     const sumPath = join(dir, "sum.mjs");
     const testPath = join(dir, "sum.test.mjs");
     await writeFile(sumPath, BUGGY_SUM);
@@ -87,17 +103,22 @@ try {
     const readPaths = new Set();
     const readOpts = { baseDir: dir, docRoots: [dir], onPathRead: (p) => readPaths.add(p), roots: [dir] };
     const writeOpts = { approvalGate: () => ({ approved: true }), baseDir: dir, roots: [dir], wasPathRead: (p) => readPaths.has(p) };
+    const { createMuseRuntimeAssembly } = await import("../packages/autoconfigure/dist/index.js");
     const assembly = createMuseRuntimeAssembly({
+      env: trial.env,
       extraTools: [
         createFileGrepTool(readOpts),
         createFileReadTool(readOpts),
         createFileEditTool(writeOpts),
-        createRustRunnerTool({ runnerPath: RUNNER })
+        createEvalRunnerTool({ fixtureRoot: dir, runnerPath: RUNNER })
       ].map(logTool)
     });
     if (!assembly.agentRuntime || !assembly.modelProvider) {
       console.log("SKIP: no agent runtime/model configured");
-      process.exit(0);
+      console.log(skipLine("runtime-unavailable", "agent runtime or model not configured"));
+      console.log(completionLine({ status: "failed", requested: REPEAT, executed: completedRuns, reason: "runtime-unavailable" }));
+      runtimeUnavailable = true;
+      break;
     }
 
     const TASK =
@@ -117,7 +138,9 @@ try {
         { content: TASK, role: "user" }
       ],
       metadata: { localMode: true, userId: "eval-edit-run-verify" },
-      model: assembly.defaultModel
+      model: assembly.defaultModel,
+      toolApprovalGate: allowEvalToolCall,
+      toolExposureAuthority: createEvalToolExposureAuthority("edit-run-verify")
     });
     const toolsUsed = result.toolsUsed ?? [];
     const modelRanTest = toolsUsed.includes("run_command");
@@ -131,13 +154,18 @@ try {
       `no-collateral=${noiseIntact.toString()} tools=[${toolsUsed.join(",")}]`
     );
     if (!ok) console.log(`  sum.mjs now: ${JSON.stringify(await readFile(sumPath, "utf8").catch(() => ""))}`);
+    completedRuns += 1;
   }
 } finally {
-  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+  await trial?.dispose();
 }
+
+if (runtimeUnavailable) process.exit(0);
 
 if (failures > 0) {
   console.log(`\neval:edit-run-verify FAIL — ${failures.toString()}/${REPEAT.toString()} runs failed`);
+  console.log(completionLine({ status: "failed", requested: REPEAT, executed: completedRuns, reason: "terminal-state-failed" }));
   process.exit(1);
 }
 console.log(`\neval:edit-run-verify PASS (${REPEAT.toString()}/${REPEAT.toString()} runs — test passes after a real edit→run→verify loop)`);
+console.log(completionLine({ status: "passed", requested: REPEAT, executed: completedRuns }));

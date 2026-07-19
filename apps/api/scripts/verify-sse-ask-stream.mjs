@@ -6,9 +6,9 @@
  * reimplementation):
  *
  *   1. answerable question → the SSE stream carries ≥1 `delta` event, the
- *      concatenated deltas equal the final `result.answer` (and the buffered
- *      JSON response fetched from the SAME server instance), and the surviving
- *      citation resolves to a real corpus source;
+ *      concatenated deltas equal that streamed request's final `result.answer`,
+ *      the separate buffered request has the same deterministic retrieval
+ *      scalars, and both branches cite the exact real source `vpn.md`;
  *   2. a fabricated citation injected AFTER a real streamed answer never
  *      flashes in any `delta` frame nor survives into the final answer — the
  *      pipeline's live citation filter strips it in-stream, same as the
@@ -74,7 +74,15 @@ if (summary.embedded === 0) {
   process.exit(0);
 }
 const realSources = ["vpn.md", "coffee.md"];
-const onlyReal = (citations) => citations.every((c) => realSources.includes(c.split("/").pop() ?? c));
+const onlyReal = (citations) => Array.isArray(citations)
+  && citations.every((citation) =>
+    typeof citation === "string" && realSources.includes(citation.split("/").pop() ?? citation)
+  );
+const citesExactRealSource = (citations, source) =>
+  Array.isArray(citations)
+  && citations.length > 0
+  && onlyReal(citations)
+  && citations.includes(source);
 
 const embedFn = (text, m) => embed(text, m, { baseUrlResolver });
 
@@ -174,13 +182,26 @@ const pass = (m) => console.log(`PASS — ${m}`);
 
   const buffered = await server.inject({ method: "POST", payload: { question }, url: "/api/ask" });
   const bufferedBody = JSON.parse(buffered.body);
-  result && concatenated === bufferedBody.answer
-    ? pass("streamed answer matches the buffered JSON response from the same server")
-    : fail(`streamed/buffered mismatch: streamed="${concatenated}" buffered="${bufferedBody.answer}"`);
+  // Streaming and buffered are separate model generations. Their natural
+  // language may differ harmlessly (for example punctuation around a citation),
+  // so byte equality across the two requests is not a valid contract. The
+  // deterministic retrieval scalars must match, and each branch must independently
+  // satisfy the grounding contract. Byte equality remains strict above within
+  // the ONE streamed request (deltas === its own result.answer).
+  result
+    && buffered.statusCode === 200
+    && result.verdict === bufferedBody.verdict
+    && result.groundedChunkCount === bufferedBody.groundedChunkCount
+    && result.notesUnavailable === bufferedBody.notesUnavailable
+    ? pass("streamed/buffered scalar parity holds for verdict, groundedChunkCount, and notesUnavailable")
+    : fail(`streamed/buffered scalar parity mismatch: streamed=${JSON.stringify(result)} buffered=${JSON.stringify(bufferedBody)}`);
+  bufferedBody.answer?.includes("1380") && citesExactRealSource(bufferedBody.citations, "vpn.md")
+    ? pass("the buffered branch has nonempty real citations including exact vpn.md")
+    : fail(`buffered grounding failed: answer="${bufferedBody.answer}" citations=${JSON.stringify(bufferedBody.citations)}`);
 
-  result && onlyReal(result.citations)
-    ? pass(`every SSE citation resolves to a real corpus source (${JSON.stringify(result?.citations)})`)
-    : fail(`a non-corpus citation survived the SSE seam: ${JSON.stringify(result?.citations)}`);
+  result && citesExactRealSource(result.citations, "vpn.md")
+    ? pass(`the SSE branch has nonempty real citations including exact vpn.md (${JSON.stringify(result.citations)})`)
+    : fail(`SSE citations were empty, non-corpus, or missing exact vpn.md: ${JSON.stringify(result?.citations)}`);
   result && result.answer.includes("1380")
     ? pass("the grounded fact (MTU 1380) is in the streamed answer")
     : fail(`the answerable fact is missing from the streamed answer: "${result?.answer}"`);
@@ -220,9 +241,9 @@ const pass = (m) => console.log(`PASS — ${m}`);
   result && result.strippedCitations.includes("secrets/ssn.md")
     ? pass(`the seam reports the strip in strippedCitations (${JSON.stringify(result?.strippedCitations)})`)
     : fail(`strippedCitations did not report the injected fabrication: ${JSON.stringify(result?.strippedCitations)}`);
-  result && onlyReal(result.citations)
-    ? pass(`surviving citations stay real-corpus-only (${JSON.stringify(result?.citations)})`)
-    : fail(`a fabricated citation survived into result.citations: ${JSON.stringify(result?.citations)}`);
+  result && citesExactRealSource(result.citations, "vpn.md")
+    ? pass(`surviving citations stay nonempty, real-corpus-only, and include exact vpn.md (${JSON.stringify(result.citations)})`)
+    : fail(`surviving citations were empty, fabricated, or missing exact vpn.md: ${JSON.stringify(result?.citations)}`);
 
   await server.close();
 }

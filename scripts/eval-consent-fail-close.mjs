@@ -19,13 +19,14 @@
 // This battery drives the REAL performConsentedAction with a contract-faithful
 // fetch fake (records calls; never a real network) — deterministic, no Ollama.
 //
-// Run: pnpm eval:consent-fail-close   (builds @muse/mcp first via package.json)
+// Run: pnpm eval:consent-fail-close   (builds the owning stores/proactivity packages first)
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { performConsentedAction, recordConsent, recordVeto } from "../packages/mcp/dist/index.js";
+import { performConsentedAction } from "../packages/proactivity/dist/index.js";
+import { recordConsent, recordVeto } from "../packages/stores/dist/index.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -101,11 +102,16 @@ try {
     let calls = 0;
     const hangingFetch = (_url, init) => {
       calls += 1;
-      const { promise, reject } = Promise.withResolvers();
-      init?.signal?.addEventListener("abort", () => {
-        reject(new Error("aborted"));
-      }, { once: true });
-      return promise;
+      return new Promise((_resolve, reject) => {
+        // AbortSignal.timeout uses an unref'ed timer. Keep this contract fake's
+        // pending transport alive so Node cannot exit before the abort event is
+        // observed (a bare unresolved Promise does not keep the event loop up).
+        const transportTimer = setTimeout(() => reject(new Error("fake transport did not abort")), 10_000);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(transportTimer);
+          reject(new Error("aborted"));
+        }, { once: true });
+      });
     };
     const out = await performConsentedAction(base("obj-ok", "email:send", { url: "https://api.example.com/send" }, { fetchImpl: hangingFetch, timeoutMs: 30 }));
     check("a hung consented endpoint ⇒ performed:false (bounded timeout, loop can't stall)", out.performed === false && /timed out/u.test(out.reason));

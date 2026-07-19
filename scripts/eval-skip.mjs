@@ -16,6 +16,80 @@
 // classify correctly. Codes: "ollama-unreachable" | "embed-model-missing" |
 // "chrome-missing" | "skipped".
 export const SKIP_MARKER = "MUSE_EVAL_SKIP";
+export const COMPLETION_MARKER = "MUSE_EVAL_COMPLETION";
+
+const COMPLETION_STATUSES = new Set(["passed", "failed", "unverified"]);
+const REASON_CODE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+
+function validateCompletion(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("completion must be an object");
+  }
+  const keys = Object.keys(value).sort();
+  const allowed = value.reason === undefined
+    ? ["executed", "requested", "status", "version"]
+    : ["executed", "reason", "requested", "status", "version"];
+  if (keys.length !== allowed.length || keys.some((key, index) => key !== allowed[index])) {
+    throw new TypeError("completion contains unknown or missing fields");
+  }
+  if (value.version !== 1 || !COMPLETION_STATUSES.has(value.status)) {
+    throw new TypeError("completion version or status is invalid");
+  }
+  if (!Number.isInteger(value.requested) || value.requested < 1) {
+    throw new TypeError("requested must be a positive integer");
+  }
+  if (!Number.isInteger(value.executed) || value.executed < 0 || value.executed > value.requested) {
+    throw new TypeError("executed must be an integer between zero and requested");
+  }
+  if (value.status === "passed" && value.executed !== value.requested) {
+    throw new TypeError("executed must equal requested for a passed completion");
+  }
+  if (value.status === "unverified" && value.executed !== 0) {
+    throw new TypeError("an unverified completion is a preflight result and must be emitted before any trial executes");
+  }
+  if (value.status === "unverified" && value.reason === undefined) {
+    throw new TypeError("an unverified completion requires a stable reason code");
+  }
+  if (value.reason !== undefined && (typeof value.reason !== "string" || !REASON_CODE.test(value.reason))) {
+    throw new TypeError("reason must be a stable reason code");
+  }
+  if (value.status === "passed" && value.reason !== undefined) {
+    throw new TypeError("a passed completion cannot carry a reason");
+  }
+  return value;
+}
+
+/** Build the only structured evidence that a capability battery completed. */
+export function completionLine({ status, requested, executed, reason }) {
+  const completion = validateCompletion({
+    version: 1,
+    status,
+    requested,
+    executed,
+    ...(reason === undefined ? {} : { reason }),
+  });
+  return `${COMPLETION_MARKER}:${JSON.stringify(completion)}`;
+}
+
+/** Parse exactly one strict completion marker, failing closed on ambiguity. */
+export function parseCompletion(output) {
+  const lines = String(output ?? "")
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith(`${COMPLETION_MARKER}:`));
+  if (lines.length === 0) {
+    return { ok: false, reason: "missing-completion" };
+  }
+  if (lines.length !== 1) {
+    return { ok: false, reason: "duplicate-completion" };
+  }
+  try {
+    const completion = JSON.parse(lines[0].slice(COMPLETION_MARKER.length + 1));
+    validateCompletion(completion);
+    return { ok: true, completion };
+  } catch {
+    return { ok: false, reason: "invalid-completion" };
+  }
+}
 
 /** Build the marker line a battery prints when it skips. */
 export function skipLine(code, message) {

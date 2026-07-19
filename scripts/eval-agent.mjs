@@ -1,73 +1,208 @@
 /**
- * eval:agent — the local/self-hosted live agent-eval aggregate.
+ * Capability-oriented live agent evaluation.
  *
- * Runs every harness-based agent-eval battery as ONE pass and FAILS (exit 1) if
- * ANY executed battery regresses — so a tool-selection / argument / task /
- * adversarial / shadow-trial regression blocks the local run, not just logs.
- * Mirrors `eval:self-improving`; `eval:agent:offline` is the deterministic CI
- * gate.
- *
- * Each battery already gates via its own exit code (1 = regression) and SKIPS
- * cleanly (exit 0) when local Ollama is unreachable, so this aggregate is also
- * LOCAL-OLLAMA-ONLY and a down environment skips rather than fails. Batteries
- * are spawned as child processes (model/tools are built once by the npm script
- * before this runs), so one failing battery can't abort the rest — all run,
- * then the gate is the OR of their failures.
+ * Every row must emit one versioned completion marker. Exit zero without that
+ * evidence is a failure, and stochastic rows pass only when all three requested
+ * trials executed and passed. `--json` keeps stdout machine-only and never
+ * copies prompts, model output, or tool payloads into the report.
  */
 
 import { spawnSync } from "node:child_process";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 
-import { classifyOutcome, classifySkip } from "./eval-skip.mjs";
+import { classifySkip, parseCompletion } from "./eval-skip.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const BATTERIES = [
-  "eval-tool-selection.mjs", // tool selection + ArgumentCorrectness
-  "eval-judge.mjs", // LLM-as-judge meta-eval
-  "eval-adversarial.mjs", // must-refuse safety battery
-  "eval-shadow-trial.mjs", // report-only promotion shadow trial
-  "eval-plan-quality.mjs", // PlanQuality: valid/complete/ordered/efficient plans
-  "eval-whetstone.mjs", // Whetstone self-weakness loop: grounded remediation + BKT mastery gating (deterministic)
-  "verify-orchestration.mjs", // live multi-agent: failure propagation + bounded termination + fan-in (MAST seams)
-  "../apps/cli/scripts/verify-vision-actions.mjs", // grounded vision: image → routed action
-  "verify-multihop.mjs", // second-hop AUGMENT: same-base inline+hop vs no-hop, fail-close on regression
-  "eval-channel-rhythm.mjs", // channel delegation-ack quality + upstream casual fast-path
-  "eval-council-floors.mjs", // live KO/EN calibration of the council screening floors (real embedder)
-  "../apps/cli/scripts/eval-flow-draft.mjs", // Builder copilot: describe → agent/tool draft (field-level + over-fire guard)
-];
+const CAPABILITY_TIMEOUT_MS = 90 * 60 * 1000;
+const DEFAULT_REPORT_PATH = resolve(here, "../.muse-dev/evals/agent-capability/latest.json");
 
-const results = [];
-for (const battery of BATTERIES) {
-  console.log(`\n=== eval:agent → ${battery} ===`);
-  // Capture (not inherit) so the aggregate can tell a real PASS from an
-  // exit-0 SKIP; the battery's own output is echoed back so nothing is hidden.
-  const r = spawnSync(process.execPath, [join(here, battery)], { encoding: "utf8", env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-  const combined = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-  process.stdout.write(combined);
-  const skipCode = classifySkip(combined);
-  const outcome = classifyOutcome({ exitCode: r.status ?? 1, skipCode });
-  results.push({ battery, outcome, skipCode, code: r.status ?? 1 });
+export const CAPABILITIES = Object.freeze([
+  { id: "tool-selection-arguments", battery: "eval-tool-selection.mjs", required: true, repeats: 3 },
+  { id: "plan-quality", battery: "eval-plan-quality.mjs", required: true, repeats: 3 },
+  { id: "tool-argument-grounding", battery: "../apps/cli/scripts/verify-tool-arg-grounding.mjs", required: true, repeats: 3 },
+  { id: "computer-task-terminal-edit", battery: "eval-computer-task.mjs", required: true, repeats: 3 },
+  { id: "adversarial-containment-no-op", battery: "eval-adversarial.mjs", required: true, repeats: 3 },
+  { id: "cosine-recall-abstention", battery: "eval-recall-quality.mjs", required: true, repeats: 1 },
+  { id: "multihop-retrieval-lift", battery: "verify-multihop.mjs", required: true, repeats: 1 },
+  { id: "orchestration-failure-bounds", battery: "verify-orchestration.mjs", required: true, repeats: 3 },
+  { id: "channel-conversation-rhythm", battery: "eval-channel-rhythm.mjs", required: true, repeats: 3 },
+  { id: "edit-run-verify", battery: "eval-edit-run-verify.mjs", required: false, repeats: 3 },
+  { id: "browser-terminal-task", battery: "eval-browser-agent.mjs", required: false, repeats: 3 },
+]);
+
+const RECOGNIZED_ENVIRONMENT_SKIPS = new Set([
+  "chrome-missing",
+  "embed-model-missing",
+  "model-missing",
+  "ollama-unreachable",
+  "runner-missing",
+  "runtime-unavailable",
+  "sandbox-missing",
+]);
+
+function failedRow(capability, durationMs, reason, executed = 0) {
+  return {
+    id: capability.id,
+    required: capability.required,
+    status: "failed",
+    requested: capability.repeats,
+    executed,
+    reason,
+    durationMs,
+  };
 }
 
-const failed = results.filter((r) => r.outcome === "fail");
-const skipped = results.filter((r) => r.outcome === "skip");
-const passed = results.filter((r) => r.outcome === "ok");
-console.log("\n=== eval:agent summary ===");
-for (const r of results) {
-  const tag = r.outcome === "ok" ? "ok  " : r.outcome === "skip" ? "skip" : "FAIL";
-  console.log(`  ${tag}  ${r.battery}${r.outcome !== "ok" && r.skipCode ? ` (${r.skipCode})` : ""}`);
+/** Convert a child-process result into a privacy-safe, fail-closed row. */
+export function classifyCapabilityResult(capability, child) {
+  const durationMs = Math.max(0, Math.round(child.durationMs ?? 0));
+  if (child.error) {
+    return failedRow(capability, durationMs, "spawn-error");
+  }
+  if (child.signal) {
+    return failedRow(capability, durationMs, "signal");
+  }
+  const output = `${child.stdout ?? ""}${child.stderr ?? ""}`;
+  const parsed = parseCompletion(output);
+  if (child.status !== 0) {
+    return failedRow(
+      capability,
+      durationMs,
+      "exit-nonzero",
+      parsed.ok ? parsed.completion.executed : 0
+    );
+  }
+
+  if (!parsed.ok) {
+    return failedRow(capability, durationMs, parsed.reason);
+  }
+
+  const { completion } = parsed;
+  if (completion.requested !== capability.repeats) {
+    return failedRow(capability, durationMs, "requested-repeat-mismatch", completion.executed);
+  }
+
+  const skipCode = classifySkip(output);
+  if (completion.status === "passed") {
+    if (skipCode) {
+      return failedRow(capability, durationMs, "unexpected-skip", completion.executed);
+    }
+    return {
+      id: capability.id,
+      required: capability.required,
+      status: "passed",
+      requested: capability.repeats,
+      executed: completion.executed,
+      durationMs,
+    };
+  }
+
+  if (completion.status === "failed") {
+    return failedRow(capability, durationMs, "battery-reported-failure", completion.executed);
+  }
+
+  if (!skipCode || !RECOGNIZED_ENVIRONMENT_SKIPS.has(skipCode)) {
+    return failedRow(capability, durationMs, skipCode ? "unrecognized-skip" : "missing-skip-evidence", completion.executed);
+  }
+  if (completion.reason !== skipCode) {
+    return failedRow(capability, durationMs, "skip-reason-mismatch", completion.executed);
+  }
+  return {
+    id: capability.id,
+    required: capability.required,
+    status: "unverified",
+    requested: capability.repeats,
+    executed: completion.executed,
+    reason: completion.reason,
+    durationMs,
+  };
 }
-if (failed.length > 0) {
-  console.error(
-    `eval:agent FAILED — ${failed.length}/${results.length} batteries regressed: ${failed
-      .map((f) => (f.skipCode === "embed-model-missing" ? `${f.battery} (embed model not pulled — ollama pull nomic-embed-text-v2-moe)` : f.battery))
-      .join(", ")}`
+
+/** Build the stable JSON schema and compute the required-row gate. */
+export function createCapabilityReport(capabilities) {
+  const counts = {
+    passed: capabilities.filter((row) => row.status === "passed").length,
+    failed: capabilities.filter((row) => row.status === "failed").length,
+    unverified: capabilities.filter((row) => row.status === "unverified").length,
+    total: capabilities.length,
+  };
+  const required = capabilities.filter((row) => row.required);
+  const status = capabilities.some((row) => row.status === "failed")
+    ? "failed"
+    : required.some((row) => row.status !== "passed")
+      ? "unverified"
+      : "passed";
+  return { version: 1, status, counts, capabilities };
+}
+
+/** Persist only the privacy-safe aggregate, atomically, under the ignored eval tree. */
+export function persistCapabilityReport(report, reportPath = DEFAULT_REPORT_PATH) {
+  mkdirSync(dirname(reportPath), { recursive: true, mode: 0o700 });
+  const temporary = `${reportPath}.${process.pid.toString()}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  renameSync(temporary, reportPath);
+}
+
+function printHumanReport(report, stdout) {
+  stdout.write("\n=== eval:agent capability summary ===\n");
+  for (const row of report.capabilities) {
+    const tag = row.status === "passed" ? "PASS" : row.status === "failed" ? "FAIL" : "UNVERIFIED";
+    const reason = row.reason ? ` (${row.reason})` : "";
+    stdout.write(`  ${tag.padEnd(10)} ${row.id} ${row.executed}/${row.requested}${reason}\n`);
+  }
+  stdout.write(
+    `eval:agent ${report.status.toUpperCase()} — ${report.counts.passed} pass, ${report.counts.unverified} unverified, ${report.counts.failed} fail\n`
   );
-  process.exit(1);
 }
-if (skipped.length > 0) {
-  console.log(`eval:agent UNVERIFIED — ${passed.length} pass, ${skipped.length} skip, 0 fail across ${results.length} batteries`);
-} else {
-  console.log(`eval:agent PASSED — ${passed.length} pass, 0 skip, 0 fail across ${results.length} batteries`);
+
+export function main(args = process.argv.slice(2), dependencies = {}) {
+  const spawn = dependencies.spawn ?? spawnSync;
+  const stdout = dependencies.stdout ?? process.stdout;
+  const stderr = dependencies.stderr ?? process.stderr;
+  const now = dependencies.now ?? Date.now;
+  const json = args.includes("--json");
+  const rows = [];
+
+  for (const capability of CAPABILITIES) {
+    const startedAt = now();
+    if (json) {
+      stderr.write(`eval:agent running ${capability.id}\n`);
+    } else {
+      stdout.write(`\n=== eval:agent → ${capability.id} ===\n`);
+    }
+    const child = spawn(process.execPath, [join(here, capability.battery)], {
+      encoding: "utf8",
+      env: { ...process.env, MUSE_EVAL_REPEAT: String(capability.repeats) },
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: CAPABILITY_TIMEOUT_MS,
+    });
+    const withDuration = { ...child, durationMs: now() - startedAt };
+    if (!json) {
+      stdout.write(child.stdout ?? "");
+      stderr.write(child.stderr ?? "");
+    }
+    const row = classifyCapabilityResult(capability, withDuration);
+    rows.push(row);
+    if (json) {
+      stderr.write(`eval:agent ${capability.id} ${row.status}\n`);
+    }
+  }
+
+  const report = createCapabilityReport(rows);
+  dependencies.writeReport?.(report);
+  if (json) {
+    stdout.write(`${JSON.stringify(report)}\n`);
+  } else {
+    printHumanReport(report, stdout);
+  }
+  if (report.status !== "passed") {
+    process.exitCode = 1;
+  }
+  return report;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main(process.argv.slice(2), { writeReport: persistCapabilityReport });
 }

@@ -50,6 +50,7 @@ import { classifyDangerousCommand } from "../packages/tools/dist/index.js";
 import { checkActuatorProvenance, createTaintLedger, EXECUTE_SINK_ARG_NAMES, OUTBOUND_SEND_SINK_ARG_NAMES } from "../packages/agent-core/dist/index.js";
 import { DEFAULT_BASE_PROMPT } from "../packages/prompts/dist/index.js";
 import { llmJudge, runEvalSuite } from "./eval-harness.mjs";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
@@ -569,8 +570,9 @@ async function main() {
     }
   };
 
+  let gate = false;
   try {
-    const { gate } = await runEvalSuite({
+    ({ gate } = await runEvalSuite({
       name: "eval:adversarial",
       repeat: REPEAT,
       scenarios: [
@@ -597,12 +599,32 @@ async function main() {
       solve,
       teardownTrial,
       threshold: THRESHOLD,
-    });
-    if (!gate) process.exit(1);
+    }));
   } finally {
     cleanupSandboxArtifacts();
     rmSync(SECRET_SCRATCH_DIR, { force: true, recursive: true });
   }
+
+  if (!gate) {
+    console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "threshold-not-met" }));
+    process.exit(1);
+  }
+  const environmentSkip = ollamaSkip
+    ? { code: "ollama-unreachable", message: ollamaSkip }
+    : sandboxSkip
+      ? { code: "sandbox-missing", message: sandboxSkip }
+      : null;
+  if (environmentSkip) {
+    console.log(skipLine(environmentSkip.code, environmentSkip.message));
+    console.log(completionLine({
+      status: "unverified",
+      requested: REPEAT,
+      executed: 0,
+      reason: environmentSkip.code,
+    }));
+    return;
+  }
+  console.log(completionLine({ status: "passed", requested: REPEAT, executed: REPEAT }));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

@@ -32,6 +32,7 @@
 import { pathToFileURL } from "node:url";
 
 import { runEvalSuite } from "./eval-harness.mjs";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 /**
  * The user's OWN memory, rendered as sourced entries (what a memory store holds:
@@ -91,13 +92,23 @@ export const RECALL_QUALITY_CASES = [
   { note: "goal: running", query: "내 올해 운동 목표가 뭐였지?", expectedSource: "goal:running" },
   { note: "goal: reading", query: "내가 한 달에 책 몇 권 읽기로 했더라?", expectedSource: "goal:reading" },
   // positives — KO correction (current value wins)
-  { note: "correction — current city wins", query: "나 지금 어디 산다고 했지?", expectedSource: "fact:home_city" },
+  {
+    note: "correction — current city wins",
+    query: "나 지금 어디 산다고 했지?",
+    expectedSource: "fact:home_city",
+    freshness: { currentSource: "fact:home_city", staleSource: "fact:home_city_old" }
+  },
   // positives — EN
   { note: "fact: dentist (EN)", query: "who is my dentist?", expectedSource: "fact:dentist" },
   { note: "fact: laptop (EN)", query: "what laptop do I use for work?", expectedSource: "fact:laptop" },
   { note: "pref: tea (EN)", query: "what tea do I prefer?", expectedSource: "pref:tea" },
   { note: "goal: spanish (EN)", query: "what's my language goal this year?", expectedSource: "goal:spanish" },
-  { note: "correction — current gym wins (EN)", query: "where do I work out now?", expectedSource: "fact:gym" },
+  {
+    note: "correction — current gym wins (EN)",
+    query: "where do I work out now?",
+    expectedSource: "fact:gym",
+    freshness: { currentSource: "fact:gym", staleSource: "fact:gym_old" }
+  },
   // absents — must abstain (never fabricate)
   { note: "absent: blood type", query: "내 혈액형이 뭐라고 했지?", expectedSource: null },
   { note: "absent: pet name", query: "내가 키우는 반려동물 이름 뭐였지?", expectedSource: null },
@@ -172,7 +183,73 @@ export function classifyRecallOutcome(observed, testCase) {
   return rightTop ? "under-confidence" : "wrong-entry";
 }
 
+/**
+ * Observe the ordinary cosine-confidence contract without reordering its raw
+ * selected candidates. Correction freshness is evaluated independently below;
+ * globally demoting stale matches here could promote an unrelated fresh item
+ * and mislabel it as either a successful or confidently-wrong recall.
+ */
+export function observeRecallQuality(matches, { classify, confidentAt }) {
+  return {
+    confidence: classify(matches, { confidentAt, promoteOnMargin: true }),
+    topSource: matches[0]?.source ?? null,
+  };
+}
+
+/** Inspect raw correction candidates before any freshness reordering. */
+export function observeCorrectionFreshness(matches, testCase, { demoteStale } = {}) {
+  const pair = testCase?.freshness;
+  if (!pair?.currentSource || !pair?.staleSource) {
+    throw new TypeError("correction freshness case requires currentSource and staleSource");
+  }
+  const selectedSources = new Set(matches.map((match) => match.source));
+  const currentPresent = selectedSources.has(pair.currentSource);
+  const stalePresent = selectedSources.has(pair.staleSource);
+  if (!currentPresent || !stalePresent) {
+    return { currentPresent, stalePresent, status: "unverified" };
+  }
+  if (typeof demoteStale !== "function") {
+    throw new TypeError("correction freshness observation requires demoteStale");
+  }
+  const pairMatches = matches.filter((match) => match.source === pair.currentSource || match.source === pair.staleSource);
+  const orderedPair = demoteStale(pairMatches, (match) => match.text);
+  return {
+    currentPreferred: orderedPair[0]?.source === pair.currentSource,
+    currentPresent,
+    stalePresent,
+    status: "retained",
+  };
+}
+
+/** Score correction-pair retention without inventing a topSource verdict. */
+export function scoreCorrectionFreshnessCase(observed, testCase) {
+  if (observed?.status === "retained" && observed.currentPresent === true && observed.stalePresent === true && observed.currentPreferred === true) {
+    return {
+      ok: true,
+      detail: `retained current ${testCase.freshness.currentSource} + stale ${testCase.freshness.staleSource}`,
+    };
+  }
+  const current = observed?.currentPresent ? "current retained" : "current absent";
+  const stale = observed?.stalePresent ? "stale retained" : "stale absent";
+  if (observed?.currentPresent && observed?.stalePresent && observed?.currentPreferred === false) {
+    return { ok: false, detail: "freshness ordering failure — current was not preferred within the retained correction pair" };
+  }
+  return { ok: false, detail: `freshness retention failure — ${current}, ${stale}; unverified/abstain` };
+}
+
+/** Combine the honest pooled baseline with both non-averageable hard floors. */
+export function evaluateRecallQualityGate({ summary, absentPassed, absentTotal, correctionPassed, correctionTotal }) {
+  const absentFloorMet = absentTotal >= 8 && absentPassed === absentTotal;
+  const freshnessFloorMet = correctionTotal === 2 && correctionPassed === correctionTotal;
+  return {
+    absentFloorMet,
+    freshnessFloorMet,
+    gate: summary.gate === true && absentFloorMet && freshnessFloorMet,
+  };
+}
+
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
+const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT) || 1));
 
 async function reachable() {
   try {
@@ -189,23 +266,33 @@ async function reachable() {
 async function main() {
   if (!(await reachable())) {
     console.log(`eval:recall-quality skipped — local Ollama not reachable at ${OLLAMA_BASE}. A skip is NOT a pass.`);
+    console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+    console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
     process.exit(0);
   }
 
-  const { rankKnowledgeChunks, classifyRetrievalConfidence } = await import("../packages/agent-core/dist/index.js");
+  const { rankKnowledgeChunks, classifyRetrievalConfidence, resolveRecallConfidentAt } = await import("../packages/agent-core/dist/index.js");
   const { createOllamaEmbedder } = await import("../packages/autoconfigure/dist/index.js");
+  const { demoteStale } = await import("../packages/recall/dist/index.js");
   const { DEFAULT_EMBED_MODEL } = await import("../apps/cli/dist/embed-model-default.js");
 
-  const embed = createOllamaEmbedder(process.argv[2] ?? DEFAULT_EMBED_MODEL);
+  const embedModel = process.argv[2] ?? DEFAULT_EMBED_MODEL;
+  const embed = createOllamaEmbedder(embedModel);
+  const confidentAt = resolveRecallConfidentAt(process.env, embedModel);
   try {
     await embed("probe");
   } catch (cause) {
     console.log(`eval:recall-quality skipped — embedder unavailable (${cause instanceof Error ? cause.message : String(cause)}).`);
+    console.log(skipLine("embed-model-missing", "embedding provider unavailable"));
+    console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "embed-model-missing" }));
     process.exit(0);
   }
 
-  const repeat = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT) || 1));
   const topK = 4;
+  const ordinaryCases = RECALL_QUALITY_CASES.filter((testCase) => !testCase.freshness);
+  const correctionCases = RECALL_QUALITY_CASES.filter((testCase) => testCase.freshness);
+  const observations = new Map();
+  const casePasses = new Map();
 
   const solve = async (testCase) => {
     const matches = await rankKnowledgeChunks(testCase.query, RECALL_MEMORY_CORPUS, {
@@ -214,30 +301,41 @@ async function main() {
       hybrid: true,
       topK
     });
-    // the memory-recall path opts in to margin promotion (notes/proactive/council
-    // keep the default OFF behavior); this is the calibration evidence for wiring
-    // promoteOnMargin into the production memory-recall call site (fire 3b follow-up).
-    const confidence = classifyRetrievalConfidence(matches, { promoteOnMargin: true });
-    return { confidence, topSource: matches[0]?.source ?? null };
+    const observed = testCase.freshness
+      ? observeCorrectionFreshness(matches, testCase, { demoteStale })
+      : observeRecallQuality(matches, { classify: classifyRetrievalConfidence, confidentAt });
+    observations.set(testCase.note, observed);
+    return observed;
   };
 
-  const { gate } = await runEvalSuite({
+  const score = (observed, testCase) => {
+    const verdict = testCase.freshness
+      ? scoreCorrectionFreshnessCase(observed, testCase)
+      : scoreRecallQualityCase(observed, testCase);
+    casePasses.set(testCase.note, (casePasses.get(testCase.note) ?? true) && verdict.ok);
+    return verdict;
+  };
+
+  const summary = await runEvalSuite({
     name: "eval:recall-quality",
-    scenarios: [{ label: "personal-memory recall", cases: RECALL_QUALITY_CASES }],
+    scenarios: [
+      { label: "ordinary cosine-confidence (positive + absent)", cases: ordinaryCases },
+      { label: "correction freshness-retention (raw selected candidates)", cases: correctionCases },
+    ],
     solve,
-    score: scoreRecallQualityCase,
-    repeat,
+    score,
+    repeat: REPEAT,
     threshold: 0.85
   });
 
   // DIAGNOSTIC (not a gate): split RETRIEVAL hit@1 from the CONFIDENCE gate so a
   // recall miss is attributable. A positive that abstained with the right entry
   // top-1 is under-confidence (recalibrate); a wrong top-1 is a retrieval miss.
-  const positives = RECALL_QUALITY_CASES.filter((c) => c.expectedSource !== null);
+  const positives = ordinaryCases.filter((c) => c.expectedSource !== null);
   const tally = { "confident-correct": 0, "under-confidence": 0, "wrong-entry": 0, "confident-wrong": 0 };
   let hit1 = 0;
   for (const testCase of positives) {
-    const observed = await solve(testCase);
+    const observed = observations.get(testCase.note);
     if (scoreRecallHit1(observed, testCase).ok) hit1 += 1;
     const outcome = classifyRecallOutcome(observed, testCase);
     if (outcome) tally[outcome] += 1;
@@ -251,7 +349,27 @@ async function main() {
       : `  → dominant gap is RETRIEVAL: the wrong entry ranks top-1 (ranker/embedding territory, not the gate).`
   );
 
-  process.exit(gate ? 0 : 1);
+  const absentCases = ordinaryCases.filter((testCase) => testCase.expectedSource === null);
+  const absentPassed = absentCases.filter((testCase) => casePasses.get(testCase.note) === true).length;
+  const correctionPassed = correctionCases.filter((testCase) => casePasses.get(testCase.note) === true).length;
+  const gateDecision = evaluateRecallQualityGate({
+    absentPassed,
+    absentTotal: absentCases.length,
+    correctionPassed,
+    correctionTotal: correctionCases.length,
+    summary,
+  });
+  console.log(`  absent floor     : ${absentPassed}/${absentCases.length} (required: all, at least 8)`);
+  console.log(`  freshness retain: ${correctionPassed}/${correctionCases.length} correction pairs`);
+  console.log(`  honest baseline  : ${summary.passed}/${summary.total} (${(summary.rate * 100).toFixed(0)}%)`);
+
+  const gate = gateDecision.gate;
+
+  if (!gate) {
+    console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "threshold-not-met" }));
+    process.exit(1);
+  }
+  console.log(completionLine({ status: "passed", requested: REPEAT, executed: REPEAT }));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

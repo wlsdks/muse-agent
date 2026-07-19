@@ -14,13 +14,14 @@
  * LOCAL OLLAMA ONLY; skips (exit 0) when Ollama is unavailable.
  *   MUSE_EVAL_REPEAT=3 node scripts/eval-computer-task.mjs   # pass^k
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
-import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { completionLine, skipLine } from "./eval-skip.mjs";
+import { createEvalTrialEnvironment } from "./lib/eval-trial-environment.mjs";
+import { allowEvalToolCall, createEvalToolExposureAuthority } from "./lib/eval-tool-authority.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -30,6 +31,8 @@ try {
   if (!probe.ok) throw new Error(`status ${probe.status}`);
 } catch (cause) {
   console.log(`SKIP: Ollama unreachable (${cause instanceof Error ? cause.message : cause})`);
+  console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
   process.exit(0);
 }
 
@@ -70,12 +73,16 @@ const TASK =
   "file that defines add and fix it so add(a, b) returns the sum a + b. Change nothing else.";
 
 let failures = 0;
+let completedRuns = 0;
+let runtimeUnavailable = false;
 let dir;
+let trial;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
     // A fresh project per run so a prior run's fix can't leak terminal state.
-    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
-    dir = await mkdtemp(join(tmpdir(), "muse-computer-task-"));
+    await trial?.dispose();
+    trial = await createEvalTrialEnvironment({ prefix: "muse-computer-task-" });
+    dir = trial.fixtureDir;
     const src = join(dir, "src");
     const { mkdir } = await import("node:fs/promises");
     await mkdir(src, { recursive: true });
@@ -90,7 +97,9 @@ try {
     const readPaths = new Set();
     const readOpts = { baseDir: dir, docRoots: [dir], onPathRead: (p) => readPaths.add(p), roots: [dir] };
     const writeOpts = { approvalGate: allow, baseDir: dir, roots: [dir], wasPathRead: (p) => readPaths.has(p) };
+    const { createMuseRuntimeAssembly } = await import("../packages/autoconfigure/dist/index.js");
     const assembly = createMuseRuntimeAssembly({
+      env: trial.env,
       extraTools: [
         createFileGrepTool(readOpts),
         createFileReadTool(readOpts),
@@ -99,7 +108,10 @@ try {
     });
     if (!assembly.agentRuntime || !assembly.modelProvider) {
       console.log("SKIP: no agent runtime/model configured");
-      process.exit(0);
+      console.log(skipLine("runtime-unavailable", "agent runtime or model not configured"));
+      console.log(completionLine({ status: "failed", requested: REPEAT, executed: completedRuns, reason: "runtime-unavailable" }));
+      runtimeUnavailable = true;
+      break;
     }
 
     const result = await assembly.agentRuntime.run({
@@ -109,7 +121,9 @@ try {
       ],
       // localMode arms the write-risk file_edit (the CLI sets this under --actuators).
       metadata: { localMode: true, userId: "eval-computer-task" },
-      model: assembly.defaultModel
+      model: assembly.defaultModel,
+      toolApprovalGate: allowEvalToolCall,
+      toolExposureAuthority: createEvalToolExposureAuthority("computer-task")
     });
     const toolsUsed = result.toolsUsed ?? [];
 
@@ -134,13 +148,18 @@ try {
       `no-collateral=${noiseIntact.toString()} tools=[${toolsUsed.join(",")}]`
     );
     if (!ok) console.log(`  edited file:\n${fixed.split("\n").map((l) => `    ${l}`).join("\n")}`);
+    completedRuns += 1;
   }
 } finally {
-  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+  await trial?.dispose();
 }
+
+if (runtimeUnavailable) process.exit(0);
 
 if (failures > 0) {
   console.log(`\neval:computer-task FAIL — ${failures.toString()}/${REPEAT.toString()} runs failed`);
+  console.log(completionLine({ status: "failed", requested: REPEAT, executed: completedRuns, reason: "terminal-state-failed" }));
   process.exit(1);
 }
 console.log(`\neval:computer-task PASS (${REPEAT.toString()}/${REPEAT.toString()} runs — terminal state: code runs correctly, no collateral)`);
+console.log(completionLine({ status: "passed", requested: REPEAT, executed: completedRuns }));

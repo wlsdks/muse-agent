@@ -39,6 +39,7 @@ import { loadChatPersonaSnapshot } from "../apps/api/dist/chat-persona-snapshot.
 import { createComposeAck } from "../apps/api/dist/inbound-ack.js";
 import { createComposeChatReply } from "../apps/api/dist/inbound-chat-reply.js";
 import { runEvalSuite } from "./eval-harness.mjs";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
@@ -229,6 +230,8 @@ function scorePersonaNegative(reply, testCase) {
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:channel-rhythm skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
+    console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+    console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
     return;
   }
   const provider = new OllamaProvider({ defaultModel: MODEL });
@@ -285,7 +288,11 @@ async function main() {
     solve,
     threshold: THRESHOLD
   });
-  if (!gate) process.exit(1);
+  if (!gate) {
+    console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "threshold-not-met" }));
+    process.exit(1);
+  }
+  console.log(completionLine({ status: "passed", requested: REPEAT, executed: REPEAT }));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

@@ -4,7 +4,56 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { classifyOutcome, classifySkip, skipLine, SKIP_MARKER } from "./eval-skip.mjs";
+import {
+  classifyOutcome,
+  classifySkip,
+  completionLine,
+  parseCompletion,
+  skipLine,
+  COMPLETION_MARKER,
+  SKIP_MARKER,
+} from "./eval-skip.mjs";
+
+test("completion contract: a versioned marker round-trips without payload data", () => {
+  const line = completionLine({ status: "passed", requested: 3, executed: 3 });
+  assert.match(line, new RegExp(`^${COMPLETION_MARKER}:`, "u"));
+  assert.deepEqual(parseCompletion(line), {
+    ok: true,
+    completion: { version: 1, status: "passed", requested: 3, executed: 3 },
+  });
+});
+
+test("completion contract: missing, duplicate, and malformed evidence fail closed", () => {
+  assert.deepEqual(parseCompletion("ordinary successful output"), {
+    ok: false,
+    reason: "missing-completion",
+  });
+
+  const valid = completionLine({ status: "unverified", requested: 3, executed: 0, reason: "ollama-unreachable" });
+  assert.deepEqual(parseCompletion(`${valid}\n${valid}`), {
+    ok: false,
+    reason: "duplicate-completion",
+  });
+  assert.deepEqual(parseCompletion(`${COMPLETION_MARKER}:{\"version\":1,\"status\":\"passed\",\"requested\":3}`), {
+    ok: false,
+    reason: "invalid-completion",
+  });
+});
+
+test("completion contract: rejects unstable or contradictory completion fields", () => {
+  assert.throws(
+    () => completionLine({ status: "passed", requested: 3, executed: 2 }),
+    /executed must equal requested/u
+  );
+  assert.throws(
+    () => completionLine({ status: "unverified", requested: 3, executed: 0, reason: "free form reason" }),
+    /stable reason code/u
+  );
+  assert.throws(
+    () => completionLine({ status: "unverified", requested: 3, executed: 1, reason: "runtime-unavailable" }),
+    /before any trial executes/u
+  );
+});
 
 test("classifySkip: a battery that ran (no skip notice) returns null → not a skip", () => {
   assert.equal(classifySkip("PASS — cited recall\nALL PASS (2) on ollama/gemma4:12b"), null);

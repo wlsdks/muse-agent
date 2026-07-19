@@ -11,14 +11,15 @@
  * LOCAL OLLAMA ONLY; skips (exit 0) when Ollama or the muse-runner binary is
  * unavailable.  MUSE_EVAL_REPEAT=3 node scripts/eval-reverify-fix.mjs
  */
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
-import { createRustRunnerTool } from "../packages/tools/dist/index.js";
-import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+import { completionLine, skipLine } from "./eval-skip.mjs";
+import { createEvalRunnerTool, resolveEvalRunnerIsolationSkip } from "./lib/eval-runner-isolation.mjs";
+import { createEvalTrialEnvironment } from "./lib/eval-trial-environment.mjs";
+import { allowEvalToolCall, createEvalToolExposureAuthority } from "./lib/eval-tool-authority.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -35,6 +36,13 @@ try {
   await access(RUNNER);
 } catch {
   console.log(`SKIP: muse-runner binary not found at ${RUNNER} (cargo build --release)`);
+  process.exit(0);
+}
+const isolationSkip = resolveEvalRunnerIsolationSkip();
+if (isolationSkip) {
+  console.log(`SKIP: ${isolationSkip.message}`);
+  console.log(skipLine(isolationSkip.code, isolationSkip.message));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: isolationSkip.code }));
   process.exit(0);
 }
 
@@ -93,11 +101,14 @@ const logTool = (tool) => ({
 });
 
 let failures = 0;
+let runtimeUnavailable = false;
 let dir;
+let trial;
 try {
   for (let run = 1; run <= REPEAT; run += 1) {
-    if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
-    dir = await mkdtemp(join(tmpdir(), "muse-reverify-fix-"));
+    await trial?.dispose();
+    trial = await createEvalTrialEnvironment({ prefix: "muse-reverify-fix-" });
+    dir = trial.fixtureDir;
     await mkdir(join(dir, "src"), { recursive: true });
     const testPath = join(dir, "test.mjs");
     await writeFile(join(dir, "src", "alpha.mjs"), ALPHA);
@@ -108,17 +119,20 @@ try {
     const readPaths = new Set();
     const readOpts = { baseDir: dir, docRoots: [dir], onPathRead: (p) => readPaths.add(p), roots: [dir] };
     const writeOpts = { approvalGate: () => ({ approved: true }), baseDir: dir, checkEditIntegrity: true, roots: [dir], wasPathRead: (p) => readPaths.has(p) };
+    const { createMuseRuntimeAssembly } = await import("../packages/autoconfigure/dist/index.js");
     const assembly = createMuseRuntimeAssembly({
+      env: trial.env,
       extraTools: [
         createFileGrepTool(readOpts),
         createFileReadTool(readOpts),
         createFileEditTool(writeOpts),
-        createRustRunnerTool({ runnerPath: RUNNER })
+        createEvalRunnerTool({ fixtureRoot: dir, runnerPath: RUNNER })
       ].map(logTool)
     });
     if (!assembly.agentRuntime || !assembly.modelProvider) {
       console.log("SKIP: no agent runtime/model configured");
-      process.exit(0);
+      runtimeUnavailable = true;
+      break;
     }
 
     const TASK =
@@ -130,7 +144,9 @@ try {
         { content: TASK, role: "user" }
       ],
       metadata: { localMode: true, userId: "eval-reverify-fix" },
-      model: assembly.defaultModel
+      model: assembly.defaultModel,
+      toolApprovalGate: allowEvalToolCall,
+      toolExposureAuthority: createEvalToolExposureAuthority("reverify-fix")
     });
     const toolsUsed = result.toolsUsed ?? [];
     const testPasses = await runTest(testPath);
@@ -149,8 +165,10 @@ try {
     );
   }
 } finally {
-  if (dir) await rm(dir, { force: true, recursive: true }).catch(() => {});
+  await trial?.dispose();
 }
+
+if (runtimeUnavailable) process.exit(0);
 
 if (failures > 0) {
   console.log(`\neval:reverify-fix FAIL — ${failures.toString()}/${REPEAT.toString()} runs failed (a model that fixed only the first reported bug, without re-running to surface the second, fails)`);

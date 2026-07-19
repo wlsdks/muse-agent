@@ -10,7 +10,7 @@
  * (rankKnowledgeChunks, hybrid+diversify) and measure whether the hop2 answer
  * note lands in the top-K anyway.
  *
- * Interpretation (this is a measurement, not a pass/fail gate):
+ * Interpretation (measurement plus a conservative regression floor):
  *   high hit@K → at personal corpus size the answer note is retrieved without
  *     decomposition; multi-hop decomposition is LOW ROI (don't build it).
  *   low hit@K  → single-hop misses the bridged note; multi-hop decomposition
@@ -24,6 +24,9 @@ import { DEFAULT_EMBED_MODEL } from "../apps/cli/dist/embed-model-default.js";
 import { scoreRetrievalRecall } from "../apps/cli/dist/embedder-ab.js";
 import { diversifyAskChunks, secondHopAugmentChunks, shouldSecondHop } from "../packages/recall/dist/index.js";
 import { cosine } from "../apps/cli/dist/commands-notes-rag.js";
+import { completionLine, skipLine } from "./eval-skip.mjs";
+
+const REQUESTED = 1;
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 try {
@@ -31,6 +34,8 @@ try {
   if (!r.ok) throw new Error(String(r.status));
 } catch {
   console.log(`eval:multihop skipped — Ollama unreachable at ${OLLAMA_BASE}.`);
+  console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REQUESTED, executed: 0, reason: "ollama-unreachable" }));
   process.exit(0);
 }
 
@@ -70,6 +75,8 @@ try {
   await embed("probe");
 } catch (cause) {
   console.log(`eval:multihop skipped — embedder unavailable (${cause instanceof Error ? cause.message : String(cause)}).`);
+  console.log(skipLine("embed-model-missing", "embedding provider unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REQUESTED, executed: 0, reason: "embed-model-missing" }));
   process.exit(0);
 }
 
@@ -146,10 +153,13 @@ console.log(
 );
 if (rHop.hitK < MIN_HOP_HITK) {
   console.error(`\nGUARD FAIL: inline+hop hit@${topK} = ${rHop.hitK}/${rHop.total} < floor ${MIN_HOP_HITK}/${rHop.total} (second-hop AUGMENT regressed).`);
+  console.log(completionLine({ status: "failed", requested: REQUESTED, executed: 1, reason: "threshold-not-met" }));
   process.exit(1);
 }
 if (rHop.hitK < rNoHop.hitK) {
   console.error(`\nGUARD FAIL: inline+hop hit@${topK} (${rHop.hitK}) < inline-no-hop (${rNoHop.hitK}) — AUGMENT must never displace/regress.`);
+  console.log(completionLine({ status: "failed", requested: REQUESTED, executed: 1, reason: "regression" }));
   process.exit(1);
 }
 console.log(`\nGUARD OK: inline+hop hit@${topK} ${rHop.hitK}/${rHop.total} ≥ floor ${MIN_HOP_HITK} and ≥ control ${rNoHop.hitK}.`);
+console.log(completionLine({ status: "passed", requested: REQUESTED, executed: 1 }));

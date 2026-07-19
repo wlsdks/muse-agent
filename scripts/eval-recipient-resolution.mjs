@@ -19,7 +19,7 @@
 //
 // Run: pnpm eval:recipient-resolution   (builds @muse/mcp first via package.json)
 
-import { resolveContact, contactIdentifier } from "../packages/mcp/dist/index.js";
+import { contactIdentifier, resolveContact } from "../packages/stores/dist/index.js";
 
 let failures = 0;
 function check(label, cond) {

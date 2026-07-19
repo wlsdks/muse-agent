@@ -11,6 +11,7 @@
  */
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { MultiAgentOrchestrator, RuleBasedAgentWorker, createWorkerResult } from "../packages/multi-agent/dist/index.js";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
@@ -101,6 +102,7 @@ for (let iteration = 1; iteration <= REPEAT; iteration += 1) {
 console.log(`eval:orchestration — MAST + capacity cases, pass^${REPEAT.toString()}: ${deterministicFailures.length === 0 ? "all iterations clean" : `${deterministicFailures.length.toString()} failures`}`);
 if (deterministicFailures.length > 0) {
   for (const failure of deterministicFailures) console.error(`✗ ${failure}`);
+  console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "orchestration-invariant-failed" }));
   process.exit(1);
 }
 
@@ -114,6 +116,8 @@ try {
 
 if (!ollamaReachable) {
   console.log(`eval:orchestration — live model fan-in case skipped, Ollama unreachable at ${OLLAMA_BASE}. Deterministic MAST + capacity cases passed pass^${REPEAT.toString()}.`);
+  console.log(skipLine("ollama-unreachable", "live fan-in provider unavailable"));
+  console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
   process.exit(0);
 }
 
@@ -129,30 +133,32 @@ const modelWorker = (id, instruction) =>
     return createWorkerResult(id, res.output ?? "", input);
   });
 
-const orchestrator = new MultiAgentOrchestrator({
-  workers: [
-    modelWorker("draft", "Answer in ONE short sentence:"),
-    new RuleBasedAgentWorker("broken", "always fails", ["plan"], async () => {
-      throw new Error("injected failure (battery)");
-    }),
-    modelWorker("critic", "Name ONE risk of the plan in one short sentence:")
-  ]
-});
-
-const startedAt = Date.now();
-const result = await orchestrator.run(instructionInput, { mode: "sequential" });
-const elapsedMs = Date.now() - startedAt;
-
-const statuses = Object.fromEntries(result.results.map((step) => [step.workerId, step.status]));
 const failures = [];
-if (statuses.broken !== "failed") failures.push(`injected failure NOT propagated (broken=${statuses.broken})`);
-if (statuses.draft !== "completed" || statuses.critic !== "completed") failures.push(`real workers did not complete (${JSON.stringify(statuses)})`);
-if (elapsedMs >= WALL_CLOCK_CAP_MS) failures.push(`run exceeded the wall-clock cap (${elapsedMs}ms)`);
-if (!result.response.output || result.response.output.trim().length === 0) failures.push("fan-in response is empty");
+for (let iteration = 1; iteration <= REPEAT; iteration += 1) {
+  const orchestrator = new MultiAgentOrchestrator({
+    workers: [
+      modelWorker("draft", "Answer in ONE short sentence:"),
+      new RuleBasedAgentWorker("broken", "always fails", ["plan"], async () => {
+        throw new Error("injected failure (battery)");
+      }),
+      modelWorker("critic", "Name ONE risk of the plan in one short sentence:")
+    ]
+  });
+  const startedAt = Date.now();
+  const result = await orchestrator.run(instructionInput, { mode: "sequential" });
+  const elapsedMs = Date.now() - startedAt;
+  const statuses = Object.fromEntries(result.results.map((step) => [step.workerId, step.status]));
+  if (statuses.broken !== "failed") failures.push(`[iteration ${iteration.toString()}] injected failure NOT propagated (broken=${statuses.broken})`);
+  if (statuses.draft !== "completed" || statuses.critic !== "completed") failures.push(`[iteration ${iteration.toString()}] real workers did not complete (${JSON.stringify(statuses)})`);
+  if (elapsedMs >= WALL_CLOCK_CAP_MS) failures.push(`[iteration ${iteration.toString()}] run exceeded the wall-clock cap (${elapsedMs.toString()}ms)`);
+  if (!result.response.output || result.response.output.trim().length === 0) failures.push(`[iteration ${iteration.toString()}] fan-in response is empty`);
+  console.log(`eval:orchestration — live ${iteration.toString()}/${REPEAT.toString()}: ${result.results.length.toString()} steps in ${elapsedMs.toString()}ms; statuses=${JSON.stringify(statuses)}`);
+}
 
-console.log(`eval:orchestration — ${result.results.length} steps in ${elapsedMs}ms; statuses=${JSON.stringify(statuses)}`);
 if (failures.length > 0) {
   for (const failure of failures) console.error(`✗ ${failure}`);
+  console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "orchestration-invariant-failed" }));
   process.exit(1);
 }
 console.log(`PASS — step-repetition, unaware-of-termination, capacity refusal (pass^${REPEAT.toString()}), failure propagated, bounded termination, fan-in carries the survivors`);
+console.log(completionLine({ status: "passed", requested: REPEAT, executed: REPEAT }));

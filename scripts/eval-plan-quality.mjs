@@ -22,10 +22,14 @@ import { OllamaProvider } from "../packages/model/dist/index.js";
 import { buildPlanningSystemPrompt } from "../packages/prompts/dist/index.js";
 import { parsePlan } from "../packages/agent-core/dist/index.js";
 import { runEvalSuite } from "./eval-harness.mjs";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
-const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
+// A pass^k planning gate is binary per case: every deterministic requirement
+// must hold. Do not let an inherited aggregate threshold turn partial plan
+// quality into a pass.
+const THRESHOLD = 1;
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
 
 const TOOLS = [
@@ -51,14 +55,19 @@ const CASES = [
   { prompt: "가을 하늘에 대한 짧은 두 줄짜리 시를 써줘.", expect: [], note: "KO pure generation — the plan must be EMPTY (no over-tooling in the user's language); STABLE 3/3" }
 ];
 
-async function ollamaReachable() {
+async function ollamaPreflight() {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
-    if (!res.ok) return false;
+    if (!res.ok) return "ollama-unreachable";
     const body = await res.json();
-    return (body?.models ?? []).some((m) => typeof m?.name === "string" && m.name.includes(MODEL.replace(/^ollama\//, "")));
+    const expected = MODEL.replace(/^ollama\//u, "");
+    const installed = Array.isArray(body?.models) && body.models.some((entry) =>
+      entry && typeof entry === "object" &&
+      (entry.name === expected || entry.model === expected)
+    );
+    return installed ? undefined : "model-missing";
   } catch {
-    return false;
+    return "ollama-unreachable";
   }
 }
 
@@ -93,8 +102,14 @@ function scorePlanQuality(plan, testCase) {
 }
 
 async function main() {
-  if (!(await ollamaReachable())) {
-    console.log(`eval:plan-quality skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable.`);
+  const preflight = await ollamaPreflight();
+  if (preflight) {
+    const detail = preflight === "model-missing"
+      ? `model ${MODEL} is not installed in local Ollama`
+      : `local Ollama is unreachable at ${OLLAMA_BASE}`;
+    console.log(`eval:plan-quality skipped — ${detail}.`);
+    console.log(skipLine(preflight, detail));
+    console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: preflight }));
     return;
   }
   const provider = new OllamaProvider({ defaultModel: MODEL });
@@ -112,7 +127,17 @@ async function main() {
   };
   const scenarios = [{ label: "plan-quality (multi-step goals)", tools: TOOLS, cases: CASES }];
   const { gate } = await runEvalSuite({ name: "eval:plan-quality", repeat: REPEAT, scenarios, score: scorePlanQuality, solve, threshold: THRESHOLD });
-  if (!gate) process.exit(1);
+  console.log(completionLine({
+    status: gate ? "passed" : "failed",
+    requested: REPEAT,
+    executed: REPEAT,
+    ...(gate ? {} : { reason: "threshold-not-met" })
+  }));
+  if (!gate) process.exitCode = 1;
 }
 
-await main();
+await main().catch((cause) => {
+  console.error(`eval:plan-quality failed — ${cause instanceof Error ? cause.message : String(cause)}`);
+  console.log(completionLine({ status: "failed", requested: REPEAT, executed: 0, reason: "runtime-execution-failed" }));
+  process.exitCode = 1;
+});

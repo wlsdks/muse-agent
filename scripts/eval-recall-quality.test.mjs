@@ -7,14 +7,95 @@ import { test } from "node:test";
 
 import {
   classifyRecallOutcome,
+  evaluateRecallQualityGate,
+  observeCorrectionFreshness,
+  observeRecallQuality,
   RECALL_MEMORY_CORPUS,
   RECALL_QUALITY_CASES,
   scoreRecallHit1,
-  scoreRecallQualityCase
+  scoreRecallQualityCase,
+  scoreCorrectionFreshnessCase
 } from "./eval-recall-quality.mjs";
 
 const POSITIVE = { note: "x", expectedSource: "fact:car" };
 const ABSENT = { note: "x", expectedSource: null };
+
+test("aggregate keeps the honest 18/24 baseline failed even when both hard floors pass", () => {
+  assert.deepEqual(evaluateRecallQualityGate({
+    absentPassed: 8,
+    absentTotal: 8,
+    correctionPassed: 2,
+    correctionTotal: 2,
+    summary: { gate: false, passed: 18, rate: 18 / 24, total: 24 },
+  }), { absentFloorMet: true, freshnessFloorMet: true, gate: false });
+});
+
+test("ordinary observation uses the calibrated bar without globally reordering candidates", () => {
+  const matches = [
+    { cosine: 0.9, score: 0.9, source: "fact:car", text: "car" },
+    { cosine: 0.5, score: 0.5, source: "d:budget", text: "budget" },
+  ];
+  let seenOptions;
+  let seenMatches;
+  const observed = observeRecallQuality(matches, {
+    confidentAt: 0.45,
+    classify: (selected, options) => {
+      seenMatches = selected;
+      seenOptions = options;
+      return "confident";
+    },
+  });
+  assert.deepEqual(observed, { confidence: "confident", topSource: "fact:car" });
+  assert.equal(seenMatches, matches);
+  assert.deepEqual(seenOptions, { confidentAt: 0.45, promoteOnMargin: true });
+});
+
+test("correction freshness passes only when raw selection retains current and stale together", () => {
+  const testCase = {
+    expectedSource: "fact:home_city",
+    freshness: { currentSource: "fact:home_city", staleSource: "fact:home_city_old" },
+  };
+  const observed = observeCorrectionFreshness([
+    { source: "fact:home_city_old", text: "stale" },
+    { source: "fact:home_city", text: "current" },
+  ], testCase, { demoteStale: (pair) => [pair[1], pair[0]] });
+  assert.deepEqual(observed, { currentPreferred: true, currentPresent: true, stalePresent: true, status: "retained" });
+  assert.equal(scoreCorrectionFreshnessCase(observed, testCase).ok, true);
+});
+
+test("correction freshness fails if the retained pair does not prefer current after pair-local demotion", () => {
+  const testCase = {
+    expectedSource: "fact:gym",
+    freshness: { currentSource: "fact:gym", staleSource: "fact:gym_old" },
+  };
+  const observed = observeCorrectionFreshness([
+    { source: "fact:gym_old", text: "stale" },
+    { source: "fact:gym", text: "current" },
+  ], testCase, { demoteStale: (pair) => pair });
+  assert.deepEqual(observed, { currentPreferred: false, currentPresent: true, stalePresent: true, status: "retained" });
+  const verdict = scoreCorrectionFreshnessCase(observed, testCase);
+  assert.equal(verdict.ok, false);
+  assert.match(verdict.detail, /current was not preferred/iu);
+});
+
+test("mutation: stale retained/current absent plus unrelated fresh is explicit retention failure, never confident-unrelated", () => {
+  const testCase = {
+    expectedSource: "fact:home_city",
+    freshness: { currentSource: "fact:home_city", staleSource: "fact:home_city_old" },
+  };
+  let demoteCalled = false;
+  const observed = observeCorrectionFreshness([
+    { cosine: 0.9, source: "d:budget", text: "unrelated but fresh" },
+    { cosine: 0.8, source: "fact:home_city_old", text: "stale" },
+  ], testCase, { demoteStale: () => { demoteCalled = true; return []; } });
+  assert.deepEqual(observed, { currentPresent: false, stalePresent: true, status: "unverified" });
+  assert.equal(demoteCalled, false, "an incomplete raw pair must fail before freshness reordering");
+  assert.equal("confidence" in observed, false);
+  assert.equal("topSource" in observed, false);
+  const verdict = scoreCorrectionFreshnessCase(observed, testCase);
+  assert.equal(verdict.ok, false);
+  assert.match(verdict.detail, /retention failure.*current absent.*stale retained.*unverified\/abstain/iu);
+});
 
 test("positive: confident recall of the EXPECTED entry passes", () => {
   const r = scoreRecallQualityCase({ confidence: "confident", topSource: "fact:car" }, POSITIVE);
@@ -85,6 +166,15 @@ test("dataset integrity: both correction pairs keep the stale distractor (teeth)
     assert.ok(sources.has(current), `${current} (current) must exist`);
     assert.ok(sources.has(stale), `${stale} (stale distractor) must exist for the correction to have teeth`);
   }
+  const correctionPairs = RECALL_QUALITY_CASES.filter((c) => c.freshness);
+  assert.equal(correctionPairs.length, 2);
+  assert.deepEqual(
+    correctionPairs.map((c) => c.freshness),
+    [
+      { currentSource: "fact:home_city", staleSource: "fact:home_city_old" },
+      { currentSource: "fact:gym", staleSource: "fact:gym_old" },
+    ]
+  );
 });
 
 // --- fire 2: hit@1 (retrieval) split from the confidence gate ---

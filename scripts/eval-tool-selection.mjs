@@ -27,9 +27,10 @@
  *                                         # unset, the messages sent are byte-identical to today.
  */
 
-import { renderToolExemplarSection, selectToolExemplars } from "../packages/agent-core/dist/index.js";
+import { DEFAULT_TOOL_EXEMPLAR_BANK, renderToolExemplarSection, selectToolExemplars } from "../packages/agent-core/dist/index.js";
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { buildToolSelectionMessages, combineScorers, runEvalSuite, toolScorers } from "./eval-harness.mjs";
+import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
@@ -1319,6 +1320,8 @@ async function buildMacActuatorScenario() {
       { prompt: "Set the volume to 30.", expectTool: "mac_system_set", requireArgs: ["setting"], note: "EN set volume → mac_system_set (NOT media_control)" },
       { prompt: "소리 음소거 해줘.", expectTool: "mac_system_set", requireArgs: ["setting"], note: "KO mute → mac_system_set (user's language)" },
       { prompt: "How much battery do I have left?", expectTool: "mac_app_read", requireArgs: ["app"], note: "EN battery level → mac_app_read(battery)" },
+      { prompt: "Look up Jane's phone number in Contacts.", expectTool: "mac_app_read", requireArgs: ["app", "query"], note: "EN explicit existing-contact lookup → mac_app_read(contacts), adjacent positive for future-intent restraint" },
+      { prompt: "주소록에서 Jane의 이메일을 찾아줘.", expectTool: "mac_app_read", requireArgs: ["app", "query"], note: "KO explicit address-book lookup → mac_app_read(contacts), lexically disjoint positive" },
       { prompt: "지금 사파리에서 보고 있는 페이지 주소 뭐야?", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO front Safari tab URL → mac_app_read(safari_tab)" },
       { prompt: "Take a screenshot of my screen.", expectTool: "mac_screenshot", note: "EN capture screen → mac_screenshot" },
       { prompt: "화면 캡처해줘.", expectTool: "mac_screenshot", note: "KO capture screen → mac_screenshot (user's language)" },
@@ -1358,9 +1361,17 @@ async function buildMacActuatorScenario() {
       // fire the mac_media_control actuator (pause/skip).
       { prompt: "Bob한테 문자 보낼까 말까 고민 중이야.", expectNoTool: true, note: "KO 'I'm debating whether to text Bob' → NO tool (deliberation, NOT mac_message_send — outbound)" },
       { prompt: "이 플레이리스트 진짜 잘 만들었다.", expectNoTool: true, note: "KO 'this playlist is really well made' → NO tool (a comment, NOT mac_media_control — no pause/skip command)" },
-      { prompt: "I should probably add Jane to my contacts at some point.", expectNoTool: true, note: "EN musing about a future intent, no name/number given → NO mac_contacts_write (nothing concrete to draft yet)" }
+      { prompt: "I should probably add Jane to my contacts at some point.", expectNoTool: true, note: "EN musing about a future intent, no concrete phone/email → NO tool (not mac_contacts_write or mac_app_read)" },
+      { prompt: "Maybe I should add someone to Contacts someday.", expectNoTool: true, note: "EN vague future-contact musing without identity/details → NO tool (not a current contact read or concrete write)" },
+      { prompt: "Jane 연락처를 언젠가 정리하면 좋겠다는 생각이 들었어.", expectNoTool: true, note: "KO reflective future address-book thought → NO tool, lexically disjoint restraint" }
     ];
-    return { label: "macos-actuators (mac_* confusable set)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return {
+      label: "macos-actuators (mac_* confusable set)",
+      tools,
+      exemplarBank: DEFAULT_TOOL_EXEMPLAR_BANK,
+      cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)),
+      safetyCritical: true
+    };
   } catch (error) {
     return { label: "macos-actuators", skip: `@muse/mcp or @muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
@@ -1402,8 +1413,11 @@ async function buildBrowserScenario() {
       { prompt: "Open https://news.example.com in the browser and read the page.", expectTool: "browser_open", requireArgs: ["url"], note: "EN open+browse a page → browser_open (NOT web_action)" },
       { prompt: "브라우저로 이 페이지 열어줘: https://example.com", expectTool: "browser_open", requireArgs: ["url"], note: "KO open a page → browser_open (user's language)" },
       { prompt: "Read the page that's open in the browser right now.", expectTool: "browser_read", note: "EN re-read current page → browser_read (NOT knowledge_search)" },
+      { prompt: "이 페이지 본문 텍스트만 읽어줘.", expectTool: "browser_read", note: "KO explicit page TEXT read → browser_read (NOT browser_look), adjacent negative for visual routing" },
       { prompt: "이 페이지에 있는 차트가 뭘 보여주는지 설명해줘.", expectTool: "browser_look", note: "KO describe a chart on the page → browser_look (visual, NOT browser_read text)" },
+      { prompt: "현재 페이지의 막대 차트를 시각적으로 분석해줘.", expectTool: "browser_look", note: "KO visual bar-chart paraphrase → browser_look, guards against exact-prompt overfit" },
       { prompt: "What does the graph on this page show?", expectTool: "browser_look", note: "EN visual graph question → browser_look (NOT browser_read)" },
+      { prompt: "이 대시보드 매출 추세가 뭘 뜻하는지 봐줘.", expectTool: "browser_look", note: "KO deictic dashboard-trend inspection → browser_look with zero exemplar overlap, held-out generalisation" },
       { prompt: "Scroll down to see more of the page.", expectTool: "browser_scroll", requireArgs: ["direction"], note: "EN scroll → browser_scroll (reveal below-the-fold)" },
       { prompt: "맨 아래로 스크롤해줘.", expectTool: "browser_scroll", requireArgs: ["direction"], note: "KO scroll to bottom → browser_scroll (user's language)" },
       { prompt: "Wait until the search results finish loading, then read them.", expectTool: "browser_wait", note: "EN async content not yet loaded → browser_wait (NOT browser_read too early, NOT browser_scroll); STABLE 3/3. (KO async-wait phrasing is a known gemma selection gap — same class as the pre-existing KO browser_look miss — so no KO case is gated until it stabilizes 3/3.)" },
@@ -1416,7 +1430,13 @@ async function buildBrowserScenario() {
       { prompt: "Post a comment on the forum thread saying it works: https://forum.example.com/t/42", expectTool: "web_action", requireArgs: ["summary", "url"], note: "EN one-shot web submit → web_action, NOT browser_open" },
       { prompt: "What did I note about the Q3 roadmap?", expectTool: "knowledge_search", requireArgs: ["query"], note: "EN recall → knowledge_search, NOT a browser tool" }
     ];
-    return { label: "browser-control (browser_* confusable set)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return {
+      label: "browser-control (browser_* confusable set)",
+      tools,
+      exemplarBank: DEFAULT_TOOL_EXEMPLAR_BANK,
+      cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)),
+      safetyCritical: true
+    };
   } catch (error) {
     return { label: "browser-control", skip: `@muse/browser or deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
@@ -1512,6 +1532,8 @@ async function buildPtcScenario() {
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:tools skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
+    console.log(skipLine("ollama-unreachable", "local provider unavailable"));
+    console.log(completionLine({ status: "unverified", requested: REPEAT, executed: 0, reason: "ollama-unreachable" }));
     return;
   }
   const provider = new OllamaProvider({ defaultModel: MODEL });
@@ -1564,6 +1586,18 @@ async function main() {
   if (scenarioFilter) {
     scenarios = scenarios.filter((s) => s.label?.toLowerCase().includes(scenarioFilter));
   }
+  // Optional case substring filter for a fast k-run of one reproduced failure.
+  // It narrows only the local live battery; no production prompt or tool data
+  // changes. An unmatched filter leaves an empty suite, which fails closed.
+  const caseFilter = process.env.MUSE_EVAL_CASE?.trim().toLowerCase();
+  if (caseFilter) {
+    scenarios = scenarios.map((scenario) => ({
+      ...scenario,
+      cases: scenario.cases.filter((testCase) =>
+        `${testCase.note ?? ""}\n${testCase.prompt ?? ""}`.toLowerCase().includes(caseFilter)
+      )
+    }));
+  }
 
   // Solver: elicit the model's one-shot tool selection for a case's prompt.
   // A scenario carrying an exemplarBank gets a per-case few-shot system section
@@ -1584,7 +1618,11 @@ async function main() {
   const score = (toolCalls, testCase) => caseScorer(testCase)(toolCalls);
 
   const { gate } = await runEvalSuite({ name: "eval:tools", repeat: REPEAT, scenarios, score, solve, threshold: THRESHOLD });
-  if (!gate) process.exit(1);
+  if (!gate) {
+    console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "threshold-not-met" }));
+    process.exit(1);
+  }
+  console.log(completionLine({ status: "passed", requested: REPEAT, executed: REPEAT }));
 }
 
 await main();
