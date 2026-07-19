@@ -324,7 +324,7 @@ export async function validateArtifacts(paths = trackedPaths) {
   return result;
 }
 
-async function createProductionFixture({ embed, home, modelTag }) {
+export async function createProductionFixture({ embed, home, modelTag }) {
   const { embeddingsSidecarPath, loadIndex, prepareGroundedRecall, reindexNotes } = await import("../packages/recall/dist/index.js");
   const notesDir = join(home, ".muse", "notes");
   const indexPath = join(home, ".muse", "notes-index.json");

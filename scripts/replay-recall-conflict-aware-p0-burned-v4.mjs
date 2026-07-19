@@ -1,15 +1,27 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, lstat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { spawnWithTimeout } from "./eval-recall-candidate-pool.mjs";
 import { RECALL_FRESHNESS_DATASET } from "./eval-recall-freshness-ablation.mjs";
+import {
+  canonicalJson,
+  canonicalLoopbackBaseUrl,
+  jsonBytes,
+  manifestTree,
+  modelInfo,
+  nearestRank,
+  runtimeSourceProvenance as commonRuntimeSourceProvenance,
+  safeName,
+  sha256,
+  summarizeRerankDecisions,
+  writeAtomic
+} from "./recall-eval-runtime-common.mjs";
 import {
   BURNED_V4_REPLAY_DATASET,
   SOURCE_FREEZE_COMMIT,
@@ -25,22 +37,16 @@ export { SOURCE_FREEZE_COMMIT };
 export const RESULT_SCHEMA_VERSION = "muse-recall-conflict-aware-p0-burned-v4-replay.v1";
 export const CHILD_SCHEMA_VERSION = "muse-recall-conflict-aware-p0-burned-v4-replay-child.v1";
 export const DIAGNOSTICS_ROOT_RELATIVE = ".muse-dev/evals/recall-conflict-aware-p0-burned-v4-replay";
+export { canonicalJson, nearestRank, sha256 };
 const TOP_K = 3;
 const RERANK_MODEL = "qwen3:8b";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const diagnosticsRoot = join(repoRoot, DIAGNOSTICS_ROOT_RELATIVE);
 const runtimePaths = Object.freeze(["packages/recall/dist/pipeline.js", "packages/recall/dist/ask-note-retrieval.js", "packages/recall/dist/notes-index.js", "apps/cli/dist/ask-note-retrieval.js"]);
 
-function canonicalValue(value) { if (Array.isArray(value)) return value.map(canonicalValue); if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])])); return value; }
-export function canonicalJson(value) { return JSON.stringify(canonicalValue(value)); }
-export function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
-function jsonBytes(value) { return `${canonicalJson(value)}\n`; }
 function rate(passed, total) { return Number((passed / total).toFixed(6)); }
-function safeName(value) { return value.replaceAll(/[^a-z0-9.-]/giu, "_"); }
 function sourceFilename(source) { return `${source.replaceAll(/[^a-z0-9.-]/giu, "__")}.md`; }
-async function writeAtomic(path, value, mode = 0o600) { await mkdir(dirname(path), { recursive: true }); const temporary = `${path}.tmp-${process.pid}`; await writeFile(temporary, value, { mode }); await rename(temporary, path); }
 function marker(text) { return /used to|no longer|이전에|지금은 아니/iu.test(text); }
-export function nearestRank(values, percentile) { if (values.length === 0) return 0; const sorted = [...values].sort((a, b) => a - b); return Number(sorted[Math.max(0, Math.ceil(percentile * sorted.length) - 1)].toFixed(3)); }
 
 export function scorePrepared(testCase, prepared, sourceForFile) {
   const sources = prepared.scored.map((item) => sourceForFile(item.file));
@@ -52,11 +58,6 @@ export function scorePrepared(testCase, prepared, sourceForFile) {
 
 function qualityView(outcomes) { return outcomes.map(({ promptBytes: _promptBytes, rerankerLatencyMs: _rerankerLatencyMs, rerankDecision: _rerankDecision, ...item }) => item); }
 function decisionView(outcomes) { return outcomes.map(({ caseId, locale, rerankDecision }) => ({ caseId, locale, rerankDecision })); }
-function summarizeDecisions(outcomes) {
-  const result = { absent: 0, eligible: 0, empty: 0, error: 0, httpAttempts: 0, ineligibleWindow: 0, invalid: 0, logicalInvocations: 0, success: 0, timeout: 0 };
-  for (const item of outcomes) { const decision = item.rerankDecision; result.httpAttempts += decision.httpAttempts; result.logicalInvocations += decision.logicalInvocations; if (decision.eligible) result.eligible += 1; const key = decision.outcome === "ineligible-window" ? "ineligibleWindow" : decision.outcome; result[key] += 1; }
-  return result;
-}
 function metricRows(outcomes) {
   const rows = [];
   for (const locale of ["all", "ko", "en"]) {
@@ -82,7 +83,7 @@ function summarizeModel(raw) {
     const rerankerLatencies = raw.trials.flatMap((trial) => trial.arms[arm].outcomes.filter((item) => item.rerankDecision.eligible).map((item) => item.rerankerLatencyMs));
     const eligibilityByLocale = ["ko", "en"].map((locale) => { const subset = first.outcomes.filter((item) => item.locale === locale); return { eligible: subset.filter((item) => item.rerankDecision.eligible).length, locale, total: subset.length }; });
     const pairByEligibility = [true, false].map((eligible) => { const subset = first.outcomes.filter((item) => item.category === "correction-pair" && item.rerankDecision.eligible === eligible); return { eligible, passed: subset.filter((item) => item.pairRecall).length, total: subset.length }; });
-    arms[arm] = { eligibilityByLocale, eligibilityHash: eligibilityHashes[0], latency: { p50Ms: nearestRank(latencies, 0.5), p95Ms: nearestRank(latencies, 0.95), samples: latencies.length }, metrics: metricRows(first.outcomes), pairByEligibility, prompt: { p50Bytes: nearestRank(promptBytes, 0.5), p95Bytes: nearestRank(promptBytes, 0.95), samples: promptBytes.length }, promptHash: promptHashes[0], qualityHash: qualityHashes[0], reranker: summarizeDecisions(raw.trials.flatMap((trial) => trial.arms[arm].outcomes)), rerankerLatency: { p50Ms: nearestRank(rerankerLatencies, .5), p95Ms: nearestRank(rerankerLatencies, .95), samples: rerankerLatencies.length } };
+    arms[arm] = { eligibilityByLocale, eligibilityHash: eligibilityHashes[0], latency: { p50Ms: nearestRank(latencies, 0.5), p95Ms: nearestRank(latencies, 0.95), samples: latencies.length }, metrics: metricRows(first.outcomes), pairByEligibility, prompt: { p50Bytes: nearestRank(promptBytes, 0.5), p95Bytes: nearestRank(promptBytes, 0.95), samples: promptBytes.length }, promptHash: promptHashes[0], qualityHash: qualityHashes[0], reranker: summarizeRerankDecisions(raw.trials.flatMap((trial) => trial.arms[arm].outcomes)), rerankerLatency: { p50Ms: nearestRank(rerankerLatencies, .5), p95Ms: nearestRank(rerankerLatencies, .95), samples: rerankerLatencies.length } };
   }
   const paired = raw.trials.flatMap((trial) => trial.arms.B.latencyMs.map((value, index) => value - trial.arms.A.latencyMs[index]));
   return { arms, digest: raw.digest, dimension: raw.dimension, embeddingAccounting: raw.embeddingAccounting, latencyDelta: { p50PairedMs: nearestRank(paired, 0.5), p95DeltaMs: Number((arms.B.latency.p95Ms - arms.A.latency.p95Ms).toFixed(3)), p95PairedMs: nearestRank(paired, 0.95) }, modelTag: raw.modelTag, ollamaVersion: raw.ollamaVersion, resolvedTag: raw.resolvedTag, warmup: raw.warmup };
@@ -95,7 +96,7 @@ export function buildDiagnosticResult({ models: rawModels, ownerState, reranker,
   const models = rawModels.map(summarizeModel); const aggregate = {};
   for (const arm of ARMS) {
     const latency = rawModels.flatMap((raw) => raw.trials.flatMap((trial) => trial.arms[arm].latencyMs)); const collapsed = rawModels.flatMap((raw) => raw.trials[0].arms[arm].outcomes); const prompts = collapsed.map((item) => item.promptBytes); const allOutcomes = rawModels.flatMap((raw) => raw.trials.flatMap((trial) => trial.arms[arm].outcomes)); const rerankerLatencies = allOutcomes.filter((item) => item.rerankDecision.eligible).map((item) => item.rerankerLatencyMs);
-    aggregate[arm] = { eligibilityByLocale: ["ko", "en"].map((locale) => ({ eligible: collapsed.filter((item) => item.locale === locale && item.rerankDecision.eligible).length, locale, total: collapsed.filter((item) => item.locale === locale).length })), latency: { p50Ms: nearestRank(latency, .5), p95Ms: nearestRank(latency, .95), samples: latency.length }, metrics: aggregateMetrics(models, arm), prompt: { p50Bytes: nearestRank(prompts, .5), p95Bytes: nearestRank(prompts, .95), samples: prompts.length }, reranker: summarizeDecisions(allOutcomes), rerankerLatency: { p50Ms: nearestRank(rerankerLatencies, .5), p95Ms: nearestRank(rerankerLatencies, .95), samples: rerankerLatencies.length } };
+    aggregate[arm] = { eligibilityByLocale: ["ko", "en"].map((locale) => ({ eligible: collapsed.filter((item) => item.locale === locale && item.rerankDecision.eligible).length, locale, total: collapsed.filter((item) => item.locale === locale).length })), latency: { p50Ms: nearestRank(latency, .5), p95Ms: nearestRank(latency, .95), samples: latency.length }, metrics: aggregateMetrics(models, arm), prompt: { p50Bytes: nearestRank(prompts, .5), p95Bytes: nearestRank(prompts, .95), samples: prompts.length }, reranker: summarizeRerankDecisions(allOutcomes), rerankerLatency: { p50Ms: nearestRank(rerankerLatencies, .5), p95Ms: nearestRank(rerankerLatencies, .95), samples: rerankerLatencies.length } };
   }
   const paired = rawModels.flatMap((raw) => raw.trials.flatMap((trial) => trial.arms.B.latencyMs.map((value, index) => value - trial.arms.A.latencyMs[index])));
   const count = (arm, metric) => aggregate[arm].metrics.find((item) => item.metric === metric).passed;
@@ -145,16 +146,8 @@ export function validateDiagnosticResult(result) {
   const serialized = canonicalJson(result); if (/\/Users\/|\/home\/|\.muse\/|promptText|rawPrompt/iu.test(serialized)) throw new Error("private/raw field in diagnostic result"); return result;
 }
 
-async function runtimeSourceProvenance() { return Promise.all(runtimePaths.map(async (path) => ({ path, sha256: sha256(await readFile(join(repoRoot, path))) }))); }
-async function manifestTree(root) {
-  const entries = [];
-  async function visit(path) { let info; try { info = await lstat(path); } catch (error) { if (error.code === "ENOENT") return; throw error; } const rel = relative(root, path) || "."; const base = { mode: info.mode & 0o7777, path: rel, size: info.size, type: info.isDirectory() ? "directory" : info.isFile() ? "file" : info.isSymbolicLink() ? "symlink" : "other" }; if (info.isFile()) entries.push({ ...base, sha256: sha256(await readFile(path)) }); else { entries.push({ ...base, sha256: null }); if (info.isDirectory()) for (const name of (await readdir(path)).sort()) await visit(join(path, name)); } }
-  await visit(root); return { entries, manifestSha256: sha256(jsonBytes(entries)) };
-}
-function localBaseUrl(raw = "http://127.0.0.1:11434") { const url = new URL(raw); const host = url.hostname.replace(/^\[|\]$/gu, ""); if (!['127.0.0.1', 'localhost', '::1'].includes(host) || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error("Ollama must be loopback"); return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/u, "")}`; }
+async function runtimeSourceProvenance() { return commonRuntimeSourceProvenance(repoRoot, runtimePaths); }
 function childEnv(baseUrl, home) { return { HOME: home, LANG: process.env.LANG ?? "C.UTF-8", LC_ALL: process.env.LC_ALL ?? "C.UTF-8", MUSE_LOCAL_ONLY: "true", MUSE_RECALL_RERANK: RERANK_MODEL, OLLAMA_BASE_URL: baseUrl, PATH: process.env.PATH ?? "", TMPDIR: join(home, "tmp") }; }
-
-async function modelInfo(baseUrl, modelTag) { const [versionResponse, tagsResponse] = await Promise.all([fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(10_000) }), fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(10_000) })]); if (!versionResponse.ok || !tagsResponse.ok) throw new Error("OLLAMA_UNREACHABLE"); const version = await versionResponse.json(); const tags = await tagsResponse.json(); const accepted = modelTag.includes(":") ? [modelTag] : [modelTag, `${modelTag}:latest`]; const found = tags.models?.find((item) => accepted.includes(item.name) || accepted.includes(item.model)); if (!found || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(found.digest)) throw new Error(`MODEL_MISSING_OR_DIGEST:${modelTag}`); return { digest: found.digest, ollamaVersion: String(version.version ?? ""), resolvedTag: String(found.model ?? found.name) }; }
 async function createFixture(embed, home, modelTag) {
   const { embeddingsSidecarPath, loadIndex, prepareGroundedRecall, reindexNotes } = await import("../packages/recall/dist/index.js"); const notesDir = join(home, "notes"); const indexPath = join(home, "notes-index.json"); await mkdir(notesDir, { recursive: true }); const pathToSource = new Map();
   for (const item of BURNED_V4_REPLAY_DATASET.corpus) { const path = resolve(notesDir, sourceFilename(item.source)); pathToSource.set(path, item.source); await writeFile(path, `${item.text}\n`, { mode: 0o600 }); }
@@ -175,10 +168,10 @@ async function childModel({ baseUrl, home, modelTag, outputPath }) {
 }
 
 async function parentRun() {
-  validateBurnedV4ReplayDataset(BURNED_V4_REPLAY_DATASET, RECALL_FRESHNESS_DATASET, marker); const started = Date.now(); const sessionDir = join(diagnosticsRoot, new Date().toISOString().replaceAll(/[:.]/gu, "-")); await mkdir(sessionDir, { recursive: true }); const ownerRoot = join(homedir(), ".muse"); const before = await manifestTree(ownerRoot); await writeAtomic(join(sessionDir, "owner-before.json"), jsonBytes(before)); const baseUrl = localBaseUrl(process.env.OLLAMA_BASE_URL); const models = [];
+  validateBurnedV4ReplayDataset(BURNED_V4_REPLAY_DATASET, RECALL_FRESHNESS_DATASET, marker); const started = Date.now(); const sessionDir = join(diagnosticsRoot, new Date().toISOString().replaceAll(/[:.]/gu, "-")); await mkdir(sessionDir, { recursive: true }); const ownerRoot = join(homedir(), ".muse"); const before = await manifestTree(ownerRoot); await writeAtomic(join(sessionDir, "owner-before.json"), jsonBytes(before)); const baseUrl = canonicalLoopbackBaseUrl(process.env.OLLAMA_BASE_URL); const models = [];
   for (const modelTag of ALLOWLISTED_MODELS) { if (Date.now() - started >= PARENT_TIMEOUT_MS) throw new Error("PARENT_TIMEOUT"); const home = join(sessionDir, "homes", safeName(modelTag)); await mkdir(join(home, "tmp"), { recursive: true }); const outputPath = join(sessionDir, `${safeName(modelTag)}.json`); const run = await spawnWithTimeout(process.execPath, [fileURLToPath(import.meta.url), "--child", modelTag, outputPath, home], { env: childEnv(baseUrl, home), outputPath, timeoutMs: Math.min(CHILD_TIMEOUT_MS, PARENT_TIMEOUT_MS - (Date.now() - started)) }); if (!run.ok) throw new Error(`${modelTag}:${run.reasonCode}`); const value = JSON.parse(await readFile(outputPath, "utf8")); if (value.schemaVersion !== CHILD_SCHEMA_VERSION || value.modelTag !== modelTag || value.trials.length !== 2) throw new Error(`${modelTag}:CHILD_SCHEMA`); models.push(value); }
   const after = await manifestTree(ownerRoot); await writeAtomic(join(sessionDir, "owner-after.json"), jsonBytes(after)); const ownerState = { afterSha256: after.manifestSha256, beforeSha256: before.manifestSha256, unchanged: before.manifestSha256 === after.manifestSha256 }; const reranker = models[0].reranker; if (models.some((model) => canonicalJson(model.reranker) !== canonicalJson(reranker))) throw new Error("RERANKER_PROVENANCE_DRIFT"); const result = buildDiagnosticResult({ models, ownerState, reranker: { digest: reranker.digest, modelTag: RERANK_MODEL, resolvedTag: reranker.resolvedTag }, runMetadata: { generatedAt: new Date().toISOString(), node: process.version, platform: `${process.platform}-${process.arch}` }, runtimeSources: await runtimeSourceProvenance() }); await writeAtomic(join(sessionDir, "result.json"), jsonBytes(result)); validateDiagnosticResult(result); process.stdout.write(`${result.payload.executionStatus} NOT_QUALIFIED\n${sessionDir}\n`);
 }
 
-async function main() { const args = process.argv.slice(2); if (args[0] === "--child") { await childModel({ baseUrl: localBaseUrl(process.env.OLLAMA_BASE_URL), modelTag: args[1], outputPath: args[2], home: args[3] }); return; } if (args.length > 0) throw new Error("UNSUPPORTED_REPLAY_ARGUMENT"); await parentRun(); }
+async function main() { const args = process.argv.slice(2); if (args[0] === "--child") { await childModel({ baseUrl: canonicalLoopbackBaseUrl(process.env.OLLAMA_BASE_URL), modelTag: args[1], outputPath: args[2], home: args[3] }); return; } if (args.length > 0) throw new Error("UNSUPPORTED_REPLAY_ARGUMENT"); await parentRun(); }
 if (pathToFileURL(process.argv[1] ?? "").href === import.meta.url) main().catch((error) => { process.stderr.write(`${error?.stack ?? error}\n`); process.exitCode = 1; });
