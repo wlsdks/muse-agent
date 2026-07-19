@@ -471,6 +471,40 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     expect(rerankCalls).toBe(2);
   });
 
+  it("reuses pair-aware reranker selection from the first snapshot with one logical invocation", async () => {
+    const files = [
+      { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2)], path: join(notesDir, "rent-stale.md"), text: "I used to pay office rent 1200; no longer current." },
+      { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2)], path: join(notesDir, "agenda.md"), text: "Tuesday meeting agenda." },
+      { embedding: [0.4, Math.sqrt(1 - 0.4 ** 2)], path: join(notesDir, "rent-current.md"), text: "Office rent is 1300 now." },
+      { embedding: [0.3, Math.sqrt(1 - 0.3 ** 2)], path: join(notesDir, "tail.md"), text: "Unrelated archive." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    let rerankCalls = 0;
+    const rerankFn = async (_query: string, texts: readonly string[]) => {
+      rerankCalls += 1;
+      const stale = texts.findIndex((text) => text.includes("used to pay"));
+      const current = texts.findIndex((text) => text.includes("1300 now"));
+      return { httpAttempts: 1, order: [stale, current], outcome: "success" as const, pairHints: [{ current, stale }] };
+    };
+    const first = await retrieveAndRankNotes({
+      conflictAwareSelection: true, embedFn: async () => [1, 0], embedModel: EMBED_MODEL,
+      indexFiles: index?.files ?? [], json: true, notesDir, onStderr: () => {}, query: "what is the office rent", rerankFn,
+      scope: undefined, snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile }, topK: 3
+    });
+
+    const prepared = await prepareGroundedRecall({
+      embedFn: async () => [1, 0], options: { embedModel: EMBED_MODEL, topK: 3 }, query: "what is the office rent",
+      rerankFn, retrievalSnapshot: first.snapshot, sources: { notesDir, notesIndexFile: indexFile }
+    });
+
+    expect(first.snapshot?.identity.rerankResultHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(rerankCalls).toBe(1);
+    expect(first.scored.map((item) => item.file)).toEqual([files[2]!.path, files[1]!.path, files[0]!.path]);
+    expect(prepared.scored).toEqual(first.scored);
+  });
+
   it("rejects a snapshot whose query identity differs and performs normal retrieval", async () => {
     const files = [
       { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-overview.md"), text: "VPN overview and routing notes." },

@@ -9,6 +9,7 @@
  * (for the set-level sufficiency advisory).
  */
 
+import { createHash } from "node:crypto";
 import { classifyRetrievalConfidence, lexicalOverlap, lexicalTokens, resolveRecallConfidentAt, splitCompoundQuery } from "@muse/agent-core";
 import { diversifyAskChunks, secondHopAugmentChunks, shouldSecondHop, type FileEntry, type IndexChunk } from "./chunks.js";
 import { demoteStale, detectStaleMarker } from "./conflict.js";
@@ -40,6 +41,8 @@ export interface NoteRetrievalResult {
   queryVec: number[] | undefined;
   /** Aggregate-safe reranker telemetry. Never contains query or candidate text. */
   rerankDecision?: RecallRerankDecision;
+  /** Validated pair chosen by rerank order; candidate indices are local to the immutable rerank window. */
+  rerankPair?: RecallRerankPairHint;
   /** Immutable first-retrieval snapshot for an identity-matching prepare seam. */
   snapshot?: NoteRetrievalSnapshot;
 }
@@ -57,6 +60,12 @@ export interface RecallRerankExecution {
   readonly httpAttempts: number;
   readonly order?: readonly number[];
   readonly outcome: Exclude<RecallRerankOutcome, "ineligible-window">;
+  readonly pairHints?: readonly RecallRerankPairHint[];
+}
+
+export interface RecallRerankPairHint {
+  readonly current: number;
+  readonly stale: number;
 }
 
 export type RecallRerankResponse = readonly number[] | RecallRerankExecution | undefined;
@@ -71,6 +80,7 @@ export interface NoteRetrievalSnapshotIdentity {
   readonly notesIndexFile: string;
   readonly indexBuiltAtIso: string;
   readonly conflictAwareSelection: boolean;
+  readonly rerankResultHash: string;
 }
 
 export interface NoteRetrievalSnapshot {
@@ -111,6 +121,9 @@ export async function retrieveAndRankNotes(params: {
   let notesUnavailable = false;
   let queryVec: number[] | undefined;
   let rerankDecision: RecallRerankDecision | undefined;
+  let rerankPair: RecallRerankPairHint | undefined;
+  let rerankPairOrder: readonly number[] = [];
+  let rerankWindow: readonly ScoredChunk[] = [];
   try {
     // S3 narrate-the-wait: a REAL stage delta before the embed — on a 10-40s local
     // model the pre-answer gap reads as a hang; this makes it read as thinking.
@@ -155,6 +168,7 @@ export async function retrieveAndRankNotes(params: {
           if (!window.includes(candidate)) window.push(candidate);
         }
       }
+      rerankWindow = window;
       scored = window.slice(0, topK);
       if (window.length > topK) {
         try {
@@ -174,6 +188,8 @@ export async function retrieveAndRankNotes(params: {
             outcome
           };
           if (outcome === "success" && valid.length > 0) {
+            rerankPair = selectHighestValidRerankPair(execution?.pairHints, window, valid);
+            rerankPairOrder = valid;
             const chosen = valid.slice(0, topK).map((i) => window[i]!);
             for (const s of window) {
               if (chosen.length >= topK) break;
@@ -193,6 +209,9 @@ export async function retrieveAndRankNotes(params: {
     }
     if (params.conflictAwareSelection === true) {
       scored = preserveConflictPairs(scored, allScored, topK);
+    }
+    if (rerankPair) {
+      scored = preserveRerankPair(scored, rerankWindow, topK, rerankPair, rerankPairOrder);
     }
     // Graph-augmented recall (HippoRAG / GraphRAG): pull in chunks from notes 1-hop
     // LINKED from the CONFIDENT matches. Fabrication-SAFE: only the user's own real
@@ -266,21 +285,12 @@ export async function retrieveAndRankNotes(params: {
     preGapScored: [...preGapScored],
     queryVec: queryVec ? [...queryVec] : undefined,
     ...(rerankDecision ? { rerankDecision } : {}),
+    ...(rerankPair ? { rerankPair: { ...rerankPair } } : {}),
     scored: demoteStale(scored, (s) => s.chunk.text),
     splitClauses: [...splitClauses],
     subqueryEmbeddings: subqueryEmbeddings.map((embedding) => [...embedding])
   };
   if (!params.snapshotIdentity) return result;
-  const identity: NoteRetrievalSnapshotIdentity = {
-    conflictAwareSelection: params.conflictAwareSelection === true,
-    embedModel,
-    indexBuiltAtIso: params.snapshotIdentity.indexBuiltAtIso,
-    notesDir,
-    notesIndexFile: params.snapshotIdentity.notesIndexFile,
-    query,
-    scope: normalizedScope(scope),
-    topK
-  };
   const snapshotResult: Omit<NoteRetrievalResult, "snapshot"> = {
     ...result,
     preGapScored: [...result.preGapScored],
@@ -289,10 +299,22 @@ export async function retrieveAndRankNotes(params: {
     splitClauses: [...result.splitClauses],
     subqueryEmbeddings: result.subqueryEmbeddings.map((embedding) => [...embedding])
   };
+  const identity: NoteRetrievalSnapshotIdentity = {
+    conflictAwareSelection: params.conflictAwareSelection === true,
+    embedModel,
+    indexBuiltAtIso: params.snapshotIdentity.indexBuiltAtIso,
+    notesDir,
+    notesIndexFile: params.snapshotIdentity.notesIndexFile,
+    query,
+    rerankResultHash: noteRetrievalResultHash(snapshotResult),
+    scope: normalizedScope(scope),
+    topK
+  };
   Object.freeze(snapshotResult.preGapScored);
   if (snapshotResult.queryVec) Object.freeze(snapshotResult.queryVec);
   Object.freeze(snapshotResult.scored);
   Object.freeze(snapshotResult.splitClauses);
+  if (snapshotResult.rerankPair) Object.freeze(snapshotResult.rerankPair);
   for (const embedding of snapshotResult.subqueryEmbeddings) Object.freeze(embedding);
   Object.freeze(snapshotResult.subqueryEmbeddings);
   Object.freeze(snapshotResult);
@@ -300,9 +322,64 @@ export async function retrieveAndRankNotes(params: {
   return { ...result, snapshot };
 }
 
+export function noteRetrievalResultHash(result: Omit<NoteRetrievalResult, "snapshot">): string {
+  return createHash("sha256").update(JSON.stringify(result)).digest("hex");
+}
+
 function normalizedScope(scope: string | undefined): string | undefined {
   const value = scope?.trim();
   return value ? value : undefined;
+}
+
+function selectHighestValidRerankPair(
+  hints: readonly RecallRerankPairHint[] | undefined,
+  window: readonly ScoredChunk[],
+  order: readonly number[]
+): RecallRerankPairHint | undefined {
+  if (!Array.isArray(hints)) return undefined;
+  const rank = new Map(order.map((candidateIndex, position) => [candidateIndex, position]));
+  const seen = new Set<string>();
+  return hints
+    .filter((hint): hint is RecallRerankPairHint => {
+      if (!isClosedRerankPairHint(hint)) return false;
+      if (hint.current === hint.stale || hint.current < 0 || hint.stale < 0 || hint.current >= window.length || hint.stale >= window.length) return false;
+      if (!rank.has(hint.current) || !rank.has(hint.stale)) return false;
+      if (detectStaleMarker(window[hint.current]!.chunk.text) || !detectStaleMarker(window[hint.stale]!.chunk.text)) return false;
+      const key = `${hint.current.toString()}:${hint.stale.toString()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => pairRank(a, rank) - pairRank(b, rank))[0];
+}
+
+function isClosedRerankPairHint(value: unknown): value is RecallRerankPairHint {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  if (keys.length !== 2 || keys[0] !== "current" || keys[1] !== "stale") return false;
+  const hint = value as { readonly current?: unknown; readonly stale?: unknown };
+  return Number.isSafeInteger(hint.current) && Number.isSafeInteger(hint.stale);
+}
+
+function pairRank(pair: RecallRerankPairHint, rank: ReadonlyMap<number, number>): number {
+  return Math.min(rank.get(pair.current) ?? Number.POSITIVE_INFINITY, rank.get(pair.stale) ?? Number.POSITIVE_INFINITY);
+}
+
+function preserveRerankPair(
+  selected: readonly ScoredChunk[],
+  window: readonly ScoredChunk[],
+  topK: number,
+  pair: RecallRerankPairHint,
+  order: readonly number[]
+): ScoredChunk[] {
+  if (topK < 2) return [...selected];
+  const current = window[pair.current];
+  const stale = window[pair.stale];
+  if (!current || !stale) return [...selected];
+  const rank = new Map(order.map((candidateIndex, position) => [candidateIndex, position]));
+  const insertAt = Math.min(pairRank(pair, rank), Math.max(0, topK - 2));
+  const rest = selected.filter((candidate) => candidate !== current && candidate !== stale);
+  return [...rest.slice(0, insertAt), current, stale, ...rest.slice(insertAt)].slice(0, topK);
 }
 
 function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: readonly ScoredChunk[], topK: number): ScoredChunk[] {

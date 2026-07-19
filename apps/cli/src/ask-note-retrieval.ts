@@ -10,7 +10,8 @@ import {
   retrieveAndRankNotes as retrieveAndRankNotesCore,
   type NoteRetrievalResult,
   type RecallRerankExecution,
-  type RecallRerankFn
+  type RecallRerankFn,
+  type RecallRerankPairHint
 } from "@muse/recall";
 
 import { resolveDefaultModel } from "@muse/autoconfigure";
@@ -59,17 +60,28 @@ export function resolveRerankModel(env: NodeJS.ProcessEnv = process.env): string
   return defaultModel?.startsWith("ollama/") ? defaultModel.slice("ollama/".length) : undefined;
 }
 
-/** Parses only a structured ranking (or a wholly numeric legacy reply), then bounds and deduplicates it. */
-export function parseRerankReply(reply: string, candidateCount: number): readonly number[] | undefined {
+export interface ParsedPairAwareRerankReply {
+  readonly order: readonly number[];
+  readonly pairHints?: readonly RecallRerankPairHint[];
+}
+
+/** Parses a structured ranking with optional closed correction-pair hints; legacy numeric replies remain ranking-only. */
+export function parsePairAwareRerankReply(reply: string, candidateCount: number): ParsedPairAwareRerankReply | undefined {
   if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
   const trimmed = reply.trim();
   if (!trimmed) return undefined;
   let values: unknown;
+  let pairs: unknown;
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    values = Array.isArray(parsed)
-      ? parsed
-      : (typeof parsed === "object" && parsed !== null && "ranking" in parsed ? parsed.ranking : undefined);
+    if (Array.isArray(parsed)) {
+      values = parsed;
+    } else if (typeof parsed === "object" && parsed !== null) {
+      const keys = Object.keys(parsed);
+      if (!keys.includes("ranking") || keys.some((key) => key !== "ranking" && key !== "pairs")) return undefined;
+      values = "ranking" in parsed ? parsed.ranking : undefined;
+      pairs = "pairs" in parsed ? parsed.pairs : undefined;
+    }
   } catch {
     if (!/^\d+(?:\s*,\s*\d+)*$/u.test(trimmed)) return undefined;
     values = trimmed.split(",").map((value) => Number(value.trim()));
@@ -79,7 +91,28 @@ export function parseRerankReply(reply: string, candidateCount: number): readonl
     .filter((value): value is number => Number.isSafeInteger(value))
     .map((value) => value - 1)
     .filter((value) => value >= 0 && value < candidateCount))];
-  return order.length > 0 ? order : undefined;
+  if (order.length === 0) return undefined;
+  const seenPairs = new Set<string>();
+  const pairHints = Array.isArray(pairs) ? pairs.flatMap((pair): RecallRerankPairHint[] => {
+    if (typeof pair !== "object" || pair === null || Array.isArray(pair)) return [];
+    const keys = Object.keys(pair).sort();
+    if (keys.length !== 2 || keys[0] !== "current" || keys[1] !== "stale") return [];
+    const raw = pair as { readonly current?: unknown; readonly stale?: unknown };
+    if (!Number.isSafeInteger(raw.current) || !Number.isSafeInteger(raw.stale)) return [];
+    const current = (raw.current as number) - 1;
+    const stale = (raw.stale as number) - 1;
+    if (current < 0 || stale < 0 || current >= candidateCount || stale >= candidateCount || current === stale) return [];
+    const key = `${current.toString()}:${stale.toString()}`;
+    if (seenPairs.has(key)) return [];
+    seenPairs.add(key);
+    return [{ current, stale }];
+  }) : [];
+  return pairHints.length > 0 ? { order, pairHints } : { order };
+}
+
+/** Backward-compatible ranking-only view used by older direct callers. */
+export function parseRerankReply(reply: string, candidateCount: number): readonly number[] | undefined {
+  return parsePairAwareRerankReply(reply, candidateCount)?.order;
 }
 
 async function ollamaRerank(
@@ -93,7 +126,9 @@ async function ollamaRerank(
   const prompt = [
     "Rank every document by how directly it answers the query, not by shared words.",
     "질문 언어와 문서 언어가 달라도 의미를 기준으로 모든 문서를 정렬하세요.",
-    `Return ONLY valid JSON exactly like {"ranking":[2,1]}. Use each integer from 1 through ${candidateTexts.length.toString()} once; no prose.`,
+    "Also identify correction pairs only when two documents state the same fact and one is explicitly old/superseded: current is the still-valid document and stale is the old one.",
+    "같은 사실의 최신 문서와 명시적으로 폐기된 과거 문서만 correction pair로 표시하세요.",
+    `Return ONLY valid JSON exactly like {"ranking":[2,1],"pairs":[{"current":2,"stale":1}]}. Use each integer from 1 through ${candidateTexts.length.toString()} once in ranking; pairs may be empty; no prose.`,
     `Query / 질문: ${query}`,
     `Documents / 문서:\n${list}`
   ].join("\n\n");
@@ -115,9 +150,9 @@ async function ollamaRerank(
       return { httpAttempts: 1, outcome: "invalid" };
     }
     if (!response.trim()) return { httpAttempts: 1, outcome: "empty" };
-    const order = parseRerankReply(response, candidateTexts.length);
-    return order
-      ? { httpAttempts: 1, order, outcome: "success" }
+    const parsed = parsePairAwareRerankReply(response, candidateTexts.length);
+    return parsed
+      ? { httpAttempts: 1, order: parsed.order, outcome: "success", ...(parsed.pairHints ? { pairHints: parsed.pairHints } : {}) }
       : { httpAttempts: 1, outcome: "invalid" };
   } catch (cause) {
     const name = typeof cause === "object" && cause !== null && "name" in cause ? cause.name : undefined;

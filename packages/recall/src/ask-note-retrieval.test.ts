@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { retrieveAndRankNotes, type RecallRerankFn } from "./ask-note-retrieval.js";
+import { retrieveAndRankNotes, type RecallRerankExecution, type RecallRerankFn } from "./ask-note-retrieval.js";
 import type { FileEntry } from "./chunks.js";
 
 let dir: string;
@@ -461,6 +461,78 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
       logicalInvocations: 1,
       outcome: "success"
     });
+  });
+
+  it("preserves the highest-ranked valid correction pair current-first inside topK", async () => {
+    const stale = await noteFile("rent-stale.md", "I used to pay office rent 1200; no longer current.", unit(0.95));
+    const noise = await noteFile("agenda.md", "Tuesday meeting agenda.", unit(0.9));
+    const current = await noteFile("rent-current.md", "Office rent is 1300 now.", unit(0.4));
+    const tail = await noteFile("tail.md", "Unrelated archive.", unit(0.3));
+    const lowerStale = await noteFile("wifi-stale.md", "The wifi password used to be alpha; no longer current.", unit(0.2));
+    const lowerCurrent = await noteFile("wifi-current.md", "The wifi password is beta now.", unit(0.1));
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        conflictAwareSelection: false,
+        embedFn, embedModel: "test-embed", indexFiles: [stale, noise, current, tail, lowerStale, lowerCurrent], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what is the office rent", rerankFn: async (_query, texts) => {
+          const staleIndex = texts.findIndex((text) => text.includes("used to pay"));
+          const currentIndex = texts.findIndex((text) => text.includes("1300 now"));
+          const noiseIndex = texts.findIndex((text) => text.includes("meeting agenda"));
+          const lowerStaleIndex = texts.findIndex((text) => text.includes("used to be alpha"));
+          const lowerCurrentIndex = texts.findIndex((text) => text.includes("beta now"));
+          return {
+            httpAttempts: 1,
+            order: [staleIndex, noiseIndex, currentIndex, lowerStaleIndex, lowerCurrentIndex],
+            outcome: "success",
+            pairHints: [
+              { current: lowerCurrentIndex, stale: lowerStaleIndex },
+              { current: currentIndex, stale: staleIndex },
+              { current: currentIndex, stale: staleIndex }
+            ]
+          };
+        }, scope: undefined, topK: 3
+      });
+
+      expect(result.scored.map((item) => item.file)).toEqual([current.path, noise.path, stale.path]);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
+  it("keeps invalid or absent pair hints byte-equivalent to ranking-only selection", async () => {
+    const stale = await noteFile("rent-stale.md", "I used to pay office rent 1200; no longer current.", unit(0.95));
+    const noise = await noteFile("agenda.md", "Tuesday meeting agenda.", unit(0.9));
+    const current = await noteFile("rent-current.md", "Office rent is 1300 now.", unit(0.4));
+    const tail = await noteFile("tail.md", "Unrelated archive.", unit(0.3));
+    const files = [stale, noise, current, tail];
+    const run = (hintBuilder?: (currentIndex: number, staleIndex: number) => unknown, omitCurrentFromOrder = false) => retrieveAndRankNotes({
+      conflictAwareSelection: false,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "what is the office rent", rerankFn: async (_query, texts) => {
+        const staleIndex = texts.findIndex((text) => text.includes("used to pay"));
+        const currentIndex = texts.findIndex((text) => text.includes("1300 now"));
+        const execution = {
+          httpAttempts: 1,
+          order: [staleIndex, texts.findIndex((text) => text.includes("meeting agenda")), ...(omitCurrentFromOrder ? [] : [currentIndex])],
+          outcome: "success",
+          ...(hintBuilder ? { pairHints: hintBuilder(currentIndex, staleIndex) } : {})
+        };
+        return execution as RecallRerankExecution;
+      }, scope: undefined, topK: 3
+    });
+
+    const baseline = await run();
+    const variants = [
+      await run((currentIndex, staleIndex) => [{ current: currentIndex, stale: staleIndex, unknown: true }]),
+      await run(() => [{ current: 99, stale: 0 }]),
+      await run((currentIndex) => [{ current: currentIndex, stale: currentIndex }]),
+      await run((currentIndex, staleIndex) => [{ current: staleIndex, stale: currentIndex }]),
+      await run((currentIndex, staleIndex) => [{ current: currentIndex, stale: staleIndex }], true)
+    ];
+    for (const result of variants) expect(result).toEqual(baseline);
   });
 
   it("keeps a wider rerank candidate window when adaptive gap-cut would stop at topK", async () => {

@@ -17,7 +17,7 @@ vi.mock("@muse/recall", async (importOriginal) => ({
 }));
 vi.mock("./embed.js", () => ({ embed: vi.fn() }));
 
-import { createRecallRerankFn, createWarmedRecallRerankFn, parseRerankReply, resolveRerankModel, retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { createRecallRerankFn, createWarmedRecallRerankFn, parsePairAwareRerankReply, parseRerankReply, resolveRerankModel, retrieveAndRankNotes } from "./ask-note-retrieval.js";
 
 afterEach(() => {
   retrieveCore.mockClear();
@@ -73,6 +73,24 @@ describe("resolveRerankModel — default ON for local-model users, off for cloud
 });
 
 describe("parseRerankReply — strict, bounded best-first zero-based indices", () => {
+  it("parses a closed 1-based correction pair hint alongside the complete ranking", () => {
+    expect(parsePairAwareRerankReply(
+      '{"ranking":[3,1,2],"pairs":[{"current":3,"stale":1}]}',
+      3
+    )).toEqual({ order: [2, 0, 1], pairHints: [{ current: 2, stale: 0 }] });
+  });
+
+  it("ignores malformed pair hints without changing a valid ranking", () => {
+    expect(parsePairAwareRerankReply(
+      '{"ranking":[2,1],"pairs":[{"current":3,"stale":1},{"current":1,"stale":1},{"current":2,"stale":1,"unknown":true}]}',
+      2
+    )).toEqual({ order: [1, 0] });
+  });
+
+  it("rejects structured JSON with unknown top-level keys", () => {
+    expect(parsePairAwareRerankReply('{"ranking":[1],"pairs":[],"unknown":true}', 1)).toBeUndefined();
+  });
+
   it("accepts JSON or an all-numeric fallback and deduplicates within the candidate range", () => {
     expect(parseRerankReply('{"ranking":[2,2,99,1]}', 3)).toEqual([1, 0]);
     expect(parseRerankReply("[2]", 3)).toEqual([1]);
@@ -111,7 +129,7 @@ describe("createRecallRerankFn — bounded request timeout", () => {
 
   it("makes one structured request and returns a typed, bounded bilingual ranking outcome", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
-      json: async () => ({ response: '{"ranking":[2,2,99,1]}' }),
+      json: async () => ({ response: '{"ranking":[2,2,99,1],"pairs":[{"current":2,"stale":1}]}' }),
       ok: true
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -123,13 +141,14 @@ describe("createRecallRerankFn — bounded request timeout", () => {
       ["The office rent changed.", "Pay rent on the 25th."]
     );
 
-    expect(result).toEqual({ httpAttempts: 1, order: [1, 0], outcome: "success" });
+    expect(result).toEqual({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![1]!;
     const body = JSON.parse(request.body as string) as { format?: unknown; prompt?: string };
     expect(body.format).toBe("json");
     expect(body.prompt).toContain("월세는 언제 보내나요?");
     expect(body.prompt).toContain('{"ranking"');
+    expect(body.prompt).toContain('"pairs"');
   });
 
   it("classifies timeout, empty, and invalid replies without retrying", async () => {

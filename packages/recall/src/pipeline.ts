@@ -27,7 +27,7 @@ import { composeSurfacePrompt } from "@muse/prompts";
 
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
-import { retrieveAndRankNotes, type NoteRetrievalResult, type NoteRetrievalSnapshot, type RecallRerankFn } from "./ask-note-retrieval.js";
+import { noteRetrievalResultHash, retrieveAndRankNotes, type NoteRetrievalResult, type NoteRetrievalSnapshot, type RecallRerankFn } from "./ask-note-retrieval.js";
 import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } from "./chunks.js";
 export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
@@ -336,6 +336,7 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
     && snapshot.identity.notesDir === sources.notesDir
     && snapshot.identity.notesIndexFile === sources.notesIndexFile
     && snapshot.identity.indexBuiltAtIso === indexBuiltAtIso
+    && snapshot.identity.rerankResultHash === noteRetrievalResultHash(snapshot.result)
     && snapshot.identity.conflictAwareSelection === conflictAwareSelection;
   const retrieval: Omit<NoteRetrievalResult, "snapshot"> = canReuseSnapshot
     ? cloneSnapshotResult(snapshot.result)
