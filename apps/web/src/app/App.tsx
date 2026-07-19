@@ -41,6 +41,7 @@ import { SkillsView } from "../views/Skills.js";
 import { ToolsView } from "../views/Tools.js";
 import { useHashView } from "./use-hash-view.js";
 import { useShortcuts } from "./useShortcuts.js";
+import { defaultApiBaseUrl } from "../lib/apiUrl.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { Command } from "../components/CommandPalette.js";
@@ -206,7 +207,12 @@ function readSetting(key: string, fallback: string): string {
 
 function Console() {
   const { lang, setLang, t } = useI18n();
-  const [apiUrl, setApiUrl] = useState(() => readSetting("muse.apiUrl", "http://127.0.0.1:3030"));
+  const [apiUrl, setApiUrl] = useState(() =>
+    readSetting(
+      "muse.apiUrl",
+      defaultApiBaseUrl(typeof window === "undefined" ? undefined : window.location, import.meta.env.DEV)
+    )
+  );
   const [token, setToken] = useState(() => readSetting("muse.token", ""));
   // Chat is the front door: the native companion's every interaction (voice,
   // tap-bubble, companion_seed deep link) lands in a conversation, so the web

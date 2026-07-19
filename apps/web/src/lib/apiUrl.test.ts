@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeApiBaseUrl } from "./apiUrl.js";
+import { defaultApiBaseUrl, normalizeApiBaseUrl } from "./apiUrl.js";
+
+describe("defaultApiBaseUrl", () => {
+  it("uses the page origin for a production http(s) page — every host alias satisfies CSP 'self'", () => {
+    expect(defaultApiBaseUrl({ protocol: "http:", origin: "http://localhost:3030" }, false)).toBe(
+      "http://localhost:3030"
+    );
+    expect(defaultApiBaseUrl({ protocol: "http:", origin: "http://127.0.0.1:3030" }, false)).toBe(
+      "http://127.0.0.1:3030"
+    );
+    expect(defaultApiBaseUrl({ protocol: "https:", origin: "https://muse.lan" }, false)).toBe("https://muse.lan");
+  });
+
+  it("keeps the loopback default on the vite dev server — its origin is not the API", () => {
+    expect(defaultApiBaseUrl({ protocol: "http:", origin: "http://localhost:5173" }, true)).toBe(
+      "http://127.0.0.1:3030"
+    );
+  });
+
+  it("keeps the loopback default for non-http pages (file:// shells)", () => {
+    expect(defaultApiBaseUrl({ protocol: "file:", origin: "null" }, false)).toBe("http://127.0.0.1:3030");
+  });
+
+  it("keeps the loopback default when no window exists (static render)", () => {
+    expect(defaultApiBaseUrl(undefined, false)).toBe("http://127.0.0.1:3030");
+  });
+});
 
 describe("normalizeApiBaseUrl", () => {
   it("adds a default http:// scheme when missing", () => {
