@@ -62,6 +62,32 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     }
   });
 
+  it("preserves a lexically specific mutual semantic pair below the fixed raw-cosine fallback", async () => {
+    const current = await noteFile("cedar-current.md", "Cedar lantern calibration is 41 now.", [0.8, 0.6, 0]);
+    const stale = await noteFile(
+      "cedar-old.md",
+      "I used to set cedar lantern calibration to 37; no longer current.",
+      [0.3, Math.sqrt(1 - 0.3 ** 2), 0]
+    );
+    const selectedNoise = await noteFile("harbor.md", "Harbor ferry timetable.", [0.95, 0, Math.sqrt(1 - 0.95 ** 2)]);
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        embedFn, embedModel: "test-embed", indexFiles: [current, stale, selectedNoise], json: true, notesDir: dir,
+        onStderr: () => {}, query: "cedar lantern setting", rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("Cedar lantern")),
+          texts.findIndex((text) => text.includes("Harbor ferry"))
+        ], scope: undefined, topK: 2
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([current.path, stale.path]);
+      expect(result.scored).toHaveLength(2);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
   it("preserves a selected stale note with its matching current note inside the fixed topK", async () => {
     const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
     const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.75, Math.sqrt(1 - 0.75 ** 2)]);
@@ -78,6 +104,34 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
       });
       expect(result.scored.map((item) => item.file)).toEqual([current.path, stale.path]);
       expect(result.scored).toHaveLength(2);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
+  it("gives the fixed topK replacement slot to the more query-relevant conflict pair", async () => {
+    const lowCurrent = await noteFile("loom-current.md", "Amber loom shuttle tension is 12 now.", [0.5, Math.sqrt(0.75), 0, 0]);
+    const lowStale = await noteFile("loom-old.md", "I used to set amber loom shuttle tension to 9; no longer current.", [0.45, Math.sqrt(1 - 0.45 ** 2), 0, 0]);
+    const relevantCurrent = await noteFile("greenhouse-current.md", "Quartz greenhouse louver angle is 18 now.", [0.9, 0, Math.sqrt(0.19), 0]);
+    const relevantStale = await noteFile("greenhouse-old.md", "I used to set quartz greenhouse louver angle to 11; no longer current.", [0.85, 0, Math.sqrt(1 - 0.85 ** 2), 0]);
+    const noise = await noteFile("plum.md", "Plum orchard crate count.", [0.8, 0, 0, 0.6]);
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        embedFn: async () => [1, 0, 0, 0], embedModel: "test-embed",
+        indexFiles: [lowCurrent, lowStale, relevantCurrent, relevantStale, noise],
+        json: true, notesDir: dir, onStderr: () => {}, query: "greenhouse louver setting",
+        rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("Amber loom shuttle tension is")),
+          texts.findIndex((text) => text.includes("Quartz greenhouse louver angle is")),
+          texts.findIndex((text) => text.includes("Plum orchard"))
+        ], scope: undefined, topK: 3
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([lowCurrent.path, relevantCurrent.path, relevantStale.path]);
+      expect(result.scored.map((item) => item.file)).not.toContain(lowStale.path);
+      expect(result.scored).toHaveLength(3);
     } finally {
       delete process.env.MUSE_RECALL_GRAPH_HOP;
       delete process.env.MUSE_RECALL_SECOND_HOP;

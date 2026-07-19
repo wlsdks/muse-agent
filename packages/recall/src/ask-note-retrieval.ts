@@ -301,18 +301,37 @@ function normalizedScope(scope: string | undefined): string | undefined {
 function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: readonly ScoredChunk[], topK: number): ScoredChunk[] {
   const out = [...selected];
   const protectedItems = new Set<ScoredChunk>();
-  for (const anchor of selected) {
+  const tokensByCandidate = new Map(candidates.map((candidate) => [candidate, lexicalTokens(candidate.chunk.text)]));
+  const documentsByToken = new Map<string, Set<string>>();
+  for (const [candidate, tokens] of tokensByCandidate) {
+    for (const token of tokens) {
+      const files = documentsByToken.get(token) ?? new Set<string>();
+      files.add(candidate.file);
+      documentsByToken.set(token, files);
+    }
+  }
+  const documentFrequency = new Map([...documentsByToken].map(([token, files]) => [token, files.size]));
+  const proposals = selected.flatMap((anchor) => {
     const anchorIsStale = detectStaleMarker(anchor.chunk.text);
-    const counterpart = candidates
+    const match = candidates
       .filter((candidate) => !out.includes(candidate) && detectStaleMarker(candidate.chunk.text) !== anchorIsStale)
       .map((candidate) => ({
         candidate,
         semantic: cosine(anchor.chunk.embedding, candidate.chunk.embedding),
-        topicOverlap: lexicalOverlap(lexicalTokens(anchor.chunk.text), candidate.chunk.text)
+        topicOverlap: lexicalOverlap(tokensByCandidate.get(anchor) ?? new Set(), candidate.chunk.text),
+        topicSpecific: hasSpecificLexicalTopic(anchor, candidate, tokensByCandidate, documentFrequency)
       }))
-      .filter(({ semantic, topicOverlap }) => semantic >= 0.92 && topicOverlap >= 1)
-      .sort((a, b) => b.semantic - a.semantic || b.candidate.score - a.candidate.score)[0]?.candidate;
-    if (!counterpart) continue;
+      .filter(({ candidate, semantic, topicOverlap, topicSpecific }) =>
+        (semantic >= 0.92 && topicOverlap >= 2 && topicSpecific)
+        || isPortableConflictPair(anchor, candidate, candidates, tokensByCandidate, documentFrequency, semantic, topicOverlap))
+      .sort((a, b) => b.semantic - a.semantic || b.candidate.score - a.candidate.score)[0];
+    return match ? [{ anchor, counterpart: match.candidate, semantic: match.semantic }] : [];
+  }).sort((a, b) =>
+    (b.anchor.score + b.counterpart.score) - (a.anchor.score + a.counterpart.score)
+    || b.semantic - a.semantic);
+
+  for (const { anchor, counterpart } of proposals) {
+    if (!out.includes(anchor) || out.includes(counterpart)) continue;
     if (out.length < topK) {
       out.push(counterpart);
     } else {
@@ -330,6 +349,55 @@ function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: rea
     protectedItems.add(counterpart);
   }
   return out;
+}
+
+function hasSpecificLexicalTopic(
+  anchor: ScoredChunk,
+  candidate: ScoredChunk,
+  tokensByCandidate: ReadonlyMap<ScoredChunk, ReadonlySet<string>>,
+  documentFrequency: ReadonlyMap<string, number>
+): boolean {
+  const anchorTokens = tokensByCandidate.get(anchor) ?? new Set<string>();
+  const candidateTokens = tokensByCandidate.get(candidate) ?? new Set<string>();
+  const shared = [...anchorTokens].filter((token) => candidateTokens.has(token));
+  const shorterSize = Math.min(anchorTokens.size, candidateTokens.size);
+  return shorterSize > 0
+    && shared.length * 2 >= shorterSize
+    && shared.some((token) => (documentFrequency.get(token) ?? 0) <= 2);
+}
+
+function isPortableConflictPair(
+  anchor: ScoredChunk,
+  candidate: ScoredChunk,
+  corpus: readonly ScoredChunk[],
+  tokensByCandidate: ReadonlyMap<ScoredChunk, ReadonlySet<string>>,
+  documentFrequency: ReadonlyMap<string, number>,
+  semantic: number,
+  topicOverlap: number
+): boolean {
+  if (topicOverlap < 3) return false;
+  if (!hasSpecificLexicalTopic(anchor, candidate, tokensByCandidate, documentFrequency)) return false;
+
+  const anchorIsStale = detectStaleMarker(anchor.chunk.text);
+  const uniquelyBestForAnchor = corpus
+    .filter((other) => other !== anchor && detectStaleMarker(other.chunk.text) !== anchorIsStale)
+    .every((other) => other === candidate || semantic > cosine(anchor.chunk.embedding, other.chunk.embedding));
+  const candidateIsStale = detectStaleMarker(candidate.chunk.text);
+  const uniquelyBestForCandidate = corpus
+    .filter((other) => other !== candidate && detectStaleMarker(other.chunk.text) !== candidateIsStale)
+    .every((other) => other === anchor || semantic > cosine(candidate.chunk.embedding, other.chunk.embedding));
+  if (!uniquelyBestForAnchor || !uniquelyBestForCandidate) return false;
+
+  const anchorBackground = corpus.filter((other) => other !== anchor && other !== candidate)
+    .map((other) => cosine(anchor.chunk.embedding, other.chunk.embedding));
+  const candidateBackground = corpus.filter((other) => other !== anchor && other !== candidate)
+    .map((other) => cosine(candidate.chunk.embedding, other.chunk.embedding));
+  if (anchorBackground.length === 0 || candidateBackground.length === 0) return false;
+  return semantic > mean(anchorBackground) && semantic > mean(candidateBackground);
+}
+
+function mean(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function isRerankExecution(response: RecallRerankResponse): response is RecallRerankExecution {
