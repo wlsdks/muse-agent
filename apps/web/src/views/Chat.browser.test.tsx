@@ -3,12 +3,15 @@ import { useRef, useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, render } from "vitest-browser-react";
 
+import "../theme.css";
+
 import { I18nProvider, useI18n } from "../i18n/index.js";
 import { safeSessionStorage } from "../lib/safe-storage.js";
 import {
   applyStarterPrompt,
   ChatContinuitySection,
   ChatReconfirmStrip,
+  ChatSession,
   CreateInBuilderButton,
   STARTER_PROMPTS,
   StarterChips
@@ -183,6 +186,98 @@ test("reconfirm strip: renders nothing when the GET errors — no error noise", 
 
   await expect.poll(() => get.mock.calls.length > 0).toBe(true);
   expect(screen.container.textContent).toBe("");
+});
+
+// The chat layout's %-height chain (theme.css `.view:has(> .chat-shell)`) —
+// mounted through the SAME ancestor classes the real app nests `ChatView`
+// under (`.main` > `.content` > `.view`), because the bug this regresses
+// (a stale `:has()` selector no longer matching the DOM) is invisible to a
+// component render that skips those wrapper classes. A fixed harness height
+// stands in for the real viewport so the assertions are deterministic
+// regardless of the test runner's own window size.
+function ChatLayoutHarness({ client }: { readonly client: ApiClient }) {
+  return (
+    <div className="main" style={{ height: 640, width: 900 }}>
+      <section className="content">
+        <div className="view">
+          <div className="chat-shell">
+            <ChatSession client={client} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function fakeChatSessionClient(): ApiClient {
+  return {
+    baseUrl: "http://chat-layout.test",
+    del: vi.fn(),
+    get: vi.fn(async (path: string) => {
+      if (path === "/api/models") return {};
+      throw new Error(`unexpected GET ${path}`);
+    }) as unknown as ApiClient["get"],
+    patch: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn()
+  } as unknown as ApiClient;
+}
+
+function seedTranscript(turnCount: number): void {
+  const turns = Array.from({ length: turnCount }, (_, i) => [
+    { role: "user", text: `User message number ${i}` },
+    { role: "assistant", text: `Assistant reply number ${i} — a longer answer that wraps across a couple of lines.` }
+  ]).flat();
+  window.localStorage.setItem("muse.chat.transcript", JSON.stringify(turns));
+}
+
+test("a seeded transcript mounts scrolled to the latest turn, not the top", async () => {
+  window.localStorage.removeItem("muse.chat.conversationId");
+  seedTranscript(20);
+
+  const screen = await render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <I18nProvider>
+        <ChatLayoutHarness client={fakeChatSessionClient()} />
+      </I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Assistant reply number 19 — a longer answer that wraps across a couple of lines.")).toBeVisible();
+
+  const chatScroll = screen.container.querySelector(".chat-scroll") as HTMLElement | null;
+  expect(chatScroll).not.toBeNull();
+  await expect.poll(() => (chatScroll ? chatScroll.scrollHeight > chatScroll.clientHeight : false)).toBe(true);
+  expect(chatScroll!.scrollTop).toBeGreaterThan(0);
+  expect(chatScroll!.scrollTop + chatScroll!.clientHeight).toBeCloseTo(chatScroll!.scrollHeight, 0);
+
+  window.localStorage.removeItem("muse.chat.transcript");
+});
+
+test("the chat scroller owns overflow — its .content ancestor never scrolls", async () => {
+  window.localStorage.removeItem("muse.chat.conversationId");
+  seedTranscript(20);
+
+  const screen = await render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <I18nProvider>
+        <ChatLayoutHarness client={fakeChatSessionClient()} />
+      </I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Assistant reply number 19 — a longer answer that wraps across a couple of lines.")).toBeVisible();
+
+  const content = screen.container.querySelector(".content") as HTMLElement | null;
+  const chatScroll = screen.container.querySelector(".chat-scroll") as HTMLElement | null;
+  expect(content).not.toBeNull();
+  expect(chatScroll).not.toBeNull();
+  // The outer pane stays exactly filled (the %-height chain resolved) — only
+  // the inner .chat-scroll is the bounded, overflowing scroller.
+  expect(content!.scrollHeight).toBeLessThanOrEqual(content!.clientHeight + 1);
+  expect(chatScroll!.scrollHeight).toBeGreaterThan(chatScroll!.clientHeight);
+
+  window.localStorage.removeItem("muse.chat.transcript");
 });
 
 // Chat's session-open continuity nudge (`ChatContinuitySection`). Tested as

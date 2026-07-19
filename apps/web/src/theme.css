@@ -1291,10 +1291,11 @@ button.row:last-child {
 
 /* The chat view fills the content viewport so .chat-scroll (flex:1) is the
    bounded messages scroller. .view only sets min-height:100% (indefinite), so
-   the chat's `height: calc(100% + 48px)` percentage cannot resolve and the
-   scroller overgrows; a definite height here is what restores it. Scoped to
-   the chat view so the other (naturally growing) views are untouched. */
-.view:has(> .chat) {
+   the chat-shell's `height: calc(100% + 48px)` percentage cannot resolve and
+   the scroller overgrows; a definite height here is what restores it. Scoped
+   to the chat view (its `.chat-shell` wrapper, which holds both the chat and
+   history tabs) so the other (naturally growing) views are untouched. */
+.view:has(> .chat-shell) {
   height: 100%;
   min-height: 0;
 }
