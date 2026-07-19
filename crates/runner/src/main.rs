@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -23,6 +23,8 @@ const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
 // before JSON parsing so a malformed multi-gigabyte stdin payload cannot make
 // the runner allocate unbounded memory.
 const MAX_REQUEST_BYTES: usize = 1 * 1024 * 1024;
+#[cfg(target_os = "macos")]
+const MAX_RUNTIME_DEPENDENCIES: usize = 256;
 
 fn effective_timeout_ms(requested: Option<u64>) -> u64 {
     requested
@@ -271,9 +273,17 @@ fn strict_isolation_spawn_plan(request: &RunnerRequest) -> Result<SpawnPlan, Str
     let canonical_root = canonical_root.to_string_lossy().into_owned();
     let canonical_cwd = canonical_cwd.to_string_lossy().into_owned();
     let executable = resolve_executable(&request.command)?;
-    let executable = executable.to_string_lossy().into_owned();
-    let profile =
-        build_strict_seatbelt_profile(&canonical_root, &executable, request.allow_network);
+    let runtime_dependencies = resolve_runtime_dependencies(&executable)?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| "strict runner executable path is not valid UTF-8".to_string())?
+        .to_string();
+    let profile = build_strict_seatbelt_profile(
+        &canonical_root,
+        &executable,
+        &runtime_dependencies,
+        request.allow_network,
+    );
     let mut args = vec!["-p".to_string(), profile, executable];
     args.extend(request.args.iter().cloned());
     Ok(SpawnPlan {
@@ -303,6 +313,181 @@ fn resolve_executable(command: &str) -> Result<PathBuf, String> {
     Err(format!(
         "strict runner isolation could not resolve executable '{command}' on PATH"
     ))
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_runtime_dependencies(executable: &Path) -> Result<Vec<String>, String> {
+    let canonical_executable = canonical_runtime_file(executable)?;
+    let executable_path = PathBuf::from(&canonical_executable);
+    let mut pending = vec![executable_path.clone()];
+    let mut inspected = BTreeSet::new();
+    let mut dependencies = BTreeSet::new();
+
+    while let Some(binary) = pending.pop() {
+        if !inspected.insert(binary.clone()) {
+            continue;
+        }
+        if inspected.len() > MAX_RUNTIME_DEPENDENCIES {
+            return Err(format!(
+                "strict runner runtime dependency closure exceeds {MAX_RUNTIME_DEPENDENCIES} files"
+            ));
+        }
+
+        let (load_paths, rpaths) = read_macho_load_paths(&binary)?;
+        for load_path in load_paths {
+            if load_path.starts_with("/System/") || load_path.starts_with("/usr/lib/") {
+                continue;
+            }
+            let resolved = resolve_macho_load_path(&load_path, &binary, &executable_path, &rpaths)?;
+            let canonical = canonical_runtime_file(&resolved)?;
+            if canonical == canonical_executable || !dependencies.insert(canonical.clone()) {
+                continue;
+            }
+            pending.push(PathBuf::from(canonical));
+        }
+    }
+
+    Ok(dependencies.into_iter().collect())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_runtime_dependencies(_executable: &Path) -> Result<Vec<String>, String> {
+    Ok(Vec::new())
+}
+
+#[cfg(target_os = "macos")]
+fn read_macho_load_paths(binary: &Path) -> Result<(Vec<String>, Vec<String>), String> {
+    let dependencies = Command::new("/usr/bin/otool")
+        .arg("-L")
+        .arg(binary)
+        .output()
+        .map_err(|error| format!("failed to inspect runtime dependencies: {error}"))?;
+    if !dependencies.status.success() {
+        return Err(format!(
+            "failed to inspect runtime dependencies for '{}': {}",
+            binary.display(),
+            String::from_utf8_lossy(&dependencies.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8(dependencies.stdout)
+        .map_err(|_| "runtime dependency output is not valid UTF-8".to_string())?;
+    let load_paths = stdout
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            line.trim()
+                .split_once(" (")
+                .map(|(path, _)| path.to_string())
+        })
+        .collect();
+
+    let commands = Command::new("/usr/bin/otool")
+        .arg("-l")
+        .arg(binary)
+        .output()
+        .map_err(|error| format!("failed to inspect runtime search paths: {error}"))?;
+    if !commands.status.success() {
+        return Err(format!(
+            "failed to inspect runtime search paths for '{}': {}",
+            binary.display(),
+            String::from_utf8_lossy(&commands.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8(commands.stdout)
+        .map_err(|_| "runtime search-path output is not valid UTF-8".to_string())?;
+    let mut in_rpath = false;
+    let mut rpaths = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line == "cmd LC_RPATH" {
+            in_rpath = true;
+        } else if in_rpath {
+            if let Some(path) = line.strip_prefix("path ") {
+                let path = path
+                    .split_once(" (offset ")
+                    .map(|(path, _)| path)
+                    .unwrap_or(path);
+                rpaths.push(path.to_string());
+                in_rpath = false;
+            } else if line.starts_with("cmd ") {
+                in_rpath = false;
+            }
+        }
+    }
+    Ok((load_paths, rpaths))
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_macho_load_path(
+    load_path: &str,
+    loader: &Path,
+    executable: &Path,
+    rpaths: &[String],
+) -> Result<PathBuf, String> {
+    let loader_dir = loader.parent().ok_or_else(|| {
+        format!(
+            "runtime dependency loader '{}' has no parent",
+            loader.display()
+        )
+    })?;
+    let executable_dir = executable.parent().ok_or_else(|| {
+        format!(
+            "strict runner executable '{}' has no parent",
+            executable.display()
+        )
+    })?;
+    let expand = |path: &str| -> Option<PathBuf> {
+        path.strip_prefix("@loader_path/")
+            .map(|suffix| loader_dir.join(suffix))
+            .or_else(|| {
+                path.strip_prefix("@executable_path/")
+                    .map(|suffix| executable_dir.join(suffix))
+            })
+            .or_else(|| Path::new(path).is_absolute().then(|| PathBuf::from(path)))
+    };
+
+    if let Some(path) = expand(load_path) {
+        return Ok(path);
+    }
+    if let Some(suffix) = load_path.strip_prefix("@rpath/") {
+        for rpath in rpaths {
+            if let Some(base) = expand(rpath) {
+                let candidate = base.join(suffix);
+                if candidate.is_file() {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+    Err(format!(
+        "strict runner could not resolve runtime dependency '{load_path}' for '{}'",
+        loader.display()
+    ))
+}
+
+fn canonical_runtime_file(path: &Path) -> Result<String, String> {
+    let canonical = fs::canonicalize(path).map_err(|error| {
+        format!(
+            "failed to canonicalize runtime dependency '{}': {error}",
+            path.display()
+        )
+    })?;
+    if !canonical.is_file() {
+        return Err(format!(
+            "runtime dependency '{}' is not a regular file",
+            canonical.display()
+        ));
+    }
+    let canonical = canonical.to_str().ok_or_else(|| {
+        format!(
+            "runtime dependency path '{}' is not valid UTF-8",
+            canonical.display()
+        )
+    })?;
+    if canonical.chars().any(char::is_control) {
+        return Err("runtime dependency path contains an SBPL control character".to_string());
+    }
+    Ok(canonical.to_string())
 }
 
 fn canonicalize_for_sandbox(label: &str, path: &str) -> Result<String, String> {
@@ -354,6 +539,12 @@ fn run_request(request: RunnerRequest, mode: SandboxMode) -> RunnerResponse {
         if is_safe_env_key(&key) && !strict_boundary_env {
             command.env(key, value);
         }
+    }
+    if plan.strict_root.is_some() {
+        // Homebrew's OpenSSL build points at an owner-writable global config.
+        // Strict offline execution must not widen the filesystem boundary just
+        // to initialize crypto, nor may the request redirect this config read.
+        command.env("OPENSSL_CONF", "/dev/null");
     }
 
     // Make the child its own process-group leader (pgid == its own pid) so the
@@ -595,6 +786,7 @@ const UNSAFE_ENV_EXACT: &[&str] = &[
     // so a model-set PATH redirects a guard-passing name to an attacker binary.
     // Strip it; the runner-set PATH (above) resolves normal commands.
     "PATH",
+    "OPENSSL_CONF",
     "GIT_SSH_COMMAND",
     "GIT_SSH",
     "GIT_EXTERNAL_DIFF",
@@ -825,6 +1017,7 @@ fn build_seatbelt_profile(spec: &SeatbeltSpec) -> String {
 fn build_strict_seatbelt_profile(
     isolation_root: &str,
     executable: &str,
+    runtime_dependencies: &[String],
     allow_network: bool,
 ) -> String {
     let root = escape_sbpl_string(isolation_root);
@@ -848,6 +1041,12 @@ fn build_strict_seatbelt_profile(
     profile.push_str("(allow file-read-data (literal \"/\"))\n");
     profile.push_str(&format!("(allow file-read* (subpath \"{root}\"))\n"));
     profile.push_str(&format!("(allow file-read* (literal \"{executable}\"))\n"));
+    for dependency in runtime_dependencies {
+        profile.push_str(&format!(
+            "(allow file-read* (literal \"{}\"))\n",
+            escape_sbpl_string(dependency)
+        ));
+    }
     // Only immutable Apple runtime libraries are shared with the child. Broad
     // package/config roots such as /usr, /Library, and /opt are intentionally
     // excluded: they can contain owner-installed and owner-writable secrets.
@@ -1075,6 +1274,7 @@ mod tests {
             "PYTHONSTARTUP",
             "PYTHONPATH",
             "RUBYOPT",
+            "OPENSSL_CONF",
             "GIT_SSH_COMMAND",
             "GIT_EXTERNAL_DIFF",
             "GIT_PAGER",
@@ -1336,8 +1536,13 @@ mod tests {
 
     #[test]
     fn strict_isolation_profile_reads_and_writes_only_the_fixture_plus_system_runtime() {
-        let profile =
-            build_strict_seatbelt_profile("/private/tmp/muse-fixture", "/usr/bin/node", false);
+        let dependencies = vec!["/opt/homebrew/Cellar/node/24.0.0/lib/libnode.dylib".to_string()];
+        let profile = build_strict_seatbelt_profile(
+            "/private/tmp/muse-fixture",
+            "/usr/bin/node",
+            &dependencies,
+            false,
+        );
         assert!(
             profile.contains("(allow file-read* (subpath \"/private/tmp/muse-fixture\"))"),
             "fixture contents must be readable: {profile}"
@@ -1369,6 +1574,10 @@ mod tests {
             "only the resolved executable may run: {profile}"
         );
         assert!(
+            profile.contains("(allow file-read* (literal \"/opt/homebrew/Cellar/node/24.0.0/lib/libnode.dylib\"))"),
+            "runtime dependencies must be exact-file reads: {profile}"
+        );
+        assert!(
             !profile.contains("process-exec*"),
             "strict isolation must not execute arbitrary binaries: {profile}"
         );
@@ -1377,9 +1586,8 @@ mod tests {
             "strict isolation must not expose arbitrary Mach services: {profile}"
         );
         for forbidden in [
-            "/opt/homebrew",
-            "/opt/local",
-            "/Library",
+            "(subpath \"/opt",
+            "(subpath \"/Library",
             "/usr\"",
             "/private/etc",
             "/private/var/db",
@@ -1390,6 +1598,38 @@ mod tests {
                 "mutable or overly broad runtime root must stay denied ({forbidden}): {profile}"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_dependency_paths_are_canonicalized_and_control_characters_fail_closed() {
+        use std::os::unix::fs::symlink;
+
+        let base =
+            std::env::temp_dir().join(format!("muse-runner-runtime-path-{}", std::process::id()));
+        fs::create_dir_all(&base).expect("runtime path fixture must be creatable");
+        let target = base.join("runtime.dylib");
+        let link = base.join("runtime-link.dylib");
+        fs::write(&target, "runtime").expect("runtime target must be writable");
+        symlink(&target, &link).expect("runtime symlink must be creatable");
+
+        assert_eq!(
+            canonical_runtime_file(&link).expect("symlink must resolve to its exact target"),
+            fs::canonicalize(&target)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        );
+
+        let injected = base.join("runtime\n(allow file-read*)\n.dylib");
+        fs::write(&injected, "runtime").expect("injection probe must be writable");
+        assert!(
+            canonical_runtime_file(&injected).is_err(),
+            "control characters must never reach an SBPL literal"
+        );
+
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]
@@ -1965,14 +2205,18 @@ mod macos_sandbox_contract_tests {
             let denied_homebrew = run_request(
                 strict_request(
                     &root,
-                    "cat",
-                    vec![homebrew_probe.to_string_lossy().into_owned()],
+                    "node",
+                    vec![
+                        "-e".to_string(),
+                        script.to_string(),
+                        homebrew_probe.to_string_lossy().into_owned(),
+                    ],
                 ),
                 SandboxMode::Disabled,
             );
             assert!(
                 !denied_homebrew.ok,
-                "owner-writable Homebrew contents must remain denied: {denied_homebrew:?}"
+                "Homebrew Node must not gain owner-writable Homebrew contents through its runtime dependency allowlist: {denied_homebrew:?}"
             );
             assert!(
                 denied_homebrew.stdout.is_empty(),
