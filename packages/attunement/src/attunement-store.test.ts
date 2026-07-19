@@ -199,7 +199,7 @@ describe("Personal Continuity store", () => {
         state.threads[0]!.links.push({ artifactId: "task_two", artifactType: "task", linkedAt: "2026-07-14T00:00:00.000Z", linkedBy: "user", providerId: "local", role: "next-step", threadId });
       }],
       ["delivery referencing no thread", (state) => {
-        state.deliveries.push({ evidenceRefs: [], id: "delivery_missing", openedAt: "2026-07-14T00:00:00.000Z", policyVersion: 0, threadId: "thread_missing" });
+        state.deliveries.push({ evidenceClass: "unclassified", evidenceRefs: [], id: "delivery_missing", openedAt: "2026-07-14T00:00:00.000Z", policyVersion: 0, threadId: "thread_missing" });
       }],
       ["undo receipt referencing no reset", (state, threadId) => {
         state.undoResetReceipts.push({ id: "undo_missing", previousPolicyVersion: 1, resetId: "reset_missing", restoredPolicy: { detail: "standard", nextStep: "direct", suppression: "none", version: 2 }, threadId, undoneAt: "2026-07-14T00:00:00.000Z", undoPolicyVersion: 2 });
