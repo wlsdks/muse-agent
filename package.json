@@ -103,6 +103,8 @@
     "eval:recall-freshness-ablation:validate": "node scripts/eval-recall-freshness-ablation.mjs --validate",
     "eval:recall-candidate-pool": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/recall build && node scripts/eval-recall-candidate-pool.mjs",
     "eval:recall-candidate-pool:validate": "node scripts/eval-recall-candidate-pool.mjs --validate",
+    "eval:recall-production-path": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/recall build && node scripts/eval-recall-production-path.mjs",
+    "eval:recall-production-path:validate": "node scripts/eval-recall-production-path.mjs --validate",
     "evidence:dashboard:render": "node scripts/render-readme-evidence-dashboard.mjs",
     "evidence:dashboard:validate": "node scripts/render-readme-evidence-dashboard.mjs --validate",
     "eval:orchestration": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-orchestration.mjs",

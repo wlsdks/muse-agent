@@ -68,6 +68,10 @@ Source: [qualified recall freshness result](docs/benchmarks/recall-freshness-abl
 
 Source: [candidate-pool diagnostic](docs/benchmarks/recall-candidate-pool.md) · reproduce with `pnpm eval:recall-candidate-pool` · validate with `pnpm eval:recall-candidate-pool:validate`.
 
+![Recall ordinary, absent, and correction results through the production prepareGroundedRecall seam](docs/benchmarks/recall-production-path.svg)
+
+Source: [production-path result](docs/benchmarks/recall-production-path.md) · [canonical JSON](docs/benchmarks/recall-production-path.json) · reproduce with `pnpm eval:recall-production-path` · validate with `pnpm eval:recall-production-path:validate`. Frozen synthetic v1 is not held-out or organic evidence; the agent aggregate remains **FAILED** and organic effectiveness remains **NOT_PROVEN**.
+
 ---
 
 ## ✨ Why Muse — five principles

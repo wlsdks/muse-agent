@@ -1,0 +1,13 @@
+modelTag,digest,category,passed,total,rate,pairRetained,currentTop1,executionStatus
+nomic-embed-text,0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f,ordinary-positive,17,20,0.85,,,COMPLETE
+nomic-embed-text,0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f,absent,10,20,0.5,,,COMPLETE
+nomic-embed-text,0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f,correction-pair,0,20,0,0,0,COMPLETE
+nomic-embed-text-v2-moe,ff9c2f10ef5e3722623a1b396e1e04efc27a93112c83e9b7b7b9ca1d05620965,ordinary-positive,19,20,0.95,,,COMPLETE
+nomic-embed-text-v2-moe,ff9c2f10ef5e3722623a1b396e1e04efc27a93112c83e9b7b7b9ca1d05620965,absent,20,20,1,,,COMPLETE
+nomic-embed-text-v2-moe,ff9c2f10ef5e3722623a1b396e1e04efc27a93112c83e9b7b7b9ca1d05620965,correction-pair,0,20,0,0,0,COMPLETE
+embeddinggemma,85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1,ordinary-positive,18,20,0.9,,,COMPLETE
+embeddinggemma,85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1,absent,20,20,1,,,COMPLETE
+embeddinggemma,85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1,correction-pair,0,20,0,1,0,COMPLETE
+qwen3-embedding:0.6b,ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d,ordinary-positive,19,20,0.95,,,COMPLETE
+qwen3-embedding:0.6b,ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d,absent,20,20,1,,,COMPLETE
+qwen3-embedding:0.6b,ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d,correction-pair,0,20,0,1,0,COMPLETE
