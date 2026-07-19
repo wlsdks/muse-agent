@@ -65,6 +65,15 @@ describe("pixel-bird matrices", () => {
     expect(FRAMES.stand.join("").includes("L")).toBe(true);
   });
 
+  it("hopUp keeps the full head dome — airborne is tucked feet, never a cropped crown", () => {
+    // The grid has no headroom above the standing pose, so a "jump" drawn by
+    // shifting the body up crops the head flat (the owner-reported clipped
+    // crown). The airborne read must come from the empty feet rows instead.
+    expect(FRAMES.hopUp.slice(0, 9)).toEqual(FRAMES.stand.slice(0, 9));
+    expect(FRAMES.hopUp[9]).toBe(".............");
+    expect(FRAMES.hopUp[10]).toBe(".............");
+  });
+
   it("open poses use a single dark eye pixel; closed-eye poses (blink, doze) show a 2px line", () => {
     // Suggestion beats detail: the eye is ONE dark pixel per row when open.
     // A shut eye — the happy blink squint, or the sleeping doze — is the only

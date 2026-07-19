@@ -86,6 +86,7 @@ export const FRAMES: Readonly<Record<FrameName, readonly string[]>> = {
     ".....L.L....."
   ],
   hopUp: [
+    "....BBBB.....",
     "...BBBBBB....",
     "..BBBBBBBB...",
     "..BBBBBBBB...",
@@ -94,7 +95,6 @@ export const FRAMES: Readonly<Record<FrameName, readonly string[]>> = {
     "..BSSBBBCB...",
     "..BBSWWWBB...",
     "...BBWWWB....",
-    ".............",
     ".............",
     "............."
   ],

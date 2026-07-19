@@ -56,6 +56,7 @@ enum MascotFrames {
             ".....L.L....."
         ],
         "hopUp": [
+            "....BBBB.....",
             "...BBBBBB....",
             "..BBBBBBBB...",
             "..BBBBBBBB...",
@@ -64,7 +65,6 @@ enum MascotFrames {
             "..BSSBBBCB...",
             "..BBSWWWBB...",
             "...BBWWWB....",
-            ".............",
             ".............",
             "............."
         ],

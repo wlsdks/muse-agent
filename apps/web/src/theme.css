@@ -1467,13 +1467,15 @@ button.row:last-child {
 }
 .chat-composer {
   flex: none;
-  border-top: 1px solid var(--hairline);
-  /* Reserve a clear perch band above the composer for the desk pet: its 33px
-     body sits on the top border, and the overlays (chirp/zzz/note/heart) rise
-     up to ~34px above its head at their animation apex. The band must contain
-     the whole stack so the bird's head + overlays are never clipped by the
-     border and never collide with the last message. 33 (body) + ~30 (overlay
-     apex) ≈ 63px of headroom above the composer's content box. */
+  /* No divider line: the composer shares the canvas background with the
+     scroller, so the boxed input itself is the visual anchor — a full-width
+     hairline here reads as a stray table rule the nudge strips sit flush on.
+     Reserve a clear perch band above the composer for the desk pet: its 33px
+     body stands on the composer's top edge, and the overlays
+     (chirp/zzz/note/heart) rise up to ~34px above its head at their animation
+     apex. The band must contain the whole stack so the bird + overlays never
+     collide with the last message. 33 (body) + ~30 (overlay apex) ≈ 63px of
+     headroom above the composer's content box. */
   padding: 64px var(--s-lg) var(--s-md);
   background: var(--canvas);
 }
