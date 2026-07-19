@@ -35,7 +35,7 @@ test("one trial measures frozen v1 through distinct A baseline, B conflict-only,
       if (item.category === "correction-pair") return scored(item.currentSource, item.staleSource);
       return scored(item.expectedSource);
     },
-    rerankFn: async () => ({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] }),
+    rerankFn: Object.assign(async () => ({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] }), { mode: "correction-pair" }),
     sourceForFile: (file) => file,
     trial: 1
   });
@@ -45,6 +45,7 @@ test("one trial measures frozen v1 through distinct A baseline, B conflict-only,
   assert.equal(calls.filter((input) => input.options.conflictAwareSelection === false && !input.rerankFn).length, 60);
   assert.equal(calls.filter((input) => input.options.conflictAwareSelection === true && !input.rerankFn).length, 60);
   assert.equal(calls.filter((input) => input.options.conflictAwareSelection === true && typeof input.rerankFn === "function").length, 60);
+  assert.equal(calls.filter((input) => input.rerankFn?.mode === "correction-pair").length, 60);
   assert.ok(calls.every((input) => input.options.topK === 3 && input.extras.refineChunks === true));
   assert.deepEqual(trial.accounting, { caseArmExecutions: 180, generativeAnswerRequests: 0, prepareCalls: 180, toolExecutions: 0 });
   assert.equal(trial.arms.A.outcomes.length, 60);

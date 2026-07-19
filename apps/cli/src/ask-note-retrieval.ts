@@ -166,7 +166,10 @@ export function createRecallRerankFn(env: NodeJS.ProcessEnv = process.env, optio
   const timeoutMs = options.timeoutMs ?? PRODUCTION_RERANK_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > PRODUCTION_RERANK_TIMEOUT_MS) return undefined;
   return rerankModel
-    ? (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel, timeoutMs)
+    ? Object.assign(
+        (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel, timeoutMs),
+        { mode: "correction-pair" as const }
+      )
     : undefined;
 }
 

@@ -502,6 +502,55 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
     }
   });
 
+  it("gives an explicit pair-aware reranker a bounded 20-candidate window so a pair beyond legacy topK+4 remains available", async () => {
+    const files = await Promise.all(Array.from({ length: 30 }, async (_value, index) => {
+      const score = index < 10 ? 0.99 - index * 0.01 : 0.3 - index * 0.005;
+      if (index === 7) return noteFile("rent-current-deep.md", "Office rent is 1300 now.", unit(score));
+      if (index === 8) return noteFile("rent-stale-deep.md", "I used to pay office rent 1200; no longer current.", unit(score));
+      return noteFile(`noise-${index.toString()}.md`, `Unrelated archive ${index.toString()}.`, unit(score));
+    }));
+    let candidateCount = 0;
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]): Promise<RecallRerankExecution> => {
+      candidateCount = texts.length;
+      const current = texts.findIndex((text) => text.includes("1300 now"));
+      const stale = texts.findIndex((text) => text.includes("used to pay"));
+      return { httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success", pairHints: [{ current, stale }] };
+    }, { mode: "correction-pair" as const });
+
+    const result = await retrieveAndRankNotes({
+      conflictAwareSelection: false,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "???", rerankFn, scope: undefined, topK: 3
+    });
+
+    expect(candidateCount).toBe(20);
+    expect(result.scored.map((item) => item.file)).toContain(files[7]!.path);
+    expect(result.scored.map((item) => item.file)).toContain(files[8]!.path);
+  });
+
+  it("fails open to conflict-only selection when explicit pair-aware output has no validated pair instead of applying generic ranking", async () => {
+    const files = await vault();
+    const baseline = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "rent transfer day", scope: undefined, topK: 1
+    });
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]): Promise<RecallRerankExecution> => ({
+      httpAttempts: 1,
+      order: [texts.findIndex((text) => text.includes("25th"))],
+      outcome: "success"
+    }), { mode: "correction-pair" as const });
+
+    const pairAware = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "rent transfer day", rerankFn, scope: undefined, topK: 1
+    });
+
+    expect(pairAware.scored).toEqual(baseline.scored);
+    expect(pairAware.rerankPair).toBeUndefined();
+  });
+
   it("keeps invalid or absent pair hints byte-equivalent to ranking-only selection", async () => {
     const stale = await noteFile("rent-stale.md", "I used to pay office rent 1200; no longer current.", unit(0.95));
     const noise = await noteFile("agenda.md", "Tuesday meeting agenda.", unit(0.9));

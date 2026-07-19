@@ -76,7 +76,7 @@ function scorePrepared(testCase, prepared, sourceForFile) {
 
 function countedReranker(baseFn) {
   const events = [];
-  const fn = async (query, texts) => {
+  const fn = Object.assign(async (query, texts) => {
     const started = performance.now();
     let response;
     try { response = await baseFn(query, texts); }
@@ -88,7 +88,7 @@ function countedReranker(baseFn) {
         : { httpAttempts: 0, outcome: "empty" };
     events.push({ decision: { eligible: true, httpAttempts: Number.isSafeInteger(execution.httpAttempts) ? execution.httpAttempts : 0, logicalInvocations: 1, outcome: execution.outcome }, durationMs: performance.now() - started });
     return response;
-  };
+  }, baseFn.mode ? { mode: baseFn.mode } : {});
   return { events, fn };
 }
 

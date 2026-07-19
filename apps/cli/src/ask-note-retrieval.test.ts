@@ -141,6 +141,7 @@ describe("createRecallRerankFn — bounded request timeout", () => {
       ["The office rent changed.", "Pay rent on the 25th."]
     );
 
+    expect(createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })?.mode).toBe("correction-pair");
     expect(result).toEqual({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![1]!;

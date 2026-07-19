@@ -26,6 +26,7 @@ type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 // Keep the package boundary aligned with the CLI's `--top` contract without
 // introducing a package -> app dependency. This also bounds direct callers.
 const MAX_RETRIEVAL_TOP_K = 20;
+const PAIR_AWARE_RERANK_WINDOW = 20;
 
 export interface NoteRetrievalResult {
   /** The selected (MMR + graph + second-hop) chunks for the prompt window. */
@@ -69,7 +70,11 @@ export interface RecallRerankPairHint {
 }
 
 export type RecallRerankResponse = readonly number[] | RecallRerankExecution | undefined;
-export type RecallRerankFn = (query: string, candidateTexts: readonly string[]) => Promise<RecallRerankResponse>;
+export type RecallRerankMode = "correction-pair" | "ranking-only";
+export interface RecallRerankFn {
+  (query: string, candidateTexts: readonly string[]): Promise<RecallRerankResponse>;
+  readonly mode?: RecallRerankMode;
+}
 
 export interface NoteRetrievalSnapshotIdentity {
   readonly query: string;
@@ -160,16 +165,23 @@ export async function retrieveAndRankNotes(params: {
     // the prompt — cosine ranking is fooled by lexical-overlap distractors
     // (measured 2026-07-15: cosine top-1 3/8 vs LLM-reranked 8/8 at ~200-540ms).
     if (rerankFn) {
-      const windowLimit = Math.min(topK + 4, allScored.length);
+      const requestedWindow = rerankFn.mode === "correction-pair" ? PAIR_AWARE_RERANK_WINDOW : topK + 4;
+      const windowLimit = Math.min(requestedWindow, allScored.length);
       const window = diversifyAskChunks(allScored, windowLimit, undefined, query, subqueryEmbeddings);
-      if (window.length <= topK && allScored.length > topK) {
+      const shouldBackfillWindow = rerankFn.mode === "correction-pair"
+        ? window.length < windowLimit
+        : window.length <= topK && allScored.length > topK;
+      if (shouldBackfillWindow) {
         for (const candidate of [...allScored].sort((a, b) => b.score - a.score)) {
           if (window.length >= windowLimit) break;
           if (!window.includes(candidate)) window.push(candidate);
         }
       }
       rerankWindow = window;
-      scored = window.slice(0, topK);
+      const pairAwareFallback = rerankFn.mode === "correction-pair"
+        ? diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings)
+        : undefined;
+      scored = pairAwareFallback ?? window.slice(0, topK);
       if (window.length > topK) {
         try {
           const response = await rerankFn(query, window.map((s) => s.chunk.text));
@@ -190,12 +202,14 @@ export async function retrieveAndRankNotes(params: {
           if (outcome === "success" && valid.length > 0) {
             rerankPair = selectHighestValidRerankPair(execution?.pairHints, window, valid);
             rerankPairOrder = valid;
-            const chosen = valid.slice(0, topK).map((i) => window[i]!);
-            for (const s of window) {
-              if (chosen.length >= topK) break;
-              if (!chosen.includes(s)) chosen.push(s);
+            if (rerankFn.mode !== "correction-pair" || rerankPair) {
+              const chosen = valid.slice(0, topK).map((i) => window[i]!);
+              for (const s of window) {
+                if (chosen.length >= topK) break;
+                if (!chosen.includes(s)) chosen.push(s);
+              }
+              scored = chosen;
             }
-            scored = chosen;
           }
         } catch {
           rerankDecision = { eligible: true, httpAttempts: 0, logicalInvocations: 1, outcome: "error" };
