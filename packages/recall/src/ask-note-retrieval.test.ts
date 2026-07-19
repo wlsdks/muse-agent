@@ -27,6 +27,72 @@ afterEach(async () => {
 });
 
 describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence seam)", () => {
+  it("preserves a selected stale note with its matching current note inside the fixed topK", async () => {
+    const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
+    const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.75, Math.sqrt(1 - 0.75 ** 2)]);
+    const unrelated = await noteFile("vpn.md", "WireGuard MTU is 1380.", [0.95, Math.sqrt(1 - 0.95 ** 2)]);
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        embedFn, embedModel: "test-embed", indexFiles: [stale, current, unrelated], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("used to pay")),
+          texts.findIndex((text) => text.includes("WireGuard"))
+        ], scope: undefined, topK: 2
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([current.path, stale.path]);
+      expect(result.scored).toHaveLength(2);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
+  it("explicit conflictAwareSelection false reproduces the baseline selection", async () => {
+    const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
+    const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.75, Math.sqrt(1 - 0.75 ** 2)]);
+    const unrelated = await noteFile("vpn.md", "WireGuard MTU is 1380.", [0.95, Math.sqrt(1 - 0.95 ** 2)]);
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        conflictAwareSelection: false,
+        embedFn, embedModel: "test-embed", indexFiles: [stale, current, unrelated], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("used to pay")),
+          texts.findIndex((text) => text.includes("WireGuard"))
+        ], scope: undefined, topK: 2
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([unrelated.path, stale.path]);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
+  it("does not pair a stale note with a semantically unrelated current candidate", async () => {
+    const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
+    const unrelatedCurrent = await noteFile("vpn.md", "WireGuard MTU is 1380 now.", [-0.8, 0.6]);
+    const selectedNoise = await noteFile("agenda.md", "Meeting agenda for Tuesday.", [0.95, Math.sqrt(1 - 0.95 ** 2)]);
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const result = await retrieveAndRankNotes({
+        embedFn, embedModel: "test-embed", indexFiles: [stale, unrelatedCurrent, selectedNoise], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("used to pay")),
+          texts.findIndex((text) => text.includes("Meeting agenda"))
+        ], scope: undefined, topK: 2
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([selectedNoise.path, stale.path]);
+      expect(result.scored.map((item) => item.file)).not.toContain(unrelatedCurrent.path);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
   it("bounds direct topK input to the CLI retrieval contract", async () => {
     const files = await Promise.all(Array.from({ length: 25 }, async (_value, index) =>
       noteFile(`note-${index.toString()}.md`, `note ${index.toString()}`, [1, 0])

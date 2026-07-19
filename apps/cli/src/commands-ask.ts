@@ -78,7 +78,7 @@ import { listNoteFiles, notesCorpusFileCount, selectGraphConnections } from "./a
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
-import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { createRecallRerankFn, retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { applyAdHocGrounding } from "./ask-adhoc-grounding.js";
 import { resolveSessionVisionModel, runVisionCommandAction } from "./ask-vision-command.js";
 import { runGroundingVerdict } from "./ask-grounding-verdict.js";
@@ -184,6 +184,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // inside `prepareGroundedRecall` (notesUnavailableContextBlock), so the
       // ad-hoc result no longer needs to be captured back here.
       const askStages = createStageTimer();
+      const rerankFn = createRecallRerankFn();
+      const retrievalIndexFile = notesIndexPath();
       const retrieval = await retrieveAndRankNotes({
         embedModel,
         indexFiles: index.files,
@@ -191,12 +193,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         notesDir,
         onStderr: (text) => { io.stderr(text); },
         query,
+        rerankFn,
         scope: options.scope?.trim(),
+        snapshotIdentity: { indexBuiltAtIso: index.builtAtIso, notesIndexFile: retrievalIndexFile },
         topK
       });
       let scored = retrieval.scored;
       const notesUnavailable = retrieval.notesUnavailable;
       const { queryVec, splitClauses, subqueryEmbeddings } = retrieval;
+      const retrievalSnapshot = retrieval.snapshot;
       // The "open to verify" target for an AD-HOC grounding source whose receipt
       // would otherwise point at a fabricated `.muse/notes/<source>` path: the
       // real URL for a `--url` answer (openable), or `null` for an ephemeral
@@ -385,7 +390,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           },
           options: { embedModel, scope: options.scope?.trim(), topK },
           query,
-          sources: { notesDir, notesIndexFile: notesIndexPath() }
+          rerankFn,
+          retrievalSnapshot,
+          sources: { notesDir, notesIndexFile: retrievalIndexFile }
         });
         systemPrompt = prepared.systemPrompt;
         scored = [...prepared.scored];
@@ -556,8 +563,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 topK
               },
               query,
+              retrievalSnapshot,
               runtime: {
                 embedFn: (text, embedM) => embed(text, embedM),
+                rerankFn,
                 // Only reached when the provider has no streaming path — the
                 // seam's documented single-shot degrade.
                 generateAnswer: async (args) => {
@@ -600,7 +609,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                   }
                 }
               },
-              sources: { notesDir, notesIndexFile: notesIndexPath() }
+              sources: { notesDir, notesIndexFile: retrievalIndexFile }
             });
             for await (const event of events) {
               if (signal.aborted) break;
@@ -774,4 +783,3 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
-

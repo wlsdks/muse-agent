@@ -21,6 +21,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SEAM_MARKER_ANSWER = "SEAM-MARKER-ANSWER — this text only reaches stdout via the mocked streamGroundedRecall.";
 const SEAM_FAULT_MESSAGE = "SEAM-FAULT — injected to prove a seam-side failure propagates out of the plain path";
+const RERANK_PLUMBING = vi.hoisted(() => {
+  const rerankFn = vi.fn(async () => [0]);
+  const retrievalSnapshot = { identity: { test: "first-retrieval" }, rerankFn, result: { scored: [] } };
+  return { rerankFn, retrievalSnapshot };
+});
 
 async function* defaultFakeSeam(): AsyncGenerator<unknown> {
   yield { groundedChunkCount: 0, notesUnavailable: false, scored: [], type: "retrieval" as const, verdict: "none" as const };
@@ -43,8 +48,25 @@ async function* defaultFakeSeam(): AsyncGenerator<unknown> {
 
 vi.mock("@muse/recall", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@muse/recall")>();
-  return { ...actual, streamGroundedRecall: vi.fn(defaultFakeSeam) };
+  return {
+    ...actual,
+    prepareGroundedRecall: vi.fn(async () => ({ allowedNotes: [], notesUnavailable: false, scored: [], systemPrompt: "prepared", verdict: "none" as const })),
+    streamGroundedRecall: vi.fn(defaultFakeSeam)
+  };
 });
+
+vi.mock("./ask-note-retrieval.js", () => ({
+  createRecallRerankFn: vi.fn(() => RERANK_PLUMBING.rerankFn),
+  retrieveAndRankNotes: vi.fn(async () => ({
+    notesUnavailable: false,
+    preGapScored: [],
+    queryVec: [1, 0, 0],
+    scored: [],
+    snapshot: RERANK_PLUMBING.retrievalSnapshot,
+    splitClauses: [],
+    subqueryEmbeddings: []
+  }))
+}));
 
 vi.mock("./embed.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./embed.js")>();
@@ -113,6 +135,32 @@ describe("muse ask (plain path) routes through runGroundedRecall's seam", () => 
     await program.parseAsync(["node", "muse", "ask", "--model", "diagnostic/fake", "--no-auto-reindex", "what is my VPN MTU?"]);
 
     expect(stdout).toContain(SEAM_MARKER_ANSWER);
+  });
+
+  it("passes the exact selected reranker and first-retrieval snapshot into the plain stream seam", async () => {
+    const recall = await import("@muse/recall");
+    const io = { stderr: () => undefined, stdout: () => undefined, workspaceDir: home };
+    const program = new Command();
+    registerAskCommand(program, io as unknown as Parameters<typeof registerAskCommand>[1]);
+
+    await program.parseAsync(["node", "muse", "ask", "--model", "diagnostic/fake", "--no-auto-reindex", "what is my VPN MTU?"]);
+
+    const seamInput = vi.mocked(recall.streamGroundedRecall).mock.calls.at(-1)?.[0];
+    expect(seamInput?.runtime.rerankFn).toBe(RERANK_PLUMBING.rerankFn);
+    expect(seamInput?.retrievalSnapshot).toBe(RERANK_PLUMBING.retrievalSnapshot);
+  });
+
+  it("passes the same reranker and first-retrieval snapshot into the with-tools prepare seam", async () => {
+    const recall = await import("@muse/recall");
+    const io = { stderr: () => undefined, stdout: () => undefined, workspaceDir: home };
+    const program = new Command();
+    registerAskCommand(program, io as unknown as Parameters<typeof registerAskCommand>[1]);
+
+    await program.parseAsync(["node", "muse", "ask", "--with-tools", "--model", "diagnostic/fake", "--no-auto-reindex", "what is my VPN MTU?"]);
+
+    const prepareInput = vi.mocked(recall.prepareGroundedRecall).mock.calls.at(-1)?.[0];
+    expect(prepareInput?.rerankFn).toBe(RERANK_PLUMBING.rerankFn);
+    expect(prepareInput?.retrievalSnapshot).toBe(RERANK_PLUMBING.retrievalSnapshot);
   });
 
   it("a fault raised inside the seam propagates out of the plain path (not silently swallowed)", async () => {

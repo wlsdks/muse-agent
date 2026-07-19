@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { MUSE_IDENTITY_CORE, SURFACE_ROLES } from "@muse/prompts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
+import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { loadIndex, NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
 import { prepareGroundedRecall, runGroundedRecall, streamGroundedRecall, type GroundedRecallInput, type ScoredChunk } from "./pipeline.js";
 
 const EMBED_MODEL = "test-embedder";
@@ -60,6 +61,31 @@ afterEach(async () => {
 });
 
 describe("runGroundedRecall — the grounded-recall seam", () => {
+  it("a direct caller without a snapshot runs its reranker once and exposes that selection", async () => {
+    const files = [
+      { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-overview.md"), text: "VPN overview and routing notes." },
+      { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2), 0], path: join(notesDir, "vpn-answer.md"), text: "WireGuard VPN MTU is 1380." },
+      { embedding: [0.85, Math.sqrt(1 - 0.85 ** 2), 0], path: join(notesDir, "vpn-noise.md"), text: "VPN meeting agenda." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    let rerankCalls = 0;
+    const result = await runGroundedRecall({
+      ...input("The MTU is 1380. [from vpn-answer.md]"),
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL, topK: 1 },
+      runtime: {
+        embedFn: fakeEmbed,
+        generateAnswer: async () => "The MTU is 1380. [from vpn-answer.md]",
+        rerankFn: async (_query, texts) => {
+          rerankCalls += 1;
+          return [texts.findIndex((text) => text.includes("1380"))];
+        }
+      }
+    });
+    expect(rerankCalls).toBe(1);
+    expect(result.scored.map((item) => item.file)).toEqual([files[1]!.path]);
+  });
+
   it("a grounded answer keeps its real citation, verdict confident, receipts rendered", async () => {
     const result = await runGroundedRecall(input("Your VPN MTU is 1380. [from vpn.md]"));
     expect(result.answer).toContain("[from vpn.md]");
@@ -380,6 +406,72 @@ describe("runGroundedRecall — extras (the ask→seam retrofit enabling slice)"
 });
 
 describe("prepareGroundedRecall — the prepare-only entry point (--with-tools convergence, Slice 1)", () => {
+  it("reuses a matching first-retrieval snapshot without invoking the reranker twice", async () => {
+    const files = [
+      { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-overview.md"), text: "VPN overview and routing notes." },
+      { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2), 0], path: join(notesDir, "vpn-answer.md"), text: "WireGuard VPN MTU is 1380." },
+      { embedding: [0.85, Math.sqrt(1 - 0.85 ** 2), 0], path: join(notesDir, "vpn-noise.md"), text: "VPN meeting agenda." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    let rerankCalls = 0;
+    const rerankFn = async (_query: string, texts: readonly string[]) => {
+      rerankCalls += 1;
+      return [texts.findIndex((text) => text.includes("1380"))];
+    };
+    const first = await retrieveAndRankNotes({
+      embedFn: fakeEmbed, embedModel: EMBED_MODEL, indexFiles: index?.files ?? [], json: true, notesDir,
+      onStderr: () => {}, query: "what MTU does my VPN use?", rerankFn, scope: undefined,
+      snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile }, topK: 1
+    });
+    expect(rerankCalls).toBe(1);
+
+    const prepared = await prepareGroundedRecall({
+      embedFn: fakeEmbed,
+      options: { embedModel: EMBED_MODEL, topK: 1 },
+      query: "what MTU does my VPN use?",
+      rerankFn,
+      retrievalSnapshot: first.snapshot,
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+
+    expect(rerankCalls).toBe(1);
+    expect(prepared.scored.map((item) => item.file)).toEqual(first.scored.map((item) => item.file));
+  });
+
+  it("rejects a snapshot whose query identity differs and performs normal retrieval", async () => {
+    const files = [
+      { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-overview.md"), text: "VPN overview and routing notes." },
+      { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2), 0], path: join(notesDir, "vpn-answer.md"), text: "WireGuard VPN MTU is 1380." },
+      { embedding: [0.85, Math.sqrt(1 - 0.85 ** 2), 0], path: join(notesDir, "vpn-noise.md"), text: "VPN meeting agenda." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    let rerankCalls = 0;
+    const rerankFn = async (_query: string, texts: readonly string[]) => {
+      rerankCalls += 1;
+      return [texts.findIndex((text) => text.includes("1380"))];
+    };
+    const first = await retrieveAndRankNotes({
+      embedFn: fakeEmbed, embedModel: EMBED_MODEL, indexFiles: index?.files ?? [], json: true, notesDir,
+      onStderr: () => {}, query: "first query", rerankFn, scope: undefined,
+      snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile }, topK: 1
+    });
+
+    await prepareGroundedRecall({
+      embedFn: fakeEmbed,
+      options: { embedModel: EMBED_MODEL, topK: 1 },
+      query: "different query",
+      rerankFn,
+      retrievalSnapshot: first.snapshot,
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+
+    expect(rerankCalls).toBe(2);
+  });
+
   it("matches streamGroundedRecall's own prepare stage exactly — same systemPrompt, scored, verdict, notesUnavailable", async () => {
     const prepared = await prepareGroundedRecall({
       embedFn: fakeEmbed,

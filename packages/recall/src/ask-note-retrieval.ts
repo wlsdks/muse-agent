@@ -9,9 +9,9 @@
  * (for the set-level sufficiency advisory).
  */
 
-import { classifyRetrievalConfidence, resolveRecallConfidentAt, splitCompoundQuery } from "@muse/agent-core";
+import { classifyRetrievalConfidence, lexicalOverlap, lexicalTokens, resolveRecallConfidentAt, splitCompoundQuery } from "@muse/agent-core";
 import { diversifyAskChunks, secondHopAugmentChunks, shouldSecondHop, type FileEntry, type IndexChunk } from "./chunks.js";
-import { demoteStale } from "./conflict.js";
+import { demoteStale, detectStaleMarker } from "./conflict.js";
 import { filterNotesByScope, relativizeNoteSource } from "./present.js";
 import { existsSync } from "node:fs";
 import { errorMessage } from "@muse/shared";
@@ -38,6 +38,27 @@ export interface NoteRetrievalResult {
   /** True when the embedding endpoint failed — degrade to no-notes grounding. */
   notesUnavailable: boolean;
   queryVec: number[] | undefined;
+  /** Immutable first-retrieval snapshot for an identity-matching prepare seam. */
+  snapshot?: NoteRetrievalSnapshot;
+}
+
+export type RecallRerankFn = (query: string, candidateTexts: readonly string[]) => Promise<readonly number[] | undefined>;
+
+export interface NoteRetrievalSnapshotIdentity {
+  readonly query: string;
+  readonly embedModel: string;
+  readonly topK: number;
+  readonly scope: string | undefined;
+  readonly notesDir: string;
+  readonly notesIndexFile: string;
+  readonly indexBuiltAtIso: string;
+  readonly conflictAwareSelection: boolean;
+}
+
+export interface NoteRetrievalSnapshot {
+  readonly identity: NoteRetrievalSnapshotIdentity;
+  readonly rerankFn: RecallRerankFn | undefined;
+  readonly result: Omit<NoteRetrievalResult, "snapshot">;
 }
 
 export async function retrieveAndRankNotes(params: {
@@ -56,7 +77,11 @@ export async function retrieveAndRankNotes(params: {
    * local-LLM picker behind MUSE_RECALL_RERANK). Receives the query + candidate
    * texts, returns candidate indices best-first — or undefined to fail open.
    */
-  readonly rerankFn?: (query: string, candidateTexts: readonly string[]) => Promise<readonly number[] | undefined>;
+  readonly rerankFn?: RecallRerankFn;
+  /** Internal A/B switch. Production defaults ON; false reproduces baseline selection. */
+  readonly conflictAwareSelection?: boolean;
+  /** Index generation identity required to mint a reusable first-retrieval snapshot. */
+  readonly snapshotIdentity?: { readonly notesIndexFile: string; readonly indexBuiltAtIso: string };
 }): Promise<NoteRetrievalResult> {
   const { query, embedModel, indexFiles, notesDir, scope, json, onStderr, embedFn, rerankFn } = params;
   const topK = normalizeRetrievalTopK(params.topK);
@@ -123,6 +148,9 @@ export async function retrieveAndRankNotes(params: {
       }
     } else {
       scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
+    }
+    if (params.conflictAwareSelection !== false) {
+      scored = preserveConflictPairs(scored, allScored, topK);
     }
     // Graph-augmented recall (HippoRAG / GraphRAG): pull in chunks from notes 1-hop
     // LINKED from the CONFIDENT matches. Fabrication-SAFE: only the user's own real
@@ -191,7 +219,76 @@ export async function retrieveAndRankNotes(params: {
   // must not outrank its current counterpart in the answer evidence — demote it
   // below, never drop it. Confidence classification reads `preGapScored`
   // (untouched), so this only reorders which chunk the model sees/cites first.
-  return { notesUnavailable, preGapScored, queryVec, scored: demoteStale(scored, (s) => s.chunk.text), splitClauses, subqueryEmbeddings };
+  const result: Omit<NoteRetrievalResult, "snapshot"> = {
+    notesUnavailable,
+    preGapScored: [...preGapScored],
+    queryVec: queryVec ? [...queryVec] : undefined,
+    scored: demoteStale(scored, (s) => s.chunk.text),
+    splitClauses: [...splitClauses],
+    subqueryEmbeddings: subqueryEmbeddings.map((embedding) => [...embedding])
+  };
+  if (!params.snapshotIdentity) return result;
+  const identity: NoteRetrievalSnapshotIdentity = {
+    conflictAwareSelection: params.conflictAwareSelection !== false,
+    embedModel,
+    indexBuiltAtIso: params.snapshotIdentity.indexBuiltAtIso,
+    notesDir,
+    notesIndexFile: params.snapshotIdentity.notesIndexFile,
+    query,
+    scope: normalizedScope(scope),
+    topK
+  };
+  const snapshotResult: Omit<NoteRetrievalResult, "snapshot"> = {
+    ...result,
+    preGapScored: [...result.preGapScored],
+    queryVec: result.queryVec ? [...result.queryVec] : undefined,
+    scored: [...result.scored],
+    splitClauses: [...result.splitClauses],
+    subqueryEmbeddings: result.subqueryEmbeddings.map((embedding) => [...embedding])
+  };
+  Object.freeze(snapshotResult.preGapScored);
+  if (snapshotResult.queryVec) Object.freeze(snapshotResult.queryVec);
+  Object.freeze(snapshotResult.scored);
+  Object.freeze(snapshotResult.splitClauses);
+  for (const embedding of snapshotResult.subqueryEmbeddings) Object.freeze(embedding);
+  Object.freeze(snapshotResult.subqueryEmbeddings);
+  Object.freeze(snapshotResult);
+  const snapshot = Object.freeze({ identity: Object.freeze(identity), rerankFn, result: snapshotResult });
+  return { ...result, snapshot };
+}
+
+function normalizedScope(scope: string | undefined): string | undefined {
+  const value = scope?.trim();
+  return value ? value : undefined;
+}
+
+function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: readonly ScoredChunk[], topK: number): ScoredChunk[] {
+  const out = [...selected];
+  const protectedItems = new Set<ScoredChunk>();
+  for (const stale of [...out]) {
+    if (!detectStaleMarker(stale.chunk.text)) continue;
+    const staleTokens = lexicalTokens(stale.chunk.text);
+    const current = candidates
+      .filter((candidate) => !out.includes(candidate) && !detectStaleMarker(candidate.chunk.text))
+      .map((candidate) => ({
+        candidate,
+        semantic: cosine(stale.chunk.embedding, candidate.chunk.embedding),
+        topicOverlap: lexicalOverlap(staleTokens, candidate.chunk.text)
+      }))
+      .filter(({ semantic, topicOverlap }) => semantic >= 0.92 && topicOverlap >= 1)
+      .sort((a, b) => b.semantic - a.semantic || b.candidate.score - a.candidate.score)[0]?.candidate;
+    if (!current) continue;
+    if (out.length < topK) {
+      out.push(current);
+    } else {
+      const replaceAt = out.findLastIndex((candidate) => !detectStaleMarker(candidate.chunk.text) && !protectedItems.has(candidate));
+      if (replaceAt < 0) continue;
+      out[replaceAt] = current;
+    }
+    protectedItems.add(stale);
+    protectedItems.add(current);
+  }
+  return out;
 }
 
 function normalizeRetrievalTopK(value: number): number {

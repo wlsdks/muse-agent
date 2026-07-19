@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseRerankReply, resolveRerankModel } from "./ask-note-retrieval.js";
+import { createRecallRerankFn, parseRerankReply, resolveRerankModel } from "./ask-note-retrieval.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("resolveRerankModel — default ON for local-model users, off for cloud, MUSE_RECALL_RERANK overrides", () => {
   it("unset (and the bare 'true') defaults to the resolved LOCAL default model", () => {
@@ -36,5 +42,24 @@ describe("parseRerankReply — tolerant extraction of best-first zero-based indi
   it("no digits → undefined (caller fails open)", () => {
     expect(parseRerankReply("I cannot decide")).toBeUndefined();
     expect(parseRerankReply("")).toBeUndefined();
+  });
+});
+
+describe("createRecallRerankFn — bounded request timeout", () => {
+  it("uses 4000ms by default, accepts the eval's explicit 2000ms, and fails closed on invalid values", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ response: "1" }), ok: true })));
+    vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-timeout-models.json");
+    vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
+    const env = { MUSE_RECALL_RERANK: "qwen3:8b" };
+
+    await createRecallRerankFn(env)!("query", ["candidate"]);
+    expect(timeout).toHaveBeenLastCalledWith(4000);
+    await createRecallRerankFn(env, { timeoutMs: 2000 })!("query", ["candidate"]);
+    expect(timeout).toHaveBeenLastCalledWith(2000);
+
+    for (const timeoutMs of [0, -1, 4001, 1.5, Number.NaN]) {
+      expect(createRecallRerankFn(env, { timeoutMs })).toBeUndefined();
+    }
   });
 });

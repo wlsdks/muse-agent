@@ -8,7 +8,8 @@
 
 import {
   retrieveAndRankNotes as retrieveAndRankNotesCore,
-  type NoteRetrievalResult
+  type NoteRetrievalResult,
+  type RecallRerankFn
 } from "@muse/recall";
 
 import { resolveDefaultModel } from "@muse/autoconfigure";
@@ -19,6 +20,12 @@ import { resolveOllamaUrl } from "./ollama-url.js";
 export type { NoteRetrievalResult } from "@muse/recall";
 
 type CoreParams = Parameters<typeof retrieveAndRankNotesCore>[0];
+const PRODUCTION_RERANK_TIMEOUT_MS = 4000;
+
+export interface RecallRerankOptions {
+  /** Request timeout; bounded by the unchanged 4,000ms production ceiling. */
+  readonly timeoutMs?: number;
+}
 
 /**
  * The Ollama model reranking runs on. DEFAULT ON for local-model users:
@@ -50,7 +57,7 @@ export function parseRerankReply(reply: string): readonly number[] | undefined {
   return nums.map((n) => Number(n) - 1);
 }
 
-async function ollamaRerank(query: string, candidateTexts: readonly string[], model: string): Promise<readonly number[] | undefined> {
+async function ollamaRerank(query: string, candidateTexts: readonly string[], model: string, timeoutMs: number): Promise<readonly number[] | undefined> {
   const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
   const list = candidateTexts.map((text, i) => `[${(i + 1).toString()}] ${text}`).join("\n");
   const prompt = `Query: ${query}\n\nDocuments:\n${list}\n\nWhich documents best ANSWER the query (not just share words with it)? Reply with ONLY the numbers, comma-separated, best first.`;
@@ -58,7 +65,7 @@ async function ollamaRerank(query: string, candidateTexts: readonly string[], mo
     body: JSON.stringify({ model, options: { num_predict: 32, temperature: 0 }, prompt, stream: false, think: false }),
     headers: { "content-type": "application/json" },
     method: "POST",
-    signal: AbortSignal.timeout(4000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   if (!res.ok) {
     return undefined;
@@ -67,13 +74,23 @@ async function ollamaRerank(query: string, candidateTexts: readonly string[], mo
   return parseRerankReply(json.response ?? "");
 }
 
+/** Select one local-only reranker function for the entire ask turn. */
+export function createRecallRerankFn(env: NodeJS.ProcessEnv = process.env, options: RecallRerankOptions = {}): RecallRerankFn | undefined {
+  const rerankModel = resolveRerankModel(env);
+  const timeoutMs = options.timeoutMs ?? PRODUCTION_RERANK_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > PRODUCTION_RERANK_TIMEOUT_MS) return undefined;
+  return rerankModel
+    ? (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel, timeoutMs)
+    : undefined;
+}
+
 export async function retrieveAndRankNotes(
-  params: Omit<CoreParams, "embedFn" | "rerankFn">
+  params: Omit<CoreParams, "embedFn">
 ): Promise<NoteRetrievalResult> {
-  const rerankModel = resolveRerankModel();
+  const selectedRerankFn = Object.hasOwn(params, "rerankFn") ? params.rerankFn : createRecallRerankFn();
   return retrieveAndRankNotesCore({
     ...params,
     embedFn: embed,
-    ...(rerankModel ? { rerankFn: (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel) } : {})
+    ...(selectedRerankFn ? { rerankFn: selectedRerankFn } : {})
   });
 }

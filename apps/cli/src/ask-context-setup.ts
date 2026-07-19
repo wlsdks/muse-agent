@@ -24,6 +24,7 @@ import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
 export interface NotesIndex {
+  readonly builtAtIso: string;
   readonly version: number;
   readonly model: string;
   readonly files: readonly FileEntry[];
@@ -185,4 +186,3 @@ export async function prepareAskContext(
 
   return { kind: "ready", userKey, topK, embedModel, notesDir, index, noteFileCount };
 }
-

@@ -27,7 +27,7 @@ import { composeSurfacePrompt } from "@muse/prompts";
 
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
-import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { retrieveAndRankNotes, type NoteRetrievalResult, type NoteRetrievalSnapshot, type RecallRerankFn } from "./ask-note-retrieval.js";
 import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } from "./chunks.js";
 export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
@@ -51,11 +51,15 @@ export interface GroundedRecallOptions {
   /** Restrict grounding to notes under this corpus subfolder. */
   readonly scope?: string;
   readonly temperature?: number;
+  /** Internal A/B switch; production retrieval defaults conflict-aware ON. */
+  readonly conflictAwareSelection?: boolean;
 }
 
 export interface GroundedRecallRuntime {
   /** Embed via the caller's resolved endpoint. */
   readonly embedFn: (text: string, model: string) => Promise<number[]>;
+  /** Optional local listwise reranker; retrieval invokes it at most once. */
+  readonly rerankFn?: RecallRerankFn;
   /** One buffered completion; the caller adapts its ModelProvider. */
   readonly generateAnswer: (args: {
     readonly system: string;
@@ -164,6 +168,8 @@ export interface GroundedRecallInput {
   readonly sources: GroundedRecallSources;
   readonly options: GroundedRecallOptions;
   readonly runtime: GroundedRecallRuntime;
+  /** Reused only when every retrieval identity field and reranker identity matches. */
+  readonly retrievalSnapshot?: NoteRetrievalSnapshot;
   /** Absent or `{}` ⇒ byte-identical to the extras-free pipeline (the MCP
    *  caller passes none; the CLI and the API ask route both pass
    *  `refineChunks`). See `GroundedRecallExtras`. */
@@ -209,13 +215,13 @@ export interface GroundedRecallResult {
 async function resolveIndexForModel(
   indexFile: string,
   requestedEmbedModel: string | undefined
-): Promise<{ readonly files: ReindexSummary["index"]["files"]; readonly embedModel: string | undefined }> {
+): Promise<{ readonly files: ReindexSummary["index"]["files"]; readonly embedModel: string | undefined; readonly indexBuiltAtIso: string | undefined }> {
   const index = await loadIndex(indexFile);
   if (!index) {
-    return { embedModel: requestedEmbedModel, files: [] };
+    return { embedModel: requestedEmbedModel, files: [], indexBuiltAtIso: undefined };
   }
   const embedModel = requestedEmbedModel ?? index.model;
-  return { embedModel, files: index.model === embedModel ? index.files : [] };
+  return { embedModel, files: index.model === embedModel ? index.files : [], indexBuiltAtIso: index.builtAtIso };
 }
 
 /**
@@ -293,8 +299,10 @@ export interface PreparedGroundedRecall {
 export interface PrepareRecallInput {
   readonly query: string;
   readonly sources: GroundedRecallSources;
-  readonly options: Pick<GroundedRecallOptions, "embedModel" | "topK" | "scope">;
+  readonly options: Pick<GroundedRecallOptions, "embedModel" | "topK" | "scope" | "conflictAwareSelection">;
   readonly embedFn: GroundedRecallRuntime["embedFn"];
+  readonly rerankFn?: RecallRerankFn;
+  readonly retrievalSnapshot?: NoteRetrievalSnapshot;
   readonly extras?: GroundedRecallExtras;
 }
 
@@ -302,8 +310,10 @@ function toPrepareRecallInput(input: GroundedRecallInput): PrepareRecallInput {
   return {
     embedFn: input.runtime.embedFn,
     extras: input.extras,
-    options: { embedModel: input.options.embedModel, scope: input.options.scope, topK: input.options.topK },
+    options: { conflictAwareSelection: input.options.conflictAwareSelection, embedModel: input.options.embedModel, scope: input.options.scope, topK: input.options.topK },
     query: input.query,
+    rerankFn: input.runtime.rerankFn,
+    retrievalSnapshot: input.retrievalSnapshot,
     sources: input.sources
   };
 }
@@ -313,18 +323,34 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
   const { embedFn, extras, options, query, sources } = input;
   const topK = options.topK ?? 6;
 
-  const { embedModel, files: indexFiles } = await resolveIndexForModel(sources.notesIndexFile, options.embedModel);
-  const retrieval = await retrieveAndRankNotes({
-    embedFn,
-    embedModel: embedModel ?? "",
-    indexFiles,
-    json: true,
-    notesDir: sources.notesDir,
-    onStderr: () => {},
-    query,
-    scope: options.scope,
-    topK
-  });
+  const { embedModel, files: indexFiles, indexBuiltAtIso } = await resolveIndexForModel(sources.notesIndexFile, options.embedModel);
+  const snapshot = input.retrievalSnapshot;
+  const canReuseSnapshot = snapshot !== undefined
+    && indexBuiltAtIso !== undefined
+    && snapshot.rerankFn === input.rerankFn
+    && snapshot.identity.query === query
+    && snapshot.identity.embedModel === (embedModel ?? "")
+    && snapshot.identity.topK === topK
+    && snapshot.identity.scope === normalizedScope(options.scope)
+    && snapshot.identity.notesDir === sources.notesDir
+    && snapshot.identity.notesIndexFile === sources.notesIndexFile
+    && snapshot.identity.indexBuiltAtIso === indexBuiltAtIso
+    && snapshot.identity.conflictAwareSelection === (options.conflictAwareSelection !== false);
+  const retrieval: Omit<NoteRetrievalResult, "snapshot"> = canReuseSnapshot
+    ? cloneSnapshotResult(snapshot.result)
+    : await retrieveAndRankNotes({
+        conflictAwareSelection: options.conflictAwareSelection,
+        embedFn,
+        embedModel: embedModel ?? "",
+        indexFiles,
+        json: true,
+        notesDir: sources.notesDir,
+        onStderr: () => {},
+        query,
+        rerankFn: input.rerankFn,
+        scope: options.scope,
+        topK
+      });
 
   // Ad-hoc/caller-supplied chunks (a --file/--url/clipboard-style passage)
   // fold into the retrieved set BEFORE dedup, exactly like a real retrieval
@@ -368,6 +394,22 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
       ? extras.composeSystemPrompt({ contextBlock, extraSections, framing })
       : composeDefaultRecallSystemPrompt({ contextBlock, extraSections, framing, query: input.query }),
     verdict: framing.verdict
+  };
+}
+
+function normalizedScope(scope: string | undefined): string | undefined {
+  const value = scope?.trim();
+  return value ? value : undefined;
+}
+
+function cloneSnapshotResult(result: Omit<NoteRetrievalResult, "snapshot">): Omit<NoteRetrievalResult, "snapshot"> {
+  return {
+    ...result,
+    preGapScored: [...result.preGapScored],
+    queryVec: result.queryVec ? [...result.queryVec] : undefined,
+    scored: [...result.scored],
+    splitClauses: [...result.splitClauses],
+    subqueryEmbeddings: result.subqueryEmbeddings.map((embedding) => [...embedding])
   };
 }
 
