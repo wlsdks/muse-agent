@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "../api/client.js";
 import { CommandPalette } from "../components/CommandPalette.js";
+import { ConnectionProvider } from "../components/connection-context.js";
 import { NoticeToaster } from "../components/NoticeToaster.js";
 import { Badge, Icon } from "../components/ui.js";
 import { I18nProvider, useI18n } from "../i18n/index.js";
 import { onDeveloperModeChange, readDeveloperMode } from "../lib/developer-mode.js";
+import { shouldInvalidateOnReconnect } from "../lib/reconnect.js";
 import { readSidebarCollapsed, shellClassName, writeSidebarCollapsed } from "../lib/sidebar-collapse.js";
 import { ActivityView } from "../views/Activity.js";
 import { AgentsView } from "../views/Agents.js";
@@ -305,59 +307,82 @@ function Console() {
   };
 
   const connected = health.data?.status === "ok";
+  // `undefined` until the health query first settles, then a definitive
+  // true/false — the offline-vs-generic-error signal every view's AsyncBlock
+  // reads through ConnectionProvider below. Gated on `isFetched` (stays true
+  // forever once the first attempt completes), NOT `isLoading` — a health
+  // query that has never yet succeeded keeps `isPending`/`isLoading` true on
+  // every background refetch attempt too, which would otherwise flicker this
+  // back to "unknown" each poll while genuinely offline.
+  const connectionState = health.isFetched ? connected : undefined;
+
+  // The health poll (`refetchInterval` above) is what actually detects a
+  // reconnect, but a failed VIEW query doesn't refetch on its own once its
+  // retries are exhausted — react-query's built-in online-recovery relies on
+  // `navigator.onLine`, which never flips when only the local Muse server is
+  // down. So the genuine offline -> online edge nudges every query to retry.
+  const previousConnectedRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (shouldInvalidateOnReconnect(previousConnectedRef.current, connectionState)) {
+      void queryClient.invalidateQueries();
+    }
+    previousConnectedRef.current = connectionState;
+  }, [connectionState]);
 
   return (
-    <div className={shellClassName(sidebarCollapsed)}>
-      <aside className="sidebar">
-        <div className="sidebar-top">
-          <Brand tagline={tagline.data?.tagline} t={t} />
-          <button
-            type="button"
-            className="sidebar-collapse-btn"
-            onClick={toggleSidebar}
-            aria-expanded={!sidebarCollapsed}
-            aria-label={t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")}
-            title={`${t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")} (⌘B)`}
-          >
-            <Icon.panel />
-          </button>
-        </div>
-
-        <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} devMode={devMode} collapsed={sidebarCollapsed} />
-
-        <div className="sidebar-foot">
-          <LangToggle lang={lang} onChange={setLang} />
-          <ConnectionBadge connected={connected} loading={health.isLoading} t={t} title={apiUrl} />
-        </div>
-      </aside>
-      <button type="button" className="sidebar-rail" onClick={toggleSidebar} aria-hidden="true" tabIndex={-1} />
-
-      <main className="main">
-        <header className="topbar">
-          {/* No view title here — every view heads itself (eyebrow + h1),
-              so a topbar title was always a duplicate ("오늘" twice). */}
-          <span className="spacer" />
-          <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} title={t("cmd.open")}>
-            <span>{t("cmd.search")}</span>
-            <kbd>⌘K</kbd>
-          </button>
-        </header>
-        <section className={`content${active.id === "flows" ? " content-flush" : ""}`}>
-          <div className="view" key={view}>
-            {view === "settings" ? (
-              <SettingsView client={client} apiUrl={apiUrl} token={token} onSave={updateConnection} />
-            ) : (
-              <Suspense fallback={<div className="skeleton-block" aria-busy="true"><span className="skeleton" style={{ width: "40%" }} /><span className="skeleton" style={{ width: "70%" }} /></div>}>
-                <ActiveComponent client={client} onNavigate={(id) => setView(id as ViewId)} />
-              </Suspense>
-            )}
+    <ConnectionProvider connected={connectionState}>
+      <div className={shellClassName(sidebarCollapsed)}>
+        <aside className="sidebar">
+          <div className="sidebar-top">
+            <Brand tagline={tagline.data?.tagline} t={t} />
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={toggleSidebar}
+              aria-expanded={!sidebarCollapsed}
+              aria-label={t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")}
+              title={`${t(sidebarCollapsed ? "nav.expandSidebar" : "nav.collapseSidebar")} (⌘B)`}
+            >
+              <Icon.panel />
+            </button>
           </div>
-        </section>
-      </main>
 
-      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
-      <NoticeToaster client={client} token={token} userId="me" />
-    </div>
+          <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} devMode={devMode} collapsed={sidebarCollapsed} />
+
+          <div className="sidebar-foot">
+            <LangToggle lang={lang} onChange={setLang} />
+            <ConnectionBadge connected={connected} loading={health.isLoading} t={t} title={apiUrl} />
+          </div>
+        </aside>
+        <button type="button" className="sidebar-rail" onClick={toggleSidebar} aria-hidden="true" tabIndex={-1} />
+
+        <main className="main">
+          <header className="topbar">
+            {/* No view title here — every view heads itself (eyebrow + h1),
+                so a topbar title was always a duplicate ("오늘" twice). */}
+            <span className="spacer" />
+            <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} title={t("cmd.open")}>
+              <span>{t("cmd.search")}</span>
+              <kbd>⌘K</kbd>
+            </button>
+          </header>
+          <section className={`content${active.id === "flows" ? " content-flush" : ""}`}>
+            <div className="view" key={view}>
+              {view === "settings" ? (
+                <SettingsView client={client} apiUrl={apiUrl} token={token} onSave={updateConnection} />
+              ) : (
+                <Suspense fallback={<div className="skeleton-block" aria-busy="true"><span className="skeleton" style={{ width: "40%" }} /><span className="skeleton" style={{ width: "70%" }} /></div>}>
+                  <ActiveComponent client={client} onNavigate={(id) => setView(id as ViewId)} />
+                </Suspense>
+              )}
+            </div>
+          </section>
+        </main>
+
+        <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+        <NoticeToaster client={client} token={token} userId="me" />
+      </div>
+    </ConnectionProvider>
   );
 }
 

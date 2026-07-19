@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { useAskStream } from "../api/useAskStream.js";
 import { Markdown } from "../components/markdown.js";
-import { AsyncBlock, Badge, Button, Card, Empty, Icon } from "../components/ui.js";
+import { AsyncBlock, Badge, Button, Card, Empty, Icon, LoadErrorState } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { MemorySections } from "./Memory.js";
 import { readToken } from "../lib/token-storage.js";
@@ -73,9 +73,7 @@ function AskPanel({ client, onOpenNote, t }: { client: ApiClient; onOpenNote: (n
       </form>
 
       {error ? (
-        <Empty tone="err" icon={<Icon.alert />} hint={t("common.loadFailedHint")}>
-          {t("common.loadFailed")}
-        </Empty>
+        <LoadErrorState />
       ) : hasAnswer ? (
         <div className="ask-answer">
           {answer ? <Markdown text={answer} /> : <span className="spinner" />}

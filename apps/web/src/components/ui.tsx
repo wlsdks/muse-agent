@@ -1,3 +1,4 @@
+import { useConnection } from "./connection-context.js";
 import { useI18n } from "../i18n/index.js";
 
 import type { ReactNode } from "react";
@@ -182,6 +183,29 @@ export function Stat({ value, label, icon }: { value: ReactNode; label: string; 
   );
 }
 
+/** The shared error-state renderer for a failed query. When the connection
+ * context definitively says the Muse server is offline, this is a calm,
+ * recognizable state (plug icon, neutral tone) instead of a scary red alert —
+ * offline is expected and self-healing, not a failure the user needs to act
+ * on. Any other failure (server reachable, some other request broke) keeps
+ * the generic red error state. */
+export function LoadErrorState() {
+  const { t } = useI18n();
+  const connected = useConnection();
+  if (connected === false) {
+    return (
+      <Empty icon={<Icon.plug />} hint={t("common.offlineHint")}>
+        {t("common.offlineTitle")}
+      </Empty>
+    );
+  }
+  return (
+    <Empty tone="err" icon={<Icon.alert />} hint={t("common.loadFailedHint")}>
+      {t("common.loadFailed")}
+    </Empty>
+  );
+}
+
 /** Renders query state uniformly: spinner while loading, warm empty/error state otherwise.
  * The empty state optionally carries a CTA (`emptyAction`) and a warmer label/icon so a
  * fresh, data-empty install can guide the user toward their first action. */
@@ -209,11 +233,7 @@ export function AsyncBlock({
     return <SkeletonBlock />;
   }
   if (error) {
-    return (
-      <Empty tone="err" icon={<Icon.alert />} hint={t("common.loadFailedHint")}>
-        {t("common.loadFailed")}
-      </Empty>
-    );
+    return <LoadErrorState />;
   }
   if (empty) {
     return (
