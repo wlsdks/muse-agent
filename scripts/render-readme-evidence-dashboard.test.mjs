@@ -66,6 +66,24 @@ test("canonical JSON is the only truth and all SVGs reconcile byte-for-byte", as
   await assert.rejects(validateDashboardArtifacts(paths), /coverage SVG drift/);
 });
 
+test("README-retained dashboard SVGs keep row text and footers inside measured padding", async () => {
+  const result = await buildDashboardResult();
+  const deltas = renderEffectDeltas(result);
+  assert.doesNotMatch(deltas, /width="350" height="355"/u, "effect deltas must not return to three narrow cards");
+  const deltaRows = [...deltas.matchAll(/<rect class="row" x="40" y="(\d+)" width="1120" height="105"/gu)];
+  const deltaBaselines = [...deltas.matchAll(/<text class="status" x="380" y="(\d+)"/gu)];
+  assert.equal(deltaRows.length, 3); assert.equal(deltaBaselines.length, 3);
+  for (let index = 0; index < deltaRows.length; index += 1) assert.ok(Number(deltaRows[index][1]) + 105 - Number(deltaBaselines[index][1]) >= 24);
+  assert.match(deltas, /height="580" viewBox="0 0 1200 580"/u); assert.match(deltas, /<text class="footer" x="40" y="520"/u);
+
+  const coverage = renderEvidenceCoverage(result); const surface = renderProjectSurface(result);
+  assert.match(coverage, /height="680" viewBox="0 0 1200 680"/u); assert.match(coverage, /<text class="footer" x="40" y="620"/u);
+  assert.match(surface, /height="600" viewBox="0 0 1200 600"/u); assert.match(surface, /<text class="footer" x="40" y="548"/u);
+  for (const svg of [deltas, coverage, surface]) {
+    assert.match(svg, /<title id="title">/u); assert.match(svg, /<desc id="desc">/u); assert.match(svg, /legend|Legend/iu);
+  }
+});
+
 test("source hash mutation cannot be accepted as a rendered snapshot", async () => {
   const paths = await tempPaths(); const result = await renderDashboard(paths);
   const mutated = structuredClone(result); mutated.payload.metrics[0].sourceSha256 = "0".repeat(64); rehash(mutated);
@@ -73,14 +91,22 @@ test("source hash mutation cannot be accepted as a rendered snapshot", async () 
   await assert.rejects(validateDashboardArtifacts(paths), /dashboard source drift/);
 });
 
-test("README Muse in numbers is chart-only with alt text and adjacent source/reproduce links", async () => {
+test("README curates three primary charts, three collapsed diagnostics, and preserves evidence boundaries", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const start = readme.indexOf("## 📊 Muse in numbers"); const end = readme.indexOf("\n## ", start + 4); const section = readme.slice(start, end);
-  assert.ok(start >= 0 && end > start); assert.doesNotMatch(section, /^\|.*\|$/gmu); assert.doesNotMatch(section, /last column/iu);
-  for (const file of ["evidence-effect-deltas.svg", "evidence-coverage.svg", "evidence-project-surface.svg", "recall-freshness-ablation.svg", "recall-candidate-pool.svg"]) {
-    const escaped = file.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    assert.match(section, new RegExp(`!\\[[^\\]]+\\]\\(docs/benchmarks/${escaped}\\)\\n\\nSource: [^\\n]+reproduce`, "u"));
-  }
-  assert.match(section, /canonical evidence dashboard/iu); assert.match(section, /not compared or aggregated/iu);
-  assert.match(section, /correction pass at top K four, eight, and twelve/iu);
+  assert.ok(start >= 0 && end > start); assert.ok(readme.split("\n").length <= 380); assert.doesNotMatch(section, /^\|.*\|$/gmu);
+  const detailsStart = section.indexOf("<details>"); const detailsEnd = section.indexOf("</details>", detailsStart); const primary = section.slice(0, detailsStart); const details = section.slice(detailsStart, detailsEnd);
+  const chartFiles = (text) => [...text.matchAll(/!\[[^\]]+\]\(docs\/benchmarks\/([^\)]+\.svg)\)/gu)].map((match) => match[1]);
+  assert.deepEqual(chartFiles(primary), ["evidence-effect-deltas.svg", "evidence-coverage.svg", "recall-production-path.svg"]);
+  assert.deepEqual(chartFiles(details), ["recall-freshness-ablation.svg", "recall-candidate-pool.svg", "evidence-project-surface.svg"]);
+  assert.equal((section.match(/<summary><b>Detailed diagnostics<\/b><\/summary>/gu) ?? []).length, 1);
+  for (const heading of ["Component effect deltas", "Evidence coverage", "Production recall", "Freshness ablation", "Candidate-pool diagnostic", "Project surface"]) assert.match(section, new RegExp(`### ${heading}`, "u"));
+  for (const command of ["evidence:dashboard:validate", "eval:recall-production-path:validate", "eval:recall-freshness-ablation:validate", "eval:recall-candidate-pool:validate"]) assert.match(section, new RegExp(command, "u"));
+  assert.match(section, /10\/11/); assert.match(section, /aggregate remains \*\*FAILED\*\*/u); assert.match(section, /organic.*\*\*NOT_PROVEN\*\*/iu); assert.match(section, /synthetic.*not.*organic/iu);
+  assert.match(section, /positive.*better/iu); assert.match(section, /own denominator/iu); assert.match(section, /source:.*reproduce.*validate/iu);
+});
+
+test("evidence index links every README chart", async () => {
+  const evidence = await readFile(new URL("../docs/benchmarks/EVIDENCE.md", import.meta.url), "utf8");
+  for (const file of ["evidence-effect-deltas.svg", "evidence-coverage.svg", "recall-production-path.svg", "recall-freshness-ablation.svg", "recall-candidate-pool.svg", "evidence-project-surface.svg"]) assert.match(evidence, new RegExp(`\\(${file.replaceAll(".", "\\.")}\\)`, "u"));
 });

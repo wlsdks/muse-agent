@@ -94,6 +94,7 @@ test("pass^2, production config, canonical derivatives, drift, and private-text 
   const paths = { csv: join(root, "result.csv"), json: join(root, "result.json"), md: join(root, "result.md"), svg: join(root, "result.svg") };
   await writeFile(paths.json, `${canonicalJson(result)}\n`); await writeFile(paths.csv, renderCsv(result)); await writeFile(paths.md, renderMarkdown(result)); await writeFile(paths.svg, renderSvg(result));
   assert.equal((await validateArtifacts(paths)).payload.executionStatus, "COMPLETE");
+  const svg = await readFile(paths.svg, "utf8"); assert.match(svg, /height="640" viewBox="0 0 1000 640"/u); assert.match(svg, /Legend/u); assert.match(svg, /<text x="35" y="584" class="sub">/u);
   assert.match(await readFile(paths.md, "utf8"), /not held-out or organic evidence/iu);
   await writeFile(paths.csv, `${renderCsv(result)}corrupt\n`);
   await assert.rejects(validateArtifacts(paths), /CSV/);

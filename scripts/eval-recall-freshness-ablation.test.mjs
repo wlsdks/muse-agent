@@ -116,6 +116,7 @@ test("canonical JSON is the only truth for CSV, MD, and SVG and rejects private/
   await writeFile(paths.json, `${canonicalJson(result)}\n`); await writeFile(paths.csv, renderCsv(result)); await writeFile(paths.md, renderMarkdown(result)); await writeFile(paths.svg, renderSvg(result)); assert.equal((await validateArtifacts(paths)).payload.status, "IMPROVED");
   assert.match(await readFile(paths.md, "utf8"), /Pair retained in raw top-4/); assert.match(await readFile(paths.md, "utf8"), /PAIR_MISSING/);
   const svg = await readFile(paths.svg, "utf8"); for (const token of [...ALLOWLISTED_MODELS, ...ARMS, ...CATEGORIES, "NOT_PROVEN", "NOT_RUN"]) assert.match(svg, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  assert.match(svg, /height="770" viewBox="0 0 1200 770"/u); assert.match(svg, />Legend</u); assert.match(svg, /<text x="40" y="718" class="footer">/u);
   await writeFile(paths.csv, `${renderCsv(result)}corrupt\n`); await assert.rejects(validateArtifacts(paths), /CSV/); await rm(paths.csv); await assert.rejects(validateArtifacts(paths), /ENOENT/);
   const privateResult = structuredClone(result); privateResult.payload.prompt = "private"; privateResult.payloadHash = sha256(`${canonicalJson(privateResult.payload)}\n`); assert.throws(() => validateCanonicalResult(privateResult), /fields mismatch|forbidden/);
 });
