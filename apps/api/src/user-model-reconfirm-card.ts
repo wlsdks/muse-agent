@@ -37,22 +37,37 @@ function buildEvidence(effectiveConfidence: number): string {
   return `추측의 신뢰도가 ${pct.toString()}%로 옅어졌어요.`;
 }
 
+// Slot values end in arbitrary text (Korean, English, numbers), so the
+// sentence templates AVOID value-adjacent particles entirely (colon frame)
+// instead of guessing 을/를 — a wrong particle reads worse than none.
+// `scope` arrives as an English tag from the extractor prompt; map the
+// known tags to Korean and DROP unknown ones rather than embedding raw
+// ASCII mid-sentence.
+const VETO_SCOPE_KO: Readonly<Record<string, string>> = {
+  communication: "연락",
+  food: "음식",
+  meetings: "회의",
+  scheduling: "일정",
+  tooling: "도구"
+};
+
 function buildQuestion(slot: UserModelSlot): string {
   switch (slot.kind) {
     case "preference": {
       const label = slot.category ?? "취향";
-      return `진안은 ${label}에서 '${slot.value}'을(를) 선호한다고 추측하고 있어요 — 맞나요?`;
+      return `진안의 ${label} — 이렇게 추측하고 있어요: '${slot.value}'. 아직 맞나요?`;
     }
     case "schedule": {
       const recurrence = slot.recurrence ? ` (${slot.recurrence})` : "";
-      return `진안은 '${slot.value}'${recurrence}이라는 일정 패턴이 있다고 추측하고 있어요 — 맞나요?`;
+      return `진안에게 이런 일정 패턴이 있다고 추측하고 있어요: '${slot.value}'${recurrence}. 아직 맞나요?`;
     }
     case "veto": {
-      const scope = slot.scope ? `${slot.scope} 관련해서 ` : "";
-      return `진안은 ${scope}'${slot.value}'을(를) 피하고 싶어 한다고 추측하고 있어요 — 맞나요?`;
+      const scopeKo = slot.scope ? VETO_SCOPE_KO[slot.scope.toLowerCase()] : undefined;
+      const scope = scopeKo ? `${scopeKo} 쪽에서 ` : "";
+      return `진안이 ${scope}이건 피하고 싶어 한다고 추측하고 있어요: '${slot.value}'. 아직 맞나요?`;
     }
     case "goal": {
-      return `진안은 '${slot.value}'을(를) 목표로 하고 있다고 추측하고 있어요 — 맞나요?`;
+      return `진안의 요즘 목표를 이렇게 추측하고 있어요: '${slot.value}'. 아직 맞나요?`;
     }
   }
 }

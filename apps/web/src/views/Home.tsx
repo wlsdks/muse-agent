@@ -195,6 +195,9 @@ export function ReconfirmCard({ client, t }: { client: ApiClient; t: Translate }
             <Badge tone="neutral">{t("home.reconfirm.guessLabel")}</Badge>
             <div className="row-title" style={{ marginTop: 6 }}>{card.question}</div>
             {card.evidence ? <div className="row-meta">{card.evidence}</div> : null}
+            {respond.isError && (
+              <div className="row-meta exec-error" style={{ marginTop: 4 }}>{t("home.reconfirm.answerFailed")}</div>
+            )}
           </div>
           <div className="row-actions" style={{ gap: 8 }}>
             <Button

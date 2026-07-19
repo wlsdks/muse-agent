@@ -360,3 +360,22 @@ test("reconfirm card: 아니에요/reject POSTs the exact verdict body then swap
   await expect.element(screen.getByText("Thanks for the correction — I won't guess that again.", { exact: true })).toBeVisible();
   expect(screen.container.textContent).not.toContain(RECONFIRM_FIXTURE.question);
 });
+
+test("a FAILED reconfirm answer shows a retry line and keeps the card interactive", async () => {
+  const get = homeGet();
+  (get as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+    if (path === "/api/user-model/reconfirm-card") {
+      return { card: { category: "preference", evidence: "추측의 신뢰도가 10%로 옅어졌어요.", question: "진안의 취향 — 이렇게 추측하고 있어요: '아침형 작업'. 아직 맞나요?", slotId: "pref_x" } };
+    }
+    return homeGet()(path);
+  });
+  const post = vi.fn(async (path: string) => {
+    if (path.includes("/reconfirm-card/")) throw new Error("boom");
+    return {};
+  });
+  const screen = await renderHome({ get, post });
+
+  await screen.getByRole("button", { name: /맞아요|Yes/i }).click();
+  await expect.poll(() => document.body.textContent?.includes("기록하지 못했어요") || document.body.textContent?.includes("Couldn't record")).toBe(true);
+  await expect.element(screen.getByRole("button", { name: /맞아요|Yes/i })).toBeVisible();
+});
