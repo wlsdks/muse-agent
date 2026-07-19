@@ -96,7 +96,7 @@ export async function retrieveAndRankNotes(params: {
    * texts, returns candidate indices best-first — or undefined to fail open.
    */
   readonly rerankFn?: RecallRerankFn;
-  /** Internal A/B switch. Production defaults ON; false reproduces baseline selection. */
+  /** Internal diagnostic/development switch. Production defaults OFF; only true enables pair selection. */
   readonly conflictAwareSelection?: boolean;
   /** Index generation identity required to mint a reusable first-retrieval snapshot. */
   readonly snapshotIdentity?: { readonly notesIndexFile: string; readonly indexBuiltAtIso: string };
@@ -184,7 +184,7 @@ export async function retrieveAndRankNotes(params: {
     } else {
       scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
     }
-    if (params.conflictAwareSelection !== false) {
+    if (params.conflictAwareSelection === true) {
       scored = preserveConflictPairs(scored, allScored, topK);
     }
     // Graph-augmented recall (HippoRAG / GraphRAG): pull in chunks from notes 1-hop
@@ -265,7 +265,7 @@ export async function retrieveAndRankNotes(params: {
   };
   if (!params.snapshotIdentity) return result;
   const identity: NoteRetrievalSnapshotIdentity = {
-    conflictAwareSelection: params.conflictAwareSelection !== false,
+    conflictAwareSelection: params.conflictAwareSelection === true,
     embedModel,
     indexBuiltAtIso: params.snapshotIdentity.indexBuiltAtIso,
     notesDir,

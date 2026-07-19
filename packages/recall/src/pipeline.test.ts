@@ -438,6 +438,16 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
 
     expect(rerankCalls).toBe(1);
     expect(prepared.scored.map((item) => item.file)).toEqual(first.scored.map((item) => item.file));
+
+    await prepareGroundedRecall({
+      embedFn: fakeEmbed,
+      options: { conflictAwareSelection: true, embedModel: EMBED_MODEL, topK: 1 },
+      query: "what MTU does my VPN use?",
+      rerankFn,
+      retrievalSnapshot: first.snapshot,
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(rerankCalls).toBe(2);
   });
 
   it("rejects a snapshot whose query identity differs and performs normal retrieval", async () => {

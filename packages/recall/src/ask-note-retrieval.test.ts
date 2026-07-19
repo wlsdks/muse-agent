@@ -74,6 +74,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     process.env.MUSE_RECALL_SECOND_HOP = "false";
     try {
       const result = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
         embedFn, embedModel: "test-embed", indexFiles: [current, stale, selectedNoise], json: true, notesDir: dir,
         onStderr: () => {}, query: "cedar lantern setting", rerankFn: async (_query, texts) => [
           texts.findIndex((text) => text.includes("Cedar lantern")),
@@ -96,6 +97,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     process.env.MUSE_RECALL_SECOND_HOP = "false";
     try {
       const result = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
         embedFn, embedModel: "test-embed", indexFiles: [stale, current, unrelated], json: true, notesDir: dir,
         onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
           texts.findIndex((text) => text.includes("used to pay")),
@@ -120,6 +122,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     process.env.MUSE_RECALL_SECOND_HOP = "false";
     try {
       const result = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
         embedFn: async () => [1, 0, 0, 0], embedModel: "test-embed",
         indexFiles: [lowCurrent, lowStale, relevantCurrent, relevantStale, noise],
         json: true, notesDir: dir, onStderr: () => {}, query: "greenhouse louver setting",
@@ -138,7 +141,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     }
   });
 
-  it("explicit conflictAwareSelection false reproduces the baseline selection", async () => {
+  it("omitted and explicit false conflict-aware selection both reproduce the baseline", async () => {
     const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
     const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.75, Math.sqrt(1 - 0.75 ** 2)]);
     const unrelated = await noteFile("vpn.md", "WireGuard MTU is 1380.", [0.95, Math.sqrt(1 - 0.95 ** 2)]);
@@ -154,6 +157,14 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
         ], scope: undefined, topK: 2
       });
       expect(result.scored.map((item) => item.file)).toEqual([unrelated.path, stale.path]);
+      const omitted = await retrieveAndRankNotes({
+        embedFn, embedModel: "test-embed", indexFiles: [stale, current, unrelated], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
+          texts.findIndex((text) => text.includes("used to pay")),
+          texts.findIndex((text) => text.includes("WireGuard"))
+        ], scope: undefined, topK: 2
+      });
+      expect(omitted.scored.map((item) => item.file)).toEqual(result.scored.map((item) => item.file));
     } finally {
       delete process.env.MUSE_RECALL_GRAPH_HOP;
       delete process.env.MUSE_RECALL_SECOND_HOP;
@@ -168,6 +179,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     process.env.MUSE_RECALL_SECOND_HOP = "false";
     try {
       const result = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
         embedFn, embedModel: "test-embed", indexFiles: [stale, unrelatedCurrent, selectedNoise], json: true, notesDir: dir,
         onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
           texts.findIndex((text) => text.includes("used to pay")),
@@ -191,6 +203,7 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
     );
     const selectedNoise = await noteFile("agenda.md", "Meeting agenda for Tuesday.", [0.95, 0.2]);
     const result = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
       embedFn, embedModel: "test-embed", indexFiles: [current, staleLookalike, selectedNoise], json: true, notesDir: dir,
       onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
         texts.findIndex((text) => text.includes("family photos")),

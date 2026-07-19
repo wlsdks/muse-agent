@@ -121,6 +121,7 @@ async function main(): Promise<void> {
           const passedByDirection: boolean[] = [];
           for (const anchor of ["current", "stale"] as const) {
             const result = await retrieveAndRankNotes({
+              conflictAwareSelection: true,
               embedFn: async (text) => vector(text), embedModel: model,
               indexFiles: [entries.current, entries.stale, entries.distractor], json: true, notesDir: caseDir,
               onStderr: () => {}, query: item.query,

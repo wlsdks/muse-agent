@@ -335,7 +335,7 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
     && snapshot.identity.notesDir === sources.notesDir
     && snapshot.identity.notesIndexFile === sources.notesIndexFile
     && snapshot.identity.indexBuiltAtIso === indexBuiltAtIso
-    && snapshot.identity.conflictAwareSelection === (options.conflictAwareSelection !== false);
+    && snapshot.identity.conflictAwareSelection === (options.conflictAwareSelection === true);
   const retrieval: Omit<NoteRetrievalResult, "snapshot"> = canReuseSnapshot
     ? cloneSnapshotResult(snapshot.result)
     : await retrieveAndRankNotes({
