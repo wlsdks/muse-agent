@@ -53,7 +53,7 @@ Every number is reproducible from this repo — the command that generates it is
 | Grounding-gate delta, self-authored corpus | **+0.94 faithfulness** at **0.00 false-refusal** (gate ON vs OFF, same gemma4:12b) | `pnpm eval:grounding-delta` → [`docs/benchmarks/RESULTS.md`](docs/benchmarks/RESULTS.md) |
 | Grounding-gate delta, SQuAD-2.0 slice | **+0.63 faithfulness** at **0.00 false-refusal** | `pnpm eval:grounding-delta:squad` → [`RESULTS-squad.md`](docs/benchmarks/RESULTS-squad.md) |
 | Test suite | **18,484 passing cases** across 1,624 test files (verified 2026-07-17) | `pnpm check` |
-| Agent eval batteries | **41 live `eval:*` batteries** (tool selection, adversarial refusal, plan quality, judge meta-eval, …) | `pnpm eval:agent` and `grep -o '"eval:[a-z-]*"' package.json \| sort -u` |
+| Agent capability baseline | **10/11 live aggregate axes passed, 1 failed, 0 unverified**; recall correction freshness remains the measured gap | `pnpm eval:agent -- --json` → [qualified baseline](docs/development/agent-capability-baseline.md) |
 | Continuity provenance isolation | **10,080 controlled in-memory exact pairs** stay technical-only; **1,000 ordinary-input classifications** yield 0 organic / 1,000 unclassified | `pnpm eval:continuity-provenance` → [`evaluation`](docs/evaluations/continuity-evidence-provenance-2026-07-18.md) |
 | HTTP surface smoke | **51 endpoints** exercised with a key-free diagnostic provider | `pnpm smoke:broad` |
 | Real-LLM round-trip | model→tool→model loop asserted end-to-end on local Ollama | `pnpm smoke:live` |
@@ -392,8 +392,15 @@ Tests are the only form of verification. The repo ships these gates:
 pnpm check        # build + test for every workspace (18,484 cases across 37 packages + 4 apps)
 pnpm smoke:broad  # 51 HTTP endpoints, diagnostic provider (no key)
 pnpm smoke:live   # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b (auto-skips if unreachable)
-pnpm eval:agent   # the agent-eval gate: tool selection, adversarial refusal, judge meta-eval, plan quality
+pnpm eval:agent   # long 11-axis live capability aggregate; nightly/manual, not pre-push
 ```
+
+The latest qualified live result is **10/11 axes passed with 0 unverified**;
+the executed recall axis failed, so this is not an all-green claim. See the
+[agent capability baseline](docs/development/agent-capability-baseline.md) for
+per-axis `pass^k`, durations, the recall gap, and non-additive regression
+evidence. `eval:agent` is a long local-model/Chrome suite for nightly or manual
+verification, not a pre-push requirement.
 
 `smoke:live` is **local Ollama only by deliberate policy** — it probes
 `${OLLAMA_BASE_URL:-http://localhost:11434}` and asserts the model→tool→model loop

@@ -1,4 +1,4 @@
-# AI agent testing strategy (reviewed 2026-07-17)
+# AI agent testing strategy (reviewed 2026-07-19)
 
 This is Muse's adoption decision for testing the **agent as a system**: model,
 prompts, tools, policy, memory, orchestration, and the environment it changes.
@@ -48,6 +48,32 @@ should contain useful hard cases and may begin below 100%; once a case is
 reliably solved it graduates into an all-pass regression suite. Safety suites
 are all-pass from the beginning. A skip is `unverified`, never `passed`.
 
+## Current measured baseline
+
+The 2026-07-19 live aggregate is documented in
+[`agent-capability-baseline.md`](agent-capability-baseline.md). Its qualified
+result is **10/11 axes passed, 1 failed, 0 unverified**. The aggregate itself is
+not green: the executed recall axis failed. Recall scored **18/24**, while its
+separate diagnostics showed ordinary-positive top-1 **14/14**, absent-fact
+abstention **8/8**, and correction freshness **0/2**. These metrics have
+different denominators and must not be added together.
+
+This snapshot demonstrates the distinction above:
+
+- correction freshness is an open live **capability gap**;
+- targeted tool-selection **222/222**, safety **150/150**, browser-injection
+  **9/9**, and the relevant deterministic suites are regression evidence;
+- final live tool selection, SSE, and evidence-gated objective completion each
+  held `pass^3`, but none of those results can offset the recall failure.
+- independent adversarial review found and closed a coding-runner isolation
+  escape; the strict fixture boundary then passed Rust **49/49**, deterministic
+  agent contracts **121/121**, focused implementation checks **476/476**, and
+  the affected live edit-run-verify axis at `pass^3`.
+
+The earlier broad tool-selection observation was **375/377**. The later
+**222/222** result is a targeted regression set, and the aggregate `pass^3` is a
+third reliability observation. They are a progression, not one combined score.
+
 ## Metrics that matter
 
 - Primary: terminal task success, policy compliance, no collateral mutation,
@@ -69,11 +95,13 @@ be averaged away by many easy passes.
 | State | Evidence in Muse | Decision |
 | --- | --- | --- |
 | HAVE | `scripts/eval-harness.mjs` already provides dataset/scenario, solver, deterministic or model scorer, infra classification, strict repeats and all-pass safety floors | deepen it; do not replace it |
-| HAVE | `eval:agent`, `eval:tools`, `eval:adversarial`, `eval:judge`, orchestration, browser/computer and multistep batteries cover major agent surfaces | keep diff-to-battery selection and real local-model runs |
+| HAVE | the 11-axis `eval:agent` aggregate plus tool selection, adversarial, orchestration, browser/computer and multistep batteries cover major agent surfaces with versioned completion evidence | keep diff-to-battery selection and real local-model runs; preserve failed vs unverified |
 | HAVE | OpenTelemetry, persisted run events, Browser Mode/Playwright, Testcontainers and local outcome receipts provide the raw seams for state and trace evaluation | reuse these Interfaces |
 | DONE P0 | `muse.eval.trial/v1` and `muse.eval.summary/v1` provide opt-in local JSONL with allowlisted metadata and opaque trace refs | keep prompt/output/detail/fixture out of artifacts and fail closed on writer errors |
 | DONE P0 | common per-attempt setup/teardown guarantees cleanup for opted-in batteries; secret-persistence is the first migrated fixture | teardown failure overrides pass/exclusion; migrate another battery only when it owns mutable trial state |
 | DONE P0 | `eval:agent:offline` runs deterministic eval contracts after the existing build on Linux and Windows; local-Ollama `eval:agent` stays separate | a live skip remains unverified, never a CI pass |
+| DONE P0 | live coding evals use a caller-only canonical `isolationRoot`; strict Seatbelt blocks fixture-external contents and unsupported hosts report `sandbox-missing` without child execution | keep absolute cwd, symlink escape, external sentinel, and real Node fixture probes in the offline gate |
+| DONE P0 | live aggregate runtime assemblies use a leased disposable HOME plus explicit local-store paths and disable user-memory extraction | assert owner `~/.muse` manifests are byte-stable before/after real trials and always clean the temporary root |
 | PARTIAL P1 | `eval:evidence` validates complete local artifacts, extracts terminal failures, requires explicit redaction review before case promotion, and compares per-case baseline deltas | use it in weekly dogfood; automatic redaction and dataset insertion remain forbidden |
 | GAP P1 | paraphrase/metamorphic robustness and controlled tool/API fault matrices are present only in isolated tests | add shared perturbation and fault fixtures, beginning with provider routing and Continuity |
 | GAP P1 | Attunement has outcome receipts but not an end-to-end natural-return agent suite | build cases from real life/work returns only after explicit human labels exist |
@@ -107,6 +135,11 @@ pnpm eval:evidence -- candidates --artifact <results.jsonl> --out <candidates.js
 pnpm eval:evidence -- promote --candidates <candidates.jsonl> --review <review.json> --out <case.json>
 pnpm eval:evidence -- compare --baseline <baseline-results.jsonl> --current <current-results.jsonl> --out <delta.json>
 ```
+
+Synthetic/debug raw artifacts for the live capability work stay under
+`.muse-dev/evals/agent-capability/`. The `.muse-dev/` tree is ignored and these
+local artifacts are never committed; only reviewed, privacy-safe aggregate
+counts and stable reason codes may enter repository documentation.
 
 Promotion accepts only a `muse.eval.case-review/v1` record with
 `decision: "promote"`, `redactionConfirmed: true`, and the exact candidate key.
@@ -144,11 +177,13 @@ stack misses and the candidate catches reproducibly.
 1. **Edit loop:** one deterministic test or `pnpm test:changed --uncommitted`.
 2. **Push/PR:** affected typecheck/lint/tests and deterministic agent gates
    selected by `scripts/pick-evals.mjs`; no live skip can be described as pass.
+   The long live aggregate is **not a pre-push gate**.
 3. **Prompt/tool/model/routing change:** local real-model battery with strict
    `pass^k`, isolated trials, and before/after per-case results.
 4. **Nightly or self-hosted gate:** live agent aggregate, provider contracts,
    fault matrix, and longer multi-turn scenarios without blocking the fast edit
-   loop on unavailable local infrastructure.
+   loop on unavailable local infrastructure. The aggregate may also be run
+   manually for a release candidate or a prompt/tool/model/routing change.
 5. **Weekly dogfood review:** sample local traces and explicit outcomes, redact
    the smallest reproducible failure, and add it to a capability or regression
    suite. External upload requires a separate explicit opt-in.
