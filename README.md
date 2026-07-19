@@ -46,23 +46,27 @@ not Muse's whole identity.
 
 ## 📊 Muse in numbers
 
-Every number is reproducible from this repo — the command that generates it is in the last column. Test counts and synthetic scale are **not agent-effect proof**; evidence classes are deliberately kept separate. Organic personal effectiveness is **NOT_PROVEN**.
+Every number is reproducible from this repo — its source and command sit directly below each chart. Test counts and synthetic scale are **not agent-effect proof**; evidence classes are deliberately kept separate. Organic personal effectiveness is **NOT_PROVEN**.
 
-![Recall freshness ablation](docs/benchmarks/recall-freshness-ablation.svg)
+![Component effect deltas separated by outcome and evidence class](docs/benchmarks/evidence-effect-deltas.svg)
 
-| Metric | Value | Evidence class | Status | How to reproduce |
-| --- | --- | --- | --- | --- |
-| Grounding-gate delta, self-authored corpus | **+0.94 faithfulness** at **0.00 false-refusal** (gate ON vs OFF, same gemma4:12b) | controlled local-model component | qualified component result | `pnpm eval:grounding-delta` → [`docs/benchmarks/RESULTS.md`](docs/benchmarks/RESULTS.md) |
-| Grounding-gate delta, SQuAD-2.0 slice | **+0.63 faithfulness** at **0.00 false-refusal** | controlled local-model component | qualified component result | `pnpm eval:grounding-delta:squad` → [`RESULTS-squad.md`](docs/benchmarks/RESULTS-squad.md) |
-| Recall freshness A/B | **UNCHANGED**: all four local embedders had correction delta 0; raw top-4 pair retention was the measured MMR/retrieval bottleneck | **local-live retrieval component** | [canonical result and chart](docs/benchmarks/recall-freshness-ablation.md) | `pnpm eval:recall-freshness-ablation` → [evidence index](docs/benchmarks/EVIDENCE.md) |
-| Test suite | **18,484 passing cases** across 1,624 test files (verified 2026-07-17) | software assurance | passing snapshot, not effect proof | `pnpm check` |
-| Agent capability baseline | **10/11 live aggregate axes passed, 1 failed, 0 unverified**; recall correction freshness remains the measured gap | local-live agent capability | **aggregate failed** | `pnpm eval:agent -- --json` → [qualified baseline](docs/development/agent-capability-baseline.md) |
-| Continuity provenance isolation | **10,080 controlled in-memory exact pairs** stay technical-only; **1,000 ordinary-input classifications** yield 0 organic / 1,000 unclassified | controlled / synthetic | technical-only | `pnpm eval:continuity-provenance` → [`evaluation`](docs/evaluations/continuity-evidence-provenance-2026-07-18.md) |
-| HTTP surface smoke | **51 endpoints** exercised with a key-free diagnostic provider | software assurance | passing snapshot | `pnpm smoke:broad` |
-| Real-LLM round-trip | model→tool→model loop asserted end-to-end on local Ollama | local-live agent capability | narrow smoke only | `pnpm smoke:live` |
-| Workspace | **37 packages + 4 apps** (CLI, API server, web console, macOS desktop), TypeScript strict | inventory | descriptive | `ls packages apps` |
-| Built-in tool servers | 25 in-process `muse.*` MCP servers + external stdio/SSE/streamable-HTTP | inventory | descriptive | `muse mcp list` |
-| Model providers | 7 families behind one `ModelProvider` seam — no vendor SDK in the core | inventory | descriptive | [`packages/model`](packages/model) |
+Source: [canonical evidence dashboard](docs/benchmarks/evidence-dashboard.json) · reproduce with `pnpm evidence:dashboard:render` · validate with `pnpm evidence:dashboard:validate`.
+
+![Evidence coverage ratios with independent denominators and visible status boundaries](docs/benchmarks/evidence-coverage.svg)
+
+Source: [evidence index](docs/benchmarks/EVIDENCE.md) · reproduce with `pnpm evidence:dashboard:render`.
+
+![Project inventory, software-assurance snapshots, and live round-trip command status](docs/benchmarks/evidence-project-surface.svg)
+
+Source: [canonical evidence dashboard](docs/benchmarks/evidence-dashboard.json) · reproduce with `pnpm evidence:dashboard:render`. Different units are not compared or aggregated.
+
+![Recall freshness ablation across four local embedding models](docs/benchmarks/recall-freshness-ablation.svg)
+
+Source: [qualified recall freshness result](docs/benchmarks/recall-freshness-ablation.md) · reproduce with `pnpm eval:recall-freshness-ablation`.
+
+![Recall candidate-pool pair retention and correction pass at top K four, eight, and twelve](docs/benchmarks/recall-candidate-pool.svg)
+
+Source: [candidate-pool diagnostic](docs/benchmarks/recall-candidate-pool.md) · reproduce with `pnpm eval:recall-candidate-pool` · validate with `pnpm eval:recall-candidate-pool:validate`.
 
 ---
 
