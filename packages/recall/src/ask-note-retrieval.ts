@@ -38,11 +38,29 @@ export interface NoteRetrievalResult {
   /** True when the embedding endpoint failed — degrade to no-notes grounding. */
   notesUnavailable: boolean;
   queryVec: number[] | undefined;
+  /** Aggregate-safe reranker telemetry. Never contains query or candidate text. */
+  rerankDecision?: RecallRerankDecision;
   /** Immutable first-retrieval snapshot for an identity-matching prepare seam. */
   snapshot?: NoteRetrievalSnapshot;
 }
 
-export type RecallRerankFn = (query: string, candidateTexts: readonly string[]) => Promise<readonly number[] | undefined>;
+export type RecallRerankOutcome = "ineligible-window" | "success" | "empty" | "invalid" | "timeout" | "error";
+
+export interface RecallRerankDecision {
+  readonly eligible: boolean;
+  readonly logicalInvocations: 0 | 1;
+  readonly httpAttempts: number;
+  readonly outcome: RecallRerankOutcome;
+}
+
+export interface RecallRerankExecution {
+  readonly httpAttempts: number;
+  readonly order?: readonly number[];
+  readonly outcome: Exclude<RecallRerankOutcome, "ineligible-window">;
+}
+
+export type RecallRerankResponse = readonly number[] | RecallRerankExecution | undefined;
+export type RecallRerankFn = (query: string, candidateTexts: readonly string[]) => Promise<RecallRerankResponse>;
 
 export interface NoteRetrievalSnapshotIdentity {
   readonly query: string;
@@ -92,6 +110,7 @@ export async function retrieveAndRankNotes(params: {
   let splitClauses: readonly string[] = [];
   let notesUnavailable = false;
   let queryVec: number[] | undefined;
+  let rerankDecision: RecallRerankDecision | undefined;
   try {
     // S3 narrate-the-wait: a REAL stage delta before the embed — on a 10-40s local
     // model the pre-answer gap reads as a hang; this makes it read as thinking.
@@ -132,9 +151,22 @@ export async function retrieveAndRankNotes(params: {
       scored = window.slice(0, topK);
       if (window.length > topK) {
         try {
-          const order = await rerankFn(query, window.map((s) => s.chunk.text));
+          const response = await rerankFn(query, window.map((s) => s.chunk.text));
+          const execution = isRerankExecution(response) ? response : undefined;
+          const order = execution?.order ?? (Array.isArray(response) ? response : undefined);
           const valid = [...new Set((order ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < window.length))];
-          if (valid.length > 0) {
+          const outcome = execution
+            ? (execution.outcome === "success" && valid.length === 0 ? "invalid" : execution.outcome)
+            : (valid.length > 0 ? "success" : (order?.length ? "invalid" : "empty"));
+          rerankDecision = {
+            eligible: true,
+            httpAttempts: execution && Number.isSafeInteger(execution.httpAttempts) && execution.httpAttempts >= 0
+              ? execution.httpAttempts
+              : 0,
+            logicalInvocations: 1,
+            outcome
+          };
+          if (outcome === "success" && valid.length > 0) {
             const chosen = valid.slice(0, topK).map((i) => window[i]!);
             for (const s of window) {
               if (chosen.length >= topK) break;
@@ -143,8 +175,11 @@ export async function retrieveAndRankNotes(params: {
             scored = chosen;
           }
         } catch {
+          rerankDecision = { eligible: true, httpAttempts: 0, logicalInvocations: 1, outcome: "error" };
           // reranker is best-effort — a dead model never fails the ask
         }
+      } else {
+        rerankDecision = { eligible: false, httpAttempts: 0, logicalInvocations: 0, outcome: "ineligible-window" };
       }
     } else {
       scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
@@ -223,6 +258,7 @@ export async function retrieveAndRankNotes(params: {
     notesUnavailable,
     preGapScored: [...preGapScored],
     queryVec: queryVec ? [...queryVec] : undefined,
+    ...(rerankDecision ? { rerankDecision } : {}),
     scored: demoteStale(scored, (s) => s.chunk.text),
     splitClauses: [...splitClauses],
     subqueryEmbeddings: subqueryEmbeddings.map((embedding) => [...embedding])
@@ -265,30 +301,39 @@ function normalizedScope(scope: string | undefined): string | undefined {
 function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: readonly ScoredChunk[], topK: number): ScoredChunk[] {
   const out = [...selected];
   const protectedItems = new Set<ScoredChunk>();
-  for (const stale of [...out]) {
-    if (!detectStaleMarker(stale.chunk.text)) continue;
-    const staleTokens = lexicalTokens(stale.chunk.text);
-    const current = candidates
-      .filter((candidate) => !out.includes(candidate) && !detectStaleMarker(candidate.chunk.text))
+  for (const anchor of selected) {
+    const anchorIsStale = detectStaleMarker(anchor.chunk.text);
+    const counterpart = candidates
+      .filter((candidate) => !out.includes(candidate) && detectStaleMarker(candidate.chunk.text) !== anchorIsStale)
       .map((candidate) => ({
         candidate,
-        semantic: cosine(stale.chunk.embedding, candidate.chunk.embedding),
-        topicOverlap: lexicalOverlap(staleTokens, candidate.chunk.text)
+        semantic: cosine(anchor.chunk.embedding, candidate.chunk.embedding),
+        topicOverlap: lexicalOverlap(lexicalTokens(anchor.chunk.text), candidate.chunk.text)
       }))
       .filter(({ semantic, topicOverlap }) => semantic >= 0.92 && topicOverlap >= 1)
       .sort((a, b) => b.semantic - a.semantic || b.candidate.score - a.candidate.score)[0]?.candidate;
-    if (!current) continue;
+    if (!counterpart) continue;
     if (out.length < topK) {
-      out.push(current);
+      out.push(counterpart);
     } else {
-      const replaceAt = out.findLastIndex((candidate) => !detectStaleMarker(candidate.chunk.text) && !protectedItems.has(candidate));
+      let replaceAt = out.findLastIndex((candidate) =>
+        candidate !== anchor
+        && !protectedItems.has(candidate)
+        && detectStaleMarker(candidate.chunk.text) === detectStaleMarker(counterpart.chunk.text));
+      if (replaceAt < 0) {
+        replaceAt = out.findLastIndex((candidate) => candidate !== anchor && !protectedItems.has(candidate));
+      }
       if (replaceAt < 0) continue;
-      out[replaceAt] = current;
+      out[replaceAt] = counterpart;
     }
-    protectedItems.add(stale);
-    protectedItems.add(current);
+    protectedItems.add(anchor);
+    protectedItems.add(counterpart);
   }
   return out;
+}
+
+function isRerankExecution(response: RecallRerankResponse): response is RecallRerankExecution {
+  return typeof response === "object" && response !== null && !Array.isArray(response) && "outcome" in response;
 }
 
 function normalizeRetrievalTopK(value: number): number {

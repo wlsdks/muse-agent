@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { retrieveAndRankNotes, type RecallRerankFn } from "./ask-note-retrieval.js";
 import type { FileEntry } from "./chunks.js";
 
 let dir: string;
@@ -27,6 +27,41 @@ afterEach(async () => {
 });
 
 describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence seam)", () => {
+  it("preserves a matching stale note when current is selected even when adaptive selection skips reranking", async () => {
+    const selectedNoise = await noteFile("agenda.md", "Tuesday meeting agenda.", [0.98, Math.sqrt(1 - 0.98 ** 2)]);
+    const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.99, Math.sqrt(1 - 0.99 ** 2)]);
+    const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.94, Math.sqrt(1 - 0.94 ** 2)]);
+    const low = await Promise.all([0.93, 0.92, 0.91, 0.9].map((score, index) =>
+      noteFile(`low-${index.toString()}.md`, `Unrelated archive ${index.toString()}.`, [score, Math.sqrt(1 - score ** 2)])));
+    let rerankCalls = 0;
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const ask = (conflictAwareSelection: boolean) => retrieveAndRankNotes({
+        conflictAwareSelection,
+        embedFn, embedModel: "test-embed", indexFiles: [selectedNoise, current, stale, ...low], json: true, notesDir: dir,
+        onStderr: () => {}, query: "what changed", rerankFn: async () => { rerankCalls += 1; return [0]; },
+        scope: undefined, topK: 2
+      });
+      const baseline = await ask(false);
+      expect(baseline.scored.map((item) => item.file)).toContain(current.path);
+      expect(baseline.scored.map((item) => item.file)).not.toContain(stale.path);
+      const result = await ask(true);
+      expect(rerankCalls).toBe(0);
+      expect(result.rerankDecision).toEqual({
+        eligible: false,
+        httpAttempts: 0,
+        logicalInvocations: 0,
+        outcome: "ineligible-window"
+      });
+      expect(result.scored.map((item) => item.file)).toEqual([current.path, stale.path]);
+      expect(result.scored).toHaveLength(2);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
   it("preserves a selected stale note with its matching current note inside the fixed topK", async () => {
     const stale = await noteFile("rent_old.md", "I used to pay office rent 1200; no longer current.", [0.8, 0.6]);
     const current = await noteFile("rent_current.md", "Office rent is 1300 now.", [0.75, Math.sqrt(1 - 0.75 ** 2)]);
@@ -91,6 +126,25 @@ describe("retrieveAndRankNotes — stale-vs-current demotion (answer-evidence se
       delete process.env.MUSE_RECALL_GRAPH_HOP;
       delete process.env.MUSE_RECALL_SECOND_HOP;
     }
+  });
+
+  it("does not pair lexical lookalikes when their meanings are adversarially unrelated", async () => {
+    const current = await noteFile("python_current.md", "Python currently labels family photos.", [0.99, 0.1]);
+    const staleLookalike = await noteFile(
+      "python_old.md",
+      "I used to deploy the Python billing service; no longer current.",
+      [-0.99, 0.1]
+    );
+    const selectedNoise = await noteFile("agenda.md", "Meeting agenda for Tuesday.", [0.95, 0.2]);
+    const result = await retrieveAndRankNotes({
+      embedFn, embedModel: "test-embed", indexFiles: [current, staleLookalike, selectedNoise], json: true, notesDir: dir,
+      onStderr: () => {}, query: "what changed", rerankFn: async (_query, texts) => [
+        texts.findIndex((text) => text.includes("family photos")),
+        texts.findIndex((text) => text.includes("Meeting agenda"))
+      ], scope: undefined, topK: 2
+    });
+    expect(result.scored.map((item) => item.file)).toEqual([current.path, selectedNoise.path]);
+    expect(result.scored.map((item) => item.file)).not.toContain(staleLookalike.path);
   });
 
   it("bounds direct topK input to the CLI retrieval contract", async () => {
@@ -253,7 +307,7 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
     await noteFile("noise.md", "wifi password muse2026", unit(0.5))
   ];
 
-  const ask = async (indexFiles: FileEntry[], rerankFn?: (q: string, t: readonly string[]) => Promise<readonly number[] | undefined>) =>
+  const ask = async (indexFiles: FileEntry[], rerankFn?: RecallRerankFn) =>
     retrieveAndRankNotes({
       embedFn,
       embedModel: "test-embed",
@@ -272,11 +326,17 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
     let sawTexts: readonly string[] = [];
     const result = await ask(files, async (_q, texts) => {
       sawTexts = texts;
-      return [texts.findIndex((t) => t.includes("25th"))];
+      return { httpAttempts: 1, order: [texts.findIndex((t) => t.includes("25th"))], outcome: "success" };
     });
     expect(sawTexts.length).toBeGreaterThan(1);
     expect(result.scored[0]?.file).toBe(files[1]!.path);
     expect(result.scored).toHaveLength(1);
+    expect(result.rerankDecision).toEqual({
+      eligible: true,
+      httpAttempts: 1,
+      logicalInvocations: 1,
+      outcome: "success"
+    });
   });
 
   it("a throwing or empty reranker fails open to the cosine ordering", async () => {

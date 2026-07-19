@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createRecallRerankFn, parseRerankReply, resolveRerankModel } from "./ask-note-retrieval.js";
+import { createRecallRerankFn, createWarmedRecallRerankFn, parseRerankReply, resolveRerankModel } from "./ask-note-retrieval.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -32,20 +32,87 @@ describe("resolveRerankModel — default ON for local-model users, off for cloud
   });
 });
 
-describe("parseRerankReply — tolerant extraction of best-first zero-based indices", () => {
-  it("parses bare, bracketed, and comma-separated replies (measured gemma4 emits '[2]', qwen3 emits '2')", () => {
-    expect(parseRerankReply("2")).toEqual([1]);
-    expect(parseRerankReply("[2]")).toEqual([1]);
-    expect(parseRerankReply("2, 4, 1")).toEqual([1, 3, 0]);
+describe("parseRerankReply — strict, bounded best-first zero-based indices", () => {
+  it("accepts JSON or an all-numeric fallback and deduplicates within the candidate range", () => {
+    expect(parseRerankReply('{"ranking":[2,2,99,1]}', 3)).toEqual([1, 0]);
+    expect(parseRerankReply("[2]", 3)).toEqual([1]);
+    expect(parseRerankReply("2, 4, 1", 4)).toEqual([1, 3, 0]);
   });
 
-  it("no digits → undefined (caller fails open)", () => {
-    expect(parseRerankReply("I cannot decide")).toBeUndefined();
-    expect(parseRerankReply("")).toBeUndefined();
+  it("rejects prose, malformed JSON, empty output, and wholly out-of-range output", () => {
+    expect(parseRerankReply("I choose document 2", 3)).toBeUndefined();
+    expect(parseRerankReply('{"ranking":', 3)).toBeUndefined();
+    expect(parseRerankReply("", 3)).toBeUndefined();
+    expect(parseRerankReply("[99]", 3)).toBeUndefined();
   });
 });
 
 describe("createRecallRerankFn — bounded request timeout", () => {
+  it("offers an explicit post-embedder warm seam without changing normal construction", async () => {
+    const events = ["embedder-ready"];
+    const fetchMock = vi.fn(async () => {
+      events.push("reranker-http");
+      return { json: async () => ({ response: '{"ranking":[1,2]}' }), ok: true };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-warm-models.json");
+    vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
+
+    const warmed = await createWarmedRecallRerankFn(
+      { MUSE_RECALL_RERANK: "qwen3:8b" },
+      { candidateTexts: ["current answer", "unrelated note"], query: "현재 답" }
+    );
+
+    expect(events).toEqual(["embedder-ready", "reranker-http"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(warmed?.warmup).toEqual({ httpAttempts: 1, order: [0, 1], outcome: "success" });
+    expect(warmed?.rerankFn).toBeTypeOf("function");
+  });
+
+  it("makes one structured request and returns a typed, bounded bilingual ranking outcome", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+      json: async () => ({ response: '{"ranking":[2,2,99,1]}' }),
+      ok: true
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-structured-models.json");
+    vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
+
+    const result = await createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })!(
+      "월세는 언제 보내나요?",
+      ["The office rent changed.", "Pay rent on the 25th."]
+    );
+
+    expect(result).toEqual({ httpAttempts: 1, order: [1, 0], outcome: "success" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]![1]!;
+    const body = JSON.parse(request.body as string) as { format?: unknown; prompt?: string };
+    expect(body.format).toBe("json");
+    expect(body.prompt).toContain("월세는 언제 보내나요?");
+    expect(body.prompt).toContain('{"ranking"');
+  });
+
+  it("classifies timeout, empty, and invalid replies without retrying", async () => {
+    vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-outcomes-models.json");
+    vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
+    const rerank = createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })!;
+
+    const timeoutFetch = vi.fn(async () => { throw new DOMException("timed out", "TimeoutError"); });
+    vi.stubGlobal("fetch", timeoutFetch);
+    await expect(rerank("query", ["candidate"])).resolves.toEqual({ httpAttempts: 1, outcome: "timeout" });
+    expect(timeoutFetch).toHaveBeenCalledTimes(1);
+
+    const emptyFetch = vi.fn(async () => ({ json: async () => ({ response: "" }), ok: true }));
+    vi.stubGlobal("fetch", emptyFetch);
+    await expect(rerank("query", ["candidate"])).resolves.toEqual({ httpAttempts: 1, outcome: "empty" });
+    expect(emptyFetch).toHaveBeenCalledTimes(1);
+
+    const invalidFetch = vi.fn(async () => ({ json: async () => ({ response: "document 1" }), ok: true }));
+    vi.stubGlobal("fetch", invalidFetch);
+    await expect(rerank("query", ["candidate"])).resolves.toEqual({ httpAttempts: 1, outcome: "invalid" });
+    expect(invalidFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("uses 4000ms by default, accepts the eval's explicit 2000ms, and fails closed on invalid values", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
     vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ response: "1" }), ok: true })));

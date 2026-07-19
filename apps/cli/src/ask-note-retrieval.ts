@@ -9,6 +9,7 @@
 import {
   retrieveAndRankNotes as retrieveAndRankNotesCore,
   type NoteRetrievalResult,
+  type RecallRerankExecution,
   type RecallRerankFn
 } from "@muse/recall";
 
@@ -25,6 +26,16 @@ const PRODUCTION_RERANK_TIMEOUT_MS = 4000;
 export interface RecallRerankOptions {
   /** Request timeout; bounded by the unchanged 4,000ms production ceiling. */
   readonly timeoutMs?: number;
+}
+
+export interface RecallRerankWarmup {
+  readonly candidateTexts: readonly [string, ...string[]];
+  readonly query: string;
+}
+
+export interface WarmedRecallReranker {
+  readonly rerankFn: RecallRerankFn;
+  readonly warmup: RecallRerankExecution;
 }
 
 /**
@@ -48,30 +59,70 @@ export function resolveRerankModel(env: NodeJS.ProcessEnv = process.env): string
   return defaultModel?.startsWith("ollama/") ? defaultModel.slice("ollama/".length) : undefined;
 }
 
-/** Extracts the best-first candidate indices from a reranker reply ("2, 4, 1" / "[2]" → zero-based). Undefined when no number survives. */
-export function parseRerankReply(reply: string): readonly number[] | undefined {
-  const nums = reply.match(/\d+/gu);
-  if (!nums || nums.length === 0) {
-    return undefined;
+/** Parses only a structured ranking (or a wholly numeric legacy reply), then bounds and deduplicates it. */
+export function parseRerankReply(reply: string, candidateCount: number): readonly number[] | undefined {
+  if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
+  const trimmed = reply.trim();
+  if (!trimmed) return undefined;
+  let values: unknown;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    values = Array.isArray(parsed)
+      ? parsed
+      : (typeof parsed === "object" && parsed !== null && "ranking" in parsed ? parsed.ranking : undefined);
+  } catch {
+    if (!/^\d+(?:\s*,\s*\d+)*$/u.test(trimmed)) return undefined;
+    values = trimmed.split(",").map((value) => Number(value.trim()));
   }
-  return nums.map((n) => Number(n) - 1);
+  if (!Array.isArray(values)) return undefined;
+  const order = [...new Set(values
+    .filter((value): value is number => Number.isSafeInteger(value))
+    .map((value) => value - 1)
+    .filter((value) => value >= 0 && value < candidateCount))];
+  return order.length > 0 ? order : undefined;
 }
 
-async function ollamaRerank(query: string, candidateTexts: readonly string[], model: string, timeoutMs: number): Promise<readonly number[] | undefined> {
+async function ollamaRerank(
+  query: string,
+  candidateTexts: readonly string[],
+  model: string,
+  timeoutMs: number
+): Promise<RecallRerankExecution> {
   const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
   const list = candidateTexts.map((text, i) => `[${(i + 1).toString()}] ${text}`).join("\n");
-  const prompt = `Query: ${query}\n\nDocuments:\n${list}\n\nWhich documents best ANSWER the query (not just share words with it)? Reply with ONLY the numbers, comma-separated, best first.`;
-  const res = await fetch(`${base}/api/generate`, {
-    body: JSON.stringify({ model, options: { num_predict: 32, temperature: 0 }, prompt, stream: false, think: false }),
-    headers: { "content-type": "application/json" },
-    method: "POST",
-    signal: AbortSignal.timeout(timeoutMs)
-  });
-  if (!res.ok) {
-    return undefined;
+  const prompt = [
+    "Rank every document by how directly it answers the query, not by shared words.",
+    "질문 언어와 문서 언어가 달라도 의미를 기준으로 모든 문서를 정렬하세요.",
+    `Return ONLY valid JSON exactly like {"ranking":[2,1]}. Use each integer from 1 through ${candidateTexts.length.toString()} once; no prose.`,
+    `Query / 질문: ${query}`,
+    `Documents / 문서:\n${list}`
+  ].join("\n\n");
+  try {
+    const res = await fetch(`${base}/api/generate`, {
+      body: JSON.stringify({ format: "json", model, options: { num_predict: 64, temperature: 0 }, prompt, stream: false, think: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) {
+      return { httpAttempts: 1, outcome: "error" };
+    }
+    let response: string;
+    try {
+      const json = await res.json() as { readonly response?: unknown };
+      response = typeof json.response === "string" ? json.response : "";
+    } catch {
+      return { httpAttempts: 1, outcome: "invalid" };
+    }
+    if (!response.trim()) return { httpAttempts: 1, outcome: "empty" };
+    const order = parseRerankReply(response, candidateTexts.length);
+    return order
+      ? { httpAttempts: 1, order, outcome: "success" }
+      : { httpAttempts: 1, outcome: "invalid" };
+  } catch (cause) {
+    const name = typeof cause === "object" && cause !== null && "name" in cause ? cause.name : undefined;
+    return { httpAttempts: 1, outcome: name === "AbortError" || name === "TimeoutError" ? "timeout" : "error" };
   }
-  const json = await res.json() as { readonly response?: string };
-  return parseRerankReply(json.response ?? "");
 }
 
 /** Select one local-only reranker function for the entire ask turn. */
@@ -82,6 +133,30 @@ export function createRecallRerankFn(env: NodeJS.ProcessEnv = process.env, optio
   return rerankModel
     ? (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel, timeoutMs)
     : undefined;
+}
+
+/**
+ * Constructs and explicitly warms the reranker. Callers choose when to invoke
+ * this seam, typically only after their embedder preflight/model switch has
+ * completed; normal command construction never issues a warmup request.
+ */
+export async function createWarmedRecallRerankFn(
+  env: NodeJS.ProcessEnv,
+  warmup: RecallRerankWarmup,
+  options: RecallRerankOptions = {}
+): Promise<WarmedRecallReranker | undefined> {
+  const rerankFn = createRecallRerankFn(env, options);
+  if (!rerankFn) return undefined;
+  const response = await rerankFn(warmup.query, warmup.candidateTexts);
+  const execution: RecallRerankExecution = typeof response === "object"
+    && response !== null
+    && !Array.isArray(response)
+    && "outcome" in response
+    ? response as RecallRerankExecution
+    : Array.isArray(response) && response.length > 0
+      ? { httpAttempts: 0, order: response, outcome: "success" }
+      : { httpAttempts: 0, outcome: "empty" };
+  return { rerankFn, warmup: execution };
 }
 
 export async function retrieveAndRankNotes(
