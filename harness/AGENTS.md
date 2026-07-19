@@ -3,7 +3,7 @@ title: 에이전트 하네스 운영 계약 (Agent Harness — Operating Contrac
 audience: [AI 에이전트, 개발자, 기획자]
 purpose: 이 파일을 읽은 에이전트가 "하네스대로" 일하게 만드는 진입점 — 역할·핸드오프·게이트·검증을 한 장으로 강제
 format: AGENTS.md (vendor-neutral, 어떤 에이전트/도구든 읽음)
-updated: 2026-06-13
+updated: 2026-07-19
 ---
 
 # 에이전트 하네스 — 운영 계약
@@ -116,6 +116,20 @@ Thoughtworks "Guides & Sensors"):
 가능한 의식이 아닙니다. 근거: 한 세션에서 실제 평가자가 잡은 4건 전부가 **조용히 실패하는 부류**
 (데이터 손상, 죽은 로케일 문자열, 거짓말하는 플래그, 타이밍 버그)였습니다 — green 테스트 스위트가
 드러내지 못하는 바로 그 부류입니다.
+
+## 3.7 PLAN 검토와 BUILD↔EVAL은 서로 다른 예산이다
+
+PLAN 검토 예산과 구현 후 BUILD↔EVAL 수정 예산을 한 카운터로 합치지 않습니다. PLAN에서는 raw
+`PLAN FAIL` 수만으로 작업을 `BLOCKED`로 올리지 않습니다. **material progress**는 이전 blocker를
+닫거나 수용 기준·회계를 측정 가능하게 만든 변경이고, **no-progress**는 같은 blocker가 새 증거나
+수정 없이 반복되는 상태입니다. PLAN은 no-progress가 확인되거나 헤더에 명시한 시간·비용 cap에
+도달했을 때만 `BLOCKED`로 승격합니다.
+
+BUILD↔EVAL은 PLAN과 별도의 반복 횟수·시간·비용 cap을 가집니다. 평가자는 **한 pass에서 합리적으로
+발견 가능한 blocker를 묶어서** 반환합니다. 뒤 pass에서 새 blocker를 제시하면 왜 앞 pass에서는
+발견할 수 없었는지(앞선 수정이 새 경로를 열었는지, 필요한 증거가 뒤늦게 생겼는지)를 기록합니다.
+구체적 회계 필드는 [handoff-template](core/handoff-template.md), 종료 판정은
+[loop-budget](reference/loop-budget.md)을 따릅니다.
 
 ## 4. 토대 (모든 단계에 적용)
 

@@ -54,6 +54,11 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 ## 2. 검증 방법
 
 - <어떤 테스트/명령/관찰로 확인하나 — 워커와 평가자가 같은 방법을 씀>
+- **PLAN-review budget:** <시간/비용 cap; raw PLAN FAIL 횟수와 분리>
+- **BUILD↔EVAL budget:** <수정 반복 횟수/시간/비용 cap; PLAN 카운터와 분리>
+- **진전 판정:** `material-progress | no-progress` — material progress는 이전 blocker를 닫거나
+  acceptance/accounting을 측정 가능하게 만든 변경, no-progress는 같은 blocker가 새 증거·수정 없이
+  반복되는 상태
 
 ## 3. 워커 노트 (워커/빌더가 채움)
 
@@ -70,7 +75,9 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 - **수용 기준 대조:** 위 1의 각 기준에 충족/미충족 + 근거
   - <기준 1> → 충족? <근거(실제로 돌려보거나 확인한 것)>
 - **구체적 피드백(FAIL이면 워커가 바로 고칠 수 있게):**
-  - <무엇이·왜 잘못됐나 + 어디>
+  - <한 pass에서 합리적으로 발견 가능한 blocker를 묶어: 무엇이·왜 잘못됐나 + 어디>
+- **새 blocker provenance:** <뒤 pass에서 새 blocker가 나왔다면 왜 이전 pass에서 발견 불가능했는지;
+  없으면 "없음">
 - **반복 횟수:** <이번이 몇 번째 BUILD↔EVAL 사이클인지>
 
 ---
@@ -81,7 +88,8 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 
 ## 상태 로그 (append-only)
 
-- <YYYY-MM-DD HH:MM> · <역할> · <BUILD/EVAL…> · <한 줄 요약>
+- <YYYY-MM-DD HH:MM> · <역할> · <PLAN-review | BUILD↔EVAL> · <누적 예산> ·
+  <material-progress | no-progress> · <닫힌 blocker/새 증거 한 줄>
 
 ---
 

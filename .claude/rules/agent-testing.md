@@ -69,6 +69,31 @@ aggregate live local-Ollama batteries; they are not GitHub CI gates and a skip
 is unverified. `self-eval` fails closed on regression. Error-analysis is FIRST — read
 20–50 real traces before writing a scorer (Muse's "production" is n=1 dogfooding).
 
+## Evaluation accounting vocabulary
+
+Large synthetic corpora must keep semantic coverage separate from prompt volume.
+A **semantic family** is one canonical objective/setup/expected/forbidden contract;
+a **surface variant** changes factors or expression without becoming an independent
+truth. Report both, and never relabel 20,000 surface variants as 20,000 independent
+semantic cases.
+
+Dataset accounting and agent-execution accounting are different ledgers:
+
+- `generated = valid + invalid`; `sampled <= valid`. Generated/validated/sampled
+  artifacts prove corpus integrity, **not** agent PASS.
+- A **case** is one eval specification. A **trial** is one execution of a case. An
+  **inference request** is one model request inside a trial; retries increase requests
+  and may increase trials according to the runner contract, but never create cases.
+- `pass^k` runs the same case for `k` trials and requires all `k` to pass. It increases
+  trial and inference-request counts, not case, semantic-family, or surface-variant
+  counts. Do not report it as `pass@k`.
+- Until trials actually run, agent results remain `UNVERIFIED`/`NOT_RUN`; generated or
+  validated data cannot be booked as agent passed/failed signal.
+
+Every report names the ledger explicitly: semantic families, surface variants,
+generated/valid/invalid/sampled cases, executed cases, trials, inference requests,
+and agent passed/failed/unverified. Reconciliation identities are fail-closed.
+
 ## Where each gate lives (Muse mapping)
 
 | Concern | Muse gate |

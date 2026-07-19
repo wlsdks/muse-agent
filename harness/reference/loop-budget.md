@@ -3,7 +3,7 @@ title: 루프 종료 & 예산 (Loop Control & Budget)
 audience: [개발자, AI 에이전트]
 purpose: 에이전트 루프가 무한 반복·비용 폭주 없이 반드시 끝나게 하는 종료 조건과 예산 한도
 status: draft
-updated: 2026-06-13
+updated: 2026-07-19
 sources_basis: [호스트 CLAUDE.md(예: Muse) (tool loops have explicit limits/timeouts), 호스트 architecture 규약 (deterministic budgets/stop conditions), Claude Code agent-loop (max_turns/max_budget_usd), 2026 runaway-cost prevention guides]
 related: [../core/team-roles.md, failure-modes-and-observability.md, ../core/verification-and-guardrails.md, architecture.md, ../README.md]
 ---
@@ -35,6 +35,22 @@ related: [../core/team-roles.md, failure-modes-and-observability.md, ../core/ver
 - **진전 없음 감지** — 같은 행동을 반복하거나 새 진전이 없으면(루프 정체) 끊고 사람에게 올림.
 - **막힘(BLOCKED)** — 답을 모르면 추측하지 말고 멈춰 `## 열린 질문`에 적습니다([handoff-template](../core/handoff-template.md)).
 
+## 2.5 PLAN 검토 예산과 BUILD↔EVAL 예산을 분리한다
+
+두 루프는 목적과 종료 신호가 달라서 카운터를 공유하지 않습니다.
+
+- **PLAN-review budget** — 헤더에 최대 시간·비용을 먼저 적습니다. raw `PLAN FAIL` 횟수만으로
+  `BLOCKED` 판정을 내리지 않습니다. **material progress**는 이전 blocker를 닫거나 acceptance/accounting을
+  측정 가능하게 만든 변경입니다. **no-progress**는 같은 blocker가 새 증거나 수정 없이 반복되는
+  상태입니다. no-progress 또는 명시된 시간·비용 cap 도달만 PLAN의 `BLOCKED` 승격 근거입니다.
+- **BUILD↔EVAL budget** — PLAN과 별도로 concrete regression 수정 횟수·시간·비용 cap을 둡니다.
+  평가 피드백은 한 pass에서 합리적으로 발견 가능한 blocker를 묶어 반환해야 합니다. 이후 pass의
+  새 blocker는 왜 이전 pass에서 발견 불가능했는지 근거를 남겨야 하며, 설명 없는 blocker drip은
+  no-progress로 셉니다.
+
+각 pass는 handoff 상태 로그에 `budget kind`, 누적 사용량, `material-progress | no-progress`, 닫힌
+blocker, 새 증거를 기록합니다. 한 루프의 남은 예산을 다른 루프의 재시도 근거로 빌려 쓰지 않습니다.
+
 ## 3. 폭주를 끊는 안전장치
 
 - **회로 차단(circuit breaker)** — 도구 연쇄 실패·이상 행동을 감지하면 한도 전이라도 루프를 끊습니다.
@@ -53,7 +69,7 @@ related: [../core/team-roles.md, failure-modes-and-observability.md, ../core/ver
 
 1. **횟수·시간·예산** 세 하드 캡이 다 걸렸나?
 2. 한도에 닿으면 **하드 스톱**하고 사유를 남기나(경고 아님)?
-3. 완료·정체·막힘에서 **정상 종료**되나?
+3. PLAN-review와 BUILD↔EVAL 예산이 분리되고, 완료·정체·막힘에서 **정상 종료**되나?
 4. 폭주엔 **회로 차단 + 유한 백오프**가 있나?
 5. 한도가 **모델이 아니라 코드**로 강제되나?
 

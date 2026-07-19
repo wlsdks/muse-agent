@@ -3,7 +3,7 @@ title: 검증 게이트 & 가드레일 (Verification & Guardrails)
 audience: [개발자, AI 에이전트]
 purpose: 하네스의 평가자·게이트를 실제로 신뢰할 수 있게 — 채점 루브릭, 입출력 가드레일, 게이트 운용 규칙
 status: draft
-updated: 2026-06-13
+updated: 2026-07-19
 sources_basis: [LLM-as-a-Judge practical guide, OpenAI Agents SDK guardrails, Anthropic building-effective-agents, Cognition don't-build-multi-agents]
 related: [team-roles.md, handoff-template.md, ../host/muse-mapping.md, ../README.md]
 ---
@@ -67,6 +67,14 @@ related: [team-roles.md, handoff-template.md, ../host/muse-mapping.md, ../README
   BUILD↔EVAL 반복은 반드시 평가자의 구체 피드백(어느 기준을 어떻게 어겼나)을 들고 돌아야 하고,
   피드백 없는 맨 재시도는 루프 낭비로 간주해 끊습니다. (Muse 쪽 강제:
   `.claude/rules/agent-testing.md`의 reflection-schedule guard — 모든 재시도 표면에 검증자 등록.)
+- **PLAN FAIL은 blocker 개수 회계가 아니다.** raw `PLAN FAIL` 수만으로 `BLOCKED` 금지입니다.
+  PLAN 검토는 이전 blocker를 닫거나 acceptance/accounting을 측정 가능하게 만든 **material progress**와,
+  같은 blocker가 새 증거·수정 없이 반복되는 **no-progress**를 구분합니다. no-progress 또는 명시된
+  시간·비용 cap에서만 승격하며, BUILD↔EVAL 수정 예산은 별도로 셉니다.
+- **평가 피드백은 one-pass bundling.** 평가자는 한 pass에서 합리적으로 발견 가능한 blocker를 모두
+  묶어 concrete violation으로 반환합니다. 이후 새 blocker에는 왜 이전 pass에서 발견 불가능했는지
+  기록합니다. 앞선 수정 때문에 새 경로가 생긴 경우처럼 근거가 있어야 하며, 설명 없는 순차 공개는
+  평가 루프의 no-progress입니다.
 
 ## 4. 실패에 강하게 (관측 & 복구)
 
