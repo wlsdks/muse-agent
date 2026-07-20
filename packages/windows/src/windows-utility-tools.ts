@@ -36,7 +36,10 @@ export function createWinClipboardSetTool(deps: WindowsToolDeps = {}): MuseTool 
       },
       keywords: ["clipboard", "클립보드", "copy", "복사", "paste", "붙여넣기"],
       name: "win_clipboard_set",
-      risk: "write"
+      // Same tier as the macOS twin: `risk` selects the approval gate, and the
+      // identical verb must not be gated more weakly just because the host is
+      // Windows.
+      risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
       const text = typeof args["text"] === "string" ? args["text"] : "";
@@ -76,9 +79,12 @@ export function createWinSayTool(deps: WindowsToolDeps = {}): MuseTool {
         required: ["text"],
         type: "object"
       },
-      keywords: ["say", "speak", "말해", "읽어줘", "tts", "voice"],
+      keywords: ["say", "speak", "말해", "읽어줘", "tts", "voice", "읽어", "소리"],
       name: "win_say",
-      risk: "write"
+      // Same tier as the macOS twin: `risk` selects the approval gate, and the
+      // identical verb must not be gated more weakly just because the host is
+      // Windows.
+      risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
       const text = typeof args["text"] === "string" ? args["text"].trim() : "";

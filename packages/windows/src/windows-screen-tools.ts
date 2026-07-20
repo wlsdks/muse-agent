@@ -26,7 +26,10 @@ export function createWinScreenshotTool(deps: WindowsToolDeps = {}): MuseTool {
       },
       keywords: ["screenshot", "스크린샷", "캡처", "capture", "screen", "화면"],
       name: "win_screenshot",
-      risk: "write"
+      // Same tier as the macOS twin: `risk` selects the approval gate, and the
+      // identical verb must not be gated more weakly just because the host is
+      // Windows.
+      risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
       const rawPath = typeof args["path"] === "string" ? args["path"] : undefined;

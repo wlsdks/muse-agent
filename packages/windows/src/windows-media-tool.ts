@@ -46,9 +46,12 @@ export function createWinMediaControlTool(deps: WindowsToolDeps = {}): MuseTool 
         required: ["action"],
         type: "object"
       },
-      keywords: ["music", "음악", "pause", "일시정지", "play", "재생", "next", "다음곡", "skip"],
+      keywords: ["music", "음악", "pause", "일시정지", "play", "재생", "next", "다음곡", "skip", "다음 곡", "이전 곡"],
       name: "win_media_control",
-      risk: "write"
+      // Same tier as the macOS twin: `risk` selects the approval gate, and the
+      // identical verb must not be gated more weakly just because the host is
+      // Windows.
+      risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
       const action = typeof args["action"] === "string" ? args["action"].trim() : "";

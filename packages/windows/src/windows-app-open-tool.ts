@@ -28,7 +28,7 @@ export function createWinAppOpenTool(deps: WindowsToolDeps = {}): MuseTool {
         required: ["target"],
         type: "object"
       },
-      keywords: ["open", "열어", "열기", "띄워", "launch", "url", "link", "링크", "website", "사이트"],
+      keywords: ["open", "열어", "열기", "띄워", "launch", "url", "link", "링크", "website", "사이트", "실행", "앱", "프로그램"],
       name: "win_app_open",
       risk: "execute"
     },

@@ -35,7 +35,7 @@ export function createTimeNowTool(now: () => Date): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["time", "clock", "now", "date", "day", "weekday", "today"],
+      keywords: ["time", "clock", "now", "date", "day", "weekday", "today", "시간", "몇 시", "몇시", "지금", "오늘", "날짜", "요일"],
       name: "time_now",
       risk: "read"
     },
@@ -86,7 +86,7 @@ export function createTimeDiffTool(): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["time", "duration", "diff", "interval"],
+      keywords: ["time", "duration", "diff", "interval", "시간", "차이", "기간", "얼마나"],
       name: "time_diff",
       risk: "read"
     },
@@ -106,22 +106,25 @@ export function createTimeAddTool(): MuseTool {
   return {
     definition: {
       description:
-        "Adds a signed duration (`milliseconds`, `seconds`, `minutes`, `hours`, `days`) to a base ISO-8601 timestamp and returns the resulting ISO timestamp. Any combination of fields is summed.",
+        "Work out the timestamp a given amount of time before or after another one — 'in 3 days', " +
+        "'30 minutes from now', '2시간 뒤', '사흘 후'. Fields are summed and may be negative to go " +
+        "backwards. Use when the user describes a time RELATIVE to another. Do NOT use it to read " +
+        "the current time (use time_now) or to measure the gap between two known timestamps (use time_diff).",
       inputSchema: {
         additionalProperties: false,
         properties: {
-          base: { description: "ISO-8601 base timestamp.", type: "string" },
-          days: { type: "number" },
-          hours: { type: "number" },
-          milliseconds: { type: "number" },
-          minutes: { type: "number" },
-          seconds: { type: "number" }
+          base: { description: "ISO-8601 timestamp to start from, e.g. '2026-07-20T09:00:00Z'. Use time_now to get the current one.", type: "string" },
+          days: { description: "Days to add; negative goes back, e.g. 3 for 'in three days', -1 for 'yesterday'.", type: "number" },
+          hours: { description: "Hours to add; negative goes back, e.g. 2 for 'in two hours'.", type: "number" },
+          milliseconds: { description: "Milliseconds to add; negative goes back.", type: "number" },
+          minutes: { description: "Minutes to add; negative goes back, e.g. 30 for 'in half an hour'.", type: "number" },
+          seconds: { description: "Seconds to add; negative goes back.", type: "number" }
         },
         required: ["base"],
         type: "object"
       },
       domain: "core",
-      keywords: ["time", "schedule", "add", "shift"],
+      keywords: ["time", "schedule", "add", "shift", "시간", "더하기", "후", "뒤에", "일정"],
       name: "time_add",
       risk: "read"
     },
@@ -165,7 +168,7 @@ export function createTimeRelativeTool(now: () => Date): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["time", "relative", "humanize", "ago"],
+      keywords: ["time", "relative", "humanize", "ago", "시간", "전", "얼마 전", "상대"],
       name: "time_relative",
       risk: "read"
     },
@@ -206,7 +209,8 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
             type: "string"
           },
           weekday: {
-            description: "Weekday name or 3-letter abbreviation (case-insensitive).",
+            description: "Target weekday, e.g. 'monday' or 'mon'. Case-insensitive.",
+            enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "mon", "tue", "wed", "thu", "fri", "sat", "sun"],
             type: "string"
           }
         },
@@ -214,7 +218,7 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["calendar", "schedule", "date", "upcoming", "future"],
+      keywords: ["calendar", "schedule", "date", "upcoming", "future", "요일", "다음", "언제", "날짜"],
       name: "next_weekday_date",
       risk: "read"
     },
@@ -262,7 +266,8 @@ export function createCronForDatetimeTool(): MuseTool {
         properties: {
           iso: { description: "ISO-8601 datetime (UTC).", type: "string" },
           mode: {
-            description: "'once' | 'daily' | 'weekly' | 'monthly'. Defaults to 'once'.",
+            description: "Repeat interval. 'once' fires a single time at that datetime; 'daily'/'weekly'/'monthly' repeat from it. Defaults to 'once'.",
+            enum: ["once", "daily", "weekly", "monthly"],
             type: "string"
           }
         },
@@ -270,7 +275,7 @@ export function createCronForDatetimeTool(): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["cron", "schedule", "reminder", "datetime", "scheduler"],
+      keywords: ["cron", "schedule", "reminder", "datetime", "scheduler", "크론", "반복", "예약", "스케줄"],
       name: "cron_for_datetime",
       risk: "read"
     },

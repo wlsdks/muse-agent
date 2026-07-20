@@ -354,13 +354,18 @@ describe("Windows actuators — opt-in via MUSE_WINDOWS_ACTUATORS", () => {
     expect([...armed].sort()).toEqual([...built].sort());
   });
 
-  it("classify risk correctly: the read is read-risk, openers are execute, the rest write", () => {
+  it("classify risk correctly: the read is read-risk, every state-changer is execute", () => {
+    // Matched to the macOS twins. `risk` selects the approval gate, so the same
+    // verb must not be gated more weakly just because the host is Windows;
+    // win_clipboard_set and win_screenshot were `write` against macOS's
+    // `execute` until this was aligned. actuator-risk-parity.test.ts pins the
+    // pairing itself so the two platforms cannot drift apart again.
     const tools = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_WINDOWS_ACTUATORS: "true" }), io: fakeIo(), userId: "stark" });
     const byName = new Map(tools.map((t) => [t.definition.name, t.definition.risk]));
     expect(byName.get("win_app_read")).toBe("read");
     expect(byName.get("win_app_open")).toBe("execute");
-    expect(byName.get("win_clipboard_set")).toBe("write");
-    expect(byName.get("win_screenshot")).toBe("write");
+    expect(byName.get("win_clipboard_set")).toBe("execute");
+    expect(byName.get("win_screenshot")).toBe("execute");
   });
 });
 

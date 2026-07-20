@@ -103,7 +103,7 @@ export function createLunarDateTool(now: () => Date): MuseTool {
   return {
     definition: {
       description:
-        "Returns the Korean LUNAR (음력) calendar date for a solar (양력) date — defaults to TODAY. Answers '오늘 음력 며칠이야?' / \"what's today's lunar date?\" / '2026-09-25는 음력으로 며칠?'. The local model can't compute the lunar calendar reliably; this is the exact answer (ICU dangi calendar, Korea timezone), and it marks a leap month (윤달). Do NOT use for the current solar clock time/date (use time_now) or to convert a LUNAR date BACK to solar (not supported here).",
+        "Returns the Korean LUNAR (음력) calendar date for a solar (양력) date — defaults to TODAY. Answers '오늘 음력 며칠이야?' / \"what's today's lunar date?\" / '2026-09-25는 음력으로 며칠?'. The local model can't compute the lunar calendar reliably; this is the exact answer (ICU dangi calendar, Korea timezone), and it marks a leap month (윤달). Do NOT use for the current solar clock time/date (use time_now) or to convert a LUNAR date BACK to solar (use lunar_to_solar).",
       domain: "core",
       inputSchema: {
         additionalProperties: false,

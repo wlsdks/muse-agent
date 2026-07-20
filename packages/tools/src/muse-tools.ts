@@ -85,7 +85,11 @@ function createJsonQueryTool(): MuseTool {
       inputSchema: {
         additionalProperties: false,
         properties: {
-          document: { description: "Source JSON value (object or array)." },
+          // A single "object" type, not the union the value actually accepts: a
+          // type array is the only one in the repo and several provider schema
+          // dialects (OpenAI strict, the Gemini sanitiser) reject it. Arrays
+          // still work at runtime; the description says so.
+          document: { description: "The JSON value to query — an object, or an array wrapped in one. e.g. { \"users\": [{ \"name\": \"Ada\" }] }.", type: "object" },
           path: { description: "Dotted path, e.g. 'users.0.name'.", type: "string" }
         },
         required: ["document", "path"],
@@ -240,8 +244,8 @@ function createRegexExtractTool(): MuseTool {
             description: "Regex flags subset of g/i/m/s/u/y. Defaults to 'g'.",
             type: "string"
           },
-          pattern: { description: "JavaScript regular expression source.", type: "string" },
-          text: { description: "Source text to scan.", type: "string" }
+          pattern: { description: "JavaScript regular expression source, e.g. '\\\\b\\\\d{4}-\\\\d{2}-\\\\d{2}\\\\b' to pull out ISO dates.", type: "string" },
+          text: { description: "The text to scan, e.g. a pasted email body or note.", type: "string" }
         },
         required: ["pattern", "text"],
         type: "object"

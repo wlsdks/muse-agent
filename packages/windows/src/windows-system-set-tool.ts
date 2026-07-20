@@ -40,7 +40,10 @@ export function createWinSystemSetTool(deps: WindowsToolDeps = {}): MuseTool {
       },
       keywords: ["volume", "볼륨", "소리", "mute", "음소거", "display", "화면", "screen", "sleep"],
       name: "win_system_set",
-      risk: "write"
+      // Same tier as the macOS twin: `risk` selects the approval gate, and the
+      // identical verb must not be gated more weakly just because the host is
+      // Windows.
+      risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
       const setting = typeof args["setting"] === "string" ? args["setting"].trim() : "";

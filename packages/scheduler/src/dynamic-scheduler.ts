@@ -303,19 +303,28 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
     },
     {
       definition: {
-        description: "Create a scheduler job for an agent or MCP tool workflow.",
+        description:
+          "Create a RECURRING scheduled job that runs an agent prompt or an MCP tool on a cron " +
+          "schedule. Use when the user wants something to happen repeatedly and unattended — e.g. " +
+          "'every weekday at 9am summarise my inbox', '매주 월요일 아침에 주간 일정 정리해줘'. Do NOT " +
+          "use it for a ONE-OFF reminder at a single time (that is a reminder, not a job), and NOT " +
+          "to run an existing job now (use scheduler_trigger_job).",
         inputSchema: {
           additionalProperties: true,
           properties: {
-            agentPrompt: { type: "string" },
-            cronExpression: { type: "string" },
-            jobType: { enum: ["agent", "mcp_tool"], type: "string" },
-            mcpServerName: { type: "string" },
-            name: { type: "string" },
-            tags: { items: { type: "string" }, type: "array" },
-            toolArguments: { type: "object" },
-            toolName: { type: "string" }
+            agentPrompt: { description: "For jobType 'agent': the instruction to run each time, e.g. 'Summarise unread mail and list anything needing a reply'.", type: "string" },
+            cronExpression: { description: "5-field cron schedule, e.g. '0 9 * * 1-5' for 09:00 every weekday, '30 7 * * *' for 07:30 daily.", type: "string" },
+            jobType: { description: "'agent' runs an agent prompt; 'mcp_tool' calls one MCP tool with fixed arguments.", enum: ["agent", "mcp_tool"], type: "string" },
+            mcpServerName: { description: "For jobType 'mcp_tool': the MCP server holding the tool, e.g. 'github'.", type: "string" },
+            name: { description: "Short human-readable job name, e.g. 'Weekday inbox digest'.", type: "string" },
+            tags: { description: "Optional labels for grouping, e.g. ['inbox', 'morning'].", items: { type: "string" }, type: "array" },
+            toolArguments: { description: "For jobType 'mcp_tool': the arguments object passed to the tool.", type: "object" },
+            toolName: { description: "For jobType 'mcp_tool': the tool to call, e.g. 'list_issues'.", type: "string" }
           },
+          // jobType stays OPTIONAL on purpose: the validator already defaults it,
+          // and a small local model that cannot fill a required arg abandons the
+          // tool entirely and picks a fillable confusable instead. The enum plus
+          // its description carry the choice without gating the call.
           required: ["cronExpression", "name"],
           type: "object"
         },
@@ -332,7 +341,11 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
     },
     {
       definition: {
-        description: "Trigger a scheduler job immediately and persist the execution result.",
+        description:
+          "RUN an existing scheduled job right now, FOR REAL, and record the result as its last run. " +
+          "Use when the user says to run or fire a job now — e.g. 'run the inbox digest job now', " +
+          "'지금 그 작업 실행해줘'. Do NOT use it to TEST a job without side effects (use " +
+          "scheduler_dry_run_job), and NOT to create a new job (use scheduler_create_job).",
         inputSchema: schedulerJobIdInputSchema(),
         domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "trigger", "run"],
@@ -348,7 +361,11 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
     },
     {
       definition: {
-        description: "Dry-run a scheduler job immediately without mutating the job's last status.",
+        description:
+          "TEST an existing scheduled job without side effects: it executes but does not record a run " +
+          "or change the job's status. Use when the user wants to check a job works — e.g. 'dry-run " +
+          "that job', '그 작업 한번 테스트해봐'. Do NOT use it when the user actually wants the job to " +
+          "take effect (use scheduler_trigger_job).",
         inputSchema: schedulerJobIdInputSchema(),
         domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "dry", "dry-run", "test"],
@@ -369,7 +386,7 @@ function schedulerJobIdInputSchema(): JsonObject {
   return {
     additionalProperties: false,
     properties: {
-      jobId: { type: "string" }
+      jobId: { description: "Id of an existing scheduled job, as returned by scheduler_list_jobs, e.g. 'job_7f3a'. If the user named the job in words, call scheduler_list_jobs first.", type: "string" }
     },
     required: ["jobId"],
     type: "object"
