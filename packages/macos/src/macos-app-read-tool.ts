@@ -52,6 +52,7 @@ function buildReadScript(app: MacReadApp, query: string): string {
       return [
         `set output to ""`,
         `tell application "Contacts"`,
+        `  if it is not running then return "not running"`,
         `  repeat with p in (people whose name contains "${escapeAppleScript(query)}")`,
         `    set pphones to ""`,
         `    repeat with ph in phones of p`,
@@ -69,6 +70,7 @@ function buildReadScript(app: MacReadApp, query: string): string {
     case "mail_unread":
       return [
         `tell application "Mail"`,
+        `  if it is not running then return "not running"`,
         `  set cnt to unread count of inbox`,
         `  set output to (cnt as text) & linefeed`,
         `  set i to 0`,
@@ -108,6 +110,7 @@ function buildReadScript(app: MacReadApp, query: string): string {
     case "reminders":
       return [
         `tell application "Reminders"`,
+        `  if it is not running then return "not running"`,
         `  set output to ""`,
         `  set allLists to every list`,
         `  repeat with rl in allLists`,
@@ -133,6 +136,7 @@ function buildReadScript(app: MacReadApp, query: string): string {
         `set todayEnd to todayStart + (24 * 60 * 60)`,
         `set output to ""`,
         `tell application "Calendar"`,
+        `  if it is not running then return "not running"`,
         `  repeat with aCal in every calendar`,
         `    set evts to (every event of aCal whose start date >= todayStart and start date < todayEnd)`,
         `    repeat with e in evts`,
@@ -147,6 +151,7 @@ function buildReadScript(app: MacReadApp, query: string): string {
     case "notes":
       return [
         `tell application "Notes"`,
+        `  if it is not running then return "not running"`,
         `  set output to ""`,
         `  set noteList to every note`,
         `  set maxCount to 20`,

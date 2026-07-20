@@ -6,6 +6,37 @@ import { createMacAppReadTool } from "./macos-app-read-tool.js";
 const ctx = { runId: "r", userId: "u1" };
 const ok = (stdout: string): MacCommandResult => ({ exitCode: 0, stderr: "", stdout, timedOut: false });
 
+/**
+ * Every read that targets a GUI app must ask `is running` FIRST.
+ *
+ * Without the guard, AppleScript LAUNCHES the app to answer the query: measured
+ * at 4,395 ms with Reminders.app appearing on the user's screen, versus 59 ms
+ * and no launch once guarded. A background read must never put a window in
+ * front of the user, so this is asserted per-app rather than spot-checked.
+ */
+describe("mac_app_read — a background read never wakes a dormant GUI app", () => {
+  const GUI_APP_READS = ["contacts", "mail_unread", "reminders", "calendar", "notes", "music", "safari_tab", "chrome_tab"] as const;
+
+  for (const app of GUI_APP_READS) {
+    it(`${app} checks 'is running' before touching the app`, async () => {
+      let script = "";
+      const runner: MacOsascriptRunner = async (s) => { script = s; return ok("not running"); };
+      const tool = createMacAppReadTool({ runner });
+      await tool.execute({ app, ...(app === "contacts" ? { query: "Jane" } : {}) }, ctx);
+
+      expect(script, `${app} builds an AppleScript`).toContain("tell application");
+      expect(script, `${app} must guard on 'is running'`).toMatch(/is (not )?running/u);
+      // The guard has to come BEFORE the first real query, or the app is
+      // already awake by the time it runs.
+      const guardAt = script.search(/is (not )?running/u);
+      const firstQueryAt = script.search(/\b(repeat with|unread count|every calendar|every note)/u);
+      if (firstQueryAt >= 0) {
+        expect(guardAt, `${app}: guard must precede the first query`).toBeLessThan(firstQueryAt);
+      }
+    });
+  }
+});
+
 describe("createMacAppReadTool", () => {
   it("is a well-formed read tool with an app enum", () => {
     const tool = createMacAppReadTool();
