@@ -15,3 +15,14 @@ export * from "./macos-tools.js";
 export * from "./macos-reminders-mirror.js";
 export * from "./macos-notes-mirror.js";
 export * from "./macos-contacts-import.js";
+
+export {
+  MAC_HELPER_READS,
+  MAC_HELPER_TIMEOUT_MS,
+  readMacHelper,
+  readMacWindows,
+  type MacHelperDeps,
+  type MacHelperRead,
+  type MacHelperResult,
+  type MacHelperWindow
+} from "./macos-helper.js";
