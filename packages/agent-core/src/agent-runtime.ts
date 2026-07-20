@@ -37,7 +37,6 @@ import type {
 import {
   DEFAULT_CHUNK_MAX_CHARS,
   summarizeDroppedContextInStages,
-  trimConversationMessages,
   verifyCompactionSummaryQuality,
   type ContextReferenceStore,
   type ConversationSummaryStore,
@@ -67,7 +66,7 @@ import {
   type ToolExposurePolicy
 } from "@muse/tools";
 
-import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-context.js";
+import type { ActiveContextProvider } from "./active-context.js";
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
 import { joinUserMessages } from "./internals.js";
 import {
@@ -155,7 +154,6 @@ import { applySkillsContext as applySkillsContextFn, type SkillCatalogProvider }
 import type { TelemetryAggregator } from "./telemetry-aggregator.js";
 import { DEFAULT_TOOL_EXPOSURE_CEILING, capToolsByRelevance, type ToolFilter } from "./tool-filter.js";
 import type {
-  AgentContextWindowReport,
   AgentRunContext,
   AgentRunInput,
   AgentRunResult,
@@ -187,6 +185,7 @@ import {
   seedEgressAuthorityFromMessages,
   settleWithin
 } from "./agent-runtime-helpers.js";
+import { prepareModelRequest } from "./agent-runtime-request.js";
 
 export { augmentCompactionSummary } from "./agent-runtime-helpers.js";
 
@@ -563,7 +562,7 @@ export class AgentRuntime {
     readonly inboxGroundingSources: readonly { readonly source: string; readonly text: string }[];
     readonly layeredContext: AgentRunContext;
     readonly playbookInjectedIds: readonly string[] | undefined;
-    readonly preparedRequest: ReturnType<AgentRuntime["prepareModelRequest"]>;
+    readonly preparedRequest: ReturnType<typeof prepareModelRequest>;
     readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
     readonly selected: { readonly provider: ModelProvider; readonly model: string };
     readonly summaryAppliedMessageCount: number;
@@ -631,7 +630,7 @@ export class AgentRuntime {
       this.userMemoryProvider,
       this.userMemoryMaxEntries
     );
-    let preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    let preparedRequest = prepareModelRequest(this.contextWindow, summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
     // When a compaction fired and an aux summarizer is configured,
     // summarize the dropped window with the cheap aux model and append it to
     // the deterministic [Conversation summary …] block. Fail-open — an empty
@@ -700,7 +699,7 @@ export class AgentRuntime {
     readonly cacheKey: string;
     readonly context: AgentRunContext;
     readonly execution: ModelLoopExecution;
-    readonly preparedRequest: ReturnType<AgentRuntime["prepareModelRequest"]>;
+    readonly preparedRequest: ReturnType<typeof prepareModelRequest>;
     readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
     readonly runSpan: SpanHandle;
     readonly selected: { readonly provider: ModelProvider; readonly model: string };
@@ -833,79 +832,6 @@ export class AgentRuntime {
     }
   }
 
-  private prepareModelRequest(
-    input: AgentRunInput,
-    model: string,
-    personaSnapshot?: string,
-    activeContextSnapshot?: ActiveContextSnapshot
-  ): {
-    readonly contextWindow?: AgentContextWindowReport;
-    readonly dropped?: readonly ModelMessage[];
-    readonly request: Pick<ModelRequest, "messages" | "metadata" | "model">;
-  } {
-    if (!this.contextWindow) {
-      return {
-        request: {
-          messages: input.messages,
-          metadata: input.metadata,
-          model
-        }
-      };
-    }
-
-    // Merge the resolved persona snapshot into the trim options so
-    // it becomes part of the compaction summary's `[User context: ...]`
-    // block when the trim fires. When unset
-    // (no provider / no userId / empty memory), trim sees `undefined`
-    // and behaves identically to before.
-    // Also pipe the active task / focus from the
-    // active-context snapshot into `importanceContext` so
-    // `scoreMessageImportance` boosts messages that mention the
-    // user's current work — otherwise the scorer only sees the
-    // hard-coded decision hints.
-    const importanceContext = activeContextSnapshot
-      ? {
-          ...(activeContextSnapshot.activeTask?.id ? { activeTaskId: activeContextSnapshot.activeTask.id } : {}),
-          ...(activeContextSnapshot.activeTask?.title ? { activeTaskTitle: activeContextSnapshot.activeTask.title } : {}),
-          ...(activeContextSnapshot.currentFocus ? { currentFocus: activeContextSnapshot.currentFocus } : {})
-        }
-      : undefined;
-    const hasImportance = importanceContext && Object.keys(importanceContext).length > 0;
-    const trimOptions: ConversationTrimOptions = {
-      ...this.contextWindow,
-      ...(personaSnapshot ? { personaSnapshot } : {}),
-      ...(hasImportance ? { importanceContext } : {})
-    };
-    const trimResult = trimConversationMessages(input.messages, trimOptions);
-
-    return {
-      contextWindow: {
-        budgetTokens: trimResult.budgetTokens,
-        estimatedTokens: trimResult.estimatedTokens,
-        removedCount: trimResult.removedCount,
-        summaryInserted: trimResult.summaryInserted,
-        triggeredBy: trimResult.triggeredBy
-      },
-      dropped: trimResult.dropped,
-      request: {
-        messages: trimResult.messages,
-        metadata: input.metadata,
-        model
-      }
-    };
-  }
-
-  /**
-   * Execute a parsed PTC {@link ToolPlan} where EVERY step runs through the SAME gated single-tool
-   * path as a native tool call ({@link executeToolCall}: beforeTool hook → approval gate → arg
-   * coercion/required/enum validation → arg grounding → executor → afterTool hook). It does not
-   * bypass or re-implement a single gate — it binds the plan interpreter's pluggable executor seam
-   * ({@link executeToolPlan}) to that method. A step whose gated call does not COMPLETE (denied,
-   * invalid, or failed) throws {@link ToolPlanStepBlockedError}, which aborts the plan before any
-   * later step runs, so a blocked step leaves no partial downstream effect. A 1-step plan is
-   * therefore gate-equivalent to a single native tool call. Phase 2 scope is gated EXECUTION only;
-   * grounding/citation of the plan's projected result is Phase 3.
-   */
   async executeToolPlanGated(plan: ToolPlan, context: AgentRunContext): Promise<ToolPlanResult> {
     const activeTools = this.modelTools(context);
     let stepIndex = 0;
