@@ -27,6 +27,7 @@ type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 // introducing a package -> app dependency. This also bounds direct callers.
 const MAX_RETRIEVAL_TOP_K = 20;
 const PAIR_AWARE_RERANK_WINDOW = 20;
+const PAIR_AWARE_RELEVANT_SLOTS = 10;
 
 export interface NoteRetrievalResult {
   /** The selected (MMR + graph + second-hop) chunks for the prompt window. */
@@ -127,7 +128,6 @@ export async function retrieveAndRankNotes(params: {
   let queryVec: number[] | undefined;
   let rerankDecision: RecallRerankDecision | undefined;
   let rerankPair: RecallRerankPairHint | undefined;
-  let rerankPairOrder: readonly number[] = [];
   let rerankWindow: readonly ScoredChunk[] = [];
   try {
     // S3 narrate-the-wait: a REAL stage delta before the embed — on a 10-40s local
@@ -177,6 +177,25 @@ export async function retrieveAndRankNotes(params: {
           if (!window.includes(candidate)) window.push(candidate);
         }
       }
+      if (rerankFn.mode === "correction-pair") {
+        const cosineRanked = [...allScored].sort((a, b) => b.score - a.score);
+        const staleCandidates = cosineRanked.filter((candidate) => detectStaleMarker(candidate.chunk.text));
+        const nonStaleCandidates = [...window, ...cosineRanked].filter((candidate, index, candidates) =>
+          !detectStaleMarker(candidate.chunk.text) && candidates.indexOf(candidate) === index
+        );
+        const currentLimit = Math.min(
+          nonStaleCandidates.length,
+          Math.max(Math.min(PAIR_AWARE_RELEVANT_SLOTS, windowLimit), windowLimit - staleCandidates.length)
+        );
+        const currentCoverage: ScoredChunk[] = [];
+        for (const candidate of nonStaleCandidates) {
+          if (currentCoverage.length >= currentLimit) break;
+          currentCoverage.push(candidate);
+        }
+        const staleCoverage = staleCandidates
+          .slice(0, Math.max(0, windowLimit - currentCoverage.length));
+        window.splice(0, window.length, ...currentCoverage, ...staleCoverage);
+      }
       rerankWindow = window;
       const pairAwareFallback = rerankFn.mode === "correction-pair"
         ? diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings)
@@ -201,7 +220,6 @@ export async function retrieveAndRankNotes(params: {
           };
           if (outcome === "success" && valid.length > 0) {
             rerankPair = selectHighestValidRerankPair(execution?.pairHints, window, valid);
-            rerankPairOrder = valid;
             if (rerankFn.mode !== "correction-pair" || rerankPair) {
               const chosen = valid.slice(0, topK).map((i) => window[i]!);
               for (const s of window) {
@@ -225,7 +243,7 @@ export async function retrieveAndRankNotes(params: {
       scored = preserveConflictPairs(scored, allScored, topK);
     }
     if (rerankPair) {
-      scored = preserveRerankPair(scored, rerankWindow, topK, rerankPair, rerankPairOrder);
+      scored = preserveRerankPair(scored, rerankWindow, topK, rerankPair);
     }
     // Graph-augmented recall (HippoRAG / GraphRAG): pull in chunks from notes 1-hop
     // LINKED from the CONFIDENT matches. Fabrication-SAFE: only the user's own real
@@ -383,17 +401,14 @@ function preserveRerankPair(
   selected: readonly ScoredChunk[],
   window: readonly ScoredChunk[],
   topK: number,
-  pair: RecallRerankPairHint,
-  order: readonly number[]
+  pair: RecallRerankPairHint
 ): ScoredChunk[] {
-  if (topK < 2) return [...selected];
   const current = window[pair.current];
   const stale = window[pair.stale];
   if (!current || !stale) return [...selected];
-  const rank = new Map(order.map((candidateIndex, position) => [candidateIndex, position]));
-  const insertAt = Math.min(pairRank(pair, rank), Math.max(0, topK - 2));
+  if (topK < 2) return topK === 1 ? [current] : [];
   const rest = selected.filter((candidate) => candidate !== current && candidate !== stale);
-  return [...rest.slice(0, insertAt), current, stale, ...rest.slice(insertAt)].slice(0, topK);
+  return [current, ...rest.slice(0, topK - 2), stale];
 }
 
 function preserveConflictPairs(selected: readonly ScoredChunk[], candidates: readonly ScoredChunk[], topK: number): ScoredChunk[] {

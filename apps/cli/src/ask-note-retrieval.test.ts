@@ -133,7 +133,7 @@ describe("parseRerankReply — strict, bounded best-first zero-based indices", (
 describe("createRecallRerankFn — bounded request timeout", () => {
   it("offers an explicit post-embedder warm seam without changing normal construction", async () => {
     const events = ["embedder-ready"];
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
       events.push("reranker-http");
       return { json: async () => ({ response: '{"pair":null}' }), ok: true };
     });
@@ -150,11 +150,14 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(warmed?.warmup).toEqual({ httpAttempts: 1, order: [0, 1], outcome: "success" });
     expect(warmed?.rerankFn).toBeTypeOf("function");
+    const warmBody = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as { prompt?: string };
+    expect(warmBody.prompt).toContain('Return ONLY the exact JSON shape {"pair":null}');
+    expect(warmBody.prompt).not.toContain('{"pair":{"current":');
   });
 
   it("makes one compact selector request and deterministically supplies identity order plus at most one pair", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
-      json: async () => ({ response: '{"pair":{"current":2,"stale":1}}' }),
+      json: async () => ({ response: '{"pair":{"current":2,"stale":11}}' }),
       ok: true
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -163,20 +166,30 @@ describe("createRecallRerankFn — bounded request timeout", () => {
 
     const result = await createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })!(
       "월세는 언제 보내나요?",
-      ["The office rent changed.", "Pay rent on the 25th."]
+      [
+        ...Array.from({ length: 10 }, (_value, index) => `Current candidate ${index + 1}`),
+        ...Array.from({ length: 10 }, (_value, index) => `This used to be stale candidate ${index + 11}; no longer current.`)
+      ]
     );
 
     expect(createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })?.mode).toBe("correction-pair");
-    expect(result).toEqual({ httpAttempts: 1, order: [0, 1], outcome: "success", pairHints: [{ current: 1, stale: 0 }] });
+    expect(result).toEqual({ httpAttempts: 1, order: Array.from({ length: 20 }, (_value, index) => index), outcome: "success", pairHints: [{ current: 1, stale: 10 }] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![1]!;
     const body = JSON.parse(request.body as string) as { format?: unknown; prompt?: string };
     expect(body.format).toBe("json");
     expect(body.prompt).toContain("월세는 언제 보내나요?");
     expect(body.prompt).toContain('{"pair":null}');
-    expect(body.prompt).toContain('{"pair":{"current":2,"stale":1}}');
+    expect(body.prompt).toContain('{"pair":{"current":1,"stale":11}}');
+    expect(body.prompt).not.toContain('{"pair":{"current":2,"stale":1}}');
     expect(body.prompt).not.toContain('"ranking"');
     expect(body.prompt).not.toContain('"pairs"');
+    expect(body.prompt?.match(/Choose the pair that most directly answers the query/gu)).toHaveLength(2);
+    expect(body.prompt).toContain("Ignore correction pairs about any other topic");
+    expect(body.prompt).toContain("stale must contain an explicit old or superseded marker; current must not");
+    expect(body.prompt).toContain('If uncertain, same-index, or either field would be null, return exactly {"pair":null}');
+    expect(body.prompt).toContain("CURRENT / NON-STALE CANDIDATES (allowed current indices: 1-10)");
+    expect(body.prompt).toContain("EXPLICIT-STALE CANDIDATES (allowed stale indices: 11-20)");
   });
 
   it("classifies timeout, empty, and invalid replies without retrying", async () => {

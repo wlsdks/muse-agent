@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { retrieveAndRankNotes, type RecallRerankExecution, type RecallRerankFn, type RecallRerankPairHint } from "./ask-note-retrieval.js";
 import type { FileEntry } from "./chunks.js";
+import { detectStaleMarker } from "./conflict.js";
 
 let dir: string;
 
@@ -531,7 +532,38 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
     expect(candidateCount).toBe(20);
     expect(conflictOnly.scored.map((item) => item.file)).not.toContain(files[7]!.path);
     expect(conflictOnly.scored.map((item) => item.file)).not.toContain(files[8]!.path);
-    expect(result.scored.map((item) => item.file)).toEqual([conflictOnly.scored[0]!.file, files[7]!.path, files[8]!.path]);
+    expect(result.scored.map((item) => item.file)).toEqual([files[7]!.path, conflictOnly.scored[0]!.file, files[8]!.path]);
+  });
+
+  it("reserves bounded stale-marker coverage when the target stale note falls outside the diversified top 20", async () => {
+    const files = await Promise.all(Array.from({ length: 30 }, async (_value, index) => {
+      const score = 0.99 - index * 0.015;
+      if (index === 4) return noteFile("target-current.md", "Office rent is 1300 now.", unit(score));
+      if (index === 27) return noteFile("target-stale.md", "I used to pay office rent 1200; no longer current.", unit(score));
+      if (index === 1 || (index >= 10 && index <= 17)) return noteFile(`other-stale-${index.toString()}.md`, `Archive ${index.toString()} used to be active; no longer current.`, unit(score));
+      return noteFile(`coverage-noise-${index.toString()}.md`, `Unrelated archive ${index.toString()}.`, unit(score));
+    }));
+    let targetAvailable = false;
+    let partitioned = false;
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]): Promise<RecallRerankExecution> => {
+      const current = texts.findIndex((text) => text.includes("1300 now"));
+      const stale = texts.findIndex((text) => text.includes("used to pay"));
+      targetAvailable = current >= 0 && stale >= 0;
+      partitioned = texts.slice(0, 10).every((text) => !detectStaleMarker(text))
+        && texts.slice(10).every((text) => detectStaleMarker(text));
+      return { httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success", pairHints: [{ current, stale }] };
+    }, { mode: "correction-pair" as const });
+
+    const result = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "???", rerankFn, scope: undefined, topK: 3
+    });
+
+    expect(targetAvailable).toBe(true);
+    expect(partitioned).toBe(true);
+    expect(result.scored[0]?.file).toBe(files[4]!.path);
+    expect(result.scored.map((item) => item.file)).toContain(files[27]!.path);
   });
 
   it("keeps no-pair and invalid pair-aware selections byte-equivalent to conflict-only scored output", async () => {

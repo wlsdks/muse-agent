@@ -7,6 +7,7 @@
  */
 
 import {
+  detectStaleMarker,
   retrieveAndRankNotes as retrieveAndRankNotesCore,
   type NoteRetrievalResult,
   type RecallRerankExecution,
@@ -145,14 +146,36 @@ async function ollamaRerank(
   timeoutMs: number
 ): Promise<RecallRerankExecution> {
   const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
-  const list = candidateTexts.map((text, i) => `[${(i + 1).toString()}] ${text}`).join("\n");
+  const firstStaleIndex = candidateTexts.findIndex((text) => detectStaleMarker(text));
+  const currentCount = firstStaleIndex === -1 ? candidateTexts.length : firstStaleIndex;
+  const currentList = candidateTexts
+    .slice(0, currentCount)
+    .map((text, index) => `[${(index + 1).toString()}] ${text}`)
+    .join("\n");
+  const staleList = candidateTexts
+    .slice(currentCount)
+    .map((text, index) => `[${(currentCount + index + 1).toString()}] ${text}`)
+    .join("\n");
+  const staleRange = currentCount < candidateTexts.length
+    ? `${(currentCount + 1).toString()}-${candidateTexts.length.toString()}`
+    : "none";
+  const pairShape = currentCount > 0 && currentCount < candidateTexts.length
+    ? `Return ONLY one exact JSON shape: {"pair":null} or {"pair":{"current":1,"stale":${(currentCount + 1).toString()}}}. No prose and no other keys.`
+    : "Return ONLY the exact JSON shape {\"pair\":null}. No prose and no other keys.";
   const prompt = [
-    "Select at most one correction pair only when two documents state the same fact and one is explicitly old or superseded.",
-    "같은 사실의 최신 문서와 명시적으로 폐기된 과거 문서 한 쌍만 선택하세요.",
-    `Use 1-based document numbers from 1 through ${candidateTexts.length.toString()}; current is the still-valid document and stale is the explicitly old one.`,
-    "Return ONLY one exact JSON shape: {\"pair\":null} or {\"pair\":{\"current\":2,\"stale\":1}}. No prose and no other keys.",
+    "Choose the pair that most directly answers the query. Select at most one correction pair only when two documents state the same fact.",
+    "질문에 가장 직접 답하는 같은 사실의 최신/과거 문서 한 쌍만 선택하세요.",
+    "Ignore correction pairs about any other topic.",
+    "For a valid pair, stale must contain an explicit old or superseded marker; current must not.",
+    `The current index MUST be in 1-${currentCount.toString()}; the stale index MUST be in ${staleRange}.`,
+    "If uncertain, same-index, or either field would be null, return exactly {\"pair\":null}.",
+    pairShape,
     `Query / 질문: ${query}`,
-    `Documents / 문서:\n${list}`
+    `CURRENT / NON-STALE CANDIDATES (allowed current indices: 1-${currentCount.toString()})\n${currentList}`,
+    currentCount < candidateTexts.length
+      ? `EXPLICIT-STALE CANDIDATES (allowed stale indices: ${staleRange})\n${staleList}`
+      : "EXPLICIT-STALE CANDIDATES (allowed stale indices: none)\nNo explicit-stale candidate is available; return exactly {\"pair\":null}.",
+    "Choose the pair that most directly answers the query; otherwise return exactly {\"pair\":null}."
   ].join("\n\n");
   try {
     const res = await fetch(`${base}/api/generate`, {
