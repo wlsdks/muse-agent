@@ -2427,7 +2427,7 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - [done] :: 언어 미러링: 비-한국어 입력에 그 언어로 답하는 결정론 PromptLayer(buildLanguageMirrorLayer) — prompt-system fire 7
 
 - [done] :: 정체성 primacy 코드 강제(caller priority clamp) — prompt-system fire 8 (감사 갭5)
-- [open] :: [감사갭1·높음] 캐시 경계 죽은 기능: MUSE_CACHE_BOUNDARY 마커가 매 턴 모델에 전송되나 splitPromptCacheBoundary/strip 소비 어댑터 0 -> anthropic/gemini cache_control 배치·Ollama strip 배선, 정적 preamble을 안정 프리픽스로 이동 (prompt-system 감사)
+- [open] 2026-07-20 :: [감사갭1] 캐시 경계 소비자 배선 잔여: 마커 누수 자체는 닫힘 (prompt-cache-safety.ts sanitizeRequestForProvider 복원, invokeModel + streamModelTurn 양쪽 마지막 홉에서 strip, MUTATION-RED 확인, smoke:broad 52/52). 잔여 작업은 소비 어댑터: anthropic/gemini cache_control 배치 + 정적 preamble을 안정 프리픽스로 이동. 소비 어댑터가 생기기 전에 sanitizer를 삭제하지 말 것 — e96a73cae가 휴면을 근거로 삭제했고 917f07fc1이 그 전제를 무효화해 두 달간 누수됨.
 - [open] :: [감사갭2·전략] "Learns you" 학습 user-model 동적 레이어: 현재 폼-미러링(반말/영어)만, 누적 학습(말투·약어·선호)을 memory/recall서 per-turn 블록으로 조립하는 게 빠짐 (hermes Honcho 대응)
 - [open] :: [감사갭3·중] 인젝션 provenance/taint 레이어: 툴출력 유래 토큰을 untrusted 마킹·액추에이터 인자 도달 금지(정적 regex 스캐너 보완, IFC 방향)
 - [open] :: [감사갭4·싸다] check:prompt-seam을 GitHub CI(.github/workflows/ci.yml)에 배선 — 현재 lint/check만, 정체성 게이트가 로컬 self-eval에만 (Ollama 불필요)

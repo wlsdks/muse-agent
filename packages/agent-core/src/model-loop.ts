@@ -58,6 +58,7 @@ import { isFirstPartyReadTool } from "./actuator-provenance-gate.js";
 import { capToolOutput, deriveAnchorTerms } from "./tool-output-cap.js";
 import { REVERIFY_NUDGE, ReverifyNudgeTracker, hasRunVerifyIntent, toolsIncludeExecute } from "./reverify-nudge.js";
 import { BudgetExhaustionTracker, budgetExhaustionNotice } from "./budget-exhaustion-notice.js";
+import { sanitizeRequestForProvider } from "./prompt-cache-safety.js";
 import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
@@ -914,7 +915,11 @@ async function* streamModelTurn(
 
   // The loop records its own usage via recordTokenUsageEvent below; flag the
   // request so a usage-recording provider decorator skips it (no double-count).
-  const flaggedRequest: ModelRequest = { ...request, metadata: { ...request.metadata, [USAGE_RECORDED_BY_RUNTIME_FLAG]: true } };
+  // The cache-boundary marker is a Muse-internal split point, never text for
+  // the model — strip it here, the last hop before the provider (the
+  // non-streaming path does the same in `invokeWithResilience`).
+  const sanitizedRequest = sanitizeRequestForProvider(request);
+  const flaggedRequest: ModelRequest = { ...sanitizedRequest, metadata: { ...sanitizedRequest.metadata, [USAGE_RECORDED_BY_RUNTIME_FLAG]: true } };
 
   const idleMs = runner.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
   try {

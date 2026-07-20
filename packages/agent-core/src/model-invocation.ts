@@ -24,6 +24,7 @@ import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observabili
 import { errorMessage, type JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import { sanitiseCitations } from "./citation-sanitiser.js";
+import { sanitizeRequestForProvider } from "./prompt-cache-safety.js";
 
 /**
  * Returns a new ModelRequest with `metadata.webSearchPolicy` populated by
@@ -161,15 +162,18 @@ function estimateRequestTokens(request: ModelRequest): number {
 }
 
 async function invokeWithResilience(args: InvokeModelArgs): Promise<ModelResponse> {
+  // The cache-boundary marker is a Muse-internal split point, never text for
+  // the model — strip it here, the last hop before the provider.
+  const request = sanitizeRequestForProvider(args.request);
   const operation = () => {
     if (args.requestTimeoutMs === undefined) {
-      return args.provider.generate(args.request);
+      return args.provider.generate(request);
     }
     // Scale the cap UP for large requests so a legitimately-slow large
     // local-model generation isn't killed prematurely; small requests
     // keep the base cap (byte-identical).
-    const timeoutMs = scaleRequestTimeout(args.requestTimeoutMs, estimateRequestTokens(args.request));
-    return withTimeout(() => args.provider.generate(args.request), timeoutMs);
+    const timeoutMs = scaleRequestTimeout(args.requestTimeoutMs, estimateRequestTokens(request));
+    return withTimeout(() => args.provider.generate(request), timeoutMs);
   };
   if (!args.retry) {
     return operation();
