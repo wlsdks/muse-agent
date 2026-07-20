@@ -26,3 +26,12 @@ export {
   type MacHelperResult,
   type MacHelperWindow
 } from "./macos-helper.js";
+
+export {
+  createMacObserveTool,
+  MAC_OBSERVE_SOURCES,
+  type MacObserveSource,
+  type MacObserveToolDeps
+} from "./macos-observe-tool.js";
+
+export { MAC_HELPER_BINARY_NAME, resolveMacHelperPath } from "./macos-helper-path.js";

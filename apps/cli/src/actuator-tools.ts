@@ -20,6 +20,8 @@ import { createEmailForwardTool, createEmailReplyTool, createEmailSendTool, crea
 import { defaultFileReadRoots, type FsWriteApprovalGate, type FsWriteDraft } from "@muse/fs";
 import { isWebEgressAllowed } from "@muse/model";
 import {
+  createMacObserveTool,
+  resolveMacHelperPath,
   createMacAppOpenTool,
   createMacAppReadTool,
   createMacClipboardSetTool,
@@ -117,8 +119,18 @@ export function summarizeActuators(env: MuseEnvironment, io: ProgramIO): Actuato
   // explicit opt-in power feature (darwin only) — off by default so a stray
   // box never arms an iMessage send, on when the user sets the flag.
   if (macActuatorsEnabled(env)) {
+    const macHelperPath = resolveMacHelperPath(env);
     armed.push(
-      "mac_shortcut_run", "mac_screen_read", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set",
+      "mac_shortcut_run", "mac_screen_read", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set"
+    );
+    // The banner must not advertise a tool the builder did not build — a test
+    // asserts the two sets are equal, and the helper binary may be absent.
+    if (macHelperPath) {
+      armed.push("mac_observe");
+    } else {
+      unavailable.push({ hint: "build apps/mac-helper (swift build -c release) for native window/focus state", name: "mac_observe" });
+    }
+    armed.push(
       "mac_screenshot", "mac_clipboard_set", "mac_spotlight_search", "mac_say", "mac_message_send", "mac_contacts_write"
     );
   }
@@ -530,6 +542,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   }
 
   if (macActuatorsEnabled(env)) {
+    const macHelperPath = resolveMacHelperPath(env);
     // Only the third-party send (mac_message_send) needs the draft-first gate;
     // mac_shortcut_run (local, user-authored) and mac_app_read (read-only) carry
     // no outbound-to-human risk, so they ride the runtime's execute/localMode
@@ -554,6 +567,10 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
         ...(env.MUSE_BLUETOOTH_OFF_SHORTCUT?.trim() ? { bluetoothOffShortcut: env.MUSE_BLUETOOTH_OFF_SHORTCUT.trim() } : {}),
         ...(env.MUSE_BRIGHTNESS_SHORTCUT?.trim() ? { brightnessShortcut: env.MUSE_BRIGHTNESS_SHORTCUT.trim() } : {})
       }),
+      // Native window/app state. Only exposed when the helper binary is present:
+      // a tool that can only ever answer "not installed" is worse than absent,
+      // since it still costs the model a selection choice every turn.
+      ...(macHelperPath ? [createMacObserveTool({ binaryPath: macHelperPath })] : []),
       createMacScreenshotTool(),
       createMacClipboardSetTool(),
       createMacSpotlightSearchTool(),
