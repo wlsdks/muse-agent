@@ -65,6 +65,29 @@ export interface ParsedPairAwareRerankReply {
   readonly pairHints?: readonly RecallRerankPairHint[];
 }
 
+export interface ParsedCorrectionPairReply {
+  readonly pair: RecallRerankPairHint | null;
+}
+
+/** Parses the correction selector's exact single-pair/null closed response. */
+export function parseCorrectionPairReply(reply: string, candidateCount: number): ParsedCorrectionPairReply | undefined {
+  if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
+  let parsed: unknown;
+  try { parsed = JSON.parse(reply.trim()); }
+  catch { return undefined; }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || Object.keys(parsed).length !== 1 || !("pair" in parsed)) return undefined;
+  if (parsed.pair === null) return { pair: null };
+  if (typeof parsed.pair !== "object" || Array.isArray(parsed.pair)) return undefined;
+  const keys = Object.keys(parsed.pair).sort();
+  if (keys.length !== 2 || keys[0] !== "current" || keys[1] !== "stale") return undefined;
+  const raw = parsed.pair as { readonly current?: unknown; readonly stale?: unknown };
+  if (!Number.isSafeInteger(raw.current) || !Number.isSafeInteger(raw.stale)) return undefined;
+  const current = (raw.current as number) - 1;
+  const stale = (raw.stale as number) - 1;
+  if (current < 0 || stale < 0 || current >= candidateCount || stale >= candidateCount || current === stale) return undefined;
+  return { pair: { current, stale } };
+}
+
 /** Parses a structured ranking with optional closed correction-pair hints; legacy numeric replies remain ranking-only. */
 export function parsePairAwareRerankReply(reply: string, candidateCount: number): ParsedPairAwareRerankReply | undefined {
   if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
@@ -124,11 +147,10 @@ async function ollamaRerank(
   const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
   const list = candidateTexts.map((text, i) => `[${(i + 1).toString()}] ${text}`).join("\n");
   const prompt = [
-    "Rank every document by how directly it answers the query, not by shared words.",
-    "질문 언어와 문서 언어가 달라도 의미를 기준으로 모든 문서를 정렬하세요.",
-    "Also identify correction pairs only when two documents state the same fact and one is explicitly old/superseded: current is the still-valid document and stale is the old one.",
-    "같은 사실의 최신 문서와 명시적으로 폐기된 과거 문서만 correction pair로 표시하세요.",
-    `Return ONLY valid JSON exactly like {"ranking":[2,1],"pairs":[{"current":2,"stale":1}]}. Use each integer from 1 through ${candidateTexts.length.toString()} once in ranking; pairs may be empty; no prose.`,
+    "Select at most one correction pair only when two documents state the same fact and one is explicitly old or superseded.",
+    "같은 사실의 최신 문서와 명시적으로 폐기된 과거 문서 한 쌍만 선택하세요.",
+    `Use 1-based document numbers from 1 through ${candidateTexts.length.toString()}; current is the still-valid document and stale is the explicitly old one.`,
+    "Return ONLY one exact JSON shape: {\"pair\":null} or {\"pair\":{\"current\":2,\"stale\":1}}. No prose and no other keys.",
     `Query / 질문: ${query}`,
     `Documents / 문서:\n${list}`
   ].join("\n\n");
@@ -150,9 +172,10 @@ async function ollamaRerank(
       return { httpAttempts: 1, outcome: "invalid" };
     }
     if (!response.trim()) return { httpAttempts: 1, outcome: "empty" };
-    const parsed = parsePairAwareRerankReply(response, candidateTexts.length);
+    const parsed = parseCorrectionPairReply(response, candidateTexts.length);
+    const identityOrder = candidateTexts.map((_text, index) => index);
     return parsed
-      ? { httpAttempts: 1, order: parsed.order, outcome: "success", ...(parsed.pairHints ? { pairHints: parsed.pairHints } : {}) }
+      ? { httpAttempts: 1, order: identityOrder, outcome: "success", ...(parsed.pair ? { pairHints: [parsed.pair] } : {}) }
       : { httpAttempts: 1, outcome: "invalid" };
   } catch (cause) {
     const name = typeof cause === "object" && cause !== null && "name" in cause ? cause.name : undefined;

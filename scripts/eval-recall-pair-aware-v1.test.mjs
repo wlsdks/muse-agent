@@ -35,7 +35,7 @@ test("one trial measures frozen v1 through distinct A baseline, B conflict-only,
       if (item.category === "correction-pair") return scored(item.currentSource, item.staleSource);
       return scored(item.expectedSource);
     },
-    rerankFn: Object.assign(async () => ({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] }), { mode: "correction-pair" }),
+    rerankFn: Object.assign(async () => ({ httpAttempts: 1, order: [0, 1], outcome: "success", pairHints: [{ current: 0, stale: 1 }] }), { mode: "correction-pair" }),
     sourceForFile: (file) => file,
     trial: 1
   });

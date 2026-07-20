@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { retrieveAndRankNotes, type RecallRerankExecution, type RecallRerankFn } from "./ask-note-retrieval.js";
+import { retrieveAndRankNotes, type RecallRerankExecution, type RecallRerankFn, type RecallRerankPairHint } from "./ask-note-retrieval.js";
 import type { FileEntry } from "./chunks.js";
 
 let dir: string;
@@ -517,38 +517,47 @@ describe("retrieveAndRankNotes — local-LLM rerank seam (opt-in via rerankFn)",
       return { httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success", pairHints: [{ current, stale }] };
     }, { mode: "correction-pair" as const });
 
+    const conflictOnly = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
+      embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
+      onStderr: () => {}, query: "???", scope: undefined, topK: 3
+    });
     const result = await retrieveAndRankNotes({
-      conflictAwareSelection: false,
+      conflictAwareSelection: true,
       embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
       onStderr: () => {}, query: "???", rerankFn, scope: undefined, topK: 3
     });
 
     expect(candidateCount).toBe(20);
-    expect(result.scored.map((item) => item.file)).toContain(files[7]!.path);
-    expect(result.scored.map((item) => item.file)).toContain(files[8]!.path);
+    expect(conflictOnly.scored.map((item) => item.file)).not.toContain(files[7]!.path);
+    expect(conflictOnly.scored.map((item) => item.file)).not.toContain(files[8]!.path);
+    expect(result.scored.map((item) => item.file)).toEqual([conflictOnly.scored[0]!.file, files[7]!.path, files[8]!.path]);
   });
 
-  it("fails open to conflict-only selection when explicit pair-aware output has no validated pair instead of applying generic ranking", async () => {
+  it("keeps no-pair and invalid pair-aware selections byte-equivalent to conflict-only scored output", async () => {
     const files = await vault();
     const baseline = await retrieveAndRankNotes({
       conflictAwareSelection: true,
       embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
       onStderr: () => {}, query: "rent transfer day", scope: undefined, topK: 1
     });
-    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]): Promise<RecallRerankExecution> => ({
-      httpAttempts: 1,
-      order: [texts.findIndex((text) => text.includes("25th"))],
-      outcome: "success"
-    }), { mode: "correction-pair" as const });
-
-    const pairAware = await retrieveAndRankNotes({
+    const run = (pairHints?: readonly RecallRerankPairHint[]) => retrieveAndRankNotes({
       conflictAwareSelection: true,
       embedFn, embedModel: "test-embed", indexFiles: files, json: true, notesDir: dir,
-      onStderr: () => {}, query: "rent transfer day", rerankFn, scope: undefined, topK: 1
+      onStderr: () => {}, query: "rent transfer day", rerankFn: Object.assign(async (_query: string, texts: readonly string[]): Promise<RecallRerankExecution> => ({
+        httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success", ...(pairHints ? { pairHints } : {})
+      }), { mode: "correction-pair" as const }), scope: undefined, topK: 1
     });
 
-    expect(pairAware.scored).toEqual(baseline.scored);
-    expect(pairAware.rerankPair).toBeUndefined();
+    for (const pairAware of [
+      await run(),
+      await run([{ current: 99, stale: 0 }]),
+      await run([{ current: 0, stale: 0 }]),
+      await run([{ current: 0, stale: 1 }])
+    ]) {
+      expect(pairAware.scored).toEqual(baseline.scored);
+      expect(pairAware.rerankPair).toBeUndefined();
+    }
   });
 
   it("keeps invalid or absent pair hints byte-equivalent to ranking-only selection", async () => {

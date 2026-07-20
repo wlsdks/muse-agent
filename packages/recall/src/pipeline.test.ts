@@ -427,6 +427,32 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     expect(prepared.scored.map((item) => item.file)).toEqual([current.path, stale.path]);
   });
 
+  it("keeps no-pair and invalid correction selector prepares byte-equivalent to conflict-only", async () => {
+    const files = [
+      { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-primary.md"), text: "WireGuard VPN MTU is 1380." },
+      { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2), 0], path: join(notesDir, "vpn-distractor.md"), text: "VPN meeting agenda." },
+      { embedding: [0.85, Math.sqrt(1 - 0.85 ** 2), 0], path: join(notesDir, "vpn-tail.md"), text: "VPN routing overview." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const base = {
+      embedFn: fakeEmbed,
+      options: { embedModel: EMBED_MODEL, topK: 1 },
+      query: "what MTU does my VPN use?",
+      sources: { notesDir, notesIndexFile: indexFile }
+    } as const;
+    const conflictOnly = await prepareGroundedRecall(base);
+    const runSelector = (pairHints?: readonly [{ readonly current: number; readonly stale: number }]) => prepareGroundedRecall({
+      ...base,
+      rerankFn: Object.assign(async (_query: string, texts: readonly string[]) => ({
+        httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success" as const, ...(pairHints ? { pairHints } : {})
+      }), { mode: "correction-pair" as const })
+    });
+
+    expect(await runSelector()).toEqual(conflictOnly);
+    expect(await runSelector([{ current: 0, stale: 1 }])).toEqual(conflictOnly);
+  });
+
   it("reuses a matching first-retrieval snapshot without invoking the reranker twice", async () => {
     const files = [
       { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2), 0], path: join(notesDir, "vpn-overview.md"), text: "VPN overview and routing notes." },
@@ -482,12 +508,12 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     await writeIndex(files);
     const index = await loadIndex(indexFile);
     let rerankCalls = 0;
-    const rerankFn = async (_query: string, texts: readonly string[]) => {
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]) => {
       rerankCalls += 1;
       const stale = texts.findIndex((text) => text.includes("used to pay"));
       const current = texts.findIndex((text) => text.includes("1300 now"));
-      return { httpAttempts: 1, order: [stale, current], outcome: "success" as const, pairHints: [{ current, stale }] };
-    };
+      return { httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success" as const, pairHints: [{ current, stale }] };
+    }, { mode: "correction-pair" as const });
     const first = await retrieveAndRankNotes({
       conflictAwareSelection: true, embedFn: async () => [1, 0], embedModel: EMBED_MODEL,
       indexFiles: index?.files ?? [], json: true, notesDir, onStderr: () => {}, query: "what is the office rent", rerankFn,

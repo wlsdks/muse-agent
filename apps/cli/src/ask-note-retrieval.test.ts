@@ -17,7 +17,7 @@ vi.mock("@muse/recall", async (importOriginal) => ({
 }));
 vi.mock("./embed.js", () => ({ embed: vi.fn() }));
 
-import { createRecallRerankFn, createWarmedRecallRerankFn, parsePairAwareRerankReply, parseRerankReply, resolveRerankModel, retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { createRecallRerankFn, createWarmedRecallRerankFn, parseCorrectionPairReply, parsePairAwareRerankReply, parseRerankReply, resolveRerankModel, retrieveAndRankNotes } from "./ask-note-retrieval.js";
 
 afterEach(() => {
   retrieveCore.mockClear();
@@ -73,6 +73,31 @@ describe("resolveRerankModel — default ON for local-model users, off for cloud
 });
 
 describe("parseRerankReply — strict, bounded best-first zero-based indices", () => {
+  it("parses only one exact correction pair or explicit null from 1-based to 0-based indices", () => {
+    expect(parseCorrectionPairReply('{"pair":{"current":20,"stale":19}}', 20)).toEqual({ pair: { current: 19, stale: 18 } });
+    expect(parseCorrectionPairReply('{"pair":null}', 20)).toEqual({ pair: null });
+  });
+
+  it("rejects ranking, pair arrays, unknown keys, prose, out-of-range, and same-index correction replies", () => {
+    for (const reply of [
+      '{"ranking":[1]}',
+      '{"pairs":[]}',
+      '{"pair":null,"unknown":true}',
+      '{"pair":{"current":2,"stale":1,"unknown":true}}',
+      '{"pair":{"current":21,"stale":1}}',
+      '{"pair":{"current":0,"stale":1}}',
+      '{"pair":{"current":2,"stale":2}}',
+      '[{"current":2,"stale":1}]',
+      "document 2 is current"
+    ]) expect(parseCorrectionPairReply(reply, 20)).toBeUndefined();
+  });
+
+  it("keeps the maximum 20-candidate valid selector reply structurally below the 64-token output cap", () => {
+    const maximumReply = '{"pair":{"current":20,"stale":19}}';
+    expect(new TextEncoder().encode(maximumReply).byteLength).toBeLessThan(64);
+    expect(parseCorrectionPairReply(maximumReply, 20)).toEqual({ pair: { current: 19, stale: 18 } });
+  });
+
   it("parses a closed 1-based correction pair hint alongside the complete ranking", () => {
     expect(parsePairAwareRerankReply(
       '{"ranking":[3,1,2],"pairs":[{"current":3,"stale":1}]}',
@@ -110,7 +135,7 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     const events = ["embedder-ready"];
     const fetchMock = vi.fn(async () => {
       events.push("reranker-http");
-      return { json: async () => ({ response: '{"ranking":[1,2]}' }), ok: true };
+      return { json: async () => ({ response: '{"pair":null}' }), ok: true };
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-warm-models.json");
@@ -127,9 +152,9 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     expect(warmed?.rerankFn).toBeTypeOf("function");
   });
 
-  it("makes one structured request and returns a typed, bounded bilingual ranking outcome", async () => {
+  it("makes one compact selector request and deterministically supplies identity order plus at most one pair", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
-      json: async () => ({ response: '{"ranking":[2,2,99,1],"pairs":[{"current":2,"stale":1}]}' }),
+      json: async () => ({ response: '{"pair":{"current":2,"stale":1}}' }),
       ok: true
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -142,14 +167,16 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     );
 
     expect(createRecallRerankFn({ MUSE_RECALL_RERANK: "qwen3:8b" })?.mode).toBe("correction-pair");
-    expect(result).toEqual({ httpAttempts: 1, order: [1, 0], outcome: "success", pairHints: [{ current: 1, stale: 0 }] });
+    expect(result).toEqual({ httpAttempts: 1, order: [0, 1], outcome: "success", pairHints: [{ current: 1, stale: 0 }] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![1]!;
     const body = JSON.parse(request.body as string) as { format?: unknown; prompt?: string };
     expect(body.format).toBe("json");
     expect(body.prompt).toContain("월세는 언제 보내나요?");
-    expect(body.prompt).toContain('{"ranking"');
-    expect(body.prompt).toContain('"pairs"');
+    expect(body.prompt).toContain('{"pair":null}');
+    expect(body.prompt).toContain('{"pair":{"current":2,"stale":1}}');
+    expect(body.prompt).not.toContain('"ranking"');
+    expect(body.prompt).not.toContain('"pairs"');
   });
 
   it("classifies timeout, empty, and invalid replies without retrying", async () => {
