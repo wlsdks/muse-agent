@@ -563,7 +563,13 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
       // the same append-only action log the other outbound actuators write, and
       // resolves a NAME → number from the contacts graph here (Rule 3: resolved,
       // never guessed) — bringing iMessage to email's recipient-resolution parity.
-      createMacMessageSendTool({
+      //
+      // Excluded under local-only for the same reason `email_*` is (line ~478):
+      // it transmits to a THIRD PARTY. Apple relays an iMessage through its own
+      // servers, so "the binary is local" does not make the send local — the
+      // local-only posture is about where the user's content GOES, not which
+      // process sends it.
+      ...(localOnly ? [] : [createMacMessageSendTool({
         actionLog: (entry) => appendActionLog(actionLogFile, entry),
         approvalGate: macMessageGate,
         resolveRecipient: async (name) => {
@@ -578,7 +584,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
           return recipient ? { name: resolution.contact.name, recipient, status: "resolved" } : { status: "unknown" };
         },
         userId
-      }),
+      })]),
       createMacContactsWriteTool({
         actionLog: (entry) => appendActionLog(actionLogFile, entry),
         approvalGate: buildContactsApprovalGate({

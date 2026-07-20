@@ -102,7 +102,11 @@ Precedence, highest first:
 not touched, exposes no actuators. Opt-in, never opt-out.
 
 **`MUSE_LOCAL_ONLY=true` forces third-party sends off regardless of mode.** The
-local-only posture already refuses cloud egress; a send is egress.
+local-only posture already refuses cloud egress; a send is egress. This is
+enforced at tool-construction in `buildActuatorTools`: `email_*` and
+`mac_message_send` (iMessage relays through Apple's servers) are excluded when
+local-only is on, so the model never sees them. Not deferred — a third-party
+send tool must never be reachable under local-only, in any mode.
 
 ## Gate behaviour
 

@@ -144,6 +144,18 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     expect(tools.map((t) => t.definition.name)).toContain("web_action");
   });
 
+  it("excludes mac_message_send under local-only — iMessage transmits to a third party via Apple's servers", () => {
+    // Same reason email_* is excluded: local-only is about where the content
+    // GOES, not which process sends it. Local mac tools stay; the send does not.
+    const localOnly = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_LOCAL_ONLY: "true", MUSE_MACOS_ACTUATORS: "1" }), io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
+    expect(localOnly).not.toContain("mac_message_send");
+    expect(localOnly).toContain("mac_say");
+    expect(localOnly).toContain("mac_shortcut_run");
+
+    const cloudOk = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_MACOS_ACTUATORS: "1" }), io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
+    expect(cloudOk).toContain("mac_message_send");
+  });
+
   it("does not read or construct Gmail actuators under injected local-only", () => {
     const localEnv = env({ MUSE_LOCAL_ONLY: "true" });
     Object.defineProperty(localEnv, "MUSE_GMAIL_TOKEN", {

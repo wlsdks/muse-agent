@@ -21,7 +21,8 @@ import { errorMessage } from "@muse/shared";
 
 import type { Readable } from "node:stream";
 
-import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildChatActuatorWiring } from "./chat-actuator-wiring.js";
 import type { Command } from "commander";
 
 import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type AgentRunResult, type KnowledgeMatch } from "@muse/agent-core";
@@ -286,7 +287,17 @@ export async function runLocalChat(
   if (model && model.startsWith("ollama/") && !process.env.MUSE_MODEL_PROVIDER_ID) {
     process.env.MUSE_MODEL_PROVIDER_ID = "ollama";
   }
-  const assembly = io.createRuntimeAssembly?.() ?? createMuseRuntimeAssembly();
+  // Actuator tools reach the model ONLY when the mode is not `off` (default).
+  // `runLocalChat` is single-shot per invocation, so this reads the mode fresh
+  // on each `muse chat` — a `muse config set actuators.mode` takes effect on
+  // the next invocation, with no daemon or process to restart.
+  const actuators = await buildChatActuatorWiring({
+    env: process.env as MuseEnvironment,
+    io,
+    userId: resolveDefaultUserKey({})
+  });
+  const assembly = io.createRuntimeAssembly?.()
+    ?? createMuseRuntimeAssembly(actuators.tools.length > 0 ? { extraTools: actuators.tools } : {});
 
   if (!assembly.agentRuntime || !(model ?? assembly.defaultModel)) {
     throw new Error("Local chat requires MUSE_MODEL and a configured model provider");
