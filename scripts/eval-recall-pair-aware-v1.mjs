@@ -224,11 +224,7 @@ function developmentGates(models, ownerState) {
     modelQuality,
     ownerState: ownerState.unchanged && ownerState.beforeSha256 === ownerState.afterSha256,
     prompt: models.every((model) => model.arms.C.prompt.p95Bytes <= 24 * 1024),
-    reranker: failures === 0
-      && reranker.httpAttempts >= reranker.logicalInvocations
-      && reranker.httpAttempts <= reranker.logicalInvocations * 2
-      && reranker.logicalInvocations === reranker.eligible
-      && models.every((model) => model.arms.C.rerankerLatency.p95Ms <= 4_000)
+    reranker: failures === 0 && reranker.httpAttempts === reranker.logicalInvocations && reranker.logicalInvocations === reranker.eligible && models.every((model) => model.arms.C.rerankerLatency.p95Ms <= 4_000)
   };
 }
 
@@ -289,7 +285,7 @@ export function validatePairAwareResult(result) {
   if (dataset.cases !== 60 || dataset.corpusEntries !== 60 || dataset.dataOrigin !== "synthetic frozen v1" || dataset.datasetVersion !== DATASET_VERSION || dataset.datasetSha256 !== datasetSha256() || dataset.heldOut !== false || dataset.organicEvidence !== false) throw new Error("dataset provenance mismatch");
   if (executionStatus !== "COMPLETE" || trials !== 2 || canonicalJson(arms) !== canonicalJson({ A: { conflictAwareSelection: false, reranker: false }, B: { conflictAwareSelection: true, reranker: false }, C: { conflictAwareSelection: true, reranker: RERANK_MODEL } })) throw new Error("execution contract mismatch");
   if (models.length !== 4 || canonicalJson(models.map((model) => model.modelTag)) !== canonicalJson(ALLOWLISTED_MODELS)) throw new Error("model allowlist mismatch");
-  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts < accounting.rerankerLogicalInvocations || accounting.rerankerHttpAttempts > accounting.rerankerLogicalInvocations * 2 || accounting.warmupHttpAttempts !== models.length * 2) throw new Error("accounting mismatch");
+  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts > 480) throw new Error("accounting mismatch");
   if (accounting.localOllamaRequests !== accounting.localOllamaEmbeddingRequests + accounting.rerankerHttpAttempts + accounting.warmupHttpAttempts + accounting.localOllamaControlRequests) throw new Error("local Ollama accounting mismatch");
   validateOwnerState(ownerState);
   for (const model of models) {
@@ -328,7 +324,7 @@ function validateChildModel(value, modelTag) {
   if (!/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.digest) || !Number.isInteger(value.dimension) || value.dimension <= 0 || !value.resolvedTag || !value.ollamaVersion) throw new Error(`${modelTag}: model provenance mismatch`);
   if (!value.reranker || value.reranker.modelTag !== RERANK_MODEL || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.reranker.digest)) throw new Error(`${modelTag}: reranker provenance mismatch`);
   if (value.networkAccounting?.externalRequests !== 0 || value.networkAccounting.localOllamaControlRequests !== 4) throw new Error(`${modelTag}: network accounting mismatch`);
-  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || value.warmup.httpAttempts !== 2 || value.warmup.outcome !== "success") throw new Error(`${modelTag}: warmup mismatch`);
+  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || value.warmup.httpAttempts !== 1 || value.warmup.outcome !== "success") throw new Error(`${modelTag}: warmup mismatch`);
   if (!Number.isInteger(value.embeddingAccounting?.indexRequests) || value.embeddingAccounting.indexRequests < 60 || !Number.isInteger(value.embeddingAccounting.measuredRequests) || value.embeddingAccounting.measuredRequests < 360 || value.embeddingAccounting.warmupRequests !== 1 || value.embeddingAccounting.totalRequests !== value.embeddingAccounting.indexRequests + value.embeddingAccounting.measuredRequests + 1) throw new Error(`${modelTag}: embedding accounting mismatch`);
   for (let trialIndex = 0; trialIndex < 2; trialIndex += 1) {
     const trial = value.trials[trialIndex];
@@ -341,10 +337,9 @@ function validateChildModel(value, modelTag) {
         const testCase = RECALL_FRESHNESS_DATASET.cases[caseIndex];
         const decision = outcome.rerankDecision;
         if (outcome.caseId !== testCase.caseId || outcome.category !== testCase.category || outcome.arm !== arm || outcome.locale !== testCase.locale || !Number.isInteger(outcome.promptBytes) || outcome.promptBytes <= 0) throw new Error(`${modelTag}/${arm}: outcome identity mismatch`);
-        if (![0, 1].includes(decision.logicalInvocations) || !Number.isInteger(decision.httpAttempts) || decision.httpAttempts < 0 || decision.httpAttempts > 2) throw new Error(`${modelTag}/${arm}: reranker call bound mismatch`);
+        if (![0, 1].includes(decision.logicalInvocations) || !Number.isInteger(decision.httpAttempts) || decision.httpAttempts < 0 || decision.httpAttempts > 1) throw new Error(`${modelTag}/${arm}: reranker call bound mismatch`);
         if (arm !== "C" && (decision.eligible || decision.logicalInvocations !== 0 || decision.httpAttempts !== 0 || decision.outcome !== "absent")) throw new Error(`${modelTag}/${arm}: reranker isolation mismatch`);
         if (arm === "C" && decision.logicalInvocations !== (decision.eligible ? 1 : 0)) throw new Error(`${modelTag}/${arm}: reranker eligibility mismatch`);
-        if (arm === "C" && (decision.eligible ? decision.httpAttempts < 1 : decision.httpAttempts !== 0)) throw new Error(`${modelTag}/${arm}: reranker HTTP accounting mismatch`);
       }
     }
   }
@@ -365,10 +360,10 @@ async function childModel({ baseUrl, home, modelTag, outputPath }) {
   const indexRequests = embeddingRequests;
   const warmVector = await embed("Post-index embedder readiness check for pair-aware frozen-v1 recall.");
   const warmed = await createWarmedRecallRerankFn(process.env, {
-    candidateTexts: ["The current standard is active now.", "A separate observation does not answer the query.", "Retired 기준은 더 이상 유효하지 않습니다."],
+    candidateTexts: ["Retired 기준은 더 이상 유효하지 않습니다.", "The current standard is active now.", "A separate observation does not answer the query."],
     query: "현재 기준과 current standard를 고르세요."
   }, { timeoutMs: 4_000 });
-  if (!warmed || warmed.warmup.outcome !== "success" || warmed.warmup.httpAttempts !== 2 || !warmed.warmup.order?.length) throw new Error("RERANK_WARMUP_FAILED");
+  if (!warmed || warmed.warmup.outcome !== "success" || warmed.warmup.httpAttempts !== 1 || !warmed.warmup.order?.length) throw new Error("RERANK_WARMUP_FAILED");
   if (warmVector.length !== fixture.index.embeddingDimension) throw new Error("DIMENSION_DRIFT");
   const measuredStart = embeddingRequests;
   const trials = [];

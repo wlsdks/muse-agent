@@ -26,7 +26,7 @@ type CoreParams = Parameters<typeof retrieveAndRankNotesCore>[0];
 const PRODUCTION_RERANK_TIMEOUT_MS = 4000;
 
 export interface RecallRerankOptions {
-  /** Total staged deadline; bounded by the unchanged 4,000ms production ceiling. */
+  /** Request timeout; bounded by the unchanged 4,000ms production ceiling. */
   readonly timeoutMs?: number;
 }
 
@@ -68,37 +68,6 @@ export interface ParsedPairAwareRerankReply {
 
 export interface ParsedCorrectionPairReply {
   readonly pair: RecallRerankPairHint | null;
-}
-
-export interface ParsedCorrectionCurrentReply {
-  readonly current: number | null;
-}
-
-export interface ParsedCorrectionStaleReply {
-  readonly stale: number | null;
-}
-
-function parseCorrectionStageReply(reply: string, candidateCount: number, key: "current" | "stale"): number | null | undefined {
-  if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
-  let parsed: unknown;
-  try { parsed = JSON.parse(reply.trim()); }
-  catch { return undefined; }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || Object.keys(parsed).length !== 1 || !(key in parsed)) return undefined;
-  const value = (parsed as Record<string, unknown>)[key];
-  if (value === null) return null;
-  if (!Number.isSafeInteger(value)) return undefined;
-  const index = (value as number) - 1;
-  return index >= 0 && index < candidateCount ? index : undefined;
-}
-
-export function parseCorrectionCurrentReply(reply: string, candidateCount: number): ParsedCorrectionCurrentReply | undefined {
-  const current = parseCorrectionStageReply(reply, candidateCount, "current");
-  return current === undefined ? undefined : { current };
-}
-
-export function parseCorrectionStaleReply(reply: string, candidateCount: number): ParsedCorrectionStaleReply | undefined {
-  const stale = parseCorrectionStageReply(reply, candidateCount, "stale");
-  return stale === undefined ? undefined : { stale };
 }
 
 /** Parses the correction selector's exact single-pair/null closed response. */
@@ -179,81 +148,62 @@ async function ollamaRerank(
   const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
   const firstStaleIndex = candidateTexts.findIndex((text) => detectStaleMarker(text));
   const currentCount = firstStaleIndex === -1 ? candidateTexts.length : firstStaleIndex;
-  const staleCount = candidateTexts.length - currentCount;
-  const identityOrder = candidateTexts.map((_text, index) => index);
-  if (currentCount === 0) return { httpAttempts: 0, outcome: "empty" };
   const currentList = candidateTexts
     .slice(0, currentCount)
     .map((text, index) => `[${(index + 1).toString()}] ${text}`)
     .join("\n");
   const staleList = candidateTexts
     .slice(currentCount)
-    .map((text, index) => `[${(index + 1).toString()}] ${text}`)
+    .map((text, index) => `[${(currentCount + index + 1).toString()}] ${text}`)
     .join("\n");
-  const currentPrompt = [
-    "Choose the one current, still-valid document that most directly answers the query.",
-    "질문에 가장 직접 답하는 현재 유효한 문서 하나만 선택하세요.",
-    `Use a 1-based current index from 1-${currentCount.toString()}. If uncertain, return exactly {"current":null}.`,
-    "Return ONLY one exact JSON shape: {\"current\":null} or {\"current\":1}. No prose and no other keys.",
+  const staleRange = currentCount < candidateTexts.length
+    ? `${(currentCount + 1).toString()}-${candidateTexts.length.toString()}`
+    : "none";
+  const pairShape = currentCount > 0 && currentCount < candidateTexts.length
+    ? `Return ONLY one exact JSON shape: {"pair":null} or {"pair":{"current":1,"stale":${(currentCount + 1).toString()}}}. No prose and no other keys.`
+    : "Return ONLY the exact JSON shape {\"pair\":null}. No prose and no other keys.";
+  const prompt = [
+    "Choose the pair that most directly answers the query. Select at most one correction pair only when two documents state the same fact.",
+    "질문에 가장 직접 답하는 같은 사실의 최신/과거 문서 한 쌍만 선택하세요.",
+    "Ignore correction pairs about any other topic.",
+    "For a valid pair, stale must contain an explicit old or superseded marker; current must not.",
+    `The current index MUST be in 1-${currentCount.toString()}; the stale index MUST be in ${staleRange}.`,
+    "If uncertain, same-index, or either field would be null, return exactly {\"pair\":null}.",
+    pairShape,
     `Query / 질문: ${query}`,
     `CURRENT / NON-STALE CANDIDATES (allowed current indices: 1-${currentCount.toString()})\n${currentList}`,
-    "Choose the document that most directly answers the query; otherwise return exactly {\"current\":null}."
+    currentCount < candidateTexts.length
+      ? `EXPLICIT-STALE CANDIDATES (allowed stale indices: ${staleRange})\n${staleList}`
+      : "EXPLICIT-STALE CANDIDATES (allowed stale indices: none)\nNo explicit-stale candidate is available; return exactly {\"pair\":null}.",
+    "Choose the pair that most directly answers the query; otherwise return exactly {\"pair\":null}."
   ].join("\n\n");
-  const deadline = Date.now() + timeoutMs;
-  const request = async (prompt: string): Promise<{ readonly attempted: boolean; readonly outcome: RecallRerankExecution["outcome"]; readonly response?: string }> => {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) return { attempted: false, outcome: "timeout" };
-    try {
-      const res = await fetch(`${base}/api/generate`, {
-        body: JSON.stringify({ format: "json", model, options: { num_predict: 64, temperature: 0 }, prompt, stream: false, think: false }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        signal: AbortSignal.timeout(Math.max(1, Math.ceil(remainingMs)))
-      });
-      if (!res.ok) return { attempted: true, outcome: "error" };
-      let response: string;
-      try {
-        const json = await res.json() as { readonly response?: unknown };
-        response = typeof json.response === "string" ? json.response : "";
-      } catch {
-        return { attempted: true, outcome: "invalid" };
-      }
-      return response.trim() ? { attempted: true, outcome: "success", response } : { attempted: true, outcome: "empty" };
-    } catch (cause) {
-      const name = typeof cause === "object" && cause !== null && "name" in cause ? cause.name : undefined;
-      return { attempted: true, outcome: name === "AbortError" || name === "TimeoutError" ? "timeout" : "error" };
+  try {
+    const res = await fetch(`${base}/api/generate`, {
+      body: JSON.stringify({ format: "json", model, options: { num_predict: 64, temperature: 0 }, prompt, stream: false, think: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) {
+      return { httpAttempts: 1, outcome: "error" };
     }
-  };
-
-  const first = await request(currentPrompt);
-  if (first.outcome !== "success" || first.response === undefined) return { httpAttempts: first.attempted ? 1 : 0, outcome: first.outcome };
-  const selectedCurrent = parseCorrectionCurrentReply(first.response, currentCount);
-  if (!selectedCurrent) return { httpAttempts: 1, outcome: "invalid" };
-  if (selectedCurrent.current === null || staleCount === 0) return { httpAttempts: 1, order: identityOrder, outcome: "success" };
-
-  const stalePrompt = [
-    "Choose the one explicitly old or superseded document that states the same fact as the selected current document.",
-    "선택된 현재 문서와 같은 사실을 말하는 명시적으로 폐기된 과거 문서 하나만 선택하세요.",
-    `Use a 1-based stale index from 1-${staleCount.toString()}. If uncertain, return exactly {"stale":null}.`,
-    "Return ONLY one exact JSON shape: {\"stale\":null} or {\"stale\":1}. No prose and no other keys.",
-    `Query / 질문: ${query}`,
-    `SELECTED CURRENT DOCUMENT:\n${candidateTexts[selectedCurrent.current]}`,
-    `EXPLICIT-STALE CANDIDATES (allowed stale indices: 1-${staleCount.toString()})\n${staleList}`,
-    "Choose only its stale counterpart; otherwise return exactly {\"stale\":null}."
-  ].join("\n\n");
-  const second = await request(stalePrompt);
-  const totalAttempts = 1 + (second.attempted ? 1 : 0);
-  if (second.outcome !== "success" || second.response === undefined) return { httpAttempts: totalAttempts, outcome: second.outcome };
-  const selectedStale = parseCorrectionStaleReply(second.response, staleCount);
-  if (!selectedStale) return { httpAttempts: totalAttempts, outcome: "invalid" };
-  return selectedStale.stale === null
-    ? { httpAttempts: totalAttempts, order: identityOrder, outcome: "success" }
-    : {
-        httpAttempts: totalAttempts,
-        order: identityOrder,
-        outcome: "success",
-        pairHints: [{ current: selectedCurrent.current, stale: currentCount + selectedStale.stale }]
-      };
+    let response: string;
+    try {
+      const json = await res.json() as { readonly response?: unknown };
+      response = typeof json.response === "string" ? json.response : "";
+    } catch {
+      return { httpAttempts: 1, outcome: "invalid" };
+    }
+    if (!response.trim()) return { httpAttempts: 1, outcome: "empty" };
+    const parsed = parseCorrectionPairReply(response, candidateTexts.length);
+    const identityOrder = candidateTexts.map((_text, index) => index);
+    return parsed
+      ? { httpAttempts: 1, order: identityOrder, outcome: "success", ...(parsed.pair ? { pairHints: [parsed.pair] } : {}) }
+      : { httpAttempts: 1, outcome: "invalid" };
+  } catch (cause) {
+    const name = typeof cause === "object" && cause !== null && "name" in cause ? cause.name : undefined;
+    return { httpAttempts: 1, outcome: name === "AbortError" || name === "TimeoutError" ? "timeout" : "error" };
+  }
 }
 
 /** Select one local-only reranker function for the entire ask turn. */

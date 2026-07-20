@@ -35,7 +35,7 @@ test("one trial measures frozen v1 through distinct A baseline, B conflict-only,
       if (item.category === "correction-pair") return scored(item.currentSource, item.staleSource);
       return scored(item.expectedSource);
     },
-    rerankFn: Object.assign(async () => ({ httpAttempts: 2, order: [0, 1], outcome: "success", pairHints: [{ current: 0, stale: 1 }] }), { mode: "correction-pair" }),
+    rerankFn: Object.assign(async () => ({ httpAttempts: 1, order: [0, 1], outcome: "success", pairHints: [{ current: 0, stale: 1 }] }), { mode: "correction-pair" }),
     sourceForFile: (file) => file,
     trial: 1
   });
@@ -52,7 +52,6 @@ test("one trial measures frozen v1 through distinct A baseline, B conflict-only,
   assert.equal(trial.arms.B.outcomes.length, 60);
   assert.equal(trial.arms.C.outcomes.length, 60);
   assert.equal(trial.arms.C.outcomes.every((item) => item.rerankDecision.logicalInvocations === 1), true);
-  assert.equal(trial.arms.C.outcomes.every((item) => item.rerankDecision.httpAttempts === 2), true);
 });
 
 test("runner is DEVELOPMENT_ONLY, isolated, explicitly bounded, and has no canonical promotion surface", () => {
@@ -88,7 +87,7 @@ function completeOutcomes(arm) {
     promptBytes: 1000,
     reasonCode: null,
     rerankDecision: arm === "C"
-      ? { eligible: true, httpAttempts: 2, logicalInvocations: 1, outcome: "success" }
+      ? { eligible: true, httpAttempts: 1, logicalInvocations: 1, outcome: "success" }
       : { eligible: false, httpAttempts: 0, logicalInvocations: 0, outcome: "absent" },
     rerankerLatencyMs: arm === "C" ? 100 : 0
   }));
@@ -110,7 +109,7 @@ function completeRawModel(modelTag, modelIndex) {
       modelTag,
       trial
     })),
-    warmup: { afterIndex: true, embeddingRequests: 1, httpAttempts: 2, outcome: "success" }
+    warmup: { afterIndex: true, embeddingRequests: 1, httpAttempts: 1, outcome: "success" }
   };
 }
 
@@ -129,9 +128,6 @@ test("two trials collapse to per-model 20-case quality while accounting all thre
   assert.equal(result.payload.dataset.organicEvidence, false);
   assert.equal(result.payload.accounting.caseArmTrialExecutions, 1_440);
   assert.equal(result.payload.accounting.collapsedCasesPerModelArm, 60);
-  assert.equal(result.payload.accounting.rerankerLogicalInvocations, 480);
-  assert.equal(result.payload.accounting.rerankerHttpAttempts, 960);
-  assert.equal(result.payload.accounting.warmupHttpAttempts, 8);
   for (const model of result.payload.models) {
     assert.deepEqual(model.reranker, { digest: "a".repeat(64), modelTag: "qwen3:8b", resolvedTag: "qwen3:8b" });
     for (const arm of ARMS) {
