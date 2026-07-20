@@ -98,7 +98,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            limit: { type: "number" },
+            limit: { description: "Maximum patterns to return, e.g. 20.", type: "number" },
             minConfidence: { description: "0..1 floor. Default 0.", type: "number" }
           },
           type: "object"
@@ -129,7 +129,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
         },
         inputSchema: {
           additionalProperties: false,
-          properties: { limit: { type: "number" } },
+          properties: { limit: { description: "Maximum history entries to return, e.g. 20.", type: "number" } },
           type: "object"
         },
         domain: "memory",
@@ -156,7 +156,7 @@ export function createPatternsMcpServer(options: PatternsMcpServerOptions): Loop
         },
         inputSchema: {
           additionalProperties: false,
-          properties: { confirm: { type: "boolean" } },
+          properties: { confirm: { description: "Must be true to actually reset; false or omitted performs no change.", type: "boolean" } },
           required: ["confirm"],
           type: "object"
         },

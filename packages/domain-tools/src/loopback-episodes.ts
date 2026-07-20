@@ -158,7 +158,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            limit: { type: "number" },
+            limit: { description: "Maximum episodes to return, e.g. 10. Omit for the default.", type: "number" },
             mode: {
               description:
                 "'substring' (default) for case-insensitive grep; 'llm-judge' asks the model to pick relevant ids from the full episode list (one extra round-trip; catches paraphrase recall — 'Notion thing' → matches an episode tagged 'Notion').",
@@ -166,7 +166,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
               type: "string"
             },
             query: { description: "Substring (mode=substring) or natural-language query (mode=llm-judge).", type: "string" },
-            userId: { type: "string" }
+            userId: { description: "Whose episodes to search. Omit for the current user.", type: "string" }
           },
           required: ["query"],
           type: "object"
@@ -195,7 +195,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" }
+            id: { description: "Episode id from a prior `list` or `search` result, e.g. 'ep_2f41'.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -226,7 +226,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" }
+            id: { description: "Episode id from a prior `list` or `search` result, e.g. 'ep_2f41'.", type: "string" }
           },
           required: ["id"],
           type: "object"

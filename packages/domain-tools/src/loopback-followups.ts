@@ -73,7 +73,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            status: { enum: ["scheduled", "fired", "cancelled", "all"], type: "string" }
+            status: { description: "Which follow-ups to list: 'scheduled' (still upcoming), 'fired' (already surfaced), 'cancelled', or 'all'. Defaults to scheduled.", enum: ["scheduled", "fired", "cancelled", "all"], type: "string" }
           },
           type: "object"
         },
