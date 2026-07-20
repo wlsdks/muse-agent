@@ -5,8 +5,10 @@ import { RECALL_FRESHNESS_DATASET } from "./eval-recall-freshness-ablation.mjs";
 import {
   DEV_GATE_REPEAT,
   aggregateStrictPassK,
+  buildDevCaseDiagnostics,
   devGateFailureCode,
   scoreDevRecallCase,
+  validateDevCaseDiagnostics,
   validateDevNetworkAccounting
 } from "./eval-recall-dev-gate.mjs";
 
@@ -61,6 +63,41 @@ test("strict pass^3 collapses a case only when every repeat passes", () => {
   assert.equal(result.passed, true);
   trials[2].outcomes[20].ok = false;
   assert.equal(aggregateStrictPassK(trials, cases).passed, false);
+});
+
+test("visible-dev diagnostics expose only opaque identity and closed aggregate outcomes", () => {
+  const cases = [{ caseId: "opaque-1", category: "correction-pair", locale: "ko" }];
+  const trials = [
+    { outcomes: [{ caseId: "opaque-1", category: "correction-pair", currentTop1: true, ok: true, pairRetained: true, reasonCode: null, rerankDecision: { outcome: "success" }, selectorPairKind: "expected" }] },
+    { outcomes: [{ caseId: "opaque-1", category: "correction-pair", currentTop1: false, ok: false, pairRetained: false, reasonCode: "PAIR_MISSING_OR_REVERSED", rerankDecision: { outcome: "success" }, selectorPairKind: "wrong" }] },
+    { outcomes: [{ caseId: "opaque-1", category: "correction-pair", currentTop1: true, ok: false, pairRetained: false, reasonCode: "PAIR_MISSING_OR_REVERSED", rerankDecision: { outcome: "invalid" }, selectorPairKind: "null" }] }
+  ];
+  const diagnostics = buildDevCaseDiagnostics(trials, cases);
+  assert.deepEqual(diagnostics, [{
+    caseId: "opaque-1",
+    category: "correction-pair",
+    currentTop1Repeats: 2,
+    decisionOutcomes: { invalid: 1, success: 2 },
+    locale: "ko",
+    pairRetainedRepeats: 1,
+    passedRepeats: 1,
+    reasonCodes: { PAIR_MISSING_OR_REVERSED: 2, PASS: 1 },
+    selectorPairKinds: { expected: 1, null: 1, wrong: 1 }
+  }]);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /query|candidate|prompt|source|\/Users\//u);
+  assert.equal(validateDevCaseDiagnostics(diagnostics, cases), diagnostics);
+
+  const leaking = structuredClone(diagnostics);
+  leaking[0].rawQuery = "private";
+  assert.throws(() => validateDevCaseDiagnostics(leaking, cases), /CHILD_OUTPUT_INVALID/u);
+
+  const unknownOutcome = structuredClone(diagnostics);
+  unknownOutcome[0].decisionOutcomes = { "raw model text": 3 };
+  assert.throws(() => validateDevCaseDiagnostics(unknownOutcome, cases), /CHILD_OUTPUT_INVALID/u);
+
+  const inconsistent = structuredClone(diagnostics);
+  inconsistent[0].reasonCodes = { PASS: 3 };
+  assert.throws(() => validateDevCaseDiagnostics(inconsistent, cases), /CHILD_OUTPUT_INVALID/u);
 });
 
 test("network accounting is content-blind, exact, and rejects answer or unknown traffic", () => {

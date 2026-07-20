@@ -27,8 +27,8 @@ import {
   writeAtomic
 } from "./recall-eval-runtime-common.mjs";
 
-export const DEV_GATE_SCHEMA_VERSION = "muse-recall-dev-gate.v1";
-export const DEV_GATE_CHILD_SCHEMA_VERSION = "muse-recall-dev-gate-child.v1";
+export const DEV_GATE_SCHEMA_VERSION = "muse-recall-dev-gate.v2";
+export const DEV_GATE_CHILD_SCHEMA_VERSION = "muse-recall-dev-gate-child.v2";
 export const DEV_GATE_DATASET_NAMESPACE = "development-visible-v1";
 export const DEV_GATE_EMBED_MODEL = "nomic-embed-text-v2-moe";
 export const DEV_GATE_REPEAT = 3;
@@ -145,6 +145,75 @@ export function aggregateStrictPassK(trials, cases = RECALL_FRESHNESS_DATASET.ca
     && correctionPairRetained.passed >= DEV_GATE_FLOORS.correction
     && overall.passed >= DEV_GATE_FLOORS.overall;
   return { absent, correction, correctionCurrentTop1, correctionPairRetained, ordinary, overall, passed };
+}
+
+function countValues(values) {
+  return Object.fromEntries([...new Set(values)].sort().map((value) => [value, values.filter((item) => item === value).length]));
+}
+
+/** Aggregate-safe visible-dev telemetry: opaque case id + closed outcomes only. */
+export function buildDevCaseDiagnostics(trials, cases = RECALL_FRESHNESS_DATASET.cases) {
+  if (!Array.isArray(trials) || trials.length < 1) throw failure("CHILD_OUTPUT_INVALID");
+  return cases.map((testCase, caseIndex) => {
+    const outcomes = trials.map((trial) => trial.outcomes?.[caseIndex]);
+    if (outcomes.some((outcome) => !outcome || outcome.caseId !== testCase.caseId || outcome.category !== testCase.category)) {
+      throw failure("CHILD_OUTPUT_INVALID");
+    }
+    return {
+      caseId: testCase.caseId,
+      category: testCase.category,
+      currentTop1Repeats: outcomes.filter((outcome) => outcome.currentTop1).length,
+      decisionOutcomes: countValues(outcomes.map((outcome) => outcome.rerankDecision.outcome)),
+      locale: testCase.locale,
+      pairRetainedRepeats: outcomes.filter((outcome) => outcome.pairRetained).length,
+      passedRepeats: outcomes.filter((outcome) => outcome.ok).length,
+      reasonCodes: countValues(outcomes.map((outcome) => outcome.reasonCode ?? "PASS")),
+      selectorPairKinds: countValues(outcomes.map((outcome) => outcome.selectorPairKind))
+    };
+  });
+}
+
+const diagnosticKeys = Object.freeze([
+  "caseId",
+  "category",
+  "currentTop1Repeats",
+  "decisionOutcomes",
+  "locale",
+  "pairRetainedRepeats",
+  "passedRepeats",
+  "reasonCodes",
+  "selectorPairKinds"
+]);
+const decisionOutcomeKeys = Object.freeze(["absent", "empty", "error", "ineligible-window", "invalid", "success", "timeout"]);
+const reasonCodeKeys = Object.freeze(["ABSENT_CONFIDENT", "CURRENT_NOT_TOP1", "NOT_CONFIDENT", "PAIR_MISSING_OR_REVERSED", "PASS", "WRONG_TOP1"]);
+const selectorPairKindKeys = Object.freeze(["expected", "null", "wrong"]);
+
+function validateClosedCountRecord(value, allowedKeys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw failure("CHILD_OUTPUT_INVALID");
+  const keys = Object.keys(value);
+  if (keys.length < 1 || keys.some((key) => !allowedKeys.includes(key))) throw failure("CHILD_OUTPUT_INVALID");
+  if (keys.some((key) => !Number.isSafeInteger(value[key]) || value[key] < 1 || value[key] > DEV_GATE_REPEAT)) throw failure("CHILD_OUTPUT_INVALID");
+  if (keys.reduce((sum, key) => sum + value[key], 0) !== DEV_GATE_REPEAT) throw failure("CHILD_OUTPUT_INVALID");
+}
+
+/** Reject any child-controlled diagnostic field that is not part of the closed aggregate schema. */
+export function validateDevCaseDiagnostics(value, cases = RECALL_FRESHNESS_DATASET.cases) {
+  if (!Array.isArray(value) || value.length !== cases.length) throw failure("CHILD_OUTPUT_INVALID");
+  for (let index = 0; index < cases.length; index += 1) {
+    const item = value[index];
+    const testCase = cases[index];
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw failure("CHILD_OUTPUT_INVALID");
+    if (canonicalJson(Object.keys(item).sort()) !== canonicalJson([...diagnosticKeys].sort())) throw failure("CHILD_OUTPUT_INVALID");
+    if (item.caseId !== testCase.caseId || item.category !== testCase.category || item.locale !== testCase.locale) throw failure("CHILD_OUTPUT_INVALID");
+    for (const key of ["currentTop1Repeats", "pairRetainedRepeats", "passedRepeats"]) {
+      if (!Number.isSafeInteger(item[key]) || item[key] < 0 || item[key] > DEV_GATE_REPEAT) throw failure("CHILD_OUTPUT_INVALID");
+    }
+    validateClosedCountRecord(item.decisionOutcomes, decisionOutcomeKeys);
+    validateClosedCountRecord(item.reasonCodes, reasonCodeKeys);
+    validateClosedCountRecord(item.selectorPairKinds, selectorPairKindKeys);
+    if ((item.reasonCodes.PASS ?? 0) !== item.passedRepeats) throw failure("CHILD_OUTPUT_INVALID");
+  }
+  return value;
 }
 
 const networkKeys = Object.freeze([
@@ -272,7 +341,14 @@ async function executeChild({ baseUrl, home, outputPath, rerankerModel }) {
         category: testCase.category,
         locale: testCase.locale,
         network: { embeddingRequests: observed.embeddingRequests, preloadRequests: observed.preloadRequests, selectorRequests: observed.selectorRequests },
-        rerankDecision: decision
+        rerankDecision: decision,
+        selectorPairKind: retrieval.verifiedCorrectionPair === undefined
+          ? "null"
+          : testCase.category === "correction-pair"
+            && fixture.sourceForFile(retrieval.verifiedCorrectionPair.current.file) === testCase.currentSource
+            && fixture.sourceForFile(retrieval.verifiedCorrectionPair.stale.file) === testCase.staleSource
+              ? "expected"
+              : "wrong"
       });
     }
     trials.push({ outcomes, repeat });
@@ -288,6 +364,7 @@ async function executeChild({ baseUrl, home, outputPath, rerankerModel }) {
   const quality = aggregateStrictPassK(trials);
   const result = {
     dataset: { cases: RECALL_FRESHNESS_DATASET.cases.length, namespace: DEV_GATE_DATASET_NAMESPACE },
+    developmentDiagnostics: buildDevCaseDiagnostics(trials),
     embedder: { ...embedInfo, modelTag: DEV_GATE_EMBED_MODEL },
     network: finalNetwork,
     quality,
@@ -315,6 +392,7 @@ export function validateDevGateChild(value, rerankerModel) {
   if (value.reranker?.modelTag !== rerankerModel || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.reranker.digest)) throw failure("CHILD_OUTPUT_INVALID");
   if (!Array.isArray(value.trialHashes) || value.trialHashes.length !== DEV_GATE_REPEAT || value.trialHashes.some((hash) => !/^[a-f0-9]{64}$/u.test(hash))) throw failure("CHILD_OUTPUT_INVALID");
   if (!value.quality || value.quality.overall?.total !== 60) throw failure("CHILD_OUTPUT_INVALID");
+  validateDevCaseDiagnostics(value.developmentDiagnostics);
   validateDevNetworkAccounting(value.network, {
     controlRequests: 4,
     embeddingRequests: value.network.embeddingRequests,
@@ -369,6 +447,7 @@ async function parentMain() {
   const result = {
     payload: {
       dataset: childResult.dataset,
+      developmentDiagnostics: childResult.developmentDiagnostics,
       embedder: childResult.embedder,
       network: childResult.network,
       organicEvidence: false,

@@ -28,6 +28,42 @@ type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 const MAX_RETRIEVAL_TOP_K = 20;
 const PAIR_AWARE_RERANK_WINDOW = 20;
 const PAIR_AWARE_RELEVANT_SLOTS = 10;
+const PAIR_SHORTLIST_SIDE_LIMIT = PAIR_AWARE_RELEVANT_SLOTS;
+const PAIR_PRODUCTION_CURRENT_LIMIT = 10;
+const PAIR_PRODUCTION_STALE_LIMIT = 8;
+const PAIR_BRIDGE_STALE_POOL_LIMIT = 20;
+const PAIR_PRODUCTION_COMPARISON_LIMIT = 100;
+const PAIR_SHORTLIST_PROPOSAL_LIMIT = 6;
+const PAIR_SHORTLIST_CANDIDATE_LIMIT = PAIR_SHORTLIST_PROPOSAL_LIMIT * 2;
+
+export interface CorrectionPairShortlistCandidate {
+  readonly embedding: ArrayLike<number>;
+  readonly identity: NoteChunkIdentity;
+  readonly queryScore: number;
+  readonly stale: boolean;
+}
+
+export interface CorrectionPairShortlistDiagnostics {
+  readonly candidateCount: number;
+  readonly compatibilityComparisons: number;
+  readonly proposalCount: number;
+}
+
+export interface CorrectionPairShortlist {
+  readonly diagnostics: CorrectionPairShortlistDiagnostics;
+  readonly proposals: readonly RecallRerankPairHint[];
+  readonly windowIndices: readonly number[];
+}
+
+export type CorrectionPairShortlistOrder = "original" | "reversed-within-groups";
+
+export type ResolvedCorrectionPairSelection =
+  | { readonly outcome: "null" }
+  | {
+      readonly outcome: "pair";
+      readonly rerankPair: RecallRerankPairHint;
+      readonly verifiedCorrectionPair: VerifiedCorrectionPair;
+    };
 
 export interface NoteRetrievalResult {
   /** The selected (MMR + graph + second-hop) chunks for the prompt window. */
@@ -82,10 +118,19 @@ export interface RecallRerankPairHint {
   readonly stale: number;
 }
 
+export interface RecallRerankContext {
+  readonly allowedCorrectionPairs: readonly RecallRerankPairHint[];
+  readonly diagnostics?: {
+    readonly bridgeComparisons: number;
+    readonly shortlistComparisons: number;
+    readonly totalSemanticComparisons: number;
+  };
+}
+
 export type RecallRerankResponse = readonly number[] | RecallRerankExecution | undefined;
 export type RecallRerankMode = "correction-pair" | "ranking-only";
 export interface RecallRerankFn {
-  (query: string, candidateTexts: readonly string[]): Promise<RecallRerankResponse>;
+  (query: string, candidateTexts: readonly string[], context?: RecallRerankContext): Promise<RecallRerankResponse>;
   readonly mode?: RecallRerankMode;
 }
 
@@ -193,33 +238,42 @@ export async function retrieveAndRankNotes(params: {
           if (!window.includes(candidate)) window.push(candidate);
         }
       }
+      let bridgeComparisons = 0;
       if (rerankFn.mode === "correction-pair") {
         const cosineRanked = [...allScored].sort((a, b) => b.score - a.score);
-        const staleCandidates = cosineRanked.filter((candidate) => detectStaleMarker(candidate.chunk.text));
-        const nonStaleCandidates = [...window, ...cosineRanked].filter((candidate, index, candidates) =>
-          !detectStaleMarker(candidate.chunk.text) && candidates.indexOf(candidate) === index
+        const coverage = buildCorrectionPairCoverage(window, cosineRanked);
+        bridgeComparisons = coverage?.bridgeComparisons ?? 0;
+        window.splice(
+          0,
+          window.length,
+          ...(coverage ? [...coverage.current, ...coverage.stale] : [])
         );
-        const currentLimit = Math.min(
-          nonStaleCandidates.length,
-          Math.max(Math.min(PAIR_AWARE_RELEVANT_SLOTS, windowLimit), windowLimit - staleCandidates.length)
-        );
-        const currentCoverage: ScoredChunk[] = [];
-        for (const candidate of nonStaleCandidates) {
-          if (currentCoverage.length >= currentLimit) break;
-          currentCoverage.push(candidate);
-        }
-        const staleCoverage = staleCandidates
-          .slice(0, Math.max(0, windowLimit - currentCoverage.length));
-        window.splice(0, window.length, ...currentCoverage, ...staleCoverage);
       }
       rerankWindow = window;
       const pairAwareFallback = rerankFn.mode === "correction-pair"
         ? diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings)
         : undefined;
       scored = pairAwareFallback ?? window.slice(0, topK);
-      if (window.length > topK) {
+      const correctionPairCandidates = rerankFn.mode === "correction-pair"
+        ? toCorrectionPairShortlistCandidates(window)
+        : undefined;
+      const pairShortlist = correctionPairCandidates
+        ? buildCorrectionPairShortlist(correctionPairCandidates)
+        : undefined;
+      const pairRerankContext = pairShortlist
+        ? buildCorrectionPairRerankContext(pairShortlist, bridgeComparisons)
+        : undefined;
+      const selectorWindow = pairShortlist
+        ? pairShortlist.windowIndices.map((index) => window[index]!)
+        : window;
+      const canInvokeReranker = rerankFn.mode !== "correction-pair" || pairRerankContext !== undefined;
+      if (window.length > topK && canInvokeReranker) {
         try {
-          const response = await rerankFn(query, window.map((s) => s.chunk.text));
+          const rawResponse = await rerankFn(query, selectorWindow.map((s) => s.chunk.text), pairRerankContext);
+          const rawExecution = isRerankExecution(rawResponse) ? rawResponse : undefined;
+          const response = pairShortlist
+            ? reverseMapRerankResponse(rawResponse, pairShortlist.windowIndices)
+            : rawResponse;
           const execution = isRerankExecution(response) ? response : undefined;
           const order = execution?.order ?? (Array.isArray(response) ? response : undefined);
           const valid = [...new Set((order ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < window.length))];
@@ -235,8 +289,20 @@ export async function retrieveAndRankNotes(params: {
             outcome
           };
           if (outcome === "success" && valid.length > 0) {
-            rerankPair = selectHighestValidRerankPair(execution?.pairHints, window, valid);
-            verifiedCorrectionPair = rerankPair ? toVerifiedCorrectionPair(rerankPair, window) : undefined;
+            if (rerankFn.mode === "correction-pair") {
+              const selection = correctionPairCandidates && pairShortlist && rawExecution
+                ? resolveCorrectionPairSelection(correctionPairCandidates, pairShortlist, rawExecution)
+                : undefined;
+              if (!selection) {
+                rerankDecision = { ...rerankDecision, outcome: "invalid" };
+              } else if (selection.outcome === "pair") {
+                rerankPair = selection.rerankPair;
+                verifiedCorrectionPair = selection.verifiedCorrectionPair;
+              }
+            } else {
+              rerankPair = selectHighestValidRerankPair(execution?.pairHints, window, valid);
+              verifiedCorrectionPair = rerankPair ? toVerifiedCorrectionPair(rerankPair, window) : undefined;
+            }
             if (rerankFn.mode !== "correction-pair" || rerankPair) {
               const chosen = valid.slice(0, topK).map((i) => window[i]!);
               for (const s of window) {
@@ -251,7 +317,9 @@ export async function retrieveAndRankNotes(params: {
           // reranker is best-effort — a dead model never fails the ask
         }
       } else {
-        rerankDecision = { eligible: false, httpAttempts: 0, logicalInvocations: 0, outcome: "ineligible-window" };
+        if (window.length <= topK && canInvokeReranker) {
+          rerankDecision = { eligible: false, httpAttempts: 0, logicalInvocations: 0, outcome: "ineligible-window" };
+        }
       }
     } else {
       scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
@@ -380,6 +448,361 @@ export async function retrieveAndRankNotes(params: {
 
 export function noteRetrievalResultHash(result: Omit<NoteRetrievalResult, "snapshot">): string {
   return createHash("sha256").update(JSON.stringify(result)).digest("hex");
+}
+
+export function buildCorrectionPairShortlist(
+  candidates: readonly CorrectionPairShortlistCandidate[],
+  order: CorrectionPairShortlistOrder = "original"
+): CorrectionPairShortlist | undefined {
+  try {
+    if (
+      candidates.length === 0
+      || candidates.length > PAIR_AWARE_RERANK_WINDOW
+      || (order !== "original" && order !== "reversed-within-groups")
+    ) return undefined;
+    const embeddingDimension = candidates[0]?.embedding.length;
+    if (!embeddingDimension || candidates.some((candidate) => candidate.embedding.length !== embeddingDimension)) {
+      return undefined;
+    }
+    const identityKeys = candidates.map((candidate) => {
+      if (
+        candidate.identity.file.length === 0
+        || !Number.isSafeInteger(candidate.identity.chunkIndex)
+        || candidate.identity.chunkIndex < 0
+        || !Number.isFinite(candidate.queryScore)
+        || candidate.embedding.length === 0
+        || !isFiniteEmbedding(candidate.embedding)
+      ) return undefined;
+      return JSON.stringify([candidate.identity.file, candidate.identity.chunkIndex]);
+    });
+    if (identityKeys.some((identity) => identity === undefined)) return undefined;
+    if (new Set(identityKeys).size !== identityKeys.length) return undefined;
+
+    const currentIndices = candidates.flatMap((candidate, index) => candidate.stale ? [] : [index])
+      .slice(0, PAIR_SHORTLIST_SIDE_LIMIT);
+    const staleIndices = candidates.flatMap((candidate, index) => candidate.stale ? [index] : [])
+      .slice(0, PAIR_SHORTLIST_SIDE_LIMIT);
+    if (currentIndices.length === 0 || staleIndices.length === 0) return undefined;
+
+    const proposals = currentIndices.flatMap((currentIndex) => staleIndices.map((staleIndex) => {
+      const current = candidates[currentIndex]!;
+      const stale = candidates[staleIndex]!;
+      const queryRelevance = clampUnitInterval(Math.min(current.queryScore, stale.queryScore));
+      const semanticCompatibility = clampUnitInterval(cosine(current.embedding, stale.embedding));
+      return {
+        compatibility: queryRelevance * semanticCompatibility,
+        currentIndex,
+        higherQueryScore: clampUnitInterval(Math.max(current.queryScore, stale.queryScore)),
+        lowerQueryScore: queryRelevance,
+        staleIndex
+      };
+    })).filter((proposal) => proposal.compatibility > 0)
+      .sort((left, right) =>
+        right.compatibility - left.compatibility
+        || right.lowerQueryScore - left.lowerQueryScore
+        || right.higherQueryScore - left.higherQueryScore
+        || left.currentIndex - right.currentIndex
+        || left.staleIndex - right.staleIndex)
+      .slice(0, PAIR_SHORTLIST_PROPOSAL_LIMIT);
+    if (proposals.length === 0 || proposals.length > PAIR_SHORTLIST_PROPOSAL_LIMIT) return undefined;
+
+    const selectedCurrentIndices = [...new Set(proposals.map((proposal) => proposal.currentIndex))];
+    const selectedStaleIndices = [...new Set(proposals.map((proposal) => proposal.staleIndex))];
+    const windowIndices = order === "reversed-within-groups"
+      ? [[...selectedCurrentIndices].reverse(), [...selectedStaleIndices].reverse()].flat()
+      : [...selectedCurrentIndices, ...selectedStaleIndices];
+    if (
+      windowIndices.length === 0
+      || windowIndices.length > PAIR_SHORTLIST_CANDIDATE_LIMIT
+      || new Set(windowIndices).size !== windowIndices.length
+      || windowIndices.some((index) => index < 0 || index >= candidates.length)
+    ) return undefined;
+    for (const index of windowIndices) {
+      const identity = identityKeys[index];
+      if (identity === undefined || identityKeys.filter((candidateIdentity) => candidateIdentity === identity).length !== 1) {
+        return undefined;
+      }
+    }
+    return {
+      diagnostics: {
+        candidateCount: windowIndices.length,
+        compatibilityComparisons: currentIndices.length * staleIndices.length,
+        proposalCount: proposals.length
+      },
+      proposals: proposals.map((proposal) => ({ current: proposal.currentIndex, stale: proposal.staleIndex })),
+      windowIndices
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function clampUnitInterval(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+export function buildCorrectionPairRerankContext(
+  shortlist: CorrectionPairShortlist,
+  bridgeComparisons = 0
+): RecallRerankContext | undefined {
+  try {
+    const shortlistComparisons = shortlist.diagnostics.compatibilityComparisons;
+    const totalSemanticComparisons = bridgeComparisons + shortlistComparisons;
+    if (
+      !Array.isArray(shortlist.windowIndices)
+      || shortlist.windowIndices.length === 0
+      || shortlist.windowIndices.length > PAIR_SHORTLIST_CANDIDATE_LIMIT
+      || shortlist.windowIndices.length !== shortlist.diagnostics.candidateCount
+      || new Set(shortlist.windowIndices).size !== shortlist.windowIndices.length
+      || shortlist.windowIndices.some((index) => !Number.isSafeInteger(index) || index < 0 || index >= PAIR_AWARE_RERANK_WINDOW)
+      || !Array.isArray(shortlist.proposals)
+      || shortlist.proposals.length === 0
+      || shortlist.proposals.length > PAIR_SHORTLIST_PROPOSAL_LIMIT
+      || shortlist.proposals.length !== shortlist.diagnostics.proposalCount
+      || !Number.isSafeInteger(bridgeComparisons)
+      || bridgeComparisons < 0
+      || bridgeComparisons > PAIR_BRIDGE_STALE_POOL_LIMIT
+      || !Number.isSafeInteger(shortlistComparisons)
+      || shortlistComparisons <= 0
+      || shortlistComparisons > PAIR_SHORTLIST_SIDE_LIMIT ** 2
+      || totalSemanticComparisons > PAIR_PRODUCTION_COMPARISON_LIMIT
+    ) return undefined;
+    const selectorIndexByWindowIndex = new Map(shortlist.windowIndices.map((windowIndex, selectorIndex) => [windowIndex, selectorIndex]));
+    const seen = new Set<string>();
+    const allowedCorrectionPairs: RecallRerankPairHint[] = [];
+    for (const proposal of shortlist.proposals) {
+      if (!isClosedRerankPairHint(proposal)) return undefined;
+      const current = selectorIndexByWindowIndex.get(proposal.current);
+      const stale = selectorIndexByWindowIndex.get(proposal.stale);
+      if (current === undefined || stale === undefined || current === stale) return undefined;
+      const key = `${current.toString()}:${stale.toString()}`;
+      if (seen.has(key)) return undefined;
+      seen.add(key);
+      allowedCorrectionPairs.push({ current, stale });
+    }
+    return {
+      allowedCorrectionPairs,
+      diagnostics: { bridgeComparisons, shortlistComparisons, totalSemanticComparisons }
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveCorrectionPairSelection(
+  candidates: readonly CorrectionPairShortlistCandidate[],
+  shortlist: CorrectionPairShortlist,
+  execution: RecallRerankExecution
+): ResolvedCorrectionPairSelection | undefined {
+  try {
+    if (execution.outcome !== "success" || !Array.isArray(execution.order)) {
+      return undefined;
+    }
+    const identityKeys = candidates.map((candidate) => correctionPairIdentityKey(candidate));
+    if (identityKeys.some((identity) => identity === undefined) || new Set(identityKeys).size !== identityKeys.length) {
+      return undefined;
+    }
+    if (
+      shortlist.windowIndices.length === 0
+      || shortlist.windowIndices.length > PAIR_SHORTLIST_CANDIDATE_LIMIT
+      || shortlist.windowIndices.length !== shortlist.diagnostics.candidateCount
+      || !Array.isArray(shortlist.proposals)
+      || shortlist.proposals.length !== shortlist.diagnostics.proposalCount
+      || shortlist.diagnostics.proposalCount <= 0
+      || shortlist.diagnostics.proposalCount > PAIR_SHORTLIST_PROPOSAL_LIMIT
+      || shortlist.diagnostics.compatibilityComparisons <= 0
+      || shortlist.diagnostics.compatibilityComparisons > PAIR_SHORTLIST_SIDE_LIMIT ** 2
+      || new Set(shortlist.windowIndices).size !== shortlist.windowIndices.length
+    ) return undefined;
+    let reachedStaleGroup = false;
+    for (const windowIndex of shortlist.windowIndices) {
+      const candidate = candidates[windowIndex];
+      if (!candidate) return undefined;
+      if (candidate.stale) {
+        reachedStaleGroup = true;
+      } else if (reachedStaleGroup) {
+        return undefined;
+      }
+    }
+    const allowedPairKeys = new Set<string>();
+    for (const proposal of shortlist.proposals) {
+      if (!isClosedRerankPairHint(proposal)) return undefined;
+      const current = candidates[proposal.current];
+      const stale = candidates[proposal.stale];
+      if (
+        !current
+        || !stale
+        || current.stale
+        || !stale.stale
+        || !shortlist.windowIndices.includes(proposal.current)
+        || !shortlist.windowIndices.includes(proposal.stale)
+      ) return undefined;
+      const key = `${proposal.current.toString()}:${proposal.stale.toString()}`;
+      if (allowedPairKeys.has(key)) return undefined;
+      allowedPairKeys.add(key);
+    }
+
+    const validOrder = [...new Set(execution.order.filter((index) =>
+      Number.isSafeInteger(index) && index >= 0 && index < shortlist.windowIndices.length))];
+    if (validOrder.length === 0) return undefined;
+    if (execution.pairHints === undefined) return { outcome: "null" };
+    if (!Array.isArray(execution.pairHints) || execution.pairHints.length !== 1) return undefined;
+    const rank = new Map(validOrder.map((candidateIndex, position) => [candidateIndex, position]));
+    const pair = execution.pairHints[0];
+    if (
+      !isClosedRerankPairHint(pair)
+      || pair.current === pair.stale
+      || pair.current < 0
+      || pair.stale < 0
+      || pair.current >= shortlist.windowIndices.length
+      || pair.stale >= shortlist.windowIndices.length
+      || !rank.has(pair.current)
+      || !rank.has(pair.stale)
+    ) return undefined;
+    const localCurrent = candidates[shortlist.windowIndices[pair.current]!];
+    const localStale = candidates[shortlist.windowIndices[pair.stale]!];
+    if (!localCurrent || !localStale || localCurrent.stale || !localStale.stale) return undefined;
+
+    const currentIndex = shortlist.windowIndices[pair.current];
+    const staleIndex = shortlist.windowIndices[pair.stale];
+    if (currentIndex === undefined || staleIndex === undefined) return undefined;
+    const current = candidates[currentIndex];
+    const stale = candidates[staleIndex];
+    if (
+      !current
+      || !stale
+      || current.stale
+      || !stale.stale
+      || sameNoteChunkIdentity(current.identity, stale.identity)
+      || !allowedPairKeys.has(`${currentIndex.toString()}:${staleIndex.toString()}`)
+    ) {
+      return undefined;
+    }
+    return {
+      outcome: "pair",
+      rerankPair: { current: currentIndex, stale: staleIndex },
+      verifiedCorrectionPair: {
+        current: { ...current.identity },
+        stale: { ...stale.identity }
+      }
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function correctionPairIdentityKey(candidate: CorrectionPairShortlistCandidate): string | undefined {
+  if (
+    candidate.identity.file.length === 0
+    || !Number.isSafeInteger(candidate.identity.chunkIndex)
+    || candidate.identity.chunkIndex < 0
+  ) return undefined;
+  return JSON.stringify([candidate.identity.file, candidate.identity.chunkIndex]);
+}
+
+function toCorrectionPairShortlistCandidates(
+  window: readonly ScoredChunk[]
+): CorrectionPairShortlistCandidate[] | undefined {
+  try {
+    const candidates: CorrectionPairShortlistCandidate[] = [];
+    for (const candidate of window) {
+      const identity = toNoteChunkIdentity(candidate);
+      if (!identity) return undefined;
+      candidates.push({
+        embedding: candidate.chunk.embedding,
+        identity,
+        queryScore: candidate.score,
+        stale: detectStaleMarker(candidate.chunk.text)
+      });
+    }
+    return candidates;
+  } catch {
+    return undefined;
+  }
+}
+
+function selectCorrectionPairCoverage(
+  hybridWindow: readonly ScoredChunk[],
+  cosineBackfill: readonly ScoredChunk[],
+  stale: boolean,
+  limit: number
+): ScoredChunk[] | undefined {
+  const selected: ScoredChunk[] = [];
+  const candidateByIdentity = new Map<string, ScoredChunk>();
+  for (const candidate of [...hybridWindow, ...cosineBackfill]) {
+    if (detectStaleMarker(candidate.chunk.text) !== stale) continue;
+    const identity = toNoteChunkIdentity(candidate);
+    if (!identity) continue;
+    const key = JSON.stringify([identity.file, identity.chunkIndex]);
+    const existing = candidateByIdentity.get(key);
+    if (existing) {
+      if (existing !== candidate) return undefined;
+      continue;
+    }
+    candidateByIdentity.set(key, candidate);
+    if (selected.length < limit) selected.push(candidate);
+  }
+  return selected;
+}
+
+function buildCorrectionPairCoverage(
+  hybridWindow: readonly ScoredChunk[],
+  cosineBackfill: readonly ScoredChunk[]
+): { readonly bridgeComparisons: number; readonly current: readonly ScoredChunk[]; readonly stale: readonly ScoredChunk[] } | undefined {
+  const current = selectCorrectionPairCoverage(hybridWindow, cosineBackfill, false, PAIR_PRODUCTION_CURRENT_LIMIT);
+  const stalePool = selectCorrectionPairCoverage(hybridWindow, cosineBackfill, true, PAIR_BRIDGE_STALE_POOL_LIMIT);
+  if (!current || !stalePool) return undefined;
+  const anchor = current.reduce<ScoredChunk | undefined>((best, candidate) => {
+    if (!Number.isFinite(candidate.score)) return best;
+    return !best || candidate.score > best.score ? candidate : best;
+  }, undefined);
+  if (!anchor || stalePool.length === 0) return { bridgeComparisons: 0, current, stale: stalePool.slice(0, PAIR_PRODUCTION_STALE_LIMIT) };
+  if (anchor.chunk.embedding.length === 0 || !isFiniteEmbedding(anchor.chunk.embedding)) return undefined;
+  const bridged: Array<{ readonly candidate: ScoredChunk; readonly index: number; readonly score: number }> = [];
+  for (let index = 0; index < stalePool.length; index += 1) {
+    const candidate = stalePool[index]!;
+    if (
+      candidate.chunk.embedding.length !== anchor.chunk.embedding.length
+      || !isFiniteEmbedding(candidate.chunk.embedding)
+    ) return undefined;
+    const score = cosine(anchor.chunk.embedding, candidate.chunk.embedding);
+    if (!Number.isFinite(score)) return undefined;
+    bridged.push({ candidate, index, score });
+  }
+  const stale = bridged
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, PAIR_PRODUCTION_STALE_LIMIT)
+    .map((item) => item.candidate);
+  return { bridgeComparisons: stalePool.length, current, stale };
+}
+
+function isFiniteEmbedding(embedding: ArrayLike<number>): boolean {
+  for (let index = 0; index < embedding.length; index += 1) {
+    if (!Number.isFinite(embedding[index])) return false;
+  }
+  return true;
+}
+
+function reverseMapRerankResponse(
+  response: RecallRerankResponse,
+  windowIndices: readonly number[]
+): RecallRerankResponse {
+  const mapIndex = (index: number): number => Number.isSafeInteger(index) && index >= 0 && index < windowIndices.length
+    ? windowIndices[index]!
+    : -1;
+  if (Array.isArray(response)) return response.map(mapIndex);
+  if (!isRerankExecution(response)) return response;
+  return {
+    ...response,
+    ...(Array.isArray(response.order) ? { order: response.order.map(mapIndex) } : {}),
+    ...(Array.isArray(response.pairHints)
+      ? {
+          pairHints: response.pairHints.map((hint) => isClosedRerankPairHint(hint)
+            ? { current: mapIndex(hint.current), stale: mapIndex(hint.stale) }
+            : hint)
+        }
+      : {})
+  };
 }
 
 function normalizedScope(scope: string | undefined): string | undefined {

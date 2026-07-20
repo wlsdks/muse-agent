@@ -304,6 +304,14 @@ describe("parseRerankReply — strict, bounded best-first zero-based indices", (
     expect(parseCorrectionPairReply('{"pair":null}', 20)).toEqual({ pair: null });
   });
 
+  it("accepts only an exact allowed correction tuple while preserving explicit null", () => {
+    const allowed = [{ current: 1, stale: 7 }, { current: 3, stale: 9 }];
+    expect(parseCorrectionPairReply('{"pair":{"current":2,"stale":8}}', 12, allowed))
+      .toEqual({ pair: { current: 1, stale: 7 } });
+    expect(parseCorrectionPairReply('{"pair":{"current":2,"stale":10}}', 12, allowed)).toBeUndefined();
+    expect(parseCorrectionPairReply('{"pair":null}', 12, allowed)).toEqual({ pair: null });
+  });
+
   it("rejects ranking, pair arrays, unknown keys, prose, out-of-range, and same-index correction replies", () => {
     for (const reply of [
       '{"ranking":[1]}',
@@ -392,12 +400,14 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     expect(warmed?.rerankFn).toBeTypeOf("function");
     const warmBody = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as { prompt?: string };
     expect(warmBody.prompt).toContain('Return ONLY the exact JSON shape {"pair":null}');
+    expect(warmBody.prompt).toContain('NO ALLOWED PAIR CARDS. Return exactly {"pair":null}.');
+    expect(warmBody.prompt).not.toContain("PAIR CARD 1");
     expect(warmBody.prompt).not.toContain('{"pair":{"current":');
   });
 
   it("makes one compact selector request and deterministically supplies identity order plus at most one pair", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
-      json: async () => ({ response: '{"pair":{"current":2,"stale":11}}' }),
+      json: async () => ({ response: '{"pair":{"current":2,"stale":8}}' }),
       ok: true
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -405,32 +415,85 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
 
     const selectorEnv = isolatedRerankEnv({ MUSE_RECALL_RERANK: "qwen3:8b", OLLAMA_BASE_URL: "http://127.0.0.1:11434" });
+    const allowedCorrectionPairs = [
+      { current: 5, stale: 11 },
+      { current: 1, stale: 7 },
+      { current: 4, stale: 10 },
+      { current: 0, stale: 6 },
+      { current: 3, stale: 9 },
+      { current: 2, stale: 8 }
+    ];
     const result = await createRecallRerankFn(selectorEnv)!(
       "월세는 언제 보내나요?",
       [
-        ...Array.from({ length: 10 }, (_value, index) => `Current candidate ${index + 1}`),
-        ...Array.from({ length: 10 }, (_value, index) => `This used to be stale candidate ${index + 11}; no longer current.`)
-      ]
+        ...Array.from({ length: 6 }, (_value, index) => `Current candidate ${index + 1}`),
+        ...Array.from({ length: 6 }, (_value, index) => `This used to be stale candidate ${index + 7}; no longer current.`)
+      ],
+      { allowedCorrectionPairs }
     );
 
     expect(createRecallRerankFn(selectorEnv)?.mode).toBe("correction-pair");
-    expect(result).toEqual({ httpAttempts: 1, order: Array.from({ length: 20 }, (_value, index) => index), outcome: "success", pairHints: [{ current: 1, stale: 10 }] });
+    expect(result).toEqual({ httpAttempts: 1, order: Array.from({ length: 12 }, (_value, index) => index), outcome: "success", pairHints: [{ current: 1, stale: 7 }] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]![1]!;
     const body = JSON.parse(request.body as string) as { format?: unknown; prompt?: string };
     expect(body.format).toBe("json");
     expect(body.prompt).toContain("월세는 언제 보내나요?");
     expect(body.prompt).toContain('{"pair":null}');
-    expect(body.prompt).toContain('{"pair":{"current":1,"stale":11}}');
+    expect(body.prompt).toContain("pair must be null or an object with exactly the integer keys current and stale");
+    expect(body.prompt).not.toContain('{"pair":{"current":1,"stale":7}}');
+    expect(body.prompt).not.toContain('{"current":1,"stale":8}');
     expect(body.prompt).not.toContain('{"pair":{"current":2,"stale":1}}');
     expect(body.prompt).not.toContain('"ranking"');
     expect(body.prompt).not.toContain('"pairs"');
     expect(body.prompt?.match(/Choose the pair that most directly answers the query/gu)).toHaveLength(2);
     expect(body.prompt).toContain("Ignore correction pairs about any other topic");
+    expect(body.prompt).toContain("never combine the current text from one card with the stale text from another");
     expect(body.prompt).toContain("stale must contain an explicit old or superseded marker; current must not");
     expect(body.prompt).toContain('If uncertain, same-index, or either field would be null, return exactly {"pair":null}');
-    expect(body.prompt).toContain("CURRENT / NON-STALE CANDIDATES (allowed current indices: 1-10)");
-    expect(body.prompt).toContain("EXPLICIT-STALE CANDIDATES (allowed stale indices: 11-20)");
+    const cards = Array.from({ length: 6 }, (_value, index) => [
+      `PAIR CARD ${(index + 1).toString()}`,
+      `exact tuple: {"current":${(index + 1).toString()},"stale":${(index + 7).toString()}}`,
+      `current text [${(index + 1).toString()}]: Current candidate ${index + 1}`,
+      `stale text [${(index + 7).toString()}]: This used to be stale candidate ${index + 7}; no longer current.`
+    ].join("\n"));
+    expect(body.prompt?.match(/PAIR CARD \d+/gu)).toHaveLength(6);
+    for (const card of cards) expect(body.prompt).toContain(card);
+    const cardPositions = cards.map((card) => body.prompt?.indexOf(card) ?? -1);
+    expect(cardPositions).toEqual([...cardPositions].sort((left, right) => left - right));
+    expect(body.prompt).not.toContain("CURRENT / NON-STALE CANDIDATES");
+    expect(body.prompt).not.toContain("EXPLICIT-STALE CANDIDATES");
+  });
+
+  it("rejects a model-invented cross-pair and malformed allowed-pair context without retry", async () => {
+    const fetchMock = vi.fn(async () => ({
+      json: async () => ({ response: '{"pair":{"current":1,"stale":4}}' }),
+      ok: true
+    }));
+    const rerank = createRecallRerankFn(
+      isolatedRerankEnv({ MUSE_RECALL_RERANK: "qwen3:8b", OLLAMA_BASE_URL: "http://127.0.0.1:11434" }),
+      { fetchFn: fetchMock as unknown as typeof fetch }
+    )!;
+    const texts = ["current one", "current two", "used to be stale one; no longer current", "used to be stale two; no longer current"];
+
+    await expect(rerank("query", texts, {
+      allowedCorrectionPairs: [{ current: 0, stale: 2 }, { current: 1, stale: 3 }]
+    })).resolves.toEqual({ httpAttempts: 1, outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(rerank("query", texts, {
+      allowedCorrectionPairs: Array.from({ length: 7 }, (_value, index) => ({ current: index % 2, stale: 2 + index % 2 }))
+    })).resolves.toEqual({ httpAttempts: 0, outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(rerank("query", [
+      "current one",
+      "used to be stale one; no longer current",
+      "current tail"
+    ], {
+      allowedCorrectionPairs: [{ current: 0, stale: 2 }]
+    })).resolves.toEqual({ httpAttempts: 0, outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies timeout, empty, and invalid replies without retrying", async () => {
