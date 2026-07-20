@@ -296,7 +296,7 @@ export function privacyRoutingCheck(env: Record<string, string | undefined>): Lo
 export function selfLearningCheck(state: {
   readonly enabled: boolean;
   readonly paused: boolean;
-  readonly installed: boolean;
+  readonly daemon: { readonly healthy: boolean; readonly detail: string };
   readonly queued?: number;
 }): LocalCheck {
   const name = "self-learning";
@@ -308,23 +308,23 @@ export function selfLearningCheck(state: {
   }
   if (!state.enabled) {
     return {
-      detail: `OFF${backlog} — Muse is not learning from your corrections. Set MUSE_IDLE_LEARNING_ENABLED=true`,
+      detail: `OFF${backlog} — Muse is not learning from your corrections. Set MUSE_SELFLEARN_ENABLED=true`,
       name,
       status: "warn"
     };
   }
-  if (!state.installed) {
+  if (!state.daemon.healthy) {
     // The daemon is the ONLY thing that runs decay, skill merge, consolidation,
     // reflection and pattern detection — and it never auto-starts. Without it, chat
     // exit is the sole moment Muse learns anything, and half the loop never runs at
     // all. That is not an "ok".
     return {
-      detail: `ON for this session only${backlog} — the daemon isn't installed, so Muse forgets to learn between runs. \`muse daemon --install\``,
+      detail: `ON but background learning is not healthy${backlog} — ${state.daemon.detail}`,
       name,
       status: "warn"
     };
   }
-  return { detail: `ON, learning while idle (daemon installed)${backlog}`, name, status: "ok" };
+  return { detail: `ON, learning while idle (${state.daemon.detail})${backlog}`, name, status: "ok" };
 }
 
 /**

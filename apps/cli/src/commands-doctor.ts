@@ -46,7 +46,13 @@ import { isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpis
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { Command } from "commander";
 
-import { resolveLaunchAgentFile } from "./commands-daemon.js";
+import {
+  describeDaemonAutostartForDoctor,
+  getDaemonAutostartStatus,
+  isDaemonAutostartHealthy,
+  resolveLaunchAgentFile,
+  type DaemonAutostartStatus
+} from "./commands-daemon.js";
 import { defaultCredentialPath } from "./credential-store.js";
 import { emailAuthCheck } from "./commands-doctor-email.js";
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
@@ -96,6 +102,8 @@ export interface DoctorLocalRuntimeOptions {
   readonly homeDir?: string;
   readonly fetchImpl?: typeof globalThis.fetch;
   readonly paths?: Partial<DoctorLocalPaths>;
+  /** Deterministic test/embedding seam; production probes the real service manager. */
+  readonly daemonAutostartStatus?: DaemonAutostartStatus;
 }
 
 function doctorPath(env: MuseEnvironment, museHome: string, envKey: string, filename: string): string {
@@ -814,14 +822,26 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // user has taught that Muse has captured and NOT yet learned. A doctor that stays
   // silent while that backlog grows is the reason it grew.
   const queued = await countPendingLessons(env);
+  const daemonEnv = Object.create(env) as NodeJS.ProcessEnv;
+  Object.defineProperty(daemonEnv, "MUSE_DAEMON_PLIST_FILE", {
+    configurable: true,
+    enumerable: true,
+    value: runtime.paths.launchAgentFile,
+    writable: false
+  });
+  const daemonAutostart = runtimeOptions.daemonAutostartStatus
+    ?? await getDaemonAutostartStatus(daemonEnv);
   checks.push(selfLearningCheck({
     // The gate the daemon ITSELF reads is MUSE_SELFLEARN_ENABLED, and it defaults to
     // TRUE. Doctor was asking about MUSE_IDLE_LEARNING_ENABLED — a different flag, for
     // a different thing — and reporting its `false` default as "OFF (default), ok". So
     // the message read "learning is intentionally off, that's fine" when the truth was
     // "learning is on by the code's own default, and has never once run."
+    daemon: {
+      detail: describeDaemonAutostartForDoctor(daemonAutostart),
+      healthy: isDaemonAutostartHealthy(daemonAutostart)
+    },
     enabled: parseBoolean(env.MUSE_SELFLEARN_ENABLED, true),
-    installed: existsSync(resolveLaunchAgentFile(process.env)),
     paused: await isLearningPaused(resolveLearningPauseFile(env)).catch(() => false),
     queued
   }));

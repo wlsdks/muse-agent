@@ -92,6 +92,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **Daemon health now reports the process, not just the plist.** macOS status
+  separates LaunchAgent artifact health from live launchd state, Doctor only
+  calls idle learning healthy when a valid entry is running, Windows reports
+  runtime state as unknown instead of inferred, and autostart installation
+  rejects missing or temporary CLI entrypoints before any persistent write.
+
 - **Shared presence is now monotonic, private, and fail-closed.** Multiple Muse
   processes on one filesystem merge activity under a cross-process lock instead
   of letting an older writer erase newer presence. Invalid or future timestamps

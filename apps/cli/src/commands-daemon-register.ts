@@ -55,6 +55,13 @@ import { promisify } from "node:util";
 // lock lives in no-phantom-node-modules.test.ts.
 const execFile = promisify(execFileCallback);
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+import {
+  defaultDaemonTemporaryRoots,
+  formatDaemonAutostartStatus,
+  inspectDaemonAutostart,
+  validateDaemonCliEntry,
+  type DaemonAutostartStatus
+} from "./commands-daemon-autostart.js";
 import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
@@ -276,6 +283,10 @@ export interface DaemonHelpers {
   readonly runLaunchctl?: (args: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }>;
   /** Test seam — platform override for the --install / --status / --uninstall autostart branches. */
   readonly platform?: NodeJS.Platform;
+  /** Test seam — production persists process.argv[1] after stable-entry validation. */
+  readonly daemonCliEntry?: string;
+  /** Test seam — deterministic temporary-root classification across operating systems. */
+  readonly daemonTemporaryRoots?: readonly string[];
 }
 
 /**
@@ -349,6 +360,31 @@ function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): s
   return "";
 }
 
+/** One source of truth for daemon status and Doctor: artifact and runtime stay separate. */
+export async function getDaemonAutostartStatus(
+  e: NodeJS.ProcessEnv,
+  helpers: Pick<DaemonHelpers, "platform" | "runLaunchctl" | "schtasksRun"> = {}
+): Promise<DaemonAutostartStatus> {
+  const platform = helpers.platform ?? process.platform;
+  return inspectDaemonAutostart({
+    launchAgentLabel: LAUNCH_AGENT_LABEL,
+    platform,
+    plistFile: resolveLaunchAgentFile(e),
+    ...(helpers.runLaunchctl
+      ? { runLaunchctl: helpers.runLaunchctl }
+      : isRunningUnderVitest()
+        ? {}
+        : { runLaunchctl: defaultRunLaunchctl }),
+    scheduledTaskName: SCHTASKS_TASK_NAME,
+    schtasksQueryArgs: buildSchtasksQueryArgs,
+    ...(helpers.schtasksRun
+      ? { schtasksRun: helpers.schtasksRun }
+      : isRunningUnderVitest()
+        ? {}
+        : { schtasksRun: defaultSchtasksRun })
+  });
+}
+
 /**
  * The core of `muse daemon --install`: write + load a macOS LaunchAgent, or
  * register a Windows scheduled task, through the SAME injected runner seams
@@ -363,12 +399,26 @@ function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): s
 export async function installDaemonAutostart(
   io: ProgramIO,
   e: NodeJS.ProcessEnv,
-  helpers: Pick<DaemonHelpers, "platform" | "runLaunchctl" | "schtasksRun"> = {}
+  helpers: Pick<DaemonHelpers, "daemonCliEntry" | "daemonTemporaryRoots" | "platform" | "runLaunchctl" | "schtasksRun"> = {}
 ): Promise<{ readonly ok: boolean }> {
   const plat = helpers.platform ?? process.platform;
-  // argv[1] is the muse CLI entry at runtime; node + that path
-  // gives launchd/schtasks an absolute, login-shell-independent command.
-  const cliEntry = process.argv[1] ?? "muse";
+  if (plat !== "darwin" && plat !== "win32") {
+    io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
+    return { ok: false };
+  }
+
+  // argv[1] is the Muse CLI JavaScript entry at runtime. It is only safe to
+  // persist after proving it exists outside OS temporary roots; otherwise a
+  // one-off dev runner creates a LaunchAgent that dies after the temp tree is
+  // cleaned (the exact stale /private/tmp failure this gate prevents).
+  const validatedEntry = validateDaemonCliEntry(helpers.daemonCliEntry ?? process.argv[1], {
+    temporaryRoots: helpers.daemonTemporaryRoots ?? defaultDaemonTemporaryRoots(e)
+  });
+  if (!validatedEntry.ok) {
+    io.stderr(`refusing to install daemon autostart: ${validatedEntry.reason}. Run \`muse daemon --install\` from a stable installed Muse CLI, not a temporary dev runner.\n`);
+    return { ok: false };
+  }
+  const cliEntry = validatedEntry.entrypoint;
   if (plat === "win32") {
     const run = helpers.schtasksRun ?? defaultSchtasksRun;
     const result = await run(buildSchtasksCreateArgs({
@@ -380,10 +430,6 @@ export async function installDaemonAutostart(
       return { ok: true };
     }
     io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
-    return { ok: false };
-  }
-  if (plat !== "darwin") {
-    io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
     return { ok: false };
   }
   const plistFile = resolveLaunchAgentFile(e);
@@ -494,6 +540,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       if (options.install) {
         const result = await installDaemonAutostart(io, e, {
+          ...(helpers.daemonCliEntry !== undefined ? { daemonCliEntry: helpers.daemonCliEntry } : {}),
+          ...(helpers.daemonTemporaryRoots ? { daemonTemporaryRoots: helpers.daemonTemporaryRoots } : {}),
           ...(helpers.platform ? { platform: helpers.platform } : {}),
           ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
           ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
@@ -790,7 +838,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             ? `disabled (${homeAssistant.reason})`
             : `disabled — ${t("daemon.status.homeWatch.disabled")}`}\n`);
         io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : `disabled — ${t("daemon.status.briefing.disabled")}`}\n`);
-        io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : `disabled — ${t("daemon.status.selfLearn.disabled")}`}\n`);
+        io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, true) && followupModel ? "enabled (distill + decay + consolidate)" : `disabled — ${t("daemon.status.selfLearn.disabled")}`}\n`);
         io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : `disabled — ${t("daemon.status.recap.disabled")}`}\n`);
         io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : `disabled — ${t("daemon.status.digest.disabled")}`}\n`);
         io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : `disabled — ${t("daemon.status.msgPoll.disabled")}`}\n`);
@@ -805,20 +853,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  scheduler:  ${defaultScheduledJobsFile(e)}\n`);
         io.stdout(`  followups:  ${followupsFile}\n`);
         io.stdout(`  objectives: ${objectivesFile}\n`);
-        // Will it come back after a reboot? (launchd / schtasks install)
-        const plat = helpers.platform ?? process.platform;
-        if (plat === "win32") {
-          const run = helpers.schtasksRun ?? defaultSchtasksRun;
-          const query = await run(buildSchtasksQueryArgs(SCHTASKS_TASK_NAME));
-          io.stdout(query.exitCode === 0
-            ? `autostart:    installed (scheduled task ${SCHTASKS_TASK_NAME})\n`
-            : `autostart:    not installed (run \`muse daemon --install\`)\n`);
-        } else {
-          const plistFile = resolveLaunchAgentFile(e);
-          io.stdout(existsSync(plistFile)
-            ? `autostart:    installed (${plistFile})\n`
-            : `autostart:    not installed (run \`muse daemon --install\`)\n`);
-        }
+        // Will it come back after a reboot, and is it actually alive now?
+        // Artifact existence and runtime state are deliberately separate: a
+        // stale plist may coexist with an orphaned running launchd job.
+        const autostart = await getDaemonAutostartStatus(e, {
+          ...(helpers.platform ? { platform: helpers.platform } : {}),
+          ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
+          ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
+        });
+        for (const line of formatDaemonAutostartStatus(autostart)) io.stdout(`${line}\n`);
         return;
       }
 
@@ -1224,4 +1267,3 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       });
     });
 }
-

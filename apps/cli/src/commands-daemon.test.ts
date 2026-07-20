@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MuseTool } from "@muse/tools";
 
-import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
+import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
 
 function fakeChromeTools(snapshotText: string): MuseTool[] {
   const mk = (name: string, result: string): MuseTool => ({
@@ -48,7 +48,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -80,8 +80,10 @@ async function runDaemon(
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
-      ...(opts.runLaunchctl ? { runLaunchctl: opts.runLaunchctl } : {}),
+      runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
+      ...(opts.daemonCliEntry !== undefined ? { daemonCliEntry: opts.daemonCliEntry } : {}),
+      ...(opts.daemonTemporaryRoots ? { daemonTemporaryRoots: opts.daemonTemporaryRoots } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -482,24 +484,131 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toContain("digest:     enabled");
   });
 
-  it("--status reports launchd autostart state (installed vs not)", async () => {
+  it("--status does not call an existing plist healthy when launchd has no registered job", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-autostart-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
 
-    const notInstalled = await runDaemon(
-      ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
-    );
-    expect(notInstalled.stdout).toMatch(/autostart:\s+not installed/);
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      stderrPath: join(dir, "daemon.err.log"),
+      stdoutPath: join(dir, "daemon.out.log")
+    }), "utf8");
 
-    writeFileSync(plistFile, "<plist/>", "utf8");
-    const installed = await runDaemon(
+    const status = await runDaemon(
       ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
+      {
+        env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+        platform: "darwin",
+        registry,
+        runLaunchctl: async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })
+      }
     );
-    expect(installed.stdout).toMatch(/autostart:\s+installed/);
+    expect(status.stdout).toContain("artifact:     valid");
+    expect(status.stdout).toContain("runtime:      not registered");
+    expect(status.stdout).not.toMatch(/autostart:\s+installed/);
+  });
+
+  it("--status reports a launchctl probe failure as unknown instead of pretending the job is absent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-autostart-probe-fail-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      stderrPath: join(dir, "daemon.err.log"),
+      stdoutPath: join(dir, "daemon.out.log")
+    }), "utf8");
+
+    const status = await runDaemon(["--status", "--provider", "telegram"], {
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl: async () => ({ code: 5, stderr: "Operation not permitted", stdout: "" })
+    });
+
+    expect(status.stdout).toContain("runtime:      unknown (launchctl list failed (exit 5): Operation not permitted)");
+    expect(status.stdout).not.toContain("runtime:      not registered");
+  });
+
+  it("--status preserves a running orphan while warning that its LaunchAgent artifact is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-autostart-orphan-"));
+    const plistFile = join(dir, "missing.plist");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const status = await runDaemon(["--status", "--provider", "telegram"], {
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry,
+      runLaunchctl: async () => ({
+        code: 0,
+        stderr: "",
+        stdout: '{\n\t"PID" = 731;\n\t"LastExitStatus" = 0;\n};\n'
+      })
+    });
+
+    expect(status.stdout).toContain("autostart:    not ready");
+    expect(status.stdout).toContain("artifact:     missing");
+    expect(status.stdout).toContain("runtime:      running (pid 731)");
+  });
+
+  it("--status distinguishes healthy, registered-not-running, and crash-looping launchd jobs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-autostart-runtime-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      stderrPath: join(dir, "daemon.err.log"),
+      stdoutPath: join(dir, "daemon.out.log")
+    }), "utf8");
+    const env = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+
+    const healthy = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "darwin", registry,
+      runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"PID" = 42;\n\t"LastExitStatus" = 0;\n};\n' })
+    });
+    expect(healthy.stdout).toContain("autostart:    healthy");
+    expect(healthy.stdout).toContain("runtime:      running (pid 42)");
+
+    const stopped = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "darwin", registry,
+      runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"LastExitStatus" = 0;\n};\n' })
+    });
+    expect(stopped.stdout).toContain("runtime:      registered but not running");
+
+    const crashLoop = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "darwin", registry,
+      runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"LastExitStatus" = 78;\n};\n' })
+    });
+    expect(crashLoop.stdout).toContain("runtime:      crash-looping (last exit status 78)");
+    expect(crashLoop.stdout).toContain("autostart:    not ready");
+  });
+
+  it("--status keeps a running job degraded when its persisted CLI entrypoint is stale", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-autostart-stale-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const missingEntry = join(dir, "gone", "dbg.mjs");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: [process.execPath, missingEntry, "daemon"],
+      stderrPath: join(dir, "daemon.err.log"),
+      stdoutPath: join(dir, "daemon.out.log")
+    }), "utf8");
+
+    const status = await runDaemon(["--status", "--provider", "telegram"], {
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry,
+      runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"PID" = 77;\n};\n' })
+    });
+
+    expect(status.stdout).toContain("artifact:     stale entrypoint");
+    expect(status.stdout).toContain(missingEntry);
+    expect(status.stdout).toContain("runtime:      running (pid 77)");
+    expect(status.stdout).toContain("autostart:    not ready");
   });
 
   it("--status reports the resolved source paths (debuggability)", async () => {
@@ -658,6 +767,33 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     if (process.platform === "darwin") {
       expect(() => execFileSync("plutil", ["-lint", plistFile], { encoding: "utf8" })).not.toThrow();
     }
+  });
+
+  it("--install rejects a temporary CLI entry before writing a plist or invoking launchctl", async () => {
+    const cliTempRoot = mkdtempSync(join(tmpdir(), "muse-install-temp-entry-"));
+    const cliEntry = join(cliTempRoot, "dbg.mjs");
+    writeFileSync(cliEntry, "export {};\n", "utf8");
+    const targetDir = mkdtempSync(join(tmpdir(), "muse-install-temp-target-"));
+    const plistFile = join(targetDir, "com.muse.daemon.plist");
+    const calls: (readonly string[])[] = [];
+
+    const res = await runDaemon(["--install"], {
+      daemonCliEntry: cliEntry,
+      daemonTemporaryRoots: [cliTempRoot],
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        return { code: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("inside a temporary directory");
+    expect(res.stderr).toContain("stable installed Muse CLI");
+    expect(calls).toHaveLength(0);
+    expect(existsSync(plistFile)).toBe(false);
   });
 
   it("--install reports FAILURE (never success) when launchctl returns non-zero and the agent isn't actually registered", async () => {
@@ -855,13 +991,39 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       env, platform: "win32", registry,
       schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: "MuseDaemon" })
     });
-    expect(installed.stdout).toMatch(/autostart:\s+installed \(scheduled task MuseDaemon\)/);
+    expect(installed.stdout).toMatch(/autostart:\s+registered \(scheduled task MuseDaemon\)/);
+    expect(installed.stdout).toContain("runtime:      unknown");
 
     const missing = await runDaemon(["--status", "--provider", "telegram"], {
       env, platform: "win32", registry,
       schtasksRun: async () => ({ exitCode: 1, stderr: "ERROR: The system cannot find the file specified.", stdout: "" })
     });
-    expect(missing.stdout).toMatch(/autostart:\s+not installed/);
+    expect(missing.stdout).toMatch(/autostart:\s+not registered/);
+    expect(missing.stdout).toContain("runtime:      unknown");
+  });
+
+  it("--status on an unmanaged platform reports runtime unknown without probing a service manager", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const launchctlCalls: (readonly string[])[] = [];
+    const schtasksCalls: (readonly string[])[] = [];
+    const status = await runDaemon(["--status", "--provider", "telegram"], {
+      env: tmpEnv(),
+      platform: "linux",
+      registry,
+      runLaunchctl: async (args) => {
+        launchctlCalls.push(args);
+        return { code: 0, stderr: "", stdout: "" };
+      },
+      schtasksRun: async (args) => {
+        schtasksCalls.push(args);
+        return { exitCode: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(status.stdout).toContain("autostart:    unmanaged on linux");
+    expect(status.stdout).toContain("runtime:      unknown");
+    expect(launchctlCalls).toHaveLength(0);
+    expect(schtasksCalls).toHaveLength(0);
   });
 
   it("--once delivers a situational briefing when MUSE_BRIEFING_ENABLED and something is imminent", async () => {
@@ -1288,6 +1450,20 @@ describe("parseLaunchctlListInfo — distinguish RUNNING from registered-but-cra
   });
 });
 
+describe("validateDaemonCliEntry — persistent service entries must be stable", () => {
+  it("rejects missing, relative, and nonexistent entries deterministically", () => {
+    expect(validateDaemonCliEntry(undefined)).toEqual({ ok: false, reason: "the Muse CLI entrypoint is missing" });
+    expect(validateDaemonCliEntry("apps/cli/dist/index.js")).toMatchObject({ ok: false });
+    expect(validateDaemonCliEntry("/definitely/missing/muse/index.js")).toMatchObject({ ok: false });
+  });
+
+  it("accepts an existing absolute entry outside the injected temporary roots", () => {
+    const unrelatedTempRoot = mkdtempSync(join(tmpdir(), "muse-entry-other-temp-"));
+    const result = validateDaemonCliEntry(process.argv[1], { temporaryRoots: [unrelatedTempRoot] });
+    expect(result).toMatchObject({ ok: true });
+  });
+});
+
 describe("chromeSnapshotConnectionFromTools — adapt MCP tools into a web-watch Chrome connection", () => {
   it("forwards callTool to the chrome-devtools.<name> MuseTool's execute", async () => {
     const conn = chromeSnapshotConnectionFromTools(fakeChromeTools("Order: SHIPPED"));
@@ -1634,7 +1810,7 @@ describe("muse daemon — unattended self-learning tick", () => {
     expect(await readPendingLearnEvents(env.MUSE_LEARN_QUEUE_FILE!)).toHaveLength(1);
   });
 
-  it("--status reports self-learn enabled only with the flag AND a model", async () => {
+  it("--status uses the daemon's default-on self-learn gate and only an explicit false opts out", async () => {
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
 
     const on = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
@@ -1642,8 +1818,13 @@ describe("muse daemon — unattended self-learning tick", () => {
     });
     expect(on.stdout).toContain("self-learn: enabled");
 
-    const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
+    const defaultOn = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
       env: tmpEnv(), registry, resolveFollowupModel: async () => fakeFollowupModel()
+    });
+    expect(defaultOn.stdout).toContain("self-learn: enabled");
+
+    const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
+      env: { ...tmpEnv(), MUSE_SELFLEARN_ENABLED: "false" }, registry, resolveFollowupModel: async () => fakeFollowupModel()
     });
     expect(off.stdout).toContain("self-learn: disabled");
   });

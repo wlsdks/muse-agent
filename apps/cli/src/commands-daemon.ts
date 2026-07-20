@@ -19,5 +19,14 @@
 
 export { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 export { chromeSnapshotConnectionFromTools } from "./commands-daemon-connections.js";
-export { type DaemonHelpers, installDaemonAutostart, registerDaemonCommands } from "./commands-daemon-register.js";
+export { type DaemonHelpers, getDaemonAutostartStatus, installDaemonAutostart, registerDaemonCommands } from "./commands-daemon-register.js";
 export { buildLaunchAgentPlist, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+export {
+  describeDaemonAutostartForDoctor,
+  formatDaemonAutostartStatus,
+  inspectDaemonAutostart,
+  isDaemonAutostartHealthy,
+  parseLaunchAgentProgramArguments,
+  validateDaemonCliEntry,
+  type DaemonAutostartStatus
+} from "./commands-daemon-autostart.js";

@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -70,6 +74,12 @@ describe("local doctor runtime ownership", () => {
     expect(runtime.paths.museHome).toBe("/tmp/muse-doctor-runtime/.muse");
 
     const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: "/tmp/muse-doctor-runtime/Library/LaunchAgents/com.muse.daemon.plist",
+        runtime: { state: "not-registered" }
+      },
       env,
       fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
       homeDir: "/tmp/muse-doctor-runtime"
@@ -84,6 +94,12 @@ describe("local doctor runtime ownership", () => {
   it("uses the injected Ollama URL and fetch for both prompt-cache requests", async () => {
     const urls: string[] = [];
     const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: "/tmp/muse-doctor-prompt-cache/Library/LaunchAgents/com.muse.daemon.plist",
+        runtime: { state: "not-registered" }
+      },
       env: {
         HOME: "/tmp/muse-doctor-prompt-cache",
         MUSE_LOCAL_ONLY: "true",
@@ -105,6 +121,48 @@ describe("local doctor runtime ownership", () => {
     expect(urls).not.toHaveLength(0);
     expect(urls.every((url) => url.startsWith("http://127.0.0.1:11435/"))).toBe(true);
     expect(report.checks.some((check) => check.name === "prompt cache")).toBe(true);
+  });
+
+  it("warns when a valid LaunchAgent plist exists but launchd has no registered daemon", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-daemon-truth-"));
+    const plistFile = join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+        kind: "darwin",
+        plistFile,
+        runtime: { state: "not-registered" }
+      },
+      env: { HOME: homeDir, MUSE_LOCAL_ONLY: "true", MUSE_SELFLEARN_ENABLED: "true" },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir
+    });
+
+    const selfLearning = report.checks.find((check) => check.name === "self-learning");
+    expect(selfLearning?.status).toBe("warn");
+    expect(selfLearning?.detail).toContain("runtime not registered");
+    expect(selfLearning?.detail).toContain("muse daemon --install");
+    expect(selfLearning?.detail).not.toContain("learning while idle");
+  });
+
+  it("keeps self-learning at warning on an unmanaged platform with runtime unknown", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-daemon-unmanaged-"));
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        kind: "unmanaged",
+        platform: "linux",
+        runtime: { reason: "Muse does not manage autostart on this platform", state: "unknown" }
+      },
+      env: { HOME: homeDir, MUSE_LOCAL_ONLY: "true", MUSE_SELFLEARN_ENABLED: "true" },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir
+    });
+
+    const selfLearning = report.checks.find((check) => check.name === "self-learning");
+    expect(selfLearning?.status).toBe("warn");
+    expect(selfLearning?.detail).toContain("autostart unmanaged on linux");
+    expect(selfLearning?.detail).toContain("runtime unknown");
+    expect(selfLearning?.detail).not.toContain("learning while idle");
   });
 });
 
@@ -634,7 +692,7 @@ describe("officialMcpChecks — external official-MCP audit surface", () => {
 
 describe("selfLearningCheck — verifiable autonomy (B1 §7)", () => {
   it("ON + daemon installed → ok 'learning while idle'", () => {
-    const c = selfLearningCheck({ enabled: true, paused: false, installed: true });
+    const c = selfLearningCheck({ daemon: { detail: "LaunchAgent valid; runtime running (pid 42)", healthy: true }, enabled: true, paused: false });
     expect(c.status).toBe("ok");
     expect(c.detail).toContain("learning while idle");
   });
@@ -642,19 +700,19 @@ describe("selfLearningCheck — verifiable autonomy (B1 §7)", () => {
   it("names the backlog — how many lessons you taught that Muse has not learned yet", () => {
     // The queue depth is the one number that says whether the loop is actually
     // closing. A doctor that stays quiet while it grows is the reason it grew.
-    const c = selfLearningCheck({ enabled: true, paused: false, installed: false, queued: 7 });
+    const c = selfLearningCheck({ daemon: { detail: "LaunchAgent missing — run `muse daemon --install`", healthy: false }, enabled: true, paused: false, queued: 7 });
     expect(c.detail).toContain("7 lesson(s)");
     expect(c.status).toBe("warn");
   });
 
   it("ON but daemon NOT installed → warn pointing at `muse daemon --install`", () => {
-    const c = selfLearningCheck({ enabled: true, paused: false, installed: false });
+    const c = selfLearningCheck({ daemon: { detail: "LaunchAgent missing — run `muse daemon --install`", healthy: false }, enabled: true, paused: false });
     expect(c.status).toBe("warn");
     expect(c.detail).toContain("muse daemon --install");
   });
 
   it("paused → warn pointing at `muse playbook resume` (even if enabled+installed)", () => {
-    const c = selfLearningCheck({ enabled: true, paused: true, installed: true });
+    const c = selfLearningCheck({ daemon: { detail: "LaunchAgent valid; runtime running (pid 42)", healthy: true }, enabled: true, paused: true });
     expect(c.status).toBe("warn");
     expect(c.detail).toContain("muse playbook resume");
   });
@@ -663,9 +721,11 @@ describe("selfLearningCheck — verifiable autonomy (B1 §7)", () => {
     // Muse's one-line promise is "learns you". A green tick on a learning loop that
     // is switched off says the feature is fine when the feature does not exist. This
     // check used to return "ok" here, and that is precisely why nobody looked.
-    const c = selfLearningCheck({ enabled: false, paused: false, installed: false });
+    const c = selfLearningCheck({ daemon: { detail: "LaunchAgent missing", healthy: false }, enabled: false, paused: false });
     expect(c.status).toBe("warn");
     expect(c.detail).toContain("not learning from your corrections");
+    expect(c.detail).toContain("MUSE_SELFLEARN_ENABLED=true");
+    expect(c.detail).not.toContain("MUSE_IDLE_LEARNING_ENABLED");
   });
 })
 
