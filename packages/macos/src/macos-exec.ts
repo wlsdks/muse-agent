@@ -33,10 +33,20 @@ export function runChild(
 }
 
 /**
- * Escapes user text for an AppleScript double-quoted string literal.
- * `\` and `"` are backslash-escaped (identical to JS/JSON); newlines are
- * flattened to spaces — classic AppleScript string literals can't carry a
- * raw newline, and flattening keeps the generated script single-statement.
+ * AppleScript string-literal escaping. `\` and `"` are backslash-escaped
+ * (identical to JS/JSON); newlines are flattened to spaces, since a classic
+ * AppleScript string literal cannot carry a raw newline.
+ *
+ * PREFER `MacOsascriptRunner`'s `args` (osascript's documented `on run argv`)
+ * for anything model- or user-derived: the value then never becomes script
+ * source, so there is no literal to malform. This function remains for the
+ * sites not yet migrated and for genuinely static composition.
+ *
+ * It handles the three cases that break an AppleScript literal — backslash,
+ * double quote, and raw newlines. Apple documents `quoted form of` for the
+ * SHELL layer (TN2065) but publishes no equivalent guidance for escaping
+ * untrusted data into AppleScript source, which is itself a reason to pass
+ * data as arguments rather than to escape it.
  */
 export function escapeAppleScript(text: string): string {
   return text.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/[\r\n]+/gu, " ");
@@ -52,10 +62,24 @@ const OSASCRIPT_PATH = "/usr/bin/osascript";
 export const OSASCRIPT_TIMEOUT_MS = 30_000;
 
 /** Runs an AppleScript via `osascript -` (script on stdin). Injected in tests. */
-export type MacOsascriptRunner = (script: string) => Promise<MacCommandResult>;
+/**
+ * Runs an AppleScript. `args` are passed to `osascript` AFTER the script and
+ * arrive in the script's `on run argv` handler as a list of strings.
+ *
+ * This is the injection-safe path and the one new code must use: the script
+ * text is a FIXED template that never contains caller data, so there is
+ * nothing to escape and no way for a value to become code. Verified against a
+ * break-out payload (`x" & (do shell script "…") & "`), which arrives as inert
+ * text.
+ *
+ * `escapeAppleScript` remains for the sites not yet migrated and for genuinely
+ * static composition — but a new `${...}` inside AppleScript source carrying
+ * model- or user-derived data is a defect, not a style choice.
+ */
+export type MacOsascriptRunner = (script: string, args?: readonly string[]) => Promise<MacCommandResult>;
 
-export const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
-  runChild(OSASCRIPT_PATH, ["-"], script, OSASCRIPT_TIMEOUT_MS);
+export const defaultOsascriptRunner: MacOsascriptRunner = (script, args = []) =>
+  runChild(OSASCRIPT_PATH, ["-", ...args], script, OSASCRIPT_TIMEOUT_MS);
 
 export const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
 

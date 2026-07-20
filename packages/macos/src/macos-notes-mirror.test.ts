@@ -53,23 +53,35 @@ describe("mirrorNoteToApple — consent pin (zero exec when off)", () => {
 describe("mirrorNoteToApple — opted-in create", () => {
   it("spawns one make-new-note script with the title + HTML body", async () => {
     const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      scripts.push(script);
+      argsSeen = args;
+      return ok();
+    };
     const result = await mirrorNoteToApple(NOTE, { env: on, exec });
     expect(result.mirrored).toBe(true);
     expect(scripts).toHaveLength(1);
     const script = scripts[0]!;
     expect(script).toContain('tell application "Notes"');
     expect(script).toContain("make new note with properties {");
-    expect(script).toContain('name:"Q3 launch plan"');
-    // Multi-line body renders as <br>, not flattened to spaces.
-    expect(script).toContain('body:"line one<br>line two"');
+    // Title/body travel as argv; the HTML rendering of the body is unchanged.
+    expect(argsSeen?.[0]).toBe("Q3 launch plan");
+    expect(argsSeen?.[1]).toBe("line one<br>line two");
+    expect(script).not.toContain("Q3 launch plan");
   });
 
   it("targets a named folder when one is supplied", async () => {
     const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      scripts.push(script);
+      argsSeen = args;
+      return ok();
+    };
     await mirrorNoteToApple(NOTE, { env: on, exec, folder: "Muse" });
-    expect(scripts[0]!).toContain('make new note at folder "Muse" with properties');
+    expect(scripts[0]!).toContain("make new note at folder targetFolder with properties");
+    expect(argsSeen?.[2]).toBe("Muse");
   });
 
   it("skips (no exec) when the title is blank", async () => {
@@ -100,12 +112,13 @@ describe("noteBodyToHtml / escapeNoteBodyHtml — the multiline + HTML-escape la
 
 describe("buildMirrorNoteScript — HTML injection is inert", () => {
   it("renders a </body><script> body payload as escaped text, never live markup", () => {
-    const script = buildMirrorNoteScript({ title: "t", body: "</body><script>alert(1)</script>" });
-    const propsLine = script.split("\n")[1]!;
-    // No raw angle-bracket markup from the payload survives into the body.
-    expect(propsLine).toContain("body:\"&lt;/body&gt;&lt;script&gt;alert(1)&lt;/script&gt;\"");
-    expect(propsLine).not.toContain("<script>");
-    expect(propsLine).not.toContain("</body>");
+    // HTML escaping is a CONTENT concern (Notes renders the body as markup) and
+    // is unaffected by the argv change — assert it on the value now passed.
+    const { args } = buildMirrorNoteScript({ title: "t", body: "</body><script>alert(1)</script>" });
+    const body = args[1]!;
+    expect(body).toBe("&lt;/body&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).not.toContain("<script>");
+    expect(body).not.toContain("</body>");
   });
 });
 
@@ -118,62 +131,66 @@ describe("buildMirrorNoteScript — AppleScript injection safety (structural inv
     { name: "korean-emoji", text: '엄마 메모 📞 "; delete; "' }
   ];
 
-  // The generated script's SHAPE is fixed regardless of the payload — exactly
-  // three lines: [tell…], [  make new note…], [end tell]. A payload that broke
-  // out of the string literal would add a line (raw newline) or a stray quote
-  // that closes name:"…" / body:"…" early. Both apply to the TITLE and BODY
-  // slots, so we assert each independently.
+  // The title and body reach osascript as argv items — Apple documents these as
+  // "a list of strings to the direct parameter of the run handler"
+  // (osascript(1)) — so neither is ever part of the script source. The
+  // invariant is no longer "the escaper produced a well-formed literal" but the
+  // stronger "there is no literal to malform".
   for (const { name, text } of hostilePayloads) {
-    it(`renders ${name} in the title slot as an inert single literal`, () => {
-      const script = buildMirrorNoteScript({ title: text, body: "safe" });
-      assertInertScript(script, "name");
+    it(`keeps ${name} out of the script source when in the title`, () => {
+      const { args, script } = buildMirrorNoteScript({ title: text, body: "safe" });
+      expect(args[0]).toBe(text);
+      expect(script).not.toContain(text);
+      expect(script).not.toMatch(/tell app(lication)? "Finder"/u);
+      expect(script).not.toContain("rm -rf");
     });
-    it(`renders ${name} in the body slot as an inert single literal`, () => {
-      const script = buildMirrorNoteScript({ title: "safe", body: text });
-      assertInertScript(script, "body");
+    it(`keeps ${name} out of the script source when in the body`, () => {
+      const { args, script } = buildMirrorNoteScript({ title: "safe", body: text });
+      // The body is HTML-escaped for Notes' renderer before it becomes an argv
+      // item, so the payload's quotes arrive as `&quot;` — still pure data, and
+      // still absent from the script source, which is what matters here.
+      const body = args[1]!;
+      expect(body.length).toBeGreaterThan(0);
+      expect(body).not.toContain('"');
+      expect(script).not.toContain(text);
+      expect(script).not.toContain(body);
+      expect(script).not.toMatch(/tell app(lication)? "Finder"/u);
+      expect(script).not.toContain("rm -rf");
     });
   }
 
-  it("a hostile Finder-delete body payload stays quoted, never a live statement", async () => {
-    const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+  it("the script is byte-identical across wildly different payloads", () => {
+    const a = buildMirrorNoteScript({ title: "plan", body: "safe" }).script;
+    const b = buildMirrorNoteScript({ title: hostilePayloads[0]!.text, body: hostilePayloads[1]!.text }).script;
+    expect(a).toBe(b);
+  });
+
+  it("a hostile Finder-delete body payload reaches osascript as an argument", async () => {
+    const calls: Array<{ script: string; args: readonly string[] | undefined }> = [];
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      calls.push({ args, script });
+      return ok();
+    };
     await mirrorNoteToApple(
-      { title: "note", body: '"; tell application "Finder" to delete every item of home; "' },
+      { title: "t", body: '"; tell application "Finder" to delete every item of home; "' },
       { env: on, exec }
     );
-    const script = scripts[0]!;
-    expect(script).not.toMatch(/\n\s*tell application "Finder"/u);
-    expect(script).not.toMatch(/[^\\]"; tell/u);
+    expect(calls[0]?.script).not.toContain("Finder");
+    expect(calls[0]?.args?.[1]).toContain("Finder");
   });
 });
 
-function assertInertScript(script: string, slot: "name" | "body"): void {
-  const lines = script.split("\n");
-  expect(lines).toHaveLength(3);
-  expect(lines[0]).toBe('tell application "Notes"');
-  expect(lines[2]).toBe("end tell");
-  const propsLine = lines[1]!;
-  expect(propsLine).not.toContain("\r");
-  // The `<slot>:"..."` literal must be WELL-FORMED: a regex consuming a
-  // properly-escaped literal must match, AND the char right after the closing
-  // quote must be a legal separator (`,` between props, `}` at the end). An
-  // unescaped quote (identity escaper) would close the literal early.
-  const match = new RegExp(`${slot}:"((?:\\\\.|[^"\\\\])*)"`, "u").exec(propsLine);
-  expect(match).not.toBeNull();
-  const afterClose = propsLine.charAt(match!.index + match![0].length);
-  expect([",", "}"]).toContain(afterClose);
-}
 
 describe("mirrorNoteToApple — body cap", () => {
   it("truncates an over-cap body and appends the truncation marker", async () => {
-    const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (_script: string, args?: readonly string[]): Promise<MacCommandResult> => { argsSeen = args; return ok(); };
     const huge = "x".repeat(DEFAULT_MAX_NOTE_BODY_CHARS + 5_000);
     await mirrorNoteToApple({ title: "big", body: huge }, { env: on, exec });
-    const script = scripts[0]!;
-    expect(script).toContain("truncated by Muse");
-    // The original (uncapped) length never reaches the script.
-    expect(script).not.toContain("x".repeat(DEFAULT_MAX_NOTE_BODY_CHARS + 1));
+    const body = argsSeen?.[1] ?? "";
+    expect(body).toContain("truncated by Muse");
+    // The original (uncapped) length never reaches osascript.
+    expect(body).not.toContain("x".repeat(DEFAULT_MAX_NOTE_BODY_CHARS + 1));
   });
 
   it("does NOT truncate a body at or under the cap", async () => {
@@ -186,12 +203,13 @@ describe("mirrorNoteToApple — body cap", () => {
 
 describe("mirrorNoteToApple — Korean + emoji round-trip", () => {
   it("preserves Korean and emoji verbatim in the generated body", async () => {
-    const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (_script: string, args?: readonly string[]): Promise<MacCommandResult> => { argsSeen = args; return ok(); };
     await mirrorNoteToApple({ title: "메모 제목", body: "오늘 회의 요약 📝\n다음 주 계획 🚀" }, { env: on, exec });
-    const script = scripts[0]!;
-    expect(script).toContain('name:"메모 제목"');
-    expect(script).toContain('body:"오늘 회의 요약 📝<br>다음 주 계획 🚀"');
+    // Unicode survives the argv boundary byte-for-byte — osascript(1) passes
+    // arguments as strings, so no escaping can mangle Hangul or emoji.
+    expect(argsSeen?.[0]).toBe("메모 제목");
+    expect(argsSeen?.[1]).toBe("오늘 회의 요약 📝<br>다음 주 계획 🚀");
   });
 });
 

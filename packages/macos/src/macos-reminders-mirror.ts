@@ -25,7 +25,6 @@
 
 import {
   defaultOsascriptRunner,
-  escapeAppleScript,
   type MacOsascriptRunner
 } from "./macos-exec.js";
 import { isMirrorEnvEnabled, runMirrorScript } from "./mirror-shared.js";
@@ -73,28 +72,50 @@ export function isAppleRemindersMirrorEnabled(
  * `%Y-%m-%d %H:%M:%S`-then-`as date` shape (a real UTC instant renders to the
  * machine's LOCAL wall clock, so a KST due time lands at the right hour).
  */
-export function buildMirrorReminderScript(reminder: MirrorableReminder, list?: string): string {
-  const name = escapeAppleScript(reminder.text);
-  const note = escapeAppleScript("from Muse");
-  const properties = [`name:"${name}"`, `body:"${note}"`];
+export interface MirrorScript {
+  readonly script: string;
+  readonly args: readonly string[];
+}
 
+/**
+ * The reminder text and target list arrive as argv, never as script source, so
+ * a reminder whose text is AppleScript cannot become code. The shape of the
+ * script (whether a due date or a list clause is present) is still decided
+ * here, because that is structure, not data — argv carries values only.
+ *
+ * The epoch second is interpolated deliberately: it is a locally computed
+ * integer (`Math.floor` of a parsed timestamp), never user text.
+ */
+export function buildMirrorReminderScript(reminder: MirrorableReminder, list?: string): MirrorScript {
+  const targetList = list && list.trim().length > 0 ? list : "";
   const dueMs = reminder.dueAt ? Date.parse(reminder.dueAt) : Number.NaN;
+  const hasDue = Number.isFinite(dueMs);
+
+  const properties = ["name:reminderName", "body:reminderBody"];
   let dateSetup = "";
-  if (Number.isFinite(dueMs)) {
+  if (hasDue) {
     const epochSeconds = Math.floor(dueMs / 1000);
-    dateSetup = `set dueDate to (do shell script "date -r ${epochSeconds.toString()} '+%Y-%m-%d %H:%M:%S'") as date\n`;
+    dateSetup = `  set dueDate to (do shell script "date -r ${epochSeconds.toString()} '+%Y-%m-%d %H:%M:%S'") as date\n`;
     properties.push("remind me date:dueDate");
   }
 
-  const listClause = list && list.trim().length > 0
-    ? ` in list "${escapeAppleScript(list)}"`
-    : "";
+  const makeClause = targetList.length > 0
+    ? `    make new reminder in list targetList with properties {${properties.join(", ")}}`
+    : `    make new reminder with properties {${properties.join(", ")}}`;
 
-  return (
-    `${dateSetup}tell application "Reminders"\n`
-    + `  make new reminder${listClause} with properties {${properties.join(", ")}}\n`
-    + `end tell`
-  );
+  const script = [
+    `on run argv`,
+    `  set reminderName to item 1 of argv`,
+    `  set reminderBody to item 2 of argv`,
+    `  set targetList to item 3 of argv`,
+    dateSetup.replace(/\n$/u, ""),
+    `  tell application "Reminders"`,
+    makeClause,
+    `  end tell`,
+    `end run`
+  ].filter((line) => line.length > 0).join("\n");
+
+  return { args: [reminder.text, "from Muse", targetList], script };
 }
 
 /**
@@ -116,7 +137,7 @@ export async function mirrorReminderToApple(
     return { mirrored: false, skipped: false, warning: "Apple Reminders mirror skipped: empty reminder text" };
   }
   const exec = options.exec ?? defaultOsascriptRunner;
-  const script = buildMirrorReminderScript({ text, dueAt: reminder.dueAt }, options.list);
-  const outcome = await runMirrorScript(exec, script, { app: "Apple Reminders", permissionTarget: "Reminders" });
+  const { args, script } = buildMirrorReminderScript({ text, dueAt: reminder.dueAt }, options.list);
+  const outcome = await runMirrorScript(exec, script, { app: "Apple Reminders", permissionTarget: "Reminders" }, args);
   return { mirrored: outcome.mirrored, skipped: false, warning: outcome.warning, script };
 }

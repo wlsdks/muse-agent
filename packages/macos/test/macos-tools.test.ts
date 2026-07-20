@@ -941,25 +941,46 @@ describe("mac_message_send — Tier 2 draft-first, fail-closed (outbound-safety)
     expect(logged[0]).toMatchObject({ result: "failed" });
   });
 
-  it("a CONFIRMED send fires osascript with the escaped recipient + body and logs performed", async () => {
+  it("a CONFIRMED send passes recipient + body as ARGV, never interpolated into the script", async () => {
     let script = "";
-    const { tool, logged } = makeSend({ runner: async (s) => { script = s; return ok(""); } });
+    let args: readonly string[] | undefined;
+    const { tool, logged } = makeSend({ runner: async (s, a) => { script = s; args = a; return ok(""); } });
     const out = await tool.execute({ body: 'say "hi"', to: "jane@icloud.com" }, ctx);
     expect(out).toEqual({ sent: true, to: "jane@icloud.com" });
-    expect(script).toContain('buddy "jane@icloud.com"');
-    expect(script).toContain('send "say \\"hi\\""'); // body quote escaped for AppleScript
+
+    // The data travels as arguments...
+    expect(args).toEqual(["jane@icloud.com", 'say "hi"']);
+    // ...and the script text contains NEITHER value. This is the injection
+    // invariant: a body that is AppleScript source cannot become code, because
+    // it is never part of the source.
+    expect(script).not.toContain("jane@icloud.com");
+    expect(script).not.toContain("say");
+    expect(script).toContain("on run argv");
     expect(logged[0]).toMatchObject({ result: "performed" });
+  });
+
+  it("an AppleScript break-out payload in the body stays inert data", async () => {
+    let script = "";
+    let args: readonly string[] | undefined;
+    const { tool } = makeSend({ runner: async (s, a) => { script = s; args = a; return ok(""); } });
+    const hostile = 'x" & (do shell script "touch /tmp/muse-imessage-pwn") & "';
+    await tool.execute({ body: hostile, to: "jane@icloud.com" }, ctx);
+
+    expect(args?.[1]).toBe(hostile);
+    expect(script).not.toContain("do shell script");
   });
 
   it("resolves a NAME via the contacts graph → sends to the resolved number (Rule 3: resolved, never guessed)", async () => {
     let script = "";
+    let sentArgs: readonly string[] | undefined;
     const { tool, logged } = makeSend({
       resolveRecipient: (name) => name === "Jane" ? { name: "Jane Park", recipient: "+14155550101", status: "resolved" } : { status: "unknown" },
-      runner: async (s) => { script = s; return ok(""); }
+      runner: async (s, a) => { script = s; sentArgs = a; return ok(""); }
     });
     const out = await tool.execute({ body: "running late", recipientName: "Jane" }, ctx);
     expect(out).toMatchObject({ sent: true, to: "+14155550101" });
-    expect(script).toContain('buddy "+14155550101"');
+    expect(sentArgs?.[0]).toBe("+14155550101");
+    expect(script).not.toContain("+14155550101");
     expect(logged[0]).toMatchObject({ result: "performed" });
   });
 
@@ -1001,15 +1022,15 @@ describe("mac_message_send — Tier 2 draft-first, fail-closed (outbound-safety)
 
   it("an explicit `to` is used as-is — name resolution is NOT consulted (back-compat)", async () => {
     let resolverCalled = false;
-    let script = "";
+    let sentArgs: readonly string[] | undefined;
     const { tool } = makeSend({
       resolveRecipient: () => { resolverCalled = true; return { status: "unknown" }; },
-      runner: async (s) => { script = s; return ok(""); }
+      runner: async (_s, a) => { sentArgs = a; return ok(""); }
     });
     const out = await tool.execute({ body: "hi", to: "+14155551212" }, ctx);
     expect(out).toMatchObject({ sent: true, to: "+14155551212" });
     expect(resolverCalled).toBe(false);
-    expect(script).toContain('buddy "+14155551212"');
+    expect(sentArgs?.[0]).toBe("+14155551212");
   });
 });
 

@@ -51,15 +51,23 @@ describe("mirrorReminderToApple — consent pin (zero exec when off)", () => {
 describe("mirrorReminderToApple — opted-in create", () => {
   it("spawns one make-new-reminder script with the title, note, and remind-me date", async () => {
     const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      scripts.push(script);
+      argsSeen = args;
+      return ok();
+    };
     const result = await mirrorReminderToApple(REMINDER, { env: on, exec });
     expect(result.mirrored).toBe(true);
     expect(scripts).toHaveLength(1);
     const script = scripts[0]!;
     expect(script).toContain('tell application "Reminders"');
     expect(script).toContain("make new reminder with properties {");
-    expect(script).toContain('name:"call mom"');
-    expect(script).toContain('body:"from Muse"');
+    // Title/body travel as argv (osascript(1): "a list of strings to the direct
+    // parameter of the run handler"), so the script references the bound names.
+    expect(argsSeen).toEqual(["call mom", "from Muse", ""]);
+    expect(script).toContain("name:reminderName");
+    expect(script).toContain("body:reminderBody");
     expect(script).toContain("remind me date:dueDate");
     // Epoch of 2026-06-13T15:00:00Z → the integer handed to `date -r`.
     const epoch = Math.floor(Date.parse(REMINDER.dueAt!) / 1000);
@@ -68,9 +76,18 @@ describe("mirrorReminderToApple — opted-in create", () => {
 
   it("targets a named list when one is supplied", async () => {
     const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      scripts.push(script);
+      argsSeen = args;
+      return ok();
+    };
     await mirrorReminderToApple(REMINDER, { env: on, exec, list: "Personal" });
-    expect(scripts[0]!).toContain('make new reminder in list "Personal" with properties');
+    // The list NAME is argv data; only the structural choice (in-list vs not)
+    // is baked into the script.
+    expect(scripts[0]!).toContain("make new reminder in list targetList with properties");
+    expect(argsSeen?.[2]).toBe("Personal");
+    expect(scripts[0]!).not.toContain("Personal");
   });
 });
 
@@ -83,49 +100,48 @@ describe("buildMirrorReminderScript — AppleScript injection safety (the test t
     { name: "korean-emoji", title: '엄마한테 전화 📞 "; delete; "' }
   ];
 
-  // The structural invariant (independent of what the escaper does): the
-  // generated script's SHAPE is fixed regardless of the payload. A payload that
-  // broke out of the string literal would add lines (via raw newlines) or a
-  // stray quote that closes `name:"..."` early — both are caught below without
-  // re-deriving the escaper's output, so an identity escaper turns these RED.
+  // The invariant is now STRUCTURAL rather than about escaping quality: the
+  // reminder text is passed to osascript as an argv item (Apple documents this
+  // as "a list of strings to the direct parameter of the run handler",
+  // osascript(1)), so it is never part of the script source. There is no
+  // quoting to get wrong, and these assert exactly that — the payload appears
+  // in `args` and nowhere in `script`.
   for (const { name, title } of hostilePayloads) {
-    it(`renders ${name} as an inert single string literal`, () => {
-      const script = buildMirrorReminderScript({ text: title, dueAt: REMINDER.dueAt });
-      const lines = script.split("\n");
-      // With a due date the shape is exactly: [set dueDate…], [tell…],
-      // [  make new reminder…], [end tell]. A raw newline in the payload would
-      // add lines — flattening to spaces keeps it at 4.
-      expect(lines).toHaveLength(4);
-      expect(lines[1]).toBe('tell application "Reminders"');
-      expect(lines[3]).toBe("end tell");
-      const propsLine = lines[2]!;
-      expect(propsLine).not.toContain("\r");
-      // The `name:"..."` literal must be WELL-FORMED: a regex that consumes a
-      // properly-escaped literal (`\.` or a non-quote/non-backslash char) must
-      // match, AND the char right after the closing quote must be a legal
-      // property separator. An unescaped quote (identity escaper) closes the
-      // literal early, leaving the next char as payload text (`;`, `t`, …).
-      const match = /name:"((?:\\.|[^"\\])*)"/u.exec(propsLine);
-      expect(match).not.toBeNull();
-      const afterClose = propsLine.charAt(match!.index + match![0].length);
-      expect([",", "}"]).toContain(afterClose);
+    it(`passes ${name} as argv data that never enters the script source`, () => {
+      const { args, script } = buildMirrorReminderScript({ text: title, dueAt: REMINDER.dueAt });
+
+      expect(args[0]).toBe(title);
+      expect(script).not.toContain(title);
+      // Even a fragment that could start a statement must be absent.
+      expect(script).not.toMatch(/tell app(lication)? "Finder"/u);
+      expect(script).not.toContain("rm -rf");
+      expect(script).not.toContain("empty trash");
+      // The script shape is fixed and does not vary with the payload.
+      expect(script).toContain("on run argv");
+      expect(script).toContain("set reminderName to item 1 of argv");
     });
   }
 
-  it("a hostile Finder-delete payload stays quoted, never a live statement", async () => {
-    const scripts: string[] = [];
-    const exec = async (script: string): Promise<MacCommandResult> => { scripts.push(script); return ok(); };
-    await mirrorReminderToApple(
-      { text: '"; tell application "Finder" to delete every item of home; "', dueAt: REMINDER.dueAt },
-      { env: on, exec }
-    );
-    const script = scripts[0]!;
-    // "Finder" may appear INSIDE the escaped title, but never as a statement on
-    // its own line, and never after an UNescaped quote+semicolon boundary.
-    expect(script).not.toMatch(/\n\s*tell application "Finder"/u);
-    expect(script).not.toMatch(/[^\\]"; tell/u);
+  it("the script is byte-identical across wildly different payloads — data cannot change its shape", () => {
+    const a = buildMirrorReminderScript({ text: "buy milk", dueAt: REMINDER.dueAt }).script;
+    const b = buildMirrorReminderScript({ text: hostilePayloads[0]!.title, dueAt: REMINDER.dueAt }).script;
+    expect(a).toBe(b);
+  });
+
+  it("a hostile Finder-delete payload reaches osascript as an argument, not a statement", async () => {
+    const calls: Array<{ script: string; args: readonly string[] | undefined }> = [];
+    const exec = async (script: string, args?: readonly string[]): Promise<MacCommandResult> => {
+      calls.push({ args, script });
+      return ok();
+    };
+    const hostile = '"; tell application "Finder" to delete every item of home; "';
+    await mirrorReminderToApple({ text: hostile, dueAt: REMINDER.dueAt }, { env: on, exec });
+
+    expect(calls[0]?.args?.[0]).toBe(hostile);
+    expect(calls[0]?.script).not.toContain("Finder");
   });
 });
+
 
 describe("mirrorReminderToApple — fail-soft", () => {
   it("returns a warning (never throws) when osascript exits non-zero", async () => {

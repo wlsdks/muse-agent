@@ -29,7 +29,7 @@
 
 import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
+import { defaultOsascriptRunner, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";
 
 /**
@@ -162,17 +162,25 @@ export async function sendImessageWithApproval(options: SendImessageWithApproval
     return { detail: decision.reason ?? "not approved", reason: "denied", sent: false };
   }
 
+  // FIXED script text — the recipient and body arrive as argv, never as part of
+  // the source. A body containing `"` or an AppleScript operator is inert data
+  // here; with string interpolation it would be one escaping bug away from
+  // becoming code, in the one tool that transmits to another human.
   const script = [
-    `tell application "Messages"`,
-    `  set targetService to 1st service whose service type = iMessage`,
-    `  set targetBuddy to buddy "${escapeAppleScript(options.to)}" of targetService`,
-    `  send "${escapeAppleScript(options.body)}" to targetBuddy`,
-    `end tell`
+    `on run argv`,
+    `  set recipient to item 1 of argv`,
+    `  set messageBody to item 2 of argv`,
+    `  tell application "Messages"`,
+    `    set targetService to 1st service whose service type = iMessage`,
+    `    set targetBuddy to buddy recipient of targetService`,
+    `    send messageBody to targetBuddy`,
+    `  end tell`,
+    `end run`
   ].join("\n");
 
   let result: MacCommandResult;
   try {
-    result = await runner(script);
+    result = await runner(script, [options.to, options.body]);
   } catch (cause) {
     const detail = errorMessage(cause);
     await log("failed", "user-approved iMessage", detail);

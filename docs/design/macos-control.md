@@ -52,6 +52,68 @@ it was a fragility judgement. That judgement holds for INPUT and not for READS:
   is recoverable. The same bug during an input sequence leaves a half-finished
   action.
 
+**Correction, from Apple's own text (checked against the SDK headers, not a
+blog).** An earlier draft of this design implied AX reads carry a lighter
+permission cost than AX control. They do not. `AXUIElement.h`'s overview says
+assistive applications use these functions "to communicate with **and control**"
+other apps, and `kAXErrorAPIDisabled` is defined for the API as a whole — Apple
+documents ONE trust gate, with no read-only tier. `AXIsProcessTrustedWithOptions`
+is the only documented check.
+
+So the read/input split is Muse's own risk policy, not an Apple permission
+boundary. It still holds — a read has no side effect to undo — but it must be
+stated honestly: enabling AX reads asks the user for the SAME Accessibility
+permission that would allow control, and the restraint is ours to enforce in
+code. The user-facing consent copy must say that, not imply macOS is enforcing
+a narrower grant.
+
+## What Apple actually documents (and what it does not)
+
+Checked against Apple's own man pages, headers, and developer.apple.com — not
+third-party writeups. This matters because several widely-repeated claims turn
+out to be undocumented, and a design must not lean on them.
+
+**DOCUMENTED — safe to rely on:**
+
+- **`osascript` argv.** `man osascript`: *"Any arguments following the script
+  will be passed as a **list of strings** to the direct parameter of the 'run'
+  handler"*, and *"to pass arguments to a STDIN-read script, you must
+  explicitly specify `-` for the script name."* This is exactly the mechanism
+  used below, in exactly the documented form.
+- **`quoted form of`** (TN2065) — Apple's documented shell-quoting idiom. Note
+  Apple frames it as a shell *parsing* fix; the word "injection" never appears.
+- **EventKit auth is a moving target.** `requestAccess(to:completion:)` is
+  **deprecated** as of macOS 14; `requestFullAccessToEvents` /
+  `requestFullAccessToReminders` are current, and `EKAuthorizationStatus`
+  replaced `.authorized` with `.fullAccess`/`.writeOnly`. The helper must use
+  the current API. `CNContactStore.requestAccess` is NOT deprecated.
+- **`NSAppleEventsUsageDescription`** and the
+  `com.apple.security.automation.apple-events` entitlement, including that no
+  entitlement is needed for same-team-ID targets.
+- **`AXIsProcessTrustedWithOptions`** with `kAXTrustedCheckOptionPrompt`.
+- **`shortcuts run`** with `-i`/`-o` and `-` for stdin/stdout; exits 0/1.
+
+**NOT DOCUMENTED — do not assert these as Apple guidance:**
+
+- Apple nowhere recommends argv over interpolation *as a security practice*.
+  Its only documented mitigation is `quoted form of`. Our argv rule is a
+  stronger choice we are making, and should be described that way.
+- `responsibility_spawnattrs_setdisclaim` — no Apple documentation at all.
+  Every source is third-party. A TCC-attribution design that depends on it is
+  building on a private symbol; treat as a nice-to-have, not a foundation.
+- The numeric value/string for `-1743`. The `errAEEventNotPermitted` symbol
+  page exists but Apple's value and discussion fields are empty. Our
+  `isPermissionError` already hedges by matching both the code and wording —
+  keep that hedge.
+- No AX read/write permission tiering (see the correction above).
+- `osascript` argv limits — no documented count, length, or encoding limits.
+  Measured here instead: unicode (Hangul, emoji), embedded quotes and
+  backslashes, empty strings, and a 5,000-char argument all round-trip
+  byte-identical.
+- `shortcuts run` has no documented timeout, size limit, or per-failure exit
+  code. A shortcut that asks for input **blocks** the CLI — so any shortcut
+  Muse invokes must be input-complete, and the call needs our own timeout.
+
 ## The four problems to fix
 
 ### P1 — Injection: stop building AppleScript from strings

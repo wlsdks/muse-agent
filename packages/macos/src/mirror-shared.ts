@@ -43,10 +43,11 @@ export interface MirrorScriptOutcome {
 export async function runMirrorScript(
   exec: MacOsascriptRunner,
   script: string,
-  labels: MirrorScriptLabels
+  labels: MirrorScriptLabels,
+  args: readonly string[] = []
 ): Promise<MirrorScriptOutcome> {
   try {
-    const result = await exec(script);
+    const result = await exec(script, args);
     if (result.timedOut) {
       return { mirrored: false, warning: `${labels.app} mirror timed out (osascript was killed)` };
     }

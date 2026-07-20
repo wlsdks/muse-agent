@@ -19,10 +19,11 @@ describe("createMacContactsWriteTool", () => {
     expect((tool.definition.inputSchema as { required: string[] }).required).toEqual(["name"]);
   });
 
-  it("approve → written, osascript called with the escaped name/phone/email, and a 'performed' log entry", async () => {
+  it("approve → written, name/phone/email passed as ARGV, and a 'performed' log entry", async () => {
     let called = false;
     let scriptSeen = "";
-    const runner: MacOsascriptRunner = async (script) => { called = true; scriptSeen = script; return ok(); };
+    let argsSeen: readonly string[] | undefined;
+    const runner: MacOsascriptRunner = async (script, args) => { called = true; scriptSeen = script; argsSeen = args; return ok(); };
     const { entries, log } = fakeLog();
     const tool = createMacContactsWriteTool({ actionLog: log, approvalGate: () => ({ approved: true }), osascript: runner });
 
@@ -30,9 +31,11 @@ describe("createMacContactsWriteTool", () => {
 
     expect(result).toMatchObject({ name: "Ada Lovelace", written: true });
     expect(called).toBe(true);
-    expect(scriptSeen).toContain(`first name:"Ada Lovelace"`);
-    expect(scriptSeen).toContain(`value:"ada@example.com"`);
-    expect(scriptSeen).toContain(`value:"+1 555 0100"`);
+    expect(argsSeen).toEqual(["Ada Lovelace", "+1 555 0100", "ada@example.com"]);
+    // None of the field values appear in the script source.
+    expect(scriptSeen).not.toContain("Ada Lovelace");
+    expect(scriptSeen).not.toContain("ada@example.com");
+    expect(scriptSeen).toContain("on run argv");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.result).toBe("performed");
   });
@@ -102,17 +105,22 @@ describe("createMacContactsWriteTool", () => {
     expect(osaCalled).toBe(false);
   });
 
-  it("escapes an injection attempt in the name on the approved path — no raw breakout", async () => {
+  it("an injection attempt in the name stays inert data — it never enters the script source", async () => {
     let scriptSeen = "";
+    let argsSeen: readonly string[] | undefined;
     const tool = createMacContactsWriteTool({
       approvalGate: () => ({ approved: true }),
-      osascript: async (script) => { scriptSeen = script; return ok(); }
+      osascript: async (script, args) => { scriptSeen = script; argsSeen = args; return ok(); }
     });
     const maliciousName = `A" to (do shell script "x")`;
 
     await tool.execute({ name: maliciousName }, ctx);
 
-    expect(scriptSeen).toContain(`first name:"A\\" to (do shell script \\"x\\")"`);
-    expect(scriptSeen).not.toContain(`first name:"${maliciousName}"`);
+    // Stronger than the old escaping assertion: the payload is not escaped INTO
+    // the script, it is not in the script at all. There is no quoting bug to
+    // have, because there is no quoting.
+    expect(argsSeen?.[0]).toBe(maliciousName);
+    expect(scriptSeen).not.toContain("do shell script");
+    expect(scriptSeen).not.toContain(maliciousName);
   });
 });

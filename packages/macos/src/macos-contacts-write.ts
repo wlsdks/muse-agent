@@ -11,7 +11,7 @@
 import { errorMessage, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
+import { defaultOsascriptRunner, isPermissionError, OSASCRIPT_TIMEOUT_MS, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 
 export interface ContactDraft {
   readonly name: string;
@@ -126,23 +126,31 @@ export function createMacContactsWriteTool(deps: MacContactsWriteToolDeps): Muse
         return { detail: decision.reason ?? "not approved", reason: "denied", written: false };
       }
 
-      const scriptLines = [
-        `tell application "Contacts"`,
-        `  set newPerson to make new person with properties {first name:"${escapeAppleScript(name)}"}`,
-        ...(phone.length > 0
-          ? [`  make new phone at end of phones of newPerson with properties {value:"${escapeAppleScript(phone)}"}`]
-          : []),
-        ...(email.length > 0
-          ? [`  make new email at end of emails of newPerson with properties {value:"${escapeAppleScript(email)}"}`]
-          : []),
-        `  save`,
-        `end tell`
-      ];
-      const script = scriptLines.join("\n");
+      // FIXED script; name/phone/email arrive as argv so a contact field can
+      // never become AppleScript source. Empty strings are passed through and
+      // skipped inside the script, keeping argv positions stable — the
+      // alternative (omitting an argument) would silently shift the indices.
+      const script = [
+        `on run argv`,
+        `  set personName to item 1 of argv`,
+        `  set personPhone to item 2 of argv`,
+        `  set personEmail to item 3 of argv`,
+        `  tell application "Contacts"`,
+        `    set newPerson to make new person with properties {first name:personName}`,
+        `    if personPhone is not "" then`,
+        `      make new phone at end of phones of newPerson with properties {value:personPhone}`,
+        `    end if`,
+        `    if personEmail is not "" then`,
+        `      make new email at end of emails of newPerson with properties {value:personEmail}`,
+        `    end if`,
+        `    save`,
+        `  end tell`,
+        `end run`
+      ].join("\n");
 
       let result: MacCommandResult;
       try {
-        result = await runner(script);
+        result = await runner(script, [name, phone, email]);
       } catch (cause) {
         const detail = errorMessage(cause);
         await log("failed", "user-approved contact creation", detail);

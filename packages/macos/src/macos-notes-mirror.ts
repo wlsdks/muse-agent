@@ -29,7 +29,6 @@
 
 import {
   defaultOsascriptRunner,
-  escapeAppleScript,
   type MacOsascriptRunner
 } from "./macos-exec.js";
 import { isMirrorEnvEnabled, runMirrorScript } from "./mirror-shared.js";
@@ -120,17 +119,36 @@ function capBody(body: string, maxChars: number): string {
  * of the `body:"…"` literal. When a folder is given the note is created inside
  * it — Apple Notes puts notes in a folder, not directly in an account.
  */
-export function buildMirrorNoteScript(note: MirrorableNote, folder?: string): string {
-  const name = escapeAppleScript(note.title);
-  const bodyHtml = escapeAppleScript(noteBodyToHtml(note.body));
-  const folderClause = folder && folder.trim().length > 0
-    ? ` at folder "${escapeAppleScript(folder)}"`
-    : "";
-  return (
-    `tell application "Notes"\n`
-    + `  make new note${folderClause} with properties {name:"${name}", body:"${bodyHtml}"}\n`
-    + `end tell`
-  );
+export interface MirrorNoteScript {
+  readonly script: string;
+  readonly args: readonly string[];
+}
+
+/**
+ * Title, body-HTML and folder travel as argv, never as script source — Apple
+ * documents these as "a list of strings to the direct parameter of the run
+ * handler" (osascript(1)). The body is still HTML-escaped, because that is a
+ * CONTENT concern (Notes renders it as markup); it is no longer
+ * AppleScript-escaped, because it never touches AppleScript source.
+ */
+export function buildMirrorNoteScript(note: MirrorableNote, folder?: string): MirrorNoteScript {
+  const targetFolder = folder && folder.trim().length > 0 ? folder : "";
+  const makeClause = targetFolder.length > 0
+    ? `    make new note at folder targetFolder with properties {name:noteName, body:noteBody}`
+    : `    make new note with properties {name:noteName, body:noteBody}`;
+
+  const script = [
+    `on run argv`,
+    `  set noteName to item 1 of argv`,
+    `  set noteBody to item 2 of argv`,
+    `  set targetFolder to item 3 of argv`,
+    `  tell application "Notes"`,
+    makeClause,
+    `  end tell`,
+    `end run`
+  ].join("\n");
+
+  return { args: [note.title, noteBodyToHtml(note.body), targetFolder], script };
 }
 
 /**
@@ -155,7 +173,7 @@ export async function mirrorNoteToApple(
     ? Math.trunc(options.maxBodyChars)
     : DEFAULT_MAX_NOTE_BODY_CHARS;
   const exec = options.exec ?? defaultOsascriptRunner;
-  const script = buildMirrorNoteScript({ body: capBody(note.body ?? "", maxBodyChars), title }, options.folder);
-  const outcome = await runMirrorScript(exec, script, { app: "Apple Notes", permissionTarget: "Notes" });
+  const { args, script } = buildMirrorNoteScript({ body: capBody(note.body ?? "", maxBodyChars), title }, options.folder);
+  const outcome = await runMirrorScript(exec, script, { app: "Apple Notes", permissionTarget: "Notes" }, args);
   return { mirrored: outcome.mirrored, skipped: false, warning: outcome.warning, script };
 }
