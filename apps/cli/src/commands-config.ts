@@ -12,6 +12,7 @@
  * `readApiOptions`. This module only owns the command surface.
  */
 
+import type { ActuatorMode } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -19,7 +20,7 @@ import type { ProgramIO } from "./program.js";
 export interface MuseCliConfigShape {
   readonly apiUrl?: string;
   readonly defaultModel?: string;
-  readonly actuators?: { readonly mode: string };
+  readonly actuators?: { readonly mode: ActuatorMode };
 }
 
 export interface ConfigCommandHelpers {
