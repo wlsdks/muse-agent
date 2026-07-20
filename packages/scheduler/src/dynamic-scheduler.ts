@@ -24,8 +24,24 @@ import {
   type ScheduledJobStore,
   type ScheduledJobType,
   type ScheduledJobUpdateInput,
-  type ScheduledTaskHandle
+  type ScheduledTaskHandle,
+  type TriggerInvocation
 } from "./index.js";
+
+/** Maps a per-run trigger invocation to the additive execution-record fields.
+ * A payload-less run (cron, run-now, dry-run, empty-body webhook) contributes
+ * nothing, so its record is unchanged from before. */
+function triggerRecordFields(
+  invocation: TriggerInvocation | undefined
+): { triggeredBy?: "webhook"; payloadPreview?: string } {
+  if (!invocation || invocation.webhookPayload === undefined) {
+    return {};
+  }
+  return {
+    triggeredBy: "webhook",
+    ...(invocation.payloadPreview !== undefined ? { payloadPreview: invocation.payloadPreview } : {})
+  };
+}
 
 export class DynamicScheduler {
   private readonly store: ScheduledJobStore;
@@ -124,14 +140,14 @@ export class DynamicScheduler {
     return this.executionStore?.findByJobId(jobId, limit) ?? [];
   }
 
-  async trigger(id: string): Promise<string> {
+  async trigger(id: string, invocation?: TriggerInvocation): Promise<string> {
     const job = await this.store.findById(id);
 
     if (!job) {
       return `Job not found: ${id}`;
     }
 
-    return this.runScheduledJob(job, false);
+    return this.runScheduledJob(job, false, false, invocation);
   }
 
   async dryRun(id: string): Promise<string> {
@@ -190,13 +206,18 @@ export class DynamicScheduler {
     this.handles.delete(id);
   }
 
-  private async runScheduledJob(job: ScheduledJob, dryRun: boolean, automatic = false): Promise<string> {
+  private async runScheduledJob(
+    job: ScheduledJob,
+    dryRun: boolean,
+    automatic = false,
+    invocation?: TriggerInvocation
+  ): Promise<string> {
     // CRON-3 re-entrancy guard: skip an automatic fire while the same job's
     // prior run is still in flight (the default no-op lock can't). The has/add
     // pair is synchronous — no await between them — so two ticks can't both
     // pass. A manual trigger is exempt (explicit intent), as are dry runs.
     if (!automatic) {
-      return this.executeScheduledJob(job, dryRun, automatic);
+      return this.executeScheduledJob(job, dryRun, automatic, invocation);
     }
     if (this.runningJobIds.has(job.id)) {
       await this.store.updateExecutionResult(job.id, "skipped", "skipped: previous run still in progress");
@@ -204,13 +225,18 @@ export class DynamicScheduler {
     }
     this.runningJobIds.add(job.id);
     try {
-      return await this.executeScheduledJob(job, dryRun, automatic);
+      return await this.executeScheduledJob(job, dryRun, automatic, invocation);
     } finally {
       this.runningJobIds.delete(job.id);
     }
   }
 
-  private async executeScheduledJob(job: ScheduledJob, dryRun: boolean, automatic = false): Promise<string> {
+  private async executeScheduledJob(
+    job: ScheduledJob,
+    dryRun: boolean,
+    automatic = false,
+    invocation?: TriggerInvocation
+  ): Promise<string> {
     // User pause kill-switch: skip AUTONOMOUS (cron-fired) runs while paused;
     // a manual `trigger` still runs — explicit intent wins.
     if (automatic && this.isPaused && (await this.isPaused())) {
@@ -231,12 +257,12 @@ export class DynamicScheduler {
         await this.store.updateExecutionResult(job.id, "running", undefined);
       }
 
-      const result = await this.dispatcher.runWithTimeoutAndRetry(job);
-      await this.handleSuccess(job, result, startedAt, dryRun);
+      const result = await this.dispatcher.runWithTimeoutAndRetry(job, invocation);
+      await this.handleSuccess(job, result, startedAt, dryRun, invocation);
       return result;
     } catch (error) {
       const message = `Job '${job.name}' failed: ${errorMessage(error, "unknown")}`;
-      await this.handleFailure(job, message, startedAt, dryRun);
+      await this.handleFailure(job, message, startedAt, dryRun, invocation);
       return message;
     } finally {
       if (!dryRun) {
@@ -245,7 +271,13 @@ export class DynamicScheduler {
     }
   }
 
-  private async handleSuccess(job: ScheduledJob, result: string, startedAt: Date, dryRun: boolean): Promise<void> {
+  private async handleSuccess(
+    job: ScheduledJob,
+    result: string,
+    startedAt: Date,
+    dryRun: boolean,
+    invocation?: TriggerInvocation
+  ): Promise<void> {
     if (!dryRun) {
       await this.messagingService.sendResult(job, result);
       await this.store.updateExecutionResult(job.id, "success", result);
@@ -257,11 +289,18 @@ export class DynamicScheduler {
       job,
       result,
       startedAt,
-      status: "success"
+      status: "success",
+      ...triggerRecordFields(invocation)
     });
   }
 
-  private async handleFailure(job: ScheduledJob, result: string, startedAt: Date, dryRun: boolean): Promise<void> {
+  private async handleFailure(
+    job: ScheduledJob,
+    result: string,
+    startedAt: Date,
+    dryRun: boolean,
+    invocation?: TriggerInvocation
+  ): Promise<void> {
     if (!dryRun) {
       await this.store.updateExecutionResult(job.id, "failed", result);
     }
@@ -272,7 +311,8 @@ export class DynamicScheduler {
       job,
       result,
       startedAt,
-      status: "failed"
+      status: "failed",
+      ...triggerRecordFields(invocation)
     });
   }
 }

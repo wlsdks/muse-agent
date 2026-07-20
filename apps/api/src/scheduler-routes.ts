@@ -358,10 +358,12 @@ function toScheduledJobExecutionResponse(execution: ScheduledJobExecution) {
     id: execution.id,
     jobId: execution.jobId,
     jobName: execution.jobName,
+    payloadPreview: execution.payloadPreview ?? null,
     result: execution.result ?? null,
     resultPreview: schedulerResultPreview(execution.result) ?? null,
     startedAt: execution.startedAt.getTime(),
-    status: toCompatSchedulerEnum(execution.status)
+    status: toCompatSchedulerEnum(execution.status),
+    triggeredBy: execution.triggeredBy ?? null
   };
 }
 

@@ -21,10 +21,12 @@ const POPULATED: ScheduledJobExecutionsResponse = {
       id: "exec_1",
       jobId: JOB_ID,
       jobName: "Morning brief",
+      payloadPreview: null,
       result: "오늘 일정: 회의 3건, 마감 1건",
       resultPreview: "오늘 일정: 회의 3건, 마감 1건",
       startedAt: 1_752_800_098_766,
-      status: "SUCCESS"
+      status: "SUCCESS",
+      triggeredBy: null
     },
     {
       completedAt: null,
@@ -34,10 +36,12 @@ const POPULATED: ScheduledJobExecutionsResponse = {
       id: "exec_2",
       jobId: JOB_ID,
       jobName: "Morning brief",
+      payloadPreview: null,
       result: `Job 'Morning brief' failed: ${"x".repeat(200)}`,
       resultPreview: "Job 'Morning brief' failed: xxx…",
       startedAt: 1_752_799_000_000,
-      status: "FAILED"
+      status: "FAILED",
+      triggeredBy: null
     }
   ],
   limit: 5,
@@ -116,6 +120,31 @@ describe("ExecutionsCard — populated state", () => {
     };
     const html = await renderExecutions(fakeClient(shortOnly));
     expect(html).not.toContain(DICTIONARIES.en["auto.flows.executions.showMore"]);
+  });
+
+  it("renders the webhook payload preview only when the run was webhook-triggered", async () => {
+    const webhookRow: ScheduledJobExecutionsResponse = {
+      ...POPULATED,
+      items: [
+        {
+          ...POPULATED.items[0]!,
+          id: "exec_webhook",
+          payloadPreview: '{"note":"내일 오전 우유 배달 취소"}',
+          triggeredBy: "webhook"
+        }
+      ]
+    };
+    const html = await renderExecutions(fakeClient(webhookRow));
+    expect(html).toContain(DICTIONARIES.en["auto.flows.executions.webhookPayload"]);
+    expect(html).toContain("우유 배달 취소");
+
+    // A non-webhook run never shows the payload line, even if a stray preview leaks through.
+    const nonWebhook: ScheduledJobExecutionsResponse = {
+      ...POPULATED,
+      items: [{ ...POPULATED.items[0]!, payloadPreview: "leaked", triggeredBy: null }]
+    };
+    const plain = await renderExecutions(fakeClient(nonWebhook));
+    expect(plain).not.toContain(DICTIONARIES.en["auto.flows.executions.webhookPayload"]);
   });
 });
 

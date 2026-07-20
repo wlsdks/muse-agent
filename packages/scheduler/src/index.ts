@@ -112,6 +112,12 @@ export interface ScheduledJobExecution {
   readonly dryRun: boolean;
   readonly startedAt: Date;
   readonly completedAt?: Date;
+  /** How this run was fired. Only `"webhook"` is recorded today; cron and
+   * manual `trigger`/`dryRun` runs leave it `undefined`. */
+  readonly triggeredBy?: "webhook";
+  /** Neutralized, capped preview of a webhook run's inbound payload, for the
+   * owner's run history. Absent on cron/manual runs and payload-less webhooks. */
+  readonly payloadPreview?: string;
 }
 
 export interface ScheduledJobExecutionInput {
@@ -124,6 +130,24 @@ export interface ScheduledJobExecutionInput {
   readonly dryRun?: boolean;
   readonly startedAt?: Date;
   readonly completedAt?: Date | null;
+  readonly triggeredBy?: "webhook" | null;
+  readonly payloadPreview?: string | null;
+}
+
+/**
+ * Optional per-run context carried from a manual/inbound trigger down to the
+ * agent executor and the execution record. Every field is optional and every
+ * caller that omits it (cron, run-now, dry-run) is unchanged.
+ *
+ * `webhookPayload` is the RAW serialized JSON of an inbound webhook body. The
+ * AGENT executor neutralizes and fences it as untrusted DATA before the model
+ * sees it; it is NEVER handed to a tool-type job (argument-injection
+ * fail-close). `payloadPreview` is a caller-neutralized, capped copy stored on
+ * the execution record for the owner's run history.
+ */
+export interface TriggerInvocation {
+  readonly webhookPayload?: string;
+  readonly payloadPreview?: string;
 }
 
 export interface ScheduledJobStore {
@@ -176,7 +200,7 @@ export interface InMemoryDistributedSchedulerLockOptions {
 }
 
 export interface ScheduledAgentExecutor {
-  execute(job: ScheduledJob): Awaitable<string>;
+  execute(job: ScheduledJob, invocation?: TriggerInvocation): Awaitable<string>;
 }
 
 export interface ScheduledJobDispatcherOptions {

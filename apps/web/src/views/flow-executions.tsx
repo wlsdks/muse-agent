@@ -67,6 +67,11 @@ function ExecutionRow({ execution }: { execution: ScheduledJobExecutionRow }) {
         <div className="row-meta">
           {relativeAgo(new Date(execution.startedAt).toISOString(), t)} · {humanizeDurationMs(execution.durationMs)}
         </div>
+        {execution.triggeredBy === "webhook" && execution.payloadPreview && (
+          <div className="row-meta" style={{ marginTop: 6, whiteSpace: "normal" }}>
+            {t("auto.flows.executions.webhookPayload")}: {execution.payloadPreview}
+          </div>
+        )}
         {display.text.length > 0 && (
           <div
             className={`row-meta${display.tone === "error" ? " exec-error" : ""}`}

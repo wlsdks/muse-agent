@@ -50,6 +50,9 @@
       "path": "../observability"
     },
     {
+      "path": "../policy"
+    },
+    {
       "path": "../resilience"
     },
     {

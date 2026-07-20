@@ -428,6 +428,21 @@ export const migrations: readonly SqlMigration[] = [
       ALTER TABLE scheduled_jobs
         ADD COLUMN IF NOT EXISTS webhook_trigger_token VARCHAR(128);
     `
+  },
+  {
+    down: `
+      ALTER TABLE IF EXISTS scheduled_job_executions
+        DROP COLUMN IF EXISTS payload_preview;
+      ALTER TABLE IF EXISTS scheduled_job_executions
+        DROP COLUMN IF EXISTS triggered_by;
+    `,
+    name: "0004_scheduled_job_executions_webhook_trigger",
+    up: `
+      ALTER TABLE scheduled_job_executions
+        ADD COLUMN IF NOT EXISTS triggered_by VARCHAR(32);
+      ALTER TABLE scheduled_job_executions
+        ADD COLUMN IF NOT EXISTS payload_preview TEXT;
+    `
   }
 ];
 

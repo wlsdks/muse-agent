@@ -255,6 +255,8 @@ export interface ScheduledJobExecutionTable {
   readonly started_at: Timestamp;
   readonly completed_at: NullableTimestamp;
   readonly created_at: Timestamp;
+  readonly triggered_by: string | null;
+  readonly payload_preview: string | null;
 }
 
 export interface ScheduledJobLockTable {

@@ -122,9 +122,11 @@ export function normalizeScheduledJobExecution(
     id: input.id ?? options.id,
     jobId: input.jobId,
     jobName: input.jobName,
+    payloadPreview: blankToUndefined(input.payloadPreview),
     result: blankToUndefined(input.result),
     startedAt: input.startedAt ?? now,
-    status: input.status
+    status: input.status,
+    triggeredBy: input.triggeredBy === "webhook" ? "webhook" : undefined
   };
 }
 
@@ -193,9 +195,11 @@ export function createScheduledJobExecutionInsert(
     id: execution.id,
     job_id: execution.jobId,
     job_name: execution.jobName,
+    payload_preview: execution.payloadPreview ?? null,
     result: execution.result ?? null,
     started_at: execution.startedAt,
-    status: execution.status
+    status: execution.status,
+    triggered_by: execution.triggeredBy ?? null
   };
 }
 
@@ -239,9 +243,14 @@ export function mapScheduledJobExecutionRow(row: ScheduledJobExecutionRow): Sche
     id: row.id,
     jobId: row.job_id,
     jobName: row.job_name,
+    // Old rows (pre-0004) have no columns → `undefined` after the driver maps
+    // a missing/NULL column; an unknown non-"webhook" value fails soft to
+    // undefined rather than surfacing a bogus trigger source.
+    payloadPreview: row.payload_preview ?? undefined,
     result: row.result ?? undefined,
     startedAt: toDate(row.started_at),
-    status: row.status
+    status: row.status,
+    triggeredBy: row.triggered_by === "webhook" ? "webhook" : undefined
   };
 }
 

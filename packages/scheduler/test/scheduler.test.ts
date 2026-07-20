@@ -32,7 +32,8 @@ import {
   resolveJobTimeout,
   type CronScheduler,
   type DistributedSchedulerLock,
-  type ScheduledJob
+  type ScheduledJob,
+  type TriggerInvocation
 } from "../src/index.js";
 import {
   DummyDriver,
@@ -957,6 +958,109 @@ describe("DynamicScheduler re-entrancy guard (CRON-3)", () => {
     expect(h.runs).toBe(2);
     h.release();
     await tick();
+  });
+});
+
+describe("webhook trigger invocation — isolation of the untrusted payload", () => {
+  const invocation: TriggerInvocation = { payloadPreview: "{\"note\":\"milk\"}", webhookPayload: "{\"note\":\"milk\"}" };
+
+  it("forwards the invocation to the AGENT executor", async () => {
+    let seen: TriggerInvocation | undefined = { webhookPayload: "SENTINEL" };
+    const dispatcher = new ScheduledJobDispatcher({
+      agentExecutor: {
+        execute: async (_job, inv) => {
+          seen = inv;
+          return "ok";
+        }
+      },
+      mcpInvoker: createUnusedMcpInvoker()
+    });
+
+    await dispatcher.runWithTimeoutAndRetry(createAgentJob(), invocation);
+    expect(seen).toEqual(invocation);
+  });
+
+  it("NEVER forwards the payload to a tool job — the MCP tool sees only job.toolArguments (deep-equal), payload absent", async () => {
+    const receivedArgs: unknown[] = [];
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector: {
+        connect: async (): Promise<McpConnection> => ({
+          callTool: async (_toolName, args) => {
+            receivedArgs.push(args);
+            return "tool-ran";
+          },
+          listTools: async () => [
+            { description: "Read status", inputSchema: {}, name: "read_status", risk: "read" }
+          ]
+        })
+      }
+    });
+    await manager.register({ config: { command: "node" }, name: "local", transportType: "stdio" });
+    const dispatcher = new ScheduledJobDispatcher({
+      agentExecutor: { execute: async () => { throw new Error("agent path must not run for a tool job"); } },
+      mcpInvoker: new ScheduledMcpToolInvoker(manager)
+    });
+    const toolArguments = { message: "static", nested: { keep: true } };
+    const job = normalizeScheduledJob(
+      { cronExpression: "0 * * * * *", id: "job-tool", jobType: "mcp_tool", mcpServerName: "local", name: "Status", toolArguments, toolName: "read_status" },
+      { id: "job-tool", now: () => new Date("2026-05-05T00:00:00.000Z") }
+    );
+
+    await expect(dispatcher.runWithTimeoutAndRetry(job, invocation)).resolves.toBe("tool-ran");
+    expect(receivedArgs).toEqual([toolArguments]);
+    // The untrusted payload string appears nowhere in what the tool received.
+    expect(JSON.stringify(receivedArgs)).not.toContain("milk");
+    expect(JSON.stringify(receivedArgs)).not.toContain("note");
+  });
+
+  it("records triggeredBy + payloadPreview for a webhook-invoked run, and NOTHING for a plain trigger", async () => {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-rec" });
+    const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-rec" });
+    const service = new DynamicScheduler({
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async () => "done" },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      executionStore: executions,
+      store
+    });
+    const saved = await service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
+
+    await service.trigger(saved.id, invocation);
+    const [webhookRun] = executions.findByJobId(saved.id);
+    expect(webhookRun?.triggeredBy).toBe("webhook");
+    expect(webhookRun?.payloadPreview).toBe("{\"note\":\"milk\"}");
+
+    await service.trigger(saved.id);
+    const [plainRun] = executions.findByJobId(saved.id);
+    expect(plainRun?.triggeredBy).toBeUndefined();
+    expect(plainRun?.payloadPreview).toBeUndefined();
+  });
+
+  it("an AUTOMATIC (cron) fire passes NO invocation and records no trigger source", async () => {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-auto" });
+    const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-auto" });
+    let seen: TriggerInvocation | undefined = { webhookPayload: "SENTINEL" };
+    let fire: (() => void) | undefined;
+    const cronScheduler: CronScheduler = {
+      schedule: (_job, cb) => { fire = cb; return { cancel: () => undefined }; }
+    };
+    const service = new DynamicScheduler({
+      cronScheduler,
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async (_job, inv) => { seen = inv; return "done"; } },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      executionStore: executions,
+      store
+    });
+    await service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
+
+    fire?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toBeUndefined();
+    const [autoRun] = executions.findByJobId("job-auto");
+    expect(autoRun?.triggeredBy).toBeUndefined();
   });
 });
 

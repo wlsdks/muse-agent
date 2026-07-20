@@ -30,7 +30,8 @@ import type {
   ScheduledJobDispatcherOptions,
   ScheduledJobExecutionStore,
   ScheduledJobInput,
-  ScheduledTaskHandle
+  ScheduledTaskHandle,
+  TriggerInvocation
 } from "./index.js";
 
 export const defaultExecutionTimeoutMs = 300_000;
@@ -146,11 +147,11 @@ export class ScheduledJobDispatcher {
     this.sleep = options.sleep ?? delay;
   }
 
-  async runWithTimeoutAndRetry(job: ScheduledJob): Promise<string> {
+  async runWithTimeoutAndRetry(job: ScheduledJob, invocation?: TriggerInvocation): Promise<string> {
     const timeoutMs = resolveJobTimeout(job, this.defaultExecutionTimeoutMs);
 
     try {
-      return await withTimeout(() => this.runWithRetry(job), timeoutMs);
+      return await withTimeout(() => this.runWithRetry(job, invocation), timeoutMs);
     } catch (error) {
       if (error instanceof TimeoutError) {
         throw new SchedulerExecutionError(`Job '${job.name}' timed out after ${timeoutMs}ms`);
@@ -160,7 +161,7 @@ export class ScheduledJobDispatcher {
     }
   }
 
-  private async runWithRetry(job: ScheduledJob): Promise<string> {
+  private async runWithRetry(job: ScheduledJob, invocation?: TriggerInvocation): Promise<string> {
     // Execution-layer clamp: the create/update gate
     // (`validateRetryConfig`) bounds maxRetryCount to
     // [1, maxRetryCountCeiling], but a legacy DB row (written before
@@ -174,7 +175,7 @@ export class ScheduledJobDispatcher {
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        return await this.dispatchByType(job);
+        return await this.dispatchByType(job, invocation);
       } catch (error) {
         lastError = error;
 
@@ -194,10 +195,14 @@ export class ScheduledJobDispatcher {
     throw isErrorLike(lastError) ? lastError : new SchedulerExecutionError(`Job '${job.name}' failed`);
   }
 
-  private dispatchByType(job: ScheduledJob): Promise<string> {
+  private dispatchByType(job: ScheduledJob, invocation?: TriggerInvocation): Promise<string> {
+    // The invocation (its untrusted webhook payload) reaches ONLY the agent
+    // executor, which neutralizes + fences it as data. A tool-type job never
+    // sees it: mixing external text into fixed tool arguments would be
+    // argument injection, so the payload is dropped fail-close here.
     return job.jobType === "mcp_tool"
       ? Promise.resolve(this.mcpInvoker.invoke(job))
-      : Promise.resolve(this.agentExecutor.execute(job));
+      : Promise.resolve(this.agentExecutor.execute(job, invocation));
   }
 }
 
@@ -229,6 +234,8 @@ export class ScheduledJobExecutionRecorder {
     readonly durationMs: number;
     readonly dryRun: boolean;
     readonly startedAt: Date;
+    readonly triggeredBy?: "webhook";
+    readonly payloadPreview?: string;
   }): Promise<void> {
     if (!this.executionStore) {
       return;
@@ -240,9 +247,11 @@ export class ScheduledJobExecutionRecorder {
       durationMs: options.durationMs,
       jobId: options.job.id,
       jobName: options.job.name,
+      payloadPreview: options.payloadPreview,
       result: options.result,
       startedAt: options.startedAt,
-      status: options.status
+      status: options.status,
+      triggeredBy: options.triggeredBy
     });
     await this.executionStore.deleteOldestExecutions(options.job.id, this.maxExecutionsPerJob);
   }

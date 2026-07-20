@@ -604,6 +604,8 @@ export interface ScheduledJobExecutionRow {
   readonly result: string | null;
   readonly resultPreview: string | null;
   readonly failureReason: string | null;
+  readonly triggeredBy: "webhook" | null;
+  readonly payloadPreview: string | null;
 }
 export interface ScheduledJobExecutionsResponse {
   readonly items: readonly ScheduledJobExecutionRow[];

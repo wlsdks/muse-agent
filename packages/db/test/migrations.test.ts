@@ -6,7 +6,8 @@ describe("db migrations", () => {
     expect(migrationNames()).toEqual([
       "0001_runtime_state",
       "0002_conversation_summaries_user_id",
-      "0003_scheduled_jobs_webhook_trigger_token"
+      "0003_scheduled_jobs_webhook_trigger_token",
+      "0004_scheduled_job_executions_webhook_trigger"
     ]);
   });
 
@@ -31,6 +32,12 @@ describe("db migrations", () => {
     ]) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);
     }
+  });
+
+  it("adds the webhook-trigger columns to the execution table (0004)", () => {
+    const sql = migrations.map((migration) => migration.up).join("\n");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS triggered_by");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS payload_preview");
   });
 
   it("does not include private migration material", () => {

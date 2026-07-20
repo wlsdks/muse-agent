@@ -641,6 +641,7 @@ const en = {
   "auto.flows.executions.status.failed": "Failed",
   "auto.flows.executions.status.running": "Running",
   "auto.flows.executions.status.skipped": "Skipped",
+  "auto.flows.executions.webhookPayload": "Webhook payload",
 
   "auto.flows.create.button": "New flow",
   "auto.flows.create.title": "New flow",
@@ -1617,6 +1618,7 @@ const ko: Strings = {
   "auto.flows.executions.status.failed": "실패",
   "auto.flows.executions.status.running": "실행 중",
   "auto.flows.executions.status.skipped": "건너뜀",
+  "auto.flows.executions.webhookPayload": "웹훅 페이로드",
 
   "auto.flows.create.button": "새 흐름 만들기",
   "auto.flows.create.title": "새 흐름",

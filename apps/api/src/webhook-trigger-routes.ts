@@ -17,9 +17,10 @@
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 
-import type { ScheduledJob, ScheduledJobUpdateInput } from "@muse/scheduler";
+import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
+import type { ScheduledJob, ScheduledJobUpdateInput, TriggerInvocation } from "@muse/scheduler";
 import type { ServerOptions } from "./server.js";
 
 interface WebhookTriggerRouteOptions {
@@ -35,6 +36,47 @@ interface WebhookTriggerRouteOptions {
 /** Minimum gap between fires of the SAME token — a leaked URL can annoy,
  * not saturate (each fire may be a full agent run on the local model). */
 export const WEBHOOK_FIRE_COOLDOWN_MS = 5_000;
+
+/** Per-route inbound body cap. A serialized JSON body over this is rejected
+ * PRE-parse with 413 (nothing fires) rather than fighting the 1MB global
+ * default — a webhook event is metadata, not a bulk upload. */
+export const WEBHOOK_PAYLOAD_BODY_LIMIT = 16_384;
+
+/** Length of the neutralized payload preview stored on the execution record. */
+export const WEBHOOK_PAYLOAD_PREVIEW_MAX = 200;
+
+/**
+ * Build the per-run invocation from an inbound webhook request. Content-type
+ * policy: `application/json` (Fastify has already parsed it) carries the
+ * payload; any other or absent content-type fires the flow WITHOUT a payload
+ * (never a 415 — existing callers POST with no body / no content-type). A
+ * `null` JSON body is treated as no payload.
+ *
+ * `webhookPayload` is the RAW serialized JSON — the agent executor neutralizes
+ * and fences it. `payloadPreview` is neutralized HERE, at the trust boundary,
+ * and capped, so the stored record can never carry a live forged marker.
+ */
+export function buildWebhookInvocation(request: FastifyRequest): TriggerInvocation | undefined {
+  const contentType = request.headers["content-type"];
+  if (typeof contentType !== "string" || !contentType.toLowerCase().includes("application/json")) {
+    return undefined;
+  }
+  const body = request.body;
+  if (body === undefined || body === null) {
+    return undefined;
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(body);
+  } catch {
+    return undefined;
+  }
+  if (typeof serialized !== "string" || serialized.length === 0) {
+    return undefined;
+  }
+  const payloadPreview = escapeSystemPromptMarkers(neutralizeInjectionSpans(serialized)).slice(0, WEBHOOK_PAYLOAD_PREVIEW_MAX);
+  return { payloadPreview, webhookPayload: serialized };
+}
 
 export function mintWebhookTriggerToken(): string {
   return `wht_${randomBytes(24).toString("base64url")}`;
@@ -86,7 +128,7 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     return reply.status(204).send(undefined);
   });
 
-  server.post("/api/hooks/flows/:token", async (request, reply) => {
+  server.post("/api/hooks/flows/:token", { bodyLimit: WEBHOOK_PAYLOAD_BODY_LIMIT }, async (request, reply) => {
     const service = options.scheduler?.service;
     if (!service) {
       return reply.status(404).send({ error: "Not found" });
@@ -117,7 +159,15 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     // result here would turn a leaked trigger URL (third-party scheduler
     // logs, proxies) into an on-demand personal-data read channel; the
     // output flows solely to the owner's configured notification channel.
-    await service.trigger(matched.id);
+    const invocation = buildWebhookInvocation(request);
+    // Call with the invocation ONLY when there is a payload, so a payload-less
+    // fire (empty body / non-JSON) is byte-identical to the pre-existing
+    // single-argument trigger.
+    if (invocation) {
+      await service.trigger(matched.id, invocation);
+    } else {
+      await service.trigger(matched.id);
+    }
     return { fired: true, jobId: matched.id };
   });
 }

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { ScheduledJob } from "./index.js";
 import { SchedulerValidationError } from "./scheduler-errors.js";
 import {
+  createScheduledJobExecutionInsert,
   defaultRetryCount,
   defaultTimezone,
   computeNextRunAt,
+  mapScheduledJobExecutionRow,
   maxRetryCountCeiling,
   normalizeScheduledJobExecution,
   renderTemplateVariables,
@@ -288,5 +290,68 @@ describe("normalizeScheduledJobExecution durationMs guard", () => {
   it("falls back to 0 when durationMs is Infinity / -Infinity (defensive against a runaway clock-skew calculation)", () => {
     expect(normalizeScheduledJobExecution({ ...base, durationMs: Number.POSITIVE_INFINITY }, opts).durationMs).toBe(0);
     expect(normalizeScheduledJobExecution({ ...base, durationMs: Number.NEGATIVE_INFINITY }, opts).durationMs).toBe(0);
+  });
+});
+
+describe("execution webhook-trigger columns — insert + roundtrip + fail-soft", () => {
+  const opts = { idFactory: () => "exec_1", now: () => new Date("2026-05-20T12:00:00.000Z") };
+  const base = { jobId: "job_1", jobName: "brief", status: "success" as const };
+
+  it("normalizes triggeredBy/payloadPreview and drops a non-webhook trigger source", () => {
+    const webhook = normalizeScheduledJobExecution(
+      { ...base, payloadPreview: "{\"note\":\"milk\"}", triggeredBy: "webhook" },
+      { id: "exec_1", now: opts.now }
+    );
+    expect(webhook.triggeredBy).toBe("webhook");
+    expect(webhook.payloadPreview).toBe("{\"note\":\"milk\"}");
+
+    // A blank preview normalizes away; an unrecognized source fails soft to undefined.
+    const blank = normalizeScheduledJobExecution(
+      { ...base, payloadPreview: "   ", triggeredBy: "cron" as never },
+      { id: "exec_2", now: opts.now }
+    );
+    expect(blank.triggeredBy).toBeUndefined();
+    expect(blank.payloadPreview).toBeUndefined();
+  });
+
+  it("writes NULL columns for a payload-less run and roundtrips them back to undefined", () => {
+    const insert = createScheduledJobExecutionInsert({ ...base }, opts);
+    expect(insert.triggered_by).toBeNull();
+    expect(insert.payload_preview).toBeNull();
+    const mapped = mapScheduledJobExecutionRow(insert as never);
+    expect(mapped.triggeredBy).toBeUndefined();
+    expect(mapped.payloadPreview).toBeUndefined();
+  });
+
+  it("roundtrips a webhook run's columns through insert → row → mapped", () => {
+    const insert = createScheduledJobExecutionInsert(
+      { ...base, payloadPreview: "{\"note\":\"milk\"}", triggeredBy: "webhook" },
+      opts
+    );
+    expect(insert.triggered_by).toBe("webhook");
+    expect(insert.payload_preview).toBe("{\"note\":\"milk\"}");
+    const mapped = mapScheduledJobExecutionRow(insert as never);
+    expect(mapped.triggeredBy).toBe("webhook");
+    expect(mapped.payloadPreview).toBe("{\"note\":\"milk\"}");
+  });
+
+  it("loads an OLD row (pre-0004, columns absent/NULL) without throwing — fail-soft to undefined", () => {
+    const legacyRow = {
+      completed_at: null,
+      created_at: new Date("2026-05-20T12:00:00.000Z"),
+      dry_run: false,
+      duration_ms: 10,
+      id: "legacy_1",
+      job_id: "job_1",
+      job_name: "brief",
+      result: "ok",
+      started_at: new Date("2026-05-20T12:00:00.000Z"),
+      status: "success" as const
+      // triggered_by / payload_preview intentionally absent (pre-migration row)
+    };
+    const mapped = mapScheduledJobExecutionRow(legacyRow as never);
+    expect(mapped.triggeredBy).toBeUndefined();
+    expect(mapped.payloadPreview).toBeUndefined();
+    expect(mapped.result).toBe("ok");
   });
 });
