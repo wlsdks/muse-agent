@@ -167,6 +167,16 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["phoned the bank"]);
   });
 
+  it("gates flows by content-token overlap — a real automation survives, an invented one is stripped", () => {
+    const out = enforceAnswerCitations(
+      "Your morning briefing runs daily [flow: 아침 브리핑 요약] but there is no invoice bot [flow: 인보이스 자동 발송].",
+      { flows: ["아침 브리핑 요약"] }
+    );
+    expect(out.text).toContain("[flow: 아침 브리핑 요약]"); // overlaps a real automation → kept
+    expect(out.text).not.toContain("[flow: 인보이스 자동 발송]"); // no overlap with any real automation → stripped
+    expect(out.stripped).toEqual(["인보이스 자동 발송"]);
+  });
+
   it("gates reminders by content-token overlap — paraphrased-real kept, fabricated stripped", () => {
     // The reminder source type has its own strip branch that no test exercised.
     const out = enforceAnswerCitations(

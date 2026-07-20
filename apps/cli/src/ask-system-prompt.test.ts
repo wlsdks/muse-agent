@@ -18,6 +18,8 @@ const BASE_PARAMS = {
   pendingReminders: [],
   contactBlock: "",
   matchedContacts: [],
+  flowBlock: "",
+  matchedFlows: [],
   memoryBlock: "",
   matchedMemories: [],
   shellBlock: "",
@@ -52,6 +54,20 @@ describe("buildAskSystemPrompt identity", () => {
     const prompt = buildAskSystemPrompt({ ...BASE_PARAMS, withTools: true });
     expect(prompt).toContain(MUSE_IDENTITY_CORE);
     expect(prompt).toContain("CALL the matching tool");
+  });
+});
+
+describe("buildAskSystemPrompt — flows (the 13th optional grounding source)", () => {
+  it("includes the AUTOMATIONS block when a flow matched this turn", () => {
+    const prompt = buildAskSystemPrompt({ ...BASE_PARAMS, flowBlock: "<<flow 1 — 아침 브리핑 요약>>", matchedFlows: [{}] });
+    expect(prompt).toContain("=== YOUR AUTOMATIONS (Builder flows & scheduled jobs; cite as [flow: <name>]) ===");
+    expect(prompt).toContain("=== END AUTOMATIONS ===");
+    expect(prompt).toContain("아침 브리핑 요약");
+  });
+
+  it("omits the AUTOMATIONS block entirely when no flow matched this turn (no empty-header prompt bloat)", () => {
+    const prompt = buildAskSystemPrompt({ ...BASE_PARAMS, flowBlock: "(no matching automations)", matchedFlows: [] });
+    expect(prompt).not.toContain("YOUR AUTOMATIONS");
   });
 });
 

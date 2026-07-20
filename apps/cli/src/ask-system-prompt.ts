@@ -31,6 +31,8 @@ export function buildAskSystemPrompt(params: {
   readonly pendingReminders: readonly unknown[];
   readonly contactBlock: string;
   readonly matchedContacts: readonly unknown[];
+  readonly flowBlock: string;
+  readonly matchedFlows: readonly unknown[];
   readonly memoryBlock: string;
   readonly matchedMemories: readonly unknown[];
   readonly shellBlock: string;
@@ -51,7 +53,7 @@ export function buildAskSystemPrompt(params: {
   const {
     personaTemplatePreamble, personaPrompt, query, withTools, notesFraming, contextBlock,
     taskBlock, openTasks, calendarBlock, upcomingEvents, reminderBlock, pendingReminders,
-    contactBlock, matchedContacts, memoryBlock, matchedMemories, shellBlock, matchedCommands,
+    contactBlock, matchedContacts, flowBlock, matchedFlows, memoryBlock, matchedMemories, shellBlock, matchedCommands,
     gitBlock, matchedCommits, actionBlock, matchedActions, episodeBlock, episodeHits,
     feedBlock, feedHeadlines, browsingBlock, browsingHits, reflectionBlock, reflectionLines
   } = params;
@@ -132,6 +134,7 @@ export function buildAskSystemPrompt(params: {
           calendar: { body: calendarBlock, present: upcomingEvents.length > 0 },
           reminders: { body: reminderBlock, present: pendingReminders.length > 0 },
           contacts: { body: contactBlock, present: matchedContacts.length > 0 },
+          flows: { body: flowBlock, present: matchedFlows.length > 0 },
           memories: { body: memoryBlock, present: matchedMemories.length > 0 },
           shell: { body: shellBlock, present: matchedCommands.length > 0 },
           git: { body: gitBlock, present: matchedCommits.length > 0 },

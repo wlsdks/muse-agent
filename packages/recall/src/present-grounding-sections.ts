@@ -38,6 +38,7 @@ export interface OptionalGroundingSources {
   readonly calendar: OptionalGroundingSource;
   readonly reminders: OptionalGroundingSource;
   readonly contacts: OptionalGroundingSource;
+  readonly flows: OptionalGroundingSource;
   readonly memories: OptionalGroundingSource;
   readonly shell: OptionalGroundingSource;
   readonly git: OptionalGroundingSource;
@@ -64,6 +65,7 @@ export const OPTIONAL_GROUNDING_TIER: Readonly<Record<keyof OptionalGroundingSou
   calendar: 90,
   memories: 85,
   contacts: 70,
+  flows: 65,
   actions: 60,
   git: 55,
   shell: 50,
@@ -145,6 +147,7 @@ export function optionalGroundingSections(
     { kind: "calendar", source: sources.calendar, spec: { body: sources.calendar.body, footer: "=== END CALENDAR ===", header: "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===", present: sources.calendar.present } },
     { kind: "reminders", source: sources.reminders, spec: { body: sources.reminders.body, footer: "=== END REMINDERS ===", header: "=== PENDING REMINDERS (sorted by due date) ===", present: sources.reminders.present } },
     { kind: "contacts", source: sources.contacts, spec: { body: sources.contacts.body, footer: "=== END CONTACTS ===", header: "=== MATCHING CONTACTS (from your address book) ===", present: sources.contacts.present } },
+    { kind: "flows", source: sources.flows, spec: { body: sources.flows.body, footer: "=== END AUTOMATIONS ===", header: "=== YOUR AUTOMATIONS (Builder flows & scheduled jobs; cite as [flow: <name>]) ===", present: sources.flows.present } },
     { kind: "memories", source: sources.memories, spec: { body: sources.memories.body, footer: "=== END REMEMBERED FACTS ===", header: "=== FACTS YOU TOLD MUSE TO REMEMBER (cite as [memory: <topic>]) ===", present: sources.memories.present } },
     { kind: "shell", source: sources.shell, spec: { body: sources.shell.body, footer: "=== END SHELL COMMANDS ===", header: "=== MATCHING SHELL COMMANDS (from your shell history) ===", present: sources.shell.present } },
     { kind: "git", source: sources.git, spec: { body: sources.git.body, footer: "=== END GIT COMMITS ===", header: "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===", present: sources.git.present } },
@@ -176,6 +179,7 @@ export interface GroundedSourceCounts {
   readonly upcomingEvents: number;
   readonly pendingReminders: number;
   readonly contacts: number;
+  readonly automationFlows: number;
   readonly memories: number;
   readonly shellCommands: number;
   readonly gitCommits: number;
@@ -207,6 +211,9 @@ export function groundedSourceSummary(counts: GroundedSourceCounts): string[] {
   }
   if (counts.contacts > 0) {
     parts.push(`${counts.contacts.toString()} contact(s)`);
+  }
+  if (counts.automationFlows > 0) {
+    parts.push(`${counts.automationFlows.toString()} automation(s)`);
   }
   if (counts.memories > 0) {
     parts.push(`${counts.memories.toString()} remembered fact(s)`);
@@ -251,6 +258,7 @@ export function formatNonNoteReceipts(
     readonly commits?: readonly string[];
     readonly memories?: readonly string[];
     readonly actions?: readonly string[];
+    readonly flows?: readonly string[];
     readonly feeds?: readonly string[];
     readonly browsing?: readonly string[];
     readonly sessions?: readonly string[];
@@ -280,6 +288,7 @@ export function formatNonNoteReceipts(
   grab("🔧 from your git commits:", /\[commit:\s*([^\]]+?)\s*\]/giu, sources.commits);
   grab("🧠 from what you told me:", /\[memory:\s*([^\]]+?)\s*\]/giu, sources.memories);
   grab("🤖 from your action log:", /\[action:\s*([^\]]+?)\s*\]/giu, sources.actions);
+  grab("⚙️ from your automations:", /\[flow:\s*([^\]]+?)\s*\]/giu, sources.flows);
   grab("📰 from your feeds:", /\[feed:\s*([^\]]+?)\s*\]/giu, sources.feeds);
   grab("🌐 from pages you visited:", /\[browsing:\s*([^\]]+?)\s*\]/giu, sources.browsing);
   grab("💬 from a past session:", /\[session:\s*([^\]]+?)\s*\]/giu, sources.sessions);

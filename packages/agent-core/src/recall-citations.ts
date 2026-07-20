@@ -297,7 +297,8 @@ const CITATION_CLASSES: readonly {
   { key: "commands", re: /\[command:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
   { key: "commits", re: /\[commit:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
   { key: "memories", re: /\[memory:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
-  { key: "actions", re: /\[action:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap }
+  { key: "actions", re: /\[action:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
+  { key: "flows", re: /\[flow:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap }
 ];
 
 /**

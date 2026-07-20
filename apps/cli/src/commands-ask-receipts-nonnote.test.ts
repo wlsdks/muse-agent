@@ -31,12 +31,17 @@ describe("formatNonNoteReceipts — felt 'shows its work' for non-note sources (
     expect(out).toContain("💬 from a past session: We set up the VPN with MTU 1380");
   });
 
+  it("renders a flow (automation) receipt so 'what automations do I have?' is followable", () => {
+    const out = formatNonNoteReceipts("You have a morning briefing [flow: 아침 브리핑 요약].", { flows: ["아침 브리핑 요약"] });
+    expect(out).toContain("⚙️ from your automations: 아침 브리핑 요약");
+  });
+
   // Guard against the drift that left feeds and sessions without a receipt:
   // EVERY non-note citation class the gate validates must also render a receipt.
   const STRUCTURED_CLASSES: ReadonlyArray<readonly [string, string]> = [
     ["task", "tasks"], ["event", "events"], ["reminder", "reminders"], ["session", "sessions"],
     ["feed", "feeds"], ["contact", "contacts"], ["command", "commands"], ["commit", "commits"],
-    ["memory", "memories"], ["action", "actions"]
+    ["memory", "memories"], ["action", "actions"], ["flow", "flows"]
   ];
   for (const [cls, field] of STRUCTURED_CLASSES) {
     it(`renders a receipt for the [${cls}: …] citation class (no class can be cited without a followable receipt)`, () => {

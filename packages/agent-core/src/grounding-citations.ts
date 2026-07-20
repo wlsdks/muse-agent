@@ -123,4 +123,6 @@ export interface AllowedCitations {
   readonly memories?: readonly string[];
   /** `[action: <what>]` — actions Muse logged taking on the user's behalf; content-token overlap. */
   readonly actions?: readonly string[];
+  /** `[flow: <name>]` — the user's Builder flows / scheduled jobs; content-token overlap (the model may reword the name). */
+  readonly flows?: readonly string[];
 }

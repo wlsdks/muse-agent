@@ -360,7 +360,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const {
         matchedContacts, openTasks, pendingReminders, upcomingEvents,
         allMemoryFacts, matchedMemories,
-        matchedActions, matchedCommands, matchedCommits,
+        matchedActions, matchedCommands, matchedCommits, matchedFlows,
         playbookSection, appliedStrategy, appliedStrategyId, probationSuggestion,
         printGroundedBanner, announceGenerating, webSearchPolicy,
         askRunId, leaseFile, acquireLease,
@@ -719,6 +719,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         matchedCommands,
         matchedCommits,
         matchedContacts,
+        matchedFlows,
         model,
         notesDir,
         openTasks,

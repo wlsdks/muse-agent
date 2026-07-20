@@ -62,6 +62,7 @@ import { computeRuleAdmission } from "./ask-behavioural-rules.js";
 import { embed } from "./embed.js";
 import { rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 import { buildActivityGrounding } from "./ask-activity-grounding.js";
+import { buildFlowsGrounding } from "./ask-flows-grounding.js";
 import { buildPersonalStoreGrounding } from "./ask-personal-store-grounding.js";
 import { buildAskSystemPrompt } from "./ask-system-prompt.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -110,6 +111,14 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
       reminders: options.reminders !== false,
       tasks: options.tasks !== false
     });
+
+  // Flows grounding — the user's own Builder flows / scheduled jobs
+  // (`@muse/scheduler`'s file store). Gated by its flag (default-on),
+  // fail-soft. See ask-flows-grounding.ts.
+  const { flowsBlock, matchedFlows } = await buildFlowsGrounding({
+    flows: options.flows !== false,
+    query
+  });
 
   // User-memory grounding (B3): facts the user told Muse to remember
   // ("I'm allergic to penicillin") are injected into the PERSONA so the model
@@ -239,6 +248,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
       upcomingEvents: upcomingEvents.length,
       pendingReminders: pendingReminders.length,
       contacts: matchedContacts.length,
+      automationFlows: matchedFlows.length,
       memories: matchedMemories.length,
       shellCommands: matchedCommands.length,
       gitCommits: matchedCommits.length,
@@ -335,6 +345,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
     contacts: matchedContacts.map((c) => c.name),
     events: upcomingEvents.map((e) => e.title),
     feeds: feedHeadlines.map((h) => h.feedName),
+    flows: matchedFlows.map((f) => f.name),
     memories: allMemoryFacts.map(renderMemoryFact),
     reminders: pendingReminders.map((r) => r.text),
     sessions: episodeHits.map((e) => e.summary),
@@ -352,11 +363,13 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
       episodeHits,
       feedBlock,
       feedHeadlines,
+      flowBlock: flowsBlock,
       gitBlock,
       matchedActions,
       matchedCommands,
       matchedCommits,
       matchedContacts,
+      matchedFlows,
       matchedMemories,
       memoryBlock,
       notesFraming: args.notesFraming,
@@ -405,6 +418,8 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
     reminderBlock,
     taskBlock,
     upcomingEvents,
+    flowsBlock,
+    matchedFlows,
     allMemoryFacts,
     matchedMemories,
     memoryBlock,

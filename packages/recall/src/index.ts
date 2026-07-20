@@ -40,6 +40,7 @@ export * from "./ask-session-grounding.js";
 export * from "./ask-note-retrieval.js";
 export * from "./ask-activity-grounding.js";
 export * from "./ask-personal-store-grounding.js";
+export * from "./ask-flows-grounding.js";
 export * from "./ask-prompt-constants.js";
 export * from "./pipeline.js";
 export * from "./citation-stream.js";

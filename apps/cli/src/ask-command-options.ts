@@ -26,6 +26,7 @@ export interface AskOptions {
   readonly calendarDays?: string;
   readonly reminders?: boolean;
   readonly contacts?: boolean;
+  readonly flows?: boolean;
   readonly actions?: boolean;
   readonly shell?: boolean;
   readonly git?: boolean;
@@ -97,6 +98,10 @@ Examples:
     .option(
       "--no-actions",
       "Skip injecting matching action-log entries (default: include what Muse has done on your behalf so 'did you send that?' / 'what have you done?' answer from the real log)"
+    )
+    .option(
+      "--no-flows",
+      "Skip injecting your Builder flows / scheduled jobs as grounding context (default: include automations whose name/description/tags match the question, or all of them for 'what automations do I have?')"
     )
     .option(
       "--shell",

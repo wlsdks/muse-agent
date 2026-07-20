@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections, type OptionalGroundingSources } from "./present.js";
+import { groundingSectionLines, OPTIONAL_GROUNDING_TIER, optionalGroundingRelevance, optionalGroundingSections, type OptionalGroundingSources } from "./present.js";
 
 const allAbsent: OptionalGroundingSources = {
   tasks: { body: "", present: false },
   calendar: { body: "", present: false },
   reminders: { body: "", present: false },
   contacts: { body: "", present: false },
+  flows: { body: "", present: false },
   memories: { body: "", present: false },
   shell: { body: "", present: false },
   git: { body: "", present: false },
@@ -181,6 +182,21 @@ describe("optionalGroundingSections", () => {
       "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===",
       "=== USER OPEN TASKS (sorted by due date, most imminent first) ==="
     ].sort());
+  });
+});
+
+describe("optionalGroundingSections — flows (the 13th optional grounding source)", () => {
+  it("carries the flows header/footer spec, cite-as hint included in the header", () => {
+    const specs = optionalGroundingSections({ ...allAbsent, flows: { body: "<flow 1>", present: true } });
+    expect(specs).toHaveLength(1);
+    expect(specs[0]?.header).toBe("=== YOUR AUTOMATIONS (Builder flows & scheduled jobs; cite as [flow: <name>]) ===");
+    expect(specs[0]?.footer).toBe("=== END AUTOMATIONS ===");
+    expect(specs[0]?.body).toBe("<flow 1>");
+  });
+
+  it("flows sits at tier 65 — strictly between actions (60) and contacts (70)", () => {
+    expect(OPTIONAL_GROUNDING_TIER.flows).toBeGreaterThan(OPTIONAL_GROUNDING_TIER.actions);
+    expect(OPTIONAL_GROUNDING_TIER.flows).toBeLessThan(OPTIONAL_GROUNDING_TIER.contacts);
   });
 });
 

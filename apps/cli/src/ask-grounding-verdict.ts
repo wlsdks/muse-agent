@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import type { ModelProvider } from "@muse/model";
 
 import type { ActivityGrounding } from "./ask-activity-grounding.js";
+import type { FlowsGrounding } from "./ask-flows-grounding.js";
 import type { PersonalStoreGrounding } from "./ask-personal-store-grounding.js";
 import type { SessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
@@ -67,6 +68,7 @@ export async function runGroundingVerdict(params: {
   readonly matchedActions: ActivityGrounding["matchedActions"];
   readonly matchedCommands: ActivityGrounding["matchedCommands"];
   readonly matchedCommits: ActivityGrounding["matchedCommits"];
+  readonly matchedFlows: FlowsGrounding["matchedFlows"];
   readonly options: {
     readonly withTools?: boolean;
     readonly json?: boolean;
@@ -82,7 +84,7 @@ export async function runGroundingVerdict(params: {
     untrustedNoteSources, index, imageAttachments, adHocVerifyTargets, systemPrompt,
     playbookSection, citationAllowed, allowedNotes, agentGroundingSources, allMemoryFacts,
     matchedContacts, openTasks, upcomingEvents, pendingReminders, episodeHits,
-    untrustedEpisodeIds, feedHeadlines, browsingHits, matchedActions, matchedCommands, matchedCommits,
+    untrustedEpisodeIds, feedHeadlines, browsingHits, matchedActions, matchedCommands, matchedCommits, matchedFlows,
     options, io
   } = params;
   let collectedAnswer = params.collectedAnswer;
@@ -159,6 +161,7 @@ export async function runGroundingVerdict(params: {
         const scoredMatches = [
           ...noteMatches,
           ...matchedContacts.map((c) => exactMatch(`contact: ${c.name}`, contactGroundingEvidence(c))),
+          ...matchedFlows.map((f) => exactMatch(`flow: ${f.name}`, `${f.name}${f.description ? ` ${f.description}` : ""} ${f.cronExpression} ${f.enabled ? "on" : "paused"} ${f.webhookTriggerToken ? "webhook" : "schedule"}`.trim())),
           ...openTasks.map((t) => exactMatch(`task: ${t.title}`, `${t.title}${t.notes ? ` ${t.notes}` : ""}${t.dueAt ? ` due ${t.dueAt} ${humanDate(t.dueAt)}` : ""}`)),
           ...upcomingEvents.map((e) => exactMatch(`event: ${e.title}`, `${e.title}${e.location ? ` ${e.location}` : ""} ${humanDate(e.startsAt)} ${humanDate(e.endsAt)}`.trim())),
           ...pendingReminders.map((r) => exactMatch(`reminder: ${r.text}`, `${r.text} ${humanDate(r.dueAt)}`.trim())),
@@ -199,7 +202,7 @@ export async function runGroundingVerdict(params: {
         // construction and is present in `scoredMatches`. `[from …]` note
         // provenance is left alone (it carries no claim).
         const expandContentCitations = (answer: string): string => answer.replace(
-          /\[(?:task|event|reminder|contact|session|feed|browsing|command|commit|memory|action):\s*([^\]]*)\]/giu,
+          /\[(?:task|event|reminder|contact|session|feed|browsing|command|commit|memory|action|flow):\s*([^\]]*)\]/giu,
           " $1 "
         );
         let verdictAnswer = expandContentCitations(collectedAnswer);
@@ -406,6 +409,7 @@ export async function runGroundingVerdict(params: {
             contacts: matchedContacts.map((c) => c.name),
             events: upcomingEvents.map((e) => e.title),
             feeds: feedHeadlines.map((h) => h.feedName),
+            flows: matchedFlows.map((f) => f.name),
             browsing: browsingHits.map((h) => h.host),
             memories: allMemoryFacts.map(renderMemoryFact),
             reminders: pendingReminders.map((r) => r.text),

@@ -172,6 +172,53 @@ export function buildBrowsingContextBlock(hits: readonly BrowsingHit[]): string 
     .join("\n\n");
 }
 
+/**
+ * Build the <<flow N>> grounding block from the user's Builder flows / scheduled
+ * jobs (`@muse/scheduler`). SECRET WHITELIST (not a blacklist): only `name`,
+ * `description`, `enabled`, `cronExpression`, `timezone`, `jobType`,
+ * `mcpServerName`, `toolName`, `tags`, `lastRunAt`, `lastStatus`, plus the
+ * DERIVED boolean "has a webhook trigger" ever reach this block. NEVER
+ * `webhookTriggerToken` / `webhookUrl` (secrets themselves), `toolArguments`
+ * (routinely carries credentials), `lastResult` (untrusted tool output — an
+ * injection vector), or `agentPrompt` / `agentSystemPrompt` (the model's own
+ * instructions, not user-facing content) — so a field added to `ScheduledJob`
+ * later can't silently leak here; it must be added to the whitelist first. Pure.
+ */
+export function buildFlowContextBlock(jobs: readonly {
+  readonly name: string;
+  readonly description?: string;
+  readonly enabled: boolean;
+  readonly cronExpression: string;
+  readonly timezone: string;
+  readonly jobType: "mcp_tool" | "agent";
+  readonly mcpServerName?: string;
+  readonly toolName?: string;
+  readonly tags: readonly string[];
+  readonly webhookTriggerToken?: string;
+  readonly lastRunAt?: Date;
+  readonly lastStatus?: string;
+}[]): string {
+  if (jobs.length === 0) {
+    return "(no matching automations)";
+  }
+  return jobs
+    .map((j, i) => {
+      const safeName = safeField(j.name);
+      const status = j.enabled ? "on" : "PAUSED";
+      const trigger = j.webhookTriggerToken ? "schedule/webhook" : "schedule";
+      const does = j.jobType === "mcp_tool"
+        ? `tool: ${safeField(j.mcpServerName ?? "?")}.${safeField(j.toolName ?? "?")}`
+        : "agent";
+      const desc = j.description ? `\n${safeField(j.description)}` : "";
+      const tags = j.tags.length > 0 ? `\ntags: ${j.tags.map(safeField).join(", ")}` : "";
+      const lastRun = j.lastRunAt
+        ? `\nlast run: ${j.lastRunAt.toISOString()} ${j.lastStatus ?? "unknown"}`
+        : "";
+      return `<<flow ${(i + 1).toString()} — ${safeName}>>\n${safeName} — ${status} · ${j.cronExpression} ${safeField(j.timezone)} · trigger: ${trigger} · does: ${does}${desc}${tags}${lastRun}\n[flow: ${safeName}]\n<<end>>`;
+    })
+    .join("\n\n");
+}
+
 /** Build the <<event N>> grounding block from upcoming calendar events. Pure. */
 export function buildCalendarContextBlock(events: readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date; readonly allDay: boolean; readonly location?: string; readonly providerId: string }[]): string {
   if (events.length === 0) {

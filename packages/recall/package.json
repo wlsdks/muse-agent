@@ -23,6 +23,7 @@
     "@muse/memory": "workspace:*",
     "@muse/model": "workspace:*",
     "@muse/prompts": "workspace:*",
+    "@muse/scheduler": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*",
     "@muse/tools": "workspace:*",

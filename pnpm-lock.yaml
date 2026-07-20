@@ -779,6 +779,9 @@ importers:
       '@muse/prompts':
         specifier: workspace:*
         version: link:../prompts
+      '@muse/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
