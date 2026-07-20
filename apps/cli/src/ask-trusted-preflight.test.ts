@@ -10,7 +10,6 @@ const calls = vi.hoisted(() => ({
   context: 0,
   imageLoad: 0,
   runtimeAssembly: 0,
-  toolWiring: 0,
   vision: 0
 }));
 
@@ -46,13 +45,6 @@ vi.mock("./ask-context-setup.js", () => ({
   }
 }));
 
-vi.mock("./ask-tool-wiring.js", () => ({
-  buildAskToolWiring: async () => {
-    calls.toolWiring += 1;
-    return {};
-  }
-}));
-
 vi.mock("./ask-vision-command.js", () => ({
   resolveSessionVisionModel: async () => "test-model",
   runVisionCommandAction: async () => {
@@ -80,7 +72,6 @@ afterEach(() => {
   calls.context = 0;
   calls.imageLoad = 0;
   calls.runtimeAssembly = 0;
-  calls.toolWiring = 0;
   calls.vision = 0;
   process.exitCode = 0;
 });
@@ -163,7 +154,6 @@ describe("muse ask trusted preflight", () => {
       expect(calls.context).toBe(0);
       expect(calls.vision).toBe(0);
       expect(calls.runtimeAssembly).toBe(0);
-      expect(calls.toolWiring).toBe(0);
     });
   }
 

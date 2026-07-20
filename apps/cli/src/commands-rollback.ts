@@ -1,8 +1,15 @@
 /**
  * `muse rollback` — undo an agent file write. Every file_write / file_edit /
  * file_multi_edit / file_delete / file_move snapshots the target's state
- * BEFORE mutating it (`@muse/fs`'s `FileCheckpointStore`, wired in
- * `ask-tool-wiring.ts`); this command lists those snapshots and restores one.
+ * BEFORE mutating it (`@muse/fs`'s `FileCheckpointStore`); this command lists
+ * those snapshots and restores one.
+ *
+ * NOTE: no CLI surface currently constructs that store — the `muse ask`
+ * with-tools file wiring was removed when `ask` became non-coding
+ * personal-read only (612ed744c), so this command lists an empty set until an
+ * fs-write surface is wired again. It is NOT reading the agent-run
+ * checkpoints that `@muse/runtime-state` writes to the same directory; those
+ * use a different manifest format.
  *
  *   - `muse rollback` / `muse rollback list`        — newest-first table
  *   - `muse rollback <id|prefix|last> --yes`         — restore it
