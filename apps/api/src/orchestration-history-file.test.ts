@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FileOrchestrationHistoryStore } from "./orchestration-history-file.js";
+import { defaultOrchestrationHistoryFile, FileOrchestrationHistoryStore } from "./orchestration-history-file.js";
 
 import type { OrchestrationHistoryEntry } from "@muse/multi-agent";
 
@@ -29,6 +29,11 @@ const entry = (runId: string): OrchestrationHistoryEntry => ({
 });
 
 describe("FileOrchestrationHistoryStore", () => {
+  it("resolves its default from injected HOME", () => {
+    expect(defaultOrchestrationHistoryFile({ HOME: "/tmp/injected-home" }))
+      .toBe(join("/tmp/injected-home", ".muse", "orchestration-history.json"));
+  });
+
   it("entries survive a restart with Dates revived (incl. conversation timestamps)", () => {
     const file = join(dir, "history.json");
     const first = new FileOrchestrationHistoryStore(file);

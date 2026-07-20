@@ -94,7 +94,7 @@ import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
 import { registerJourneyRoutes } from "./journey-routes.js";
 import { registerDoctorRoutes } from "./doctor-routes.js";
-import { FileOrchestrationHistoryStore } from "./orchestration-history-file.js";
+import { defaultOrchestrationHistoryFile, FileOrchestrationHistoryStore } from "./orchestration-history-file.js";
 import { registerSwarmRoutes } from "./swarm-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
@@ -144,8 +144,11 @@ import type { TaglineModelFn } from "./identity-tagline.js";
  * a subtitle is a handful of words. Fail-soft: the route keeps its deterministic
  * line if the model errors.
  */
-function resolveTaglineModel(options: ServerOptions): TaglineModelFn | undefined {
-  if ((process.env.MUSE_TAGLINE_NO_MODEL ?? "").trim().length > 0) return undefined;
+function resolveTaglineModel(
+  options: ServerOptions,
+  env: Readonly<Record<string, string | undefined>>
+): TaglineModelFn | undefined {
+  if ((env.MUSE_TAGLINE_NO_MODEL ?? "").trim().length > 0) return undefined;
   const provider = options.modelProvider;
   const model = options.defaultModel;
   if (!provider || !model) return undefined;
@@ -164,8 +167,9 @@ function resolveTaglineModel(options: ServerOptions): TaglineModelFn | undefined
 }
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
+  const env = options.env ?? process.env;
   const integrationEnv = options.integrationEnv
-    ?? resolveIntegrationEnvironment(process.env, { localOnlyOverride: options.localOnly });
+    ?? resolveIntegrationEnvironment(env, { localOnlyOverride: options.localOnly });
   if (
     options.integrationEnv
     && options.localOnly !== undefined
@@ -178,7 +182,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // S3b shared conversation store — SAME file the CLI/web threads use, so a
   // Telegram/Matrix chat shows up in `muse chats` too. Cheap to construct
   // (no I/O until a call touches it), so built unconditionally.
-  const conversationStore = new FileConversationStore({ file: options.conversationsFile ?? defaultConversationsFile() });
+  const conversationStore = new FileConversationStore({ file: options.conversationsFile ?? defaultConversationsFile(env) });
   const runtimeSettings =
     options.runtimeSettings ?? new RuntimeSettings(new InMemoryRuntimeSettingsStore());
   const authService = options.authService;
@@ -264,7 +268,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerSchedulerRoutes(server, {
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     scheduler: options.scheduler,
-    worksFile: options.worksFile ?? resolveWorksFile(process.env)
+    worksFile: options.worksFile ?? resolveWorksFile(env)
   });
   registerWebhookTriggerRoutes(server, {
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
@@ -292,13 +296,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
     defaultModel: options.defaultModel,
-    historyStore: new FileOrchestrationHistoryStore(),
+    historyStore: new FileOrchestrationHistoryStore(defaultOrchestrationHistoryFile(env)),
     modelProvider: options.modelProvider,
-    embed: createGateEmbedder(process.env),
+    embed: createGateEmbedder(env),
     requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     runRegistry: multiAgentRunRegistry,
-    ...(resolveWorkerTimeoutMs(process.env) !== undefined
-      ? { workerTimeoutMs: resolveWorkerTimeoutMs(process.env) }
+    ...(resolveWorkerTimeoutMs(env) !== undefined
+      ? { workerTimeoutMs: resolveWorkerTimeoutMs(env) }
       : {})
   });
   registerCompatibilityRoutes(server, {
@@ -344,24 +348,24 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   if (options.tasksFile) {
     registerTasksRoutes(server, {
-      attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),
+      attunementFile: options.attunementFile ?? resolveAttunementFile(env),
       authService,
       tasksFile: options.tasksFile,
       ...(options.tasksProviderRegistry ? { tasksProviderRegistry: options.tasksProviderRegistry } : {})
     });
   }
   registerAttunementRoutes(server, {
-    attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),
+    attunementFile: options.attunementFile ?? resolveAttunementFile(env),
     authService,
-    notesDir: options.notesDir ?? resolveNotesDir(process.env),
-    tasksFile: options.tasksFile ?? resolveTasksFile(process.env)
+    notesDir: options.notesDir ?? resolveNotesDir(env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(env)
   });
   registerProgressiveAutonomyRoutes(server, {
-    attunementFile: options.attunementFile ?? resolveAttunementFile(options.env ?? process.env),
+    attunementFile: options.attunementFile ?? resolveAttunementFile(env),
     authService,
-    defaultUserId: resolveDefaultUserId(options.env ?? process.env),
-    opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(options.env ?? process.env),
-    tasksFile: options.tasksFile ?? resolveTasksFile(options.env ?? process.env)
+    defaultUserId: resolveDefaultUserId(env),
+    opportunitiesFile: resolveProgressiveAutonomyOpportunitiesFile(env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(env)
   });
   if (options.notesDir) {
     registerNotesRoutes(server, {
@@ -372,7 +376,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   if (options.notesDir && options.modelProvider && options.defaultModel) {
     const askModelProvider = options.modelProvider;
-    const envEmbedModel = process.env.MUSE_EMBED_MODEL?.trim();
+    const envEmbedModel = env.MUSE_EMBED_MODEL?.trim();
     registerAskRoutes(server, {
       answerModel: options.defaultModel,
       authService,
@@ -389,7 +393,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         return response.output;
       },
       notesDir: options.notesDir,
-      notesIndexFile: resolveNotesIndexFile(process.env as Record<string, string | undefined>),
+      notesIndexFile: resolveNotesIndexFile(env),
       streamAnswer: async function* ({ system, user, model, temperature }) {
         for await (const event of askModelProvider.stream({
           messages: [
@@ -419,7 +423,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   });
   const ingestStarters: { telegram?: () => void; matrix?: () => void } = {};
   const replyStarters: { telegram?: () => void; matrix?: () => void } = {};
-  const daemonSettingsFile = resolveDaemonSettingsFile(process.env);
+  const daemonSettingsFile = resolveDaemonSettingsFile(env);
 
   if (options.messaging) {
     registerMessagingRoutes(server, {
@@ -442,12 +446,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerDayRhythmRoutes(server, {
     authService,
     channelOwnersFile: integrationEnv.messaging.ownersFile,
-    configFile: resolveMuseCliConfigFilePath(options.env ?? process.env),
+    configFile: resolveMuseCliConfigFilePath(env),
     ...(options.messaging ? { registry: options.messaging } : {})
   });
   registerActuatorModeRoutes(server, {
     authService,
-    configFile: resolveMuseCliConfigFilePath(options.env ?? process.env)
+    configFile: resolveMuseCliConfigFilePath(env)
   });
   registerEmailStatusRoutes(server, {
     authService,
@@ -483,16 +487,17 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     ...(options.activeContextProvider ? { activeContextProvider: options.activeContextProvider } : {})
   });
-  const taglineModel = resolveTaglineModel(options);
+  const taglineModel = resolveTaglineModel(options, env);
   registerIdentityTaglineRoutes(server, {
     authService,
+    env,
     ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {}),
     ...(taglineModel ? { model: taglineModel } : {})
   });
   registerUserModelReconfirmRoutes(server, {
     authService,
-    defaultUserId: resolveDefaultUserId(options.env ?? process.env),
-    reconfirmCardAnsweredFile: options.reconfirmCardAnsweredFile ?? resolveReconfirmCardAnsweredFile(options.env ?? process.env),
+    defaultUserId: resolveDefaultUserId(env),
+    reconfirmCardAnsweredFile: options.reconfirmCardAnsweredFile ?? resolveReconfirmCardAnsweredFile(env),
     ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {})
   });
   registerPromptRoutes(server, {
@@ -518,15 +523,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   });
   registerAutomationRoutes(server, {
     authService,
-    env: process.env,
+    env,
     scheduler: options.scheduler,
     ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
   });
   registerAutomationProposalsRoutes(server, {
     authService,
-    notesDir: options.notesDir ?? resolveNotesDir(process.env),
-    rejectedProposalsFile: options.rejectedProposalsFile ?? resolveRejectedProposalsFile(process.env),
-    tasksFile: options.tasksFile ?? resolveTasksFile(process.env)
+    notesDir: options.notesDir ?? resolveNotesDir(env),
+    rejectedProposalsFile: options.rejectedProposalsFile ?? resolveRejectedProposalsFile(env),
+    tasksFile: options.tasksFile ?? resolveTasksFile(env)
   });
   registerFlowsRoutes(server, { authService, scheduler: options.scheduler });
   if (options.modelProvider && options.defaultModel) {
@@ -578,10 +583,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   registerBoardRoutes(server);
   registerWorksRoutes(server, {
-    attunementFile: options.attunementFile ?? resolveAttunementFile(process.env),
+    attunementFile: options.attunementFile ?? resolveAttunementFile(env),
     authService,
     scheduler: options.scheduler,
-    worksFile: options.worksFile ?? resolveWorksFile(process.env)
+    worksFile: options.worksFile ?? resolveWorksFile(env)
   });
   registerHistoryRoutes(server, {
     authService,
@@ -598,19 +603,19 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // matching what the CLI reads.
   registerAccountabilityRoutes(server, {
     authService,
-    actionLogFile: options.actionLogFile ?? resolveActionLogFile(process.env),
-    contactsFile: options.contactsFile ?? resolveContactsFile(process.env),
-    objectivesFile: options.objectivesFile ?? resolveObjectivesFile(process.env),
-    vetoesFile: options.vetoesFile ?? resolveVetoesFile(process.env)
+    actionLogFile: options.actionLogFile ?? resolveActionLogFile(env),
+    contactsFile: options.contactsFile ?? resolveContactsFile(env),
+    objectivesFile: options.objectivesFile ?? resolveObjectivesFile(env),
+    vetoesFile: options.vetoesFile ?? resolveVetoesFile(env)
   });
 
   registerSelfImprovementRoutes(server, {
     authService,
-    weaknessesFile: options.weaknessesFile ?? resolveWeaknessesFile(process.env),
-    playbookFile: options.playbookFile ?? resolvePlaybookFile(process.env),
-    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env),
-    skillRewardsFile: options.skillRewardsFile ?? resolveSkillRewardsFile(process.env),
-    reflectionsFile: options.reflectionsFile ?? resolveReflectionsFile(process.env)
+    weaknessesFile: options.weaknessesFile ?? resolveWeaknessesFile(env),
+    playbookFile: options.playbookFile ?? resolvePlaybookFile(env),
+    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(env),
+    skillRewardsFile: options.skillRewardsFile ?? resolveSkillRewardsFile(env),
+    reflectionsFile: options.reflectionsFile ?? resolveReflectionsFile(env)
   });
 
   // One merged "what Muse learned about you" timeline (facts + skills +
@@ -618,9 +623,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // read-only, no new state-changing surface.
   registerJourneyRoutes(server, {
     authService,
-    beliefProvenanceFile: options.beliefProvenanceFile ?? defaultBeliefProvenanceFile(),
-    playbookFile: options.playbookFile ?? resolvePlaybookFile(process.env),
-    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env)
+    beliefProvenanceFile: options.beliefProvenanceFile ?? defaultBeliefProvenanceFile(env),
+    playbookFile: options.playbookFile ?? resolvePlaybookFile(env),
+    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(env)
   });
 
   const applyDaemonToggle = (key: string, enabled: boolean): boolean => {
@@ -659,7 +664,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     applyDaemonToggle,
     authService,
     daemonSettingsFile,
-    daemonStatus: () => channelDaemons.status()
+    daemonStatus: () => channelDaemons.status(),
+    env
   });
 
   registerSwarmRoutes(server, { authService });
@@ -678,8 +684,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // wired both default routing env vars + a matching messaging
   // provider. Off by default so this code path is opt-in and tests
   // / fresh installs don't accidentally fire empty intervals.
-  const env = process.env;
-
   // Phase D shared activity tracker. Either the reminder daemon or
   // the proactive daemon (or both) can opt into agent-synthesized
   // text via their respective MUSE_*_AGENT_TURN flag; when either is
@@ -735,7 +739,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const inboundReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
   const bootDaemonSettings = readDaemonSettingsSync(daemonSettingsFile);
   const pollEnabled = bootDaemonSettings.MUSE_TELEGRAM_POLL_ENABLED
-    ?? isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
+    ?? isMuseDaemonEnabled(env.MUSE_TELEGRAM_POLL_ENABLED);
   // Registered at most once per boot, regardless of how many times the
   // ingest starter itself re-runs (reconnect, daemon toggle) — Telegram's
   // setMyCommands is idempotent, but repeating it on every toggle would
@@ -768,15 +772,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
           server.log.warn(`telegram setMyCommands failed: ${errorMessage(error, "telegram setMyCommands failed")}`);
         });
       }
-      const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
-        ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
+      const pollMsRaw = env.MUSE_TELEGRAM_POLL_INTERVAL_MS
+        ? Number(env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
         : undefined;
-      const longPollRaw = process.env.MUSE_TELEGRAM_LONG_POLL_SECONDS
-        ? Number(process.env.MUSE_TELEGRAM_LONG_POLL_SECONDS)
+      const longPollRaw = env.MUSE_TELEGRAM_LONG_POLL_SECONDS
+        ? Number(env.MUSE_TELEGRAM_LONG_POLL_SECONDS)
         : undefined;
       // Default 👀 "seen" reaction (Bot API has no read receipts);
       // MUSE_TELEGRAM_ACK_REACTION overrides the emoji, empty disables.
-      const ackReaction = process.env.MUSE_TELEGRAM_ACK_REACTION ?? "👀";
+      const ackReaction = env.MUSE_TELEGRAM_ACK_REACTION ?? "👀";
       channelDaemons.adopt("telegram-poll", startTelegramPollTick({
         ...(ackReaction.trim().length > 0 ? { ackReaction: ackReaction.trim() } : {}),
         errorLogger: (message) => {
@@ -805,7 +809,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // session". Reuses the telegram inbox the poll daemon fills.
   // Off unless MUSE_INBOUND_REPLY_ENABLED=1.
   const inboundReplyEnabled = bootDaemonSettings.MUSE_INBOUND_REPLY_ENABLED
-    ?? isMuseDaemonEnabled(process.env.MUSE_INBOUND_REPLY_ENABLED);
+    ?? isMuseDaemonEnabled(env.MUSE_INBOUND_REPLY_ENABLED);
   if (options.telegramInboxFile && options.messaging && options.agentRuntime) {
     const telegramInboxFile = options.telegramInboxFile;
     const messaging = options.messaging;
@@ -835,8 +839,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         }),
         store: conversationStoreThreadedTurnStore(conversationStore, { origin: "telegram" })
       });
-      const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
-        ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+      const replyMsRaw = env.MUSE_INBOUND_REPLY_INTERVAL_MS
+        ? Number(env.MUSE_INBOUND_REPLY_INTERVAL_MS)
         : undefined;
       const replyHandle = startInboundReplyTick({
         cursorFile: `${telegramInboxFile}.reply-cursor.json`,
@@ -861,7 +865,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // posture as the Telegram daemon.
   const matrixReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
   const matrixPollEnabled = bootDaemonSettings.MUSE_MATRIX_POLL_ENABLED
-    ?? isMuseDaemonEnabled(process.env.MUSE_MATRIX_POLL_ENABLED);
+    ?? isMuseDaemonEnabled(env.MUSE_MATRIX_POLL_ENABLED);
   if (options.matrixInboxFile && options.messaging) {
     const matrixInboxFile = options.matrixInboxFile;
     const messaging = options.messaging;
@@ -877,11 +881,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       if (!(matrix instanceof MatrixProvider)) {
         return;
       }
-      const pollMsRaw = process.env.MUSE_MATRIX_POLL_INTERVAL_MS
-        ? Number(process.env.MUSE_MATRIX_POLL_INTERVAL_MS)
+      const pollMsRaw = env.MUSE_MATRIX_POLL_INTERVAL_MS
+        ? Number(env.MUSE_MATRIX_POLL_INTERVAL_MS)
         : undefined;
-      const longPollRaw = process.env.MUSE_MATRIX_LONG_POLL_SECONDS
-        ? Number(process.env.MUSE_MATRIX_LONG_POLL_SECONDS)
+      const longPollRaw = env.MUSE_MATRIX_LONG_POLL_SECONDS
+        ? Number(env.MUSE_MATRIX_LONG_POLL_SECONDS)
         : undefined;
       channelDaemons.adopt("matrix-sync", startMatrixSyncTick({
         errorLogger: (message) => {
@@ -934,8 +938,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         }),
         store: conversationStoreThreadedTurnStore(conversationStore, { origin: "matrix" })
       });
-      const matrixReplyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
-        ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+      const matrixReplyMsRaw = env.MUSE_INBOUND_REPLY_INTERVAL_MS
+        ? Number(env.MUSE_INBOUND_REPLY_INTERVAL_MS)
         : undefined;
       const matrixReplyHandle = startInboundReplyTick({
         cursorFile: `${matrixInboxFile}.reply-cursor.json`,
@@ -958,8 +962,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // Slack channels (MUSE_SLACK_POLL_CHANNELS=C0123,C0456) every
   // MUSE_SLACK_POLL_INTERVAL_MS (default 30s) and persist each new
   // message into slackInboxFile. Off unless MUSE_SLACK_POLL_ENABLED=1.
-  const slackPollEnabled = isMuseDaemonEnabled(process.env.MUSE_SLACK_POLL_ENABLED);
-  const slackChannels = parseSlackPollChannels(process.env.MUSE_SLACK_POLL_CHANNELS);
+  const slackPollEnabled = isMuseDaemonEnabled(env.MUSE_SLACK_POLL_ENABLED);
+  const slackChannels = parseSlackPollChannels(env.MUSE_SLACK_POLL_CHANNELS);
   if (
     slackPollEnabled
     && slackChannels
@@ -969,8 +973,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   ) {
     const slack = options.messaging.require("slack");
     if (slack instanceof SlackProvider) {
-      const pollMsRaw = process.env.MUSE_SLACK_POLL_INTERVAL_MS
-        ? Number(process.env.MUSE_SLACK_POLL_INTERVAL_MS)
+      const pollMsRaw = env.MUSE_SLACK_POLL_INTERVAL_MS
+        ? Number(env.MUSE_SLACK_POLL_INTERVAL_MS)
         : undefined;
       const pollHandle = startSlackPollTick({
         channels: slackChannels,
@@ -991,8 +995,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // MUSE_DISCORD_POLL_INTERVAL_MS (default 30s) and persist each
   // new message into discordInboxFile. Off unless the user sets
   // MUSE_DISCORD_POLL_ENABLED=1.
-  const discordPollEnabled = isMuseDaemonEnabled(process.env.MUSE_DISCORD_POLL_ENABLED);
-  const discordChannels = parseDiscordPollChannels(process.env.MUSE_DISCORD_POLL_CHANNELS);
+  const discordPollEnabled = isMuseDaemonEnabled(env.MUSE_DISCORD_POLL_ENABLED);
+  const discordChannels = parseDiscordPollChannels(env.MUSE_DISCORD_POLL_CHANNELS);
   if (
     discordPollEnabled
     && discordChannels
@@ -1002,8 +1006,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   ) {
     const discord = options.messaging.require("discord");
     if (discord instanceof DiscordProvider) {
-      const pollMsRaw = process.env.MUSE_DISCORD_POLL_INTERVAL_MS
-        ? Number(process.env.MUSE_DISCORD_POLL_INTERVAL_MS)
+      const pollMsRaw = env.MUSE_DISCORD_POLL_INTERVAL_MS
+        ? Number(env.MUSE_DISCORD_POLL_INTERVAL_MS)
         : undefined;
       const pollHandle = startDiscordPollTick({
         channels: discordChannels,
@@ -1021,7 +1025,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 
   // Serve the built web UI from this origin when MUSE_WEB_DIR is set (the
   // self-contained desktop app); a no-op for a plain API dev server.
-  registerStaticWeb(server);
+  registerStaticWeb(server, env.MUSE_WEB_DIR);
 
   return server;
 }

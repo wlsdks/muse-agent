@@ -44,7 +44,8 @@ export function resolveDaemonSettingsFile(env: { readonly [key: string]: string 
   if (override && override.length > 0) {
     return override;
   }
-  return join(homedir(), ".muse", "daemon-settings.json");
+  const injectedHome = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return join(injectedHome && injectedHome.length > 0 ? injectedHome : homedir(), ".muse", "daemon-settings.json");
 }
 
 function readDaemonSettingsFileSync(file: string): DaemonSettingsFile | typeof UNSUPPORTED_DAEMON_SETTINGS_FILE {

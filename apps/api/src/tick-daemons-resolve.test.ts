@@ -23,10 +23,11 @@ describe("resolveAmbientSignalFile / resolveProactiveTrustFile", () => {
     expect(resolveProactiveTrustFile({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" })).toBe("/tmp/x/tr.json");
   });
 
-  it("fall back to $HOME/.muse/<file> when no override", () => {
-    process.env.HOME = "/tmp/fakehome";
-    expect(resolveAmbientSignalFile({})).toBe("/tmp/fakehome/.muse/ambient.json");
-    expect(resolveProactiveTrustFile({})).toBe("/tmp/fakehome/.muse/proactive-trust.json");
+  it("uses the injected HOME instead of ambient process HOME", () => {
+    process.env.HOME = "/tmp/ambient-owner-home";
+    const env = { HOME: "/tmp/injected-home" };
+    expect(resolveAmbientSignalFile(env)).toBe("/tmp/injected-home/.muse/ambient.json");
+    expect(resolveProactiveTrustFile(env)).toBe("/tmp/injected-home/.muse/proactive-trust.json");
   });
 
   it("fall back to the OS home dir when HOME is unset — never the filesystem root", () => {
@@ -40,47 +41,50 @@ describe("resolveAmbientSignalFile / resolveProactiveTrustFile", () => {
 });
 
 describe("resolveInterruptionBudgetWiring", () => {
+  const isolated = (overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ HOME: "/tmp/injected-home", ...overrides });
+
   it("defaults to hourlyCap=2 / dailyCap=6 and the ~/.muse ledger + digest + trust + last-delivery paths", () => {
-    process.env.HOME = "/tmp/fakehome";
-    const wiring = resolveInterruptionBudgetWiring({});
+    process.env.HOME = "/tmp/ambient-owner-home";
+    const wiring = resolveInterruptionBudgetWiring({ HOME: "/tmp/injected-home" });
     expect(wiring).toEqual({
       dailyCap: 6,
-      digestFile: join("/tmp/fakehome", ".muse", "digest-queue.json"),
+      digestFile: join("/tmp/injected-home", ".muse", "digest-queue.json"),
       hourlyCap: 2,
-      lastDeliveryFile: join("/tmp/fakehome", ".muse", "last-proactive-delivery.json"),
-      ledgerFile: join("/tmp/fakehome", ".muse", "interruption-ledger.json"),
-      trustLedgerFile: "/tmp/fakehome/.muse/proactive-trust.json"
+      lastDeliveryFile: join("/tmp/injected-home", ".muse", "last-proactive-delivery.json"),
+      ledgerFile: join("/tmp/injected-home", ".muse", "interruption-ledger.json"),
+      trustLedgerFile: "/tmp/injected-home/.muse/proactive-trust.json"
     });
   });
 
   it("trustLedgerFile matches resolveProactiveTrustFile — a single source of truth shared with the proactive-notice loop", () => {
-    process.env.HOME = "/tmp/fakehome";
-    expect(resolveInterruptionBudgetWiring({}).trustLedgerFile).toBe(resolveProactiveTrustFile({}));
-    expect(resolveInterruptionBudgetWiring({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" }).trustLedgerFile)
-      .toBe(resolveProactiveTrustFile({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" }));
+    process.env.HOME = "/tmp/ambient-owner-home";
+    const env = { HOME: "/tmp/injected-home" };
+    expect(resolveInterruptionBudgetWiring(env).trustLedgerFile).toBe(resolveProactiveTrustFile(env));
+    expect(resolveInterruptionBudgetWiring(isolated({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" })).trustLedgerFile)
+      .toBe(resolveProactiveTrustFile(isolated({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" })));
   });
 
   it("honors an explicit MUSE_LAST_PROACTIVE_FILE override for lastDeliveryFile", () => {
-    expect(resolveInterruptionBudgetWiring({ MUSE_LAST_PROACTIVE_FILE: "/tmp/x/last.json" }))
+    expect(resolveInterruptionBudgetWiring(isolated({ MUSE_LAST_PROACTIVE_FILE: "/tmp/x/last.json" })))
       .toMatchObject({ lastDeliveryFile: "/tmp/x/last.json" });
   });
 
   it("honors MUSE_INTERRUPTION_*_CAP overrides, including an explicit 0 (unlimited)", () => {
-    expect(resolveInterruptionBudgetWiring({ MUSE_INTERRUPTION_DAILY_CAP: "0", MUSE_INTERRUPTION_HOURLY_CAP: "10" })).toMatchObject({
+    expect(resolveInterruptionBudgetWiring(isolated({ MUSE_INTERRUPTION_DAILY_CAP: "0", MUSE_INTERRUPTION_HOURLY_CAP: "10" }))).toMatchObject({
       dailyCap: 0,
       hourlyCap: 10
     });
   });
 
   it("falls back to the default on a non-numeric override rather than aborting", () => {
-    expect(resolveInterruptionBudgetWiring({ MUSE_INTERRUPTION_HOURLY_CAP: "not-a-number" })).toMatchObject({ hourlyCap: 2 });
+    expect(resolveInterruptionBudgetWiring(isolated({ MUSE_INTERRUPTION_HOURLY_CAP: "not-a-number" }))).toMatchObject({ hourlyCap: 2 });
   });
 
   it("honors explicit MUSE_INTERRUPTION_LEDGER_FILE / MUSE_DIGEST_QUEUE_FILE overrides", () => {
-    expect(resolveInterruptionBudgetWiring({
+    expect(resolveInterruptionBudgetWiring(isolated({
       MUSE_DIGEST_QUEUE_FILE: "/tmp/x/digest.json",
       MUSE_INTERRUPTION_LEDGER_FILE: "/tmp/x/ledger.json"
-    })).toMatchObject({ digestFile: "/tmp/x/digest.json", ledgerFile: "/tmp/x/ledger.json" });
+    }))).toMatchObject({ digestFile: "/tmp/x/digest.json", ledgerFile: "/tmp/x/ledger.json" });
   });
 });
 

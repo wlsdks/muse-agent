@@ -569,10 +569,11 @@ export function beliefValueTimeline(entries: readonly BeliefProvenance[], key: s
   return out;
 }
 
-export function defaultBeliefProvenanceFile(): string {
-  const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
+export function defaultBeliefProvenanceFile(env: NodeJS.ProcessEnv = process.env): string {
+  const fromEnv = env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
-  return join(homedir(), ".muse", "belief-provenance.json");
+  const injectedHome = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return join(injectedHome && injectedHome.length > 0 ? injectedHome : homedir(), ".muse", "belief-provenance.json");
 }
 
 /** Format-only check (no decrypt): is the belief-provenance store encrypted at rest? */

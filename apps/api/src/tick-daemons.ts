@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
@@ -570,8 +570,7 @@ export function startConsolidateDaemonIfConfigured(
     source = tracker;
   }
   const activitySource = source;
-  const authoredSkillsDir = env.MUSE_AUTHORED_SKILLS_DIR?.trim()
-    || join(homedir(), ".muse", "skills", "authored");
+  const authoredSkillsDir = resolveAuthoredSkillsDir(env);
   const idleMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_IDLE_MS);
   const tickMsRaw = optionalNumber(env.MUSE_SKILL_CONSOLIDATE_TICK_MS);
   const consolidateQuietHours = liveQuietHours(env, server, env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
@@ -746,7 +745,7 @@ export function startHomeWatchDaemonIfConfigured(
 export function resolveAmbientSignalFile(env: NodeJS.ProcessEnv): string {
   const overridden = env.MUSE_AMBIENT_FILE?.trim();
   if (overridden && overridden.length > 0) return overridden;
-  const envHome = process.env.HOME?.trim();
+  const envHome = env.HOME?.trim() || env.USERPROFILE?.trim();
   if (envHome && envHome.length > 0) return `${envHome}/.muse/ambient.json`;
   const sysHome = homedir().trim();
   if (sysHome.length > 0) return `${sysHome}/.muse/ambient.json`;
@@ -756,7 +755,7 @@ export function resolveAmbientSignalFile(env: NodeJS.ProcessEnv): string {
 export function resolveProactiveSidecarFile(env: NodeJS.ProcessEnv): string {
   const overridden = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim();
   if (overridden && overridden.length > 0) return overridden;
-  const envHome = process.env.HOME?.trim();
+  const envHome = env.HOME?.trim() || env.USERPROFILE?.trim();
   if (envHome && envHome.length > 0) return `${envHome}/.muse/proactive-fired.json`;
   const sysHome = homedir().trim();
   if (sysHome.length > 0) return `${sysHome}/.muse/proactive-fired.json`;
@@ -802,7 +801,7 @@ export function resolveInterruptionBudgetWiring(env: NodeJS.ProcessEnv): {
 export function resolveProactiveTrustFile(env: NodeJS.ProcessEnv): string {
   const overridden = env.MUSE_PROACTIVE_TRUST_FILE?.trim();
   if (overridden && overridden.length > 0) return overridden;
-  const envHome = process.env.HOME?.trim();
+  const envHome = env.HOME?.trim() || env.USERPROFILE?.trim();
   if (envHome && envHome.length > 0) return `${envHome}/.muse/proactive-trust.json`;
   const sysHome = homedir().trim();
   if (sysHome.length > 0) return `${sysHome}/.muse/proactive-trust.json`;

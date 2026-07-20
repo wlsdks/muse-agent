@@ -1,44 +1,28 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import net from "node:net";
-import { setTimeout as sleep } from "node:timers/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as pathJoin } from "node:path";
+import { join } from "node:path";
+
+import {
+  ApiSmokeStartupTimeoutError,
+  createDisposableApiEnvironment,
+  ensureDisposableApiDirectories,
+  finishInProcessApiSmoke,
+  installProcessEnvironment,
+  startInProcessApi
+} from "./lib/in-process-api.mjs";
 
 const rootDir = process.cwd();
-const port = await findFreePort();
-const baseUrl = `http://127.0.0.1:${port}`;
-// Isolate notes/tasks file paths from `~/.muse/...` so smoke runs
-// don't pollute the developer's real personal store.
-const notesDir = mkdtempSync(pathJoin(tmpdir(), "muse-smoke-notes-"));
-const tasksFile = pathJoin(mkdtempSync(pathJoin(tmpdir(), "muse-smoke-tasks-")), "tasks.json");
-const skillRewardsFile = pathJoin(mkdtempSync(pathJoin(tmpdir(), "muse-smoke-skillrw-")), "skill-rewards.json");
-const env = {
-  ...process.env,
-  MUSE_MODEL: "diagnostic/smoke",
-  MUSE_MODEL_PROVIDER_ID: "diagnostic",
-  MUSE_NOTES_DIR: notesDir,
-  MUSE_TASKS_FILE: tasksFile,
-  MUSE_SKILL_REWARDS_FILE: skillRewardsFile,
-  PORT: String(port)
-};
-const api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
-  cwd: rootDir,
-  env,
-  stdio: ["ignore", "pipe", "pipe"]
-});
-
-let apiOutput = "";
-api.stdout.on("data", (chunk) => {
-  apiOutput += chunk.toString();
-});
-api.stderr.on("data", (chunk) => {
-  apiOutput += chunk.toString();
-});
+const disposableRoot = mkdtempSync(join(tmpdir(), "muse-smoke-broad-"));
+const env = createDisposableApiEnvironment({ purpose: "smoke", rootDir: disposableRoot, sourceEnv: process.env });
+ensureDisposableApiDirectories(env);
+const restoreEnvironment = installProcessEnvironment(env);
+let api;
+let baseUrl = "";
 
 const checks = [];
 let failures = 0;
+let forceExitRequested = false;
 
 function record(name, fn) {
   return Promise.resolve()
@@ -53,7 +37,8 @@ function record(name, fn) {
 }
 
 try {
-  await waitForHealth(`${baseUrl}/health`, 25_000);
+  api = await startInProcessApi({ env });
+  baseUrl = api.baseUrl;
 
   await record("GET /health", async () => {
     const response = await fetch(`${baseUrl}/health`);
@@ -264,7 +249,7 @@ try {
 
   await record("Muse ambient tools register with the runtime tool registry", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
-    const assembly = createMuseRuntimeAssembly({ env: { MUSE_TOOLS_ENABLED: "true" } });
+    const assembly = createMuseRuntimeAssembly({ env: { ...env, MUSE_TOOLS_ENABLED: "true" } });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
     for (const required of ["time_now", "time_diff", "time_add", "time_relative", "next_weekday_date", "text_stats", "math_eval", "json_query", "slugify", "url_parts", "regex_extract", "kv_summarize", "markdown_table", "hash_text", "csv_parse", "base64", "cron_for_datetime"]) {
       assert(names.includes(required), `expected tool registry to include ${required}, got ${names.join(", ")}`);
@@ -278,7 +263,7 @@ try {
     try {
       const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
       const assembly = createMuseRuntimeAssembly({
-        env: { MUSE_NOTES_DIR: tmpDir, MUSE_TOOLS_ENABLED: "false" }
+        env: { ...env, MUSE_NOTES_DIR: tmpDir, MUSE_TOOLS_ENABLED: "false" }
       });
       const tools = assembly.toolRegistry.list().map((entry) => entry.definition.name);
       for (const required of ["muse.notes.list", "muse.notes.read", "muse.notes.search", "muse.notes.save", "muse.notes.append"]) {
@@ -308,7 +293,7 @@ try {
   await record("muse.notes.* is absent when MUSE_NOTES_ENABLED=false explicitly disables the notes server", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({
-      env: { MUSE_NOTES_ENABLED: "false", MUSE_TOOLS_ENABLED: "false" }
+      env: { ...env, MUSE_NOTES_ENABLED: "false", MUSE_TOOLS_ENABLED: "false" }
     });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
     assert(!names.some((name) => name.startsWith("muse.notes.")),
@@ -317,7 +302,7 @@ try {
 
   await record("Muse ambient tools can be disabled via MUSE_TOOLS_ENABLED=false", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
-    const assembly = createMuseRuntimeAssembly({ env: { MUSE_TOOLS_ENABLED: "false" } });
+    const assembly = createMuseRuntimeAssembly({ env: { ...env, MUSE_TOOLS_ENABLED: "false" } });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
     assert(!names.includes("time_now"), `expected time_now to be absent when disabled, got ${names.join(", ")}`);
   });
@@ -326,6 +311,7 @@ try {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({
       env: {
+        ...env,
         MUSE_MODEL: "diagnostic/smoke",
         MUSE_MODEL_PROVIDER_ID: "diagnostic",
         MUSE_USER_MEMORY_INJECTION: "true"
@@ -513,6 +499,7 @@ try {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({
       env: {
+        ...env,
         MUSE_MODEL: "diagnostic/smoke",
         MUSE_MODEL_PROVIDER_ID: "diagnostic",
         MUSE_USER_MEMORY_INJECTION: "false"
@@ -982,7 +969,7 @@ try {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     // Hermetic env: pin the local diagnostic provider so this never picks up an
     // ambient cloud key from the machine (default local-only would refuse it).
-    const directAssembly = createMuseRuntimeAssembly({ env: { MUSE_MODEL: "diagnostic/smoke", MUSE_MODEL_PROVIDER_ID: "diagnostic" } });
+    const directAssembly = createMuseRuntimeAssembly({ env: { ...env, MUSE_MODEL: "diagnostic/smoke", MUSE_MODEL_PROVIDER_ID: "diagnostic" } });
     // The smoke harness already started the server with its OWN
     // assembly above; we cannot reach that broker from here without
     // a fresh in-process fetch race. So this case asserts the route
@@ -1083,9 +1070,34 @@ try {
     );
   });
 } catch (error) {
+  if (error instanceof ApiSmokeStartupTimeoutError) forceExitRequested = true;
   failures += 1;
   checks.push({ error: error instanceof Error ? error.message : String(error), name: "bootstrap", status: "fail" });
 } finally {
+  const finished = await finishInProcessApiSmoke({
+    cleanup: () => rmSync(disposableRoot, { force: true, maxRetries: 3, recursive: true, retryDelay: 100 }),
+    exitCode: failures > 0 ? 1 : 0,
+    forceExit: () => { forceExitRequested = true; },
+    restoreEnvironment,
+    stop: api?.stop,
+    timeoutMs: 10_000
+  });
+  if (finished.shutdownError !== undefined) {
+    failures += 1;
+    checks.push({
+      error: finished.shutdownError instanceof Error ? finished.shutdownError.message : String(finished.shutdownError),
+      name: "shutdown",
+      status: "fail"
+    });
+  }
+  for (const cleanupError of finished.cleanupErrors) {
+    failures += 1;
+    checks.push({
+      error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+      name: "cleanup",
+      status: "fail"
+    });
+  }
   for (const check of checks) {
     if (check.status === "ok") {
       console.log(`PASS  ${check.name}`);
@@ -1094,67 +1106,12 @@ try {
     }
   }
   console.log(`---\n${checks.filter((c) => c.status === "ok").length} passed, ${failures} failed`);
-
-  if (failures > 0 && apiOutput.trim().length > 0) {
-    console.error("--- api output ---");
-    console.error(apiOutput.trim());
-  }
-
-  api.kill("SIGTERM");
-  await waitForExit(api, 5_000);
   process.exitCode = failures > 0 ? 1 : 0;
-}
-
-async function findFreePort() {
-  const waitForListen = Promise.withResolvers();
-  const server = net.createServer();
-  server.unref();
-  server.on("error", (cause) => waitForListen.reject(cause instanceof Error ? cause : new Error(String(cause))));
-  server.listen(0, "127.0.0.1", () => {
-    const address = server.address();
-    server.close(() => {
-      if (typeof address === "object" && address?.port) {
-        waitForListen.resolve(address.port);
-        return;
-      }
-      waitForListen.reject(new Error("Could not allocate a local smoke-test port"));
-    });
-  });
-  return waitForListen.promise;
-}
-
-async function waitForHealth(url, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url);
-      const body = await response.json();
-      if (response.ok && body.status === "ok") {
-        return;
-      }
-    } catch {
-      // API still starting.
-    }
-    await sleep(250);
-  }
-  throw new Error(`Timed out waiting for ${url}`);
+  if (forceExitRequested) process.exit(1);
 }
 
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
-}
-
-function waitForExit(child, timeoutMs) {
-  const done = Promise.withResolvers();
-  const timer = setTimeout(() => {
-    child.kill("SIGKILL");
-    done.resolve();
-  }, timeoutMs);
-  child.once("exit", () => {
-    clearTimeout(timer);
-    done.resolve();
-  });
-  return done.promise;
 }

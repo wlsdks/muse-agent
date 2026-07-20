@@ -28,6 +28,7 @@ import type { ServerOptions } from "./server-options.js";
 
 export interface IdentityTaglineRoutesOptions {
   readonly authService: ServerOptions["authService"];
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly userMemoryStore?: UserMemoryStore;
   readonly model?: TaglineModelFn;
   readonly defaultUserId?: string;
@@ -43,10 +44,12 @@ interface TaglineState {
 const RECENT_WINDOW = 6;
 
 function resolveStateFile(options: IdentityTaglineRoutesOptions): string {
+  const env = options.env ?? process.env;
+  const injectedHome = env.HOME?.trim() || env.USERPROFILE?.trim();
   return (
     options.stateFile?.trim() ||
-    process.env.MUSE_TAGLINE_STATE_FILE?.trim() ||
-    join(homedir(), ".muse", "identity-tagline-state.json")
+    env.MUSE_TAGLINE_STATE_FILE?.trim() ||
+    join(injectedHome && injectedHome.length > 0 ? injectedHome : homedir(), ".muse", "identity-tagline-state.json")
   );
 }
 

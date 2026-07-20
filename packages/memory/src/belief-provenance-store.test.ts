@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { withFileLock } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import { beliefValueTimeline, FileBeliefProvenanceStore, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+import { beliefValueTimeline, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+
+describe("defaultBeliefProvenanceFile", () => {
+  it("resolves from injected HOME instead of ambient os.homedir", () => {
+    expect(defaultBeliefProvenanceFile({ HOME: "/tmp/injected-home" }))
+      .toBe(join("/tmp/injected-home", ".muse", "belief-provenance.json"));
+  });
+});
 
 describe("beliefValueTimeline (the value-change path — deepest show-your-work)", () => {
   const tl = (over: Partial<BeliefProvenance>): BeliefProvenance => ({

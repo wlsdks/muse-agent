@@ -26,6 +26,11 @@ describe("defaultConversationsFile", () => {
   it("falls back to ~/.muse/conversations.json", () => {
     expect(defaultConversationsFile({})).toMatch(/\.muse[/\\]conversations\.json$/u);
   });
+
+  it("uses injected HOME instead of ambient os.homedir", () => {
+    expect(defaultConversationsFile({ HOME: "/tmp/injected-home" }))
+      .toBe(join("/tmp/injected-home", ".muse", "conversations.json"));
+  });
 });
 
 describe("newConversationId", () => {

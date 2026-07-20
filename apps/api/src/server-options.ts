@@ -48,11 +48,10 @@ export interface ServerOptions {
   readonly chatRateLimiter?: import("./chat-rate-limiter.js").ChatRateLimiter;
   readonly agentRuntime?: AgentRuntime;
   /**
-   * Process/merged environment the chat-write approval path reads its opt-in
-   * flag (`MUSE_CHAT_WRITE_ENABLED`) and pending-approval file path from. The
-   * frozen `integrationEnv` deliberately exposes no raw env, so this minimal
-   * seam carries only what that path needs. Absent ⇒ the flag reads false and
-   * chat stays read-only (today's default posture).
+   * Authoritative process/merged environment for server assembly: path
+   * resolvers, daemon activation, model/runtime flags, and route seams all use
+   * this same snapshot. Tests and smoke drivers inject a disposable mapping;
+   * production callers omit it and retain `process.env` behavior.
    */
   readonly env?: Record<string, string | undefined>;
   /**

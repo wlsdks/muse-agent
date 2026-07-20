@@ -33,6 +33,13 @@ describe("resolveDaemonSettingsFile", () => {
   it("falls back to ~/.muse/daemon-settings.json", () => {
     expect(resolveDaemonSettingsFile({})).toMatch(/\.muse\/daemon-settings\.json$/u);
   });
+
+  it("uses an injected home instead of the ambient owner home", () => {
+    expect(resolveDaemonSettingsFile({ HOME: "/tmp/muse-injected-home" }))
+      .toBe("/tmp/muse-injected-home/.muse/daemon-settings.json");
+    expect(resolveDaemonSettingsFile({ USERPROFILE: "C:\\muse-injected-home" }))
+      .toBe(join("C:\\muse-injected-home", ".muse", "daemon-settings.json"));
+  });
 });
 
 describe("readDaemonSettingsSync / writeDaemonSetting", () => {

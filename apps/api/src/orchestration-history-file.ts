@@ -28,7 +28,8 @@ export function defaultOrchestrationHistoryFile(env: NodeJS.ProcessEnv = process
   if (override && override.length > 0) {
     return override;
   }
-  return join(homedir(), ".muse", "orchestration-history.json");
+  const injectedHome = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return join(injectedHome && injectedHome.length > 0 ? injectedHome : homedir(), ".muse", "orchestration-history.json");
 }
 
 export class FileOrchestrationHistoryStore implements OrchestrationHistoryStore {

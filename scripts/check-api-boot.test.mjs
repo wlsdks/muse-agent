@@ -1,9 +1,10 @@
 // node --test coverage for the check-api-boot pure helpers (no server boot).
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { bootFailureHint, findFreePort } from "./check-api-boot.mjs";
+import { bootFailureHint } from "./check-api-boot.mjs";
 
 test("bootFailureHint maps missing-package output to a pnpm install repair", () => {
   const hint = bootFailureHint(
@@ -23,8 +24,10 @@ test("bootFailureHint stays silent on unknown output", () => {
   assert.equal(bootFailureHint("some unrelated crash"), undefined);
 });
 
-test("findFreePort yields a usable numeric port", async () => {
-  const port = await findFreePort();
-  assert.equal(typeof port, "number");
-  assert.ok(port > 0 && port < 65_536);
+test("boot check starts the API in-process with the tsx loader", () => {
+  const source = readFileSync(new URL("./check-api-boot.mjs", import.meta.url), "utf8");
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.doesNotMatch(source, /node:child_process|\bspawn\s*\(|\.kill\s*\(/u);
+  assert.match(source, /startInProcessApi/u);
+  assert.equal(manifest.scripts["check:api-boot"], "node --import tsx scripts/check-api-boot.mjs");
 });

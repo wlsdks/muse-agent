@@ -116,6 +116,11 @@ export function resolveMessagingCredentialsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_MESSAGING_CREDENTIALS_FILE", "messaging.json");
 }
 
+/** Credential-free local notification sink used by the log messaging provider. */
+export function resolveMessagingLogFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_MESSAGING_LOG_FILE", "notifications.log");
+}
+
 export function resolveRemindersFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_REMINDERS_FILE", "reminders.json");
 }

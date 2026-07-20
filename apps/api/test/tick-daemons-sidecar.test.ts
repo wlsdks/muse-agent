@@ -20,11 +20,11 @@ describe("resolveProactiveSidecarFile — refuses to default to filesystem-root 
       .toBe("/trimmed.json");
   });
 
-  it("falls back to HOME/.muse/proactive-fired.json when env override is missing or whitespace", () => {
-    withProcessHome("/u/jinan", () => {
-      expect(resolveProactiveSidecarFile({})).toBe("/u/jinan/.muse/proactive-fired.json");
-      expect(resolveProactiveSidecarFile({ MUSE_PROACTIVE_SIDECAR_FILE: "   " }))
-        .toBe("/u/jinan/.muse/proactive-fired.json");
+  it("uses injected HOME instead of ambient process HOME when override is missing", () => {
+    withProcessHome("/u/ambient-owner", () => {
+      expect(resolveProactiveSidecarFile({ HOME: "/u/injected" })).toBe("/u/injected/.muse/proactive-fired.json");
+      expect(resolveProactiveSidecarFile({ HOME: "/u/injected", MUSE_PROACTIVE_SIDECAR_FILE: "   " }))
+        .toBe("/u/injected/.muse/proactive-fired.json");
     });
   });
 

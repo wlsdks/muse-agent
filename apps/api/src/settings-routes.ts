@@ -96,6 +96,8 @@ export function shapeQuietHoursSettings(env: NodeJS.ProcessEnv, settingsFile: st
 export interface SettingsRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly daemonStatus?: DaemonStatusSource;
+  /** Authoritative server assembly environment; production defaults to process.env. */
+  readonly env?: NodeJS.ProcessEnv;
   /** Where PATCHed toggles persist; enables the PATCH route when set. */
   readonly daemonSettingsFile?: string;
   /** Applies a toggle to the RUNNING process (start/stop the daemon); returns whether it took effect live. */
@@ -103,6 +105,7 @@ export interface SettingsRoutesGate {
 }
 
 export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRoutesGate): void {
+  const env = gate.env ?? process.env;
   const authed = (request: Parameters<typeof requireAuthenticated>[0], reply: Parameters<typeof requireAuthenticated>[1]) =>
     requireAuthenticated(request, reply, Boolean(gate.authService));
 
@@ -111,7 +114,7 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       return reply;
     }
     return shapeDaemonFlags(
-      process.env,
+      env,
       gate.daemonStatus,
       gate.daemonSettingsFile ? readDaemonSettingsSync(gate.daemonSettingsFile) : {}
     );
@@ -148,7 +151,7 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
     if (!authed(request, reply)) {
       return reply;
     }
-    return shapeQuietHoursSettings(process.env, gate.daemonSettingsFile);
+    return shapeQuietHoursSettings(env, gate.daemonSettingsFile);
   });
 
   if (gate.daemonSettingsFile) {
@@ -173,7 +176,7 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
         }
         throw error;
       }
-      return shapeQuietHoursSettings(process.env, settingsFile);
+      return shapeQuietHoursSettings(env, settingsFile);
     });
   }
 }

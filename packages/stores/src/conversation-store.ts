@@ -203,7 +203,9 @@ export class InMemoryConversationStore {
 
 export function defaultConversationsFile(env: Readonly<Record<string, string | undefined>> = process.env): string {
   const fromEnv = env.MUSE_CONVERSATIONS_FILE?.trim();
-  return fromEnv && fromEnv.length > 0 ? fromEnv : join(homedir(), ".muse", "conversations.json");
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  const injectedHome = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return join(injectedHome && injectedHome.length > 0 ? injectedHome : homedir(), ".muse", "conversations.json");
 }
 
 function reviveTurn(raw: unknown): ConversationTurn | undefined {

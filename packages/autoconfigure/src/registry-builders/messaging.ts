@@ -27,6 +27,7 @@ import {
   resolveMatrixInboxFile,
   resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
+  resolveMessagingLogFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
   resolveTelegramInboxFile,
@@ -129,8 +130,7 @@ function registerLocalMessagingProviders(registry: MessagingProviderRegistry, en
   // works end-to-end without any external chat-bot setup; opt out
   // with `MUSE_MESSAGING_LOG_ENABLED=false`.
   if (env.MUSE_MESSAGING_LOG_ENABLED !== "false") {
-    const logFile = env.MUSE_MESSAGING_LOG_FILE?.trim();
-    registry.register(new LogMessagingProvider(logFile ? { file: logFile } : {}));
+    registry.register(new LogMessagingProvider({ file: resolveMessagingLogFile(env) }));
   }
   // `macos-notification` is OPT-IN — native popups are more invasive
   // than a log file, so users have to flip the flag deliberately.
