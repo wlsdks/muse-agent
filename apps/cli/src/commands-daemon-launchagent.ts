@@ -25,12 +25,24 @@ function xmlEscape(value: string): string {
 export function buildLaunchAgentPlist(opts: {
   readonly label: string;
   readonly programArguments: readonly string[];
+  readonly environmentVariables?: Readonly<Record<string, string>>;
   readonly stdoutPath: string;
   readonly stderrPath: string;
 }): string {
   const args = opts.programArguments
     .map((arg) => `    <string>${xmlEscape(arg)}</string>`)
     .join("\n");
+  const environmentEntries = Object.entries(opts.environmentVariables ?? {})
+    .sort(([left], [right]) => left.localeCompare(right));
+  const environment = environmentEntries.length === 0
+    ? ""
+    : `  <key>EnvironmentVariables</key>
+  <dict>
+${environmentEntries
+    .map(([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`)
+    .join("\n")}
+  </dict>
+`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -41,7 +53,7 @@ export function buildLaunchAgentPlist(opts: {
   <array>
 ${args}
   </array>
-  <key>RunAtLoad</key>
+${environment}  <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>

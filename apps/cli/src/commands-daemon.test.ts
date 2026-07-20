@@ -740,7 +740,14 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   it("--install UNLOADS any stale definition BEFORE (re)loading, then LOADS via launchctl, passing the exact argv", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-install-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
-    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_DAEMON_PLIST_FILE: plistFile,
+      MUSE_LOCAL_ONLY: "true",
+      MUSE_PROACTIVE_PROVIDER: "telegram",
+      MUSE_SELFLEARN_ENABLED: "false",
+      OPENAI_API_KEY: "must-not-enter-plist"
+    };
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
     const calls: (readonly string[])[] = [];
@@ -759,6 +766,12 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toContain("loaded via launchctl and RUNNING (pid 555");
     expect(existsSync(plistFile)).toBe(true);
     expect(sent).toHaveLength(0);
+    const plist = readFileSync(plistFile, "utf8");
+    expect(plist).toContain("<key>EnvironmentVariables</key>");
+    expect(plist).toContain("<key>MUSE_LOCAL_ONLY</key>\n    <string>true</string>");
+    expect(plist).toContain("<key>MUSE_SELFLEARN_ENABLED</key>\n    <string>false</string>");
+    expect(plist).not.toContain("MUSE_PROACTIVE_PROVIDER");
+    expect(plist).not.toContain("must-not-enter-plist");
     // The exact argv passed to the seam, IN ORDER — unload adopts the fresh
     // plist before load, never a shell string, never a guess.
     expect(calls[0]).toEqual(["unload", "-w", plistFile]);

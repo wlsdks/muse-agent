@@ -98,6 +98,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   runtime state as unknown instead of inferred, and autostart installation
   rejects missing or temporary CLI entrypoints before any persistent write.
 
+- **Controlled daemon safety now survives launchd restarts.** An install
+  explicitly launched with local-only mode or self-learning disabled persists
+  only those two safety switches in the LaunchAgent plist; provider secrets,
+  arbitrary environment values, and unrelated Muse paths are never copied.
+
 - **Shared presence is now monotonic, private, and fail-closed.** Multiple Muse
   processes on one filesystem merge activity under a cross-process lock instead
   of letting an older writer erase newer presence. Invalid or future timestamps

@@ -435,7 +435,18 @@ export async function installDaemonAutostart(
   const plistFile = resolveLaunchAgentFile(e);
   const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
   const logDir = join(home, ".muse", "logs");
+  // launchd does not inherit the invoking shell's environment reliably, and
+  // KeepAlive restarts happen long after that shell is gone. Persist only the
+  // two explicit safety switches needed for a controlled local activation.
+  // This is intentionally an allowlist: provider credentials, model keys,
+  // arbitrary MUSE_* paths, and every other ambient value stay out of plist.
+  const safetyEnvironment: Record<string, string> = {};
+  if (isLocalOnlyEnabled(e)) safetyEnvironment.MUSE_LOCAL_ONLY = "true";
+  if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, true)) {
+    safetyEnvironment.MUSE_SELFLEARN_ENABLED = "false";
+  }
   const plist = buildLaunchAgentPlist({
+    environmentVariables: safetyEnvironment,
     label: LAUNCH_AGENT_LABEL,
     programArguments: [process.execPath, cliEntry, "daemon"],
     stderrPath: join(logDir, "daemon.err.log"),
