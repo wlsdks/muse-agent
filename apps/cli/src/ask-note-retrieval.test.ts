@@ -150,7 +150,7 @@ describe("createRecallRerankFn — bounded request timeout", () => {
     let call = 0;
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
       events.push("reranker-http");
-      return { json: async () => ({ response: call++ === 0 ? '{"current":null}' : '{"stale":null}' }), ok: true };
+      return { json: async () => ({ response: call++ === 0 ? '{"current":1}' : '{"stale":1}' }), ok: true };
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("MUSE_MODEL_KEYS_FILE", "/tmp/muse-rerank-warm-models.json");
@@ -161,12 +161,14 @@ describe("createRecallRerankFn — bounded request timeout", () => {
       { candidateTexts: ["current answer", "This used to be the answer; no longer current."], query: "현재 답" }
     );
 
-    expect(events).toEqual(["embedder-ready", "reranker-http"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(warmed?.warmup).toEqual({ httpAttempts: 1, order: [0, 1], outcome: "success" });
+    expect(events).toEqual(["embedder-ready", "reranker-http", "reranker-http"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warmed?.warmup).toEqual({ httpAttempts: 2, order: [0, 1], outcome: "success", pairHints: [{ current: 0, stale: 1 }] });
     expect(warmed?.rerankFn).toBeTypeOf("function");
     const warmBody = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as { prompt?: string };
     expect(warmBody.prompt).toContain('{"current":null}');
+    const staleBody = JSON.parse(fetchMock.mock.calls[1]![1]!.body as string) as { prompt?: string };
+    expect(staleBody.prompt).toContain('{"stale":null}');
   });
 
   it("selects current then its stale counterpart in two closed prompts and returns identity order plus one pair", async () => {

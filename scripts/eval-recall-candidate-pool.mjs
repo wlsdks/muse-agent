@@ -147,25 +147,7 @@ export function renderSvg(result) {
 async function readCanonical(path) { const bytes = await readFile(path, "utf8"); if (!bytes.endsWith("\n")) throw new Error("canonical JSON must end with LF"); const result = validateCandidateResult(JSON.parse(bytes)); if (bytes !== jsonBytes(result)) throw new Error("canonical JSON bytes mismatch"); return result; }
 export async function validateArtifacts(paths = trackedPaths) { const result = await readCanonical(paths.json); const expected = { csv: renderCsv(result), md: renderMarkdown(result), svg: renderSvg(result) }; for (const key of ["csv", "md", "svg"]) if (await readFile(paths[key], "utf8") !== expected[key]) throw new Error(`${key.toUpperCase()} does not reconcile with canonical JSON`); const baseline = await readAcceptedBaseline(); if (result.payload.baseline.freshnessPayloadHash !== baseline.result.payloadHash) throw new Error("accepted freshness payload hash drift"); return result; }
 async function writeAtomic(path, value, mode = 0o600) { await mkdir(dirname(path), { recursive: true }); const temporary = `${path}.tmp-${process.pid}`; await writeFile(temporary, value, { mode }); await rename(temporary, path); }
-export async function spawnWithTimeout(command, args, { env, outputPath, timeoutMs }) {
-  await rm(outputPath, { force: true });
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd: repoRoot, env, stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    child.stderr?.setEncoding("utf8");
-    child.stderr?.on("data", (chunk) => { stderr = `${stderr}${String(chunk)}`.slice(-8_192); });
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMs);
-    child.once("error", () => { clearTimeout(timer); resolve({ ok: false, reasonCode: "TRIAL_FAILED" }); });
-    child.once("close", async (code) => {
-      clearTimeout(timer);
-      if (timedOut) return resolve({ ok: false, reasonCode: "TIMEOUT" });
-      if (code !== 0) return resolve({ ok: false, reasonCode: "TRIAL_FAILED", stderr });
-      try { await stat(outputPath); resolve({ ok: true }); }
-      catch { resolve({ ok: false, reasonCode: "PARTIAL_OUTPUT" }); }
-    });
-  });
-}
+export async function spawnWithTimeout(command, args, { env, outputPath, timeoutMs }) { await rm(outputPath, { force: true }); return new Promise((resolve) => { const child = spawn(command, args, { cwd: repoRoot, env, stdio: ["ignore", "ignore", "ignore"] }); let timedOut = false; const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMs); child.once("error", () => { clearTimeout(timer); resolve({ ok: false, reasonCode: "TRIAL_FAILED" }); }); child.once("close", async (code) => { clearTimeout(timer); if (timedOut) return resolve({ ok: false, reasonCode: "TIMEOUT" }); if (code !== 0) return resolve({ ok: false, reasonCode: "TRIAL_FAILED" }); try { await stat(outputPath); resolve({ ok: true }); } catch { resolve({ ok: false, reasonCode: "PARTIAL_OUTPUT" }); } }); }); }
 function scrubbedEnv(baseUrl, home) { return { HOME: home, LANG: process.env.LANG ?? "C.UTF-8", LC_ALL: process.env.LC_ALL ?? "C.UTF-8", MUSE_LOCAL_ONLY: "true", OLLAMA_BASE_URL: baseUrl, PATH: process.env.PATH ?? "", TMPDIR: join(home, "tmp") }; }
 
 async function childPreflight({ baseUrl, modelTag, outputPath }) {
