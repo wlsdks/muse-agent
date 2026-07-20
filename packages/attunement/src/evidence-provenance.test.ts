@@ -87,9 +87,15 @@ describe("Continuity evidence provenance", () => {
     });
     delete delivery.evidenceClass;
     delete outcome.evidenceClass;
+    // `openedAt` comes from the real clock inside openPreparedContinuityPack, and
+    // validateStateRelations requires completedAt > openedAt. Derive it rather
+    // than hardcoding an instant: a literal only satisfies that ordering until
+    // the wall clock passes it (the original "2026-07-18T23:59:59.000Z" held for
+    // the six minutes between the commit and midnight, then failed forever).
+    const completedAt = new Date(Date.parse(delivery.openedAt as string) + 1_000).toISOString();
     current.interactionReceipts = [{
       artifactId: "task_legacy",
-      completedAt: "2026-07-18T23:59:59.000Z",
+      completedAt,
       deliveryId: delivery.id,
       doneStateFingerprint: "b".repeat(64),
       eventId: "event_legacy",
@@ -97,7 +103,7 @@ describe("Continuity evidence provenance", () => {
       linkedAt,
       openStateFingerprint: "a".repeat(64),
       providerId: "local",
-      recordedAt: "2026-07-18T23:59:59.000Z",
+      recordedAt: completedAt,
       role: "next-step",
       runId: delivery.runId,
       threadId: threadRecord.id,
