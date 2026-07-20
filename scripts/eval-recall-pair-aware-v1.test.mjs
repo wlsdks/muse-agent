@@ -9,6 +9,7 @@ import {
   DIAGNOSTICS_ROOT_RELATIVE,
   PARENT_TIMEOUT_MS,
   buildPairAwareResult,
+  childFailureDiagnostic,
   canonicalJson,
   executePairAwareTrial,
   normalizeCliArgs,
@@ -66,6 +67,20 @@ test("runner is DEVELOPMENT_ONLY, isolated, explicitly bounded, and has no canon
   assert.deepEqual(normalizeCliArgs(["--", "--smoke-model", ALLOWLISTED_MODELS[0]]), ["--smoke-model", ALLOWLISTED_MODELS[0]]);
   assert.match(source, /--smoke-model/u);
   assert.doesNotMatch(source, /docs\/benchmarks|README|promoteTracked|renderSvg|renderMarkdown/iu);
+});
+
+test("child failure diagnostics retain only a bounded reason code, never raw stderr or private paths", () => {
+  const diagnostic = childFailureDiagnostic("nomic-embed-text", {
+    reasonCode: "TRIAL_FAILED",
+    stderr: "Error: RERANK_WARMUP_FAILED\n    at /Users/private/repo/file.mjs:1:1\npromptText=secret"
+  });
+  assert.deepEqual(diagnostic, {
+    detailCode: "RERANK_WARMUP_FAILED",
+    modelTag: "nomic-embed-text",
+    reasonCode: "TRIAL_FAILED"
+  });
+  assert.doesNotMatch(JSON.stringify(diagnostic), /Users|promptText|secret|file\.mjs/iu);
+  assert.equal(childFailureDiagnostic("nomic-embed-text", { reasonCode: "TRIAL_FAILED", stderr: "TypeError: private details" }).detailCode, "UNCLASSIFIED_CHILD_FAILURE");
 });
 
 test("smoke owner-state contract fails closed on manifest drift", () => {
@@ -144,6 +159,18 @@ test("two trials collapse to per-model 20-case quality while accounting all thre
     }
   }
   assert.equal(result.payload.qualification.developmentGatesPassed, true);
+
+  const oneRequestWarmups = structuredClone(models);
+  for (const model of oneRequestWarmups) model.warmup.httpAttempts = 1;
+  const oneRequestWarmupResult = buildPairAwareResult({
+    models: oneRequestWarmups,
+    ownerState: result.payload.ownerState,
+    runMetadata: result.runMetadata,
+    runtimeSources: result.payload.runtimeSources
+  });
+  assert.equal(validatePairAwareResult(oneRequestWarmupResult), oneRequestWarmupResult);
+  assert.equal(oneRequestWarmupResult.payload.accounting.warmupHttpAttempts, 4);
+  assert.equal(oneRequestWarmupResult.payload.qualification.developmentGatesPassed, true);
 
   const drifted = structuredClone(models);
   drifted[0].trials[1].arms.C.outcomes[0].ok = false;

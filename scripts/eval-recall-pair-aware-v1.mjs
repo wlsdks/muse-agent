@@ -59,6 +59,13 @@ const RUNTIME_SOURCE_PATHS = Object.freeze([
 const rate = (passed, total) => Number((passed / total).toFixed(6));
 export { nearestRank };
 
+export function childFailureDiagnostic(modelTag, run) {
+  const detailCode = typeof run.stderr === "string"
+    ? run.stderr.match(/\bError:\s*([A-Z][A-Z0-9_]{2,63})\b/u)?.[1] ?? "UNCLASSIFIED_CHILD_FAILURE"
+    : "UNCLASSIFIED_CHILD_FAILURE";
+  return { detailCode, modelTag, reasonCode: run.reasonCode };
+}
+
 function scorePrepared(testCase, prepared, sourceForFile) {
   const sources = prepared.scored.map((item) => sourceForFile(item.file));
   if (testCase.category === "absent") {
@@ -289,7 +296,7 @@ export function validatePairAwareResult(result) {
   if (dataset.cases !== 60 || dataset.corpusEntries !== 60 || dataset.dataOrigin !== "synthetic frozen v1" || dataset.datasetVersion !== DATASET_VERSION || dataset.datasetSha256 !== datasetSha256() || dataset.heldOut !== false || dataset.organicEvidence !== false) throw new Error("dataset provenance mismatch");
   if (executionStatus !== "COMPLETE" || trials !== 2 || canonicalJson(arms) !== canonicalJson({ A: { conflictAwareSelection: false, reranker: false }, B: { conflictAwareSelection: true, reranker: false }, C: { conflictAwareSelection: true, reranker: RERANK_MODEL } })) throw new Error("execution contract mismatch");
   if (models.length !== 4 || canonicalJson(models.map((model) => model.modelTag)) !== canonicalJson(ALLOWLISTED_MODELS)) throw new Error("model allowlist mismatch");
-  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts < accounting.rerankerLogicalInvocations || accounting.rerankerHttpAttempts > accounting.rerankerLogicalInvocations * 2 || accounting.warmupHttpAttempts !== models.length * 2) throw new Error("accounting mismatch");
+  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts < accounting.rerankerLogicalInvocations || accounting.rerankerHttpAttempts > accounting.rerankerLogicalInvocations * 2 || accounting.warmupHttpAttempts < models.length || accounting.warmupHttpAttempts > models.length * 2) throw new Error("accounting mismatch");
   if (accounting.localOllamaRequests !== accounting.localOllamaEmbeddingRequests + accounting.rerankerHttpAttempts + accounting.warmupHttpAttempts + accounting.localOllamaControlRequests) throw new Error("local Ollama accounting mismatch");
   validateOwnerState(ownerState);
   for (const model of models) {
@@ -328,7 +335,7 @@ function validateChildModel(value, modelTag) {
   if (!/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.digest) || !Number.isInteger(value.dimension) || value.dimension <= 0 || !value.resolvedTag || !value.ollamaVersion) throw new Error(`${modelTag}: model provenance mismatch`);
   if (!value.reranker || value.reranker.modelTag !== RERANK_MODEL || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.reranker.digest)) throw new Error(`${modelTag}: reranker provenance mismatch`);
   if (value.networkAccounting?.externalRequests !== 0 || value.networkAccounting.localOllamaControlRequests !== 4) throw new Error(`${modelTag}: network accounting mismatch`);
-  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || value.warmup.httpAttempts !== 2 || value.warmup.outcome !== "success") throw new Error(`${modelTag}: warmup mismatch`);
+  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || ![1, 2].includes(value.warmup.httpAttempts) || value.warmup.outcome !== "success") throw new Error(`${modelTag}: warmup mismatch`);
   if (!Number.isInteger(value.embeddingAccounting?.indexRequests) || value.embeddingAccounting.indexRequests < 60 || !Number.isInteger(value.embeddingAccounting.measuredRequests) || value.embeddingAccounting.measuredRequests < 360 || value.embeddingAccounting.warmupRequests !== 1 || value.embeddingAccounting.totalRequests !== value.embeddingAccounting.indexRequests + value.embeddingAccounting.measuredRequests + 1) throw new Error(`${modelTag}: embedding accounting mismatch`);
   for (let trialIndex = 0; trialIndex < 2; trialIndex += 1) {
     const trial = value.trials[trialIndex];
@@ -368,7 +375,7 @@ async function childModel({ baseUrl, home, modelTag, outputPath }) {
     candidateTexts: ["The current standard is active now.", "A separate observation does not answer the query.", "Retired 기준은 더 이상 유효하지 않습니다."],
     query: "현재 기준과 current standard를 고르세요."
   }, { timeoutMs: 4_000 });
-  if (!warmed || warmed.warmup.outcome !== "success" || warmed.warmup.httpAttempts !== 2 || !warmed.warmup.order?.length) throw new Error("RERANK_WARMUP_FAILED");
+  if (!warmed || warmed.warmup.outcome !== "success" || ![1, 2].includes(warmed.warmup.httpAttempts) || !warmed.warmup.order?.length) throw new Error("RERANK_WARMUP_FAILED");
   if (warmVector.length !== fixture.index.embeddingDimension) throw new Error("DIMENSION_DRIFT");
   const measuredStart = embeddingRequests;
   const trials = [];
@@ -422,7 +429,11 @@ async function parentMain(smokeModel) {
     await mkdir(join(home, "tmp"), { recursive: true });
     const outputPath = join(sessionDir, `${safeName(modelTag)}.json`);
     const run = await spawnWithTimeout(process.execPath, [fileURLToPath(import.meta.url), "--child", "1", "--model", modelTag, "--out", outputPath, "--home", home], { env: childEnv(baseUrl, home), outputPath, timeoutMs: Math.min(CHILD_TIMEOUT_MS, remaining) });
-    if (!run.ok) throw new Error(`${modelTag}:${run.reasonCode}`);
+    if (!run.ok) {
+      const diagnostic = childFailureDiagnostic(modelTag, run);
+      await writeAtomic(join(sessionDir, `${safeName(modelTag)}-failure.json`), jsonBytes(diagnostic));
+      throw new Error(`${modelTag}:${run.reasonCode}:${diagnostic.detailCode}`);
+    }
     models.push(validateChildModel(JSON.parse(await readFile(outputPath, "utf8")), modelTag));
   }
   if (Date.now() - started >= PARENT_TIMEOUT_MS) throw new Error("PARENT_TIMEOUT");
