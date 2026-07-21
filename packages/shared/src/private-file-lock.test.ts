@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
+import { promises as fs } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { withPrivateFileLock } from "./private-file-lock.js";
 
@@ -175,5 +176,91 @@ describe("withPrivateFileLock", () => {
       code: "PRIVATE_FILE_LOCK_UNSAFE"
     });
     await expect(lstat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes its own inode when path verification fails after writing the nonce", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-acquire-failure-"));
+    const lockFile = join(directory, "state.lock");
+    const originalLstat = fs.lstat.bind(fs);
+    let injected = false;
+    const lstatSpy = vi.spyOn(fs, "lstat").mockImplementation(async (...args) => {
+      if (!injected && args[0] === lockFile) {
+        injected = true;
+        throw Object.assign(new Error("injected verification failure"), { code: "EIO" });
+      }
+      return originalLstat(...args);
+    });
+
+    try {
+      await expect(withPrivateFileLock(lockFile, async () => undefined)).rejects.toMatchObject({
+        code: "PRIVATE_FILE_LOCK_UNSAFE"
+      });
+      await expect(lstat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      lstatSpy.mockRestore();
+    }
+  });
+
+  it("removes its own inode when nonce writing fails after a partial write", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-partial-write-"));
+    const lockFile = join(directory, "state.lock");
+    const originalOpen = fs.open.bind(fs);
+    let injected = false;
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const opened = await originalOpen(...args);
+      if (!injected && args[0] === lockFile) {
+        injected = true;
+        Object.defineProperty(opened, "writeFile", {
+          configurable: true,
+          value: async (data: unknown) => {
+            const bytes = data as Buffer;
+            await opened.write(bytes.subarray(0, 3), 0, 3, 0);
+            throw Object.assign(new Error("injected partial write"), { code: "EIO" });
+          }
+        });
+      }
+      return opened;
+    });
+
+    try {
+      await expect(withPrivateFileLock(lockFile, async () => undefined)).rejects.toMatchObject({
+        code: "PRIVATE_FILE_LOCK_UNSAFE"
+      });
+      await expect(lstat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("preserves a foreign replacement when nonce writing fails after creation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-partial-replaced-"));
+    const lockFile = join(directory, "state.lock");
+    const originalOpen = fs.open.bind(fs);
+    let injected = false;
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const opened = await originalOpen(...args);
+      if (!injected && args[0] === lockFile) {
+        injected = true;
+        Object.defineProperty(opened, "writeFile", {
+          configurable: true,
+          value: async () => {
+            await unlink(lockFile);
+            await writeFile(lockFile, "foreign-owner", { mode: 0o600 });
+            await chmod(lockFile, 0o600);
+            throw Object.assign(new Error("injected replacement"), { code: "EIO" });
+          }
+        });
+      }
+      return opened;
+    });
+
+    try {
+      await expect(withPrivateFileLock(lockFile, async () => undefined)).rejects.toMatchObject({
+        code: "PRIVATE_FILE_LOCK_UNSAFE"
+      });
+      expect(await readFile(lockFile, "utf8")).toBe("foreign-owner");
+    } finally {
+      openSpy.mockRestore();
+    }
   });
 });

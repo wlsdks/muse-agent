@@ -64,6 +64,10 @@ function isPrivateRegularFile(stat: LockStat): boolean {
   return stat.isFile() && (Number(stat.mode) & 0o777) === 0o600 && isOwnedByCurrentUser(stat);
 }
 
+function isOwnedRegularFile(stat: LockStat): boolean {
+  return stat.isFile() && isOwnedByCurrentUser(stat);
+}
+
 function isPrivateDirectory(stat: LockStat): boolean {
   return stat.isDirectory() && (Number(stat.mode) & 0o022) === 0 && isOwnedByCurrentUser(stat);
 }
@@ -155,30 +159,31 @@ async function restoreMovedEntry(file: string, quarantinePath: string): Promise<
   }
 }
 
-async function releasePrivateLock(
+async function quarantineAndRemoveOwnedEntry(
   file: string,
-  nonce: Buffer,
   acquiredIdentity: FileIdentity,
-  parent: ValidatedParent
+  parent: ValidatedParent,
+  code: PrivateFileLockErrorCode,
+  expectedNonce?: Buffer
 ): Promise<void> {
   const quarantinePath = `${file}.release-${randomUUID()}`;
   let quarantineHandle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let moved = false;
   try {
-    await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    await assertParentIdentity(parent, code);
     const beforeRename = await fs.lstat(file);
-    if (!isPrivateRegularFile(beforeRename) || !sameIdentity(acquiredIdentity, beforeRename)) {
-      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    if (!isOwnedRegularFile(beforeRename) || !sameIdentity(acquiredIdentity, beforeRename)) {
+      throw new PrivateFileLockError(code);
     }
     try {
       await fs.lstat(quarantinePath);
-      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+      throw new PrivateFileLockError(code);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
     }
     await fs.rename(file, quarantinePath);
     moved = true;
-    await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    await assertParentIdentity(parent, code);
 
     quarantineHandle = await fs.open(
       quarantinePath,
@@ -186,38 +191,54 @@ async function releasePrivateLock(
     );
     const [quarantined, opened] = await Promise.all([fs.lstat(quarantinePath), quarantineHandle.stat()]);
     if (
-      !isPrivateRegularFile(quarantined) ||
-      !isPrivateRegularFile(opened) ||
+      !isOwnedRegularFile(quarantined) ||
+      !isOwnedRegularFile(opened) ||
       !sameIdentity(acquiredIdentity, quarantined) ||
-      !sameIdentity(acquiredIdentity, opened) ||
-      Number(opened.size) !== nonce.byteLength
+      !sameIdentity(acquiredIdentity, opened)
     ) {
-      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+      throw new PrivateFileLockError(code);
     }
-    const readback = Buffer.alloc(nonce.byteLength);
-    const { bytesRead } = await quarantineHandle.read(readback, 0, readback.byteLength, 0);
-    await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    if (expectedNonce !== undefined) {
+      if (Number(opened.size) !== expectedNonce.byteLength) throw new PrivateFileLockError(code);
+      const readback = Buffer.alloc(expectedNonce.byteLength);
+      const { bytesRead } = await quarantineHandle.read(readback, 0, readback.byteLength, 0);
+      if (bytesRead !== expectedNonce.byteLength || !timingSafeEqual(readback, expectedNonce)) {
+        throw new PrivateFileLockError(code);
+      }
+    }
+    await assertParentIdentity(parent, code);
     const beforeDelete = await fs.lstat(quarantinePath);
-    if (
-      bytesRead !== nonce.byteLength ||
-      !timingSafeEqual(readback, nonce) ||
-      !sameIdentity(acquiredIdentity, beforeDelete)
-    ) {
-      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    if (!sameIdentity(acquiredIdentity, beforeDelete)) {
+      throw new PrivateFileLockError(code);
     }
     await fs.unlink(quarantinePath);
     moved = false;
   } catch (cause) {
     if (moved) {
-      await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_OWNERSHIP_LOST")
+      await assertParentIdentity(parent, code)
         .then(() => restoreMovedEntry(file, quarantinePath))
         .catch(() => undefined);
     }
     if (cause instanceof PrivateFileLockError) throw cause;
-    throw new PrivateFileLockError("PRIVATE_FILE_LOCK_OWNERSHIP_LOST");
+    throw new PrivateFileLockError(code);
   } finally {
     await quarantineHandle?.close().catch(() => undefined);
   }
+}
+
+async function releasePrivateLock(
+  file: string,
+  nonce: Buffer,
+  acquiredIdentity: FileIdentity,
+  parent: ValidatedParent
+): Promise<void> {
+  await quarantineAndRemoveOwnedEntry(
+    file,
+    acquiredIdentity,
+    parent,
+    "PRIVATE_FILE_LOCK_OWNERSHIP_LOST",
+    nonce
+  );
 }
 
 /** Run an operation while owning the exact private lock path supplied by the caller. */
@@ -235,6 +256,7 @@ export async function withPrivateFileLock<T>(
   const nonce = Buffer.from(randomUUID(), "utf8");
   const startedAt = performance.now();
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  let createdIdentity: FileIdentity | undefined;
   let acquiredIdentity: FileIdentity | undefined;
 
   try {
@@ -268,9 +290,15 @@ export async function withPrivateFileLock<T>(
       }
     }
 
+    let setupFailure: PrivateFileLockError | undefined;
+    let nonceWritten = false;
     try {
+      const createdStat = await handle.stat();
+      if (!isOwnedRegularFile(createdStat)) throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+      createdIdentity = identityOf(createdStat);
       await handle.chmod(0o600);
       await handle.writeFile(nonce);
+      nonceWritten = true;
       await handle.sync();
       const [pathStat, handleStat] = await Promise.all([fs.lstat(file), handle.stat()]);
       const readback = Buffer.alloc(nonce.byteLength);
@@ -288,10 +316,24 @@ export async function withPrivateFileLock<T>(
       }
       acquiredIdentity = identityOf(handleStat);
     } catch (cause) {
-      if (cause instanceof PrivateFileLockError) throw cause;
-      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+      setupFailure = cause instanceof PrivateFileLockError
+        ? cause
+        : new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
     } finally {
       await handle.close().catch(() => undefined);
+    }
+
+    if (setupFailure !== undefined) {
+      if (createdIdentity !== undefined) {
+        await quarantineAndRemoveOwnedEntry(
+          file,
+          createdIdentity,
+          parent,
+          "PRIVATE_FILE_LOCK_UNSAFE",
+          nonceWritten ? nonce : undefined
+        ).catch(() => undefined);
+      }
+      throw setupFailure;
     }
 
     if (acquiredIdentity === undefined) throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
