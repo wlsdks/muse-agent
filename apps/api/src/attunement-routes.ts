@@ -1,6 +1,7 @@
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, computeContinuityEvaluation, ContinuityEvaluationError, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, deletePersonalThread, evaluateTimingSession, forgetTimingSession, inspectTimingSession, linkArtifact, OUTCOMES, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeTimingSession, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
+import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -9,6 +10,7 @@ import type { ServerOptions } from "./server.js";
 export interface AttunementRoutesGate {
   readonly attunementFile: string;
   readonly authService: ServerOptions["authService"];
+  readonly calendarRegistry?: CalendarProviderRegistry;
   readonly notesDir: string;
   readonly now?: () => number;
   readonly openContinuityPack?: OpenPreparedContinuityPack;
@@ -24,6 +26,16 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     ...(gate.remindersFile ? { remindersFile: gate.remindersFile } : {}),
     tasksFile: gate.tasksFile
   };
+  const validateLocal = createLocalArtifactValidator(localArtifactOptions);
+  const resolveLocal = createLocalExactArtifactResolver(localArtifactOptions);
+  const validateCalendar = gate.calendarRegistry ? createCalendarArtifactValidator(gate.calendarRegistry) : undefined;
+  const resolveCalendar = gate.calendarRegistry ? createCalendarExactArtifactResolver(gate.calendarRegistry) : undefined;
+  const validateArtifact: ArtifactLinkValidator = (input) => input.artifactType === "calendar-event"
+    ? (validateCalendar?.(input) ?? Promise.reject(new AttunementStoreError("no calendar provider registry is configured")))
+    : validateLocal(input);
+  const resolveExactArtifact: ExactArtifactResolver = (link) => link.artifactType === "calendar-event"
+    ? (resolveCalendar?.(link) ?? Promise.resolve(undefined))
+    : resolveLocal(link);
   const assertKnownThread = async (threadId: string): Promise<void> => {
     const state = await readAttunementState(gate.attunementFile);
     if (!state.threads.some((thread) => thread.id === threadId)) throw new Error(`no personal thread with id '${threadId}'`);
@@ -84,7 +96,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       pack: await readPreparedContinuityPack(
         gate.attunementFile,
         timing.session.threadId,
-        createLocalExactArtifactResolver(localArtifactOptions),
+        resolveExactArtifact,
         gate.now ? { now: gate.now } : {}
       )
     };
@@ -150,8 +162,9 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
         evaluation: computeContinuityEvaluation(state),
         reviewQueue: await prepareContinuityReview(
           state,
-          createLocalExactArtifactResolver(localArtifactOptions)
+          resolveExactArtifact
         ),
+        calendarProviders: gate.calendarRegistry?.describe().map(({ displayName, id }) => ({ displayName, id })) ?? [],
         resetReceipts: state.resetReceipts
           .slice()
           .sort((left, right) => right.resetPolicyVersion - left.resetPolicyVersion)
@@ -193,31 +206,43 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     return createPersonalThread(gate.attunementFile, { kind: kind as (typeof THREAD_KINDS)[number], title });
   });
 
-  server.post<{ Params: { readonly threadId: string }; Body: { readonly artifactId?: unknown; readonly artifactType?: unknown; readonly role?: unknown } }>("/api/attunement/threads/:threadId/links", async (request, reply) => {
+  server.post<{ Params: { readonly threadId: string }; Body: { readonly artifactId?: unknown; readonly artifactType?: unknown; readonly providerId?: unknown; readonly role?: unknown } }>("/api/attunement/threads/:threadId/links", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    const { artifactId, artifactType, role } = request.body ?? {};
+    const { artifactId, artifactType, providerId, role } = request.body ?? {};
     if (typeof artifactId !== "string" || artifactId.trim().length === 0) return reply.code(400).send({ errorMessage: "artifact id must be a non-empty string" });
     if (typeof artifactType !== "string" || !ARTIFACT_TYPES.includes(artifactType as (typeof ARTIFACT_TYPES)[number]) || artifactType === "resource") {
-      return reply.code(400).send({ errorMessage: "web linking supports validated local task, note, or reminder sources only" });
+      return reply.code(400).send({ errorMessage: "web linking supports validated local task, note, reminder, or calendar-event sources only" });
     }
     if (typeof role !== "string" || !ARTIFACT_ROLES.includes(role as (typeof ARTIFACT_ROLES)[number])) return reply.code(400).send({ errorMessage: "link role must be context or next-step" });
     if (role === "next-step" && artifactType !== "task") {
       return reply.code(400).send({ errorMessage: "only a local task can be a next-step" });
     }
+    if (artifactType === "calendar-event" && (typeof providerId !== "string" || !gate.calendarRegistry?.has(providerId))) {
+      return reply.code(400).send({ errorMessage: "calendar-event linking requires an exact configured provider id" });
+    }
     return linkArtifact(gate.attunementFile, {
       artifactId,
-      artifactType: artifactType as "task" | "note" | "reminder",
+      artifactType: artifactType as "task" | "note" | "reminder" | "calendar-event",
+      ...(artifactType === "calendar-event" ? { providerId: calendarProviderId(providerId as string) } : {}),
       role: role as "context" | "next-step",
       threadId: request.params.threadId
-    }, { validateArtifact: createLocalArtifactValidator(localArtifactOptions) });
+    }, { validateArtifact });
   });
 
-  server.post<{ Params: { readonly threadId: string }; Body: { readonly artifactId?: unknown; readonly artifactType?: unknown } }>("/api/attunement/threads/:threadId/links/unlink", async (request, reply) => {
+  server.post<{ Params: { readonly threadId: string }; Body: { readonly artifactId?: unknown; readonly artifactType?: unknown; readonly providerId?: unknown } }>("/api/attunement/threads/:threadId/links/unlink", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    const { artifactId, artifactType } = request.body ?? {};
+    const { artifactId, artifactType, providerId } = request.body ?? {};
     if (typeof artifactId !== "string" || artifactId.trim().length === 0) return reply.code(400).send({ errorMessage: "artifact id must be a non-empty string" });
-    if (artifactType !== "task" && artifactType !== "note" && artifactType !== "reminder") return reply.code(400).send({ errorMessage: "web unlinking supports local task, note, or reminder sources only" });
-    return { removed: await unlinkArtifact(gate.attunementFile, { artifactId, artifactType, threadId: request.params.threadId }) };
+    if (artifactType !== "task" && artifactType !== "note" && artifactType !== "reminder" && artifactType !== "calendar-event") return reply.code(400).send({ errorMessage: "web unlinking supports task, note, reminder, or calendar-event sources only" });
+    if (artifactType === "calendar-event" && (typeof providerId !== "string" || !/^[A-Za-z0-9._-]+$/u.test(providerId))) {
+      return reply.code(400).send({ errorMessage: "calendar-event unlinking requires the exact provider id stored on the link" });
+    }
+    return { removed: await unlinkArtifact(gate.attunementFile, {
+      artifactId,
+      artifactType,
+      ...(artifactType === "calendar-event" ? { providerId: calendarProviderId(providerId as string) } : {}),
+      threadId: request.params.threadId
+    }) };
   });
 
   server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/continue", async (request, reply) => {
@@ -225,7 +250,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     const state = await readAttunementState(gate.attunementFile);
     const thread = state.threads.find((candidate) => candidate.id === request.params.threadId);
     if (!thread) return reply.code(404).send({ errorMessage: "personal thread not found" });
-    if (thread.links.some((link) => link.providerId !== "local")) {
+    if (thread.links.some((link) => link.providerId.startsWith("mcp:"))) {
       return reply.code(409).send({ errorMessage: "this thread has an external resource; continue it through the CLI while its MCP connection is verified" });
     }
     try {
@@ -233,7 +258,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       return await open(
         gate.attunementFile,
         thread.id,
-        createLocalExactArtifactResolver(localArtifactOptions),
+        resolveExactArtifact,
         gate.now ? { now: gate.now } : {}
       );
     } catch (cause) {

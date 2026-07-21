@@ -193,6 +193,20 @@ function reminderLinkReview(linked: boolean) {
   };
 }
 
+function calendarLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    calendarProviders: [{ displayName: "Work", id: "work-calendar" }],
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "calendar:work-calendar", role: "context" }] : [],
+      title: "Review roadmap"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -237,6 +251,35 @@ test("an opened Pack shows an exact reminder as context without making it comple
   expect(onComplete).not.toHaveBeenCalled();
 });
 
+test("an opened Pack shows bounded calendar timing and location as read-only context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const calendar = {
+    artifactId: "cev1_exact",
+    artifactType: "calendar-event",
+    calendarEndsAt: "2026-07-20T10:00:00.000Z",
+    calendarLocation: "Room 4",
+    calendarStartsAt: "2026-07-20T09:00:00.000Z",
+    calendarTimeState: "upcoming" as const,
+    providerId: "calendar:work-calendar",
+    role: "context",
+    title: "Review roadmap"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_calendar" },
+    pack: {
+      evidence: [{ artifact: calendar, reference: calendar, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "work", title: "Roadmap" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText("Review roadmap · calendar-event:cev1_exact", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("2026-07-20T09:00:00.000Z", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("upcoming", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Room 4", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+});
+
 test("a reminder can be explicitly linked and unlinked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
@@ -274,6 +317,46 @@ test("a reminder can be explicitly linked and unlinked only as context", async (
 
   await screen.getByRole("button", { name: "Remove reminder:reminder_dentist" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
+});
+
+test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : calendarLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      expect(body).toEqual({ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "work-calendar", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "work-calendar" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-calendar.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Review roadmap", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("calendar-event");
+  await expect.element(screen.getByRole("button", { name: "Link source" })).toBeDisabled();
+  await screen.getByLabelText("Exact task/reminder ID or note path").fill("cev1_exact");
+  await screen.getByLabelText("Calendar provider").selectOptions("work-calendar");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).not.toBeInTheDocument();
   expect(post).toHaveBeenCalledTimes(2);
 });
 

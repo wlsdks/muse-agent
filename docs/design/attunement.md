@@ -3,7 +3,7 @@ title: Attunement architecture and data contract
 audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
-updated: 2026-07-17
+updated: 2026-07-22
 related: [../strategy/attunement.md, ../goals/attunement-implementation-plan.md, ../privacy-and-data.md]
 ---
 
@@ -12,7 +12,7 @@ related: [../strategy/attunement.md, ../goals/attunement-implementation-plan.md,
 The full Attunement loop is **not shipped**. Slice A is implemented as a user-invoked tracer:
 the user creates a `life` or `work` thread, links exact sources, opens a pack through the CLI
 or local web/API surface, and records one of four outcomes. Exact local tasks, notes, and
-context-only reminders are available; Observe, automatic affiliation, further source
+context-only reminders and exact configured-calendar occurrences are available; Observe, automatic affiliation, further source
 adapters, and proactive timing-aware help remain roadmap work.
 
 In plain language: start with an unfinished life or work thread the user chooses, build a
@@ -49,14 +49,14 @@ evidence sufficiency, or action approval.
 
 Muse must know which part of the user's life they mean before it combines a task, note,
 reminder, calendar event, contact, run, or browser visit. Slice A supports exact local tasks,
-notes, and reminders, and only the user can create the binding. An LLM may later summarize
+notes, reminders, and configured calendar occurrences, and only the user can create the binding. An LLM may later summarize
 linked evidence; it may not invent the association.
 
 ```ts
 interface PersonalThreadLink {
   threadId: string;
-  artifactType: "task" | "note" | "reminder"; // local Slice A adapters
-  providerId: "local";
+  artifactType: "task" | "note" | "reminder" | "calendar-event";
+  providerId: "local" | `calendar:${string}`;
   artifactId: string;
   role: "context" | "next-step";
   linkedBy: "user";
@@ -68,13 +68,17 @@ Slice A stores the canonical full task/reminder ID or a canonical vault-relative
 Task and reminder input accepts a full ID or unique prefix only; it rejects text/title search.
 Note input rejects absolute/`..` paths and a resolved realpath outside the vault. A thread has
 at most one `next-step`, and it must be a user-linked open task. A reminder is context-only and
-cannot create a factual interaction receipt, outcome, permission, or automation. Additional
+cannot create a factual interaction receipt, outcome, permission, or automation. A calendar
+link stores a separate versioned occurrence locator (raw provider event ID plus exact start
+instant) and an explicit registered provider; it never changes the provider's mutation ID,
+falls back to a primary provider, or searches adjacent events. It projects only bounded title,
+summary, location, start/end, and all-day state at display time. Additional
 artifact types and deterministic bindings are later adapters, not a fallback in this path.
 
 ### Continuity preparation module
 
 `@muse/attunement` owns the shared preparation boundary. One deep local-source Module
-dispatches task, note, and reminder Adapters behind the same validator/resolver Interfaces.
+dispatches task, note, reminder, and calendar Adapters behind the same validator/resolver Interfaces.
 It resolves only already-linked canonical IDs, normalizes bounded user text, preserves valid
 stored due timestamps and exact task tags, and never searches for a replacement. Preparation
 captures its clock once, derives `due|overdue` on the transient task or pending-reminder

@@ -37,7 +37,7 @@ Terms used below:
 ## Slice A — user-invoked Continuity Pack
 
 **Implemented local CLI experience:** the user runs `muse thread start <title> --kind life|work`,
-explicitly links local tasks, notes, and reminders, then runs `muse continue <thread-id>`.
+explicitly links local tasks, notes, reminders, and configured calendar occurrences, then runs `muse continue <thread-id>`.
 Muse shows the connected source IDs and one user-linked open task. Reminders are context
 only. The user records `used`, `adjusted`,
 `ignored`, or `rejected` explicitly with `muse thread outcome`; opening is a separate delivery
@@ -62,10 +62,13 @@ pack. It does not require desktop observation.
   including life/work-separated state coverage and exact-only completion
   latency; explicit outcomes remain a separate ledger and legacy deliveries
   remain unavailable.
-- ✅ Slice A supports exact local tasks, notes, and reminders. Reminder IDs are accepted only
+- ✅ Slice A supports exact local tasks, notes, reminders, and provider-bound calendar
+  occurrences. `muse calendar events` exposes a separate copyable Continuity reference;
+  CLI, HTTP, and web require an explicit configured provider and resolve that exact occurrence
+  without provider fallback. Calendar context remains read-only and context-only. Reminder IDs are accepted only
   as a full ID or unique prefix, resolve to the canonical full ID, and remain context-only;
   they cannot become a next step, factual interaction receipt, outcome, permission, or
-  automation. Calendar events, contacts, run logs/checkpoints, and browser history are later
+  automation. Contacts, run logs/checkpoints, and browser history are later
   adapters.
 - ✅ Only the user binds an item to a `threadId`; no deterministic auto-link or LLM summary is
   present in Slice A.

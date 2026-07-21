@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
+import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -80,6 +81,29 @@ const REMINDER: PersistedReminder = {
   status: "pending",
   text: "Bring the referral letter"
 };
+
+const CALENDAR_EVENT: CalendarEvent = {
+  allDay: false,
+  endsAt: new Date("2026-07-20T10:00:00.000Z"),
+  id: "event_cli_review",
+  location: "Room 4",
+  providerId: "work-calendar",
+  startsAt: new Date("2026-07-20T09:00:00.000Z"),
+  title: "Review roadmap"
+};
+
+function calendarRegistry(): CalendarProviderRegistry {
+  const provider: CalendarProvider & { resolveExactEvent(locator: { readonly eventId: string; readonly startsAt: string }): Promise<CalendarEvent | undefined> } = {
+    createEvent: async () => CALENDAR_EVENT,
+    deleteEvent: async () => undefined,
+    describe: () => ({ credentials: [], description: "Work calendar", displayName: "Work", id: "work-calendar", local: true }),
+    id: "work-calendar",
+    listEvents: async () => [CALENDAR_EVENT],
+    resolveExactEvent: async (locator) => locator.eventId === CALENDAR_EVENT.id && locator.startsAt === CALENDAR_EVENT.startsAt.toISOString() ? CALENDAR_EVENT : undefined,
+    updateEvent: async () => CALENDAR_EVENT
+  };
+  return new CalendarProviderRegistry([provider]);
+}
 
 describe("muse thread / continue — Personal Continuity", () => {
   it("requires an explicit equal life/work kind — there is no hidden default", async () => {
@@ -178,6 +202,28 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(review.stdout).toContain(`"artifactType": "reminder"`);
     expect(readFileSync(f.attunementFile)).toEqual(attunementBeforeReview);
     expect(readFileSync(f.remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("links, resolves, and provider-scoped unlinks one exact calendar occurrence", async () => {
+    const f = fixture();
+    const deps: AttunementCommandDeps = { calendarRegistry: calendarRegistry(), now: () => Date.parse("2026-07-19T09:00:00.000Z") };
+    const id = threadId((await run(f, ["thread", "start", "Review", "roadmap", "--kind", "work"], deps)).stdout);
+    const reference = encodeCalendarEventReference(CALENDAR_EVENT);
+
+    const missingProvider = await run(f, ["thread", "link", id, "calendar-event", reference, "--role", "context"], deps);
+    expect(missingProvider.exitCode).toBe(1);
+    expect(missingProvider.stderr).toContain("requires --provider");
+
+    const linked = await run(f, ["thread", "link", id, "calendar-event", reference, "--provider", "work-calendar", "--role", "context"], deps);
+    expect(linked.stdout).toContain(`calendar:work-calendar:calendar-event:${reference}`);
+    const continued = await run(f, ["continue", id], deps);
+    expect(continued.stdout).toContain(`[calendar-event:${reference}] Review roadmap`);
+    expect(continued.stdout).toContain("upcoming: 2026-07-20T09:00:00.000Z");
+    expect(continued.stdout).toContain("location: Room 4");
+
+    const unlinked = await run(f, ["thread", "unlink", id, "calendar-event", reference, "--provider", "work-calendar"], deps);
+    expect(unlinked.stdout).toContain(`Unlinked calendar-event:${reference}`);
+    expect((await readAttunementState(f.attunementFile)).threads[0]?.links).toHaveLength(0);
   });
 
   it("shows an exact overdue due and safely escaped JSON tags from the linked task", async () => {

@@ -112,6 +112,7 @@ export function formatNoteAppended(payload: { path: string; sizeBytes?: number }
 }
 
 interface HumanCalendarEvent {
+  readonly continuityRef?: string;
   readonly id: string;
   readonly title: string;
   readonly startsAtIso: string;
@@ -148,6 +149,7 @@ export function formatCalendarEvents(
       const provider = event.providerId ? ` (${event.providerId})` : "";
       const id = event.id ? `[${event.id.slice(0, 8)}] ` : "";
       lines.push(`  ${id}${time}${end}  ${event.title}${where}${provider}`);
+      if (event.continuityRef) lines.push(`    continuity-ref: ${event.continuityRef}`);
     }
   }
   return `${lines.join("\n")}\n`;

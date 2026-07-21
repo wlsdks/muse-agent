@@ -39,6 +39,19 @@ const ITEMS = {
 };
 
 describe("GoogleCalendarProvider — OAuth + listEvents", () => {
+  it("uses one exact GET and verifies both event id and start instant", async () => {
+    const payload = ITEMS.items[0]!;
+    const fetch = makeFetch(() => new Response(JSON.stringify(payload), { status: 200 }));
+    await expect(provider(fetch.impl).resolveExactEvent({ eventId: "g1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .resolves.toMatchObject({ id: "g1", title: "Standup" });
+    expect(fetch.apiCalls()).toHaveLength(1);
+    expect(fetch.apiCalls()[0]?.method).toBe("GET");
+    expect(fetch.apiCalls()[0]?.url).toMatch(/\/events\/g1$/u);
+
+    const moved = makeFetch(() => new Response(JSON.stringify(payload), { status: 200 }));
+    await expect(provider(moved.impl).resolveExactEvent({ eventId: "g1", startsAt: "2026-05-30T09:01:00.000Z" }))
+      .resolves.toBeUndefined();
+  });
   it("mints an access token, then GETs events with Bearer auth + a time-range query, mapping timed and all-day items", async () => {
     const fetch = makeFetch(() => new Response(JSON.stringify(ITEMS), { status: 200 }));
     const events = await provider(fetch.impl).listEvents(RANGE);

@@ -11,9 +11,11 @@ import {
 } from "./calendar-encryption.js";
 import { quarantineCorruptStore } from "./corrupt-quarantine.js";
 import { CalendarProviderError, CalendarValidationError } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import { expandRecurringEvent } from "./ics-parse.js";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -79,6 +81,13 @@ export class LocalCalendarProvider implements CalendarProvider {
       .sort((left, right) =>
         left.startsAt.getTime() - right.startsAt.getTime() || left.id.localeCompare(right.id)
       );
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    const instant = new Date(locator.startsAt);
+    const events = (await this.readAll({ strict: true }))
+      .flatMap((event) => expandRecurringEvent(event, instant, instant));
+    return selectExactCalendarEvent(events, locator, this.id);
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
@@ -171,14 +180,14 @@ export class LocalCalendarProvider implements CalendarProvider {
     });
   }
 
-  private async readAll(): Promise<readonly CalendarEvent[]> {
+  private async readAll(options: { readonly strict?: boolean } = {}): Promise<readonly CalendarEvent[]> {
     let raw: string;
 
     try {
       raw = await fs.readFile(this.file, "utf8");
     } catch (error) {
       if (isFileNotFound(error)) {
-        return [];
+        if (!options.strict) return [];
       }
 
       throw new CalendarProviderError(this.id, "READ_FAILED", `Failed to read calendar file: ${this.file}`, error);
@@ -188,7 +197,10 @@ export class LocalCalendarProvider implements CalendarProvider {
 
     try {
       parsed = JSON.parse(raw) as unknown;
-    } catch {
+    } catch (cause) {
+      if (options.strict) {
+        throw new CalendarProviderError(this.id, "MALFORMED_STORE", `Calendar store is malformed: ${this.file}`, cause);
+      }
       await quarantineCorruptStore(this.file);
       return [];
     }
@@ -206,18 +218,28 @@ export class LocalCalendarProvider implements CalendarProvider {
 
       try {
         parsed = JSON.parse(decrypted) as unknown;
-      } catch {
+      } catch (cause) {
+        if (options.strict) {
+          throw new CalendarProviderError(this.id, "MALFORMED_STORE", `Decrypted calendar store is malformed: ${this.file}`, cause);
+        }
         await quarantineCorruptStore(this.file);
         return [];
       }
     }
 
     if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { events?: unknown }).events)) {
+      if (options.strict) {
+        throw new CalendarProviderError(this.id, "MALFORMED_STORE", `Calendar store is malformed: ${this.file}`);
+      }
       await quarantineCorruptStore(this.file);
       return [];
     }
 
-    const persisted = (parsed as { events: unknown[] }).events.flatMap((entry): readonly PersistedEvent[] =>
+    const entries = (parsed as { events: unknown[] }).events;
+    if (options.strict && entries.some((entry) => !isPersistedEvent(entry))) {
+      throw new CalendarProviderError(this.id, "MALFORMED_EVENT", `Calendar store contains a malformed event: ${this.file}`);
+    }
+    const persisted = entries.flatMap((entry): readonly PersistedEvent[] =>
       isPersistedEvent(entry) ? [entry] : []
     );
 

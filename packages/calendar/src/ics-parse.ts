@@ -141,7 +141,13 @@ export function expandRecurringEvent(event: CalendarEvent, from: Date, to: Date)
     if (startMs > toMs) break;
     const endMs = startMs + durationMs;
     if (endMs >= fromMs) {
-      out.push({ ...event, endsAt: new Date(endMs), id: `${event.id}-${i.toString()}`, startsAt: new Date(startMs) });
+      out.push({
+        ...event,
+        endsAt: new Date(endMs),
+        id: `${event.id}-${i.toString()}`,
+        providerEventId: event.providerEventId ?? event.id,
+        startsAt: new Date(startMs)
+      });
     }
   }
   return out;

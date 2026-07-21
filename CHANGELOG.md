@@ -10,6 +10,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now ground a thread in one exact configured calendar occurrence.**
+  Calendar listings expose a versioned, copyable Continuity reference separate from the
+  provider's mutation ID. CLI, authenticated local HTTP, and web linking require the user to
+  choose the exact registered provider; all five calendar adapters resolve without primary
+  fallback or title search. Packs show a bounded read-only projection and transient
+  upcoming/happening/ended state. Calendar context cannot become a next step, factual
+  interaction, outcome, permission, or automation signal, and provider-scoped unlinking
+  cannot remove a same-reference link from another calendar.
+
 - **Continuity can now resume with an exact local reminder in context.** The
   user may explicitly link a full reminder ID or unique prefix from CLI, local
   HTTP, or web; Muse stores the canonical ID and shows bounded text, pending or

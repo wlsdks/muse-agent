@@ -53,27 +53,28 @@ describe("Personal Continuity store", () => {
     expect((await readAttunementState(file)).threads.map((thread) => thread.kind)).toEqual(["life", "work"]);
   });
 
-  it("reads schema v3 byte-stably, migrates on explicit mutation, and rejects v3 reminder laundering", async () => {
+  it("reads schema v4 byte-stably, migrates on explicit mutation, and rejects v4 calendar laundering", async () => {
     const file = stateFile();
     const options = deterministicOptions();
     const thread = await createPersonalThread(file, { kind: "life", title: "Prepare for the dentist" }, options);
     const current = readFileSync(file, "utf8");
-    const legacy = current.replace('"schemaVersion": 4', '"schemaVersion": 3');
+    const legacy = current.replace('"schemaVersion": 5', '"schemaVersion": 4');
     writeFileSync(file, legacy, "utf8");
 
-    expect((await readAttunementState(file)).schemaVersion).toBe(4);
+    expect((await readAttunementState(file)).schemaVersion).toBe(5);
     expect(readFileSync(file, "utf8")).toBe(legacy);
 
     await linkArtifact(file, {
-      artifactId: "reminder_dentist",
-      artifactType: "reminder",
+      artifactId: "cev1_WyJldmVudCIsIjIwMjYtMDctMjJUMDk6MDA6MDAuMDAwWiJd",
+      artifactType: "calendar-event",
+      providerId: "calendar:local",
       role: "context",
       threadId: thread.id
     }, options);
     const migrated = JSON.parse(readFileSync(file, "utf8")) as { schemaVersion: number };
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
 
-    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 4', '"schemaVersion": 3');
+    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 5', '"schemaVersion": 4');
     writeFileSync(file, forgedLegacy, "utf8");
     await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
     expect(readFileSync(file, "utf8")).toBe(forgedLegacy);
@@ -113,6 +114,32 @@ describe("Personal Continuity store", () => {
 
     expect(await unlinkArtifact(file, { artifactId: "task_full-id-1", artifactType: "task", threadId: thread.id })).toBe(true);
     expect(await unlinkArtifact(file, { artifactId: "task_full-id-1", artifactType: "task", threadId: thread.id })).toBe(false);
+  });
+
+  it("unlinks a calendar occurrence from only the explicitly named provider", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Shared occurrence ids" }, options);
+    const reference = "cev1_WyJzYW1lIiwiMjAyNi0wNy0yMlQwOTowMDowMC4wMDBaIl0";
+    for (const providerId of ["calendar:work", "calendar:life"] as const) {
+      await linkArtifact(file, {
+        artifactId: reference,
+        artifactType: "calendar-event",
+        providerId,
+        role: "context",
+        threadId: thread.id
+      }, { ...options, validateArtifact: async ({ artifactId, artifactType, providerId }) => ({ artifactId, artifactType, providerId }) });
+    }
+
+    expect(await unlinkArtifact(file, {
+      artifactId: reference,
+      artifactType: "calendar-event",
+      providerId: "calendar:work",
+      threadId: thread.id
+    })).toBe(true);
+    expect((await readAttunementState(file)).threads[0]?.links).toMatchObject([
+      { artifactId: reference, artifactType: "calendar-event", providerId: "calendar:life" }
+    ]);
   });
 
   it("requires an exact validator, stores its canonical ID, and rejects unsafe note paths at the public mutation boundary", async () => {
@@ -298,6 +325,25 @@ describe("Personal Continuity store — external MCP resource sources", () => {
     }, { ...options, validateArtifact: mcpValidator })).rejects.toThrow("only a local task can be a next-step");
   });
 
+  it("stores one syntactically coherent calendar provider and keeps it context-only", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Dentist visit" }, options);
+    const linked = await linkArtifact(file, {
+      artifactId: "cev1_WyJldmVudCIsIjIwMjYtMDctMjJUMDk6MDA6MDAuMDAwWiJd",
+      artifactType: "calendar-event",
+      providerId: "calendar:gcal",
+      role: "context",
+      threadId: thread.id
+    }, options);
+    expect(linked.link.providerId).toBe("calendar:gcal");
+    expect((await readAttunementState(file)).threads[0]?.links[0]).toEqual(linked.link);
+    await expect(linkArtifact(file, {
+      ...linked.link,
+      role: "next-step"
+    }, options)).rejects.toThrow("only a local task can be a next-step");
+  });
+
   it("fails closed on an incoherent provider/type at the link boundary", async () => {
     const file = stateFile();
     const options = deterministicOptions();
@@ -310,6 +356,12 @@ describe("Personal Continuity store — external MCP resource sources", () => {
     await expect(linkArtifact(file, {
       artifactId: "task_x", artifactType: "task", providerId: "mcp:github", role: "context", threadId: thread.id
     }, { ...options, validateArtifact: mcpValidator })).rejects.toThrow("does not match a task");
+    await expect(linkArtifact(file, {
+      artifactId: "event", artifactType: "calendar-event", providerId: "local", role: "context", threadId: thread.id
+    }, options)).rejects.toThrow("does not match a calendar-event");
+    await expect(linkArtifact(file, {
+      artifactId: "event", artifactType: "calendar-event", providerId: "calendar:calendar:gcal", role: "context", threadId: thread.id
+    }, options)).rejects.toThrow("does not match a calendar-event");
     // a validator that swaps to an incoherent provider is caught after validation
     await expect(linkArtifact(file, {
       artifactId: "facebook/react/issues/1", artifactType: "resource", providerId: "mcp:github", role: "context", threadId: thread.id
@@ -323,7 +375,9 @@ describe("Personal Continuity store — external MCP resource sources", () => {
       ["unknown provider word", (link) => { link.providerId = "evil"; }],
       ["local with trailing space", (link) => { link.providerId = "local "; }],
       ["resource carrying a local provider", (link) => { link.artifactType = "resource"; link.providerId = "local"; }],
-      ["task carrying an mcp provider", (link) => { link.providerId = "mcp:github"; }]
+      ["task carrying an mcp provider", (link) => { link.providerId = "mcp:github"; }],
+      ["calendar with double prefix", (link) => { link.artifactType = "calendar-event"; link.providerId = "calendar:calendar:gcal"; }],
+      ["calendar carrying local provider", (link) => { link.artifactType = "calendar-event"; link.providerId = "local"; }]
     ];
     for (const [label, corrupt] of cases) {
       const file = stateFile();

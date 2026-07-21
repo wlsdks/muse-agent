@@ -25,6 +25,16 @@ function latestOutcome(state: AttunementState, threadId: string) {
 }
 
 function deriveTemporalState(artifact: ResolvedArtifact, nowMs: number): ResolvedArtifact {
+  if (artifact.artifactType === "calendar-event" && artifact.calendarStartsAt && artifact.calendarEndsAt) {
+    const startsAt = Date.parse(artifact.calendarStartsAt);
+    const endsAt = Date.parse(artifact.calendarEndsAt);
+    if (Number.isFinite(startsAt) && Number.isFinite(endsAt) && endsAt >= startsAt) {
+      return {
+        ...artifact,
+        calendarTimeState: endsAt < nowMs ? "ended" : startsAt <= nowMs ? "happening" : "upcoming"
+      };
+    }
+  }
   const dueAt = artifact.artifactType === "task"
     ? artifact.taskDueAt
     : artifact.artifactType === "reminder"

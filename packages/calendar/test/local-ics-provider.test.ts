@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalIcsCalendarProvider, expandRecurringEvent, parseIcsCalendar } from "../src/index.js";
+import { LocalIcsCalendarProvider, decodeCalendarEventReference, encodeCalendarEventReference, expandRecurringEvent, parseIcsCalendar } from "../src/index.js";
 
 const ICS = [
   "BEGIN:VCALENDAR",
@@ -59,6 +59,16 @@ describe("LocalIcsCalendarProvider — read-only local .ics connector", () => {
     await expect(provider.createEvent({ title: "x", startsAt: new Date(), endsAt: new Date() })).rejects.toThrow(/read-only/);
     await expect(provider.updateEvent("evt-1", { title: "y" })).rejects.toThrow(/read-only/);
     await expect(provider.deleteEvent("evt-1")).rejects.toThrow(/read-only/);
+  });
+
+  it("resolves only the exact listed event and fails closed on unreadable or malformed sources", async () => {
+    const [listed] = await provider.listEvents({ from: new Date("2026-05-15T00:00:00Z"), to: new Date("2026-05-16T00:00:00Z") });
+    const locator = decodeCalendarEventReference(encodeCalendarEventReference(listed!));
+    await expect(provider.resolveExactEvent(locator)).resolves.toEqual(listed);
+    const missing = new LocalIcsCalendarProvider({ file: "/nope", readFileImpl: async () => { throw new Error("ENOENT"); } });
+    await expect(missing.resolveExactEvent(locator)).rejects.toMatchObject({ code: "READ_FAILED" });
+    const malformed = new LocalIcsCalendarProvider({ file: "/bad", readFileImpl: async () => `${ICS}\r\nBEGIN:VEVENT\r\nUID:bad\r\nEND:VEVENT` });
+    await expect(malformed.resolveExactEvent(locator)).rejects.toMatchObject({ code: "MALFORMED_EVENT" });
   });
 });
 

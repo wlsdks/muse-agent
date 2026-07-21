@@ -13,6 +13,7 @@ import {
   readAttunementState,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
+import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -43,6 +44,30 @@ const REMINDER: PersistedReminder = {
   status: "pending",
   text: "Bring the referral letter"
 };
+
+const CALENDAR_EVENT: CalendarEvent = {
+  allDay: false,
+  endsAt: new Date("2026-07-18T10:00:00.000Z"),
+  id: "event_api_review",
+  location: "Studio 2",
+  notes: "Bring the private attendee roster, but only this summary is projected.",
+  providerId: "work-calendar",
+  startsAt: new Date("2026-07-18T09:00:00.000Z"),
+  title: "Portfolio review"
+};
+
+function calendarRegistry(): CalendarProviderRegistry {
+  const provider: CalendarProvider & { resolveExactEvent(locator: { readonly eventId: string; readonly startsAt: string }): Promise<CalendarEvent | undefined> } = {
+    createEvent: async () => CALENDAR_EVENT,
+    deleteEvent: async () => undefined,
+    describe: () => ({ credentials: [], description: "Work calendar", displayName: "Work", id: "work-calendar", local: true }),
+    id: "work-calendar",
+    listEvents: async () => [CALENDAR_EVENT],
+    resolveExactEvent: async (locator) => locator.eventId === CALENDAR_EVENT.id && locator.startsAt === CALENDAR_EVENT.startsAt.toISOString() ? CALENDAR_EVENT : undefined,
+    updateEvent: async () => CALENDAR_EVENT
+  };
+  return new CalendarProviderRegistry([provider]);
+}
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "muse-attunement-api-"));
@@ -416,5 +441,84 @@ describe("GET /api/attunement/threads — the Work view's thread-picker feed", (
     expect(body.threads).toHaveLength(1);
     expect(body.threads[0]).toEqual({ id: threadId, kind: "life", title: "Prepare birthday" });
     await app.close();
+  });
+});
+
+describe("calendar-event continuity sources", () => {
+  it("lists configured providers and links, resolves, and unlinks one exact occurrence", async () => {
+    const registry = calendarRegistry();
+    const app = server({ calendarRegistry: registry });
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+
+    const before = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    expect(before.json().calendarProviders).toEqual([{ displayName: "Work", id: "work-calendar" }]);
+
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId, artifactType: "calendar-event", providerId: "calendar:work-calendar", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId,
+        artifactType: "calendar-event",
+        calendarLocation: "Studio 2",
+        calendarStartsAt: CALENDAR_EVENT.startsAt.toISOString(),
+        calendarTimeState: "upcoming",
+        providerId: "calendar:work-calendar",
+        role: "context",
+        title: "Portfolio review"
+      }),
+      status: "available"
+    }));
+
+    const removed = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    expect((await readAttunementState(attunementFile)).threads[0]?.links).not.toContainEqual(expect.objectContaining({ artifactId }));
+    await app.close();
+  });
+
+  it("rejects missing and unregistered providers without writing a link", async () => {
+    const app = server({ calendarRegistry: calendarRegistry() });
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+    for (const providerId of [undefined, "guessed-calendar"]) {
+      const response = await app.inject({
+        method: "POST",
+        payload: { artifactId, artifactType: "calendar-event", ...(providerId ? { providerId } : {}), role: "context" },
+        url: `/api/attunement/threads/${threadId}/links`
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect((await readAttunementState(attunementFile)).threads[0]?.links).toHaveLength(1);
+    await app.close();
+  });
+
+  it("can unlink stale calendar context after its provider is removed", async () => {
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+    const linkedApp = server({ calendarRegistry: calendarRegistry() });
+    expect((await linkedApp.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(200);
+    await linkedApp.close();
+
+    const removedApp = server({ calendarRegistry: new CalendarProviderRegistry() });
+    const removed = await removedApp.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    await removedApp.close();
   });
 });

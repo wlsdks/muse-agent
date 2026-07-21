@@ -2,10 +2,13 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import { parseCalendarQueryResponse, renderCalendarQueryReport, renderVEvent } from "./caldav-ics.js";
+import { expandRecurringEvent } from "./ics-parse.js";
 import { sleep } from "@muse/shared";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -32,7 +35,11 @@ export interface CalDAVCalendarProviderOptions {
   readonly password: string;
   readonly fetchImpl?: typeof fetch;
   readonly retry?: CalDAVRetryOptions;
+  /** Hard cap for each REPORT attempt. Default 30 seconds. */
+  readonly timeoutMs?: number;
 }
+
+const DEFAULT_CALDAV_TIMEOUT_MS = 30_000;
 
 const credentialRequirements: readonly CredentialRequirement[] = [
   {
@@ -72,6 +79,7 @@ export class CalDAVCalendarProvider implements CalendarProvider {
   private readonly retries: number;
   private readonly baseDelayMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly timeoutMs: number;
 
   constructor(options: CalDAVCalendarProviderOptions) {
     this.url = options.url.endsWith("/") ? options.url : `${options.url}/`;
@@ -80,6 +88,9 @@ export class CalDAVCalendarProvider implements CalendarProvider {
     this.retries = normalizeCalendarRetryCount(options.retry?.retries);
     this.baseDelayMs = normalizeCalendarRetryDelayMs(options.retry?.baseDelayMs);
     this.sleep = options.retry?.sleep ?? sleep;
+    this.timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : DEFAULT_CALDAV_TIMEOUT_MS;
   }
 
   describe(): CalendarProviderInfo {
@@ -93,6 +104,10 @@ export class CalDAVCalendarProvider implements CalendarProvider {
   }
 
   async listEvents(range: CalendarRange): Promise<readonly CalendarEvent[]> {
+    return this.readEvents(range, false);
+  }
+
+  private async readEvents(range: CalendarRange, strict: boolean): Promise<readonly CalendarEvent[]> {
     const body = renderCalendarQueryReport(range);
     // Retry transient 429/5xx (and network rejects) on the idempotent
     // REPORT read so a flaky moment doesn't drop the calendar from the
@@ -100,13 +115,18 @@ export class CalDAVCalendarProvider implements CalendarProvider {
     // mutation could double-create / double-delete an event.
     for (let attempt = 0; ; attempt += 1) {
       let response: Response;
+      const signal = AbortSignal.timeout(this.timeoutMs);
       try {
         response = await this.fetchImpl(this.url, {
           body,
           headers: this.headers({ depth: "1", contentType: 'application/xml; charset="utf-8"' }),
-          method: "REPORT"
+          method: "REPORT",
+          signal
         });
       } catch (cause) {
+        if (signal.aborted) {
+          throw new CalendarProviderError(this.id, "REPORT_TIMEOUT", `CalDAV REPORT timed out after ${this.timeoutMs.toString()}ms`, cause);
+        }
         if (attempt < this.retries) {
           await this.sleep(calendarBackoffMs(this.baseDelayMs, attempt));
           continue;
@@ -123,8 +143,21 @@ export class CalDAVCalendarProvider implements CalendarProvider {
       }
 
       const xml = await response.text();
-      return parseCalendarQueryResponse(xml, this.id, this.url);
+      const baseEvents = parseCalendarQueryResponse(xml, this.id, this.url);
+      if (strict) {
+        const eventPayloads = xml.match(/BEGIN:VEVENT/giu)?.length ?? 0;
+        if (eventPayloads !== baseEvents.length) {
+          throw new CalendarProviderError(this.id, "MALFORMED_RESPONSE", "CalDAV exact lookup received malformed VEVENT data");
+        }
+      }
+      return baseEvents.flatMap((event) => expandRecurringEvent(event, range.from, range.to));
     }
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    const instant = new Date(locator.startsAt);
+    const events = await this.readEvents({ from: instant, to: instant }, true);
+    return selectExactCalendarEvent(events, locator, this.id);
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
