@@ -89,7 +89,7 @@ export { appendActionLog, decryptActionLogAtRest, encryptActionLogAtRest, isActi
 export type { ActionLogEntry, ActionLogPruneResult, ActionResult } from "./personal-action-log-store.js";
 export { findConsent, hasConsent, readConsents, recordConsent } from "./personal-consent-store.js";
 export type { ScopedConsent } from "./personal-consent-store.js";
-export { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, formatBirthdayBriefLine, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, readContacts, removeContact, resolveContact, resolveUpcomingBirthdays, serializeContact, writeContacts } from "./personal-contacts-store.js";
+export { addContact, contactIdentifier, ContactStoreUnavailableError, decryptContactsAtRest, encryptContactsAtRest, formatBirthdayBriefLine, isCanonicalContactId, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, readContactByIdStrict, readContacts, readContactsStrict, removeContact, resolveContact, resolveUpcomingBirthdays, serializeContact, writeContacts } from "./personal-contacts-store.js";
 export type { Contact, ContactMutation } from "./personal-contacts-store.js";
 export { clearEpisodes, computeEpisodeRetention, decryptEpisodesAtRest, detectTopicAbsence, encryptEpisodesAtRest, isEpisodesEncrypted, planEpisodeConsolidation, readEpisodes, recurringThemes, removeEpisode, selectRetainedEpisodes, serializeEpisode, upsertEpisode, vacuumEpisodes, writeEpisodes } from "./personal-episodes-store.js";
 export type { PersistedEpisode } from "./personal-episodes-store.js";
