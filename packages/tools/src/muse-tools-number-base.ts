@@ -24,6 +24,16 @@ export interface NumberBaseResult {
  * and a `-` sign are accepted. Returns `undefined` for an unknown base or a digit
  * not valid in the source base.
  */
+const BASE_ALIASES: Record<string, string> = {
+  "2": "binary", "8": "octal", "10": "decimal", "16": "hex",
+  base2: "binary", base8: "octal", base10: "decimal", base16: "hex",
+  bin: "binary", oct: "octal", dec: "decimal", hexadecimal: "hex"
+};
+
+const EXAMPLES: Record<string, string> = {
+  binary: "0 and 1", octal: "0-7", decimal: "0-9", hex: "0-9 and a-f"
+};
+
 export function convertNumberBase(value: string, from: string, to: string): NumberBaseResult | undefined {
   const fromBase = BASES[from];
   const toBase = BASES[to];
@@ -74,11 +84,25 @@ export function createNumberBaseTool(): MuseTool {
     },
     execute: (args): JsonObject => {
       const value = typeof args["value"] === "string" ? args["value"] : typeof args["value"] === "number" ? String(args["value"]) : "";
-      const from = typeof args["from"] === "string" ? args["from"] : "";
-      const to = typeof args["to"] === "string" ? args["to"] : "";
+      // A model asked for "base 16" naturally sends 16, not "hex". Accept the
+      // radix number (and its string form) as an alias for the enum name —
+      // repairing a predictable near-miss beats failing and being re-guessed.
+      const readBase = (raw: unknown): string => {
+        if (typeof raw === "string") return BASE_ALIASES[raw.trim().toLowerCase()] ?? raw;
+        if (typeof raw === "number") return BASE_ALIASES[String(raw)] ?? "";
+        return "";
+      };
+      const from = readBase(args["from"]);
+      const to = readBase(args["to"]);
       if (value.trim().length === 0) return { error: "number_base needs a `value` to convert" };
+      // Report what was RECEIVED, not the post-coercion blank: a message reading
+      // "from '' to ''" tells the model nothing about what it got wrong.
+      const named = (raw: unknown): string => (raw === undefined ? "(missing)" : JSON.stringify(raw));
+      if (!(from in BASES) || !(to in BASES)) {
+        return { error: `number_base: 'from'/'to' must be one of binary, octal, decimal, hex (or 2, 8, 10, 16) — received from=${named(args["from"])}, to=${named(args["to"])}` };
+      }
       const converted = convertNumberBase(value, from, to);
-      if (!converted) return { error: `couldn't convert '${value}' from '${from}' to '${to}' (unknown base, or a digit invalid in base ${from})` };
+      if (!converted) return { error: `'${value}' is not a valid ${from} number — a ${from} value uses only its own digits (e.g. ${EXAMPLES[from] ?? "0-9"})` };
       return { decimal: converted.decimal, result: converted.result };
     }
   };

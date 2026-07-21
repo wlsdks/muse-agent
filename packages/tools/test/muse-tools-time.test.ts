@@ -42,7 +42,11 @@ describe("time_now", () => {
   });
 
   it("errors (does not throw) on an unsupported timezone", () => {
-    expect(run(createTimeNowTool(now), { timezone: "Mars/Phobos" })).toEqual({ error: "unsupported timezone: Mars/Phobos" });
+    // Asserts the PROPERTY, not the wording: the message must name the rejected
+    // value AND the form that would work, so the model corrects in one step.
+    const out = run(createTimeNowTool(now), { timezone: "Mars/Phobos" }) as { error?: string };
+    expect(out.error).toContain("Mars/Phobos");
+    expect(out.error).toContain("Asia/Seoul");
   });
 });
 

@@ -55,7 +55,9 @@ export function createTimeNowTool(now: () => Date): MuseTool {
           weekday: "long"
         }).format(at);
       } catch {
-        return { error: `unsupported timezone: ${timezone}` };
+        // Naming only the rejected value makes the model guess again. Say what
+        // form is wanted and show one — the sibling world_time already does.
+        return { error: `'${timezone}' is not a valid IANA timezone — use the Area/City form, e.g. 'Asia/Seoul', 'Europe/London', 'UTC'` };
       }
       return {
         dayOfWeek,

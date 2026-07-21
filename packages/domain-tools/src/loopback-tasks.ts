@@ -171,7 +171,14 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
               ...(tagLabel ? { tag: tagLabel } : {})
             };
           }
-          const status = readTaskStatusFilter(readString(args, "status"));
+          // An OMITTED status defaults to "open" silently — that is the contract.
+          // A status the caller SPECIFIED but that is not in the enum is different:
+          // repairing it quietly returns open tasks to a model that asked for
+          // something else, which it then reports as fact. Repair, but say so
+          // (tool-calling.md rule 7 — repair deterministically, don't re-reason).
+          const requestedStatus = readString(args, "status");
+          const status = readTaskStatusFilter(requestedStatus);
+          const statusWasCoerced = requestedStatus !== undefined && requestedStatus !== status;
           const matching = tasks
             .filter((task) => status === "all" || task.status === status)
             .filter((task) => matchesTag(task.tags))
@@ -182,7 +189,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             status,
             tasks: filtered.map((task) => serializeTaskForModel(task, now)) as JsonValue,
             total: matching.length,
-            ...(tagLabel ? { tag: tagLabel } : {})
+            ...(tagLabel ? { tag: tagLabel } : {}),
+            ...(statusWasCoerced
+              ? { note: `'${requestedStatus ?? ""}' is not a valid status — valid values are 'open', 'done', 'all'. Listed '${status}' instead.` }
+              : {})
           };
         },
         inputSchema: {

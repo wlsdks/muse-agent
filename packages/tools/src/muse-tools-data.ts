@@ -395,7 +395,9 @@ function evaluateArithmetic(expression: string): number {
       }
     }
     if (cursor === start) {
-      throw new Error("expected number");
+      // This text reaches the model verbatim, so it has to say what a valid
+      // expression looks like — "expected number" alone gets re-guessed.
+      throw new Error("expression is incomplete — an operator needs a number on both sides, e.g. '2 + 3'");
     }
     const literal = stripped.slice(start, cursor);
     // `Number`, not `parseFloat`: parseFloat leniently truncates a

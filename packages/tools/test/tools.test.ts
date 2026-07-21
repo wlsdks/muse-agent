@@ -2077,7 +2077,7 @@ describe("createMuseTools", () => {
   it("time_now rejects an unsupported timezone with an error payload", async () => {
     const tool = getTool("time_now");
     const result = await tool.execute({ timezone: "Mars/Olympus" }, { runId: "run-1" });
-    expect(result).toEqual({ error: expect.stringContaining("unsupported timezone") });
+    expect(result).toEqual({ error: expect.stringContaining("not a valid IANA timezone") });
   });
 
   it("time_diff returns signed milliseconds and a humanized duration", async () => {
