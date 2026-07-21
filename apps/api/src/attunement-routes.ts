@@ -12,12 +12,18 @@ export interface AttunementRoutesGate {
   readonly notesDir: string;
   readonly now?: () => number;
   readonly openContinuityPack?: OpenPreparedContinuityPack;
+  readonly remindersFile?: string;
   readonly tasksFile: string;
 }
 
 /** Read-only evaluation: it never resolves sources or opens a Continuity delivery. */
 export function registerAttunementRoutes(server: FastifyInstance, gate: AttunementRoutesGate): void {
   const timingFile = `${gate.attunementFile}.timing.json`;
+  const localArtifactOptions = {
+    notesDir: gate.notesDir,
+    ...(gate.remindersFile ? { remindersFile: gate.remindersFile } : {}),
+    tasksFile: gate.tasksFile
+  };
   const assertKnownThread = async (threadId: string): Promise<void> => {
     const state = await readAttunementState(gate.attunementFile);
     if (!state.threads.some((thread) => thread.id === threadId)) throw new Error(`no personal thread with id '${threadId}'`);
@@ -78,7 +84,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       pack: await readPreparedContinuityPack(
         gate.attunementFile,
         timing.session.threadId,
-        createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }),
+        createLocalExactArtifactResolver(localArtifactOptions),
         gate.now ? { now: gate.now } : {}
       )
     };
@@ -144,7 +150,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
         evaluation: computeContinuityEvaluation(state),
         reviewQueue: await prepareContinuityReview(
           state,
-          createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile })
+          createLocalExactArtifactResolver(localArtifactOptions)
         ),
         resetReceipts: state.resetReceipts
           .slice()
@@ -192,22 +198,25 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     const { artifactId, artifactType, role } = request.body ?? {};
     if (typeof artifactId !== "string" || artifactId.trim().length === 0) return reply.code(400).send({ errorMessage: "artifact id must be a non-empty string" });
     if (typeof artifactType !== "string" || !ARTIFACT_TYPES.includes(artifactType as (typeof ARTIFACT_TYPES)[number]) || artifactType === "resource") {
-      return reply.code(400).send({ errorMessage: "web linking supports validated local task or note sources only" });
+      return reply.code(400).send({ errorMessage: "web linking supports validated local task, note, or reminder sources only" });
     }
     if (typeof role !== "string" || !ARTIFACT_ROLES.includes(role as (typeof ARTIFACT_ROLES)[number])) return reply.code(400).send({ errorMessage: "link role must be context or next-step" });
+    if (role === "next-step" && artifactType !== "task") {
+      return reply.code(400).send({ errorMessage: "only a local task can be a next-step" });
+    }
     return linkArtifact(gate.attunementFile, {
       artifactId,
-      artifactType: artifactType as "task" | "note",
+      artifactType: artifactType as "task" | "note" | "reminder",
       role: role as "context" | "next-step",
       threadId: request.params.threadId
-    }, { validateArtifact: createLocalArtifactValidator({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }) });
+    }, { validateArtifact: createLocalArtifactValidator(localArtifactOptions) });
   });
 
   server.post<{ Params: { readonly threadId: string }; Body: { readonly artifactId?: unknown; readonly artifactType?: unknown } }>("/api/attunement/threads/:threadId/links/unlink", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     const { artifactId, artifactType } = request.body ?? {};
     if (typeof artifactId !== "string" || artifactId.trim().length === 0) return reply.code(400).send({ errorMessage: "artifact id must be a non-empty string" });
-    if (artifactType !== "task" && artifactType !== "note") return reply.code(400).send({ errorMessage: "web unlinking supports local task or note sources only" });
+    if (artifactType !== "task" && artifactType !== "note" && artifactType !== "reminder") return reply.code(400).send({ errorMessage: "web unlinking supports local task, note, or reminder sources only" });
     return { removed: await unlinkArtifact(gate.attunementFile, { artifactId, artifactType, threadId: request.params.threadId }) };
   });
 
@@ -224,7 +233,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       return await open(
         gate.attunementFile,
         thread.id,
-        createLocalExactArtifactResolver({ notesDir: gate.notesDir, tasksFile: gate.tasksFile }),
+        createLocalExactArtifactResolver(localArtifactOptions),
         gate.now ? { now: gate.now } : {}
       );
     } catch (cause) {

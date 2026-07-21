@@ -11,6 +11,7 @@ import {
   readAttunementState,
   recordContinuityOutcome
 } from "./index.js";
+import type { ArtifactLink } from "./index.js";
 import { createOrganicContinuityWriteAuthority } from "./evidence-provenance.js";
 
 async function fixture() {
@@ -23,7 +24,7 @@ async function fixture() {
     role: "context",
     threadId: thread.id
   }, { validateArtifact: async (input) => input });
-  const resolve = async (link: { artifactId: string; artifactType: "note" | "task" | "resource"; providerId: string; role: "context" | "next-step" }) => ({
+  const resolve = async (link: ArtifactLink) => ({
     ...link,
     title: "Trip notes"
   });
@@ -48,7 +49,7 @@ describe("Continuity evidence provenance", () => {
     } as never);
 
     const state = await readAttunementState(file);
-    expect(state.schemaVersion).toBe(3);
+    expect(state.schemaVersion).toBe(4);
     expect(state.deliveries.map((delivery) => ({
       delivery: delivery.evidenceClass,
       outcome: delivery.outcome?.evidenceClass
@@ -58,7 +59,7 @@ describe("Continuity evidence provenance", () => {
       { delivery: "organic", outcome: "organic" },
       { delivery: "unclassified", outcome: undefined }
     ]);
-    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 3 });
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 4 });
   });
 
   it("normalizes schema 2 evidence in memory without rewriting bytes, then migrates on mutation", async () => {
@@ -115,7 +116,7 @@ describe("Continuity evidence provenance", () => {
 
     const normalized = await readAttunementState(file);
     expect(await readFile(file, "utf8")).toBe(legacyBytes);
-    expect(normalized.schemaVersion).toBe(3);
+    expect(normalized.schemaVersion).toBe(4);
     expect(normalized.deliveries[0]).toMatchObject({
       evidenceClass: "unclassified",
       id: delivery.id,
@@ -129,7 +130,7 @@ describe("Continuity evidence provenance", () => {
 
     await createPersonalThread(file, { kind: "work", title: "Migration trigger" });
     const migrated = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(migrated).toMatchObject({ schemaVersion: 3 });
+    expect(migrated).toMatchObject({ schemaVersion: 4 });
     expect((migrated.deliveries as Array<Record<string, unknown>>)[0]).toMatchObject({
       evidenceClass: "unclassified",
       id: delivery.id,
@@ -166,7 +167,7 @@ describe("Continuity evidence provenance", () => {
 
     await createPersonalThread(file, { kind: "work", title: "Schema 1 migration trigger" });
     const migrated = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(migrated).toMatchObject({ schemaVersion: 3 });
+    expect(migrated).toMatchObject({ schemaVersion: 4 });
     expect((migrated.deliveries as Array<Record<string, unknown>>)[0]).toMatchObject({
       evidenceClass: "unclassified",
       id: delivery.id,

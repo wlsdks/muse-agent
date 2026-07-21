@@ -13,7 +13,7 @@ import {
   readAttunementState,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
-import { writeTasks, type PersistedTask } from "@muse/stores";
+import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,6 +22,7 @@ import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunemen
 let root: string;
 let attunementFile: string;
 let notesDir: string;
+let remindersFile: string;
 let tasksFile: string;
 let threadId: string;
 
@@ -35,13 +36,23 @@ const TASK: PersistedTask = {
   title: "Send flower options"
 };
 
+const REMINDER: PersistedReminder = {
+  createdAt: "2026-07-14T00:00:00.000Z",
+  dueAt: "2026-07-16T09:00:00.000Z",
+  id: "reminder_api_dentist",
+  status: "pending",
+  text: "Bring the referral letter"
+};
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "muse-attunement-api-"));
   attunementFile = join(root, "attunement.json");
   notesDir = join(root, "notes");
+  remindersFile = join(root, "reminders.json");
   tasksFile = join(root, "tasks.json");
   await mkdir(notesDir);
   await writeTasks(tasksFile, [TASK]);
+  await writeReminders(remindersFile, [REMINDER]);
   const thread = await createPersonalThread(attunementFile, { kind: "life", title: "Prepare birthday" }, {
     idFactory: () => "api",
     now: () => new Date("2026-07-14T00:00:00.000Z")
@@ -66,6 +77,7 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
     authService: undefined,
     notesDir,
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
+    remindersFile,
     tasksFile,
     ...overrides
   });
@@ -139,6 +151,86 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
       interaction: expect.objectContaining({ state: "none" })
     }));
     expect(await readFile(attunementFile, "utf8")).toBe(beforeInteractions);
+  });
+
+  it("links, projects, reviews, and unlinks one exact reminder without mutating reminder bytes", async () => {
+    const app = server();
+    const reminderBefore = await readFile(remindersFile);
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: "reminder_api_d", artifactType: "reminder", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId: REMINDER.id, artifactType: "reminder", role: "context" });
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId: REMINDER.id,
+        reminderDueAt: REMINDER.dueAt,
+        reminderDueState: "overdue",
+        reminderStatus: "pending",
+        title: REMINDER.text
+      }),
+      reference: { artifactId: REMINDER.id, artifactType: "reminder", providerId: "local", role: "context" },
+      status: "available"
+    }));
+
+    const attunementBeforeReview = await readFile(attunementFile);
+    const review = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    expect(review.statusCode).toBe(200);
+    expect(review.json().reviewQueue.next.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({ artifactId: REMINDER.id, reminderStatus: "pending" })
+    }));
+    expect(await readFile(attunementFile)).toEqual(attunementBeforeReview);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+
+    const unlinked = await app.inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(unlinked.statusCode).toBe(200);
+    expect(unlinked.json()).toEqual({ removed: true });
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("rejects a reminder next-step before reading or writing either store", async () => {
+    const attunementBefore = await readFile(attunementFile);
+    const reminderBefore = await readFile(remindersFile);
+    const response = await server().inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder", role: "next-step" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ errorMessage: "only a local task can be a next-step" });
+    expect(await readFile(attunementFile)).toEqual(attunementBefore);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("maps an unavailable reminder store to a structured conflict without opening a delivery", async () => {
+    const app = server();
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    await writeFile(remindersFile, "{");
+    const attunementBefore = await readFile(attunementFile);
+    const reminderBefore = await readFile(remindersFile);
+
+    const response = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ errorMessage: "reminder store cannot be read or validated" });
+    expect(await readFile(attunementFile)).toEqual(attunementBefore);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
   });
 
   it("maps unavailable preparation to a structured 409 without a delivery", async () => {

@@ -25,7 +25,7 @@ function state(deliveries: readonly ContinuityDelivery[]): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 3,
+    schemaVersion: 4,
     threads: (["life", "work"] as const).map((kind) => ({
       createdAt: "2026-07-16T00:00:00.000Z",
       id: `thread_${kind}`,

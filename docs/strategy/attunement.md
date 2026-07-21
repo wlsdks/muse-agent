@@ -93,7 +93,7 @@ improve its timing; they are not prerequisites for testing whether the pack is u
 
 | Status | What it means in Muse today |
 |---|---|
-| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; and Personal Continuity Slice A: user-created `life`/`work` threads, exact local task/note links, a user-invoked pack, four explicit outcomes, and a narrow display-policy update. |
+| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; and Personal Continuity Slice A: user-created `life`/`work` threads, exact local task/note links plus context-only reminder links, a user-invoked pack, four explicit outcomes, and a narrow display-policy update. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
 | **Roadmap** | More Continuity source adapters, opt-in Observe controls, persisted observation sessions, Personal Rhythm Model, Friction Discovery, and timing-aware help. |
 

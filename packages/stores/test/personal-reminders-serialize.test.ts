@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatReminderDueLocal,
   type PersistedReminder,
+  readReminderByIdStrict,
+  readRemindersStrict,
   readReminderStatusFilter,
   readReminders,
   serializeReminder,
@@ -97,6 +99,48 @@ describe("eventId round-trip + read-boundary (calendar add --remind link)", () =
     const file = await tmp();
     await writeFile(file, JSON.stringify({ reminders: [{ ...base, via: { destination: " ", providerId: "slack" } }] }), "utf8");
     expect(await readReminders(file)).toEqual([]);
+  });
+});
+
+describe("strict exact reminder reads", () => {
+  const tmp = async (): Promise<{ file: string; root: string }> => {
+    const root = await mkdtemp(join(tmpdir(), "muse-rem-strict-"));
+    return { file: join(root, "reminders.json"), root };
+  };
+
+  it("returns only an exact id without changing the store", async () => {
+    const { file } = await tmp();
+    await writeReminders(file, [base, { ...base, id: "r10", text: "other" }]);
+    const before = await readFile(file);
+    await expect(readReminderByIdStrict(file, "r1")).resolves.toEqual(base);
+    await expect(readReminderByIdStrict(file, "r")).resolves.toBeUndefined();
+    expect(await readFile(file)).toEqual(before);
+  });
+
+  it("fails closed on malformed rows without quarantine or sidecars", async () => {
+    const { file, root } = await tmp();
+    await writeFile(file, JSON.stringify({ reminders: [{ ...base, dueAt: "bad" }] }), "utf8");
+    const before = await readFile(file);
+    await expect(readRemindersStrict(file)).rejects.toThrow("reminder store cannot be read or validated");
+    expect(await readFile(file)).toEqual(before);
+    expect(await readdir(root)).toEqual(["reminders.json"]);
+  });
+
+  it("rejects duplicate canonical ids without selecting either row", async () => {
+    const { file, root } = await tmp();
+    await writeFile(file, JSON.stringify({ reminders: [base, { ...base, text: "conflicting duplicate" }] }), "utf8");
+    const before = await readFile(file);
+    await expect(readRemindersStrict(file)).rejects.toThrow("reminder store cannot be read or validated");
+    await expect(readReminderByIdStrict(file, base.id)).rejects.toThrow("reminder store cannot be read or validated");
+    expect(await readFile(file)).toEqual(before);
+    expect(await readdir(root)).toEqual(["reminders.json"]);
+  });
+
+  it("distinguishes an unavailable store from an empty valid store", async () => {
+    const { file } = await tmp();
+    await expect(readRemindersStrict(file)).rejects.toThrow("reminder store cannot be read or validated");
+    await writeReminders(file, []);
+    await expect(readRemindersStrict(file)).resolves.toEqual([]);
   });
 });
 

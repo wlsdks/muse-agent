@@ -1,4 +1,4 @@
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -51,6 +51,32 @@ describe("Personal Continuity store", () => {
     expect(work.kind).toBe("work");
     expect((statSync(file).mode & 0o777)).toBe(0o600);
     expect((await readAttunementState(file)).threads.map((thread) => thread.kind)).toEqual(["life", "work"]);
+  });
+
+  it("reads schema v3 byte-stably, migrates on explicit mutation, and rejects v3 reminder laundering", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Prepare for the dentist" }, options);
+    const current = readFileSync(file, "utf8");
+    const legacy = current.replace('"schemaVersion": 4', '"schemaVersion": 3');
+    writeFileSync(file, legacy, "utf8");
+
+    expect((await readAttunementState(file)).schemaVersion).toBe(4);
+    expect(readFileSync(file, "utf8")).toBe(legacy);
+
+    await linkArtifact(file, {
+      artifactId: "reminder_dentist",
+      artifactType: "reminder",
+      role: "context",
+      threadId: thread.id
+    }, options);
+    const migrated = JSON.parse(readFileSync(file, "utf8")) as { schemaVersion: number };
+    expect(migrated.schemaVersion).toBe(4);
+
+    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 4', '"schemaVersion": 3');
+    writeFileSync(file, forgedLegacy, "utf8");
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(forgedLegacy);
   });
 
   it("accepts only explicit local links and never guesses between next-step tasks", async () => {

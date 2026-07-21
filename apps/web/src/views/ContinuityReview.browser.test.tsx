@@ -147,6 +147,52 @@ function opened(nextStep: "direct" | "hidden"): OpenedPack {
   };
 }
 
+function reminderLinkReview(linked: boolean) {
+  const emptyEvaluation = {
+    automationGate: { reasons: ["manual"], status: "hold" as const },
+    firstPacks: { considered: 0, rejected: 0, used: 0 },
+    improvementGate: { reason: "need natural evidence", status: "awaiting-feedback" },
+    outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+    totalDeliveries: 0,
+    withOutcome: 0
+  };
+  return {
+    deliveries: [],
+    evaluation: {
+      ...emptyEvaluation,
+      byKind: { life: emptyEvaluation, work: emptyEvaluation },
+      longitudinalGate: {
+        byKind: {
+          life: { distinctUtcDates: 0, distinctUtcDatesTarget: 2, explicitFeedback: 0, explicitFeedbackTarget: 10, remainingDates: 2, remainingFeedback: 10 },
+          work: { distinctUtcDates: 0, distinctUtcDatesTarget: 2, explicitFeedback: 0, explicitFeedbackTarget: 10, remainingDates: 2, remainingFeedback: 10 }
+        },
+        reasons: ["needs natural feedback"],
+        status: "collecting" as const
+      },
+      technicalEvidence: {
+        overall: {
+          deliveries: { controlled: 0, organic: 0, unclassified: 0 },
+          outcomes: {
+            controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            organic: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+          }
+        }
+      }
+    },
+    resetReceipts: [],
+    reviewQueue: { progress: { eligibleDeliveries: 0, remainingFeedback: 0, remainingPacks: 20, reviewedDeliveries: 0, target: 20 } },
+    threads: [{
+      id: "thread_life",
+      kind: "life" as const,
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "reminder_dentist", artifactType: "reminder", providerId: "local", role: "context" }] : [],
+      policy: { detail: "standard", nextStep: "direct", suppression: "none", version: 1 },
+      title: "Prepare for dentist"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -155,6 +201,80 @@ test("an opened Pack shows its core-derived task status, due state, timestamp, a
   await expect.element(screen.getByText("Open", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Overdue: 2026-07-16T10:00:00.000Z", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Tags: birthday, Jamie", { exact: true })).toBeVisible();
+});
+
+test("an opened Pack shows an exact reminder as context without making it completable", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const reminder = {
+    artifactId: "reminder_dentist",
+    artifactType: "reminder",
+    providerId: "local",
+    reminderDueAt: "2026-07-16T09:00:00.000Z",
+    reminderDueState: "overdue" as const,
+    reminderStatus: "pending" as const,
+    role: "context",
+    title: "Bring the referral letter"
+  };
+  const reminderPack: OpenedPack = {
+    delivery: { id: "delivery_reminder" },
+    pack: {
+      evidence: [{ artifact: reminder, reference: reminder, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "life", title: "Prepare for dentist" }
+    }
+  };
+  const onComplete = vi.fn();
+  const screen = await render(<I18nProvider><OpenedPackCard
+    currentInteractionState="none"
+    onComplete={onComplete}
+    openedPack={reminderPack}
+  /></I18nProvider>);
+
+  await expect.element(screen.getByText("Bring the referral letter · reminder:reminder_dentist", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("pending reminder", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Overdue: 2026-07-16T09:00:00.000Z", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+test("a reminder can be explicitly linked and unlinked only as context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : reminderLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      expect(body).toEqual({ artifactId: "reminder_den", artifactType: "reminder", role: "context" });
+      linked = true;
+      return { artifactId: "reminder_dentist", artifactType: "reminder", providerId: "local", role: "context" };
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "reminder_dentist", artifactType: "reminder" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-reminder.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Prepare for dentist", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("reminder");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  await screen.getByLabelText("Exact task/reminder ID or note path").fill("reminder_den");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove reminder:reminder_dentist" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
 });
 
 test("a hidden next step exposes only its safe type:id marker", async () => {

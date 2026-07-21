@@ -42,7 +42,7 @@ function state(): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 3,
+    schemaVersion: 4,
     threads: [{
       createdAt: "2026-07-17T07:00:00.000Z",
       id: "thread_work",

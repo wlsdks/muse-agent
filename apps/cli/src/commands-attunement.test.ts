@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeTasks, type PersistedTask } from "@muse/stores";
+import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import type { McpToolCaller } from "./attunement-mcp-resource.js";
 interface Fixture {
   readonly attunementFile: string;
   readonly notesDir: string;
+  readonly remindersFile: string;
   readonly taskFile: string;
 }
 
@@ -20,7 +21,12 @@ function fixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), "muse-attunement-cli-"));
   const notesDir = join(root, "notes");
   mkdirSync(notesDir);
-  return { attunementFile: join(root, "attunement.json"), notesDir, taskFile: join(root, "tasks.json") };
+  return {
+    attunementFile: join(root, "attunement.json"),
+    notesDir,
+    remindersFile: join(root, "reminders.json"),
+    taskFile: join(root, "tasks.json")
+  };
 }
 
 async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDeps): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
@@ -29,10 +35,12 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   const previous = {
     MUSE_ATTUNEMENT_FILE: process.env.MUSE_ATTUNEMENT_FILE,
     MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
+    MUSE_REMINDERS_FILE: process.env.MUSE_REMINDERS_FILE,
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
   process.env.MUSE_ATTUNEMENT_FILE = fixture.attunementFile;
   process.env.MUSE_NOTES_DIR = fixture.notesDir;
+  process.env.MUSE_REMINDERS_FILE = fixture.remindersFile;
   process.env.MUSE_TASKS_FILE = fixture.taskFile;
   let exitCode: number | undefined;
   try {
@@ -63,6 +71,14 @@ const TASK: PersistedTask = {
   notes: "Ask Jamie which flowers they prefer.",
   status: "open",
   title: "Send the flower options"
+};
+
+const REMINDER: PersistedReminder = {
+  createdAt: "2026-07-14T00:00:00.000Z",
+  dueAt: "2026-07-18T09:00:00.000Z",
+  id: "reminder_cli_dentist",
+  status: "pending",
+  text: "Bring the referral letter"
 };
 
 describe("muse thread / continue — Personal Continuity", () => {
@@ -134,6 +150,34 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(outcome.stdout).toContain("Recorded ignored");
     const next = await run(f, ["thread", "continue", id]);
     expect(next.stdout).toContain("Previous pack: ignored");
+  });
+
+  it("links and reviews one exact reminder as read-only context", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    await writeReminders(f.remindersFile, [REMINDER]);
+    const reminderBefore = readFileSync(f.remindersFile);
+    const deps: AttunementCommandDeps = { now: () => Date.parse("2026-07-19T09:00:00.000Z") };
+    const started = await run(f, ["thread", "start", "Prepare", "for", "dentist", "--kind", "life"], deps);
+    const id = threadId(started.stdout);
+
+    const linked = await run(f, ["thread", "link", id, "reminder", "reminder_cli_d", "--role", "context"], deps);
+    expect(linked.stdout).toContain(`local:reminder:${REMINDER.id}`);
+    const rejectedNextStep = await run(f, ["thread", "link", id, "reminder", REMINDER.id, "--role", "next-step"], deps);
+    expect(rejectedNextStep.exitCode).toBe(1);
+    expect(rejectedNextStep.stderr).toContain("only a local task can be a next-step");
+
+    await run(f, ["thread", "link", id, "task", TASK.id, "--role", "next-step"], deps);
+    const continued = await run(f, ["continue", id], deps);
+    expect(continued.stdout).toContain(`[reminder:${REMINDER.id}] ${REMINDER.text}`);
+    expect(continued.stdout).toContain(`status: pending · overdue: ${REMINDER.dueAt}`);
+    expect(await readFileSync(f.remindersFile)).toEqual(reminderBefore);
+
+    const attunementBeforeReview = readFileSync(f.attunementFile);
+    const review = await run(f, ["thread", "review", "--json"], deps);
+    expect(review.stdout).toContain(`"artifactType": "reminder"`);
+    expect(readFileSync(f.attunementFile)).toEqual(attunementBeforeReview);
+    expect(readFileSync(f.remindersFile)).toEqual(reminderBefore);
   });
 
   it("shows an exact overdue due and safely escaped JSON tags from the linked task", async () => {

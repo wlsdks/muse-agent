@@ -10,6 +10,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now resume with an exact local reminder in context.** The
+  user may explicitly link a full reminder ID or unique prefix from CLI, local
+  HTTP, or web; Muse stores the canonical ID and shows bounded text, pending or
+  fired status, and valid due state in the next Pack. A shared local-source
+  Module keeps task, note, and reminder resolution fail-closed. Reminder reads
+  never search by text, quarantine or rewrite the source store, create factual
+  interaction receipts or outcomes, become next steps, or widen automation.
+
 - **Recall can honor an explicit, user-authored temporal correction.** Notes
   may link one current fact to one stale fact through a provenance-bound local
   relation. Recall activates only an unambiguous exact pair, keeps the current

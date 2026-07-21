@@ -8,11 +8,11 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "reminder", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 /**
- * A source provider id. `"local"` backs task/note artifacts read from Muse's
+ * A source provider id. `"local"` backs task/note/reminder artifacts read from Muse's
  * own on-disk stores; `mcp:<server>` backs a `resource` read at display time
  * from a connected external MCP server. The string is deliberately narrow: an
  * unknown/malformed provider id is rejected fail-close so a corrupt store never
@@ -34,7 +34,7 @@ export function mcpProviderId(server: string): string {
 
 /**
  * Provider/type coherence (the grounding invariant): a `resource` is external
- * and MUST carry an `mcp:` provider; a `task`/`note` is Muse-local and MUST be
+ * and MUST carry an `mcp:` provider; a `task`/`note`/`reminder` is Muse-local and MUST be
  * `local`. Enforced at parse and at link time so the two can never be crossed.
  */
 export function isCoherentArtifactProvider(artifactType: ArtifactType, providerId: string): boolean {
@@ -172,13 +172,17 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 4;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }
 
 /** An adapter-resolved artifact. The core never asks an adapter to search. */
 export interface ResolvedArtifact extends ArtifactReference {
+  readonly reminderDueAt?: string;
+  /** Display-only temporal state for a pending reminder. */
+  readonly reminderDueState?: "due" | "overdue";
+  readonly reminderStatus?: "pending" | "fired";
   readonly summary?: string;
   readonly taskDueAt?: string;
   /** Display-only temporal state derived once by Continuity preparation. */

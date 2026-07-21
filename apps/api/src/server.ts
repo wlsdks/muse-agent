@@ -19,6 +19,7 @@ import {
   resolveObjectivesFile,
   resolveRejectedProposalsFile,
   resolveProgressiveAutonomyOpportunitiesFile,
+  resolveRemindersFile,
   resolveReconfirmCardAnsweredFile,
   resolveVetoesFile,
   resolvePlaybookFile,
@@ -358,6 +359,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     attunementFile: options.attunementFile ?? resolveAttunementFile(env),
     authService,
     notesDir: options.notesDir ?? resolveNotesDir(env),
+    remindersFile: options.remindersFile ?? resolveRemindersFile(env),
     tasksFile: options.tasksFile ?? resolveTasksFile(env)
   });
   registerProgressiveAutonomyRoutes(server, {

@@ -127,6 +127,9 @@ interface OpenedPackArtifact {
   readonly artifactId: string;
   readonly artifactType: string;
   readonly providerId: string;
+  readonly reminderDueAt?: string;
+  readonly reminderDueState?: "due" | "overdue";
+  readonly reminderStatus?: "pending" | "fired";
   readonly role: string;
   readonly summary?: string;
   readonly taskDueAt?: string;
@@ -404,6 +407,10 @@ export function OpenedPackCard({
             {artifact.taskTags && artifact.taskTags.length > 0
               ? <Badge tone="neutral">{t("continuity.tags", { tags: artifact.taskTags.join(", ") })}</Badge>
               : null}
+            {artifact.reminderStatus ? <Badge tone="neutral">{t(`continuity.reminderStatus.${artifact.reminderStatus}`)}</Badge> : null}
+            {artifact.reminderDueAt
+              ? <Badge tone={artifact.reminderDueState === "overdue" ? "warn" : "neutral"}>{t(`continuity.${artifact.reminderDueState ?? "due"}`, { timestamp: artifact.reminderDueAt })}</Badge>
+              : null}
           </div>
         </div>;
       })}
@@ -442,10 +449,12 @@ function taskDoneInOpenedPack(openedPack: OpenedPack, taskId: string): OpenedPac
   };
 }
 
-function LinkForm({ disabled, onLink }: { readonly disabled: boolean; readonly onLink: (input: { artifactId: string; artifactType: "task" | "note"; role: "context" | "next-step" }) => void }) {
+type LocalLinkArtifactType = "task" | "note" | "reminder";
+
+function LinkForm({ disabled, onLink }: { readonly disabled: boolean; readonly onLink: (input: { artifactId: string; artifactType: LocalLinkArtifactType; role: "context" | "next-step" }) => void }) {
   const { t } = useI18n();
   const [artifactId, setArtifactId] = useState("");
-  const [artifactType, setArtifactType] = useState<"task" | "note">("task");
+  const [artifactType, setArtifactType] = useState<LocalLinkArtifactType>("task");
   const [role, setRole] = useState<"context" | "next-step">("context");
   return <form onSubmit={(event) => {
     event.preventDefault();
@@ -453,11 +462,11 @@ function LinkForm({ disabled, onLink }: { readonly disabled: boolean; readonly o
   }} style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
     <input className="input" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} placeholder={t("continuity.linkId")} aria-label={t("continuity.linkId")} />
     <select className="input" value={artifactType} onChange={(event) => {
-      const next = event.target.value as "task" | "note";
+      const next = event.target.value as LocalLinkArtifactType;
       setArtifactType(next);
-      if (next === "note") setRole("context");
+      if (next !== "task") setRole("context");
     }} aria-label={t("continuity.linkType")}>
-      <option value="task">task</option><option value="note">note</option>
+      <option value="task">task</option><option value="note">note</option><option value="reminder">reminder</option>
     </select>
     <select className="input" value={role} onChange={(event) => setRole(event.target.value as "context" | "next-step")} aria-label={t("continuity.linkRole")}>
       <option value="context">context</option>{artifactType === "task" ? <option value="next-step">next-step</option> : null}
@@ -510,7 +519,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] })
   });
   const link = useMutation({
-    mutationFn: ({ artifactId, artifactType, role, threadId }: { readonly artifactId: string; readonly artifactType: "task" | "note"; readonly role: "context" | "next-step"; readonly threadId: string }) =>
+    mutationFn: ({ artifactId, artifactType, role, threadId }: { readonly artifactId: string; readonly artifactType: LocalLinkArtifactType; readonly role: "context" | "next-step"; readonly threadId: string }) =>
       client.post(`/api/attunement/threads/${encodeURIComponent(threadId)}/links`, { artifactId, artifactType, role }),
     onSuccess: invalidateContinuity
   });
@@ -536,7 +545,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
     }
   });
   const unlink = useMutation({
-    mutationFn: ({ artifactId, artifactType, threadId }: { readonly artifactId: string; readonly artifactType: "task" | "note"; readonly threadId: string }) =>
+    mutationFn: ({ artifactId, artifactType, threadId }: { readonly artifactId: string; readonly artifactType: LocalLinkArtifactType; readonly threadId: string }) =>
       client.post(`/api/attunement/threads/${encodeURIComponent(threadId)}/links/unlink`, { artifactId, artifactType }),
     onSuccess: invalidateContinuity
   });
@@ -638,7 +647,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
                     </div>
                     <div className="row-meta" style={{ marginTop: 10 }}>{thread.policy.detail} · {thread.policy.nextStep} · {thread.policy.suppression}</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                      {thread.links.map((source) => source.providerId === "local" ? <Button key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} disabled={unlink.isPending} size="sm" variant="ghost" onClick={() => unlink.mutate({ artifactId: source.artifactId, artifactType: source.artifactType as "task" | "note", threadId: thread.id })}>{t("continuity.unlink", { id: `${source.artifactType}:${source.artifactId}` })}</Button> : <Badge key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} tone="neutral">{source.artifactType}:{source.artifactId}</Badge>)}
+                      {thread.links.map((source) => source.providerId === "local" ? <Button key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} disabled={unlink.isPending} size="sm" variant="ghost" onClick={() => unlink.mutate({ artifactId: source.artifactId, artifactType: source.artifactType as LocalLinkArtifactType, threadId: thread.id })}>{t("continuity.unlink", { id: `${source.artifactType}:${source.artifactId}` })}</Button> : <Badge key={`${source.providerId}:${source.artifactType}:${source.artifactId}:${source.role}`} tone="neutral">{source.artifactType}:{source.artifactId}</Badge>)}
                     </div>
                     <LinkForm disabled={link.isPending} onLink={(input) => link.mutate({ ...input, threadId: thread.id })} />
                     {hasExternalSource ? <div className="row-meta" style={{ marginTop: 8 }}>{t("continuity.externalCliOnly")}</div> : null}

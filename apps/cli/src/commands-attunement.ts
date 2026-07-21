@@ -43,7 +43,7 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { resolveAttunementFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import {
@@ -55,7 +55,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
+const ARTIFACT_TYPES = ["task", "note", "reminder", "resource"] as const;
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
 
@@ -83,6 +83,10 @@ function tasksFile(): string {
   return resolveTasksFile(environment());
 }
 
+function remindersFile(): string {
+  return resolveRemindersFile(environment());
+}
+
 function notesDir(): string {
   return resolveNotesDir(environment());
 }
@@ -93,13 +97,17 @@ function assertChoice(value: string, allowed: readonly string[], name: string): 
 
 /**
  * The store refuses unvalidated links. This adapter is the only place that
- * knows the local task/notes providers and the external MCP resource provider,
+ * knows the local task/note/reminder adapters and the external MCP resource provider,
  * so it returns their exact, canonical identifiers rather than trusting a CLI
  * argument. A `resource` is confirmed to exist on its named, connected MCP
  * server before any link is stored.
  */
 function createArtifactValidator(mcpCaller: McpToolCaller | undefined): ArtifactLinkValidator {
-  const localValidator = createLocalArtifactValidator({ notesDir: notesDir(), tasksFile: tasksFile() });
+  const localValidator = createLocalArtifactValidator({
+    notesDir: notesDir(),
+    remindersFile: remindersFile(),
+    tasksFile: tasksFile()
+  });
   return async ({ artifactId, artifactType, providerId }) => {
     if (artifactType === "resource") {
       const server = serverFromProviderId(providerId);
@@ -111,7 +119,11 @@ function createArtifactValidator(mcpCaller: McpToolCaller | undefined): Artifact
 }
 
 function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): ExactArtifactResolver {
-  const resolveLocal = createLocalExactArtifactResolver({ notesDir: notesDir(), tasksFile: tasksFile() });
+  const resolveLocal = createLocalExactArtifactResolver({
+    notesDir: notesDir(),
+    remindersFile: remindersFile(),
+    tasksFile: tasksFile()
+  });
   return async (link) => {
     if (link.artifactType === "resource") {
       // The resolved title/summary is UNTRUSTED external text; it is displayed
@@ -310,7 +322,7 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
         : "next step: none set";
     const readiness = pack.evidence.length === 0
       ? {
-          action: `link an exact local source: muse thread link ${thread.id} <task|note|resource> <id> --role <context|next-step>`,
+          action: `link an exact source: muse thread link ${thread.id} <task|note|reminder|resource> <id> --role <context|next-step>`,
           status: "needs-link"
         }
       : availableEvidence === 0
@@ -335,13 +347,17 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
   return `${lines.join("\n")}\n`;
 }
 
-function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): string {
+function formatArtifactMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): string {
   const metadata: string[] = [];
   if (artifact.taskDueAt && artifact.taskDueState) {
     metadata.push(`${artifact.taskDueState}: ${artifact.taskDueAt}`);
   }
   if (artifact.taskTags && artifact.taskTags.length > 0) {
     metadata.push(`tags: ${JSON.stringify(artifact.taskTags)}`);
+  }
+  if (artifact.reminderStatus) metadata.push(`status: ${artifact.reminderStatus}`);
+  if (artifact.reminderDueAt) {
+    metadata.push(`${artifact.reminderDueState ?? "due"}: ${artifact.reminderDueAt}`);
   }
   return metadata.length > 0 ? ` · ${metadata.join(" · ")}` : "";
 }
@@ -361,7 +377,7 @@ function formatEvidence(pack: ContinuityPack): string[] {
     const detail = pack.policy.detail === "standard" && artifact.summary && !isContextualNextStep
       ? ` — ${artifact.summary}`
       : "";
-    return `  - ${prefix} ${artifact.title}${detail}${formatTaskMetadata(artifact)}`;
+    return `  - ${prefix} ${artifact.title}${detail}${formatArtifactMetadata(artifact)}`;
   });
 }
 
@@ -478,7 +494,7 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
 
   thread
     .command("link <thread-id> <artifact-type> <artifact-id>")
-    .description("Explicitly link one exact local task/note, or an external MCP resource (<server>/<resource-id>), to a thread")
+    .description("Explicitly link one exact local task/note/reminder, or an external MCP resource (<server>/<resource-id>), to a thread")
     .requiredOption("--role <context|next-step>", "how this source is used (a resource is context-only)")
     .addHelpText("after", `
 Examples:
