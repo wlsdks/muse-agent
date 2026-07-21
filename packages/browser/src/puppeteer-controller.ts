@@ -152,10 +152,27 @@ export class PuppeteerBrowserController implements BrowserController {
       ...(this.options.headless ?? false ? ["--headless"] : []),
       "about:blank"
     ], { detached: true, stdio: "ignore" });
+    // A detached spawn reports a bad executable ASYNCHRONOUSLY via an 'error'
+    // event, which `spawn` does not throw and the caller's try/catch cannot
+    // see. With no listener attached, Node treats it as an unhandled 'error'
+    // and terminates the WHOLE process — verified: a missing Chrome path kills
+    // Muse itself, not just the browser tool. One listener converts it into a
+    // failure the caller can report.
+    let spawnFailure: Error | undefined;
+    child.on("error", (cause: Error) => {
+      spawnFailure = cause;
+    });
     child.unref();
     // 150 × 200ms = 30s: a FRESH profile's first start can take >10s on a
     // loaded machine, and a too-short window misreads slow as missing.
     for (let attempt = 0; attempt < 150; attempt += 1) {
+      // Fail fast on a spawn error rather than waiting out the full 30s probe
+      // for a browser that was never going to start.
+      if (spawnFailure) {
+        throw new Error(
+          `Chrome could not be started at '${executable}' (${spawnFailure.message}) — install Google Chrome, or set MUSE_CHROME_PATH to its executable. For a plain page fetch use web_read instead.`
+        );
+      }
       const browser = await this.connectToExisting();
       if (browser) return browser;
       await sleep(200);
