@@ -112,7 +112,7 @@ const EMPTY_STATE: AttunementState = {
   interactionReceipts: [],
   nextPolicyVersion: 1,
   resetReceipts: [],
-  schemaVersion: 4,
+  schemaVersion: 5,
   threads: [],
   undoResetReceipts: []
 };
@@ -149,18 +149,19 @@ function isFingerprint(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
 }
 
-function isReference(value: unknown, allowReminder = true): value is ArtifactReference {
+function isReference(value: unknown, schemaVersion = 5): value is ArtifactReference {
   return isRecord(value)
     && isNonEmptyString(value.artifactId)
     && isOneOf(value.artifactType, ARTIFACT_TYPES)
-    && (allowReminder || value.artifactType !== "reminder")
+    && (schemaVersion >= 4 || value.artifactType !== "reminder")
+    && (schemaVersion >= 5 || value.artifactType !== "calendar-event")
     && isValidProviderId(value.providerId)
     && isCoherentArtifactProvider(value.artifactType, value.providerId)
     && isOneOf(value.role, ARTIFACT_ROLES);
 }
 
-function isLink(value: unknown, allowReminder = true): value is ArtifactLink {
-  if (!isRecord(value) || !isReference(value, allowReminder)) return false;
+function isLink(value: unknown, schemaVersion = 5): value is ArtifactLink {
+  if (!isRecord(value) || !isReference(value, schemaVersion)) return false;
   return isNonEmptyString(value.linkedAt)
     && value.linkedBy === "user"
     && isNonEmptyString(value.threadId);
@@ -174,13 +175,13 @@ function isPolicy(value: unknown): value is PersonalThread["policy"] {
     && isSafeVersion(value.version);
 }
 
-function isThread(value: unknown, allowReminder = true): value is PersonalThread {
+function isThread(value: unknown, schemaVersion = 5): value is PersonalThread {
   return isRecord(value)
     && isNonEmptyString(value.createdAt)
     && isNonEmptyString(value.id)
     && isOneOf(value.kind, THREAD_KINDS)
     && Array.isArray(value.links)
-    && value.links.every((link) => isLink(link, allowReminder))
+    && value.links.every((link) => isLink(link, schemaVersion))
     && isPolicy(value.policy)
     && isNonEmptyString(value.title);
 }
@@ -189,10 +190,10 @@ function isEvidenceClass(value: unknown): boolean {
   return isOneOf(value, CONTINUITY_EVIDENCE_CLASSES);
 }
 
-function isDelivery(value: unknown, requireEvidenceClass = false, allowReminder = true): value is ContinuityDelivery {
+function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion = 5): value is ContinuityDelivery {
   if (!isRecord(value)
     || !Array.isArray(value.evidenceRefs)
-    || !value.evidenceRefs.every((reference) => isReference(reference, allowReminder))
+    || !value.evidenceRefs.every((reference) => isReference(reference, schemaVersion))
     || !isNonEmptyString(value.id)
     || !isNonEmptyString(value.openedAt)
     || !isSafeVersion(value.policyVersion)
@@ -261,24 +262,24 @@ function isUndoResetReceipt(value: unknown): value is UndoResetReceipt {
 }
 
 function parseState(value: unknown): AttunementState {
-  const allowReminder = isRecord(value) && value.schemaVersion === 4;
+  const schemaVersion = isRecord(value) && typeof value.schemaVersion === "number" ? value.schemaVersion : 0;
   if (!isRecord(value)
-    || (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3 && value.schemaVersion !== 4)
+    || (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5)
     || !Array.isArray(value.threads)
-    || !value.threads.every((thread) => isThread(thread, allowReminder))
+    || !value.threads.every((thread) => isThread(thread, schemaVersion))
     || !Array.isArray(value.deliveries)
     || !value.deliveries.every((delivery) => isDelivery(
       delivery,
-      value.schemaVersion === 3 || value.schemaVersion === 4,
-      allowReminder
+      schemaVersion >= 3,
+      schemaVersion
     ))
     || !Array.isArray(value.resetReceipts)
     || !value.resetReceipts.every(isResetReceipt)
     || !Array.isArray(value.undoResetReceipts)
     || !value.undoResetReceipts.every(isUndoResetReceipt)
-    || ((value.schemaVersion === 2 || value.schemaVersion === 3 || value.schemaVersion === 4)
+    || (schemaVersion >= 2
       && (!Array.isArray(value.interactionReceipts)
-        || !value.interactionReceipts.every((receipt) => isInteractionReceipt(receipt, value.schemaVersion === 3 || value.schemaVersion === 4))))
+        || !value.interactionReceipts.every((receipt) => isInteractionReceipt(receipt, schemaVersion >= 3))))
     || !isSafeVersion(value.nextPolicyVersion)
     || value.nextPolicyVersion < 1) {
     throw new AttunementStoreError("attunement store is invalid; refusing to guess or overwrite it");
@@ -291,13 +292,13 @@ function parseState(value: unknown): AttunementState {
         ? { outcome: { ...delivery.outcome, evidenceClass: delivery.outcome.evidenceClass ?? "unclassified" } }
         : {})
     })),
-    interactionReceipts: value.schemaVersion === 2 || value.schemaVersion === 3 || value.schemaVersion === 4
+    interactionReceipts: schemaVersion >= 2
       ? (value.interactionReceipts as unknown as readonly ContinuityInteractionReceipt[])
           .map((receipt) => ({ ...receipt, evidenceClass: receipt.evidenceClass ?? "unclassified" }))
       : [],
     nextPolicyVersion: value.nextPolicyVersion,
     resetReceipts: value.resetReceipts,
-    schemaVersion: 4,
+    schemaVersion: 5,
     threads: value.threads,
     undoResetReceipts: value.undoResetReceipts
   };
@@ -549,7 +550,7 @@ export async function linkArtifact(
   input: LinkArtifactInput,
   options: LinkArtifactOptions
 ): Promise<{ readonly created: boolean; readonly link: ArtifactLink }> {
-  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task, note, reminder, or resource");
+  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task, note, reminder, calendar-event, or resource");
   if (!ARTIFACT_ROLES.includes(input.role)) throw new AttunementStoreError("artifact role must be context or next-step");
   if (input.role === "next-step" && input.artifactType !== "task") {
     throw new AttunementStoreError("only a local task can be a next-step");
@@ -557,7 +558,7 @@ export async function linkArtifact(
   const requestedProvider = input.providerId ?? "local";
   if (!isValidProviderId(requestedProvider) || !isCoherentArtifactProvider(input.artifactType, requestedProvider)) {
     throw new AttunementStoreError(
-      `provider '${requestedProvider}' does not match a ${input.artifactType} (task/note are 'local'; a resource is 'mcp:<server>')`
+      `provider '${requestedProvider}' does not match a ${input.artifactType} (task/note/reminder are 'local'; calendar-event is 'calendar:<provider>'; resource is 'mcp:<server>')`
     );
   }
   if (typeof options?.validateArtifact !== "function") {
@@ -814,7 +815,7 @@ export async function recordContinuityTaskCompletionInteraction(
     return {
       changed: true,
       result: { kind: "recorded", receipt },
-      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 4 }
+      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 5 }
     };
   });
 }

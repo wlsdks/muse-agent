@@ -8,7 +8,7 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note", "reminder", "resource"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 /**
@@ -21,15 +21,22 @@ export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 export type ArtifactProviderId = string;
 
 const MCP_PROVIDER_PATTERN = /^mcp:[A-Za-z0-9._-]+$/u;
+const CALENDAR_PROVIDER_PATTERN = /^calendar:[A-Za-z0-9._-]+$/u;
 
 /** `"local"` or `mcp:<server>` (server = one or more of `[A-Za-z0-9._-]`). */
 export function isValidProviderId(value: unknown): value is ArtifactProviderId {
-  return value === "local" || (typeof value === "string" && MCP_PROVIDER_PATTERN.test(value));
+  return value === "local" || (typeof value === "string"
+    && (MCP_PROVIDER_PATTERN.test(value) || CALENDAR_PROVIDER_PATTERN.test(value)));
 }
 
 /** Build the canonical provider id for an external MCP server. */
 export function mcpProviderId(server: string): string {
   return `mcp:${server}`;
+}
+
+/** Build the canonical persisted provider id for one configured calendar adapter. */
+export function calendarProviderId(providerId: string): string {
+  return `calendar:${providerId}`;
 }
 
 /**
@@ -38,9 +45,9 @@ export function mcpProviderId(server: string): string {
  * `local`. Enforced at parse and at link time so the two can never be crossed.
  */
 export function isCoherentArtifactProvider(artifactType: ArtifactType, providerId: string): boolean {
-  return artifactType === "resource"
-    ? MCP_PROVIDER_PATTERN.test(providerId)
-    : providerId === "local";
+  if (artifactType === "resource") return MCP_PROVIDER_PATTERN.test(providerId);
+  if (artifactType === "calendar-event") return CALENDAR_PROVIDER_PATTERN.test(providerId);
+  return providerId === "local";
 }
 
 export const ARTIFACT_ROLES = ["context", "next-step"] as const;
@@ -172,13 +179,18 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 4;
+  readonly schemaVersion: 5;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }
 
 /** An adapter-resolved artifact. The core never asks an adapter to search. */
 export interface ResolvedArtifact extends ArtifactReference {
+  readonly calendarAllDay?: boolean;
+  readonly calendarEndsAt?: string;
+  readonly calendarLocation?: string;
+  readonly calendarStartsAt?: string;
+  readonly calendarTimeState?: "upcoming" | "happening" | "ended";
   readonly reminderDueAt?: string;
   /** Display-only temporal state for a pending reminder. */
   readonly reminderDueState?: "due" | "overdue";

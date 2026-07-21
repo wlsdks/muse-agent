@@ -331,6 +331,9 @@ importers:
 
   packages/attunement:
     dependencies:
+      '@muse/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@muse/policy':
         specifier: workspace:*
         version: link:../policy
