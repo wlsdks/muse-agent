@@ -343,6 +343,10 @@ export function keywordMatchesPromptTokens(keyword: string, promptTokens: Readon
     // refused for a LONE single char because it is noise ("비" inside
     // "비밀번호"), but inside a multi-word phrase every word must still hit —
     // "몇 살" needs both "몇" AND "살", which noise does not supply.
+    // At least one word must be a real token match. Otherwise unrelated
+    // compounds can satisfy every one-character word by containment alone
+    // ("할머니가 일했다" must not satisfy the task phrase "할 일").
+    if (!words.some(hits)) return false;
     return words.every((word) => {
       for (const token of promptTokens) {
         if (tokenMatchesKeywordWord(token, word) || token.includes(word)) return true;
