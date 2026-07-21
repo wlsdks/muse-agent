@@ -288,6 +288,18 @@ describe("muse contacts list --json — scripting parity with overdue/dupes/rela
   });
 });
 
+describe("muse contacts list — copyable exact IDs", () => {
+  it("does not print a legacy non-canonical id as if Continuity could link it", async () => {
+    const file = contactsFile();
+    writeFileSync(file, JSON.stringify({ contacts: [{ id: " legacy\ncontact ", name: "Legacy" }] }), "utf8");
+
+    const listed = await run(file, ["list"]);
+
+    expect(listed.stdout).toContain("Legacy [id: invalid id; repair contacts store]");
+    expect(listed.stdout).not.toContain("legacy\ncontact");
+  });
+});
+
 describe("muse contacts resolve --json — machine-readable resolution (recipient-resolution backbone)", () => {
   it("resolved → { status: 'resolved', contact } on stdout, exit 0", async () => {
     const file = contactsFile();
