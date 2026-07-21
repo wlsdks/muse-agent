@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   CANDIDATE_CATEGORIES,
@@ -55,7 +56,12 @@ async function withRoot(prefix, run) {
   try {
     await run(root);
   } finally {
-    await rm(root, { force: true, recursive: true });
+    await rm(root, {
+      force: true,
+      maxRetries: 10,
+      recursive: true,
+      retryDelay: 20
+    });
   }
 }
 
@@ -1020,5 +1026,37 @@ test("a dead cross-process mutation lock is recovered without admitting concurre
       ),
       false
     );
+  });
+});
+
+test("a partially published mutation lock is treated as bounded contention", async () => {
+  await withRoot("muse-sealed-partial-lock-", async (root) => {
+    const lockPath = join(root, ".mutation.lock");
+    await writeFile(lockPath, "", { mode: 0o600 });
+    const release = delay(20).then(() => rm(lockPath, { force: true }));
+    try {
+      const state = await createSealedQualificationStore(root).inspect();
+      assert.equal(state.entries, 0);
+      assert.equal(state.headHash, "0".repeat(64));
+    } finally {
+      await release;
+    }
+  });
+});
+
+test("a persistently malformed mutation lock fails closed after bounded retries", async () => {
+  await withRoot("muse-sealed-malformed-lock-", async (root) => {
+    const lockPath = join(root, ".mutation.lock");
+    await writeFile(lockPath, "{", { mode: 0o600 });
+    const startedAt = Date.now();
+    await assert.rejects(
+      createSealedQualificationStore(root).inspect(),
+      (error) => sealedFailureCode(error) === "SEALED_LOCK_FAILED"
+    );
+    const elapsedMs = Date.now() - startedAt;
+    assert.ok(elapsedMs >= 2_000, `lock retries ended too early: ${elapsedMs.toString()}ms`);
+    assert.ok(elapsedMs < 10_000, `lock retries exceeded bound: ${elapsedMs.toString()}ms`);
+    assert.equal(await readFile(lockPath, "utf8"), "{");
+    assert.deepEqual(await readdir(root), [".mutation.lock"]);
   });
 });

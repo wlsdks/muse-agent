@@ -1041,7 +1041,17 @@ async function recoverDeadLock(root, paths) {
   if (bytes === undefined) return undefined;
   let guardPath;
   try {
-    const lock = validateLock(parseCanonicalBytes(bytes, "SEALED_LOCK_FAILED"));
+    let lock;
+    try {
+      lock = validateLock(parseCanonicalBytes(bytes, "SEALED_LOCK_FAILED"));
+    } catch (error) {
+      // O_EXCL publishes the directory entry before the owning writer has
+      // necessarily completed the small lock payload. Treat that transient as
+      // contended; a persistently malformed lock still exhausts the bounded
+      // acquisition loop and fails closed.
+      if (knownFailure(error) === "SEALED_LOCK_FAILED") return undefined;
+      throw error;
+    }
     if (processIsAlive(lock.pid)) return undefined;
     const lockDigest = hashDomain("muse-recall-dead-lock-v2", bytes);
     guardPath = join(root.path, ".dead-lock-" + lockDigest + ".guard");
