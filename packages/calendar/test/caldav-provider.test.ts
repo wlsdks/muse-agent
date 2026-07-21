@@ -36,6 +36,14 @@ const RANGE: CalendarRange = { from: new Date("2026-05-30T00:00:00Z"), to: new D
 const ok = (body: string): Response => new Response(body, { status: 200 });
 
 describe("CalDAVCalendarProvider — listEvents (REPORT)", () => {
+  it("resolves an exact id+start with one read-only REPORT", async () => {
+    const fetch = recordingFetch(() => ok(multistatus(vevent)));
+    const provider = new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    await expect(provider.resolveExactEvent({ eventId: "ev1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .resolves.toMatchObject({ id: "ev1", title: "Standup" });
+    expect(fetch.calls).toHaveLength(1);
+    expect(fetch.calls[0]?.method).toBe("REPORT");
+  });
   it("issues a REPORT with Depth:1, basic auth, and a time-range filter, then parses the multistatus into events", async () => {
     const fetch = recordingFetch(() => ok(multistatus(vevent)));
     const provider = new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://dav.test/cal", username: "u" });

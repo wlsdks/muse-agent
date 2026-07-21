@@ -3,10 +3,12 @@ import { errorMessage } from "@muse/shared";
 
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
   CalendarProviderInfo,
+  ExactCalendarEventProvider,
   CalendarRange
 } from "./types.js";
 
@@ -95,6 +97,15 @@ export class CalendarProviderRegistry {
       return this.require(providerId).listEvents(range);
     }
     return (await this.listEventsWithDiagnostics(range)).events;
+  }
+
+  /** Exact read only: provider id is mandatory and never falls back to primary. */
+  resolveExactEvent(providerId: string, locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    const provider = this.require(providerId);
+    if (!("resolveExactEvent" in provider) || typeof provider.resolveExactEvent !== "function") {
+      throw new CalendarProviderError(providerId, "EXACT_LOOKUP_UNSUPPORTED", `Calendar provider does not support exact lookup: ${providerId}`);
+    }
+    return (provider as ExactCalendarEventProvider).resolveExactEvent(locator);
   }
 
   /**

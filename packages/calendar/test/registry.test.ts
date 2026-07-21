@@ -45,6 +45,22 @@ describe("CalendarProviderRegistry — registration & lookup", () => {
     expect(registry.primary()?.id).toBe("local");
   });
 
+  it("routes exact lookup only to the explicitly required capable provider", async () => {
+    const local = fakeProvider("local");
+    const exact = {
+      ...fakeProvider("gcal"),
+      resolveExactEvent: async ({ eventId, startsAt }: { eventId: string; startsAt: string }) =>
+        ev(eventId, "gcal", Date.parse(startsAt))
+    };
+    const registry = new CalendarProviderRegistry([local, exact]);
+    await expect(registry.resolveExactEvent("gcal", { eventId: "g1", startsAt: "1970-01-01T00:00:01.000Z" }))
+      .resolves.toMatchObject({ id: "g1", providerId: "gcal" });
+    expect(() => registry.resolveExactEvent("missing", { eventId: "g1", startsAt: "1970-01-01T00:00:01.000Z" }))
+      .toThrow(/not registered/u);
+    expect(() => registry.resolveExactEvent("local", { eventId: "g1", startsAt: "1970-01-01T00:00:01.000Z" }))
+      .toThrow(/does not support exact lookup/u);
+  });
+
   it("require() throws PROVIDER_NOT_FOUND with a registered-ids hint", () => {
     const registry = new CalendarProviderRegistry([fakeProvider("local")]);
     try {

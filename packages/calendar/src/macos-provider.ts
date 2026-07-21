@@ -1,6 +1,8 @@
 import { CalendarProviderError } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -94,6 +96,11 @@ export class MacOsCalendarProvider implements CalendarProvider {
     `;
     const stdout = await this.runScript(script);
     return parseListOutput(stdout, this.id);
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    const instant = new Date(locator.startsAt);
+    return selectExactCalendarEvent(await this.listEvents({ from: instant, to: instant }), locator, this.id);
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {

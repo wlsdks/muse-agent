@@ -41,6 +41,13 @@ export interface CalendarRange {
   readonly to: Date;
 }
 
+/** Provider-scoped identity for one exact occurrence. The start instant keeps
+ * recurring instances distinct without changing CalendarEvent.id's mutation contract. */
+export interface CalendarEventLocator {
+  readonly eventId: string;
+  readonly startsAt: string;
+}
+
 export interface CredentialRequirement {
   readonly key: string;
   readonly label: string;
@@ -63,4 +70,9 @@ export interface CalendarProvider {
   createEvent(input: CalendarEventInput): Promise<CalendarEvent>;
   updateEvent(id: string, input: CalendarEventUpdate): Promise<CalendarEvent>;
   deleteEvent(id: string): Promise<void>;
+}
+
+/** Exact, read-only extension implemented by production calendar adapters. */
+export interface ExactCalendarEventProvider extends CalendarProvider {
+  resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined>;
 }

@@ -1,7 +1,9 @@
 import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import { isRecord, parseJson, sleep, withBestEffort } from "@muse/shared";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -150,6 +152,19 @@ export class GoogleCalendarProvider implements CalendarProvider {
         return [];
       }
     });
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    try {
+      const payload = await this.request<GoogleEventPayload>(
+        `/calendars/${encodeURIComponent(this.options.calendarId)}/events/${encodeURIComponent(locator.eventId)}`,
+        { method: "GET" }
+      );
+      return selectExactCalendarEvent([this.toEvent(payload)], locator, this.id);
+    } catch (cause) {
+      if (cause instanceof CalendarProviderError && cause.status === 404) return undefined;
+      throw cause;
+    }
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {

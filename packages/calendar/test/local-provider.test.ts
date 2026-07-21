@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CalendarProviderError, CalendarValidationError } from "../src/errors.js";
 import { LocalCalendarProvider } from "../src/local-provider.js";
+import { decodeCalendarEventReference, encodeCalendarEventReference } from "../src/exact-event.js";
 
 // Direct coverage for the local file-backed calendar provider (untested module;
 // calendar is a low test-density package). A lost/mis-filtered event is a missed
@@ -138,5 +139,31 @@ describe("LocalCalendarProvider", () => {
   it("tolerates a missing / malformed calendar file as an empty calendar", async () => {
     const p = new LocalCalendarProvider({ file: freshFile() }); // file never created
     expect(await p.listEvents({ from: d("2026-05-15T00:00:00Z"), to: d("2026-05-16T00:00:00Z") })).toEqual([]);
+  });
+
+  it("resolves one recurring occurrence exactly across windows and restart", async () => {
+    const file = freshFile();
+    const writer = new LocalCalendarProvider({ file, idFactory: () => "series" });
+    await writer.createEvent({
+      endsAt: d("2026-05-04T09:30:00Z"),
+      recurrence: "FREQ=WEEKLY",
+      startsAt: d("2026-05-04T09:00:00Z"),
+      title: "Weekly"
+    });
+    const [occurrence] = await writer.listEvents({ from: d("2026-06-01T00:00:00Z"), to: d("2026-06-02T00:00:00Z") });
+    const reference = encodeCalendarEventReference(occurrence!);
+    const fresh = new LocalCalendarProvider({ file });
+    await expect(fresh.resolveExactEvent(decodeCalendarEventReference(reference))).resolves.toEqual(occurrence);
+  });
+
+  it("exact lookup preserves malformed source bytes without quarantine or sidecars", async () => {
+    const file = freshFile();
+    writeFileSync(file, "{", "utf8");
+    const before = readFileSync(file);
+    const provider = new LocalCalendarProvider({ file });
+    await expect(provider.resolveExactEvent({ eventId: "x", startsAt: "2026-05-15T09:00:00.000Z" }))
+      .rejects.toMatchObject({ code: "MALFORMED_STORE" });
+    expect(readFileSync(file)).toEqual(before);
+    expect(readdirSync(dirname(file))).toEqual(["calendar.json"]);
   });
 });

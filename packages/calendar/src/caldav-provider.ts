@@ -2,10 +2,12 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { calendarBackoffMs, CalendarProviderError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, normalizeCalendarRetryCount, normalizeCalendarRetryDelayMs, parseRetryAfterMs } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import { parseCalendarQueryResponse, renderCalendarQueryReport, renderVEvent } from "./caldav-ics.js";
 import { sleep } from "@muse/shared";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -125,6 +127,12 @@ export class CalDAVCalendarProvider implements CalendarProvider {
       const xml = await response.text();
       return parseCalendarQueryResponse(xml, this.id, this.url);
     }
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    const instant = new Date(locator.startsAt);
+    const events = await this.listEvents({ from: instant, to: instant });
+    return selectExactCalendarEvent(events, locator, this.id);
   }
 
   async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
