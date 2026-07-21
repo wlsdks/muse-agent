@@ -565,7 +565,7 @@ Examples:
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
         if (type === "calendar-event" && !options.provider?.trim()) throw new AttunementStoreError("a calendar-event requires --provider <configured-provider-id>");
         const removed = await unlinkArtifact(attunementFile(), {
-          artifactId: artifactId.trim(),
+          artifactId: type === "contact" ? artifactId : artifactId.trim(),
           artifactType: type as ArtifactLink["artifactType"],
           ...(type === "calendar-event" ? { providerId: calendarProviderId(options.provider!.trim()) } : {}),
           threadId: threadId.trim()

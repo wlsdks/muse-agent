@@ -370,6 +370,7 @@ test("a contact requires a pasted exact id and can be linked only as context", a
     : contactLinkReview(linked));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
+      if ((body as { artifactId?: string }).artifactId === " person_김민지_Aa ") throw new Error("non-canonical contact id");
       expect(body).toEqual({ artifactId: "person_김민지_Aa", artifactType: "contact", role: "context" });
       linked = true;
       return {};
@@ -394,13 +395,16 @@ test("a contact requires a pasted exact id and can be linked only as context", a
   await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
   await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
   await expect.element(screen.getByRole("option", { name: "Kim Minji" })).not.toBeInTheDocument();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill(" person_김민지_Aa ");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
   await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("person_김민지_Aa");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).toBeVisible();
 
   await screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).not.toBeInTheDocument();
-  expect(post).toHaveBeenCalledTimes(2);
+  expect(post).toHaveBeenCalledTimes(3);
 });
 
 test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {

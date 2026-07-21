@@ -78,6 +78,12 @@ describe("strict exact contacts reader", () => {
     }
   );
 
+  it("bounds canonical contact ids by UTF-8 bytes", async () => {
+    await writeContacts(file, [{ ...fullContact, id: "가".repeat(85) }], KEY);
+    await expect(readContactByIdStrict(file, "가".repeat(85), KEY)).resolves.toMatchObject({ name: fullContact.name });
+    await expectFailureWithoutWrites(() => readContactByIdStrict(file, "가".repeat(86), KEY));
+  });
+
   it("rejects duplicate exact ids rather than picking one", async () => {
     await writeFile(file, `${JSON.stringify({ contacts: [fullContact, { ...fullContact, name: "Other" }] })}\n`);
     await expectFailureWithoutWrites(() => readContactsStrict(file, KEY));

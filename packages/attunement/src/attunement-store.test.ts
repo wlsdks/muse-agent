@@ -79,6 +79,23 @@ describe("Personal Continuity store", () => {
     expect(readFileSync(file, "utf8")).toBe(forgedLegacy);
   });
 
+  it("rejects a non-canonical contact id in schema v6 without rewriting bytes", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Plan a dinner" }, options);
+    await linkArtifact(file, {
+      artifactId: "person_exact",
+      artifactType: "contact",
+      role: "context",
+      threadId: thread.id
+    }, options);
+    const forged = readFileSync(file, "utf8").replace('"artifactId": "person_exact"', '"artifactId": " person_exact"');
+    writeFileSync(file, forged, "utf8");
+
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(forged);
+  });
+
   it("accepts only explicit local links and never guesses between next-step tasks", async () => {
     const file = stateFile();
     const options = deterministicOptions();

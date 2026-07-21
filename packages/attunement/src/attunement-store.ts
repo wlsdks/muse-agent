@@ -158,6 +158,7 @@ function isReference(value: unknown, schemaVersion = 6): value is ArtifactRefere
     && (schemaVersion >= 4 || value.artifactType !== "reminder")
     && (schemaVersion >= 5 || value.artifactType !== "calendar-event")
     && (schemaVersion >= 6 || value.artifactType !== "contact")
+    && (value.artifactType !== "contact" || isCanonicalContactId(value.artifactId))
     && isValidProviderId(value.providerId)
     && isCoherentArtifactProvider(value.artifactType, value.providerId)
     && isOneOf(value.role, ARTIFACT_ROLES);

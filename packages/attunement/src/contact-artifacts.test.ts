@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encryptContactsAtRest, writeContacts } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { AttunementStoreError } from "./attunement-store.js";
@@ -87,6 +88,41 @@ describe("contact Continuity artifact adapter", () => {
       .rejects.toBeInstanceOf(AttunementStoreError);
     expect(readFileSync(file, "utf8")).toBe(malformed);
     expect(readdirSync(join(file, ".."))).toEqual(["contacts.json"]);
+  });
+
+  it("drops control-bearing optional fields from the safe projection", async () => {
+    const file = contactsFile();
+    writeFileSync(file, JSON.stringify({ contacts: [{
+      about: "trusted\u0000spoof",
+      birthday: "03-14\u0085spoof",
+      id: "person_safe",
+      name: "Kim Minji",
+      relationship: "friend\u001b[31m"
+    }] }), "utf8");
+
+    await expect(createContactExactArtifactResolver({ contactsFile: file })(link("person_safe"))).resolves.toEqual({
+      artifactId: "person_safe",
+      artifactType: "contact",
+      providerId: "local",
+      role: "context",
+      title: "Kim Minji"
+    });
+  });
+
+  it("maps a wrong encryption key to a byte-stable unavailable-source error", async () => {
+    const file = contactsFile();
+    const key = { MUSE_MEMORY_KEY: "contact-artifact-key-a" } as NodeJS.ProcessEnv;
+    const wrongKey = { MUSE_MEMORY_KEY: "contact-artifact-key-b" } as NodeJS.ProcessEnv;
+    await writeContacts(file, [{ id: "person_safe", name: "Kim Minji" }], key);
+    await encryptContactsAtRest(file, key);
+    const before = readFileSync(file);
+
+    await expect(createContactArtifactValidator({ contactsFile: file, env: wrongKey })({
+      artifactId: "person_safe",
+      artifactType: "contact",
+      providerId: "local"
+    })).rejects.toThrow("contacts store cannot be read or validated");
+    expect(readFileSync(file)).toEqual(before);
   });
 
   it("rejects incoherent validator calls and treats a removed exact contact as unavailable", async () => {

@@ -15,6 +15,7 @@ export interface ContactArtifactOptions {
 }
 
 function bounded(value: string | undefined): string | undefined {
+  if (value && /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value)) return undefined;
   const normalized = value?.replace(/\s+/gu, " ").trim();
   return normalized ? normalized.slice(0, 240) : undefined;
 }
@@ -46,7 +47,7 @@ async function readExactContact(options: ContactArtifactOptions, artifactId: str
     return await readContactByIdStrict(options.contactsFile, artifactId, options.env);
   } catch (cause) {
     if (cause instanceof ContactStoreUnavailableError) throw new AttunementStoreError(cause.message);
-    throw cause;
+    throw new AttunementStoreError("contacts store cannot be read or validated");
   }
 }
 

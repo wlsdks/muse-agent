@@ -472,7 +472,8 @@ function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarPr
   const [role, setRole] = useState<"context" | "next-step">("context");
   return <form onSubmit={(event) => {
     event.preventDefault();
-    if (artifactId.trim() && (artifactType !== "calendar-event" || providerId)) onLink({ artifactId: artifactId.trim(), artifactType, ...(artifactType === "calendar-event" ? { providerId } : {}), role });
+    const exactArtifactId = artifactType === "contact" ? artifactId : artifactId.trim();
+    if (exactArtifactId.trim() && (artifactType !== "calendar-event" || providerId)) onLink({ artifactId: exactArtifactId, artifactType, ...(artifactType === "calendar-event" ? { providerId } : {}), role });
   }} style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
     <input className="input" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} placeholder={t("continuity.linkId")} aria-label={t("continuity.linkId")} />
     <select className="input" value={artifactType} onChange={(event) => {

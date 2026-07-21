@@ -281,6 +281,12 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
       url: `/api/attunement/threads/${threadId}/links`
     });
     expect(byName.statusCode).toBe(409);
+    const padded = await app.inject({
+      method: "POST",
+      payload: { artifactId: ` ${CONTACT.id}`, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(padded.statusCode).toBe(409);
     const nextStep = await app.inject({
       method: "POST",
       payload: { artifactId: CONTACT.id, artifactType: "contact", role: "next-step" },

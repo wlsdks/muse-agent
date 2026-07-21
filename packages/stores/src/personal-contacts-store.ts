@@ -81,7 +81,11 @@ function isCanonicalContactString(value: unknown, maxLength: number): value is s
 }
 
 export function isCanonicalContactId(value: unknown): value is string {
-  return isCanonicalContactString(value, CONTACT_ID_MAX_LENGTH);
+  return typeof value === "string"
+    && value.length > 0
+    && Buffer.byteLength(value, "utf8") <= CONTACT_ID_MAX_LENGTH
+    && value === value.trim()
+    && !CONTROL_CHARACTERS.test(value);
 }
 
 function malformedContact(message: string): never {

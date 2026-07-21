@@ -229,6 +229,8 @@ describe("muse thread / continue — Personal Continuity", () => {
       .toContain("no local contact with exact id");
     expect((await run(f, ["thread", "link", id, "contact", CONTACT.id, "--role", "next-step"])).stderr)
       .toContain("only a local task");
+    expect((await run(f, ["thread", "unlink", id, "contact", ` ${CONTACT.id}`])).stderr)
+      .toContain("no contact link");
 
     const continued = await run(f, ["continue", id]);
     expect(continued.stdout).toContain(`[contact:${CONTACT.id}] ${CONTACT.name}`);
