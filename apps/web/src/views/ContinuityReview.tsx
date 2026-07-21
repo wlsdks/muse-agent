@@ -132,6 +132,8 @@ interface OpenedPackArtifact {
   readonly calendarLocation?: string;
   readonly calendarStartsAt?: string;
   readonly calendarTimeState?: "upcoming" | "happening" | "ended";
+  readonly contactBirthday?: string;
+  readonly contactRelationship?: string;
   readonly providerId: string;
   readonly reminderDueAt?: string;
   readonly reminderDueState?: "due" | "overdue";
@@ -420,6 +422,8 @@ export function OpenedPackCard({
             {artifact.calendarStartsAt ? <Badge tone="neutral">{artifact.calendarStartsAt}</Badge> : null}
             {artifact.calendarTimeState ? <Badge tone="neutral">{artifact.calendarTimeState}</Badge> : null}
             {artifact.calendarLocation ? <Badge tone="neutral">{artifact.calendarLocation}</Badge> : null}
+            {artifact.contactRelationship ? <Badge tone="neutral">{artifact.contactRelationship}</Badge> : null}
+            {artifact.contactBirthday ? <Badge tone="neutral">{artifact.contactBirthday}</Badge> : null}
           </div>
         </div>;
       })}
@@ -458,7 +462,7 @@ function taskDoneInOpenedPack(openedPack: OpenedPack, taskId: string): OpenedPac
   };
 }
 
-type LinkArtifactType = "task" | "note" | "reminder" | "calendar-event";
+type LinkArtifactType = "task" | "note" | "reminder" | "calendar-event" | "contact";
 
 function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarProviders: readonly { readonly displayName: string; readonly id: string }[]; readonly disabled: boolean; readonly onLink: (input: { artifactId: string; artifactType: LinkArtifactType; providerId?: string; role: "context" | "next-step" }) => void }) {
   const { t } = useI18n();
@@ -476,7 +480,7 @@ function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarPr
       setArtifactType(next);
       if (next !== "task") setRole("context");
     }} aria-label={t("continuity.linkType")}>
-      <option value="task">task</option><option value="note">note</option><option value="reminder">reminder</option><option value="calendar-event">calendar-event</option>
+      <option value="task">task</option><option value="note">note</option><option value="reminder">reminder</option><option value="calendar-event">calendar-event</option><option value="contact">contact</option>
     </select>
     {artifactType === "calendar-event" ? <select className="input" value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label={t("continuity.calendarProvider")}>
       <option value="">{t("continuity.calendarProvider")}</option>

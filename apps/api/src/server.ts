@@ -359,6 +359,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     attunementFile: options.attunementFile ?? resolveAttunementFile(env),
     authService,
     ...(options.calendar ? { calendarRegistry: options.calendar } : {}),
+    contactsFile: options.contactsFile ?? resolveContactsFile(env),
+    env,
     notesDir: options.notesDir ?? resolveNotesDir(env),
     remindersFile: options.remindersFile ?? resolveRemindersFile(env),
     tasksFile: options.tasksFile ?? resolveTasksFile(env)

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { Command } from "commander";
@@ -13,6 +13,7 @@ import type { McpToolCaller } from "./attunement-mcp-resource.js";
 
 interface Fixture {
   readonly attunementFile: string;
+  readonly contactsFile: string;
   readonly notesDir: string;
   readonly remindersFile: string;
   readonly taskFile: string;
@@ -24,6 +25,7 @@ function fixture(): Fixture {
   mkdirSync(notesDir);
   return {
     attunementFile: join(root, "attunement.json"),
+    contactsFile: join(root, "contacts.json"),
     notesDir,
     remindersFile: join(root, "reminders.json"),
     taskFile: join(root, "tasks.json")
@@ -35,11 +37,13 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   const stderr: string[] = [];
   const previous = {
     MUSE_ATTUNEMENT_FILE: process.env.MUSE_ATTUNEMENT_FILE,
+    MUSE_CONTACTS_FILE: process.env.MUSE_CONTACTS_FILE,
     MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
     MUSE_REMINDERS_FILE: process.env.MUSE_REMINDERS_FILE,
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
   process.env.MUSE_ATTUNEMENT_FILE = fixture.attunementFile;
+  process.env.MUSE_CONTACTS_FILE = fixture.contactsFile;
   process.env.MUSE_NOTES_DIR = fixture.notesDir;
   process.env.MUSE_REMINDERS_FILE = fixture.remindersFile;
   process.env.MUSE_TASKS_FILE = fixture.taskFile;
@@ -80,6 +84,14 @@ const REMINDER: PersistedReminder = {
   id: "reminder_cli_dentist",
   status: "pending",
   text: "Bring the referral letter"
+};
+
+const CONTACT: Contact = {
+  about: "Prefers a quiet dinner",
+  email: "must-not-appear@example.com",
+  id: "person_김민지_Aa",
+  name: "Kim Minji",
+  relationship: "close friend"
 };
 
 const CALENDAR_EVENT: CalendarEvent = {
@@ -202,6 +214,27 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(review.stdout).toContain(`"artifactType": "reminder"`);
     expect(readFileSync(f.attunementFile)).toEqual(attunementBeforeReview);
     expect(readFileSync(f.remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("links and renders one exact contact id as safe context only", async () => {
+    const f = fixture();
+    await writeContacts(f.contactsFile, [CONTACT]);
+    const contactsBefore = readFileSync(f.contactsFile);
+    const started = await run(f, ["thread", "start", "Plan", "a", "dinner", "--kind", "life"]);
+    const id = threadId(started.stdout);
+
+    const linked = await run(f, ["thread", "link", id, "contact", CONTACT.id, "--role", "context"]);
+    expect(linked.stdout).toContain(`local:contact:${CONTACT.id}`);
+    expect((await run(f, ["thread", "link", id, "contact", CONTACT.name, "--role", "context"])).stderr)
+      .toContain("no local contact with exact id");
+    expect((await run(f, ["thread", "link", id, "contact", CONTACT.id, "--role", "next-step"])).stderr)
+      .toContain("only a local task");
+
+    const continued = await run(f, ["continue", id]);
+    expect(continued.stdout).toContain(`[contact:${CONTACT.id}] ${CONTACT.name}`);
+    expect(continued.stdout).toContain("Prefers a quiet dinner");
+    expect(continued.stdout).not.toContain(CONTACT.email!);
+    expect(readFileSync(f.contactsFile)).toEqual(contactsBefore);
   });
 
   it("links, resolves, and provider-scoped unlinks one exact calendar occurrence", async () => {

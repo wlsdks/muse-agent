@@ -49,7 +49,7 @@ function describeContact(contact: Contact): string {
     ? `\n    ↔ ${contact.connections.map((c) => `${c.as ? `${c.as} ` : "connected to "}${c.to}`).join(", ")}`
     : "";
   const note = contact.about ? `\n    ℹ ${contact.about}` : "";
-  return `${contact.name}${aliases}${role}${reachLabel}${edges}${note}`;
+  return `${contact.name} [id: ${contact.id}]${aliases}${role}${reachLabel}${edges}${note}`;
 }
 
 /**

@@ -14,7 +14,7 @@ import {
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
-import { writeReminders, writeTasks, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,6 +22,7 @@ import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunemen
 
 let root: string;
 let attunementFile: string;
+let contactsFile: string;
 let notesDir: string;
 let remindersFile: string;
 let tasksFile: string;
@@ -43,6 +44,14 @@ const REMINDER: PersistedReminder = {
   id: "reminder_api_dentist",
   status: "pending",
   text: "Bring the referral letter"
+};
+
+const CONTACT: Contact = {
+  about: "Prefers a quiet dinner",
+  email: "must-not-appear@example.com",
+  id: "person_김민지_Aa",
+  name: "Kim Minji",
+  relationship: "close friend"
 };
 
 const CALENDAR_EVENT: CalendarEvent = {
@@ -72,12 +81,14 @@ function calendarRegistry(): CalendarProviderRegistry {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "muse-attunement-api-"));
   attunementFile = join(root, "attunement.json");
+  contactsFile = join(root, "contacts.json");
   notesDir = join(root, "notes");
   remindersFile = join(root, "reminders.json");
   tasksFile = join(root, "tasks.json");
   await mkdir(notesDir);
   await writeTasks(tasksFile, [TASK]);
   await writeReminders(remindersFile, [REMINDER]);
+  await writeContacts(contactsFile, [CONTACT]);
   const thread = await createPersonalThread(attunementFile, { kind: "life", title: "Prepare birthday" }, {
     idFactory: () => "api",
     now: () => new Date("2026-07-14T00:00:00.000Z")
@@ -100,6 +111,7 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
   registerAttunementRoutes(app, {
     attunementFile,
     authService: undefined,
+    contactsFile,
     notesDir,
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
     remindersFile,
@@ -221,6 +233,61 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
     expect(unlinked.statusCode).toBe(200);
     expect(unlinked.json()).toEqual({ removed: true });
     expect(await readFile(remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("links, projects, and unlinks one exact contact without exposing recipient fields", async () => {
+    const app = server();
+    const contactsBefore = await readFile(contactsFile);
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId: CONTACT.id, artifactType: "contact", providerId: "local", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    const evidence = opened.json().pack.evidence.find((entry: { reference: { artifactType: string } }) => entry.reference.artifactType === "contact");
+    expect(evidence).toEqual({
+      artifact: {
+        artifactId: CONTACT.id,
+        artifactType: "contact",
+        contactRelationship: CONTACT.relationship,
+        providerId: "local",
+        role: "context",
+        summary: CONTACT.about,
+        title: CONTACT.name
+      },
+      reference: { artifactId: CONTACT.id, artifactType: "contact", providerId: "local", role: "context" },
+      status: "available"
+    });
+    expect(JSON.stringify(evidence)).not.toContain(CONTACT.email);
+
+    const unlinked = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(unlinked.json()).toEqual({ removed: true });
+    expect(await readFile(contactsFile)).toEqual(contactsBefore);
+  });
+
+  it("rejects contact names and contact next-steps before opening a delivery", async () => {
+    const app = server();
+    const byName = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.name, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(byName.statusCode).toBe(409);
+    const nextStep = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact", role: "next-step" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(nextStep.statusCode).toBe(400);
+    expect((await readAttunementState(attunementFile)).deliveries).toHaveLength(0);
   });
 
   it("rejects a reminder next-step before reading or writing either store", async () => {

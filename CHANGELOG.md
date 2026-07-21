@@ -10,6 +10,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now ground a thread in one exact local contact.** `muse contacts
+  list` exposes the copyable canonical ID, while CLI, authenticated local HTTP, and web
+  accept only that byte-identical ID—never a name, alias, prefix, address, Apple Contacts
+  lookup, or hidden catalog selection. Packs project only bounded name, relationship,
+  birthday, and user-authored context; email, phone, handle, aliases, and graph edges stay
+  out of the Continuity surface. Contact evidence is context-only and cannot become a next
+  step, recipient, completion receipt, outcome, permission, send, or automation signal.
+
 - **Continuity can now ground a thread in one exact configured calendar occurrence.**
   Calendar listings expose a versioned, copyable Continuity reference separate from the
   provider's mutation ID. CLI, authenticated local HTTP, and web linking require the user to
