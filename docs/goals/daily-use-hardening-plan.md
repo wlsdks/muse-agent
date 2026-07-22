@@ -87,9 +87,10 @@ states say what evidence is missing; they do not render zero as success.
   narrow LaunchAgent allowlist, and expose the resolved resident policy plus
   current admission verdict through the no-model/no-network `muse doctor
   --resources` diagnostic.
-- [x] Persist only the latest admission/defer transition as an owner-only local
-  receipt; it is written on state changes, not per tick, and is shown as
-  separate evidence in `muse doctor --resources`.
+- [x] Persist only the latest admission decision and optional claimed-unit
+  boundary as an owner-only local receipt; it is written on transitions/work
+  boundaries, not sampled into a chart, and is shown as historical evidence
+  separate from the live `muse doctor --resources` verdict.
 - [x] Give the owner a live `muse daemon --pause-heavy-work` /
   `--resume-heavy-work` escape hatch. It persists locally, is re-read on each
   tick without restart, holds only model/sync/consolidation work, and records
@@ -101,10 +102,16 @@ states say what evidence is missing; they do not render zero as success.
   idle; correctness/security work never silently degrades.
 - [ ] Put budgets around model concurrency, context/KV cache size, indexing
   batches, browser work, and retry loops. Queue one bounded unit at a time.
-- [ ] Emit only decision-grade telemetry: work admitted/deferred/cancelled and
+- [x] Emit only decision-grade telemetry: work admitted/deferred/cancelled and
   the policy reason. Do not sample a costly always-on dashboard.
-- [ ] Require an owner-visible escape hatch and a deterministic test seam for
+- [x] Require an owner-visible escape hatch and a deterministic test seam for
   each admission decision.
+
+The current slice additionally records per-unit CPU delta, RSS, candidate queue
+depth, duration, and truthful cooperative stop-boundary latency. The broader
+inventory item stays open until model load is measured directly; thermal
+production support and the wider model/cache/index/browser budgets also remain
+open rather than being inferred from this daemon-only governor.
 
 **Gate:** under an injected constrained-resource state, background work starts
 zero new model/tool jobs, records a bounded deferral reason, and foreground chat

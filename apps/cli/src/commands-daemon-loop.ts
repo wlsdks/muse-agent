@@ -19,15 +19,21 @@ export const DEFAULT_DAEMON_INTERVAL_MS = 60_000;
  */
 export class DaemonStopSignal {
   private isStopped = false;
+  private stopRequestedAtMs: number | undefined;
   private readonly wakers = new Set<() => void>();
 
   get stopped(): boolean {
     return this.isStopped;
   }
 
-  stop(): void {
+  get requestedAtMs(): number | undefined {
+    return this.stopRequestedAtMs;
+  }
+
+  stop(atMs = performance.now()): void {
     if (this.isStopped) return;
     this.isStopped = true;
+    this.stopRequestedAtMs = atMs;
     for (const wake of this.wakers) wake();
     this.wakers.clear();
   }

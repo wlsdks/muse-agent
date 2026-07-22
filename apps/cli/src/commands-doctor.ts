@@ -65,8 +65,9 @@ import { sleep, waitForShutdownSignal } from "./async-promises.js";
 import { collectResidentDaemonRuntime } from "./personal-agent-qualification-probes.js";
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { ProgramIO } from "./program.js";
-import { assessDaemonResourceAdmission, describeDaemonResourceAdmission, readDaemonResourceSnapshot, resolveDaemonResourcePolicy, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
-import { describeDaemonResourceAdmissionReceipt, readDaemonResourceAdmissionReceipt, resolveDaemonResourceReceiptFile } from "./daemon-resource-receipt.js";
+import { assessDaemonResourceAdmission, readDaemonResourceSnapshot, resolveDaemonResourcePolicy, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
+import { readDaemonResourceAdmissionReceipt, resolveDaemonResourceReceiptFile } from "./daemon-resource-receipt.js";
+import { describeDaemonResourceStatus } from "./daemon-resource-status.js";
 
 export interface DoctorCommandHelpers {
   readonly apiRequest: (
@@ -537,7 +538,7 @@ async function resolveDaemonResourceEnvironment(
     const variables = parseLaunchAgentEnvironmentVariables(await fs.readFile(daemonAutostart.plistFile, "utf8"));
     if (variables === undefined) return { env, source: "shell/default" };
     const residentEnv = Object.create(env) as NodeJS.ProcessEnv;
-    for (const key of ["MUSE_DAEMON_RESOURCE_GUARD", "MUSE_DAEMON_MIN_FREE_MEMORY_MB", "MUSE_DAEMON_MAX_LOAD_PER_CORE", "MUSE_DAEMON_RESOURCE_RECEIPT_FILE", "MUSE_HOME"] as const) {
+    for (const key of ["MUSE_DAEMON_BACKGROUND_MODE", "MUSE_DAEMON_RESOURCE_GUARD", "MUSE_DAEMON_MIN_IDLE_SECONDS", "MUSE_DAEMON_MIN_FREE_MEMORY_MB", "MUSE_DAEMON_MAX_LOAD_PER_CORE", "MUSE_DAEMON_RESOURCE_RECEIPT_FILE", "MUSE_HOME"] as const) {
       // An absent resident key means the daemon will use its code default after
       // reboot, not the installing shell's override. Shadow every key (including
       // with `undefined`) so a valid, partial plist cannot inherit shell policy
@@ -575,7 +576,7 @@ async function daemonResourceDoctorCheckFor(
   const resourceAdmission = assessDaemonResourceAdmission(resourceEnvironment.env, snapshot);
   const receipt = await readDaemonResourceAdmissionReceipt(resolveDaemonResourceReceiptFile(resourceEnvironment.env));
   return {
-    detail: `${describeDaemonResourceAdmission(resourcePolicy, snapshot, resourceAdmission, resourceEnvironment.source)}; ${describeDaemonResourceAdmissionReceipt(receipt)}`,
+    detail: describeDaemonResourceStatus({ admission: resourceAdmission, policy: resourcePolicy, receipt, snapshot, source: resourceEnvironment.source }),
     name: "daemon resources",
     status: resourceAdmission.status === "defer" ? "warn" : "ok"
   };

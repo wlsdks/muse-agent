@@ -26,17 +26,24 @@ export type DaemonHeavyWorkUnit = {
 export class DaemonHeavyWorkQueue {
   #nextIndex = 0;
 
-  async run(units: readonly DaemonHeavyWorkUnit[], maxUnits: number): Promise<readonly string[]> {
+  async run(
+    units: readonly DaemonHeavyWorkUnit[],
+    maxUnits: number,
+    shouldContinue: () => boolean = () => true
+  ): Promise<readonly string[]> {
     if (units.length === 0) return [];
     const count = maxUnits === 0 ? units.length : Math.min(maxUnits, units.length);
     const completed: string[] = [];
-    for (let offset = 0; offset < count; offset += 1) {
-      const index = (this.#nextIndex + offset) % units.length;
+    for (let attempted = 0; attempted < count; attempted += 1) {
+      if (!shouldContinue()) break;
+      const index = this.#nextIndex % units.length;
       const unit = units[index]!;
+      // Advance at the attempt boundary so a throwing lane cannot pin the
+      // cursor and starve every later lane forever.
+      this.#nextIndex = (index + 1) % units.length;
       await unit.run();
       completed.push(unit.id);
     }
-    this.#nextIndex = (this.#nextIndex + count) % units.length;
     return completed;
   }
 }

@@ -10,6 +10,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Resident background work now has a bounded, owner-visible governor.** The
+  CLI daemon shares the same fail-closed macOS HID-idle and AC-power probes as
+  the API, layers them over CPU/load and free-memory admission, and supports a
+  persisted `auto | paused` owner mode. An admitted cycle scans cheap readiness
+  checks but claims at most one of nine named heavyweight units; stop requests
+  before claim start nothing, while a stop during legacy work is recorded
+  truthfully at the completed/failed boundary. Strict owner-only v2 evidence
+  keeps the admission observation beside the latest unit CPU/RSS/duration and
+  queue measurements, while `doctor --resources` separates its live verdict
+  from legacy, historical, or stale receipt evidence.
+
 - **Old reminder backlogs now have an explicit, local-only triage transaction.**
   `muse remind triage` records an exact preview before allowing a bounded
   dismiss, snooze, retain, or local digest draft. Short-lived bearer tokens,

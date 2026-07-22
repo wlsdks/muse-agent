@@ -37,13 +37,46 @@ describe("assessDaemonResourceAdmission", () => {
       MUSE_DAEMON_MAX_LOAD_PER_CORE: "0.5",
       MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048",
       MUSE_DAEMON_RESOURCE_GUARD: "off"
-    })).toEqual({ guardEnabled: false, maxLoadPerCore: 0.5, minFreeMemoryMb: 2048 });
+    })).toEqual({
+      backgroundMode: "auto",
+      backgroundModeMalformed: false,
+      guardEnabled: false,
+      maxLoadPerCore: 0.5,
+      minFreeMemoryMb: 2048,
+      minIdleMs: 300_000
+    });
     expect(daemonResourcePolicyEnvironment({
       MUSE_DAEMON_MAX_LOAD_PER_CORE: "100",
       MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048.5",
       MUSE_DAEMON_RESOURCE_GUARD: "YES",
       OPENAI_API_KEY: "must-not-persist"
     })).toEqual({ MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048.5", MUSE_DAEMON_RESOURCE_GUARD: "true" });
+  });
+
+  it("uses exact owner, thermal, power, and active-user precedence", () => {
+    const darwin = { ...healthy, idleMs: 300_000, onAcPower: true, platform: "darwin" as const, thermalState: "nominal" as const };
+    expect(assessDaemonResourceAdmission({ MUSE_DAEMON_BACKGROUND_MODE: "paused" }, darwin))
+      .toEqual({ reason: "owner-paused", status: "defer" });
+    expect(assessDaemonResourceAdmission({}, { ...darwin, thermalState: "serious" }))
+      .toEqual({ reason: "thermal-pressure", status: "defer" });
+    expect(assessDaemonResourceAdmission({}, { ...darwin, onAcPower: false }))
+      .toEqual({ reason: "battery-power", status: "defer" });
+    expect(assessDaemonResourceAdmission({}, { ...darwin, onAcPower: undefined }))
+      .toEqual({ reason: "power-unavailable", status: "defer" });
+    expect(assessDaemonResourceAdmission({}, { ...darwin, idleMs: 299_999 }))
+      .toEqual({ reason: "active-user", status: "defer" });
+    expect(assessDaemonResourceAdmission({}, darwin)).toEqual({ status: "admit" });
+  });
+
+  it("fails closed on malformed explicit mode and normalizes only bounded resident values", () => {
+    expect(resolveDaemonResourcePolicy({ MUSE_DAEMON_BACKGROUND_MODE: "typo" })).toMatchObject({
+      backgroundMode: "paused",
+      backgroundModeMalformed: true
+    });
+    expect(daemonResourcePolicyEnvironment({
+      MUSE_DAEMON_BACKGROUND_MODE: "typo",
+      MUSE_DAEMON_MIN_IDLE_SECONDS: "600"
+    })).toEqual({ MUSE_DAEMON_BACKGROUND_MODE: "paused", MUSE_DAEMON_MIN_IDLE_SECONDS: "600" });
   });
 
   it("describes the policy and deferral without exposing process or model details", () => {

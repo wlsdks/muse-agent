@@ -235,9 +235,9 @@ describe("local doctor runtime ownership", () => {
 
     const resources = report.checks.find((check) => check.name === "daemon resources");
     expect(resources).toMatchObject({ status: "warn" });
-    expect(resources?.detail).toContain("LaunchAgent; guard on; min free 2048 MiB; max load 0.75/core");
+    expect(resources?.detail).toContain("LaunchAgent; mode auto; guard on; min idle 300s; min free 2048 MiB; max load 0.75/core");
     expect(resources?.detail).toContain("heavy background work deferred (low-free-memory)");
-    expect(resources?.detail).toContain("last transition admitted at 2026-07-22T00:00:00.000Z");
+    expect(resources?.detail).toContain("legacy transition evidence admitted at 2026-07-22T00:00:00.000Z");
   });
 
   it("has a dedicated resource check that never contacts a model or remote service", async () => {
@@ -280,7 +280,7 @@ describe("local doctor runtime ownership", () => {
 
     expect(check).toMatchObject({ name: "daemon resources", status: "ok" });
     expect(check.detail).toContain("heavy background work admitted");
-    expect(check.detail).toContain("last transition deferred (cpu-load) at 2026-07-22T00:00:00.000Z");
+    expect(check.detail).toContain("legacy transition evidence deferred (cpu-load) at 2026-07-22T00:00:00.000Z");
   });
 
   it("falls back to the interactive shell self-learning gate when a valid artifact cannot be read", async () => {

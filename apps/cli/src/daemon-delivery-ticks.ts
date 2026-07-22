@@ -78,6 +78,7 @@ import { checkinsFile } from "./commands-checkins.js";
 import type { FollowupModel } from "./commands-daemon-connections.js";
 import { readDaemonConfig } from "./commands-daemon-config.js";
 import { resolveReflectionsFile, runReflectionPass, shouldRunReflection } from "./commands-reflections.js";
+import { daemonWorkloadCancelled, daemonWorkloadCompleted, daemonWorkloadFailed, daemonWorkloadNotReady, type GovernedDaemonTick } from "./daemon-workload-governor.js";
 import { parseDailyBriefTime, shouldFireDailyBrief } from "./daily-brief.js";
 import { maybeAutoPrune } from "./local-state-retention.js";
 import { runSchedulerJobAndWait, type SchedulerJobOutcome } from "./scheduler-job-runner.js";
@@ -701,12 +702,14 @@ export interface MakeReflectionTickDeps {
  * episodes while idle. Off by default; throttled to a slow cadence (default
  * 6h) so it isn't a model call every tick. Silent unless it adds.
  */
-export function makeReflectionTick(deps: MakeReflectionTickDeps): () => Promise<void> {
+export function makeReflectionTick(deps: MakeReflectionTickDeps): GovernedDaemonTick {
   const { env: e, followupModel, intervalMs, lastRunMs, stdout } = deps;
-  return async (): Promise<void> => {
-    if (!parseBoolean(e.MUSE_REFLECTION_ENABLED, false) || !followupModel) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!parseBoolean(e.MUSE_REFLECTION_ENABLED, false)) return daemonWorkloadNotReady("disabled");
+    if (!followupModel) return daemonWorkloadNotReady("unconfigured");
     const nowMs = Date.now();
-    if (!shouldRunReflection(lastRunMs.current, nowMs, intervalMs)) return;
+    if (!shouldRunReflection(lastRunMs.current, nowMs, intervalMs)) return daemonWorkloadNotReady("not-due");
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     lastRunMs.current = nowMs;
     try {
       const episodes = (await readEpisodes(resolveEpisodesFile(e))).slice(-30);
@@ -718,7 +721,8 @@ export function makeReflectionTick(deps: MakeReflectionTickDeps): () => Promise<
         embed: createGateEmbedder(e)
       });
       if (added > 0) stdout(`[${new Date(nowMs).toISOString()}] reflections: +${added.toString()} (see \`muse reflections\`)\n`);
-    } catch { /* fail-soft — dreaming is a background nicety */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("model"); }
   };
 }
 
@@ -755,4 +759,3 @@ export function makeRetentionPruneTick(deps: MakeRetentionPruneTickDeps): () => 
     } catch { /* maybeAutoPrune already never throws — this is a final backstop */ }
   };
 }
-

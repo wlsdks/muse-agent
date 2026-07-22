@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./system-resource-observation": {
+      "types": "./dist/system-resource-observation.d.ts",
+      "import": "./dist/system-resource-observation.js"
     }
   },
   "scripts": {

@@ -18,6 +18,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MuseTool } from "@muse/tools";
 
 import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
+import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
+import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 
 const TEST_HARNESS_CLI_ENTRY = fileURLToPath(import.meta.url);
 
@@ -87,7 +89,15 @@ async function runDaemon(
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
-      ...(opts.resourceSnapshot ? { resourceSnapshot: opts.resourceSnapshot } : {}),
+      resourceSnapshot: opts.resourceSnapshot ?? (() => ({
+        cpuCount: 8,
+        freeMemoryBytes: 4 * 1024 * 1024 * 1024,
+        load1: 1,
+        processCpuSystemMicros: 0,
+        processCpuUserMicros: 0,
+        residentMemoryBytes: 128 * 1024 * 1024,
+        thermalState: "unavailable"
+      })),
       ...(opts.writeResourceAdmissionReceipt ? { writeResourceAdmissionReceipt: opts.writeResourceAdmissionReceipt } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
@@ -943,7 +953,9 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_DAEMON_DELIVERY_ENABLED: "false",
       MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "2",
+      MUSE_DAEMON_BACKGROUND_MODE: "paused",
       MUSE_DAEMON_MAX_LOAD_PER_CORE: "0.5",
+      MUSE_DAEMON_MIN_IDLE_SECONDS: "600",
       MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048",
       MUSE_DAEMON_PROVIDER_LOCK: "log",
       MUSE_DAEMON_RESOURCE_GUARD: "true",
@@ -977,6 +989,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_DAEMON_DELIVERY_ENABLED</key>\n    <string>false</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_PROVIDER_LOCK</key>\n    <string>log</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_RESOURCE_GUARD</key>\n    <string>true</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_BACKGROUND_MODE</key>\n    <string>paused</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_MIN_IDLE_SECONDS</key>\n    <string>600</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_MIN_FREE_MEMORY_MB</key>\n    <string>2048</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_MAX_LOAD_PER_CORE</key>\n    <string>0.5</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK</key>\n    <string>2</string>");
@@ -1696,6 +1710,54 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
 });
 
 describe("muse daemon — resource admission", () => {
+  it("runs the isolated active -> idle claim -> owner-paused three-cycle journey", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_DAEMON_BACKGROUND_MODE: "auto",
+      MUSE_EMAIL_SYNC_ENABLED: "true",
+      MUSE_MESSAGING_POLL_ENABLED: "true"
+    };
+    const heavy = vi.fn();
+    const messagingPoll = vi.fn(async () => ({ errors: [], ingestedByProvider: {} }));
+    const receipts: DaemonResourceReceipt[] = [];
+    const snapshots: DaemonResourceSnapshot[] = [
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 1_000, load1: 1, onAcPower: true, platform: "darwin" },
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 300_000, load1: 1, onAcPower: true, platform: "darwin" },
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 300_000, load1: 1, onAcPower: true, platform: "darwin" }
+    ];
+    const makeEmailSyncTick: NonNullable<DaemonHelpers["makeEmailSyncTick"]> = () => async (claim) => {
+      if (!(claim ?? (() => true))()) return { status: "cancelled-before-claim" };
+      heavy();
+      return { status: "claimed-completed" };
+    };
+
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      env,
+      makeEmailSyncTick,
+      messagingPoll,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      resourceSnapshot: () => snapshots.shift()!,
+      runDaemonLoop: async ({ signal, tick }) => {
+        await tick();
+        await tick();
+        env.MUSE_DAEMON_BACKGROUND_MODE = "paused";
+        await tick();
+        signal.stop();
+        return 3;
+      },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+
+    expect(heavy).toHaveBeenCalledOnce();
+    expect(messagingPoll).toHaveBeenCalled();
+    expect(receipts).toMatchObject([
+      { decision: { reason: "active-user", status: "deferred" } },
+      { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "email-sync" } },
+      { decision: { reason: "owner-paused", status: "deferred" } }
+    ]);
+  });
+
   it("defers and then resumes opt-in heavyweight browsing sync without changing the light tick", async () => {
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
@@ -1727,16 +1789,17 @@ describe("muse daemon — resource admission", () => {
 
     expect(result.exitCode).toBeUndefined();
     expect(calls).toBe(1);
-    expect(receipts).toHaveLength(2);
+    expect(receipts).toHaveLength(3);
     expect(receipts).toMatchObject([
-      { reason: "cpu-load", status: "defer" },
-      { status: "admit" }
+      { decision: { reason: "cpu-load", status: "deferred" } },
+      { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "browsing-sync" } }
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (cpu-load)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
   });
 
-  it("honors an opted-in heavy-work unit cap and round-robins deferred units", async () => {
+  it("counts the governed maintenance lane as one capped round-robin unit", async () => {
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
       MUSE_BROWSING_AUTO_SYNC: "true",
@@ -1751,11 +1814,11 @@ describe("muse daemon — resource admission", () => {
       registry,
       resourceSnapshot: () => ({ cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }),
       runDaemonLoop: async ({ signal, tick }) => {
-        for (let round = 0; round < 15; round += 1) await tick();
+        for (let round = 0; round < 7; round += 1) await tick();
         expect(browsingCalls).toBe(0);
         await tick();
         signal.stop();
-        return 16;
+        return 8;
       }
     });
 
@@ -1791,8 +1854,9 @@ describe("muse daemon — resource admission", () => {
     expect(result.exitCode).toBeUndefined();
     expect(calls).toBe(1);
     expect(receipts).toMatchObject([
-      { reason: "owner-paused", status: "defer" },
-      { status: "admit" }
+      { decision: { reason: "owner-paused", status: "deferred" } },
+      { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "browsing-sync" } }
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (owner-paused)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
@@ -1866,6 +1930,95 @@ describe("muse daemon — resource admission", () => {
     expect(result.exitCode).toBeUndefined();
     expect(calls).toEqual({ chrome: 1, knowledge: 1, model: 1 });
   });
+
+  it("owner pause starts zero heavyweight units while light polling still runs", async () => {
+    const env = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true", MUSE_DAEMON_BACKGROUND_MODE: "paused", MUSE_MESSAGING_POLL_ENABLED: "true" };
+    const browsingSync = vi.fn(async () => ({ synced: 0, total: 0 }));
+    const messagingPoll = vi.fn(async () => ({ errors: [], ingestedByProvider: {} }));
+    const receipts: DaemonResourceReceipt[] = [];
+    await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      browsingSync,
+      env,
+      messagingPoll,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+    expect(browsingSync).not.toHaveBeenCalled();
+    expect(messagingPoll).toHaveBeenCalledOnce();
+    expect(receipts[0]).toMatchObject({ decision: { reason: "owner-paused", status: "deferred" } });
+  });
+
+  it("does not start a unit if stop arrives during the admission receipt await", async () => {
+    const env = { ...tmpEnv(), MUSE_EMAIL_SYNC_ENABLED: "true" };
+    const heavy = vi.fn();
+    let signal: DaemonStopSignal | undefined;
+    const makeEmailSyncTick: NonNullable<DaemonHelpers["makeEmailSyncTick"]> = () => async (claim) => {
+      if (!(claim ?? (() => true))()) return { status: "cancelled-before-claim" };
+      heavy();
+      return { status: "claimed-completed" };
+    };
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      env,
+      makeEmailSyncTick,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runDaemonLoop: async (options) => { signal = options.signal; await options.tick(); return 0; },
+      writeResourceAdmissionReceipt: async () => { signal?.stop(); }
+    });
+    expect(heavy).not.toHaveBeenCalled();
+  });
+
+  it("starts no later outer lane when the first admitted lane requests stop", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true" };
+    await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
+      { createdAt: "2026-01-01T00:00:00Z", id: "fu-stop-outer", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "stop after this lane", userId: "owner" }
+    ]);
+    const browsingSync = vi.fn(async () => ({ synced: 0, total: 0 }));
+    const receipts: DaemonResourceReceipt[] = [];
+    let modelCalls = 0;
+    let signal: DaemonStopSignal | undefined;
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      browsingSync,
+      env,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      resolveFollowupModel: async () => ({
+        model: "test-model",
+        modelProvider: {
+          generate: async () => {
+            modelCalls += 1;
+            signal?.stop();
+            return { output: "completed first lane" };
+          }
+        } as never
+      }),
+      runDaemonLoop: async (options) => { signal = options.signal; await options.tick(); return 1; },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+    expect(modelCalls).toBe(1);
+    expect(browsingSync).not.toHaveBeenCalled();
+    expect(receipts.at(-1)).toMatchObject({ decision: { reason: "stop-requested", status: "cancelled-before-claim" } });
+  });
+
+  it("finishes a claimed unit truthfully after stop and skips following optional ticks", async () => {
+    const env = { ...tmpEnv(), MUSE_EMAIL_SYNC_ENABLED: "true" };
+    const messagingPoll = vi.fn(async () => ({ errors: [], ingestedByProvider: {} }));
+    const receipts: DaemonResourceReceipt[] = [];
+    let signal: DaemonStopSignal | undefined;
+    const makeEmailSyncTick: NonNullable<DaemonHelpers["makeEmailSyncTick"]> = () => async (claim) => {
+      if (!(claim ?? (() => true))()) return { status: "cancelled-before-claim" };
+      signal?.stop();
+      return { status: "claimed-completed" };
+    };
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      env,
+      makeEmailSyncTick,
+      messagingPoll,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runDaemonLoop: async (options) => { signal = options.signal; await options.tick(); return 1; },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+    expect(messagingPoll).not.toHaveBeenCalled();
+    expect(receipts.at(-1)).toMatchObject({ lastBoundary: { status: "completed", stopRequestedDuring: true, unit: "email-sync" } });
+  });
 });
 
 describe("runDaemonLoop — foreground loop shuts down cleanly on a stop signal", () => {
@@ -1900,7 +2053,9 @@ describe("runDaemonLoop — foreground loop shuts down cleanly on a stop signal"
 
   it("an already-stopped signal runs zero ticks", async () => {
     const signal = new DaemonStopSignal();
-    signal.stop();
+    signal.stop(123);
+    signal.stop(456);
+    expect(signal.requestedAtMs).toBe(123);
     const ran = await runDaemonLoop({ intervalMs: 1000, signal, sleep: async () => undefined, tick: async () => undefined });
     expect(ran).toBe(0);
   });
@@ -2590,7 +2745,7 @@ describe("muse daemon — continuous email-sync tick (always-on email→recall)"
       }
     });
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
-    const makeEmailSyncTick = vi.fn(() => async () => undefined);
+    const makeEmailSyncTick = vi.fn(() => async () => ({ reason: "disabled" as const, status: "not-ready" as const }));
 
     const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
       env,
@@ -2610,7 +2765,7 @@ describe("muse daemon — continuous email-sync tick (always-on email→recall)"
       env.MUSE_LOCAL_ONLY = "false";
       env.MUSE_EMAIL_SYNC_ENABLED = "true";
       const registry = new MessagingProviderRegistry([capturingProvider([])]);
-      const makeEmailSyncTick = vi.fn(() => async () => undefined);
+      const makeEmailSyncTick = vi.fn(() => async () => ({ reason: "disabled" as const, status: "not-ready" as const }));
 
       const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
         env,
