@@ -58,7 +58,10 @@ describe("@muse/attunement public authority surface", () => {
   it("does not expose a reusable organic-authority mint at runtime", () => {
     expect(mainOrganicProducersAreAbsent).toBe(true);
     for (const name of organicProducerNames) expect(name in publicSurface).toBe(false);
+    expect("recordObserveSample" in publicSurface).toBe(false);
+    expect("claimObserveLease" in publicSurface).toBe(false);
     expect(Object.keys(hostSurface).sort()).toEqual([
+      "createObserveCollector",
       "openProductionAuthorizedContinuityPack",
       "prepareProductionAuthorizedContinuityTaskCompletionInteraction",
       "recordProductionAuthorizedContinuityOutcome"

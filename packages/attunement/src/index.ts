@@ -69,6 +69,29 @@ export {
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 export {
+  OBSERVE_APP_CATEGORIES,
+  OBSERVE_CONSENT_TERMS,
+  OBSERVE_CONSENT_VERSION,
+  ObserveStoreError,
+  emptyObserveState,
+  forgetObserveSession,
+  pauseObserveSession,
+  readObserveState,
+  resumeObserveSession,
+  startObserveSession
+} from "./observe-store.js";
+export type {
+  ObserveActiveSegment,
+  ObserveAppCategory,
+  ObserveCollectorLease,
+  ObserveErrorCode,
+  ObserveObservation,
+  ObserveSession,
+  ObserveSessionStatus,
+  ObserveState,
+  ObserveStoreOptions
+} from "./observe-store.js";
+export {
   completeLinkedNextStep,
   type CompleteLinkedNextStepOptions,
   type CompleteLinkedNextStepResult,
