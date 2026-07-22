@@ -17,6 +17,7 @@ import type { Command } from "commander";
 import {
   buildCalendarRegistry,
   buildMessagingRegistry,
+  backgroundModelExecutionBudgetEnvironment,
   createMessagingPollDispatchers,
   parseBoolean,
   parseNonNegativeInteger,
@@ -554,6 +555,7 @@ export async function installDaemonAutostart(
     safetyEnvironment.MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK = heavyWorkUnitsPerTick.toString();
   }
   Object.assign(safetyEnvironment, daemonResourcePolicyEnvironment(e));
+  Object.assign(safetyEnvironment, backgroundModelExecutionBudgetEnvironment(e));
   const plist = buildLaunchAgentPlist({
     environmentVariables: safetyEnvironment,
     label: LAUNCH_AGENT_LABEL,

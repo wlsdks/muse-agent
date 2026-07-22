@@ -163,6 +163,22 @@ export {
 } from "./background-review-arms.js";
 
 export {
+  BackgroundModelExecutionBudgetError,
+  DEFAULT_BACKGROUND_MODEL_MAX_CONCURRENCY,
+  DEFAULT_BACKGROUND_MODEL_MAX_INPUT_BYTES,
+  DEFAULT_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS,
+  DEFAULT_BACKGROUND_MODEL_MAX_QUEUE,
+  backgroundModelExecutionBudgetEnvironment,
+  createBackgroundModelExecutionBudgetProviders,
+  resolveBackgroundModelExecutionBudgetOptions,
+  type BackgroundModelExecutionBudgetErrorCode,
+  type BackgroundModelExecutionBudgetOptions,
+  type BackgroundModelExecutionBudgetProviders,
+  type BackgroundModelExecutionBudgetSnapshot,
+  type ResolvedBackgroundModelExecutionBudgetOptions
+} from "./background-model-execution-budget.js";
+
+export {
   ACTUATOR_MODES,
   DEFAULT_ACTUATOR_MODE,
   isActuatorMode,
