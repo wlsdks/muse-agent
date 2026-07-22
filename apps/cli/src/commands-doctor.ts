@@ -65,6 +65,7 @@ import { sleep, waitForShutdownSignal } from "./async-promises.js";
 import { collectResidentDaemonRuntime } from "./personal-agent-qualification-probes.js";
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { ProgramIO } from "./program.js";
+import { assessDaemonResourceAdmission, describeDaemonResourceAdmission, readDaemonResourceSnapshot, resolveDaemonResourcePolicy, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 
 export interface DoctorCommandHelpers {
   readonly apiRequest: (
@@ -109,6 +110,8 @@ export interface DoctorLocalRuntimeOptions {
   readonly daemonAutostartStatus?: DaemonAutostartStatus;
   /** Deterministic test/embedding seam for the shared resident-runtime probe. */
   readonly residentDaemonRuntime?: RuntimeQualificationObservation;
+  /** Deterministic test/embedding seam; production reads OS counters only. */
+  readonly daemonResourceSnapshot?: DaemonResourceSnapshot;
 }
 
 function doctorPath(env: MuseEnvironment, museHome: string, envKey: string, filename: string): string {
@@ -193,6 +196,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--grounding", "Score the bundled faithfulness + false-refusal corpus on the local model and print the two rates")
     .option("--weaknesses", "Show the Whetstone weakness ledger — what Muse has noticed it can't answer / didn't actually do")
     .option("--run-outcomes", "Show technical grounding diagnostics over canonical unique .muse/runs logs (not personal usefulness)")
+    .option("--resources", "Show the resident daemon's CPU/RAM admission policy without contacting models or remote services")
     .option("--approval-rate", "Show per-gate approval/denial counts from the action log — flags a gate class being reflexively approved (a 'rubber stamp')")
     .option("--calibration", "Calibrate the 'I'm not sure' abstention threshold on the bundled edge corpus (conformal coverage guarantee)")
     .option("--alpha <rate>", "Target miss rate for --calibration (default 0.1 → answer ≥90% of answerable items)")
@@ -209,6 +213,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         readonly grounding?: boolean;
         readonly weaknesses?: boolean;
         readonly runOutcomes?: boolean;
+        readonly resources?: boolean;
         readonly approvalRate?: boolean;
         readonly calibration?: boolean;
         readonly alpha?: string;
@@ -235,6 +240,17 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       // --run-outcomes is a read-only failure-RATE view over the run-logs.
       if (options.runOutcomes) {
         await runRunOutcomesDoctor(io, options.json === true);
+        return;
+      }
+      // Unlike the general doctor, this is deliberately a no-model, no-network
+      // inspection path: it reads only the LaunchAgent artifact and OS counters.
+      if (options.resources) {
+        const check = await daemonResourceDoctorCheck(helpers.localRuntime);
+        if (options.json) {
+          helpers.writeOutput(io, { checks: [check] });
+        } else {
+          io.stdout(`daemon resources — ${check.detail}\n`);
+        }
         return;
       }
       // --approval-rate is a read-only view over the action log's gated approve/deny outcomes.
@@ -504,6 +520,81 @@ async function resolveDaemonSelfLearningEnabled(
   }
 }
 
+/**
+ * Prefer the resource policy contained in the valid LaunchAgent artifact: it
+ * is the configuration the resident daemon sees after logout/reboot. Missing
+ * or unreadable artifacts fall back to the interactive shell/default policy.
+ */
+async function resolveDaemonResourceEnvironment(
+  env: MuseEnvironment,
+  daemonAutostart: DaemonAutostartStatus
+): Promise<{ readonly env: NodeJS.ProcessEnv; readonly source: "LaunchAgent" | "shell/default" }> {
+  if (daemonAutostart.kind !== "darwin" || daemonAutostart.artifact.state !== "valid") {
+    return { env, source: "shell/default" };
+  }
+  try {
+    const variables = parseLaunchAgentEnvironmentVariables(await fs.readFile(daemonAutostart.plistFile, "utf8"));
+    if (variables === undefined) return { env, source: "shell/default" };
+    const residentEnv = Object.create(env) as NodeJS.ProcessEnv;
+    for (const key of ["MUSE_DAEMON_RESOURCE_GUARD", "MUSE_DAEMON_MIN_FREE_MEMORY_MB", "MUSE_DAEMON_MAX_LOAD_PER_CORE"] as const) {
+      // An absent resident key means the daemon will use its code default after
+      // reboot, not the installing shell's override. Shadow every key (including
+      // with `undefined`) so a valid, partial plist cannot inherit shell policy
+      // and make doctor report a verdict the daemon will never apply.
+      Object.defineProperty(residentEnv, key, { configurable: true, enumerable: true, value: variables[key], writable: false });
+    }
+    return { env: residentEnv, source: "LaunchAgent" };
+  } catch {
+    return { env, source: "shell/default" };
+  }
+}
+
+async function resolveDoctorDaemonAutostart(
+  env: MuseEnvironment,
+  runtime: DoctorLocalRuntime,
+  runtimeOptions: DoctorLocalRuntimeOptions
+): Promise<DaemonAutostartStatus> {
+  const daemonEnv = Object.create(env) as NodeJS.ProcessEnv;
+  Object.defineProperty(daemonEnv, "MUSE_DAEMON_PLIST_FILE", {
+    configurable: true,
+    enumerable: true,
+    value: runtime.paths.launchAgentFile,
+    writable: false
+  });
+  return runtimeOptions.daemonAutostartStatus ?? getDaemonAutostartStatus(daemonEnv);
+}
+
+async function daemonResourceDoctorCheckFor(
+  env: MuseEnvironment,
+  daemonAutostart: DaemonAutostartStatus,
+  snapshot: DaemonResourceSnapshot
+): Promise<LocalCheck> {
+  const resourceEnvironment = await resolveDaemonResourceEnvironment(env, daemonAutostart);
+  const resourcePolicy = resolveDaemonResourcePolicy(resourceEnvironment.env);
+  const resourceAdmission = assessDaemonResourceAdmission(resourceEnvironment.env, snapshot);
+  return {
+    detail: describeDaemonResourceAdmission(resourcePolicy, snapshot, resourceAdmission, resourceEnvironment.source),
+    name: "daemon resources",
+    status: resourceAdmission.status === "defer" ? "warn" : "ok"
+  };
+}
+
+/**
+ * Dedicated, no-model/no-network resource inspection for `muse doctor
+ * --resources`. It intentionally reads only OS counters and the local
+ * LaunchAgent artifact, so it remains safe to run while the machine is busy.
+ */
+export async function daemonResourceDoctorCheck(runtimeOptions: DoctorLocalRuntimeOptions = {}): Promise<LocalCheck> {
+  const runtime = resolveDoctorLocalRuntime(runtimeOptions);
+  const env = createDoctorEnvironmentView(runtime.env, runtime);
+  const daemonAutostart = await resolveDoctorDaemonAutostart(env, runtime, runtimeOptions);
+  return daemonResourceDoctorCheckFor(
+    env,
+    daemonAutostart,
+    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot()
+  );
+}
+
 function withResidentRuntime(response: unknown, resident: ResidentDaemonRuntimeCheck): unknown {
   const runtime = {
     detail: resident.detail,
@@ -557,6 +648,13 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
 
   checks.push(await collectDoctorResidentRuntime(runtimeOptions));
+
+  const daemonAutostart = await resolveDoctorDaemonAutostart(env, runtime, runtimeOptions);
+  checks.push(await daemonResourceDoctorCheckFor(
+    env,
+    daemonAutostart,
+    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot()
+  ));
 
   // Model env — mirrors the runtime's resolveDefaultModel so local-only's
   // "ambient cloud keys ignored" guarantee is reported truthfully.
@@ -936,15 +1034,6 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // user has taught that Muse has captured and NOT yet learned. A doctor that stays
   // silent while that backlog grows is the reason it grew.
   const queued = await countPendingLessons(env);
-  const daemonEnv = Object.create(env) as NodeJS.ProcessEnv;
-  Object.defineProperty(daemonEnv, "MUSE_DAEMON_PLIST_FILE", {
-    configurable: true,
-    enumerable: true,
-    value: runtime.paths.launchAgentFile,
-    writable: false
-  });
-  const daemonAutostart = runtimeOptions.daemonAutostartStatus
-    ?? await getDaemonAutostartStatus(daemonEnv);
   checks.push(selfLearningCheck({
     // The gate the daemon ITSELF reads is MUSE_SELFLEARN_ENABLED, and it defaults to
     // TRUE. Doctor was asking about MUSE_IDLE_LEARNING_ENABLED — a different flag, for

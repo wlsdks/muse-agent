@@ -83,6 +83,10 @@ states say what evidence is missing; they do not render zero as success.
   heartbeat, light delivery/safety checks, polling, conflict watch, and retention
   available. It fails open on an invalid local observation and resumes on the
   first admitted tick.
+- [x] Keep valid explicit resource limits across resident restarts through the
+  narrow LaunchAgent allowlist, and expose the resolved resident policy plus
+  current admission verdict through the no-model/no-network `muse doctor
+  --resources` diagnostic.
 - [ ] Inventory per-loop CPU, resident memory, model load, queue depth, and
   cancellation latency using local, privacy-safe process measurements.
 - [ ] Define hard admission states: active user, low headroom, thermal/battery
@@ -101,7 +105,7 @@ remains responsive. On recovery it resumes at most one bounded unit.
 
 ### 4. Triage old reminder backlog without automation
 
-- [ ] Show counts/age bands only until the owner reviews the backlog; never send
+- [x] Show counts/age bands only until the owner reviews the backlog; never send
   historical reminders merely because delivery is re-enabled.
 - [ ] Offer explicit per-item or owner-confirmed bounded-batch choices:
   dismiss, snooze to a supplied time, retain, or draft a digest.

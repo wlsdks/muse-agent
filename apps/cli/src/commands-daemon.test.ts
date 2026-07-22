@@ -794,7 +794,10 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       ...tmpEnv(),
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_DAEMON_MAX_LOAD_PER_CORE: "0.5",
+      MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048",
       MUSE_DAEMON_PROVIDER_LOCK: "log",
+      MUSE_DAEMON_RESOURCE_GUARD: "true",
       MUSE_LOCAL_ONLY: "true",
       MUSE_PROACTIVE_PROVIDER: "telegram",
       MUSE_SELFLEARN_ENABLED: "false",
@@ -824,6 +827,9 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_SELFLEARN_ENABLED</key>\n    <string>false</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_DELIVERY_ENABLED</key>\n    <string>false</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_PROVIDER_LOCK</key>\n    <string>log</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_RESOURCE_GUARD</key>\n    <string>true</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_MIN_FREE_MEMORY_MB</key>\n    <string>2048</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_MAX_LOAD_PER_CORE</key>\n    <string>0.5</string>");
     expect(plist).not.toContain("MUSE_PROACTIVE_PROVIDER");
     expect(plist).not.toContain("must-not-enter-plist");
     // The exact argv passed to the seam, IN ORDER — unload adopts the fresh

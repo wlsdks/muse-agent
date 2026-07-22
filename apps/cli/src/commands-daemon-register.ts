@@ -108,7 +108,7 @@ import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock } from "./daemon-messaging-safety.js";
-import { assessDaemonResourceAdmission, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
+import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -466,6 +466,7 @@ export async function installDaemonAutostart(
   if (providerLock === "log") {
     safetyEnvironment.MUSE_DAEMON_PROVIDER_LOCK = "log";
   }
+  Object.assign(safetyEnvironment, daemonResourcePolicyEnvironment(e));
   const plist = buildLaunchAgentPlist({
     environmentVariables: safetyEnvironment,
     label: LAUNCH_AGENT_LABEL,

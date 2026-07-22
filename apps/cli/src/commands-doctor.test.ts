@@ -9,6 +9,7 @@ import { analyzeRunOutcomes } from "@muse/proactivity";
 import {
   classifyHomeAlertsConfig,
   classifyMcpServersField,
+  daemonResourceDoctorCheck,
   doctorStatusMarker,
   formatDoctorSummaryLine,
   classifyWebWatchConfig,
@@ -197,6 +198,61 @@ describe("local doctor runtime ownership", () => {
     expect(selfLearning?.status).toBe("warn");
     expect(selfLearning?.detail).toContain("OFF");
     expect(selfLearning?.detail).not.toContain("learning while idle");
+  });
+
+  it("reports the contained LaunchAgent resource policy and defers only heavyweight background work", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-contained-resource-"));
+    const plistFile = join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    mkdirSync(join(homeDir, "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      environmentVariables: { MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048" },
+      label: "com.muse.daemon",
+      programArguments: ["/stable/node", "/stable/muse/dist/index.js", "daemon"],
+      stderrPath: join(homeDir, ".muse", "logs", "daemon.err.log"),
+      stdoutPath: join(homeDir, ".muse", "logs", "daemon.log")
+    }));
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+        kind: "darwin",
+        plistFile,
+        runtime: { pid: 4321, state: "running" }
+      },
+      daemonResourceSnapshot: { cpuCount: 8, freeMemoryBytes: 1024 * 1024 * 1024, load1: 1 },
+      env: {
+        HOME: homeDir,
+        MUSE_DAEMON_MAX_LOAD_PER_CORE: "4",
+        MUSE_DAEMON_MIN_FREE_MEMORY_MB: "128",
+        MUSE_DAEMON_RESOURCE_GUARD: "false",
+        MUSE_LOCAL_ONLY: "true"
+      },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir
+    });
+
+    const resources = report.checks.find((check) => check.name === "daemon resources");
+    expect(resources).toMatchObject({ status: "warn" });
+    expect(resources?.detail).toContain("LaunchAgent; guard on; min free 2048 MiB; max load 0.75/core");
+    expect(resources?.detail).toContain("heavy background work deferred (low-free-memory)");
+  });
+
+  it("has a dedicated resource check that never contacts a model or remote service", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-resource-standalone-"));
+    const check = await daemonResourceDoctorCheck({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist"),
+        runtime: { state: "not-registered" }
+      },
+      daemonResourceSnapshot: { cpuCount: 8, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 },
+      env: { HOME: homeDir },
+      fetchImpl: async () => { throw new Error("resource doctor must not fetch"); },
+      homeDir
+    });
+
+    expect(check).toMatchObject({ name: "daemon resources", status: "ok" });
+    expect(check.detail).toContain("shell/default");
   });
 
   it("falls back to the interactive shell self-learning gate when a valid artifact cannot be read", async () => {
