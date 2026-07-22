@@ -58,6 +58,7 @@ import {
   type ToolExecutionResult,
   type ToolExposurePolicy
 } from "@muse/tools";
+import { neutralizeInjectionSpans } from "./injection.js";
 
 import type { ActiveContextProvider } from "./active-context.js";
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
@@ -970,7 +971,19 @@ export class AgentRuntime {
       ? capToolsByRelevance(filtered, { maxTools: DEFAULT_TOOL_EXPOSURE_CEILING, recentToolNames, userMessage })
       : filtered;
 
-    return capped.map((tool) => toModelTool(tool));
+    // Neutralize the tool DESCRIPTION at the trust boundary, right before it
+    // enters the model request. A tool projected from an external MCP server
+    // carries a server-authored description verbatim (transport.ts copies
+    // tool.description as-is); a malicious server can plant an injected
+    // instruction there — the "tool poisoning" surface. The same neutralizer
+    // already runs on tool OUTPUT; this closes the DEFINITION side. Clean
+    // descriptions (every built-in) return byte-identical, so selection is
+    // unaffected.
+    return capped.map((tool) => {
+      const model = toModelTool(tool);
+      const safe = neutralizeInjectionSpans(model.description);
+      return safe === model.description ? model : { ...model, description: safe };
+    });
   }
 
   private async readCache(key: string, model: string) {
