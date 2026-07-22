@@ -75,6 +75,16 @@ stack) — Muse uses all of it, but bent to the five principles above:
 - **Position** → "lost in the middle" / attention-basin edge-placement, now query-aware
   (principle 1+4).
 
+The physical local-provider boundary also enforces a model-aware context-token
+ceiling. Ollama's configured or successfully down-probed `num_ctx` remains the
+provider wire authority; Muse's admission window is the smaller of that value
+and the owner's configured ceiling. AgentRuntime compacts message history before
+every model turn, including after tool results, while the final provider adapter
+only validates the complete request (messages, tool schemas, response format,
+and attachments). It never silently rewrites a direct caller. This is a token
+admission guarantee, not a measurement of actual KV-cache bytes, prefix-cache
+hits, or model quality.
+
 What the coding-agent playbook does NOT give us, and we must invent: the **grounding
 admission gate** (principle 2), the **cross-session consolidation spine** (principle 3),
 and the **memory-as-untrusted-surface** posture (principle 5). Those are Muse's own.

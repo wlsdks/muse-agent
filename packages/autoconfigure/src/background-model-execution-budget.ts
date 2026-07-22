@@ -681,13 +681,19 @@ export function createBackgroundModelExecutionBudgetProviders(
     id: provider.id,
     listModels: () => provider.listModels(),
     generate: (request) => runForegroundGenerate(provider, coordinator, request),
-    stream: (request) => foregroundStream(provider, coordinator, request)
+    stream: (request) => foregroundStream(provider, coordinator, request),
+    ...(provider.resolveContextWindow
+      ? { resolveContextWindow: (model: string) => provider.resolveContextWindow!(model) }
+      : {})
   };
   const background: ModelProvider = {
     id: backgroundProvider.id,
     listModels: () => backgroundProvider.listModels(),
     generate: (request) => runBackgroundGenerate(backgroundProvider, coordinator, request),
-    stream: (request) => backgroundStream(backgroundProvider, coordinator, request)
+    stream: (request) => backgroundStream(backgroundProvider, coordinator, request),
+    ...(backgroundProvider.resolveContextWindow
+      ? { resolveContextWindow: (model: string) => backgroundProvider.resolveContextWindow!(model) }
+      : {})
   };
   return { background, foreground, snapshot: () => coordinator.snapshot() };
 }

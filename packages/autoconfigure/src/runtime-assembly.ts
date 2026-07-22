@@ -208,6 +208,11 @@ import {
   resolveCrossProcessModelExecutionLeaseOptions,
   type CrossProcessModelExecutionLeaseSnapshot
 } from "./cross-process-model-execution-lease.js";
+import {
+  createLocalModelContextAdmissionProviders,
+  resolveLocalModelContextAdmissionOptions,
+  type LocalModelContextAdmissionSnapshot
+} from "./local-model-context-admission.js";
 import { mintProgressiveAutonomyOrganicAuthority } from "./progressive-autonomy-organic-authority.js";
 import { createTrustedProgressiveAutonomyToolOpportunityObserver } from "./progressive-autonomy-runtime-observer.js";
 import { resolveDefaultUserId } from "./user-id.js";
@@ -255,6 +260,7 @@ export interface MuseRuntimeAssembly {
     readonly latencyQuery: LatencyQuery;
     readonly metrics: InMemoryAgentMetrics;
     readonly crossProcessModelExecutionLeaseSnapshot?: () => CrossProcessModelExecutionLeaseSnapshot;
+    readonly localModelContextAdmissionSnapshot?: () => LocalModelContextAdmissionSnapshot;
     readonly modelExecutionBudgetSnapshot?: () => BackgroundModelExecutionBudgetSnapshot;
     readonly sloEvaluator: SloAlertEvaluator;
     readonly tokenCostQuery: TokenCostQuery;
@@ -444,6 +450,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     modelProvider,
     backgroundModelProvider,
     crossProcessModelExecutionLeaseSnapshot,
+    localModelContextAdmissionSnapshot,
     modelExecutionBudgetSnapshot,
     conversationSummaryStore,
     taskMemoryStore,
@@ -620,6 +627,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       latencyQuery,
       metrics: agentMetrics,
       ...(crossProcessModelExecutionLeaseSnapshot ? { crossProcessModelExecutionLeaseSnapshot } : {}),
+      ...(localModelContextAdmissionSnapshot ? { localModelContextAdmissionSnapshot } : {}),
       ...(modelExecutionBudgetSnapshot ? { modelExecutionBudgetSnapshot } : {}),
       sloEvaluator,
       ...(telemetryAggregator ? { telemetryAggregator } : {}),
@@ -774,7 +782,14 @@ function buildModelAndStoreStack(
       crossProcessProviders?.background ?? usageRecordingProvider
     )
     : undefined;
-  const modelProvider = budgetProviders?.foreground;
+  const contextAdmissionProviders = budgetProviders && modelResolution?.requiresLocalExecutionLease
+    ? createLocalModelContextAdmissionProviders(
+      budgetProviders.foreground,
+      budgetProviders.background,
+      resolveLocalModelContextAdmissionOptions(env)
+    )
+    : undefined;
+  const modelProvider = contextAdmissionProviders?.foreground ?? budgetProviders?.foreground;
   const conversationSummaryStore = createConversationSummaryStore(db, env);
   const taskMemoryStore = createTaskMemoryStore(db, env);
   const userMemoryStore = createUserMemoryStore(db, env);
@@ -795,8 +810,9 @@ function buildModelAndStoreStack(
 
   return {
     modelProvider,
-    backgroundModelProvider: budgetProviders?.background,
+    backgroundModelProvider: contextAdmissionProviders?.background ?? budgetProviders?.background,
     crossProcessModelExecutionLeaseSnapshot: crossProcessProviders?.snapshot,
+    localModelContextAdmissionSnapshot: contextAdmissionProviders?.snapshot,
     modelExecutionBudgetSnapshot: budgetProviders?.snapshot,
     conversationSummaryStore,
     taskMemoryStore,

@@ -111,15 +111,20 @@ states say what evidence is missing; they do not render zero as success.
   resumable progress, publishes only complete files through immutable vector
   generations, and leaves explicit full reindex unlimited. AgentRuntime model,
   fallback, and read-plan retries now share one per-run count/backoff allowance
-  with cooperative cancellation. HTTP/MCP/auxiliary retries and Context/KV
-  budgets remain open. Local model `generate` and `stream` calls now also pass
+  with cooperative cancellation. HTTP/MCP/auxiliary retries remain open. Local
+  model `generate` and `stream` calls now also pass
   through a default-on, owner-only filesystem lease shared by independently
   running CLI, API, and daemon processes. Foreground tickets outrank background
   tickets, dead owners are fenced before recovery, and an uncooperative
   cancelled provider retains its lease until settlement. API proactive,
   followup, objectives, consolidation, warmup, and standalone daemon model work
   use the background projection so foreground demand can preempt it. Embedding
-  and KV budgets remain open.
+  budgets remain open. Local physical requests are now bounded by a model-aware context-token
+  admission window: Ollama's configured/probed wire window is clamped by the
+  owner ceiling, complete tool/response/attachment input is counted, and each
+  agent tool-loop turn re-compacts before dispatch. Unknown remote attachment
+  size and irreducible over-budget requests fail closed before usage or lease
+  acquisition. Actual KV-cache bytes remain unmeasured and open.
 - [x] Emit only decision-grade telemetry: work admitted/deferred/cancelled and
   the policy reason. Do not sample a costly always-on dashboard.
 - [x] Aggregate claimed-unit duration, CPU delta, maximum positive RSS growth,
@@ -134,9 +139,9 @@ depth, duration, and truthful cooperative stop-boundary latency. The broader
 inventory item stays open until model load is measured directly. Its bounded
 aggregate now survives daemon restarts and makes comparative dogfooding
 possible without adding a dashboard or an unbounded telemetry log. Thermal
-production support and the wider context/KV-cache and browser budgets remain
-open rather than being inferred from the daemon governor or either model
-execution coordinator.
+production support, actual KV-cache byte measurement, and wider browser budgets
+remain open rather than being inferred from the daemon governor or the model
+execution/context-token coordinators.
 
 **Gate:** under an injected constrained-resource state, background work starts
 zero new model/tool jobs, records a bounded deferral reason, and foreground chat

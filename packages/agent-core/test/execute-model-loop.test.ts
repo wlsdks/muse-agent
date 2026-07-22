@@ -4,6 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 
 import { executeModelLoop, type ModelLoopRunner } from "../src/model-loop.js";
+import { prepareContextAdmittedRequest } from "../src/agent-runtime-request.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
 import type { AgentRunContext } from "../src/types.js";
 
@@ -24,16 +25,21 @@ const runner = (opts: {
   turns: ModelResponse[];
   maxToolCalls?: number;
   ran?: string[];
+  requests?: ModelRequest[];
+  toolOutput?: string;
   checkpointStore?: unknown;
 }): ModelLoopRunner => {
   let turn = 0;
   return {
     maxToolCalls: opts.maxToolCalls ?? 5,
     ...(opts.checkpointStore ? { checkpointStore: opts.checkpointStore } : {}),
-    generateWithTracing: async () => opts.turns[Math.min(turn++, opts.turns.length - 1)]!,
+    generateWithTracing: async (_context, _provider, modelRequest) => {
+      opts.requests?.push(modelRequest);
+      return opts.turns[Math.min(turn++, opts.turns.length - 1)]!;
+    },
     executeToolCall: async (_ctx, toolCall): Promise<ExecutedToolResult> => {
       opts.ran?.push(toolCall.name);
-      return { result: { id: toolCall.id, name: toolCall.name, output: `ran ${toolCall.name}`, status: "ok" }, toolCall };
+      return { result: { id: toolCall.id, name: toolCall.name, output: opts.toolOutput ?? `ran ${toolCall.name}`, status: "ok" }, toolCall };
     },
   } as unknown as ModelLoopRunner;
 };
@@ -61,6 +67,64 @@ describe("executeModelLoop", () => {
     // The assistant tool-call turn and the tool result both land in the transcript.
     expect(result.intermediateMessages.map((m) => m.role)).toEqual(["assistant", "tool"]);
     expect(result.toolResults[0]?.result.output).toBe("ran echo");
+  });
+
+  it("compacts before each physical turn while preserving the current tool exchange and exact source", async () => {
+    const physicalRequests: ModelRequest[] = [];
+    const localProvider = {
+      ...provider,
+      id: "local-test",
+      resolveContextWindow: async () => ({ providerWindowTokens: 512, provenance: "configured" as const })
+    };
+    const prepare = async (selected: ModelProvider, turnRequest: ModelRequest) => prepareContextAdmittedRequest({
+      maxContextWindowTokens: 512,
+      outputReserveTokens: 64
+    }, selected, turnRequest);
+    const loop: ModelLoopRunner = {
+      ...runner({
+        requests: physicalRequests,
+        toolOutput: `CURRENT_RESULT ${"x".repeat(500)}`,
+        turns: [resp("calling", [call("t1", "echo")]), resp("final")]
+      }),
+      prepareContextAdmittedRequest: prepare
+    };
+    await executeModelLoop(loop, context(), localProvider, {
+      ...request(),
+      messages: [
+        { content: "old question ".repeat(200), role: "user" },
+        { content: "old answer ".repeat(200), role: "assistant" },
+        { content: "latest exact source https://example.invalid/item", role: "user" }
+      ]
+    });
+    expect(physicalRequests).toHaveLength(2);
+    const second = physicalRequests[1]?.messages ?? [];
+    expect(second.some((message) => message.role === "assistant" && message.toolCalls?.[0]?.id === "t1")).toBe(true);
+    expect(second.some((message) => message.role === "tool" && message.toolCallId === "t1" && message.content.includes("CURRENT_RESULT"))).toBe(true);
+    expect(second.some((message) => message.content.includes("https://example.invalid/item"))).toBe(true);
+  });
+
+  it("rejects an irreducible current tool exchange before a second physical turn", async () => {
+    const physicalRequests: ModelRequest[] = [];
+    const localProvider = {
+      ...provider,
+      id: "local-test",
+      resolveContextWindow: async () => ({ providerWindowTokens: 512, provenance: "configured" as const })
+    };
+    const loop: ModelLoopRunner = {
+      ...runner({
+        requests: physicalRequests,
+        toolOutput: `CURRENT_RESULT ${"x".repeat(5_000)}`,
+        turns: [resp("calling", [call("t1", "echo")]), resp("must not dispatch")]
+      }),
+      prepareContextAdmittedRequest: (selected, turnRequest) => prepareContextAdmittedRequest({
+        maxContextWindowTokens: 512,
+        outputReserveTokens: 64
+      }, selected, turnRequest)
+    };
+    await expect(executeModelLoop(loop, context(), localProvider, request())).rejects.toMatchObject({
+      code: "CONTEXT_BUDGET_EXCEEDED"
+    });
+    expect(physicalRequests).toHaveLength(1);
   });
 
   it("checkpoints AFTER a tool step (mid-run resume) — the saved state replays the tool result so it isn't re-run", async () => {

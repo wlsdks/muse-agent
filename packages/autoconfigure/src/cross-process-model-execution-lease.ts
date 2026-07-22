@@ -424,7 +424,10 @@ export function createCrossProcessModelExecutionLeaseProviders(
     id: provider.id,
     listModels: () => provider.listModels(),
     generate: (request) => generate(role, request),
-    stream: (request) => stream(role, request)
+    stream: (request) => stream(role, request),
+    ...(provider.resolveContextWindow
+      ? { resolveContextWindow: (model: string) => provider.resolveContextWindow!(model) }
+      : {})
   });
 
   return { background: roleProvider("background"), foreground: roleProvider("foreground"), snapshot };

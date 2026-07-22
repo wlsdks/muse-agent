@@ -151,4 +151,38 @@ describe("OllamaProvider — context-probe enrichment (opt-in)", () => {
     expect(warn.mock.calls.filter((c) => String(c[0]).includes("clamping"))).toHaveLength(1);
     warn.mockRestore();
   });
+
+  it("keeps a shared probe alive when one caller aborts while another stream waits", async () => {
+    let resolveShow!: (response: Response) => void;
+    const show = new Promise<Response>((resolve) => { resolveShow = resolve; });
+    const chatBodies: Record<string, unknown>[] = [];
+    let showCalls = 0;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      if (url.endsWith("/api/show")) {
+        showCalls += 1;
+        return show;
+      }
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      chatBodies.push(body);
+      return body.stream === true
+        ? new Response(`${JSON.stringify({ done: true, message: { content: "ok" }, model: "gemma4:12b" })}\n`)
+        : new Response(JSON.stringify({ message: { content: "ok" } }));
+    }) as typeof fetch;
+    const provider = new OllamaProvider({ fetch: fetchImpl, numCtx: 32_768, probeContextWindow: true });
+    const controller = new AbortController();
+    const cancelled = provider.generate(userReq({ signal: controller.signal }));
+    const iterator = provider.stream(userReq())[Symbol.asyncIterator]();
+    const streamed = iterator.next();
+    await vi.waitFor(() => expect(showCalls).toBe(1));
+    controller.abort("private");
+    resolveShow(new Response(JSON.stringify({ model_info: { "gemma4.context_length": 8192 } })));
+
+    await expect(cancelled).rejects.toMatchObject({ retryable: false });
+    await expect(streamed).resolves.toMatchObject({ done: false, value: { type: "text-delta" } });
+    await expect(iterator.next()).resolves.toMatchObject({ done: false, value: { type: "done" } });
+    expect(chatBodies).toHaveLength(1);
+    expect(numCtxOf(chatBodies[0])).toBe(8192);
+    await provider.generate(userReq());
+    expect(showCalls).toBe(1);
+  });
 });

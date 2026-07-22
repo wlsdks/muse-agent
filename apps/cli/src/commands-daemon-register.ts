@@ -19,6 +19,7 @@ import {
   buildMessagingRegistry,
   backgroundModelExecutionBudgetEnvironment,
   crossProcessModelExecutionLeaseEnvironment,
+  localModelContextAdmissionEnvironment,
   createMessagingPollDispatchers,
   parseBoolean,
   parseNonNegativeInteger,
@@ -558,6 +559,7 @@ export async function installDaemonAutostart(
   }
   Object.assign(safetyEnvironment, daemonResourcePolicyEnvironment(e));
   Object.assign(safetyEnvironment, backgroundModelExecutionBudgetEnvironment(e));
+  Object.assign(safetyEnvironment, localModelContextAdmissionEnvironment(e));
   try {
     Object.assign(safetyEnvironment, crossProcessModelExecutionLeaseEnvironment(e));
   } catch {

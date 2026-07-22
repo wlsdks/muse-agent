@@ -141,7 +141,7 @@ export function trimConversationMessages(
   totalTokens -= ensureBoundaryIntegrity(messages, tokens);
   totalTokens = trimLeadingMemoryMessages(messages, tokens, totalTokens, trimTarget);
   totalTokens -= ensureBoundaryIntegrity(messages, tokens);
-  totalTokens = trimToolHistory(messages, tokens, totalTokens, trimTarget);
+  totalTokens = trimToolHistory(messages, tokens, totalTokens, trimTarget, options.preserveLatestToolExchange === true);
   totalTokens -= removeOrphanToolResponses(messages, tokens);
   totalTokens -= removeUnansweredToolCalls(messages, tokens, estimator, messageStructureOverhead);
 
@@ -179,7 +179,7 @@ export function trimConversationMessages(
     if (totalTokens > hardBudgetTokens) {
       totalTokens = trimOldHistory(messages, tokens, totalTokens, hardBudgetTokens);
       totalTokens -= ensureBoundaryIntegrity(messages, tokens);
-      totalTokens = trimToolHistory(messages, tokens, totalTokens, hardBudgetTokens);
+      totalTokens = trimToolHistory(messages, tokens, totalTokens, hardBudgetTokens, options.preserveLatestToolExchange === true);
       totalTokens -= removeOrphanToolResponses(messages, tokens);
       totalTokens -= removeUnansweredToolCalls(messages, tokens, estimator, messageStructureOverhead);
       removedCount = beforeCount - messages.length + 1;
@@ -415,11 +415,15 @@ function trimToolHistory(
   messages: ConversationMessage[],
   tokens: number[],
   currentTokens: number,
-  budgetTokens: number
+  budgetTokens: number,
+  preserveLatestToolExchange: boolean
 ): number {
   let totalTokens = currentTokens;
   const protectedIndex = Math.max(0, findLastIndex(messages, (message) => message.role === "user"));
   const removeStartIndex = protectedIndex + 1;
+  let protectedExchangeIndex = preserveLatestToolExchange
+    ? latestCompleteToolExchangeIndex(messages, removeStartIndex)
+    : -1;
 
   while (totalTokens > budgetTokens && messages.length > 1) {
     if (removeStartIndex > messages.length - 1) {
@@ -428,14 +432,31 @@ function trimToolHistory(
 
     const removeCount = calculateRemoveGroupSize(messages.slice(removeStartIndex));
 
-    if (removeCount <= 0 || removeStartIndex + removeCount > messages.length) {
+    if (
+      removeCount <= 0
+      || removeStartIndex + removeCount > messages.length
+      || (protectedExchangeIndex >= 0 && removeStartIndex + removeCount > protectedExchangeIndex)
+    ) {
       break;
     }
 
     totalTokens -= removeAt(messages, tokens, removeStartIndex, removeCount);
+    if (protectedExchangeIndex >= 0) protectedExchangeIndex -= removeCount;
   }
 
   return totalTokens;
+}
+
+function latestCompleteToolExchangeIndex(messages: readonly ConversationMessage[], startIndex: number): number {
+  for (let index = messages.length - 1; index >= startIndex; index--) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant" || !hasToolCalls(message)) continue;
+    const callCount = message.toolCalls?.length ?? 0;
+    if (callCount > 0 && countFollowingToolResponses(message, messages.slice(index + 1)) === callCount) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function calculateRemoveGroupSize(messages: readonly ConversationMessage[]): number {

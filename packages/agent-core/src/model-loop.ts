@@ -147,6 +147,7 @@ export interface ModelLoopRunner {
     provider: ModelProvider,
     request: ModelRequest
   ): Promise<ModelResponse>;
+  prepareContextAdmittedRequest?(provider: ModelProvider, request: ModelRequest): Promise<ModelRequest>;
   executeToolCall(
     context: AgentRunContext,
     toolCall: ModelToolCall,
@@ -666,11 +667,16 @@ export async function executeModelLoop(
     messages = maskStaleToolObservations(messages, {
       ...(runner.contextReferenceStore ? { refStore: runner.contextReferenceStore } : {})
     }).messages;
-    const response = await runner.generateWithTracing(context, provider, {
+    const pendingRequest: ModelRequest = {
       ...request,
       messages,
       tools: activeTools
-    });
+    };
+    const turnRequest = runner.prepareContextAdmittedRequest
+      ? await runner.prepareContextAdmittedRequest(provider, pendingRequest)
+      : pendingRequest;
+    messages = turnRequest.messages;
+    const response = await runner.generateWithTracing(context, provider, turnRequest);
     const calls = response.toolCalls ?? [];
 
     if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
@@ -786,11 +792,16 @@ export async function* executeStreamingModelLoop(
     messages = maskStaleToolObservations(messages, {
       ...(runner.contextReferenceStore ? { refStore: runner.contextReferenceStore } : {})
     }).messages;
-    const turnStream = streamModelTurn(runner, context, provider, {
+    const pendingRequest: ModelRequest = {
       ...request,
       messages,
       tools: activeTools
-    }, options);
+    };
+    const turnRequest = runner.prepareContextAdmittedRequest
+      ? await runner.prepareContextAdmittedRequest(provider, pendingRequest)
+      : pendingRequest;
+    messages = turnRequest.messages;
+    const turnStream = streamModelTurn(runner, context, provider, turnRequest, options);
     let next = await turnStream.next();
 
     while (!next.done) {

@@ -50,6 +50,31 @@ describe("executePlanExecuteLoop", () => {
     expect(result.toolResults).toHaveLength(1);
   });
 
+  it("prepares each plan and synthesis request exactly once before physical generation", async () => {
+    const prepared: ModelRequest[] = [];
+    const generated: ModelRequest[] = [];
+    let turn = 0;
+    const run: PlanExecuteRunner = {
+      executeToolCall: async (_ctx, toolCall) => ({
+        result: { id: toolCall.id, name: toolCall.name, output: "sunny", status: "completed" },
+        toolCall
+      }),
+      generateWithTracing: async (_ctx, _provider, modelRequest) => {
+        generated.push(modelRequest);
+        return [resp(plan([step()])), resp("It is sunny.")][turn++]!;
+      },
+      maxToolCalls: 5,
+      prepareContextAdmittedRequest: async (_provider, modelRequest) => {
+        const marked = { ...modelRequest, metadata: { prepared: true } };
+        prepared.push(marked);
+        return marked;
+      }
+    };
+    await executePlanExecuteLoop(run, context(), provider, request());
+    expect(prepared).toHaveLength(2);
+    expect(generated).toEqual(prepared);
+  });
+
   it("falls back to a direct answer when the plan is empty", async () => {
     const result = await executePlanExecuteLoop(
       runner([resp("[]"), resp("Direct answer.")]),

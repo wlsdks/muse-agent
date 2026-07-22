@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added model-aware context admission for physical local inference calls.
+  Ollama now exposes one promise-cached configured/probed context-window
+  authority shared by generation and streaming; Muse clamps its owner admission
+  ceiling without changing the provider wire window. Complete requests include
+  messages, tool schemas, response formats, and conservative inline attachment
+  charges. Agent tool loops re-compact before every physical turn, while an
+  outermost local-provider guard rejects irreducible/direct oversized requests
+  before usage recording or either execution lease. Telemetry is fixed-size and
+  explicitly reports token admission, not measured KV-cache bytes.
+
 - Added default-on cross-process admission for local model generation and
   streaming across CLI, API, and daemon runtimes. The owner-only filesystem
   protocol uses atomic ticket publication, a token-scoped bakery guard,

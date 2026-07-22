@@ -300,3 +300,35 @@ describe("trimConversationMessages — compactionFailureReason telemetry", () =>
     expect(r.compactionFailureReason).toBeUndefined();
   });
 });
+
+describe("trimConversationMessages — current tool exchange protection", () => {
+  const conversation = (): ConversationMessage[] => [
+    m("user", "old".repeat(100)),
+    m("assistant", "answer".repeat(100)),
+    m("user", "latest https://example.invalid/item"),
+    m("assistant", "", { toolCalls: [{ arguments: {}, id: "t1", name: "lookup" }] }),
+    m("tool", "CURRENT_RESULT", { name: "lookup", toolCallId: "t1" })
+  ];
+
+  it("drops older history but retains the newest complete assistant/tool pair", () => {
+    const result = trimConversationMessages(conversation(), base({
+      maxContextWindowTokens: 100,
+      preserveLatestToolExchange: true
+    }));
+    expect(result.messages.some((message) => message.content.includes("old"))).toBe(false);
+    expect(result.messages.some((message) => message.toolCalls?.[0]?.id === "t1")).toBe(true);
+    expect(result.messages.some((message) => message.toolCallId === "t1" && message.content === "CURRENT_RESULT")).toBe(true);
+    expect(result.messages.some((message) => message.content.includes("https://example.invalid/item"))).toBe(true);
+  });
+
+  it("reports an irreducible over-budget suffix instead of deleting its execution evidence", () => {
+    const result = trimConversationMessages(conversation(), base({
+      maxContextWindowTokens: 10,
+      preserveLatestToolExchange: true
+    }));
+    expect(result.estimatedTokens).toBeGreaterThan(result.budgetTokens);
+    expect(result.compactionFailureReason).toBe("guard_blocked");
+    expect(result.messages.some((message) => message.toolCalls?.[0]?.id === "t1")).toBe(true);
+    expect(result.messages.some((message) => message.toolCallId === "t1")).toBe(true);
+  });
+});

@@ -27,6 +27,14 @@ export interface ConversationTrimOptions {
   readonly compactionThreshold?: number;
   readonly insertSummary?: boolean;
   /**
+   * Preserve the newest complete assistant tool-call + tool-result exchange
+   * after the last user message. Per-physical-turn admission enables this so
+   * compaction cannot erase evidence that a tool already ran and invite the
+   * model to repeat the effect. If that irreducible suffix does not fit, the
+   * caller must reject the request instead of dropping it.
+   */
+  readonly preserveLatestToolExchange?: boolean;
+  /**
    * Soft "working budget" in tokens. When set and the conversation
    * exceeds this threshold (even though it's still within
    * `maxContextWindowTokens` minus reserves), trim proactively to
@@ -536,6 +544,19 @@ export type { CompactionFailureInput, CompactionFailureStatusLike } from "./comp
 export type { CompactionFailureReason };
 
 export {
+  canonicalModelJson,
+  estimateModelMessagesTokens,
+  estimateModelRequestTokens,
+  estimateModelToolsTokens,
+  MODEL_ATTACHMENT_FRAMING_TOKENS,
+  MODEL_MESSAGE_FRAMING_TOKENS,
+  MODEL_RESPONSE_FORMAT_FRAMING_TOKENS,
+  MODEL_TOOL_DEFINITION_FRAMING_TOKENS,
+  ModelRequestEstimateError
+} from "./model-request-estimator.js";
+export type { ModelRequestTokenEstimate } from "./model-request-estimator.js";
+
+export {
   chunkDroppedOnToolPairs,
   DEFAULT_CHUNK_MAX_CHARS,
   summarizeDroppedContext,
@@ -690,4 +711,3 @@ export { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearne
 // Bounded deterministic query identifier for the recall-hits sidecar — fuels
 // selectPromotableMemories's minUniqueQueries gate.
 export { hashQuery, normalizeQueryForHash } from "./query-hash.js";
-

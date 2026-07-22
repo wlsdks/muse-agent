@@ -45,6 +45,7 @@ import {
 
 import { parseBoolean, parseCsv, parseInteger } from "./env-parsers.js";
 import { ConfigurationError, type MuseEnvironment } from "./index.js";
+import { resolveLocalModelContextAdmissionOptions } from "./local-model-context-admission.js";
 
 export function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
   // Personal pivot: the agent operates in a single-user environment
@@ -192,11 +193,17 @@ export function resolveStreamIdleTimeoutMs(env: MuseEnvironment): number {
 }
 
 export function buildContextWindowOptions(env: MuseEnvironment): ConversationTrimOptions {
-  const maxContextWindowTokens = parseInteger(env.MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS, 128_000);
-  const outputReserveTokens = parseInteger(env.MUSE_LLM_MAX_OUTPUT_TOKENS, 4_096);
+  const { maxContextWindowTokens, outputReserveTokens } = resolveLocalModelContextAdmissionOptions(env);
   const explicitWorkingBudget = env.MUSE_LLM_WORKING_BUDGET_TOKENS;
+  const parsedWorkingBudget = explicitWorkingBudget?.trim();
+  const explicitWorkingBudgetTokens = parsedWorkingBudget && /^(0|[1-9]\d*)$/u.test(parsedWorkingBudget)
+    ? Number(parsedWorkingBudget)
+    : Number.NaN;
   const workingBudgetTokens = explicitWorkingBudget !== undefined
-    ? parseInteger(explicitWorkingBudget, 0)
+    && Number.isSafeInteger(explicitWorkingBudgetTokens)
+    && explicitWorkingBudgetTokens >= 0
+    && explicitWorkingBudgetTokens <= 2_000_000
+    ? explicitWorkingBudgetTokens
     : Math.floor(maxContextWindowTokens * DEFAULT_WORKING_BUDGET_RATIO);
   const strategyRaw = env.MUSE_COMPACTION_STRATEGY?.trim().toLowerCase();
   const compactionStrategy: "temporal" | "importance" =

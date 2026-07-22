@@ -641,6 +641,40 @@ describe("AgentRuntime", () => {
     });
   });
 
+  it("reports and trims against the provider window below the owner ceiling", async () => {
+    const seen = vi.fn();
+    const base = createProvider({}, "local-test", seen);
+    const resolveContextWindow = vi.fn(async () => ({ providerWindowTokens: 4_096, provenance: "configured" as const }));
+    const runtime = createAgentRuntime({
+      contextWindow: {
+        maxContextWindowTokens: 8_192,
+        outputReserveTokens: 256,
+        workingBudgetTokens: 2_000
+      },
+      modelProvider: {
+        ...base,
+        resolveContextWindow
+      }
+    });
+    const result = await runtime.run({
+      messages: [
+        { content: "old ".repeat(1_000), role: "user" },
+        { content: "old answer ".repeat(1_000), role: "assistant" },
+        { content: "latest exact source https://example.invalid/item", role: "user" }
+      ],
+      model: "local/test"
+    });
+    expect(result.contextWindow).toMatchObject({ budgetTokens: 3_840, removedCount: 1 });
+    expect(seen).toHaveBeenCalledWith(expect.objectContaining({
+      messages: expect.arrayContaining([
+        expect.objectContaining({ content: "latest exact source https://example.invalid/item", role: "user" })
+      ])
+    }));
+    // One resolution prepares the initial context report; one prepares the
+    // single physical blocking turn. There is no duplicate pre-dispatch pass.
+    expect(resolveContextWindow).toHaveBeenCalledTimes(2);
+  });
+
   it("applies a resolved agent spec before the provider call", async () => {
     const onGenerate = vi.fn();
     const registry = new InMemoryAgentSpecRegistry([

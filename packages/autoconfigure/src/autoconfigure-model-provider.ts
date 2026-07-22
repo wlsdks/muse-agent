@@ -4,7 +4,6 @@ import {
   classifyProviderLocality,
   CodexCliProvider,
   CODEX_DEFAULT_MODEL_ID,
-  DEFAULT_OLLAMA_NUM_CTX,
   DiagnosticModelProvider,
   GeminiProvider,
   knownModelPrefixes,
@@ -25,6 +24,11 @@ import {
   createCrossProcessModelExecutionLeaseProviders,
   resolveCrossProcessModelExecutionLeaseOptions
 } from "./cross-process-model-execution-lease.js";
+import {
+  createLocalModelContextAdmissionProviders,
+  resolveLocalModelContextAdmissionOptions,
+  resolveOllamaContextWindowTokens
+} from "./local-model-context-admission.js";
 
 /**
  * Temperature for Muse's user-facing ANSWER generation (chat / ask). Set
@@ -506,7 +510,7 @@ function createRawModelProvider(env: MuseEnvironment, modelOverride?: string): M
         defaultModel,
         ...(extraHeaders ? { headers: extraHeaders } : {}),
         models,
-        numCtx: parseInteger(env.MUSE_OLLAMA_NUM_CTX, DEFAULT_OLLAMA_NUM_CTX),
+        numCtx: resolveOllamaContextWindowTokens(env),
         // Opt-in only: absent env → undefined → adapter omits `num_batch`
         // → Ollama's default. A junk value parses to 0, which the adapter
         // rejects (>0), so it also falls back to the default.
@@ -604,9 +608,14 @@ export function createModelProvider(env: MuseEnvironment, modelOverride?: string
   const resolution = resolveModelProvider(env, modelOverride);
   if (!resolution) return undefined;
   if (!resolution.requiresLocalExecutionLease) return resolution.provider;
-  return createCrossProcessModelExecutionLeaseProviders(
+  const crossProcess = createCrossProcessModelExecutionLeaseProviders(
     resolution.provider,
     resolveCrossProcessModelExecutionLeaseOptions(env)
+  );
+  return createLocalModelContextAdmissionProviders(
+    crossProcess.foreground,
+    crossProcess.background,
+    resolveLocalModelContextAdmissionOptions(env)
   ).foreground;
 }
 

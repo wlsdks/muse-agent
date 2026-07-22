@@ -62,11 +62,24 @@ export interface PlanExecuteRunner {
     provider: ModelProvider,
     request: ModelRequest
   ): Promise<ModelResponse>;
+  prepareContextAdmittedRequest?(provider: ModelProvider, request: ModelRequest): Promise<ModelRequest>;
   executeToolCall(
     context: AgentRunContext,
     toolCall: ModelToolCall,
     activeTools: readonly ModelTool[]
   ): Promise<ExecutedToolResult>;
+}
+
+async function generatePrepared(
+  runner: PlanExecuteRunner,
+  context: AgentRunContext,
+  provider: ModelProvider,
+  request: ModelRequest
+): Promise<ModelResponse> {
+  const prepared = runner.prepareContextAdmittedRequest
+    ? await runner.prepareContextAdmittedRequest(provider, request)
+    : request;
+  return runner.generateWithTracing(context, provider, prepared);
 }
 
 export type PlanExecuteStreamEvent =
@@ -436,7 +449,7 @@ async function generatePlan(
     tools: []
   };
 
-  const response = await runner.generateWithTracing(context, provider, planRequest);
+  const response = await generatePrepared(runner, context, provider, planRequest);
   return parsePlan(response.output ?? "");
 }
 
@@ -468,7 +481,7 @@ async function synthesizePlanResults(
     tools: []
   };
 
-  const response = await runner.generateWithTracing(context, provider, synthesisRequest);
+  const response = await generatePrepared(runner, context, provider, synthesisRequest);
   if (!response.output || response.output.trim().length === 0) {
     throw new PlanExecutionError(
       "RESPONSE_SYNTHESIS_FAILED",
@@ -489,7 +502,7 @@ async function directAnswerForPlanExecute(
     ...request,
     tools: []
   };
-  const response = await runner.generateWithTracing(context, provider, directRequest);
+  const response = await generatePrepared(runner, context, provider, directRequest);
   if (!response.output || response.output.trim().length === 0) {
     throw new PlanExecutionError(
       "RESPONSE_SYNTHESIS_FAILED",

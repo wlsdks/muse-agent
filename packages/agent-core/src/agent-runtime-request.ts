@@ -6,11 +6,110 @@
  * the 1,500-line runtime around it.
  */
 
-import type { ModelMessage, ModelRequest } from "@muse/model";
-import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
+import {
+  awaitModelContextWindow,
+  isModelContextWindowCancelledError,
+  ModelContextBudgetError,
+  type ModelContextWindowResolution,
+  type ModelMessage,
+  type ModelProvider,
+  type ModelRequest
+} from "@muse/model";
+import {
+  estimateModelRequestTokens,
+  estimateModelToolsTokens,
+  ModelRequestEstimateError,
+  trimConversationMessages,
+  type ConversationTrimOptions
+} from "@muse/memory";
 
 import type { ActiveContextSnapshot } from "./active-context.js";
 import type { AgentContextWindowReport, AgentRunInput } from "./types.js";
+
+function outputReserve(request: ModelRequest, options: ConversationTrimOptions): number {
+  const requested = request.maxOutputTokens;
+  return typeof requested === "number" && Number.isSafeInteger(requested) && requested >= 1 && requested <= 131_072
+    ? requested
+    : options.outputReserveTokens;
+}
+
+function validProviderWindow(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 256 && value <= 2_000_000;
+}
+
+export async function resolveModelAwareTrimOptions(
+  contextWindowOptions: ConversationTrimOptions | undefined,
+  provider: ModelProvider,
+  request: Pick<ModelRequest, "maxOutputTokens" | "model" | "responseFormat" | "signal" | "tools">
+): Promise<ConversationTrimOptions | undefined> {
+  if (!contextWindowOptions || contextWindowOptions.maxContextWindowTokens < 256) return contextWindowOptions;
+  let resolution: ModelContextWindowResolution | undefined;
+  try {
+    resolution = await awaitModelContextWindow(provider, request.model, request.signal);
+  } catch (error) {
+    if (isModelContextWindowCancelledError(error)) throw error;
+    throw new ModelContextBudgetError(provider.id, "STATE_UNAVAILABLE");
+  }
+  try {
+    if (resolution && !validProviderWindow(resolution.providerWindowTokens)) throw new ModelRequestEstimateError();
+    const admissionWindowTokens = Math.min(
+      contextWindowOptions.maxContextWindowTokens,
+      resolution?.providerWindowTokens ?? contextWindowOptions.maxContextWindowTokens
+    );
+    const outputReserveTokens = outputReserve({ messages: [], ...request }, contextWindowOptions);
+    const toolAndFormatReserve = estimateModelToolsTokens(request.tools)
+      + (request.responseFormat === undefined
+        ? 0
+        : estimateModelRequestTokens({ messages: [], responseFormat: request.responseFormat }).responseFormatTokens);
+    if (outputReserveTokens + toolAndFormatReserve >= admissionWindowTokens) {
+      throw new ModelContextBudgetError(provider.id, "CONTEXT_BUDGET_EXCEEDED");
+    }
+    return {
+      ...contextWindowOptions,
+      maxContextWindowTokens: admissionWindowTokens,
+      outputReserveTokens,
+      toolTokenReserve: toolAndFormatReserve,
+      ...(contextWindowOptions.workingBudgetTokens !== undefined
+        ? { workingBudgetTokens: Math.min(contextWindowOptions.workingBudgetTokens, admissionWindowTokens) }
+        : {})
+    };
+  } catch (error) {
+    if (error instanceof ModelContextBudgetError) throw error;
+    throw new ModelContextBudgetError(provider.id, "STATE_UNAVAILABLE");
+  }
+}
+
+/** Apply the same model-aware message budget immediately before a physical turn. */
+export async function prepareContextAdmittedRequest(
+  contextWindowOptions: ConversationTrimOptions | undefined,
+  provider: ModelProvider,
+  request: ModelRequest
+): Promise<ModelRequest> {
+  if (!contextWindowOptions) return request;
+  // Direct unit/custom runtimes historically use tiny synthetic windows to
+  // exercise the legacy trim passes. Production config never resolves below
+  // 4K; leave those synthetic contracts to prepareModelRequest.
+  if (contextWindowOptions.maxContextWindowTokens < 256) return request;
+  try {
+    const resolvedOptions = await resolveModelAwareTrimOptions(contextWindowOptions, provider, request);
+    if (!resolvedOptions) return request;
+    const trimmed = trimConversationMessages(request.messages, {
+      ...resolvedOptions,
+      preserveLatestToolExchange: true
+    });
+    const prepared = { ...request, messages: trimmed.messages };
+    const estimate = estimateModelRequestTokens(prepared);
+    if (estimate.estimatedInputTokens + resolvedOptions.outputReserveTokens > resolvedOptions.maxContextWindowTokens) {
+      throw new ModelContextBudgetError(provider.id, "CONTEXT_BUDGET_EXCEEDED");
+    }
+    return prepared;
+  } catch (error) {
+    if (error instanceof ModelContextBudgetError || isModelContextWindowCancelledError(error)) {
+      throw error;
+    }
+    throw new ModelContextBudgetError(provider.id, "STATE_UNAVAILABLE");
+  }
+}
 
 export function prepareModelRequest(
   contextWindowOptions: ConversationTrimOptions | undefined,

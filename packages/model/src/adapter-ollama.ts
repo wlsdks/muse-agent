@@ -22,6 +22,7 @@ import {
   localModelCapabilities
 } from "./provider-wire.js";
 import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus, modelCallSignal } from "./provider-base.js";
+import { awaitModelContextWindow } from "./model-context-window.js";
 import {
   createLeadingThinkStripper,
   isJsonObject,
@@ -32,6 +33,7 @@ import {
 } from "./provider-shared.js";
 import type {
   ModelEvent,
+  ModelContextWindowResolution,
   ModelInfo,
   ModelRequest,
   ModelResponse,
@@ -73,7 +75,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly numThread: number | undefined;
   private readonly numGpu: number | undefined;
   private readonly probeContextWindow: boolean;
-  private readonly contextWindowByModel = new Map<string, number | undefined>();
+  private readonly contextWindowByModel = new Map<string, Promise<ModelContextWindowResolution>>();
   private readonly clampWarned = new Set<string>();
   private static traceSeq = 0;
 
@@ -139,39 +141,41 @@ export class OllamaProvider extends OpenAICompatibleProvider {
    * budgeted against a window the model can't honour. Fail-soft: a failed /
    * unavailable / larger-or-equal probe leaves the configured value unchanged.
    */
-  private async effectiveNumCtx(model: string): Promise<number> {
-    if (!this.probeContextWindow) {
-      return this.numCtx;
-    }
+  resolveContextWindow(model: string): Promise<ModelContextWindowResolution> {
     const name = model.replace(/^ollama\//u, "").trim();
-    if (name.length === 0) {
+    if (!this.probeContextWindow || name.length === 0) {
+      return Promise.resolve({ providerWindowTokens: this.numCtx, provenance: "configured" });
+    }
+    const cached = this.contextWindowByModel.get(name);
+    if (cached) return cached;
+    const pending = probeOllamaContextWindow(this.nativeBaseUrl, name, this.nativeFetch).then((native) => {
+      if (native !== undefined && native < this.numCtx) {
+        if (!this.clampWarned.has(name)) {
+          this.clampWarned.add(name);
+          process.stderr.write(
+            `[muse] Ollama model ${name} supports only ${native.toString()} context tokens but num_ctx is set to ${this.numCtx.toString()}; clamping to ${native.toString()} to avoid silent prompt truncation (lower MUSE_OLLAMA_NUM_CTX to <= ${native.toString()}).\n`
+          );
+        }
+        return { providerWindowTokens: native, provenance: "probed" as const };
+      }
+      return { providerWindowTokens: this.numCtx, provenance: "configured" as const };
+    });
+    this.contextWindowByModel.set(name, pending);
+    return pending;
+  }
+
+  private async effectiveNumCtx(model: string, signal?: AbortSignal): Promise<number> {
+    const resolved = await awaitModelContextWindow(this, model, signal);
+    if (!resolved) {
       return this.numCtx;
     }
-    let native: number | undefined;
-    if (this.contextWindowByModel.has(name)) {
-      native = this.contextWindowByModel.get(name);
-    } else {
-      native = await probeOllamaContextWindow(this.nativeBaseUrl, name, this.nativeFetch);
-      this.contextWindowByModel.set(name, native);
-    }
-    if (native !== undefined && native < this.numCtx) {
-      if (!this.clampWarned.has(name)) {
-        this.clampWarned.add(name);
-        process.stderr.write(
-          `[muse] Ollama model ${name} supports only ${native.toString()} context tokens but num_ctx is set to ${this.numCtx.toString()}; clamping to ${native.toString()} to avoid silent prompt truncation (lower MUSE_OLLAMA_NUM_CTX to <= ${native.toString()}).\n`
-        );
-      }
-      return native;
-    }
-    return this.numCtx;
+    return resolved.providerWindowTokens;
   }
 
   override async generate(request: ModelRequest): Promise<ModelResponse> {
     // Only the probe path awaits; with it off, generate stays synchronous up to
     // the fetch (so signal-listener timing is byte-identical to before).
-    const numCtx = this.probeContextWindow
-      ? await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "")
-      : this.numCtx;
+    const numCtx = await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "", request.signal);
     const body = this.buildNativeChatBody(request, false, numCtx);
     const signal = modelCallSignal(request.signal);
     const resp = await this.nativeFetchOrThrow(`${this.nativeBaseUrl}/api/chat`, {
@@ -240,9 +244,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   }
 
   override async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
-    const numCtx = this.probeContextWindow
-      ? await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "")
-      : this.numCtx;
+    const numCtx = await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "", request.signal);
     const body = this.buildNativeChatBody(request, true, numCtx);
     let resp: Response;
     const signal = modelCallSignal(request.signal, { streaming: true });

@@ -179,7 +179,11 @@ import {
   RUN_TOOL_PLAN_TOOL_NAME,
   seedEgressAuthorityFromMessages,
 } from "./agent-runtime-helpers.js";
-import { prepareModelRequest } from "./agent-runtime-request.js";
+import {
+  prepareContextAdmittedRequest,
+  prepareModelRequest,
+  resolveModelAwareTrimOptions
+} from "./agent-runtime-request.js";
 import { executeToolCall as executeToolCallGated } from "./agent-runtime-tool-call.js";
 
 export { augmentCompactionSummary } from "./agent-runtime-helpers.js";
@@ -629,7 +633,13 @@ export class AgentRuntime {
       this.userMemoryProvider,
       this.userMemoryMaxEntries
     );
-    let preparedRequest = prepareModelRequest(this.contextWindow, summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    const effectiveContextWindow = await resolveModelAwareTrimOptions(this.contextWindow, selected.provider, {
+      maxOutputTokens: this.defaults?.maxOutputTokens,
+      model: selected.model,
+      ...(summaryAppliedContext.input.signal ? { signal: summaryAppliedContext.input.signal } : {}),
+      tools
+    });
+    let preparedRequest = prepareModelRequest(effectiveContextWindow, summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
     // When a compaction fired and an aux summarizer is configured,
     // summarize the dropped window with the cheap aux model and append it to
     // the deterministic [Conversation summary …] block. Fail-open — an empty
@@ -1051,6 +1061,7 @@ export class AgentRuntime {
       ...(compactionOccurred ? { compactionOccurred } : {}),
       executeToolCall: (context, toolCall, activeTools) => this.executeToolCall(context, toolCall, activeTools),
       generateWithTracing: (context, provider, request) => this.generateWithTracing(context, provider, request, retryBudget),
+      prepareContextAdmittedRequest: (provider, request) => prepareContextAdmittedRequest(this.contextWindow, provider, request),
       maxRunWallclockMs: this.maxRunWallclockMs,
       ...(this.streamIdleTimeoutMs !== undefined ? { streamIdleTimeoutMs: this.streamIdleTimeoutMs } : {}),
       ...(this.heartbeat ? { heartbeat: this.heartbeat } : {}),

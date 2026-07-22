@@ -4,6 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 
 import { executeStreamingModelLoop, type ModelLoopRunner, type ModelLoopStreamEvent } from "../src/model-loop.js";
+import { prepareContextAdmittedRequest } from "../src/agent-runtime-request.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
 import { TOOL_FAILURE_STREAK_LIMIT } from "../src/tool-failure-streak.js";
 import type { AgentRunContext } from "../src/types.js";
@@ -23,23 +24,24 @@ const done = (output: string, toolCalls: ModelToolCall[] = []): ModelEvent => ({
 });
 
 // A provider whose stream replays a scripted list of events per turn.
-const provider = (turns: ModelEvent[][]): ModelProvider => {
+const provider = (turns: ModelEvent[][], seen?: ModelRequest[]): ModelProvider => {
   let turn = 0;
   return {
     id: "fake",
-    stream: async function* () {
+    stream: async function* (modelRequest) {
+      seen?.push(modelRequest);
       for (const event of turns[Math.min(turn++, turns.length - 1)]!) yield event;
     },
   } as unknown as ModelProvider;
 };
-const runner = (opts: { maxToolCalls?: number; ran?: string[] } = {}): ModelLoopRunner =>
+const runner = (opts: { maxToolCalls?: number; ran?: string[]; toolOutput?: string } = {}): ModelLoopRunner =>
   ({
     maxToolCalls: opts.maxToolCalls ?? 5,
     tracer: { startSpan: () => noopSpan },
     metrics: { recordTokenUsage() {} },
     executeToolCall: async (_ctx, toolCall): Promise<ExecutedToolResult> => {
       opts.ran?.push(toolCall.name);
-      return { result: { id: toolCall.id, name: toolCall.name, output: `ran ${toolCall.name}`, status: "ok" }, toolCall };
+      return { result: { id: toolCall.id, name: toolCall.name, output: opts.toolOutput ?? `ran ${toolCall.name}`, status: "ok" }, toolCall };
     },
   }) as unknown as ModelLoopRunner;
 
@@ -81,6 +83,59 @@ describe("executeStreamingModelLoop", () => {
     expect(ran).toEqual(["echo"]);
     expect(execution.toolsUsed).toEqual(["echo"]);
     expect(execution.finalResponse.output).toBe("final");
+  });
+
+  it("compacts each streamed turn while preserving the current tool exchange and exact source", async () => {
+    const physicalRequests: ModelRequest[] = [];
+    const run: ModelLoopRunner = {
+      ...runner({ toolOutput: `CURRENT_RESULT ${"x".repeat(500)}` }),
+      prepareContextAdmittedRequest: (selected, turnRequest) => prepareContextAdmittedRequest({
+        maxContextWindowTokens: 512,
+        outputReserveTokens: 64
+      }, selected, turnRequest)
+    };
+    const prov = {
+      ...provider([
+      [done("calling", [{ arguments: {}, id: "t1", name: "echo" }])],
+      [done("final")]
+      ], physicalRequests),
+      resolveContextWindow: async () => ({ providerWindowTokens: 512, provenance: "configured" as const })
+    };
+    const streamedRequest: ModelRequest = {
+      ...request(),
+      messages: [
+        { content: "old question ".repeat(200), role: "user" },
+        { content: "old answer ".repeat(200), role: "assistant" },
+        { content: "latest exact source https://example.invalid/item", role: "user" }
+      ]
+    };
+    const gen = executeStreamingModelLoop(run, context(), prov, streamedRequest, { forwardTextDeltas: false });
+    while (!(await gen.next()).done) { /* drain */ }
+    expect(physicalRequests).toHaveLength(2);
+    const second = physicalRequests[1]?.messages ?? [];
+    expect(second.some((message) => message.role === "assistant" && message.toolCalls?.[0]?.id === "t1")).toBe(true);
+    expect(second.some((message) => message.role === "tool" && message.toolCallId === "t1" && message.content.includes("CURRENT_RESULT"))).toBe(true);
+    expect(second.some((message) => message.content.includes("https://example.invalid/item"))).toBe(true);
+  });
+
+  it("rejects an irreducible streamed tool exchange before a second physical turn", async () => {
+    const physicalRequests: ModelRequest[] = [];
+    const run: ModelLoopRunner = {
+      ...runner({ toolOutput: `CURRENT_RESULT ${"x".repeat(5_000)}` }),
+      prepareContextAdmittedRequest: (selected, turnRequest) => prepareContextAdmittedRequest({
+        maxContextWindowTokens: 512,
+        outputReserveTokens: 64
+      }, selected, turnRequest)
+    };
+    const prov = {
+      ...provider([
+        [done("calling", [{ arguments: {}, id: "t1", name: "echo" }])],
+        [done("must not dispatch")]
+      ], physicalRequests),
+      resolveContextWindow: async () => ({ providerWindowTokens: 512, provenance: "configured" as const })
+    };
+    await expect(drive(prov, run, context(), false)).rejects.toMatchObject({ code: "CONTEXT_BUDGET_EXCEEDED" });
+    expect(physicalRequests).toHaveLength(1);
   });
 
   it("attaches grounding to the tool-result event for a completed non-empty tool (the streaming surface's evidence)", async () => {

@@ -182,7 +182,21 @@ export interface ModelProvider {
   listModels(): Promise<readonly ModelInfo[]>;
   generate(request: ModelRequest): Promise<ModelResponse>;
   stream(request: ModelRequest): AsyncIterable<ModelEvent>;
+  /** Optional physical-provider context window. Owner admission caps live above this value. */
+  resolveContextWindow?(model: string): Promise<ModelContextWindowResolution>;
 }
+
+export interface ModelContextWindowResolution {
+  readonly providerWindowTokens: number;
+  readonly provenance: "configured" | "probed";
+}
+
+export {
+  awaitModelContextWindow,
+  isModelContextWindowCancelledError,
+  ModelContextBudgetError,
+  type ModelContextBudgetErrorCode
+} from "./model-context-window.js";
 
 export interface OpenAICompatibleProviderOptions {
   readonly id?: string;

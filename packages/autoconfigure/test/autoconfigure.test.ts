@@ -488,7 +488,10 @@ describe("autoconfigure", () => {
       model: "diagnostic/smoke"
     });
 
-    expect(result?.contextWindow?.budgetTokens).toBe(4086);
+    // The report now reflects the complete physical request budget: the
+    // configured 4,096-token window minus the diagnostic response reserve and
+    // the assembled runtime's tool-schema reserve.
+    expect(result?.contextWindow?.budgetTokens).toBe(3430);
     expect(result?.contextWindow?.triggeredBy).toBe("working_budget");
     expect(result?.contextWindow?.removedCount).toBeGreaterThan(0);
   });
@@ -503,11 +506,13 @@ describe("autoconfigure", () => {
       model: "diagnostic/smoke"
     });
 
-    expect(result?.contextWindow?.budgetTokens).toBe(4086);
+    // Disabling the proactive working budget does not disable the mandatory
+    // tool-schema/output reservation at the provider boundary.
+    expect(result?.contextWindow?.budgetTokens).toBe(3430);
     expect(result?.contextWindow?.triggeredBy).toBe("none");
     expect(result?.contextWindow?.removedCount).toBe(0);
     expect(result?.contextWindow?.estimatedTokens).toBeGreaterThan(1638);
-    expect(result?.contextWindow?.estimatedTokens).toBeLessThanOrEqual(4086);
+    expect(result?.contextWindow?.estimatedTokens).toBeLessThanOrEqual(3430);
   });
 
   it("feeds the MonthlyBudgetTracker from each agent run", async () => {

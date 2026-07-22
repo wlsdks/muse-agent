@@ -72,6 +72,9 @@ export function createUsageRecordingProvider(provider: ModelProvider, sink: Toke
         }
       }
       return recordingStream();
-    }
+    },
+    ...(provider.resolveContextWindow
+      ? { resolveContextWindow: (model: string) => provider.resolveContextWindow!(model) }
+      : {})
   };
 }
