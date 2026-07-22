@@ -61,6 +61,7 @@ describe("daemon resource admission receipt", () => {
       await writeDaemonResourceAdmissionReceipt(file, receipt);
       expect(await readDaemonResourceAdmissionReceipt(file)).toEqual(receipt);
       expect(receipt.decision.observation.cpu).toEqual({ count: 8, loadMilli: 1_250, status: "available" });
+      expect(receipt.decision.observation.thermal).toEqual({ status: "nominal" });
       expect(describeDaemonResourceAdmissionReceipt(receipt, new Date("2026-07-22T01:00:00.000Z")))
         .toContain("last unit followup completed");
     } finally {

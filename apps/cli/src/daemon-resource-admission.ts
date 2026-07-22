@@ -1,6 +1,6 @@
 import { availableParallelism, freemem, loadavg } from "node:os";
 
-import { readMacAcPower, readMacIdleMs } from "@muse/macos/system-resource-observation";
+import { readMacAcPower, readMacIdleMs, readMacThermalState } from "@muse/macos/system-resource-observation";
 
 export type DaemonThermalState = "nominal" | "fair" | "serious" | "critical" | "unavailable";
 export type DaemonResourceReason =
@@ -65,7 +65,7 @@ export function readDaemonResourceSnapshot(): DaemonResourceSnapshot {
     processCpuSystemMicros: cpu.system,
     processCpuUserMicros: cpu.user,
     residentMemoryBytes: process.memoryUsage().rss,
-    thermalState: "unavailable"
+    thermalState: readMacThermalState() ?? "unavailable"
   };
 }
 
@@ -148,10 +148,11 @@ export function describeDaemonResourceAdmission(
   const platformObserved = snapshot.platform === "darwin"
     ? `, idle ${snapshot.idleMs === undefined ? "unavailable" : `${(snapshot.idleMs / 1_000).toFixed(0)}s`}, power ${snapshot.onAcPower === true ? "AC" : snapshot.onAcPower === false ? "battery" : "unavailable"}`
     : "";
+  const thermalObserved = `, thermal ${snapshot.thermalState ?? "unavailable"}`;
   const verdict = admission.status === "defer"
     ? `heavy background work deferred (${admission.reason})`
     : "heavy background work admitted";
-  return `${source}; ${limits}; ${observed}${processObserved}${platformObserved}; ${verdict}`;
+  return `${source}; ${limits}; ${observed}${processObserved}${platformObserved}${thermalObserved}; ${verdict}`;
 }
 
 /**

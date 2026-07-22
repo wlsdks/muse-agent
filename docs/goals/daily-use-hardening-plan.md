@@ -96,6 +96,13 @@ states say what evidence is missing; they do not render zero as success.
   tick start prevents later claims without advancing the fairness cursor or
   skipping light lanes, and each completed/failed boundary carries the exact
   claim-time decision rather than a stale tick observation.
+- [x] Read macOS thermal pressure from Apple's public Foundation
+  [`ProcessInfo.thermalState`](https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.property)
+  through a fixed 250 ms / 1 KiB local probe.
+  Serious and critical states defer each new claim; unsupported platforms,
+  probe failures, and unknown future values remain explicitly `unavailable` in
+  doctor output and receipts. Fair is observed but does not yet independently
+  defer, so cross-platform and fair-state policy calibration remain open.
 - [x] Give the owner a live `muse daemon --pause-heavy-work` /
   `--resume-heavy-work` escape hatch. It persists locally, is re-read on each
   tick without restart, holds only model/sync/consolidation work, and records
@@ -148,10 +155,11 @@ The current slice additionally records per-unit CPU delta, RSS, candidate queue
 depth, duration, and truthful cooperative stop-boundary latency. The broader
 inventory item stays open until model load is measured directly. Its bounded
 aggregate now survives daemon restarts and makes comparative dogfooding
-possible without adding a dashboard or an unbounded telemetry log. Thermal
-production support, actual KV-cache byte measurement, and wider browser budgets
-remain open rather than being inferred from the daemon governor or the model
-execution/context-token coordinators.
+possible without adding a dashboard or an unbounded telemetry log. macOS now
+has production thermal observation for serious/critical admission; fair-state
+policy and unsupported-platform thermal sources, actual KV-cache byte
+measurement, and wider browser budgets remain open rather than being inferred
+from the daemon governor or the model execution/context-token coordinators.
 
 **Gate:** under an injected constrained-resource state, background work starts
 zero new model/tool jobs, records a bounded deferral reason, and foreground chat

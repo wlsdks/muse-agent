@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAC_THERMAL_JXA_SCRIPT,
+  MAC_THERMAL_OUTPUT_LIMIT_BYTES,
+  MAC_THERMAL_PROBE_TIMEOUT_MS,
   isOsIdleEnough,
   isPowerOkForLlm,
   parseHidIdleSeconds,
   parseOnAcPower,
+  parseThermalState,
   readMacAcPower,
-  readMacIdleMs
+  readMacIdleMs,
+  readMacThermalState
 } from "../src/system-resource-observation.js";
 
 describe("macOS system resource observation", () => {
@@ -25,6 +30,44 @@ describe("macOS system resource observation", () => {
     expect(readMacAcPower(() => "Now drawing from 'AC Power'", "win32")).toBeUndefined();
     expect(readMacIdleMs(() => { throw new Error("missing"); }, "darwin")).toBeUndefined();
     expect(readMacAcPower(() => "malformed", "darwin")).toBeUndefined();
+  });
+
+  it("strictly accepts only the four bounded Foundation thermal labels", () => {
+    expect(parseThermalState("nominal\n")).toBe("nominal");
+    expect(parseThermalState(" fair ")).toBe("fair");
+    expect(parseThermalState("serious")).toBe("serious");
+    expect(parseThermalState("critical")).toBe("critical");
+    for (const output of ["", "0", "nominal extra", "unavailable", "unknown", "SERIOUS"]) {
+      expect(parseThermalState(output)).toBeUndefined();
+    }
+  });
+
+  it("reads the public thermal state through one exact bounded system command", () => {
+    const calls: { executable: string; args: readonly string[]; maxBuffer: number; timeout: number }[] = [];
+    const probe = (executable: string, args: readonly string[], options: { readonly maxBuffer: number; readonly timeout: number }) => {
+      calls.push({ args, executable, maxBuffer: options.maxBuffer, timeout: options.timeout });
+      return "serious\n";
+    };
+    expect(readMacThermalState(probe, "darwin")).toBe("serious");
+    expect(calls).toEqual([{
+      args: ["-l", "JavaScript", "-e", MAC_THERMAL_JXA_SCRIPT],
+      executable: "/usr/bin/osascript",
+      maxBuffer: MAC_THERMAL_OUTPUT_LIMIT_BYTES,
+      timeout: MAC_THERMAL_PROBE_TIMEOUT_MS
+    }]);
+    expect(MAC_THERMAL_PROBE_TIMEOUT_MS).toBe(250);
+    expect(MAC_THERMAL_OUTPUT_LIMIT_BYTES).toBe(1_024);
+    expect(MAC_THERMAL_JXA_SCRIPT).toContain("NSProcessInfoThermalStateNominal");
+    expect(MAC_THERMAL_JXA_SCRIPT).toContain("NSProcessInfoThermalStateCritical");
+  });
+
+  it("starts no thermal process off macOS and collapses failures or sentinels to unavailable", () => {
+    let starts = 0;
+    const probe = () => { starts += 1; return "nominal"; };
+    expect(readMacThermalState(probe, "linux")).toBeUndefined();
+    expect(starts).toBe(0);
+    expect(readMacThermalState(() => "unavailable", "darwin")).toBeUndefined();
+    expect(readMacThermalState(() => { throw new Error("private stderr"); }, "darwin")).toBeUndefined();
   });
 
   it("scopes IORegistry to the direct IOHIDSystem service instead of reading the full registry tree", () => {

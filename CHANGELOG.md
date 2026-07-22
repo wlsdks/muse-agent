@@ -49,8 +49,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 - **Resident background work now has a bounded, owner-visible governor.** The
   CLI daemon shares the same fail-closed macOS HID-idle and AC-power probes as
-  the API, layers them over CPU/load and free-memory admission, and supports a
-  persisted `auto | paused` owner mode. An admitted cycle scans cheap readiness
+  the API, and now reads Apple's public Foundation thermal state through one
+  fixed, bounded local probe. Serious or critical heat defers new work; probe
+  failure remains explicitly `unavailable`. These observations layer over
+  CPU/load and free-memory admission alongside a persisted `auto | paused`
+  owner mode. An admitted cycle scans cheap readiness
   checks across sixteen named delivery, watch, model, sync, and consolidation
   units. One fair cursor applies the owner's global cap to actual claims (and
   preserves the historical maximum of eight claims when uncapped); stop requests
@@ -62,7 +65,8 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   keeps the admission observation beside the latest unit CPU/RSS/duration and
   queue measurements, while `doctor --resources` separates its live verdict
   from legacy, historical, or stale receipt evidence. The resource diagnostic
-  now labels its own probe RSS/CPU separately from the verified LaunchAgent PID,
+  now reports thermal availability and labels its own probe RSS/CPU separately
+  from the verified LaunchAgent PID,
   and `doctor --model-memory` performs an explicit loopback-only Ollama `/api/ps`
   read to report already-loaded model allocation without loading or generating.
 

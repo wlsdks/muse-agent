@@ -80,9 +80,21 @@ describe("assessDaemonResourceAdmission", () => {
   });
 
   it("describes the policy and deferral without exposing process or model details", () => {
-    const snapshot = { ...healthy, freeMemoryBytes: 512 * 1024 * 1024 };
+    const snapshot = {
+      ...healthy,
+      freeMemoryBytes: 512 * 1024 * 1024,
+      idleMs: 300_000,
+      onAcPower: true,
+      platform: "darwin" as const,
+      thermalState: "serious" as const
+    };
     const admission = assessDaemonResourceAdmission({}, snapshot);
     expect(describeDaemonResourceAdmission(resolveDaemonResourcePolicy({}), snapshot, admission, "LaunchAgent"))
-      .toContain("heavy background work deferred (low-free-memory)");
+      .toContain("thermal serious");
+    const unavailable = { ...snapshot, thermalState: "unavailable" as const };
+    expect(describeDaemonResourceAdmission(resolveDaemonResourcePolicy({}), unavailable, assessDaemonResourceAdmission({}, unavailable), "LaunchAgent"))
+      .toContain("thermal unavailable");
+    expect(describeDaemonResourceAdmission(resolveDaemonResourcePolicy({}), { ...healthy, platform: "linux" }, { status: "admit" }, "shell/default"))
+      .toContain("thermal unavailable");
   });
 });
