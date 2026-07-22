@@ -317,6 +317,8 @@ export interface MuseRuntimeAssembly {
 export interface ApiServerAssemblyOptions {
   readonly db?: Kysely<MuseDatabase>;
   readonly env?: MuseEnvironment;
+  /** Explicit workspace authority for future-only local checkpoint provenance. */
+  readonly continuityWorkspaceDir?: string;
   /**
    * Composition-only posture freeze used by the API boundary. It is not a
    * user-facing setting: ordinary CLI/runtime assembly continues to derive
@@ -509,6 +511,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     contextReferenceStore,
     contextWindowOptions,
     conversationSummaryStore,
+    continuityWorkspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE,
     db,
     defaultModel,
     env,
@@ -1191,6 +1194,7 @@ function buildAgentRuntime(params: {
   readonly toolExemplarBank: ReturnType<typeof buildToolExemplarBank>;
   readonly userMemoryStore: UserMemoryStore;
   readonly conversationSummaryStore: ConversationSummaryStore;
+  readonly continuityWorkspaceDir: string | undefined;
   readonly skillRegistryPromise: ReturnType<typeof createSkillRuntime>["skillRegistryPromise"];
   readonly telemetryAggregator: ReturnType<typeof buildTelemetryAggregator>;
   readonly promptLayerRegistry: InMemoryPromptLayerRegistry;
@@ -1221,6 +1225,7 @@ function buildAgentRuntime(params: {
     toolExemplarBank,
     userMemoryStore,
     conversationSummaryStore,
+    continuityWorkspaceDir,
     skillRegistryPromise,
     telemetryAggregator,
     promptLayerRegistry,
@@ -1235,7 +1240,13 @@ function buildAgentRuntime(params: {
       // its last step (the langgraph fault-tolerance gap). Local-first uses a file
       // store (the no-DB default previously persisted NOTHING — every checkpoint
       // was a silent no-op); the server keeps its DB path untouched.
-      ...(db ? {} : { checkpointStore: new FileCheckpointStore(resolveCheckpointsDir(env)) }),
+      ...(db ? {} : {
+        checkpointStore: new FileCheckpointStore(resolveCheckpointsDir(env), {
+          ...(continuityWorkspaceDir
+            ? { continuityWorkspaceDir }
+            : {})
+        })
+      }),
       cacheMetrics,
       circuitBreaker: circuitBreakerRegistry.get("model.generate"),
       contextReferenceStore,

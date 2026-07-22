@@ -102,7 +102,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const actuatorMode = actuatorWiring.mode;
 
   const assembly = createMuseRuntimeAssembly(
-    actuatorWiring.tools.length > 0 ? { extraTools: actuatorWiring.tools } : {}
+    {
+      ...(actuatorWiring.tools.length > 0 ? { extraTools: actuatorWiring.tools } : {}),
+      ...(options.workspaceDir ? { continuityWorkspaceDir: options.workspaceDir } : {})
+    }
   );
   if (!assembly.modelProvider) {
     process.stderr.write(formatNoModelMessage());

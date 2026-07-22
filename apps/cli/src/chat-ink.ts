@@ -174,6 +174,7 @@ export interface RunChatInkOptions {
   readonly continueHistory?: boolean;
   readonly userId?: string;
   readonly persona?: string;
+  readonly workspaceDir?: string;
 }
 
 interface DisplayTurn {

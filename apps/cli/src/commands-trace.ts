@@ -216,7 +216,9 @@ export function registerTraceCommand(program: Command, io: ProgramIO): void {
         io.stderr(`Trace for '${runId}' is empty or unreadable.\n`);
         return;
       }
-      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
+      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment), {
+        ...(io.workspaceDir ? { continuityWorkspaceDir: io.workspaceDir } : {})
+      });
       const checkpoints = await store.findByRunId(runId);
       const linked = await attachContinuityRunReferences(io.workspaceDir, [detail]);
       io.stdout(`${formatRunDetail(detail, checkpoints.map((c) => ({ phase: typeof (c.state as { phase?: unknown }).phase === "string" ? (c.state as { phase: string }).phase : "?", step: c.step })), linked[0]?.continuityReference)}\n`);

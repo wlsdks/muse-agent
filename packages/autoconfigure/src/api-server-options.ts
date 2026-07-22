@@ -61,6 +61,9 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       resilience: assembly.resilience
     },
     agentRuntime: assembly.agentRuntime,
+    ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
+      ? { continuityWorkspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
+      : {}),
     // The chat-write approval path reads its opt-in flag + pending-file path
     // from this merged env; the confirm-execute endpoint resolves the approved
     // tool straight from the runtime's own registry.

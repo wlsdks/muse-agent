@@ -1,5 +1,12 @@
 import { createRunId, type JsonObject } from "@muse/shared";
 
+export {
+  readLocalCheckpointEvidenceStrict,
+  type LocalCheckpointEvidence,
+  type LocalCheckpointEvidenceReadResult
+} from "./local-checkpoint-evidence.js";
+export { createCheckpointContinuityEvidence } from "./checkpoint-v3.js";
+
 export type Awaitable<T> = T | Promise<T>;
 
 export interface ExecutionCheckpoint {
@@ -23,6 +30,13 @@ export interface SaveCheckpointInput {
   readonly step: number;
   readonly state: JsonObject;
   readonly createdAt?: Date;
+  /** Purpose-built, bounded context for future-only exact Continuity evidence. */
+  readonly continuityEvidence?: CheckpointContinuityEvidence;
+}
+
+export interface CheckpointContinuityEvidence {
+  readonly phase: "start" | "act" | "failed" | "complete";
+  readonly query: string;
 }
 
 export interface InMemoryCheckpointStoreOptions {
@@ -231,4 +245,9 @@ export * from "./run-history-in-memory.js";
 export * from "./run-history-kysely.js";
 export * from "./session-tags.js";
 export * from "./local-run-evidence.js";
-export { FileCheckpointStore, type FileCheckpointStoreOptions } from "./file-checkpoint-store.js";
+export {
+  FileCheckpointStore,
+  pruneCheckpointFilesByAge,
+  type CheckpointAgePruneResult,
+  type FileCheckpointStoreOptions
+} from "./file-checkpoint-store.js";

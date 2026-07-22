@@ -380,6 +380,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         const { runChatInk } = await import("./chat-ink.js");
         await runChatInk({
           continueHistory: options.continue !== false,
+          ...(io.workspaceDir ? { workspaceDir: io.workspaceDir } : {}),
           ...(chatModel ? { model: chatModel } : {})
         });
         return;
@@ -647,6 +648,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         const { runChatInk } = await import("./chat-ink.js");
         await runChatInk({
           continueHistory: true,
+          ...(io.workspaceDir ? { workspaceDir: io.workspaceDir } : {}),
           ...(cliConfig.defaultModel ? { model: cliConfig.defaultModel } : {})
         });
         return;

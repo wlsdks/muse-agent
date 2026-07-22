@@ -39,7 +39,9 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
     .description("Resume a crashed/interrupted run from its last checkpoint (fault-tolerant execution)")
     .argument("[run-id]", "The run to resume; omit to LIST resumable (interrupted) runs")
     .action(async (runId: string | undefined) => {
-      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
+      const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment), {
+        ...(io.workspaceDir ? { continuityWorkspaceDir: io.workspaceDir } : {})
+      });
       if (!runId) {
         io.stdout(`${formatResumableRuns(await store.listResumable())}\n`);
         return;
@@ -49,7 +51,7 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
         io.stderr(`No resumable checkpoint for run '${runId}' (it may have completed). Run \`muse resume\` to list resumable runs.\n`);
         return;
       }
-      const assembly = createMuseRuntimeAssembly({});
+      const assembly = createMuseRuntimeAssembly({ ...(io.workspaceDir ? { continuityWorkspaceDir: io.workspaceDir } : {}) });
       if (!assembly.agentRuntime) {
         io.stderr("No model is configured, so the run can't be resumed.\n");
         return;
@@ -78,4 +80,3 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
       await store.deleteByRunId(runId);
     });
 }
-

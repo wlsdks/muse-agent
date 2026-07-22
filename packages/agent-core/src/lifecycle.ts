@@ -10,7 +10,7 @@ import { estimateCostUsd } from "@muse/cache";
 import { isCancellationLikeError } from "@muse/resilience";
 import type { ModelMessage } from "@muse/model";
 import { errorMessage } from "@muse/shared";
-import type { AgentRunHistoryStore, CheckpointStore } from "@muse/runtime-state";
+import { createCheckpointContinuityEvidence, type AgentRunHistoryStore, type CheckpointContinuityEvidence, type CheckpointStore } from "@muse/runtime-state";
 import { createAgentCheckpointState } from "./checkpoint.js";
 import { joinUserMessages } from "./internals.js";
 import { metadataString, toAgentRunMode, toolCallsMetadata } from "./runtime-helpers.js";
@@ -146,12 +146,22 @@ export interface LifecycleCheckpointArgs {
   readonly output?: string;
 }
 
+export function checkpointContinuityEvidenceFromMessages(
+  messages: readonly ModelMessage[],
+  phase: string
+): CheckpointContinuityEvidence | undefined {
+  const latestUserMessage = messages.findLast((message) => message.role === "user");
+  return createCheckpointContinuityEvidence(latestUserMessage?.content, phase);
+}
+
 export async function recordCheckpoint(args: LifecycleCheckpointArgs): Promise<void> {
   if (!args.checkpointStore) {
     return;
   }
   try {
+    const continuityEvidence = checkpointContinuityEvidenceFromMessages(args.context.input.messages, args.phase);
     await args.checkpointStore.save({
+      ...(continuityEvidence ? { continuityEvidence } : {}),
       runId: args.context.runId,
       state: createAgentCheckpointState({
         metadata: args.context.input.metadata,

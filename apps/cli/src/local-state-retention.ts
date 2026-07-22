@@ -1,4 +1,5 @@
 import { errorMessage } from "@muse/shared";
+import { pruneCheckpointFilesByAge } from "@muse/runtime-state";
 /**
  * DS-13 — idempotent, interval-gated age-based retention pruner for Muse's
  * unbounded append-only LOCAL state. Four targets, each with its own shape:
@@ -126,20 +127,7 @@ export async function pruneRunsByAge(runsDir: string, options: { readonly ageDay
 
 /** Delete `.muse/checkpoints/*.json` files whose mtime is older than `ageDays`. Complements `FileCheckpointStore`'s own COUNT-based cap with an AGE-based one. Missing dir ⇒ no-op. */
 export async function pruneCheckpointsByAge(checkpointsDir: string, options: { readonly ageDays: number; readonly now?: number }): Promise<FilePruneResult> {
-  const now = options.now ?? Date.now();
-  let names: string[];
-  try {
-    names = (await readdir(checkpointsDir)).filter((n) => n.endsWith(".json"));
-  } catch {
-    return { dropped: 0, droppedFiles: [], kept: 0 };
-  }
-  const withTimestamps = await Promise.all(names.map(async (name) => {
-    const mtimeMs = await stat(join(checkpointsDir, name)).then((s) => s.mtimeMs).catch(() => now);
-    return { mtimeMs, name };
-  }));
-  const { kept, dropped } = pruneByAge(withTimestamps, { ageDays: options.ageDays, now, timestampOf: (e) => e.mtimeMs });
-  await Promise.all(dropped.map((e) => rm(join(checkpointsDir, e.name), { force: true }).catch(() => undefined)));
-  return { dropped: dropped.length, droppedFiles: dropped.map((e) => e.name), kept: kept.length };
+  return pruneCheckpointFilesByAge(checkpointsDir, options);
 }
 
 async function safePrune<T>(fn: () => Promise<T>): Promise<T | { readonly error: string }> {
@@ -215,4 +203,3 @@ export async function maybeAutoPrune(options: MaybeAutoPruneOptions = {}): Promi
     return { ran: false, reason: `prune orchestrator error (ignored): ${errorMessage(err)}` };
   }
 }
-

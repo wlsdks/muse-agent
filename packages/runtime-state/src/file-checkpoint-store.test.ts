@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,12 +8,13 @@ import { describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
 
-import { FileCheckpointStore } from "./file-checkpoint-store.js";
+import { FileCheckpointStore, pruneCheckpointFilesByAge } from "./file-checkpoint-store.js";
+import { checkpointV3FileName } from "./checkpoint-v3.js";
 
 const state = (phase: string) => ({ encodedMessages: [`v1|user|${phase}`], metadata: null, model: "gemma4:12b", output: null, phase });
 
 function tmpDir(): string {
-  return mkdtempSync(join(tmpdir(), "muse-ckpt-"));
+  return realpathSync(mkdtempSync(join(tmpdir(), "muse-ckpt-")));
 }
 
 function checkpointFileName(runId: string): string {
@@ -22,6 +23,97 @@ function checkpointFileName(runId: string): string {
 }
 
 describe("FileCheckpointStore — durable local checkpoints so a crashed run can resume", () => {
+  it("namespaces future v3 checkpoints by workspace and never lets an authority-less store discover them", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "checkpoints");
+      const workspaceA = realpathSync(mkdtempSync(join(dir, "workspace-a-")));
+      const workspaceB = realpathSync(mkdtempSync(join(dir, "workspace-b-")));
+      const runId = "same-run";
+      const a = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceA });
+      const b = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceB });
+      await a.save({ continuityEvidence: { phase: "act", query: "A request" }, runId, state: state("from-a"), step: 1 });
+      await b.save({ continuityEvidence: { phase: "act", query: "B request" }, runId, state: state("from-b"), step: 1 });
+
+      const names = readdirSync(join(checkpointsDir, "v3")).sort();
+      expect(names).toEqual([
+        checkpointV3FileName(workspaceA, runId),
+        checkpointV3FileName(workspaceB, runId)
+      ].sort());
+      expect((await a.findByRunId(runId))[0]?.state).toMatchObject({ phase: "from-a" });
+      expect((await b.findByRunId(runId))[0]?.state).toMatchObject({ phase: "from-b" });
+      await expect(new FileCheckpointStore(checkpointsDir).findByRunId(runId)).resolves.toEqual([]);
+
+      const bPath = join(checkpointsDir, "v3", checkpointV3FileName(workspaceB, runId));
+      const before = { bytes: readFileSync(bPath), mtimeMs: statSync(bPath).mtimeMs };
+      await a.deleteByRunId(runId);
+      expect(readFileSync(bPath)).toEqual(before.bytes);
+      expect(statSync(bPath).mtimeMs).toBe(before.mtimeMs);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("merges v3 over v2 by step without copying legacy evidence into the v3 envelope", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "checkpoints");
+      const workspace = realpathSync(mkdtempSync(join(dir, "workspace-")));
+      const legacy = new FileCheckpointStore(checkpointsDir);
+      await legacy.save({ runId: "mixed", state: state("legacy-zero"), step: 0 });
+      await legacy.save({ runId: "mixed", state: state("legacy-one"), step: 1 });
+      const future = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace });
+      await future.save({ continuityEvidence: { phase: "act", query: "continue safely" }, runId: "mixed", state: state("future-one"), step: 1 });
+
+      const merged = await future.findByRunId("mixed");
+      expect(merged.map((checkpoint) => [checkpoint.step, checkpoint.state.phase])).toEqual([[0, "legacy-zero"], [1, "future-one"]]);
+      const envelope = JSON.parse(readFileSync(join(checkpointsDir, "v3", checkpointV3FileName(workspace, "mixed")), "utf8")) as { checkpoints: Array<{ step: number }> };
+      expect(envelope.checkpoints.map((checkpoint) => checkpoint.step)).toEqual([1]);
+      expect((await legacy.findByRunId("mixed")).map((checkpoint) => checkpoint.state.phase)).toEqual(["legacy-zero", "legacy-one"]);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("global age housekeeping covers v2/v3, skips symlinks, and rechecks a locked candidate", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "checkpoints");
+      const workspace = realpathSync(mkdtempSync(join(dir, "workspace-")));
+      const oldMs = Date.now() - 10 * 86_400_000;
+      const legacy = new FileCheckpointStore(checkpointsDir);
+      await legacy.save({ runId: "old-v2", state: state("old"), step: 0 });
+      const future = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace });
+      await future.save({ continuityEvidence: { phase: "start", query: "old" }, runId: "old-v3", state: state("old"), step: 0 });
+      const v2Path = join(checkpointsDir, "v2", checkpointFileName("old-v2"));
+      const v3Path = join(checkpointsDir, "v3", checkpointV3FileName(workspace, "old-v3"));
+      utimesSync(v2Path, oldMs / 1000, oldMs / 1000);
+      utimesSync(v3Path, oldMs / 1000, oldMs / 1000);
+      symlinkSync(v2Path, join(checkpointsDir, "linked.json"));
+
+      const acquired = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const held = withFileLock(v3Path, async () => {
+        acquired.resolve();
+        await release.promise;
+      });
+      await acquired.promise;
+      const pruning = pruneCheckpointFilesByAge(checkpointsDir, { ageDays: 5, now: Date.now() });
+      await sleep(20);
+      writeFileSync(v3Path, readFileSync(v3Path));
+      utimesSync(v3Path, new Date(), new Date());
+      release.resolve();
+      const result = await pruning;
+      await held;
+
+      expect(result.droppedFiles).toContain(`v2/${checkpointFileName("old-v2")}`);
+      expect(result.droppedFiles).not.toContain(`v3/${checkpointV3FileName(workspace, "old-v3")}`);
+      expect(readFileSync(v3Path, "utf8")).toContain("old-v3");
+      expect(lstatSync(join(checkpointsDir, "linked.json")).isSymbolicLink()).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
   it("rejects invalid retention options instead of silently losing or retaining checkpoints", () => {
     const dir = tmpDir();
     try {

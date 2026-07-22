@@ -20,3 +20,9 @@ export {
   type CanonicalRunOutcome,
   type LocalRunReference
 } from "./local-run-reference.js";
+export {
+  decodeLocalCheckpointReference,
+  encodeLocalCheckpointReference,
+  isCanonicalCheckpointStep,
+  type LocalCheckpointReference
+} from "./local-checkpoint-reference.js";

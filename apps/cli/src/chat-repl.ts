@@ -297,7 +297,10 @@ export async function runLocalChat(
     userId: resolveDefaultUserKey({})
   });
   const assembly = io.createRuntimeAssembly?.()
-    ?? createMuseRuntimeAssembly(actuators.tools.length > 0 ? { extraTools: actuators.tools } : {});
+    ?? createMuseRuntimeAssembly({
+      ...(actuators.tools.length > 0 ? { extraTools: actuators.tools } : {}),
+      ...(io.workspaceDir ? { continuityWorkspaceDir: io.workspaceDir } : {})
+    });
 
   if (!assembly.agentRuntime || !(model ?? assembly.defaultModel)) {
     throw new Error("Local chat requires MUSE_MODEL and a configured model provider");
