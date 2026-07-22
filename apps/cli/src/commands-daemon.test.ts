@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MuseTool } from "@muse/tools";
 
 import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
+import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 
 const TEST_HARNESS_CLI_ENTRY = fileURLToPath(import.meta.url);
@@ -1709,6 +1710,54 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
 });
 
 describe("muse daemon — resource admission", () => {
+  it("runs the isolated active -> idle claim -> owner-paused three-cycle journey", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_DAEMON_BACKGROUND_MODE: "auto",
+      MUSE_EMAIL_SYNC_ENABLED: "true",
+      MUSE_MESSAGING_POLL_ENABLED: "true"
+    };
+    const heavy = vi.fn();
+    const messagingPoll = vi.fn(async () => ({ errors: [], ingestedByProvider: {} }));
+    const receipts: DaemonResourceReceipt[] = [];
+    const snapshots: DaemonResourceSnapshot[] = [
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 1_000, load1: 1, onAcPower: true, platform: "darwin" },
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 300_000, load1: 1, onAcPower: true, platform: "darwin" },
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 ** 3, idleMs: 300_000, load1: 1, onAcPower: true, platform: "darwin" }
+    ];
+    const makeEmailSyncTick: NonNullable<DaemonHelpers["makeEmailSyncTick"]> = () => async (claim) => {
+      if (!(claim ?? (() => true))()) return { status: "cancelled-before-claim" };
+      heavy();
+      return { status: "claimed-completed" };
+    };
+
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      env,
+      makeEmailSyncTick,
+      messagingPoll,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      resourceSnapshot: () => snapshots.shift()!,
+      runDaemonLoop: async ({ signal, tick }) => {
+        await tick();
+        await tick();
+        env.MUSE_DAEMON_BACKGROUND_MODE = "paused";
+        await tick();
+        signal.stop();
+        return 3;
+      },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+
+    expect(heavy).toHaveBeenCalledOnce();
+    expect(messagingPoll).toHaveBeenCalled();
+    expect(receipts).toMatchObject([
+      { decision: { reason: "active-user", status: "deferred" } },
+      { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "email-sync" } },
+      { decision: { reason: "owner-paused", status: "deferred" } }
+    ]);
+  });
+
   it("defers and then resumes opt-in heavyweight browsing sync without changing the light tick", async () => {
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
