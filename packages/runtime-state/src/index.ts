@@ -6,6 +6,7 @@ export {
   type LocalCheckpointEvidenceReadResult
 } from "./local-checkpoint-evidence.js";
 export { createCheckpointContinuityEvidence } from "./checkpoint-v3.js";
+export * from "./resident-daemon-status.js";
 
 export type Awaitable<T> = T | Promise<T>;
 
