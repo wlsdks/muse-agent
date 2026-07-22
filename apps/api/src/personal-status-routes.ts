@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { readAttunementState, type AttunementState } from "@muse/attunement";
+import { prepareContinuityReview, readAttunementState, type AttunementState } from "@muse/attunement";
 import {
   inspectBeliefProvenanceSource,
   reviveUserModelSlotDates,
@@ -194,15 +194,22 @@ async function inspectAttunement(file: string): Promise<ReadOnlySourceInspection
   }
 }
 
-function projectAttunement(
+async function projectAttunement(
   inspected: ReadOnlySourceInspection<AttunementState>,
   context: ProjectionContext
-): { readonly cards: readonly PersonalStatusCard[]; readonly row: PersonalStatusSource } {
+): Promise<{ readonly cards: readonly PersonalStatusCard[]; readonly row: PersonalStatusSource }> {
   if (inspected.result !== "available") return failedSource("attunement", "continuity-feedback", context.generatedAt, inspected);
   const state = inspected.value;
   let excluded = 0;
   const cards: PersonalStatusCard[] = [];
-  const orderedDeliveries = state.deliveries.slice().sort((left, right) => left.openedAt.localeCompare(right.openedAt));
+  let canonicalReview: Awaited<ReturnType<typeof prepareContinuityReview>>;
+  try {
+    canonicalReview = await prepareContinuityReview(state, async () => undefined);
+  } catch {
+    return failedSource("attunement", "continuity-feedback", context.generatedAt, { errorCode: "invalid-schema", result: "corrupt" });
+  }
+  const orderedDeliveries = state.deliveries.slice().sort((left, right) =>
+    Date.parse(left.openedAt) - Date.parse(right.openedAt) || left.id.localeCompare(right.id));
   const representedDeliveries = new Set<string>();
   const addFeedbackCard = (delivery: AttunementState["deliveries"][number]): void => {
     const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
@@ -228,10 +235,9 @@ function projectAttunement(
     });
     representedDeliveries.add(delivery.id);
   };
-  const canonicalOrganicNext = orderedDeliveries
-    .filter((delivery) => delivery.evidenceClass === "organic")
-    .slice(0, 20)
-    .find((delivery) => delivery.outcome?.evidenceClass !== "organic");
+  const canonicalOrganicNext = canonicalReview.next
+    ? state.deliveries.find((delivery) => delivery.id === canonicalReview.next?.deliveryId)
+    : undefined;
   if (canonicalOrganicNext) addFeedbackCard(canonicalOrganicNext);
   const technicalNext = orderedDeliveries.find((delivery) => delivery.evidenceClass !== "organic");
   if (technicalNext && technicalNext.id !== canonicalOrganicNext?.id) addFeedbackCard(technicalNext);
@@ -460,7 +466,7 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
   const projectedRuntime = projectRuntime(runtime, context);
   const projectedApprovals = projectPendingApprovals(approvals, context);
   const projectedProposals = projectProposals(proposals, context);
-  const projectedAttunement = projectAttunement(attunement, context);
+  const projectedAttunement = await projectAttunement(attunement, context);
   const projectedLearning = projectLearning(provenance, memoryResult.memory, memoryResult.failure, context);
   const projectedReconfirmation = projectReconfirmation(memoryResult.memory, reconfirmation, context);
   const projectedVetoes = projectVetoes(vetoes, context);

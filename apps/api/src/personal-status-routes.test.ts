@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPersonalThread, linkArtifact } from "@muse/attunement";
+import { createPersonalThread, linkArtifact, prepareContinuityReview, type AttunementState } from "@muse/attunement";
 import type { UserMemory } from "@muse/memory";
 import { MessagingProviderRegistry, type MessagingProvider } from "@muse/messaging";
 import type { ResidentDaemonInspection } from "@muse/runtime-state";
@@ -239,6 +239,25 @@ describe("GET /api/personal-status", () => {
     const status = await collectPersonalStatus(state.routeOptions);
     expect(status.cards).toContainEqual(expect.objectContaining({ id: "feedback:organic_pending", status: "attention" }));
     expect(status.cards).toContainEqual(expect.objectContaining({ id: "feedback:controlled_00", status: "held" }));
+  });
+
+  it("uses the canonical delivery-id tie-break for same-time organic feedback", async () => {
+    const state = await fixture();
+    const attunement = JSON.parse(readFileSync(state.files.attunement, "utf8")) as AttunementState & {
+      deliveries: Array<{ evidenceClass: "organic"; evidenceRefs: never[]; id: string; openedAt: string; policyVersion: number; threadId: string }>;
+    };
+    const base = attunement.deliveries[0]!;
+    attunement.deliveries = [
+      { ...base, id: "z_pending", openedAt: "2026-07-22T10:00:00.000Z" },
+      { ...base, id: "a_pending", openedAt: "2026-07-22T10:00:00.000Z" }
+    ];
+    writeFileSync(state.files.attunement, `${JSON.stringify(attunement, null, 2)}\n`);
+
+    const canonical = await prepareContinuityReview(attunement, async () => undefined);
+    const status = await collectPersonalStatus(state.routeOptions);
+    expect(canonical.next?.deliveryId).toBe("a_pending");
+    expect(status.cards.filter((card) => card.kind === "continuity-feedback").map((card) => card.id))
+      .toEqual([`feedback:${canonical.next?.deliveryId}`]);
   });
 
   it("excludes oversized owner records without failing the aggregate", async () => {
