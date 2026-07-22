@@ -106,6 +106,16 @@ interface CheckpointRetentionGroup {
   readonly workspaceRealpath?: string;
 }
 
+function checkpointRetentionGroupKey(group: Pick<CheckpointRetentionGroup, "runId" | "workspaceRealpath">): string {
+  return JSON.stringify(group.workspaceRealpath === undefined
+    ? ["unscoped", group.runId]
+    : ["scoped", group.workspaceRealpath, group.runId]);
+}
+
+function compareCheckpointRetentionGroups(left: CheckpointRetentionGroup, right: CheckpointRetentionGroup): number {
+  return right.mtime - left.mtime || checkpointRetentionGroupKey(left).localeCompare(checkpointRetentionGroupKey(right));
+}
+
 export class FileCheckpointStore implements CheckpointStore {
   readonly #dir: string;
   readonly #maxPerRun: number;
@@ -195,12 +205,12 @@ export class FileCheckpointStore implements CheckpointStore {
     if (this.#savesSincePrune < this.#pruneInterval) return;
     this.#savesSincePrune = 0;
     try {
-      const groups = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
+      const groups = [...await this.#checkpointGroups()].sort(compareCheckpointRetentionGroups);
       if (groups.length <= this.#maxRuns) return;
       for (const candidate of groups.slice(this.#maxRuns)) {
         if (sameRetentionGroup(candidate, { runId: protectedRunId, workspaceRealpath: protectedWorkspaceRealpath })) continue;
         await withCheckpointFileLocks(checkpointRetentionGroupFiles(this.#dir, candidate), async () => {
-          const current = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
+          const current = [...await this.#checkpointGroups()].sort(compareCheckpointRetentionGroups);
           if (current.length <= this.#maxRuns || !current.slice(this.#maxRuns).some((entry) => sameRetentionGroup(entry, candidate))) {
             return;
           }
@@ -329,6 +339,9 @@ export class FileCheckpointStore implements CheckpointStore {
         provenance: { runId: checkpoint.runId, workspaceRealpath },
         schemaVersion: 3
       };
+      if (!parseCheckpointV3Envelope(envelope)) {
+        throw new Error("checkpoint is not valid for the strict v3 persistence contract");
+      }
       const tmp = `${target}.${fileSafeSegment(checkpoint.id)}.tmp`;
       await writeFile(tmp, JSON.stringify(envelope), "utf8");
       await rename(tmp, target);

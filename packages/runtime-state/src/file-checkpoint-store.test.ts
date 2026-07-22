@@ -75,6 +75,32 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
     }
   });
 
+  it.each([
+    { id: "checkpoint", runId: "bad/run", step: 0 },
+    { id: " checkpoint ", runId: "valid-run", step: 0 },
+    { id: "checkpoint", runId: "valid-run", step: -1 },
+    { id: "checkpoint", runId: "valid-run", step: Number.MAX_SAFE_INTEGER + 1 }
+  ])("never persists non-strict public save input as v3: $runId/$id/$step", async ({ id, runId, step }) => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "checkpoints");
+      const workspace = realpathSync(mkdtempSync(join(dir, "workspace-")));
+      const store = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace });
+      await expect(store.save({
+        continuityEvidence: { phase: "act", query: "must not be blessed" },
+        id,
+        runId,
+        state: state("act"),
+        step
+      })).resolves.toMatchObject({ id, runId, step });
+
+      expect(readdirSync(join(checkpointsDir, "v3"))).toEqual([]);
+      await expect(new FileCheckpointStore(checkpointsDir).findByRunId(runId)).resolves.toHaveLength(1);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("global age housekeeping covers v2/v3, skips symlinks, and rechecks a locked candidate", async () => {
     const dir = tmpDir();
     try {
@@ -110,6 +136,41 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
       expect(result.droppedFiles).not.toContain(`v3/${checkpointV3FileName(workspace, "old-v3")}`);
       expect(readFileSync(v3Path, "utf8")).toContain("old-v3");
       expect(lstatSync(join(checkpointsDir, "linked.json")).isSymbolicLink()).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("global age housekeeping removes old files across workspaces but preserves recent files and symlinks", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "checkpoints");
+      const workspaceA = realpathSync(mkdtempSync(join(dir, "workspace-a-")));
+      const workspaceB = realpathSync(mkdtempSync(join(dir, "workspace-b-")));
+      const a = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceA });
+      const b = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceB });
+      for (const [store, runId] of [[a, "a-old"], [a, "a-recent"], [b, "b-old"], [b, "b-recent"]] as const) {
+        await store.save({ runId, state: state("act"), step: 0 });
+      }
+      const oldPaths = [
+        join(checkpointsDir, "v3", checkpointV3FileName(workspaceA, "a-old")),
+        join(checkpointsDir, "v3", checkpointV3FileName(workspaceB, "b-old"))
+      ];
+      const recentPaths = [
+        join(checkpointsDir, "v3", checkpointV3FileName(workspaceA, "a-recent")),
+        join(checkpointsDir, "v3", checkpointV3FileName(workspaceB, "b-recent"))
+      ];
+      const oldAt = new Date(Date.now() - 10 * 86_400_000);
+      for (const path of oldPaths) utimesSync(path, oldAt, oldAt);
+      const symlink = join(checkpointsDir, "v3", "linked.json");
+      symlinkSync(oldPaths[0]!, symlink);
+
+      const result = await pruneCheckpointFilesByAge(checkpointsDir, { ageDays: 5, now: Date.now() });
+
+      for (const path of oldPaths) expect(existsSync(path)).toBe(false);
+      for (const path of recentPaths) expect(existsSync(path)).toBe(true);
+      expect(lstatSync(symlink).isSymbolicLink()).toBe(true);
+      expect(result.droppedFiles.filter((path) => path.startsWith("v3/"))).toHaveLength(2);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
@@ -268,6 +329,53 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
       }
       expect(await store.findByRunId("r1")).toEqual([]); // oldest pruned
       expect(await store.findByRunId("r3")).toHaveLength(1); // newest kept
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("uses logical-key ascending as the deterministic maxRuns tie-break", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "c");
+      const workspace = realpathSync(mkdtempSync(join(dir, "workspace-")));
+      const unscoped = new FileCheckpointStore(checkpointsDir, { maxRuns: 10, pruneIntervalSaves: 100 });
+      await unscoped.save({ runId: "unscoped-tie", state: state("old"), step: 0 });
+      const scoped = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace, maxRuns: 10, pruneIntervalSaves: 100 });
+      await scoped.save({ runId: "scoped-tie", state: state("old"), step: 0 });
+      const tiedAt = new Date("2026-07-22T00:00:00.000Z");
+      utimesSync(join(checkpointsDir, "v2", checkpointFileName("unscoped-tie")), tiedAt, tiedAt);
+      utimesSync(join(checkpointsDir, "v3", checkpointV3FileName(workspace, "scoped-tie")), tiedAt, tiedAt);
+
+      const pruning = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace, maxRuns: 2, pruneIntervalSaves: 1 });
+      await pruning.save({ runId: "newest", state: state("new"), step: 0 });
+
+      expect(existsSync(join(checkpointsDir, "v3", checkpointV3FileName(workspace, "scoped-tie")))).toBe(true);
+      expect(existsSync(join(checkpointsDir, "v2", checkpointFileName("unscoped-tie")))).toBe(false);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("workspace-scoped maxRuns never scans or mutates another workspace's v3 files", async () => {
+    const dir = tmpDir();
+    try {
+      const checkpointsDir = join(dir, "c");
+      const workspaceA = realpathSync(mkdtempSync(join(dir, "workspace-a-")));
+      const workspaceB = realpathSync(mkdtempSync(join(dir, "workspace-b-")));
+      const b = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceB });
+      await b.save({ runId: "b-run", state: state("b"), step: 0 });
+      const bPath = join(checkpointsDir, "v3", checkpointV3FileName(workspaceB, "b-run"));
+      const before = { bytes: readFileSync(bPath), mtimeMs: statSync(bPath).mtimeMs };
+
+      const a = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceA, maxRuns: 1, pruneIntervalSaves: 1 });
+      await a.save({ runId: "a-old", state: state("old"), step: 0 });
+      await sleep(5);
+      await a.save({ runId: "a-new", state: state("new"), step: 0 });
+
+      expect(readFileSync(bPath)).toEqual(before.bytes);
+      expect(statSync(bPath).mtimeMs).toBe(before.mtimeMs);
+      await expect(b.findByRunId("b-run")).resolves.toHaveLength(1);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

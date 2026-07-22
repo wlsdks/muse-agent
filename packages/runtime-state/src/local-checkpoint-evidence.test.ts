@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,12 @@ import { FileCheckpointStore } from "./file-checkpoint-store.js";
 import { readLocalCheckpointEvidenceStrict } from "./local-checkpoint-evidence.js";
 
 const roots: string[] = [];
+
+interface MutableV3Envelope extends Record<string, unknown> {
+  checkpoints: Array<{ state: unknown; step: number }>;
+  provenance: { runId: string };
+  schemaVersion?: number;
+}
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "muse-checkpoint-evidence-")));
@@ -79,6 +85,88 @@ describe("readLocalCheckpointEvidenceStrict", () => {
     rmSync(join(f.checkpointsDir, "v3"), { recursive: true });
     symlinkSync(outside, join(f.checkpointsDir, "v3"));
     const reference = encodeLocalCheckpointReference({ runId: "run", step: 0, workspaceRealpath: f.workspaceRealpath });
+    await expect(readLocalCheckpointEvidenceStrict({ allowedWorkspaceRealpath: f.workspaceRealpath, checkpointsDir: f.checkpointsDir, reference })).resolves.toMatchObject({ kind: "invalid" });
+  });
+
+  it.each(["symlink", "directory"] as const)("rejects a %s checkpoint target", async (kind) => {
+    const f = fixture();
+    const runId = `target-${kind}`;
+    await new FileCheckpointStore(f.checkpointsDir, { continuityWorkspaceDir: f.workspaceRealpath }).save({
+      continuityEvidence: { phase: "act", query: "exact target" }, runId, state: { phase: "act" }, step: 1
+    });
+    const target = join(f.checkpointsDir, "v3", checkpointV3FileName(f.workspaceRealpath, runId));
+    const original = readFileSync(target);
+    rmSync(target);
+    if (kind === "directory") mkdirSync(target);
+    else {
+      const outside = join(f.root, "outside.json");
+      writeFileSync(outside, original);
+      symlinkSync(outside, target);
+    }
+    const reference = encodeLocalCheckpointReference({ runId, step: 1, workspaceRealpath: f.workspaceRealpath });
+    await expect(readLocalCheckpointEvidenceStrict({ allowedWorkspaceRealpath: f.workspaceRealpath, checkpointsDir: f.checkpointsDir, reference })).resolves.toMatchObject({ kind: "invalid" });
+  });
+
+  it("rejects an inode replacement after opening the exact target", async () => {
+    const f = fixture();
+    const runId = "racing-target";
+    await new FileCheckpointStore(f.checkpointsDir, { continuityWorkspaceDir: f.workspaceRealpath }).save({
+      continuityEvidence: { phase: "act", query: "before race" }, runId, state: { phase: "act" }, step: 1
+    });
+    const target = join(f.checkpointsDir, "v3", checkpointV3FileName(f.workspaceRealpath, runId));
+    const replacement = `${target}.replacement`;
+    writeFileSync(replacement, readFileSync(target));
+    const reference = encodeLocalCheckpointReference({ runId, step: 1, workspaceRealpath: f.workspaceRealpath });
+
+    await expect(readLocalCheckpointEvidenceStrict({
+      allowedWorkspaceRealpath: f.workspaceRealpath,
+      checkpointsDir: f.checkpointsDir,
+      reference,
+      testHooks: { afterOpen: () => renameSync(replacement, target) }
+    })).resolves.toMatchObject({ kind: "invalid" });
+  });
+
+  it.each([
+    ["fatal UTF-8", () => Buffer.from([0xff, 0xfe, 0xfd])],
+    ["the 4 MiB file cap", () => Buffer.alloc(4 * 1_048_576 + 1, 0x20)]
+  ] as const)("rejects evidence that violates %s", async (_name, bytes) => {
+    const f = fixture();
+    const runId = "bounded-file";
+    await new FileCheckpointStore(f.checkpointsDir, { continuityWorkspaceDir: f.workspaceRealpath }).save({
+      continuityEvidence: { phase: "start", query: "bounded" }, runId, state: { phase: "start" }, step: 0
+    });
+    const target = join(f.checkpointsDir, "v3", checkpointV3FileName(f.workspaceRealpath, runId));
+    writeFileSync(target, bytes());
+    const reference = encodeLocalCheckpointReference({ runId, step: 0, workspaceRealpath: f.workspaceRealpath });
+    await expect(readLocalCheckpointEvidenceStrict({ allowedWorkspaceRealpath: f.workspaceRealpath, checkpointsDir: f.checkpointsDir, reference })).resolves.toMatchObject({ kind: "invalid" });
+  });
+
+  it.each([
+    ["depth cap", (envelope: MutableV3Envelope) => {
+      let nested: Record<string, unknown> = {};
+      for (let index = 0; index < 70; index += 1) nested = { nested };
+      envelope.checkpoints[0]!.state = nested;
+    }],
+    ["node cap", (envelope: MutableV3Envelope) => { envelope.checkpoints[0]!.state = { values: Array.from({ length: 65_536 }, () => 0) }; }],
+    ["member cap", (envelope: MutableV3Envelope) => {
+      envelope.checkpoints[0]!.state = Object.fromEntries(Array.from({ length: 65_537 }, (_, index) => [`k${index.toString()}`, 0]));
+    }],
+    ["array cap", (envelope: MutableV3Envelope) => { envelope.checkpoints[0]!.state = { values: Array.from({ length: 65_537 }, () => 0) }; }],
+    ["unknown envelope key", (envelope: MutableV3Envelope) => { envelope.untrusted = true; }],
+    ["missing envelope key", (envelope: MutableV3Envelope) => { delete envelope.schemaVersion; }],
+    ["provenance mismatch", (envelope: MutableV3Envelope) => { envelope.provenance.runId = "different-run"; }],
+    ["invalid exact step", (envelope: MutableV3Envelope) => { envelope.checkpoints[0]!.step = -1; }]
+  ] as const)("rejects strict JSON/schema violation: %s", async (_name, mutate) => {
+    const f = fixture();
+    const runId = "strict-envelope";
+    await new FileCheckpointStore(f.checkpointsDir, { continuityWorkspaceDir: f.workspaceRealpath }).save({
+      continuityEvidence: { phase: "act", query: "strict" }, runId, state: { phase: "act" }, step: 1
+    });
+    const target = join(f.checkpointsDir, "v3", checkpointV3FileName(f.workspaceRealpath, runId));
+    const envelope = JSON.parse(readFileSync(target, "utf8")) as MutableV3Envelope;
+    mutate(envelope);
+    writeFileSync(target, JSON.stringify(envelope));
+    const reference = encodeLocalCheckpointReference({ runId, step: 1, workspaceRealpath: f.workspaceRealpath });
     await expect(readLocalCheckpointEvidenceStrict({ allowedWorkspaceRealpath: f.workspaceRealpath, checkpointsDir: f.checkpointsDir, reference })).resolves.toMatchObject({ kind: "invalid" });
   });
 });

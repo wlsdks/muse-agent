@@ -51,6 +51,8 @@ export async function readLocalCheckpointEvidenceStrict(input: {
   readonly allowedWorkspaceRealpath: string;
   readonly checkpointsDir: string;
   readonly reference: string;
+  /** Deterministic race seam for security tests; production callers leave this absent. */
+  readonly testHooks?: { readonly afterOpen?: (target: string) => Promise<void> | void };
 }): Promise<LocalCheckpointEvidenceReadResult> {
   const reference = decodeLocalCheckpointReference(input.reference);
   if (!reference
@@ -95,9 +97,16 @@ export async function readLocalCheckpointEvidenceStrict(input: {
     if (!before.isFile() || !sameFile(pathStat, before) || before.size > MAX_FILE_BYTES) {
       return { kind: "invalid", reason: "checkpoint evidence changed or exceeds the file limit" };
     }
+    await input.testHooks?.afterOpen?.(target);
     const bytes = await handle.readFile();
     const after = await handle.stat();
-    if (bytes.byteLength > MAX_FILE_BYTES || !sameFile(before, after)) {
+    let finalPathStat;
+    try {
+      finalPathStat = await lstat(target);
+    } catch {
+      return { kind: "invalid", reason: "checkpoint evidence changed while being read" };
+    }
+    if (bytes.byteLength > MAX_FILE_BYTES || !sameFile(before, after) || !sameFile(after, finalPathStat)) {
       return { kind: "invalid", reason: "checkpoint evidence changed while being read" };
     }
     let text: string;
