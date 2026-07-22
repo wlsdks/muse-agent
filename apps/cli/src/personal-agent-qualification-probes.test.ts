@@ -10,10 +10,16 @@ import {
   collectPersonalAgentQualificationObservations,
   inspectGitSnapshot,
   inspectOrphanApiProcesses,
+  parseCapabilityEvidenceInspection,
   readStrictBacklogCounts,
   type ReadOnlyCommandRunner
 } from "./personal-agent-qualification-probes.js";
 import { buildLaunchAgentPlist } from "./commands-daemon-launchagent.js";
+import {
+  beginCapabilityEvidenceAttempt,
+  finalizeCapabilityEvidenceAttempt,
+  inspectCapabilityEvidence
+} from "../../../scripts/eval-agent-evidence.mjs";
 import {
   AGENT_CAPABILITY_MATRIX_ID,
   AGENT_CAPABILITY_REQUIREMENTS,
@@ -94,8 +100,8 @@ function qualificationFixture(options: {
   writeFileSync(remindersFile, JSON.stringify({ reminders: [] }));
   writeFileSync(daemonConfigFile, JSON.stringify({ provider: "log" }));
   if (options.report !== "missing") {
-    writeFileSync(reportFile, JSON.stringify(capabilityReport()), { mode: 0o600 });
-    if (process.platform !== "win32") chmodSync(reportFile, 0o600);
+    const attempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath: reportFile });
+    finalizeCapabilityEvidenceAttempt(attempt, capabilityReport());
   }
 
   const env: NodeJS.ProcessEnv = {
@@ -157,6 +163,10 @@ function qualificationFixture(options: {
   return {
     dependencies: {
       artifactDigest: async () => QUALIFY_ARTIFACTS,
+      capabilityEvidence: async (file: string, allowedRoot: string) => inspectCapabilityEvidence({
+        allowedRoot,
+        reportPath: file
+      }),
       daemonTemporaryRoots: [],
       env,
       now: () => QUALIFY_NOW,
@@ -266,6 +276,14 @@ describe("git source probe", () => {
 });
 
 describe("qualification collector integration", () => {
+  it("rejects completed inspector output without its four-file fingerprint", () => {
+    expect(parseCapabilityEvidenceInspection({
+      artifact: { state: "parsed", value: capabilityReport() },
+      state: "completed",
+      status: "passed"
+    })).toEqual({ artifact: { state: "invalid" }, state: "invalid" });
+  });
+
   it("can prove a complete sparse local fixture without raw identity fields", async () => {
     const fixture = qualificationFixture();
     const before = exactFixtureManifest(fixture.root);
@@ -286,6 +304,36 @@ describe("qualification collector integration", () => {
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates[1].evidence.heartbeatState).toBe("fresh");
     expect(report.gates[1].evidence.processIdentityMatch).toBe(true);
+  });
+
+  it("re-reads evidence after source/artifact probes and rejects a concurrent new attempt", async () => {
+    const fixture = qualificationFixture();
+    let reads = 0;
+    const observations = await collectPersonalAgentQualificationObservations(fixture.options, {
+      ...fixture.dependencies,
+      capabilityEvidence: async () => {
+        reads += 1;
+        return reads === 1
+          ? {
+              artifact: { state: "parsed" as const, value: capabilityReport() },
+              fingerprint: "a".repeat(64),
+              state: "completed" as const,
+              status: "passed" as const
+            }
+          : {
+              artifact: { state: "parsed" as const, value: capabilityReport() },
+              fingerprint: "b".repeat(64),
+              state: "running" as const
+            };
+      }
+    });
+
+    expect(reads).toBe(2);
+    expect(observations.capability.attempt.stable).toBe(false);
+    expect(qualifyPersonalAgent(observations).gates[0]).toMatchObject({
+      reasonCodes: ["capability-attempt-changed-during-qualification"],
+      status: "unverified"
+    });
   });
 
   it("fails a real overdue delivery backlog and refuses to synthesize disk/live identity", async () => {
@@ -314,7 +362,7 @@ describe("qualification collector integration", () => {
       await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
     );
     expect(report.status, JSON.stringify(report)).toBe("unverified");
-    expect(report.gates[0].reasonCodes).toContain("capability-report-missing");
+    expect(report.gates[0].reasonCodes).toContain("capability-attempt-state-missing");
   });
 
   it("rejects a default capability-report parent symlink without following it", async () => {
@@ -334,7 +382,7 @@ describe("qualification collector integration", () => {
     ));
 
     expect(report.status).toBe("unverified");
-    expect(report.gates[0].reasonCodes).toContain("capability-report-invalid");
+    expect(report.gates[0].reasonCodes).toContain("capability-attempt-state-invalid");
     expect(createHash("sha256").update(readFileSync(outsideReport)).digest("hex")).toBe(before);
   });
 });

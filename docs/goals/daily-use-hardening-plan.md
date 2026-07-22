@@ -148,7 +148,7 @@ change without an explicit owner action; retries are idempotent.
   time budget, and a local CPU/RAM admission before the full pass^k capability
   evaluator can build or start a local model; expose the same decision through
   a read-only admission command.
-- [ ] Publish the canonical v2 report only on a clean source/artifact snapshot;
+- [x] Publish the canonical v2 report only on a clean source/artifact snapshot;
   a partial/aborted run is unverified, never passing evidence.
 
 **Gate:** fresh 11-axis report passes all required repeats with matching source

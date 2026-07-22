@@ -63,7 +63,7 @@
     "eval:evidence": "node scripts/eval-evidence.mjs",
     "eval:continuity-interaction-audit": "pnpm --filter @muse/attunement build && node scripts/eval-continuity-interaction-audit.mjs --eval-run",
     "eval:continuity-provider-boundary": "pnpm --filter @muse/attunement build && node scripts/eval-continuity-provider-boundary.mjs --eval-run",
-    "eval:agent:offline": "node --test scripts/eval-harness.test.mjs scripts/eval-adversarial.test.mjs scripts/eval-recall-quality.test.mjs scripts/eval-skip.test.mjs scripts/eval-agent.test.mjs scripts/eval-agent-provenance.test.mjs scripts/eval-agent-artifacts.test.mjs scripts/eval-tool-authority.test.mjs scripts/eval-runner-isolation.test.mjs scripts/eval-trial-environment.test.mjs scripts/eval-evidence.test.mjs",
+    "eval:agent:offline": "node --test scripts/eval-harness.test.mjs scripts/eval-adversarial.test.mjs scripts/eval-recall-quality.test.mjs scripts/eval-skip.test.mjs scripts/eval-agent-evidence.test.mjs scripts/eval-agent.test.mjs scripts/eval-agent-provenance.test.mjs scripts/eval-agent-artifacts.test.mjs scripts/eval-tool-authority.test.mjs scripts/eval-runner-isolation.test.mjs scripts/eval-trial-environment.test.mjs scripts/eval-evidence.test.mjs",
     "eval:agent": "node scripts/eval-agent.mjs",
     "qualify:personal-agent": "pnpm --silent --filter @muse/cli dev qualify --json",
     "eval:self-improving": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/eval-self-improving.mjs",

@@ -29,6 +29,10 @@ export const QUALIFICATION_REASON = {
   artifactEvidenceMissing: "capability-artifact-evidence-missing",
   capabilityFailed: "capability-report-failed",
   capabilityFutureDated: "capability-report-future-dated",
+  capabilityAttemptChanged: "capability-attempt-changed-during-qualification",
+  capabilityAttemptInProgress: "capability-attempt-in-progress",
+  capabilityAttemptInvalid: "capability-attempt-state-invalid",
+  capabilityAttemptMissing: "capability-attempt-state-missing",
   capabilityInvalid: "capability-report-invalid",
   capabilityMissing: "capability-report-missing",
   capabilityProvenanceMissing: "capability-provenance-missing",
@@ -92,6 +96,11 @@ export interface CapabilityArtifactObservation {
 
 export interface CapabilityQualificationObservation {
   readonly artifact: CapabilityArtifactObservation;
+  readonly attempt: {
+    readonly stable: boolean;
+    readonly state: "missing" | "invalid" | "running" | "completed";
+    readonly status?: "passed" | "failed" | "unverified";
+  };
   readonly currentSourceStart: GitEvidenceSnapshot;
   readonly currentSourceEnd: GitEvidenceSnapshot;
   readonly currentArtifacts: ArtifactEvidenceSnapshot;
@@ -377,13 +386,24 @@ function assessCapability(
   const failed: QualificationReasonCode[] = [];
   const unverified: QualificationReasonCode[] = [];
   let report: ParsedCapabilityReport | undefined;
-  if (observation.artifact.state === "missing") {
+  if (!observation.attempt.stable) {
+    unverified.push(QUALIFICATION_REASON.capabilityAttemptChanged);
+  } else if (observation.attempt.state === "missing") {
+    unverified.push(QUALIFICATION_REASON.capabilityAttemptMissing);
+  } else if (observation.attempt.state === "invalid") {
+    unverified.push(QUALIFICATION_REASON.capabilityAttemptInvalid);
+  } else if (observation.attempt.state === "running") {
+    unverified.push(QUALIFICATION_REASON.capabilityAttemptInProgress);
+  } else if (observation.artifact.state === "missing") {
     unverified.push(QUALIFICATION_REASON.capabilityMissing);
   } else if (observation.artifact.state === "invalid") {
     unverified.push(QUALIFICATION_REASON.capabilityInvalid);
   } else {
     report = parseCapabilityReport(observation.artifact.value);
-    if (!report) unverified.push(QUALIFICATION_REASON.capabilityInvalid);
+    if (!report || report.status !== observation.attempt.status) {
+      report = undefined;
+      unverified.push(QUALIFICATION_REASON.capabilityInvalid);
+    }
   }
 
   let sourceRevisionMatch = false;

@@ -7,19 +7,8 @@
  * copies prompts, model output, or tool payloads into the report.
  */
 
-import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -35,10 +24,14 @@ import {
   captureRuntimeArtifacts,
   runForcedTypeScriptBuild,
 } from "./eval-agent-provenance.mjs";
+import {
+  beginCapabilityEvidenceAttempt,
+  DEFAULT_CAPABILITY_REPORT_PATH,
+  finalizeCapabilityEvidenceAttempt,
+} from "./eval-agent-evidence.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CAPABILITY_TIMEOUT_MS = 90 * 60 * 1000;
-const DEFAULT_REPORT_PATH = resolve(here, "../.muse-dev/evals/agent-capability/latest.json");
 const REPO_ROOT = resolve(here, "..");
 export const CAPABILITY_MATRIX_ID = "muse-agent-capability-v1";
 
@@ -273,32 +266,10 @@ function integrityFailureRows() {
   return CAPABILITIES.map((capability) => failedRow(capability, 0, "report-integrity-failed"));
 }
 
-/** Persist only the privacy-safe aggregate, atomically, under the ignored eval tree. */
-export function persistCapabilityReport(report, reportPath = DEFAULT_REPORT_PATH, options = {}) {
-  let location;
-  try {
-    location = prepareCapabilityReportLocation(reportPath, options.allowedRoot);
-  } catch {
-    throw capabilityReportPersistenceError();
-  }
-
-  const temporary = `${location.reportPath}.${randomUUID()}.tmp`;
-  try {
-    writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    if (process.platform !== "win32") chmodSync(temporary, 0o600);
-    const rename = options.rename ?? renameSync;
-    rename(temporary, location.reportPath);
-    if (process.platform !== "win32") chmodSync(location.reportPath, 0o600);
-  } catch {
-    try {
-      rmSync(location.reportPath, { force: true });
-    } catch {
-      // The caller still fails closed even if the filesystem is unavailable.
-    }
-    throw capabilityReportPersistenceError();
-  } finally {
-    rmSync(temporary, { force: true });
-  }
+/** Compatibility helper for tests/tools that publish one complete attempt. */
+export function persistCapabilityReport(report, reportPath = DEFAULT_CAPABILITY_REPORT_PATH, options = {}) {
+  const attempt = beginCapabilityEvidenceAttempt({ ...options, reportPath });
+  finalizeCapabilityEvidenceAttempt(attempt, report, options);
 }
 
 function printHumanReport(report, stdout) {
@@ -448,6 +419,17 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   const captureArtifacts = dependencies.captureArtifacts
     ?? ((runnerPath) => captureRuntimeArtifacts({ repoRoot: REPO_ROOT, runnerPath }));
 
+  let evidenceAttempt;
+  try {
+    evidenceAttempt = dependencies.beginAttempt?.();
+  } catch {
+    const report = createCapabilityReport(
+      CAPABILITIES.map((capability) => failedRow(capability, 0, "report-persistence-failed")),
+      { generatedAt: generatedAt(now), provenance: unknownProvenance() },
+    );
+    return emitUnpersistedReport(report, { json, stdout });
+  }
+
   const sourceBeforeBuild = safeSourceSnapshot(captureSource);
   const typeScriptBuild = safeBuildStep(runTypeScriptBuild, "typescript-build-failed");
   if (!typeScriptBuild.ok) {
@@ -455,6 +437,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       captureArtifacts,
       captureSource,
       dependencies,
+      evidenceAttempt,
       json,
       now,
       sourceBeforeBuild,
@@ -469,6 +452,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       captureArtifacts,
       captureSource,
       dependencies,
+      evidenceAttempt,
       json,
       now,
       sourceBeforeBuild,
@@ -524,7 +508,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     generatedAt: generatedAt(now),
     provenance,
   });
-  return emitReport(report, { dependencies, json, stderr, stdout });
+  return emitReport(report, { dependencies, evidenceAttempt, json, stderr, stdout });
 }
 
 function finishBuildFailure(reason, context) {
@@ -546,10 +530,15 @@ function finishBuildFailure(reason, context) {
   return emitReport(report, context);
 }
 
-function emitReport(report, { dependencies, json, stdout }) {
+function emitReport(report, { dependencies, evidenceAttempt, json, stdout }) {
   let emittedReport = report;
   try {
-    dependencies.writeReport?.(report);
+    if (dependencies.finishAttempt) {
+      if (!evidenceAttempt) throw new Error("capability evidence attempt missing");
+      dependencies.finishAttempt(evidenceAttempt, report);
+    } else {
+      dependencies.writeReport?.(report);
+    }
   } catch {
     emittedReport = createCapabilityReport(
       CAPABILITIES.map((capability) => failedRow(capability, 0, "report-persistence-failed")),
@@ -560,6 +549,13 @@ function emitReport(report, { dependencies, json, stdout }) {
   else printHumanReport(emittedReport, stdout);
   if (emittedReport.status !== "passed") process.exitCode = 1;
   return emittedReport;
+}
+
+function emitUnpersistedReport(report, { json, stdout }) {
+  if (json) stdout.write(`${JSON.stringify(report)}\n`);
+  else printHumanReport(report, stdout);
+  process.exitCode = 1;
+  return report;
 }
 
 function safeBuildStep(step, fallbackReason) {
@@ -666,53 +662,9 @@ function sanitizeProvenance(provenance) {
   };
 }
 
-function prepareCapabilityReportLocation(reportPath, allowedRoot) {
-  const target = resolve(reportPath);
-  const usesDefaultPath = target === DEFAULT_REPORT_PATH;
-  if (!usesDefaultPath && typeof allowedRoot !== "string") {
-    throw capabilityReportPersistenceError();
-  }
-  const root = usesDefaultPath ? REPO_ROOT : resolve(allowedRoot);
-  const rootStat = lstatSync(root);
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw capabilityReportPersistenceError();
-  if (!isStrictDescendantPath(root, target)) throw capabilityReportPersistenceError();
-  const rootRealPath = realpathSync(root);
-  const parent = dirname(target);
-  let current = root;
-  for (const segment of relative(root, parent).split(sep)) {
-    if (!segment) continue;
-    current = join(current, segment);
-    const existed = existsSync(current);
-    if (!existed) mkdirSync(current, { mode: 0o700 });
-    const stat = lstatSync(current);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) throw capabilityReportPersistenceError();
-    if (!existed && process.platform !== "win32") chmodSync(current, 0o700);
-    if (!isStrictDescendantPath(rootRealPath, realpathSync(current))) {
-      throw capabilityReportPersistenceError();
-    }
-  }
-  if (existsSync(target)) {
-    const stat = lstatSync(target);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw capabilityReportPersistenceError();
-    if (!isStrictDescendantPath(rootRealPath, realpathSync(target))) {
-      throw capabilityReportPersistenceError();
-    }
-  }
-  return { reportPath: target };
-}
-
-function isStrictDescendantPath(root, candidate) {
-  const pathFromRoot = relative(root, candidate);
-  return pathFromRoot.length > 0
-    && pathFromRoot !== ".."
-    && !pathFromRoot.startsWith(`..${sep}`)
-    && !isAbsolute(pathFromRoot);
-}
-
-function capabilityReportPersistenceError() {
-  return new Error("capability-report-persistence-failed");
-}
-
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv.slice(2), { writeReport: persistCapabilityReport });
+  main(process.argv.slice(2), {
+    beginAttempt: () => beginCapabilityEvidenceAttempt({ allowedRoot: REPO_ROOT }),
+    finishAttempt: (attempt, report) => finalizeCapabilityEvidenceAttempt(attempt, report),
+  });
 }

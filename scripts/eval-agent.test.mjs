@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -22,6 +23,7 @@ import {
   main,
   persistCapabilityReport,
 } from "./eval-agent.mjs";
+import { inspectCapabilityEvidence } from "./eval-agent-evidence.mjs";
 import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const stochastic = CAPABILITIES[0];
@@ -64,6 +66,25 @@ function passingRows() {
     required: capability.required,
     status: "passed",
   }));
+}
+
+function passingReport() {
+  const source = { revision: "a".repeat(40), tree: "clean" };
+  const artifacts = { count: 41, digest: "b".repeat(64), status: "ok" };
+  return createCapabilityReport(passingRows(), {
+    generatedAt: "2026-07-21T00:00:00.000Z",
+    provenance: {
+      sourceBeforeBuild: source,
+      sourceAfterBuild: source,
+      sourceAtEnd: source,
+      artifactsAfterBuild: artifacts,
+      artifactsAtEnd: artifacts,
+    },
+  });
+}
+
+function writeOwnerJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
 test("capability matrix is stable, ordered, and uses strict pass^3 where required", () => {
@@ -558,10 +579,10 @@ test("default orchestration binds every battery to one freshly built source and 
   });
 });
 
-test("a failed forced TypeScript build replaces an old pass report without using stale artifacts", () => {
+test("a failed forced TypeScript build records a terminal failed attempt without replacing prior canonical evidence", () => {
   const dir = mkdtempSync(join(tmpdir(), "muse-agent-build-failure-"));
   const reportPath = join(dir, "latest.json");
-  writeFileSync(reportPath, JSON.stringify({ status: "passed", version: 1 }), "utf8");
+  writeOwnerJson(reportPath, { status: "passed", version: 1 });
   const previousExitCode = process.exitCode;
   let artifactReads = 0;
   let batteryRuns = 0;
@@ -594,7 +615,8 @@ test("a failed forced TypeScript build replaces an old pass report without using
     assert.deepEqual(report.provenance.artifactsAtEnd, { count: 0, status: "unknown" });
     assert.equal(artifactReads, 0);
     assert.equal(batteryRuns, 0);
-    assert.deepEqual(JSON.parse(readFileSync(reportPath, "utf8")), report);
+    assert.deepEqual(JSON.parse(readFileSync(reportPath, "utf8")), { status: "passed", version: 1 });
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: dir, reportPath }).status, "failed");
     assert.equal(process.exitCode, 1);
   } finally {
     process.exitCode = previousExitCode;
@@ -696,7 +718,7 @@ test("invalid source and artifact probe payloads are reduced to path-free unknow
 test("privacy-safe aggregate evidence is persisted atomically with owner-only permissions", () => {
   const dir = mkdtempSync(join(tmpdir(), "muse-agent-report-"));
   const reportPath = join(dir, "nested", "latest.json");
-  const report = createCapabilityReport(passingRows());
+  const report = passingReport();
   persistCapabilityReport(report, reportPath, { allowedRoot: dir });
 
   assert.deepEqual(JSON.parse(readFileSync(reportPath, "utf8")), report);
@@ -714,7 +736,7 @@ test("report persistence rejects parent symlink redirects without touching exter
     symlinkSync(outside, join(allowedRoot, "redirect"), process.platform === "win32" ? "junction" : "dir");
 
     assert.throws(
-      () => persistCapabilityReport(createCapabilityReport(passingRows()), reportPath, { allowedRoot }),
+      () => persistCapabilityReport(passingReport(), reportPath, { allowedRoot }),
       (error) => error instanceof Error && error.message === "capability-report-persistence-failed",
     );
     assert.equal(readFileSync(externalReport, "utf8"), "external sentinel");
@@ -724,20 +746,27 @@ test("report persistence rejects parent symlink redirects without touching exter
   }
 });
 
-test("a failed safe atomic replace removes the prior pass and main reports static failure", () => {
+test("a failed canonical replace preserves the prior pass while the current attempt remains running", () => {
   const allowedRoot = mkdtempSync(join(tmpdir(), "muse-agent-report-failure-"));
   const reportPath = join(allowedRoot, "nested", "latest.json");
   mkdirSync(join(allowedRoot, "nested"), { recursive: true });
-  writeFileSync(reportPath, JSON.stringify({ status: "passed", version: 2 }), "utf8");
+  const prior = { status: "passed", version: 2 };
+  writeOwnerJson(reportPath, prior);
   try {
+    let renames = 0;
     assert.throws(
-      () => persistCapabilityReport(createCapabilityReport(passingRows()), reportPath, {
+      () => persistCapabilityReport(passingReport(), reportPath, {
         allowedRoot,
-        rename: () => { throw new Error("/Users/private-owner/rename-failed"); },
+        rename: (from, to) => {
+          renames += 1;
+          if (renames === 4) throw new Error("/Users/private-owner/rename-failed");
+          renameSync(from, to);
+        },
       }),
       (error) => error instanceof Error && error.message === "capability-report-persistence-failed",
     );
-    assert.equal(existsSync(reportPath), false, "a failed replace must not leave a stale passing report");
+    assert.deepEqual(JSON.parse(readFileSync(reportPath, "utf8")), prior);
+    assert.equal(inspectCapabilityEvidence({ allowedRoot, reportPath }).state, "running");
 
     let stdout = "";
     const previousExitCode = process.exitCode;

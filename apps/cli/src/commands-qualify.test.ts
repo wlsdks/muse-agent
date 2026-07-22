@@ -16,6 +16,7 @@ const NOW = new Date("2026-07-21T12:00:00.000Z");
 function observations(runtime: PersonalAgentQualificationObservations["runtime"]["runtime"]): PersonalAgentQualificationObservations {
   return {
     capability: {
+      attempt: { stable: true, state: "missing" },
       artifact: { state: "missing" },
       currentArtifacts: ARTIFACTS,
       currentSourceEnd: SOURCE,
@@ -56,6 +57,7 @@ function qualifiedObservations(): PersonalAgentQualificationObservations {
     ...base,
     capability: {
       ...base.capability,
+      attempt: { stable: true, state: "completed", status: "passed" },
       artifact: {
         state: "parsed",
         value: {

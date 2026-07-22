@@ -1,9 +1,9 @@
 /** Read-only operational probes for `muse qualify`. Raw/private values stop here. */
 
 import { execFile } from "node:child_process";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { resolveFollowupsFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
@@ -49,6 +49,18 @@ export interface QualificationProbeDependencies {
   readonly uid?: number;
   readonly daemonTemporaryRoots?: readonly string[];
   readonly artifactDigest?: (workspaceDir: string) => Promise<ArtifactEvidenceSnapshot>;
+  readonly capabilityEvidence?: (
+    reportFile: string,
+    allowedRoot: string,
+    workspaceDir: string
+  ) => Promise<CapabilityEvidenceInspection>;
+}
+
+export interface CapabilityEvidenceInspection {
+  readonly artifact: CapabilityArtifactObservation;
+  readonly fingerprint?: string;
+  readonly state: "missing" | "invalid" | "running" | "completed";
+  readonly status?: "passed" | "failed" | "unverified";
 }
 
 export interface CollectQualificationOptions {
@@ -159,48 +171,69 @@ export async function inspectGitSnapshot(workspaceDir: string, run: ReadOnlyComm
   return { revision, tree: statusResult.stdout.trim().length === 0 ? "clean" : "dirty" };
 }
 
-function isPathInside(root: string, candidate: string): boolean {
-  const pathFromRoot = relative(root, candidate);
-  return pathFromRoot.length > 0
-    && pathFromRoot !== ".."
-    && !pathFromRoot.startsWith(`..${sep}`)
-    && !isAbsolute(pathFromRoot);
-}
-
-function capabilityArtifactPathIsSafe(path: string, allowedRoot?: string): boolean {
-  const candidate = resolve(path);
-  const root = allowedRoot ? resolve(allowedRoot) : dirname(candidate);
-  if (allowedRoot && !isPathInside(root, candidate)) return false;
-  try {
-    if (allowedRoot) {
-      const rootStat = lstatSync(root);
-      if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return false;
-      let current = root;
-      for (const segment of relative(root, candidate).split(sep)) {
-        if (!segment) continue;
-        current = join(current, segment);
-        if (!existsSync(current)) return true;
-        if (lstatSync(current).isSymbolicLink()) return false;
-      }
-    }
-    if (!existsSync(candidate)) return true;
-    const stat = lstatSync(candidate);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > 2 * 1024 * 1024) return false;
-    return process.platform === "win32" || (stat.mode & 0o777) === 0o600;
-  } catch {
-    return false;
+export function parseCapabilityEvidenceInspection(value: unknown): CapabilityEvidenceInspection {
+  if (!isRecord(value) || !isRecord(value.artifact)) return { artifact: { state: "invalid" }, state: "invalid" };
+  const exactKeys = (record: Record<string, unknown>, keys: readonly string[]): boolean => {
+    const actual = Object.keys(record).sort();
+    const expected = [...keys].sort();
+    return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+  };
+  if (value.state !== "missing" && value.state !== "invalid" && value.state !== "running" && value.state !== "completed") {
+    return { artifact: { state: "invalid" }, state: "invalid" };
   }
+  const artifactState = value.artifact.state;
+  if (artifactState !== "missing" && artifactState !== "invalid" && artifactState !== "parsed") {
+    return { artifact: { state: "invalid" }, state: "invalid" };
+  }
+  const artifactKeysValid = artifactState === "parsed"
+    ? exactKeys(value.artifact, ["state", "value"])
+    : exactKeys(value.artifact, ["state"]);
+  if (!artifactKeysValid) return { artifact: { state: "invalid" }, state: "invalid" };
+  const fingerprintValid = typeof value.fingerprint === "string" && /^[0-9a-f]{64}$/u.test(value.fingerprint);
+  if (value.state === "completed" && (!exactKeys(value, ["artifact", "fingerprint", "state", "status"])
+    || !fingerprintValid || artifactState !== "parsed"
+    || (value.status !== "passed" && value.status !== "failed" && value.status !== "unverified"))) {
+    return { artifact: { state: "invalid" }, state: "invalid" };
+  }
+  if (value.state === "running" && (!exactKeys(value, ["artifact", "fingerprint", "state"]) || !fingerprintValid)) {
+    return { artifact: { state: "invalid" }, state: "invalid" };
+  }
+  if ((value.state === "missing" || value.state === "invalid") && !exactKeys(value, ["artifact", "state"])) {
+    return { artifact: { state: "invalid" }, state: "invalid" };
+  }
+  return {
+    artifact: artifactState === "parsed"
+      ? { state: "parsed", value: value.artifact.value }
+      : { state: artifactState },
+    ...(typeof value.fingerprint === "string" ? { fingerprint: value.fingerprint } : {}),
+    state: value.state,
+    ...(value.status === "passed" || value.status === "failed" || value.status === "unverified"
+      ? { status: value.status }
+      : {})
+  };
 }
 
-async function readCapabilityArtifact(path: string, allowedRoot?: string): Promise<CapabilityArtifactObservation> {
-  if (!capabilityArtifactPathIsSafe(path, allowedRoot)) return { state: "invalid" };
-  const read = await readText(path);
-  if (read.state === "missing") return { state: "missing" };
-  if (read.state !== "ok" || read.text === undefined) return { state: "invalid" };
+async function inspectCapabilityEvidence(
+  reportFile: string,
+  allowedRoot: string,
+  workspaceDir: string,
+  run: ReadOnlyCommandRunner
+): Promise<CapabilityEvidenceInspection> {
+  const helper = join(workspaceDir, "scripts", "eval-agent-evidence.mjs");
+  if (!existsSync(helper)) return { artifact: { state: "invalid" }, state: "invalid" };
+  const result = await run(process.execPath, [
+    helper,
+    "--inspect",
+    "--report-path",
+    reportFile,
+    "--allowed-root",
+    allowedRoot
+  ], { cwd: workspaceDir });
+  if (result.code !== 0) return { artifact: { state: "invalid" }, state: "invalid" };
   try {
-    return { state: "parsed", value: JSON.parse(read.text) as unknown };
+    return parseCapabilityEvidenceInspection(JSON.parse(result.stdout) as unknown);
   } catch {
-    return { state: "invalid" };
+    return { artifact: { state: "invalid" }, state: "invalid" };
   }
 }
 
@@ -298,9 +331,13 @@ export async function collectPersonalAgentQualificationObservations(
   const nowDate = now();
   const nowMs = nowDate.getTime();
   const currentSourceStart = await inspectGitSnapshot(workspaceDir, run);
-  const capabilityArtifactPromise = readCapabilityArtifact(
+  const allowedEvidenceRoot = options.capabilityReportFile === undefined ? workspaceDir : dirname(reportFile);
+  const capabilityEvidence = dependencies.capabilityEvidence
+    ?? ((file: string, root: string, workspace: string) => inspectCapabilityEvidence(file, root, workspace, run));
+  const initialCapabilityEvidencePromise = capabilityEvidence(
     reportFile,
-    options.capabilityReportFile === undefined ? workspaceDir : undefined
+    allowedEvidenceRoot,
+    workspaceDir
   );
   const artifactDigestPromise = dependencies.artifactDigest
     ? dependencies.artifactDigest(workspaceDir)
@@ -319,17 +356,26 @@ export async function collectPersonalAgentQualificationObservations(
     && configResult.status === "ok"
     ? "ok"
     : "unverified";
-  const [followups, reminders, capabilityArtifact, currentArtifacts] = await Promise.all([
+  const [followups, reminders, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
     readStrictBacklogCounts(resolveFollowupsFile(effectiveRuntimeEnv), "followups", nowMs),
     readStrictBacklogCounts(resolveRemindersFile(effectiveRuntimeEnv), "reminders", nowMs),
-    capabilityArtifactPromise,
+    initialCapabilityEvidencePromise,
     artifactDigestPromise
   ]);
   const currentSourceEnd = await inspectGitSnapshot(workspaceDir, run);
+  const finalCapabilityEvidence = await capabilityEvidence(reportFile, allowedEvidenceRoot, workspaceDir);
+  const capabilityEvidenceStable = initialCapabilityEvidence.state === finalCapabilityEvidence.state
+    && initialCapabilityEvidence.status === finalCapabilityEvidence.status
+    && initialCapabilityEvidence.fingerprint === finalCapabilityEvidence.fingerprint;
 
   return {
     capability: {
-      artifact: capabilityArtifact,
+      artifact: initialCapabilityEvidence.artifact,
+      attempt: {
+        stable: capabilityEvidenceStable,
+        state: initialCapabilityEvidence.state,
+        ...(initialCapabilityEvidence.status ? { status: initialCapabilityEvidence.status } : {})
+      },
       currentArtifacts,
       currentSourceEnd,
       currentSourceStart,

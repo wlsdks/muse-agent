@@ -10,6 +10,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Technical personal-agent evidence now has crash-safe canonical publication.**
+  `eval:agent` records an owner-only UUID attempt generation before expensive
+  work, preserves failed and unverified terminal aggregates outside the
+  canonical path, and promotes only an exact provenance-clean v2 pass. Atomic
+  writes fsync their file and parent directory, preserve prior canonical bytes
+  on replacement failure, and bind attempt report/canonical bytes by SHA-256.
+  `muse qualify` uses the same evidence inspector and rechecks the pointer,
+  generation, report, and canonical digest after current source/artifact probes,
+  so interrupted, malformed, superseded, or concurrent runs remain unverified.
+
 - **Resident background work now has a bounded, owner-visible governor.** The
   CLI daemon shares the same fail-closed macOS HID-idle and AC-power probes as
   the API, layers them over CPU/load and free-memory admission, and supports a

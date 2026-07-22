@@ -33,13 +33,21 @@ requires real user-labelled continuity outcomes.
 `pnpm eval:agent -- --json` is the only producer of a pass-eligible v2 report.
 The orchestrator performs a forced TypeScript project re-emit, builds the Rust
 runner from a fresh locked Cargo target, atomically publishes an owner-only
-fixed runner, and forces every battery to use that exact runner. It records only
-source state, artifact digest/count, generated time, canonical rows, and
-aggregate statuses in `.muse-dev/evals/agent-capability/latest.json`.
+fixed runner, and forces every battery to use that exact runner. Before build it
+publishes an owner-only `latest-attempt.json` pointer to a UUID generation in
+`attempts/`. A crash leaves that generation `running`; a terminal failure or
+unverified run keeps its exact aggregate in the generation but never replaces
+the canonical report. Only a complete v2 pass with clean, unchanged source and
+stable artifacts is atomically promoted to `.muse-dev/evals/agent-capability/latest.json`.
+The completed generation binds both files by SHA-256.
 
 The qualifier independently re-reads the current Git revision/tree and
-recomputes the canonical runtime artifact digest. A legacy v1 report can retain
-an explicit failure, but it can never supply pass provenance. Evidence is valid
+recomputes the canonical runtime artifact digest. It reads the attempt pointer,
+state, terminal aggregate, and canonical bytes before those probes and again
+afterward; a concurrent attempt or byte change is unverified. A legacy v1/v2
+file without the adjacent attempt generation is unverified. A custom
+`--capability-report` path uses sibling `latest-attempt.json` and `attempts/`
+evidence. Evidence is valid
 for at most 24 hours. `--max-evidence-age-hours` may tighten that window but
 cannot raise it; `--capability-report` changes only the report input, never the
 current source identity.

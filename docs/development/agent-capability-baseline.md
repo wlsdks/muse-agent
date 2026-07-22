@@ -111,9 +111,12 @@ agent-capability attempts, so they are not added to the live aggregate.
   publish an otherwise verified branch.
 - A recognized missing environment produces `unverified`; an executed failure,
   including an optional-environment axis, fails the aggregate.
-- Every child has a 90-minute hard timeout. A privacy-safe v2 aggregate is written
-  atomically with owner-only permissions to the ignored
-  `.muse-dev/evals/agent-capability/latest.json` path for local re-audit.
+- Every child has a 90-minute hard timeout. Each admitted run first publishes an
+  owner-only UUID attempt generation. Failed/unverified aggregates remain in
+  that generation; only a complete provenance-clean v2 pass is atomically
+  promoted to `.muse-dev/evals/agent-capability/latest.json`. The qualifier
+  rechecks the pointer, generation, report, and SHA-256 binding after its live
+  source/artifact probes, so crash and concurrent-run states remain unverified.
 - Capability suites may remain below 100% while exposing a real gap.
   Deterministic regression and safety suites remain all-pass gates.
 

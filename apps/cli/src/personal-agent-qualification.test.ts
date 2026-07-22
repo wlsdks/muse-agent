@@ -57,6 +57,7 @@ function passingObservations(): PersonalAgentQualificationObservations {
   return {
     capability: {
       artifact: { state: "parsed", value: capabilityReport() },
+      attempt: { stable: true, state: "completed", status: "passed" },
       currentArtifacts: ARTIFACTS,
       currentSourceEnd: SOURCE,
       currentSourceStart: SOURCE,
@@ -152,7 +153,7 @@ describe("personal-agent qualification scorer", () => {
     });
   });
 
-  it("fails valid declared capability failure even when it is legacy and lacks provenance", () => {
+  it("keeps legacy failure evidence without an attempt generation unverified", () => {
     const input = passingObservations();
     const failedRows = rows();
     failedRows[0] = { ...failedRows[0]!, executed: 0, reason: "missing-completion", status: "failed" } as never;
@@ -160,6 +161,7 @@ describe("personal-agent qualification scorer", () => {
       ...input,
       capability: {
         ...input.capability,
+        attempt: { stable: true, state: "missing" },
         artifact: {
           state: "parsed",
           value: {
@@ -171,8 +173,54 @@ describe("personal-agent qualification scorer", () => {
         }
       }
     });
-    expect(report.gates[0].status).toBe("failed");
-    expect(report.gates[0].reasonCodes).toContain("capability-report-failed");
+    expect(report.gates[0].status).toBe("unverified");
+    expect(report.gates[0].reasonCodes).toContain("capability-attempt-state-missing");
+  });
+
+  it("treats only a stable completed generation as authority", () => {
+    const base = passingObservations();
+    const running = qualifyPersonalAgent({
+      ...base,
+      capability: { ...base.capability, attempt: { stable: true, state: "running" } }
+    });
+    expect(running.gates[0]).toMatchObject({
+      reasonCodes: ["capability-attempt-in-progress"],
+      status: "unverified"
+    });
+
+    const changed = qualifyPersonalAgent({
+      ...base,
+      capability: { ...base.capability, attempt: { stable: false, state: "completed", status: "passed" } }
+    });
+    expect(changed.gates[0]).toMatchObject({
+      reasonCodes: ["capability-attempt-changed-during-qualification"],
+      status: "unverified"
+    });
+  });
+
+  it("fails an exact terminal failed v2 generation", () => {
+    const base = passingObservations();
+    const failedRows = rows();
+    failedRows[0] = { ...failedRows[0]!, executed: 0, reason: "runtime-execution-failed", status: "failed" } as never;
+    const report = qualifyPersonalAgent({
+      ...base,
+      capability: {
+        ...base.capability,
+        artifact: {
+          state: "parsed",
+          value: capabilityReport({
+            capabilities: failedRows,
+            counts: { failed: 1, passed: 10, total: 11, unverified: 0 },
+            status: "failed"
+          })
+        },
+        attempt: { stable: true, state: "completed", status: "failed" }
+      }
+    });
+    expect(report.gates[0]).toMatchObject({
+      reasonCodes: ["capability-report-failed"],
+      status: "failed"
+    });
   });
 
   it("keeps missing, dirty, future, stale, and artifact-mismatched pass evidence unverified", () => {
