@@ -111,11 +111,12 @@ describe("muse notes ingest --local — pull a local file into the notes corpus"
     else process.env.MUSE_NOTES_DIR = prev;
   });
 
-  async function run(args: string[]): Promise<string> {
+  async function run(args: string[], fetchImpl?: typeof globalThis.fetch): Promise<string> {
     const out: string[] = [];
     const io: ProgramIO = { stderr: (m: string) => out.push(m), stdout: (m: string) => out.push(m) };
     const helpers: NotesCommandHelpers = {
       apiRequest: async () => { throw new Error("apiRequest must not be called in --local mode"); },
+      ...(fetchImpl ? { fetchImpl } : {}),
       writeOutput: (wio, value) => wio.stdout(`${JSON.stringify(value)}\n`)
     };
     const program = new Command();
@@ -137,13 +138,12 @@ describe("muse notes ingest --local — pull a local file into the notes corpus"
   });
 
   it("rejects --url before fetch, local note save, or provenance write under local-only", async () => {
-    const originalFetch = globalThis.fetch;
     const fetchCalls: string[] = [];
     const notesDir = mkdtempSync(join(tmpdir(), "muse-cli-notes-local-only-"));
     const stderr: string[] = [];
     process.env.MUSE_NOTES_DIR = notesDir;
     process.env.MUSE_LOCAL_ONLY = "true";
-    globalThis.fetch = (async (input) => {
+    const fetchImpl = (async (input) => {
       fetchCalls.push(String(input));
       return new Response("<title>Must not persist</title><p>body</p>", { status: 200, headers: { "content-type": "text/html" } });
     }) as typeof globalThis.fetch;
@@ -151,13 +151,13 @@ describe("muse notes ingest --local — pull a local file into the notes corpus"
       const io: ProgramIO = { stderr: (message) => { stderr.push(message); }, stdout: () => undefined };
       const helpers: NotesCommandHelpers = {
         apiRequest: async () => { throw new Error("API must not run"); },
+        fetchImpl,
         writeOutput: () => undefined
       };
       const program = new Command();
       registerNotesCommands(program, io, helpers);
       await program.parseAsync(["node", "muse", "notes", "ingest", "--local", "--url", "https://example.test/report"]);
     } finally {
-      globalThis.fetch = originalFetch;
       delete process.env.MUSE_LOCAL_ONLY;
     }
     expect(stderr.join("")).toBe("muse notes ingest: interactive public-web access is blocked by local-only.\n");
@@ -167,19 +167,14 @@ describe("muse notes ingest --local — pull a local file into the notes corpus"
   });
 
   it("does not save a local note when a public URL redirects to a private target", async () => {
-    const originalFetch = globalThis.fetch;
     const notesDir = mkdtempSync(join(tmpdir(), "muse-cli-notes-redirect-"));
     const requests: string[] = [];
     process.env.MUSE_NOTES_DIR = notesDir;
-    globalThis.fetch = (async (input) => {
+    const fetchImpl = (async (input) => {
       requests.push(String(input));
       return new Response("redirect body must stay unread", { status: 302, headers: { location: "http://127.0.0.1/private" } });
     }) as typeof globalThis.fetch;
-    try {
-      await expect(run(["ingest", "--local", "--url", "https://93.184.216.34/start"])).rejects.toThrow(/Could not ingest.*redirected to a blocked host/u);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    await expect(run(["ingest", "--local", "--url", "https://93.184.216.34/start"], fetchImpl)).rejects.toThrow(/Could not ingest.*redirected to a blocked host/u);
     expect(requests).toEqual(["https://93.184.216.34/start"]);
     expect(existsSync(join(notesDir, "93.184.216.34-start.md"))).toBe(false);
   });

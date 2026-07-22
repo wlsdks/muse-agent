@@ -23,6 +23,7 @@ import { readClipboardText } from "./clipboard-reader.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 
 export async function applyAdHocGrounding(params: {
+  readonly fetchImpl?: typeof globalThis.fetch;
   readonly options: {
     readonly file?: string;
     readonly url?: string;
@@ -181,6 +182,7 @@ export async function applyAdHocGrounding(params: {
       }
       try {
         const fetched = await fetchReadableUrl(urlLabel, {
+        ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
         maxChars: 60_000,
         // Read an online PDF (a policy doc / paper / manual linked on the web)
         // via the same pdf-parse path `--file <pdf>` uses, instead of refusing it.

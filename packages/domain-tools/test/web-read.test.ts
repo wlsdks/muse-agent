@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { JsonObject } from "@muse/shared";
 
@@ -83,6 +83,13 @@ describe("assertPublicHttpUrl", () => {
     const r = await assertPublicHttpUrl("http://169.254.169.254/latest/meta-data/", { lookup: async () => { throw new Error("should not resolve"); } });
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.error).toMatch(/private|loopback/i);
+  });
+
+  it("accepts an already-classified public IP literal without consulting DNS", async () => {
+    const lookup = vi.fn(async () => { throw new Error("literal addresses must not resolve"); });
+    const r = await assertPublicHttpUrl("https://93.184.216.34/report", { lookup });
+    expect(r.ok).toBe(true);
+    expect(lookup).not.toHaveBeenCalled();
   });
 
   it("rejects localhost", async () => {

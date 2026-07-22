@@ -40,6 +40,7 @@ export interface NotesCommandHelpers {
     method?: "GET" | "POST" | "PUT" | "DELETE"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
+  readonly fetchImpl?: typeof globalThis.fetch;
 }
 
 interface SharedOptions {
@@ -461,7 +462,7 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       let content: string;
       let notePath: string;
       if (url) {
-        const result = await fetchReadableUrl(url);
+        const result = await fetchReadableUrl(url, helpers.fetchImpl ? { fetchImpl: helpers.fetchImpl } : {});
         if (!result.ok) {
           throw new Error(`Could not ingest ${url}: ${result.error}`);
         }

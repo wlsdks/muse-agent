@@ -282,6 +282,11 @@ export async function assertPublicHttpUrl(rawUrl: string, options: { readonly lo
   if (!sync.ok) return sync;
   const url = sync.url;
   const hostname = url.hostname.replace(/^\[|\]$/gu, "");
+  // A literal address has no DNS rebinding surface. The synchronous half has
+  // already classified every IPv4/IPv6 non-public range, so asking the OS
+  // resolver to "look up" a public literal only adds an offline/hung-DNS
+  // failure mode and can stall otherwise deterministic guarded fetches.
+  if (ipv4ToParts(hostname) || hostname.includes(":")) return { ok: true, url };
   const lookup = options.lookup ?? defaultLookup;
   try {
     const records = await lookup(hostname);
