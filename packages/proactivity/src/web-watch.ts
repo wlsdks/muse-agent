@@ -143,6 +143,12 @@ export interface WebWatch {
   readonly snapshot: () => Promise<string | undefined> | string | undefined;
 }
 
+// Module-private capability: only the validated config parser can mark a
+// watch as an independent HTTP read. Hand-built/Chrome/file/device watches
+// cannot accidentally opt themselves into overlap through the public type.
+const BOUNDED_HTTP_SNAPSHOT = Symbol("bounded-http-snapshot");
+type RunnableWebWatch = WebWatch & { readonly [BOUNDED_HTTP_SNAPSHOT]?: true };
+
 export interface WebWatchRunner {
   tick(): Promise<{ readonly delivered: number }>;
 }
@@ -163,13 +169,37 @@ export function createWebWatchRunner(options: {
   return {
     async tick(): Promise<{ readonly delivered: number }> {
       let delivered = 0;
-      for (const watch of options.watches) {
+      const snapshots = new Map<string, string | undefined>();
+      let pending: Promise<void>[] = [];
+      const capture = async (watch: WebWatch): Promise<void> => {
         let current: string | undefined;
         try {
           current = await watch.snapshot();
         } catch {
           current = undefined;
         }
+        snapshots.set(watch.id, current);
+      };
+      const flushPending = async (): Promise<void> => {
+        await Promise.all(pending);
+        pending = [];
+      };
+      for (const watch of options.watches) {
+        if ((watch as RunnableWebWatch)[BOUNDED_HTTP_SNAPSHOT] === true) {
+          pending.push(capture(watch));
+          if (pending.length >= 2) await flushPending();
+        } else {
+          // Never overlap a browser/file/device source with another read.
+          await flushPending();
+          await capture(watch);
+        }
+      }
+      await flushPending();
+
+      // Detection, baseline mutation, and outbound delivery remain serial and
+      // in configured order. Only the independent read wait is overlapped.
+      for (const watch of options.watches) {
+        const current = snapshots.get(watch.id);
         if (current === undefined) {
           continue;
         }
@@ -376,6 +406,7 @@ export function webWatchesFromConfig(
           : source === "chrome"
             ? createChromeSnapshot(options.chromeConnection!, locator)
             : createHttpSnapshot(locator, httpOptions),
+      ...(source === "http" ? { [BOUNDED_HTTP_SNAPSHOT]: true as const } : {}),
       title: e.title
     });
     ids.add(e.id);
