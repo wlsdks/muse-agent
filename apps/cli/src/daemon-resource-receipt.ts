@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -154,14 +154,26 @@ function observationV2(snapshot: DaemonResourceSnapshot): DaemonObservationV2 {
 }
 
 export async function readDaemonResourceAdmissionReceipt(file: string): Promise<DaemonResourceReceipt | undefined> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    if ((await stat(file)).size > MAX_RECEIPT_BYTES) return undefined;
-    const raw = await readFile(file, "utf8");
-    if (Buffer.byteLength(raw, "utf8") > MAX_RECEIPT_BYTES) return undefined;
+    handle = await open(file, "r");
+    const size = (await handle.stat()).size;
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_RECEIPT_BYTES) return undefined;
+    const bytes = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const { bytesRead } = await handle.read(bytes, offset, size - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    if (offset !== size) return undefined;
+    const raw = bytes.toString("utf8");
     const value: unknown = JSON.parse(raw);
     return isLegacyReceipt(value) || isV2Receipt(value) ? value : undefined;
   } catch {
     return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 

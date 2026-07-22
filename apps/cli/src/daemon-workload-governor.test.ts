@@ -21,6 +21,54 @@ function metrics(values: number[]): DaemonWorkloadMetrics {
 }
 
 describe("DaemonWorkloadGovernor", () => {
+  it("claims every continuously-ready unit within nine admitted cycles", async () => {
+    const ids = ["reflection", "email-sync", "self-learn", "self-learn-decay", "playbook-consolidate", "memory-consolidate", "recap", "digest-flush", "browsing-sync"] as const;
+    const claimed: string[] = [];
+    const governor = new DaemonWorkloadGovernor(ids.map((id) => ({
+      id,
+      run: async (claim) => {
+        expect(claim).toBeDefined();
+        expect(claim!()).toBe(true);
+        claimed.push(id);
+        return daemonWorkloadCompleted();
+      }
+    })));
+    for (let cycle = 0; cycle < ids.length; cycle += 1) {
+      expect((await governor.runAdmittedCycle(new DaemonStopSignal())).status).toBe("boundary");
+    }
+    expect(claimed).toEqual(ids);
+  });
+
+  it("rejects an overlapping cycle while a claimed unit remains in flight", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const didStart = new Promise<void>((resolve) => { started = resolve; });
+    let starts = 0;
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const governor = new DaemonWorkloadGovernor([{
+      id: "reflection",
+      run: async (claim) => {
+        expect(claim).toBeDefined();
+        expect(claim!()).toBe(true);
+        starts += 1;
+        concurrent += 1;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        started();
+        await held;
+        concurrent -= 1;
+        return daemonWorkloadCompleted();
+      }
+    }]);
+    const first = governor.runAdmittedCycle(new DaemonStopSignal());
+    await didStart;
+    expect(await governor.runAdmittedCycle(new DaemonStopSignal())).toEqual({ status: "no-work" });
+    expect({ maxConcurrent, starts }).toEqual({ maxConcurrent: 1, starts: 1 });
+    release();
+    expect((await first).status).toBe("boundary");
+  });
+
   it("scans not-ready units but claims at most one and rotates fairly", async () => {
     const calls: string[] = [];
     const units: DaemonWorkloadUnit[] = ["reflection", "email-sync", "self-learn"].map((id, index) => ({
@@ -28,7 +76,8 @@ describe("DaemonWorkloadGovernor", () => {
       run: async (claim) => {
         calls.push(id);
         if (index === 0) return daemonWorkloadNotReady("not-due");
-        expect(claim()).toBe(true);
+        expect(claim).toBeDefined();
+        expect(claim!()).toBe(true);
         return daemonWorkloadCompleted();
       }
     }));
@@ -50,7 +99,8 @@ describe("DaemonWorkloadGovernor", () => {
     const signal = new DaemonStopSignal();
     const boundaryGovernor = new DaemonWorkloadGovernor([{ id: "reflection", run: async (claim) => {
       signal.stop(10);
-      expect(claim()).toBe(false);
+      expect(claim).toBeDefined();
+      expect(claim!()).toBe(false);
       return daemonWorkloadCancelled();
     } }]);
     expect(await boundaryGovernor.runAdmittedCycle(signal)).toEqual({ status: "cancelled-before-claim" });
@@ -59,7 +109,8 @@ describe("DaemonWorkloadGovernor", () => {
   it("truthfully records completed or failed work when stop arrives after claim", async () => {
     const signal = new DaemonStopSignal();
     const governor = new DaemonWorkloadGovernor([{ id: "reflection", run: async (claim) => {
-      expect(claim()).toBe(true);
+      expect(claim).toBeDefined();
+      expect(claim!()).toBe(true);
       signal.stop(12);
       return daemonWorkloadFailed("model");
     } }], metrics([10, 100, 1_000, 20, 130, 1_100]));

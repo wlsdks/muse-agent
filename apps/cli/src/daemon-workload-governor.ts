@@ -30,6 +30,7 @@ export type DaemonWorkloadCycleResult =
 
 export class DaemonWorkloadGovernor {
   private cursor = 0;
+  private inFlight = false;
 
   constructor(
     private readonly units: readonly DaemonWorkloadUnit[],
@@ -44,6 +45,16 @@ export class DaemonWorkloadGovernor {
   }
 
   async runAdmittedCycle(signal: DaemonStopSignal): Promise<DaemonWorkloadCycleResult> {
+    if (this.inFlight) return { status: "no-work" };
+    this.inFlight = true;
+    try {
+      return await this.runExclusiveCycle(signal);
+    } finally {
+      this.inFlight = false;
+    }
+  }
+
+  private async runExclusiveCycle(signal: DaemonStopSignal): Promise<DaemonWorkloadCycleResult> {
     if (signal.stopped) return { status: "cancelled-before-claim" };
     const total = this.units.length;
     if (total === 0) return { status: "no-work" };

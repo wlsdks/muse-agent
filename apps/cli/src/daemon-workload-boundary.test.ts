@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createSourceFile, forEachChild, isCallExpression, isExportDeclaration, isImportDeclaration, isStringLiteralLike, ScriptTarget, SyntaxKind, type Node } from "typescript";
 import { describe, expect, it } from "vitest";
 
 const cliSrc = dirname(fileURLToPath(import.meta.url));
@@ -19,9 +20,20 @@ const ALLOWED_EXTERNAL = new Set([
 ]);
 
 function importSpecifiers(source: string): readonly string[] {
-  return [...source.matchAll(/^\s*(?:(?:import|export)\b[^\n]*?\bfrom\s+|import\s*\()(["'])(?<specifier>[^"']+)\1/gmu)]
-    .map((match) => match.groups?.specifier)
-    .filter((value): value is string => value !== undefined);
+  const specifiers: string[] = [];
+  const sourceFile = createSourceFile("boundary.ts", source, ScriptTarget.Latest, true);
+  const visit = (node: Node): void => {
+    if ((isImportDeclaration(node) || isExportDeclaration(node))
+      && node.moduleSpecifier && isStringLiteralLike(node.moduleSpecifier)) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword
+      && node.arguments.length === 1 && isStringLiteralLike(node.arguments[0]!)) {
+      specifiers.push(node.arguments[0]!.text);
+    }
+    forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return specifiers;
 }
 
 function resolveLocalImport(fromFile: string, specifier: string): string | undefined {
@@ -33,6 +45,11 @@ function resolveLocalImport(fromFile: string, specifier: string): string | undef
 }
 
 describe("daemon workload pure dependency boundary", () => {
+  it("parses multiline static and dynamic imports instead of trusting line shape", () => {
+    expect(importSpecifiers(`import {\n  ModelProvider\n} from "@muse/model";\nconst lazy = import("@muse/browser");`))
+      .toEqual(["@muse/model", "@muse/browser"]);
+  });
+
   it("loads no model, provider, browser, messaging, email, prompt, content-store, or broad package barrel", () => {
     const violations: string[] = [];
     const pending = [...PURE_FILES];

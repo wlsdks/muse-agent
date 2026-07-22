@@ -1854,8 +1854,9 @@ describe("muse daemon — resource admission", () => {
     expect(result.exitCode).toBeUndefined();
     expect(calls).toBe(1);
     expect(receipts).toMatchObject([
-      { reason: "owner-paused", status: "defer" },
-      { status: "admit" }
+      { decision: { reason: "owner-paused", status: "deferred" } },
+      { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "browsing-sync" } }
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (owner-paused)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
