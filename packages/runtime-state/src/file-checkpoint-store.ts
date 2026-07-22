@@ -453,7 +453,7 @@ async function listUnscopedCheckpointRunIds(dir: string): Promise<readonly strin
 
 async function listScopedCheckpointRunIds(dir: string, workspaceRealpath: string): Promise<readonly string[]> {
   const runIds = new Set<string>();
-  let names: readonly string[] = [];
+  let names: readonly string[];
   try {
     const v3Dir = join(dir, CHECKPOINT_V3_DIRECTORY);
     const info = await lstat(v3Dir);
