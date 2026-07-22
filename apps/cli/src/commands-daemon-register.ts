@@ -120,6 +120,7 @@ import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDae
 import { resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
 import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt, type DaemonWorkloadReceiptV2, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 import { DaemonWorkloadGovernor, daemonWorkloadNotReady } from "./daemon-workload-governor.js";
+import { startObserveDaemonTimer } from "./observe-daemon.js";
 import { emptyDaemonWorkloadProfile, readDaemonWorkloadProfile, recordDaemonWorkloadReceipt, resolveDaemonWorkloadProfileFile, writeDaemonWorkloadProfile } from "./daemon-workload-profile.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
@@ -1683,9 +1684,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       process.on("SIGTERM", stop);
 
       io.stdout(`  running every ${interval.toString()} s — ctrl-c to stop\n`);
-      const observeTimer = observeRunner === undefined ? undefined : setInterval(() => { void observeTick(); }, Number(e.MUSE_OBSERVE_INTERVAL_MS));
-      observeTimer?.unref();
-      if (observeRunner !== undefined) void observeTick();
+      const observeDaemon = observeRunner === undefined ? undefined : startObserveDaemonTimer(
+        observeRunner,
+        Number(e.MUSE_OBSERVE_INTERVAL_MS),
+        (cause) => io.stderr(`observe tick error: ${errorMessage(cause)}\n`)
+      );
       try {
         await (helpers.runDaemonLoop ?? runDaemonLoop)({
           intervalMs: interval * 1000,
@@ -1696,8 +1699,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           tick: runTick
         });
       } finally {
-        if (observeTimer !== undefined) clearInterval(observeTimer);
-        await observeRunner?.shutdown();
+        await observeDaemon?.stop();
       }
     });
 }

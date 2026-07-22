@@ -2,8 +2,8 @@
 title: Attunement Slice B safety contract
 audience: [product, engineering, evaluation]
 purpose: Prevent partial Observe work from collecting data or sending notices before user control and focus gates exist
-status: proposed
-updated: 2026-07-15
+status: superseded-by-collection-policy-split
+updated: 2026-07-22
 related: [attunement-implementation-plan.md, ../strategy/attunement.md]
 ---
 
@@ -11,9 +11,19 @@ related: [attunement-implementation-plan.md, ../strategy/attunement.md]
 
 ## Decision
 
-Do not add an Observe collector, OS integration, or proactive Continuity Pack
-delivery independently. Slice B starts only with one user-visible, local state
-machine that proves all of the following together:
+> **Superseded split (2026-07-22):** this document coupled collection and
+> proactive delivery because collected events were assumed to influence a
+> notice immediately. Observe O1 now ships collection only: no hypothesis,
+> Focus Hold, candidate, pack open, notice, model, send, action, outcome, or
+> policy dependency exists in that slice. The Focus Hold and outbound gates
+> below remain mandatory for any later stage that consumes O1 evidence or
+> surfaces help; they no longer prohibit the isolated, owner-controlled O1
+> ledger described in [`../design/observe-o1.md`](../design/observe-o1.md).
+
+The superseded combined Slice B would not add an Observe collector, OS
+integration, or proactive Continuity Pack delivery independently. Any future
+evidence-consuming/delivery Slice B still starts only with a user-visible local
+state machine that proves all of the following together:
 
 1. The user explicitly starts observation for one existing personal thread.
 2. `pause`, `inspect`, and `forget` are available before the first collected
@@ -25,10 +35,10 @@ machine that proves all of the following together:
 5. A boundary may offer at most one existing Continuity Pack or digest. It may
    not create a new goal, link a source, or infer an outcome.
 
-The current runtime has interruption-budget, digest, veto, and activity-history
-substrates. It does not have an Observe state store, an active-thread binding,
-or a Focus Hold signal. Adding any one of those in isolation is not a Slice B
-implementation and must not be presented as one.
+The current runtime has interruption-budget, digest, veto, activity-history,
+and the collection-only O1 Observe store/active-thread binding. It does not have
+a Focus Hold signal or an evidence-to-delivery policy. O1 must not be presented
+as the combined Slice B, Personal Rhythm, or timing-aware help.
 
 ## First shippable vertical slice
 

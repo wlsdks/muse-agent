@@ -6,7 +6,8 @@ import type { FastifyInstance } from "fastify";
 export function startObserveDaemonIfConfigured(
   env: Readonly<Record<string, string | undefined>>,
   server: FastifyInstance,
-  attunementFile: string
+  attunementFile: string,
+  dependencies: { readonly createRunner?: typeof createObserveRunnerFromEnvironment } = {}
 ): void {
   let runner: ObserveRunner | undefined;
   let timer: NodeJS.Timeout | undefined;
@@ -16,7 +17,7 @@ export function startObserveDaemonIfConfigured(
     if (timer !== undefined) clearInterval(timer);
     await runner?.shutdown();
   });
-  void createObserveRunnerFromEnvironment({
+  void (dependencies.createRunner ?? createObserveRunnerFromEnvironment)({
     assertKnownThread: async (threadId) => {
       if (!(await readAttunementState(attunementFile)).threads.some((thread) => thread.id === threadId)) throw new Error("configured Observe thread does not exist");
     },

@@ -7,9 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPersonalThread, readAttunementState } from "./attunement-store.js";
 import {
   deletePersonalThreadContinuitySafe,
+  resumeObserveSessionSafe,
   startObserveSessionSafe
 } from "./observe-continuity-coordinator.js";
-import { forgetObserveSession, readObserveState } from "./observe-store.js";
+import { forgetObserveSession, pauseObserveSession, readObserveState } from "./observe-store.js";
 
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
@@ -63,5 +64,43 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
     const thread = await createPersonalThread(target.attunementFile, { kind: "work", title: "Exact work" });
     await link(target.attunementFile, target.observeFile);
     await expect(startObserveSessionSafe(target, { acceptVersion: 1, threadId: thread.id })).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("serializes start/delete, competing resume, and forget/delete races across pass^5", async () => {
+    for (let pass = 0; pass < 5; pass += 1) {
+      const startDelete = await files();
+      const thread = await createPersonalThread(startDelete.attunementFile, { kind: "work", title: "Race" });
+      await Promise.allSettled([
+        startObserveSessionSafe(startDelete, { acceptVersion: 1, threadId: thread.id }, { idFactory: () => SESSION_ID }),
+        deletePersonalThreadContinuitySafe(startDelete, thread.id)
+      ]);
+      const afterThreads = (await readAttunementState(startDelete.attunementFile)).threads;
+      const afterSessions = await readObserveState(startDelete.observeFile);
+      expect(afterSessions.sessions.every((session) => afterThreads.some((candidate) => candidate.id === session.threadId))).toBe(true);
+
+      const resumes = await files();
+      const resumeThread = await createPersonalThread(resumes.attunementFile, { kind: "work", title: "Resume" });
+      const firstId = "observe_00000000-0000-4000-8000-000000000011";
+      const secondId = "observe_00000000-0000-4000-8000-000000000012";
+      await startObserveSessionSafe(resumes, { acceptVersion: 1, threadId: resumeThread.id }, { idFactory: () => firstId });
+      await pauseObserveSession(resumes.observeFile, firstId);
+      await startObserveSessionSafe(resumes, { acceptVersion: 1, threadId: resumeThread.id }, { idFactory: () => secondId });
+      await pauseObserveSession(resumes.observeFile, secondId);
+      const resumeResults = await Promise.allSettled([
+        resumeObserveSessionSafe(resumes, firstId),
+        resumeObserveSessionSafe(resumes, secondId)
+      ]);
+      expect(resumeResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect((await readObserveState(resumes.observeFile)).sessions.filter((session) => session.status === "active")).toHaveLength(1);
+
+      const forgetDelete = await files();
+      const forgetThread = await createPersonalThread(forgetDelete.attunementFile, { kind: "work", title: "Forget" });
+      await startObserveSessionSafe(forgetDelete, { acceptVersion: 1, threadId: forgetThread.id }, { idFactory: () => SESSION_ID });
+      await Promise.allSettled([
+        forgetObserveSession(forgetDelete.observeFile, SESSION_ID),
+        deletePersonalThreadContinuitySafe(forgetDelete, forgetThread.id)
+      ]);
+      expect((await readObserveState(forgetDelete.observeFile)).sessions).toEqual([]);
+    }
   });
 });

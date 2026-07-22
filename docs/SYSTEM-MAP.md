@@ -32,10 +32,12 @@ related: [strategy/attunement.md, design/attunement.md, FEATURES.md, README.md, 
 첫 개발 흐름은 **사용자가 이어갈 삶의 주제 선택 → 필요한 맥락 준비 → 사용 여부 기록 → 다음 도움
 개선**입니다. 주제는 업무뿐 아니라 일정·관계·건강·여행·취미일 수 있습니다. 이후 사용자가
 허용하면 활동 전환을 관찰해 도움의 타이밍과 반복되는 불편까지
-배웁니다. 현재 memory·pattern·proactivity·browser·trace는 토대다. 그중 Personal Continuity Slice A는
+배웁니다. 현재 memory·pattern·proactivity·browser·trace는 토대다. Observe O1은 사용자가 고른 정확한
+thread에 앱 카테고리 전환만 로컬 수집하고 pause/inspect/forget할 수 있다. Personal Continuity Slice A는
 사용자가 고른 life/work thread와 정확한 local task/note를 `muse continue`로 다시 이어 주고,
-명시적 outcome으로 다음 pack의 표시만 바꾼다. Observe·자동 연결·타이밍 개선은 아직
-**roadmap**입니다([제품 방향](strategy/attunement.md) · [기술 설계](design/attunement.md)).
+명시적 outcome으로 다음 pack의 표시만 바꾼다. Observe O1 수집을 rhythm/friction으로 해석하거나 pack
+delivery에 사용하는 단계, 자동 연결, 타이밍 개선은 아직 **roadmap**입니다
+([제품 방향](strategy/attunement.md) · [기술 설계](design/attunement.md)).
 
 ## 큰 그림 — Muse는 어떤 층으로 이루어져 있나
 

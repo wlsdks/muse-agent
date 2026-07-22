@@ -207,4 +207,40 @@ describe("Observe O1 strict collection store", () => {
     await writeFile(file, JSON.stringify(hostile));
     await expect(readObserveState(file)).rejects.toThrow("invalid active segment");
   });
+
+  it("keeps exact reducer bytes deterministic across no-prior, zero-age, positive, gap, and cap cases at pass^10", async () => {
+    const file = await storeFile();
+    const origin = Date.parse("2026-07-20T00:00:00.000Z");
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    const empty = await readObserveState(file);
+    const zero = reduceObserveSample(empty, SESSION_ID, "writing", new Date(origin).toISOString()).state;
+    const positive = reduceObserveSample(zero, SESSION_ID, "writing", new Date(origin + 60_000).toISOString()).state;
+    const nearCap = {
+      ...zero,
+      activeSegments: [{ ...zero.activeSegments[0]!, lastSeenAt: new Date(origin + 24 * 60 * 60_000 - 60_000).toISOString() }],
+      sessions: [{ ...zero.sessions[0]!, observedThroughAt: new Date(origin + 24 * 60 * 60_000 - 60_000).toISOString() }]
+    };
+    const cases = [
+      { category: "writing" as const, state: empty, time: origin },
+      { category: "research" as const, state: zero, time: origin },
+      { category: "writing" as const, state: positive, time: origin + 60_000 },
+      { category: "research" as const, state: positive, time: origin + 60_000 },
+      { category: "writing" as const, state: positive, time: origin + 7 * 60_000 },
+      { category: "research" as const, state: positive, time: origin + 7 * 60_000 },
+      { category: "writing" as const, state: nearCap, time: origin + 24 * 60 * 60_000 },
+      { category: "research" as const, state: nearCap, time: origin + 24 * 60 * 60_000 }
+    ];
+    for (const [index, scenario] of cases.entries()) {
+      let expected: string | undefined;
+      for (let pass = 0; pass < 10; pass += 1) {
+        const suffix = (index + 1).toString(16).padStart(12, "0");
+        const mutation = reduceObserveSample(scenario.state, SESSION_ID, scenario.category, new Date(scenario.time).toISOString(), {
+          idFactory: () => `observe_observation_00000000-0000-4000-8000-${suffix}`
+        });
+        const bytes = JSON.stringify({ activeSegments: mutation.state.activeSegments, observations: mutation.state.observations, sessions: mutation.state.sessions });
+        expected ??= bytes;
+        expect(bytes).toBe(expected);
+      }
+    }
+  });
 });

@@ -27,6 +27,7 @@ const allowedHostImports = [
   "apps/cli/src/commands-attunement.ts",
   "apps/cli/src/commands-daemon-register.ts",
   "apps/cli/src/commands-tasks.ts",
+  "apps/cli/src/observe-daemon.ts",
   "packages/autoconfigure/src/loopback-tools.ts"
 ];
 const generatedDirectories = new Set([

@@ -15,6 +15,7 @@ import {
 } from "./observe-runtime.js";
 
 const directories: string[] = [];
+const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
@@ -49,6 +50,18 @@ describe("Observe app-only runtime", () => {
     const execute = vi.fn(async () => ({ exitCode: 0, stderr: new Uint8Array(), stdout: Buffer.from("com.example.Editor\n") }));
     await expect(createObserveActiveAppSource("macos", execute).read()).resolves.toBe("com.example.Editor");
     expect(execute).toHaveBeenCalledWith("/usr/bin/osascript", ["-e", expect.stringContaining("bundle identifier")]);
+
+    let windowsExecutable = "";
+    let windowsArgs: readonly string[] = [];
+    const windowsExecute = vi.fn(async (executable: string, args: readonly string[]) => {
+      windowsExecutable = executable;
+      windowsArgs = args;
+      return { exitCode: 0, stderr: new Uint8Array(), stdout: Buffer.from("Code\r\n") };
+    });
+    await expect(createObserveActiveAppSource("windows", windowsExecute).read()).resolves.toBe("Code");
+    expect(windowsExecutable).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(windowsArgs.slice(0, 2)).toEqual(["-NoProfile", "-NonInteractive"]);
+    expect(windowsArgs.join(" ")).not.toMatch(/title|document|clipboard|selection|keystroke|screenshot|https?:|url/iu);
 
     const raw = " secret-app ";
     const invalid = createObserveActiveAppSource("windows", async () => ({ exitCode: 0, stderr: new Uint8Array(), stdout: Buffer.from(`${raw}\n`) }));
@@ -199,5 +212,33 @@ describe("Observe app-only runtime", () => {
     expect(combined).not.toMatch(/from\s+["']@muse\/(?:model|messaging|proactivity|agent-core)["']/u);
     expect(combined).not.toMatch(/MUSE_(?:AMBIENT|CLIPBOARD)/u);
     expect(combined).not.toMatch(/evaluateTiming|recordTiming|openContinuity|sendMessage|browser/u);
+  });
+
+  it("stays disabled for ambient/clipboard flags and rejects every partial Observe config before command", async () => {
+    const base = {
+      MUSE_OBSERVE_ENABLED: "true",
+      MUSE_OBSERVE_INTERVAL_MS: "10000",
+      MUSE_OBSERVE_MAP_FILE: "/missing/map.json",
+      MUSE_OBSERVE_PLATFORM: "macos",
+      MUSE_OBSERVE_SESSION_ID: SESSION_ID,
+      MUSE_OBSERVE_THREAD_ID: "thread_a"
+    };
+    await expect(createObserveRunnerFromEnvironment({
+      assertKnownThread: async () => undefined,
+      attunementFile: "/missing/attunement.json",
+      env: { MUSE_AMBIENT_ENABLED: "true", MUSE_CLIPBOARD_ENABLED: "true" }
+    })).resolves.toBeUndefined();
+    for (const key of Object.keys(base)) {
+      const partial = { ...base } as Record<string, string | undefined>;
+      delete partial[key];
+      const attempt = createObserveRunnerFromEnvironment({
+        assertKnownThread: async () => undefined,
+        attunementFile: "/missing/attunement.json",
+        env: partial,
+        platform: "darwin"
+      });
+      if (key === "MUSE_OBSERVE_ENABLED") await expect(attempt).resolves.toBeUndefined();
+      else await expect(attempt).rejects.toBeInstanceOf(Error);
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { isRecord, parseStrictJson } from "@muse/shared";
@@ -152,20 +152,24 @@ export async function canonicalObserveTarget(file: string): Promise<string> {
 
 export async function readObserveState(file: string): Promise<ObserveState> {
   const target = await canonicalObserveTarget(file);
+  const entry = await fs.lstat(target).catch((cause: unknown) => (cause as NodeJS.ErrnoException).code === "ENOENT" ? undefined : Promise.reject(cause));
+  if (entry?.isSymbolicLink()) throw new ObserveStoreError("conflict", "Observe store target changed to a symbolic link");
   let handle: Awaited<ReturnType<typeof fs.open>>;
   try {
-    handle = await fs.open(target, "r");
+    handle = await fs.open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return EMPTY_STATE;
     throw new ObserveStoreError("invalid", "Observe store cannot be opened", { cause });
   }
   try {
     const before = await handle.stat();
-    if (!before.isFile()) throw new ObserveStoreError("invalid", "Observe store is not a regular file");
+    if (!before.isFile() || entry === undefined || entry.dev !== before.dev || entry.ino !== before.ino) throw new ObserveStoreError("conflict", "Observe store identity changed before it was opened");
     if (before.size > PHYSICAL_MAX_BYTES) throw new ObserveStoreError("invalid", "Observe store exceeds the physical size limit");
     const bytes = await handle.readFile();
     const after = await handle.stat();
-    if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs) {
+    const pathAfter = await fs.lstat(target).catch(() => undefined);
+    if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
+      || pathAfter === undefined || pathAfter.isSymbolicLink() || !pathAfter.isFile() || pathAfter.dev !== after.dev || pathAfter.ino !== after.ino) {
       throw new ObserveStoreError("conflict", "Observe store changed while it was being read");
     }
     if (bytes.byteLength > CONTENT_MAX_BYTES) throw new ObserveStoreError("invalid", "Observe store exceeds the content size limit");
@@ -187,7 +191,7 @@ export async function readObserveState(file: string): Promise<ObserveState> {
       throw new ObserveStoreError("invalid", "Observe store contains invalid JSON", { cause });
     }
   } finally {
-    await handle.close();
+    await handle.close().catch(() => undefined);
   }
 }
 
@@ -433,9 +437,14 @@ export interface Mutation<Result> { readonly changed: boolean; readonly result: 
 async function mutateObserveState<Result>(file: string, mutate: (state: ObserveState) => Mutation<Result> | Promise<Mutation<Result>>): Promise<Result> {
   const target = await canonicalObserveTarget(file);
   return withFileMutationQueue(target, () => withFileLock(target, async () => {
+    const identity = await observePathIdentity(target);
     const current = await readObserveState(target);
+    if (await observePathIdentity(target) !== identity) throw new ObserveStoreError("conflict", "Observe store identity changed during mutation read");
     const mutation = await mutate(current);
-    if (mutation.changed) await writeObserveStateUnlocked(target, mutation.state);
+    if (mutation.changed) {
+      if (await observePathIdentity(target) !== identity) throw new ObserveStoreError("conflict", "Observe store identity changed before mutation");
+      await writeObserveStateUnlocked(target, mutation.state);
+    }
     return mutation.result;
   })) as Promise<Result>;
 }
@@ -600,6 +609,13 @@ function compareObservation(left: ObserveObservation, right: ObserveObservation)
 
 function timeMs(value: string): number {
   return Date.parse(value);
+}
+
+async function observePathIdentity(file: string): Promise<string> {
+  const stat = await fs.lstat(file).catch((cause: unknown) => (cause as NodeJS.ErrnoException).code === "ENOENT" ? undefined : Promise.reject(cause));
+  if (stat === undefined) return "missing";
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new ObserveStoreError("conflict", "Observe store target identity is invalid");
+  return `${stat.dev}:${stat.ino}`;
 }
 
 function assertFingerprint(value: string): void {

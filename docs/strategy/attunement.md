@@ -93,14 +93,14 @@ improve its timing; they are not prerequisites for testing whether the pack is u
 
 | Status | What it means in Muse today |
 |---|---|
-| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; and Personal Continuity Slice A: user-created `life`/`work` threads, exact task/note links plus context-only reminder, configured-calendar occurrence, local contact, strict workspace-scoped current-run and future-only workspace/run/step-scoped execution-checkpoint links, one exact visit from the separately enabled local browsing archive, one exact owner-authored local conversation, and one exact local Work. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. |
+| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
-| **Roadmap** | More Continuity source adapters, opt-in Observe controls, persisted observation sessions, Personal Rhythm Model, Friction Discovery, and timing-aware help. Exact browsing context does not itself ship Observe or proactive timing. |
+| **Roadmap** | More Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
 
 ## What Continuity, Muse Work, and Observe mean
 
-- **Muse Observe** is the consent and evidence surface: see what is collected, pause it,
-  inspect hypotheses, correct them, and forget events or sources.
+- **Muse Observe** currently provides O1 consent and collection evidence: see category-only
+  sessions, pause/resume, inspect, and forget them. Hypothesis inspection/correction is roadmap.
 - **Personal Continuity** is the general assistance surface for daily life and work: return
   to a chosen unfinished thread with its linked context and one safe next step.
 - **Muse Work** is the assistance surface: hold interruptions during focus, prepare a
