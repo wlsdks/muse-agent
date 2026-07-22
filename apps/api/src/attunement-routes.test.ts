@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +14,7 @@ import {
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
+import { encodeLocalRunReference } from "@muse/shared";
 import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -119,6 +120,26 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
     ...overrides
   });
   return app;
+}
+
+async function writeStrictRun(workspaceDir: string, runId = "run_api_exact"): Promise<string> {
+  const workspaceRealpath = await realpath(workspaceDir);
+  const runsDir = join(workspaceRealpath, ".muse", "runs");
+  await mkdir(runsDir, { recursive: true });
+  const reference = encodeLocalRunReference({ runId, workspaceRealpath });
+  await writeFile(join(runsDir, `${runId}.jsonl`), `${JSON.stringify({
+    apiUrl: "http://127.0.0.1:3030/private",
+    grounded: "grounded",
+    message: "Verify the release gate",
+    model: null,
+    recordedAt: "2026-07-22T00:00:00.000Z",
+    response: { response: "The focused release gate passed.", secret: "must-not-appear", toolsUsed: ["task_read", "shell"] },
+    runId,
+    source: "cli.local",
+    success: true,
+    type: "chat.completed"
+  })}\n`, "utf8");
+  return reference;
 }
 
 describe("POST /api/attunement/threads/:threadId/continue", () => {
@@ -503,6 +524,41 @@ describe("POST /api/attunement/timing/sessions/:sessionId/evaluate", () => {
     expect(evaluated.json()).toMatchObject({ candidate: { decision: "offer" }, pack: { nextStep: { taskDueState: "overdue" } } });
     expect(after).toBe(before);
   });
+
+  it("maps unavailable run workspace authority to a structured preview conflict", async () => {
+    const artifactId = await writeStrictRun(root);
+    const linking = server({ workspaceDir: root });
+    expect((await linking.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "run", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(200);
+    await linking.close();
+
+    const app = server();
+    const started = await app.inject({
+      method: "POST",
+      payload: { consentVersion: 1, threadId },
+      url: "/api/attunement/timing/sessions"
+    });
+    const sessionId = started.json().id as string;
+    for (const observation of [
+      { appCategory: "building", endedAt: "2026-07-17T09:25:00.000Z", startedAt: "2026-07-17T09:00:00.000Z" },
+      { appCategory: "planning", endedAt: "2026-07-17T09:50:00.000Z", startedAt: "2026-07-17T09:25:00.000Z" }
+    ]) {
+      await app.inject({
+        method: "POST",
+        payload: { ...observation, durationMs: 25 * 60_000 },
+        url: `/api/attunement/timing/sessions/${sessionId}/observations`
+      });
+    }
+
+    const response = await app.inject({ method: "POST", url: `/api/attunement/timing/sessions/${sessionId}/evaluate` });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ errorMessage: "run evidence requires an explicit API workspace directory" });
+    expect((await readAttunementState(attunementFile)).deliveries).toHaveLength(0);
+    await app.close();
+  });
 });
 
 describe("GET /api/attunement/threads — the Work view's thread-picker feed", () => {
@@ -514,6 +570,73 @@ describe("GET /api/attunement/threads — the Work view's thread-picker feed", (
     expect(body.threads).toHaveLength(1);
     expect(body.threads[0]).toEqual({ id: threadId, kind: "life", title: "Prepare birthday" });
     await app.close();
+  });
+});
+
+describe("exact local run continuity sources", () => {
+  it("links, safely resolves, and unlinks one exact workspace-scoped run", async () => {
+    const artifactId = await writeStrictRun(root);
+    const app = server({ workspaceDir: root });
+
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "run", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId, artifactType: "run", providerId: "local", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId,
+        artifactType: "run",
+        providerId: "local",
+        role: "context",
+        runOutcome: "grounded",
+        runSuccess: true,
+        runToolNames: ["task_read", "shell"],
+        summary: "The focused release gate passed.",
+        title: "Verify the release gate"
+      }),
+      status: "available"
+    }));
+    expect(opened.body).not.toContain("must-not-appear");
+    expect(opened.body).not.toContain("127.0.0.1");
+
+    const removed = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "run" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    await app.close();
+  });
+
+  it("fails closed without explicit workspace authority and preserves the exact raw locator", async () => {
+    const artifactId = await writeStrictRun(root);
+    const before = await readFile(attunementFile);
+    const otherWorkspace = join(root, "other-workspace");
+    await mkdir(otherWorkspace);
+    for (const app of [server(), server({ workspaceDir: otherWorkspace })]) {
+      const response = await app.inject({
+        method: "POST",
+        payload: { artifactId, artifactType: "run", role: "context" },
+        url: `/api/attunement/threads/${threadId}/links`
+      });
+      expect(response.statusCode).toBe(409);
+      await app.close();
+    }
+    const padded = server({ workspaceDir: root });
+    const response = await padded.inject({
+      method: "POST",
+      payload: { artifactId: ` ${artifactId}`, artifactType: "run", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(response.statusCode).toBe(409);
+    await padded.close();
+    expect(await readFile(attunementFile)).toEqual(before);
   });
 });
 
