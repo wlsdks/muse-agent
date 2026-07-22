@@ -32,7 +32,7 @@ import {
   createRunExactArtifactResolver,
   createWorkArtifactValidator,
   createWorkExactArtifactResolver,
-  deletePersonalThreadWorkSafe,
+  deletePersonalThreadContinuitySafe,
   inspectThread,
   linkArtifact,
   linkWorkContinuity,
@@ -669,7 +669,7 @@ Examples:
     .description("Delete one personal thread and its continuity deliveries and policy receipts")
     .action(async (threadId: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread delete", async () => {
-        const deleted = await deletePersonalThreadWorkSafe({ attunementFile: attunementFile(), worksFile: worksFile() }, threadId.trim());
+        const deleted = await deletePersonalThreadContinuitySafe({ attunementFile: attunementFile(), worksFile: worksFile() }, threadId.trim());
         io.stdout(`Deleted ${deleted.thread.kind} thread ${deleted.thread.id} (${String(deleted.deletedDeliveries)} deliveries, ${String(deleted.deletedResetReceipts)} reset receipts)\n`);
       });
     });

@@ -73,24 +73,27 @@ export {
   OBSERVE_CONSENT_TERMS,
   OBSERVE_CONSENT_VERSION,
   ObserveStoreError,
-  emptyObserveState,
   forgetObserveSession,
+  inspectObserveSession,
+  observeStatus,
   pauseObserveSession,
-  readObserveState,
-  resumeObserveSession,
-  startObserveSession
 } from "./observe-store.js";
 export type {
   ObserveActiveSegment,
   ObserveAppCategory,
-  ObserveCollectorLease,
   ObserveErrorCode,
   ObserveObservation,
   ObserveSession,
   ObserveSessionStatus,
-  ObserveState,
   ObserveStoreOptions
 } from "./observe-store.js";
+export {
+  deletePersonalThreadContinuitySafe,
+  resolveObserveStateFile,
+  resumeObserveSessionSafe,
+  startObserveSessionSafe
+} from "./observe-continuity-coordinator.js";
+export type { ObserveContinuityFiles, PersonalContinuityFiles } from "./observe-continuity-coordinator.js";
 export {
   completeLinkedNextStep,
   type CompleteLinkedNextStepOptions,

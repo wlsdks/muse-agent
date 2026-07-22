@@ -105,6 +105,33 @@ export function emptyObserveState(): ObserveState {
   return EMPTY_STATE;
 }
 
+export async function observeStatus(file: string): Promise<{
+  readonly collector: { readonly expiresAt: string; readonly sessionId: string; readonly state: "active" } | { readonly state: "idle" };
+  readonly sessions: readonly ObserveSession[];
+}> {
+  const state = await readObserveState(file);
+  return {
+    collector: state.collectorLease === null
+      ? { state: "idle" }
+      : { expiresAt: state.collectorLease.expiresAt, sessionId: state.collectorLease.sessionId, state: "active" },
+    sessions: state.sessions
+  };
+}
+
+export async function inspectObserveSession(file: string, sessionId: string): Promise<{
+  readonly activeSegment: ObserveActiveSegment | null;
+  readonly observations: readonly ObserveObservation[];
+  readonly session: ObserveSession;
+}> {
+  const state = await readObserveState(file);
+  const session = requireSession(state, sessionId);
+  return {
+    activeSegment: state.activeSegments.find((entry) => entry.sessionId === session.id) ?? null,
+    observations: state.observations.filter((entry) => entry.sessionId === session.id),
+    session
+  };
+}
+
 export async function canonicalObserveTarget(file: string): Promise<string> {
   const absolute = resolve(file);
   try {
@@ -169,23 +196,30 @@ export async function startObserveSession(
   input: { readonly acceptVersion: number; readonly threadId: string },
   options: ObserveStoreOptions = {}
 ): Promise<ObserveSession> {
+  return mutateObserveState(file, (state) => startObserveSessionTransition(state, input, options));
+}
+
+/** Internal pure transition used by the canonical cross-store coordinator. */
+export function startObserveSessionTransition(
+  state: ObserveState,
+  input: { readonly acceptVersion: number; readonly threadId: string },
+  options: ObserveStoreOptions = {}
+): Mutation<ObserveSession> {
   if (input.acceptVersion !== OBSERVE_CONSENT_VERSION) throw new ObserveStoreError("invalid", "Observe consent version must be accepted exactly");
   assertThreadId(input.threadId);
-  return mutateObserveState(file, (state) => {
-    if (state.sessions.length >= MAX_SESSIONS) throw new ObserveStoreError("conflict", "Observe session limit reached; forget an older session first");
-    if (state.sessions.some((session) => session.status === "active")) throw new ObserveStoreError("conflict", "another Observe session is already active");
-    const now = optionTime(options);
-    const session: ObserveSession = {
-      consentVersion: 1,
-      createdAt: now,
-      id: makeId("observe", options),
-      observedThroughAt: null,
-      status: "active",
-      threadId: input.threadId,
-      updatedAt: now
-    };
-    return { changed: true, result: session, state: { ...state, sessions: [...state.sessions, session] } };
-  });
+  if (state.sessions.length >= MAX_SESSIONS) throw new ObserveStoreError("conflict", "Observe session limit reached; forget an older session first");
+  if (state.sessions.some((session) => session.status === "active")) throw new ObserveStoreError("conflict", "another Observe session is already active");
+  const now = optionTime(options);
+  const session: ObserveSession = {
+    consentVersion: 1,
+    createdAt: now,
+    id: makeId("observe", options),
+    observedThroughAt: null,
+    status: "active",
+    threadId: input.threadId,
+    updatedAt: now
+  };
+  return { changed: true, result: session, state: { ...state, sessions: [...state.sessions, session] } };
 }
 
 export async function pauseObserveSession(file: string, sessionId: string, options: ObserveStoreOptions = {}): Promise<ObserveSession> {
@@ -212,13 +246,16 @@ export async function pauseObserveSession(file: string, sessionId: string, optio
 }
 
 export async function resumeObserveSession(file: string, sessionId: string, options: ObserveStoreOptions = {}): Promise<ObserveSession> {
-  return mutateObserveState(file, (state) => {
-    const session = requireSession(state, sessionId);
-    if (session.status === "active") return { changed: false, result: session, state };
-    if (state.sessions.some((entry) => entry.id !== session.id && entry.status === "active")) throw new ObserveStoreError("conflict", "another Observe session is already active");
-    const updated = { ...session, status: "active" as const, updatedAt: lifecycleTime(session, options) };
-    return { changed: true, result: updated, state: { ...state, sessions: replaceSession(state.sessions, updated) } };
-  });
+  return mutateObserveState(file, (state) => resumeObserveSessionTransition(state, sessionId, options));
+}
+
+/** Internal pure transition used by the canonical cross-store coordinator. */
+export function resumeObserveSessionTransition(state: ObserveState, sessionId: string, options: ObserveStoreOptions = {}): Mutation<ObserveSession> {
+  const session = requireSession(state, sessionId);
+  if (session.status === "active") return { changed: false, result: session, state };
+  if (state.sessions.some((entry) => entry.id !== session.id && entry.status === "active")) throw new ObserveStoreError("conflict", "another Observe session is already active");
+  const updated = { ...session, status: "active" as const, updatedAt: lifecycleTime(session, options) };
+  return { changed: true, result: updated, state: { ...state, sessions: replaceSession(state.sessions, updated) } };
 }
 
 export async function forgetObserveSession(file: string, sessionId: string): Promise<{ readonly deletedObservations: number }> {
@@ -363,19 +400,19 @@ export async function releaseObserveLease(file: string, sessionId: string, autho
   });
 }
 
-interface Mutation<Result> { readonly changed: boolean; readonly result: Result; readonly state: ObserveState }
+export interface Mutation<Result> { readonly changed: boolean; readonly result: Result; readonly state: ObserveState }
 
 async function mutateObserveState<Result>(file: string, mutate: (state: ObserveState) => Mutation<Result> | Promise<Mutation<Result>>): Promise<Result> {
   const target = await canonicalObserveTarget(file);
   return withFileMutationQueue(target, () => withFileLock(target, async () => {
     const current = await readObserveState(target);
     const mutation = await mutate(current);
-    if (mutation.changed) await writeObserveState(target, mutation.state);
+    if (mutation.changed) await writeObserveStateUnlocked(target, mutation.state);
     return mutation.result;
   })) as Promise<Result>;
 }
 
-async function writeObserveState(file: string, state: ObserveState): Promise<void> {
+export async function writeObserveStateUnlocked(file: string, state: ObserveState): Promise<void> {
   const validated = parseObserveState(state);
   const bytes = `${JSON.stringify(validated, null, 2)}\n`;
   if (Buffer.byteLength(bytes) > CONTENT_MAX_BYTES) throw new ObserveStoreError("invalid", "Observe output exceeds the content size limit");
