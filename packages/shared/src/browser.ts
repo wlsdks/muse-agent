@@ -41,3 +41,24 @@ export {
   type DecisionMetricSource,
   type DecisionMetricUnit
 } from "./decision-metric.js";
+export {
+  PERSONAL_STATUS_MAX_CARDS,
+  PERSONAL_STATUS_MAX_CARDS_PER_SOURCE,
+  PERSONAL_STATUS_SCHEMA_VERSION,
+  admitPersonalStatus,
+  buildPersonalStatus,
+  comparePersonalStatusCards,
+  type PersonalStatusAction,
+  type PersonalStatusActionId,
+  type PersonalStatusActionTarget,
+  type PersonalStatusAdmission,
+  type PersonalStatusCard,
+  type PersonalStatusCardKind,
+  type PersonalStatusCardStatus,
+  type PersonalStatusOverall,
+  type PersonalStatusResponse,
+  type PersonalStatusSource,
+  type PersonalStatusSourceErrorCode,
+  type PersonalStatusSourceId,
+  type PersonalStatusSourceResult
+} from "./personal-status.js";
