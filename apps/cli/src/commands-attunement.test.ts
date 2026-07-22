@@ -616,6 +616,7 @@ describe("muse thread stats — kill-criterion instrument", () => {
       outcomes: Record<string, number>;
       firstPacks: { considered: number; used: number; rejected: number };
       longitudinalGate: { byKind: { work: { distinctUtcDates: number; explicitFeedback: number; remainingFeedback: number } }; status: string };
+      measurements: Array<{ freshness: { evaluatedAt: string } }>;
     };
     expect(parsed.totalDeliveries).toBe(5);
     expect(parsed.withOutcome).toBe(4);
@@ -625,12 +626,15 @@ describe("muse thread stats — kill-criterion instrument", () => {
       byKind: { work: { distinctUtcDates: 1, explicitFeedback: 4, remainingFeedback: 6 } },
       status: "collecting"
     });
-    expect(parsed).toEqual(computeContinuityEvaluation(await readAttunementState(f.attunementFile)));
+    expect(parsed).toEqual(computeContinuityEvaluation(await readAttunementState(f.attunementFile), {
+      now: () => Date.parse(parsed.measurements[0]!.freshness.evaluatedAt)
+    }));
 
     const text = await run(f, ["thread", "stats"]);
     expect(text.stdout).toContain("Production-authorized numeric readiness");
-    expect(text.stdout).toContain("used: 2");
-    expect(text.stdout).toContain("rejected 1/5");
+    expect(text.stdout).toContain("used unavailable — complete 20 organic delivery/outcome pairs first");
+    expect(text.stdout).toContain("rejected unavailable — complete 20 organic delivery/outcome pairs first");
+    expect(text.stdout).toContain("no personal-effectiveness percentage is emitted");
     expect(text.stdout).toContain("Longitudinal evidence: collecting");
     expect(text.stdout).toContain("work: feedback 4/10 across 1/2 UTC dates; 6 feedback and 1 date remaining");
     expect(text.stdout).toContain("All recorded technical evidence");

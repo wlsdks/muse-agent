@@ -46,22 +46,22 @@ effectiveness, learning, permission, or autonomy.
 **Gate:** no failed runtime gate; every external side effect remains draft-first
 or explicitly owner-confirmed.
 
-### 1. Label measurements before displaying them — next
+### 1. Label measurements before displaying them — complete
 
-- [ ] Reword run-outcome output as technical grounding diagnostics, never a
+- [x] Reword run-outcome output as technical grounding diagnostics, never a
   personal usefulness score.
-- [ ] Preserve Attunement's existing `organic | controlled | unclassified`
+- [x] Preserve Attunement's existing `organic | controlled | unclassified`
   boundary as the sole source of user-outcome and learning claims.
-- [ ] Add a shared metric contract before any new aggregate: evidence class,
+- [x] Add a shared metric contract before any new aggregate: evidence class,
   source/version, denominator, time window, freshness, and action link are
   required; unknown provenance is excluded rather than guessed.
-- [ ] Keep factual task receipts distinct from feedback and from policy promotion.
+- [x] Keep factual task receipts distinct from feedback and from policy promotion.
 
 **Gate:** a test fixture containing only controlled/unclassified data cannot
 produce a user-effectiveness percentage, learning success rate, or autonomy
 promotion signal.
 
-### 2. Build an actionable personal status, not a vanity dashboard
+### 2. Build an actionable personal status, not a vanity dashboard — next
 
 - [ ] Default surface: blocked/held actions, pending owner feedback, continuity
   review progress, and the next safe action.

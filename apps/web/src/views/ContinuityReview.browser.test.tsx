@@ -819,6 +819,8 @@ test("opening a Pack then completing its canonical current next step refreshes e
 
   await expect.element(screen.getByText(/Production-authorized numeric readiness/u)).toBeVisible();
   await expect.element(screen.getByText("All recorded technical evidence", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Insufficient evidence — no personal-effectiveness percentage is emitted.", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("0%", { exact: true })).not.toBeInTheDocument();
 
   await screen.getByRole("button", { name: "Open pack" }).click();
   await expect.element(screen.getByRole("button", { name: "Mark next step done" })).toBeVisible();
@@ -839,6 +841,41 @@ test("opening a Pack then completing its canonical current next step refreshes e
   expect(get.mock.calls.filter(([path]) => path === "/api/attunement/review").length).toBeGreaterThanOrEqual(3);
   expect(queryClient.getQueryState(["tasks", client.baseUrl, "open"])?.isInvalidated).toBe(true);
   expect(queryClient.getQueryState(["tasks-count", client.baseUrl])?.isInvalidated).toBe(true);
+});
+
+test("a complete organic window renders the API measurement contract instead of recomputing raw rates", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const review = reminderLinkReview(true);
+  const metric = (outcome: "used" | "rejected", numerator: number) => ({
+    actionId: "review-continuity-feedback" as const,
+    claim: "personal-effectiveness" as const,
+    evidenceClass: "organic" as const,
+    freshness: { asOf: "2026-07-21T10:00:00.000Z", evaluatedAt: "2026-07-22T00:00:00.000Z", staleAfterMs: 2_592_000_000, status: "fresh" as const },
+    id: `continuity.first-20.${outcome}.life`,
+    schemaVersion: 1 as const,
+    source: { id: "attunement-state" as const, version: 8 as const },
+    value: { denominator: 20, numerator, unit: "ratio" as const },
+    window: { endedAt: "2026-07-21T09:00:00.000Z", startedAt: "2026-07-16T09:00:00.000Z" }
+  });
+  const life = {
+    ...review.evaluation.byKind.life,
+    firstPacks: { considered: 3, rejected: 3, used: 0 },
+    measurements: [metric("used", 8), metric("rejected", 2)],
+    measurementStatus: "available" as const
+  };
+  const response = { ...review, evaluation: { ...review.evaluation, byKind: { ...review.evaluation.byKind, life } } };
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions" ? interactionReport({ includeDelivery: false }) : response);
+  const client = { baseUrl: "http://decision-metric.test", get, post: vi.fn() } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(<QueryClientProvider client={queryClient}>
+    <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+  </QueryClientProvider>);
+
+  await expect.element(screen.getByText("40%", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("10%", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(/organic evidence · denominator 20 · attunement-state@8/u)).toBeVisible();
+  await expect.element(screen.getByRole("link", { name: "Review pending feedback" }).first()).toHaveAttribute("href", "#continuity-feedback-review");
+  await expect.element(screen.getByText("100%", { exact: true })).not.toBeInTheDocument();
 });
 
 test("an interaction query failure stays scoped and fail-closes task completion without blocking the Pack", async () => {

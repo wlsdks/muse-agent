@@ -153,7 +153,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
   server.get("/api/attunement/evaluation", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     try {
-      return computeContinuityEvaluation(await readAttunementState(gate.attunementFile));
+      return computeContinuityEvaluation(await readAttunementState(gate.attunementFile), { ...(gate.now ? { now: gate.now } : {}) });
     } catch (cause) {
       if (cause instanceof ContinuityEvaluationError) return reply.code(409).send({ errorMessage: cause.message });
       throw cause;
@@ -198,7 +198,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
               thread: { id: thread.id, kind: thread.kind, title: thread.title }
             };
           }),
-        evaluation: computeContinuityEvaluation(state),
+        evaluation: computeContinuityEvaluation(state, { ...(gate.now ? { now: gate.now } : {}) }),
         reviewQueue: await prepareContinuityReview(
           state,
           resolveExactArtifact
@@ -337,7 +337,8 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     const result = await recordProductionAuthorizedContinuityOutcome(
       gate.attunementFile,
       request.params.deliveryId,
-      outcome as ContinuityOutcome
+      outcome as ContinuityOutcome,
+      { ...(gate.now ? { now: () => new Date(gate.now!()) } : {}) }
     );
     return { applied: result.applied, delivery: result.delivery, policy: result.policy };
   });

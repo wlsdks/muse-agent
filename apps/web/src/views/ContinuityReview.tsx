@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import type { DecisionMetric } from "@muse/shared/browser";
 
 import { AsyncBlock, Badge, Button, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -16,6 +17,8 @@ interface KindEvaluation {
   readonly automationGate: { readonly reasons: readonly string[]; readonly status: "hold" | "manual-only" };
   readonly firstPacks: { readonly considered: number; readonly rejected: number; readonly used: number };
   readonly improvementGate: { readonly reason: string; readonly status: string };
+  readonly measurements?: readonly DecisionMetric[];
+  readonly measurementStatus?: "available" | "insufficient";
   readonly outcomes: Record<Outcome, number>;
   readonly totalDeliveries: number;
   readonly withOutcome: number;
@@ -179,7 +182,7 @@ export function PendingReviewCard({
 }) {
   const { t } = useI18n();
   const { next, progress } = reviewQueue;
-  return <Card>
+  return <div id="continuity-feedback-review"><Card>
     <div className="row-title">{t("continuity.reviewProgress", {
       eligible: progress.eligibleDeliveries,
       reviewed: progress.reviewedDeliveries,
@@ -213,7 +216,7 @@ export function PendingReviewCard({
           </div>
           {next.ineligibleReason ? <p className="banner warn" style={{ marginBottom: 0 }}>{next.ineligibleReason}</p> : null}
         </>}
-  </Card>;
+  </Card></div>;
 }
 
 export function LongitudinalEvidenceCard({ gate }: { readonly gate: LongitudinalGate }) {
@@ -278,8 +281,12 @@ export function InteractionEvidenceCard({ report }: { readonly report: Interacti
   </Card>;
 }
 
-function rate(part: number, total: number): string {
-  return total === 0 ? "-" : `${Math.round((part / total) * 100)}%`;
+function decisionMetric(evaluation: KindEvaluation, id: string): DecisionMetric | undefined {
+  return evaluation.measurements?.find((metric) => metric.id === id);
+}
+
+function metricRate(metric: DecisionMetric | undefined): string {
+  return metric ? `${Math.round((metric.value.numerator / metric.value.denominator) * 100)}%` : "-";
 }
 
 function kindLabel(kind: Kind): string {
@@ -296,6 +303,8 @@ function outcomeTone(outcome: Outcome | undefined): "ok" | "warn" | "err" | "neu
 function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evaluation: KindEvaluation }) {
   const { t } = useI18n();
   const gateTone = evaluation.automationGate.status === "manual-only" ? "ok" : "warn";
+  const used = decisionMetric(evaluation, `continuity.first-20.used.${kind}`);
+  const rejected = decisionMetric(evaluation, `continuity.first-20.rejected.${kind}`);
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, justifyContent: "space-between" }}>
@@ -306,29 +315,50 @@ function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evalu
         <Badge tone={gateTone}>{evaluation.automationGate.status === "manual-only" ? t("continuity.manualOnly") : t("continuity.hold")}</Badge>
       </div>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 16 }}>
-        <Stat label={t("continuity.deliveries")} value={evaluation.totalDeliveries} />
-        <Stat label={t("continuity.feedback")} value={evaluation.withOutcome} />
-        <Stat label={t("continuity.usedRate")} value={rate(evaluation.firstPacks.used, evaluation.firstPacks.considered)} />
-        <Stat label={t("continuity.rejectedRate")} value={rate(evaluation.firstPacks.rejected, evaluation.firstPacks.considered)} />
+        <Stat label={t("continuity.usedRate")} value={metricRate(used)} />
+        <Stat label={t("continuity.rejectedRate")} value={metricRate(rejected)} />
       </div>
+      {used
+        ? <p className="row-meta">{t("continuity.metricDetails", {
+            denominator: used.value.denominator,
+            evidenceClass: used.evidenceClass,
+            freshness: used.freshness.status,
+            source: `${used.source.id}@${used.source.version.toString()}`,
+            startedAt: used.window.startedAt.slice(0, 10),
+            endedAt: used.window.endedAt.slice(0, 10)
+          })}</p>
+        : <p className="row-meta">{t("continuity.metricInsufficient")}</p>}
+      <a className="row-meta" href="#continuity-feedback-review">{t("continuity.metricReviewAction")}</a>
     </Card>
   );
 }
 
 function TechnicalEvidenceCard({ evaluation }: { readonly evaluation: ReviewResponse["evaluation"] }) {
   const { t } = useI18n();
-  const evidence = evaluation.technicalEvidence.overall;
-  const outcomes = Object.values(evidence.outcomes).flatMap((counts) => Object.values(counts)).reduce((sum, count) => sum + count, 0);
-  return <Card>
+  const technical = evaluation.measurements?.filter((metric) => metric.id.endsWith(".overall") && metric.claim === "technical-diagnostic") ?? [];
+  const delivery = (evidenceClass: EvidenceClass) => technical.find((metric) => metric.id === `continuity.technical.delivery.${evidenceClass}.overall`);
+  const outcome = (evidenceClass: EvidenceClass) => technical.find((metric) => metric.id === `continuity.technical.outcome.${evidenceClass}.overall`);
+  const outcomeTotal = outcome("organic")?.value.denominator;
+  const sample = delivery("organic") ?? delivery("controlled") ?? delivery("unclassified") ?? outcome("organic") ?? outcome("controlled") ?? outcome("unclassified");
+  return <div id="continuity-technical-evidence"><Card>
     <div className="row-title">{t("continuity.technicalTitle")}</div>
     <p className="row-meta">{t("continuity.technicalTotals", {
-      controlled: evidence.deliveries.controlled,
-      organic: evidence.deliveries.organic,
-      outcomes,
-      unclassified: evidence.deliveries.unclassified
+      controlled: delivery("controlled")?.value.numerator ?? "-",
+      organic: delivery("organic")?.value.numerator ?? "-",
+      outcomes: outcomeTotal ?? "-",
+      unclassified: delivery("unclassified")?.value.numerator ?? "-"
     })}</p>
+    {sample ? <p className="row-meta">{t("continuity.metricDetails", {
+      denominator: sample.value.denominator,
+      evidenceClass: sample.evidenceClass,
+      freshness: sample.freshness.status,
+      source: `${sample.source.id}@${sample.source.version.toString()}`,
+      startedAt: sample.window.startedAt.slice(0, 10),
+      endedAt: sample.window.endedAt.slice(0, 10)
+    })}</p> : <p className="row-meta">{t("continuity.metricInsufficient")}</p>}
     <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.technicalExcluded")}</p>
-  </Card>;
+    <a className="row-meta" href="#continuity-technical-evidence">{t("continuity.metricTechnicalAction")}</a>
+  </Card></div>;
 }
 
 export function RecentDeliveryCard({ delivery, locale }: {

@@ -82,6 +82,7 @@ function coherent(metric: DecisionMetric): boolean {
       && metric.claim === "technical-diagnostic"
       && metric.evidenceClass === "unclassified"
       && metric.value.unit === "ratio"
+      && metric.freshness.staleAfterMs === RUN_GROUNDING_FRESHNESS_MS
       && metric.actionId === "inspect-run-grounding";
   }
   const personal = /^continuity\.first-20\.(used|rejected)\.(overall|life|work)$/u.exec(metric.id);
@@ -89,6 +90,7 @@ function coherent(metric: DecisionMetric): boolean {
     return metric.claim === "personal-effectiveness"
       && metric.evidenceClass === "organic"
       && metric.value.unit === "ratio"
+      && metric.freshness.staleAfterMs === ATTUNEMENT_OUTCOME_FRESHNESS_MS
       && metric.actionId === "review-continuity-feedback";
   }
   const technical = /^continuity\.technical\.(delivery|outcome)\.(organic|controlled|unclassified)\.(overall|life|work)$/u.exec(metric.id);
@@ -96,6 +98,7 @@ function coherent(metric: DecisionMetric): boolean {
     && metric.claim === "technical-diagnostic"
     && metric.evidenceClass === technical?.[2]
     && metric.value.unit === "count-of-total"
+    && metric.freshness.staleAfterMs === ATTUNEMENT_OUTCOME_FRESHNESS_MS
     && metric.actionId === "inspect-continuity-technical-evidence";
 }
 

@@ -39,6 +39,49 @@ function state(deliveries: readonly ContinuityDelivery[]): AttunementState {
 }
 
 describe("computeContinuityEvaluation longitudinal evidence", () => {
+  const now = { now: () => Date.parse("2026-07-22T00:00:00.000Z") };
+
+  it("emits personal metrics only for a complete first-20 organic pair window", () => {
+    const complete = Array.from({ length: 20 }, (_, index) => delivery("work", index, index < 10 ? 16 : 17));
+    const evaluation = computeContinuityEvaluation(state(complete), now);
+    const personal = evaluation.byKind.work.measurements.filter((metric) => metric.claim === "personal-effectiveness");
+
+    expect(evaluation.schemaVersion).toBe(3);
+    expect(evaluation.byKind.work.measurementStatus).toBe("available");
+    expect(personal.map((metric) => metric.id)).toEqual([
+      "continuity.first-20.used.work",
+      "continuity.first-20.rejected.work"
+    ]);
+    expect(personal[0]?.value).toEqual({ denominator: 20, numerator: 20, unit: "ratio" });
+    expect(personal[0]?.freshness).toMatchObject({ evaluatedAt: "2026-07-22T00:00:00.000Z", status: "fresh" });
+  });
+
+  it("never turns controlled, unclassified, mixed, missing-feedback, or factual receipts into personal claims", () => {
+    const organic = Array.from({ length: 20 }, (_, index) => delivery("work", index, 17));
+    const controlled = organic.map((item) => ({ ...item, evidenceClass: "controlled" as const }));
+    const unclassified = organic.map((item) => ({ ...item, evidenceClass: "unclassified" as const }));
+    const mixed = organic.map((item, index) => index === 19
+      ? { ...item, outcome: { ...item.outcome!, evidenceClass: "controlled" as const } }
+      : item);
+    const missing = organic.map((item, index) => index === 19 ? { ...item, outcome: undefined } : item);
+    const receipt = {
+      artifactId: "task_1", completedAt: "2026-07-17T12:00:00.000Z", deliveryId: "delivery_work_00",
+      doneStateFingerprint: "done", eventId: "event_1", evidenceClass: "organic" as const, id: "receipt_1",
+      linkedAt: "2026-07-17T08:00:00.000Z", openStateFingerprint: "open", providerId: "local" as const,
+      recordedAt: "2026-07-17T12:00:00.000Z", role: "next-step" as const, runId: "run_1",
+      threadId: "thread_work", transition: "open-to-done" as const
+    };
+    const personal = (deliveries: readonly ContinuityDelivery[], withReceipt = false) => computeContinuityEvaluation({
+      ...state(deliveries),
+      interactionReceipts: withReceipt ? [receipt] : []
+    }, now).measurements.filter((metric) => metric.claim !== "technical-diagnostic");
+
+    expect(personal(controlled)).toEqual([]);
+    expect(personal(unclassified)).toEqual([]);
+    expect(personal(mixed)).toEqual([]);
+    expect(personal(missing)).toEqual([]);
+    expect(personal([], true)).toEqual([]);
+  });
   it("fixes the denominator to the first 20 organic deliveries and counts only organic outcome pairs", () => {
     const firstWindow = Array.from({ length: 20 }, (_, index) => ({
       ...delivery("work", index, 16),

@@ -10,6 +10,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **User-facing outcome rates now carry a decision-grade measurement contract.**
+  A browser-safe fail-closed schema binds metric ID, source/version, evidence
+  class, numerator/denominator, time window, freshness, and a safe action ID as
+  one coherent tuple. Run grounding keeps its legacy three-outcome JSON while a
+  separate six-outcome unique-run diagnostic excludes malformed, mismatched, or
+  future provenance. Continuity emits personal-effectiveness rates only after a
+  complete first-20 organic delivery/outcome window; controlled, unclassified,
+  mixed, missing-feedback, and factual-receipt-only evidence remains technical
+  or insufficient and cannot mint learning or autonomy claims.
+
 - **Continuity can now ground a thread in one exact future execution checkpoint without
   granting resume authority.** New v3 checkpoint files bind canonical workspace, run, and
   step provenance and expose a copyable versioned reference only after strict verification.

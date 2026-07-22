@@ -10,7 +10,6 @@ import { errorMessage } from "@muse/shared";
 import { isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
-  CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   buildContinuityInteractionReport,
   calendarProviderId,
@@ -257,16 +256,23 @@ interface CliContinuityReview extends Omit<ContinuityReview, "next"> {
  * usefulness before more automation). Reads only persisted deliveries; empty
  * state yields zeros, not a crash.
  */
-export function computeContinuityStats(state: AttunementState): ContinuityStats {
-  return computeContinuityEvaluation(state);
+export function computeContinuityStats(state: AttunementState, options: { readonly now?: () => number } = {}): ContinuityStats {
+  return computeContinuityEvaluation(state, options);
+}
+
+function continuityMetric(stats: ContinuityKindStats, id: string) {
+  return stats.measurements.find((metric) => metric.id === id);
+}
+
+function formatMetricRate(stats: ContinuityKindStats, outcome: "used" | "rejected", scope: "overall" | PersonalThreadKind): string {
+  const metric = continuityMetric(stats, `continuity.first-20.${outcome}.${scope}`);
+  return metric ? `${metric.value.numerator.toString()}/${metric.value.denominator.toString()} (${((metric.value.numerator / metric.value.denominator) * 100).toFixed(0)}%)` : "unavailable — complete 20 organic delivery/outcome pairs first";
 }
 
 function formatKindStats(kind: PersonalThreadKind, stats: ContinuityKindStats): string[] {
-  const { firstPacks, improvementGate, outcomes } = stats;
   return [
-    `  ${kind}: ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback); used ${outcomes.used.toString()}, adjusted ${outcomes.adjusted.toString()}, ignored ${outcomes.ignored.toString()}, rejected ${outcomes.rejected.toString()}.`,
-    `    First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()}: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
-    `    Feedback cohorts: first ${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.firstFiveFeedback.used.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.firstFiveFeedback.rejected.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}; next ${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()} used ${improvementGate.nextFiveFeedback.used.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}, rejected ${improvementGate.nextFiveFeedback.rejected.toString()}/${CONTINUITY_IMPROVEMENT_COHORT_SIZE.toString()}; trend ${improvementGate.status} — ${improvementGate.reason}.`
+    `    First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()}: used ${formatMetricRate(stats, "used", kind)}, rejected ${formatMetricRate(stats, "rejected", kind)}; automation ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
+    "    Measurement action: muse thread review"
   ];
 }
 
@@ -277,16 +283,20 @@ function formatLongitudinalCoverage(kind: PersonalThreadKind, coverage: Continui
 }
 
 export function formatContinuityStats(stats: ContinuityStats): string {
-  const { outcomes, firstPacks } = stats;
-  const technical = stats.technicalEvidence.overall;
-  const technicalOutcomeCount = Object.values(technical.outcomes)
-    .flatMap((byOutcome) => Object.values(byOutcome))
-    .reduce((total, count) => total + count, 0);
+  const technicalDelivery = (evidenceClass: "organic" | "controlled" | "unclassified") => continuityMetric(stats, `continuity.technical.delivery.${evidenceClass}.overall`);
+  const technicalOutcome = (evidenceClass: "organic" | "controlled" | "unclassified") => continuityMetric(stats, `continuity.technical.outcome.${evidenceClass}.overall`);
+  const technicalSample = technicalDelivery("organic") ?? technicalDelivery("controlled") ?? technicalDelivery("unclassified")
+    ?? technicalOutcome("organic") ?? technicalOutcome("controlled") ?? technicalOutcome("unclassified");
+  const metricCount = (metric: ReturnType<typeof technicalDelivery>): string => metric ? metric.value.numerator.toString() : "unavailable";
   const lines = [
     "Production-authorized numeric readiness (organic-authorized evidence; not verified natural behavior):",
-    `Continuity outcomes across ${stats.totalDeliveries.toString()} deliveries (${stats.withOutcome.toString()} with feedback):`,
-    `  used: ${outcomes.used.toString()}  adjusted: ${outcomes.adjusted.toString()}  ignored: ${outcomes.ignored.toString()}  rejected: ${outcomes.rejected.toString()}`,
-    `First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()} packs: used ${firstPacks.used.toString()}/${firstPacks.considered.toString()}, rejected ${firstPacks.rejected.toString()}/${firstPacks.considered.toString()} (kill criterion: used<20% or rejected>30%)`,
+    `First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()} complete organic pairs: used ${formatMetricRate(stats, "used", "overall")}, rejected ${formatMetricRate(stats, "rejected", "overall")} (kill criterion: used<20% or rejected>30%)`,
+    ...(continuityMetric(stats, "continuity.first-20.used.overall")
+      ? [
+          `Measurement contract: evidence=organic source=attunement-state@8 window=${continuityMetric(stats, "continuity.first-20.used.overall")!.window.startedAt} → ${continuityMetric(stats, "continuity.first-20.used.overall")!.window.endedAt} freshness=${continuityMetric(stats, "continuity.first-20.used.overall")!.freshness.status}.`,
+          "Measurement action: muse thread review"
+        ]
+      : ["Measurement evidence: insufficient — no personal-effectiveness percentage is emitted.", "Measurement action: muse thread review"]),
     `Automation gate: ${stats.automationGate.status} — ${stats.automationGate.reasons.join("; ")}.`,
     `Longitudinal evidence: ${stats.longitudinalGate.status} — ${stats.longitudinalGate.reasons.join("; ")}.`,
     formatLongitudinalCoverage("life", stats.longitudinalGate.byKind.life),
@@ -295,7 +305,11 @@ export function formatContinuityStats(stats: ContinuityStats): string {
     ...formatKindStats("life", stats.byKind.life),
     ...formatKindStats("work", stats.byKind.work),
     "All recorded technical evidence (excluded from readiness unless both sides are organic-authorized):",
-    `  deliveries: organic=${technical.deliveries.organic.toString()} controlled=${technical.deliveries.controlled.toString()} unclassified=${technical.deliveries.unclassified.toString()}; outcomes=${technicalOutcomeCount.toString()}.`
+    `  deliveries: organic=${metricCount(technicalDelivery("organic"))} controlled=${metricCount(technicalDelivery("controlled"))} unclassified=${metricCount(technicalDelivery("unclassified"))}; outcomes=${technicalOutcome("organic")?.value.denominator.toString() ?? "unavailable"}.`,
+    ...(technicalSample
+      ? [`  measurement: source=attunement-state@8 denominator=${technicalSample.value.denominator.toString()} window=${technicalSample.window.startedAt} → ${technicalSample.window.endedAt} freshness=${technicalSample.freshness.status}.`]
+      : ["  measurement: insufficient — no technical denominator is available."]),
+    "  action: muse thread stats"
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -623,7 +637,7 @@ Examples:
     .option("--json", "Print structured stats")
     .action(async (options: { readonly json?: boolean }, command: Command) => {
       await commandAction(command, io, "thread stats", async () => {
-        const stats = computeContinuityStats(await readAttunementState(attunementFile()));
+        const stats = computeContinuityStats(await readAttunementState(attunementFile()), { now });
         io.stdout(options.json ? `${JSON.stringify(stats, null, 2)}\n` : formatContinuityStats(stats));
       });
     });
@@ -715,7 +729,8 @@ Examples:
         const recorded = await recordProductionAuthorizedContinuityOutcome(
           attunementFile(),
           deliveryId.trim(),
-          canonicalOutcome as (typeof OUTCOMES)[number]
+          canonicalOutcome as (typeof OUTCOMES)[number],
+          { now: () => new Date(now()) }
         );
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
       });

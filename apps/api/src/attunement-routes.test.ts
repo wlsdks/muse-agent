@@ -484,7 +484,7 @@ describe("GET /api/attunement/evaluation integrity", () => {
     });
 
     const response = await app.inject({ method: "GET", url: "/api/attunement/evaluation" });
-    const expected = computeContinuityEvaluation(await readAttunementState(attunementFile));
+    const expected = computeContinuityEvaluation(await readAttunementState(attunementFile), { now: () => Date.parse("2026-07-17T00:00:00.000Z") });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(expected);

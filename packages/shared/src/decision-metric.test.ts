@@ -79,4 +79,8 @@ describe("admitDecisionMetric", () => {
   it("rejects unknown fields instead of accepting an expanded schema accidentally", () => {
     expectExcluded({ ...BASE, guessedProvenance: true }, "invalid-shape");
   });
+
+  it("binds freshness TTL to the source contract", () => {
+    expectExcluded({ ...BASE, freshness: { ...BASE.freshness, staleAfterMs: 86_400_000 } }, "incoherent-source-contract");
+  });
 });
