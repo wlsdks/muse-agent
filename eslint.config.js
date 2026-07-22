@@ -55,7 +55,7 @@ export default tseslint.config(
       "no-eval": "error",
       "no-restricted-imports": ["error", {
         paths: [{
-          message: "The Attunement host seam is restricted to the five audited production composition roots.",
+          message: "The Attunement host seam is restricted to the seven audited production composition roots.",
           name: "@muse/attunement/host"
         }]
       }],
@@ -66,8 +66,10 @@ export default tseslint.config(
   {
     files: [
       "apps/api/src/attunement-routes.ts",
+      "apps/api/src/observe-tick.ts",
       "apps/api/src/tasks-routes.ts",
       "apps/cli/src/commands-attunement.ts",
+      "apps/cli/src/commands-daemon-register.ts",
       "apps/cli/src/commands-tasks.ts",
       "packages/autoconfigure/src/loopback-tools.ts"
     ],

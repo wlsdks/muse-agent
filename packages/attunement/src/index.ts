@@ -89,6 +89,7 @@ export type {
 } from "./observe-store.js";
 export {
   deletePersonalThreadContinuitySafe,
+  resolveCanonicalObserveStateFile,
   resolveObserveStateFile,
   resumeObserveSessionSafe,
   startObserveSessionSafe
@@ -156,7 +157,6 @@ export {
   type WorkArtifactOptions
 } from "./work-artifact.js";
 export {
-  deletePersonalThreadWorkSafe,
   deleteWorkContinuitySafe,
   linkWorkContinuity,
   setWorkContinuityThread,
@@ -184,7 +184,6 @@ export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,
-  deletePersonalThread,
   inspectThread,
   linkArtifact,
   openContinuityDelivery,

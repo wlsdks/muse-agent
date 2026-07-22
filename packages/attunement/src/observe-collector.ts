@@ -1,16 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import {
-  claimObserveLease,
-  recordObserveSample,
   releaseObserveLease,
-  renewObserveLease,
   type ObserveAppCategory,
   type ObserveLeaseAuthority
 } from "./observe-store.js";
+import { claimObserveLeaseSafe, recordObserveSampleSafe, renewObserveLeaseSafe } from "./observe-continuity-coordinator.js";
 
 export interface ObserveCollectorOptions {
-  readonly assertKnownThread: (threadId: string) => Promise<void>;
+  readonly attunementFile: string;
   readonly file: string;
   readonly intervalMs: number;
   readonly now?: () => Date;
@@ -19,10 +17,10 @@ export interface ObserveCollectorOptions {
 }
 
 export interface ObserveCollector {
-  claim(): Promise<void>;
+  claim(at?: string): Promise<void>;
   release(): Promise<void>;
-  renew(): Promise<void>;
-  sample(appCategory: ObserveAppCategory): Promise<void>;
+  renew(at?: string): Promise<void>;
+  sample(appCategory: ObserveAppCategory, at?: string): Promise<void>;
 }
 
 /**
@@ -38,9 +36,14 @@ export function createObserveCollector(options: ObserveCollectorOptions): Observ
     return authority;
   };
   return {
-    async claim() {
-      await options.assertKnownThread(options.threadId);
-      authority = await claimObserveLease(options.file, options.sessionId, fingerprint, options.intervalMs, now());
+    async claim(at) {
+      authority = await claimObserveLeaseSafe({ attunementFile: options.attunementFile, observeFile: options.file }, {
+        collectorFingerprint: fingerprint,
+        intervalMs: options.intervalMs,
+        now: at ?? now(),
+        sessionId: options.sessionId,
+        threadId: options.threadId
+      });
     },
     async release() {
       if (authority === undefined) return;
@@ -51,14 +54,23 @@ export function createObserveCollector(options: ObserveCollectorOptions): Observ
         authority = undefined;
       }
     },
-    async renew() {
-      await options.assertKnownThread(options.threadId);
-      await renewObserveLease(options.file, options.sessionId, requireAuthority(), options.intervalMs, now());
+    async renew(at) {
+      await renewObserveLeaseSafe({ attunementFile: options.attunementFile, observeFile: options.file }, {
+        authority: requireAuthority(),
+        intervalMs: options.intervalMs,
+        now: at ?? now(),
+        sessionId: options.sessionId,
+        threadId: options.threadId
+      });
     },
-    async sample(appCategory) {
-      await options.assertKnownThread(options.threadId);
-      const observedAt = now();
-      await recordObserveSample(options.file, options.sessionId, appCategory, observedAt, { authority: requireAuthority() });
+    async sample(appCategory, at) {
+      await recordObserveSampleSafe({ attunementFile: options.attunementFile, observeFile: options.file }, {
+        appCategory,
+        authority: requireAuthority(),
+        observedAt: at ?? now(),
+        sessionId: options.sessionId,
+        threadId: options.threadId
+      });
     }
   };
 }

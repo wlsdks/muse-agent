@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,18 +6,25 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   OBSERVE_CONSENT_VERSION,
+  claimObserveLease,
   emptyObserveState,
   forgetObserveSession,
   pauseObserveSession,
   readObserveState,
-  recordObserveSample,
+  reduceObserveSample,
   resumeObserveSession,
+  releaseObserveLease,
   startObserveSession
 } from "./observe-store.js";
 
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
 const OBSERVATION_ID = "observe_observation_00000000-0000-4000-8000-000000000002";
+
+async function applySample(file: string, sessionId: string, category: Parameters<typeof reduceObserveSample>[2], observedAt: string, options: Parameters<typeof reduceObserveSample>[4] = {}): Promise<void> {
+  const mutation = reduceObserveSample(await readObserveState(file), sessionId, category, observedAt, options);
+  if (mutation.changed) await writeFile(file, `${JSON.stringify(mutation.state, null, 2)}\n`);
+}
 
 async function storeFile(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "muse-observe-"));
@@ -62,6 +69,21 @@ describe("Observe O1 strict collection store", () => {
     expect(await readFile(file, "utf8")).toBe(malformed);
   });
 
+  it("accepts a valid leaf alias and rejects dangling, invalid UTF-8, and oversized stores", async () => {
+    const file = await storeFile();
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    const alias = `${file}.alias`;
+    await symlink(file, alias);
+    expect(await readObserveState(alias)).toEqual(await readObserveState(file));
+    const dangling = `${file}.dangling`;
+    await symlink(`${file}.missing`, dangling);
+    await expect(readObserveState(dangling)).rejects.toThrow("dangling symlink");
+    await writeFile(file, new Uint8Array([0xff]));
+    await expect(readObserveState(file)).rejects.toThrow("valid UTF-8");
+    await writeFile(file, Buffer.alloc(2 * 1024 * 1024 + 1, 0x20));
+    await expect(readObserveState(file)).rejects.toThrow("content size limit");
+  });
+
   it("records deterministic category transitions without zero-duration evidence", async () => {
     const file = await storeFile();
     await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, {
@@ -69,15 +91,15 @@ describe("Observe O1 strict collection store", () => {
       now: () => new Date("2026-07-22T00:00:00.000Z")
     });
     const ids = [OBSERVATION_ID];
-    await recordObserveSample(file, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z", { idFactory: () => ids.shift()! });
-    await recordObserveSample(file, SESSION_ID, "research", "2026-07-22T00:01:00.000Z");
+    await applySample(file, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z", { idFactory: () => ids.shift()! });
+    await applySample(file, SESSION_ID, "research", "2026-07-22T00:01:00.000Z");
     const state = await readObserveState(file);
     expect(state.observations).toEqual([]);
     expect(state.activeSegments).toEqual([expect.objectContaining({ appCategory: "research", startedAt: "2026-07-22T00:01:00.000Z" })]);
     expect(state.sessions[0]?.observedThroughAt).toBe("2026-07-22T00:01:00.000Z");
 
     const replayBytes = await readFile(file, "utf8");
-    await recordObserveSample(file, SESSION_ID, "research", "2026-07-22T00:01:00.000Z");
+    await applySample(file, SESSION_ID, "research", "2026-07-22T00:01:00.000Z");
     expect(await readFile(file, "utf8")).toBe(replayBytes);
   });
 
@@ -88,12 +110,101 @@ describe("Observe O1 strict collection store", () => {
       idFactory: () => generated.shift()!,
       now: () => new Date("2026-07-20T00:00:00.000Z")
     });
-    await recordObserveSample(file, SESSION_ID, "building", "2026-07-20T00:00:01.000Z");
-    await recordObserveSample(file, SESSION_ID, "building", "2026-07-21T00:00:01.000Z", { idFactory: () => OBSERVATION_ID });
+    await applySample(file, SESSION_ID, "building", "2026-07-20T00:00:01.000Z");
+    await applySample(file, SESSION_ID, "building", "2026-07-21T00:00:01.000Z", { idFactory: () => OBSERVATION_ID });
     const state = await readObserveState(file);
     expect(state.observations).toEqual([]);
     expect(state.activeSegments[0]).toMatchObject({ appCategory: "building", startedAt: "2026-07-21T00:00:01.000Z" });
 
-    await expect(recordObserveSample(file, SESSION_ID, "building", "2026-07-20T23:00:00.000Z")).rejects.toMatchObject({ code: "conflict" });
+    await expect(applySample(file, SESSION_ID, "building", "2026-07-20T23:00:00.000Z")).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("closes a real gap only through the last accepted sample", async () => {
+    const file = await storeFile();
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await applySample(file, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
+    await applySample(file, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z");
+    await applySample(file, SESSION_ID, "research", "2026-07-22T00:07:00.001Z", { idFactory: () => OBSERVATION_ID });
+    const state = await readObserveState(file);
+    expect(state.observations[0]).toMatchObject({ durationMs: 60_000, endedAt: "2026-07-22T00:01:00.000Z" });
+    expect(state.activeSegments[0]).toMatchObject({ appCategory: "research", startedAt: "2026-07-22T00:07:00.001Z" });
+  });
+
+  it("caps a continuously sampled segment at exactly 24 hours", async () => {
+    const file = await storeFile();
+    const origin = Date.parse("2026-07-20T00:00:00.000Z");
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    let state = (reduceObserveSample(await readObserveState(file), SESSION_ID, "building", new Date(origin).toISOString())).state;
+    for (let step = 1; step <= 288; step += 1) {
+      state = reduceObserveSample(state, SESSION_ID, "building", new Date(origin + step * 5 * 60_000).toISOString(), step === 288 ? { idFactory: () => OBSERVATION_ID } : {}).state;
+    }
+    expect(state.observations).toEqual([expect.objectContaining({ durationMs: 24 * 60 * 60_000, endedAt: "2026-07-21T00:00:00.000Z" })]);
+    expect(state.activeSegments[0]?.startedAt).toBe("2026-07-21T00:00:00.000Z");
+  });
+
+  it("produces the same equal-time winner for both arrival orders across pass^10", async () => {
+    for (let pass = 0; pass < 10; pass += 1) {
+      const left = await storeFile();
+      const right = await storeFile();
+      for (const file of [left, right]) await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+      await applySample(left, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
+      await applySample(right, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
+      await applySample(left, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z");
+      await applySample(left, SESSION_ID, "research", "2026-07-22T00:01:00.000Z", { idFactory: () => OBSERVATION_ID });
+      await applySample(right, SESSION_ID, "research", "2026-07-22T00:01:00.000Z", { idFactory: () => OBSERVATION_ID });
+      await applySample(right, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z");
+      expect(await readObserveState(left)).toEqual(await readObserveState(right));
+      expect((await readObserveState(left)).observations[0]).toMatchObject({ appCategory: "writing", durationMs: 60_000 });
+    }
+  });
+
+  it("fences an expired collector takeover and rejects the old owner", async () => {
+    const file = await storeFile();
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    const first = await claimObserveLease(file, SESSION_ID, "a".repeat(64), 10_000, "2026-07-22T00:00:01.000Z");
+    const second = await claimObserveLease(file, SESSION_ID, "b".repeat(64), 10_000, "2026-07-22T00:00:31.000Z");
+    expect(second.fencingToken).toBe(first.fencingToken + 1);
+    await expect(releaseObserveLease(file, SESSION_ID, first)).rejects.toMatchObject({ code: "conflict" });
+    await expect(releaseObserveLease(file, SESSION_ID, second)).resolves.toBeUndefined();
+  });
+
+  it("keeps the resume watermark and rejects wall-clock rollback", async () => {
+    const file = await storeFile();
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await pauseObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:01:00.000Z") });
+    await resumeObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:02:00.000Z") });
+    const state = await readObserveState(file);
+    expect(() => reduceObserveSample(state, SESSION_ID, "writing", "2026-07-22T00:01:59.999Z")).toThrow("stale");
+  });
+
+  it("retains the newest deterministic tail at the 500/501 observation boundary", async () => {
+    const file = await storeFile();
+    const origin = Date.parse("2026-07-22T00:00:00.000Z");
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    let state = reduceObserveSample(await readObserveState(file), SESSION_ID, "writing", new Date(origin).toISOString()).state;
+    for (let index = 1; index <= 501; index += 1) {
+      const suffix = index.toString(16).padStart(12, "0");
+      state = reduceObserveSample(state, SESSION_ID, index % 2 === 0 ? "writing" : "research", new Date(origin + index * 60_000).toISOString(), {
+        idFactory: () => `observe_observation_00000000-0000-4000-8000-${suffix}`
+      }).state;
+    }
+    expect(state.observations).toHaveLength(500);
+    expect(state.observations[0]?.startedAt).toBe("2026-07-22T00:01:00.000Z");
+    expect(state.observations.at(-1)?.endedAt).toBe("2026-07-22T08:21:00.000Z");
+  });
+
+  it("rejects a hostile active segment that reaches the 24-hour bound", async () => {
+    const file = await storeFile();
+    const origin = "2026-07-20T00:00:00.000Z";
+    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    const state = reduceObserveSample(await readObserveState(file), SESSION_ID, "writing", origin).state;
+    const capped = "2026-07-21T00:00:00.000Z";
+    const hostile = {
+      ...state,
+      activeSegments: [{ ...state.activeSegments[0]!, lastSeenAt: capped }],
+      sessions: [{ ...state.sessions[0]!, observedThroughAt: capped }]
+    };
+    await writeFile(file, JSON.stringify(hostile));
+    await expect(readObserveState(file)).rejects.toThrow("invalid active segment");
   });
 });

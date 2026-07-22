@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
 import type { CalendarProviderRegistry } from "@muse/calendar";
@@ -40,7 +40,6 @@ function sendObserveFailure(reply: FastifyReply, cause: unknown): FastifyReply {
 /** Read-only evaluation: it never resolves sources or opens a Continuity delivery. */
 export function registerAttunementRoutes(server: FastifyInstance, gate: AttunementRoutesGate): void {
   const timingFile = `${gate.attunementFile}.timing.json`;
-  const observeFile = `${gate.attunementFile}.observe.json`;
   const worksFile = gate.worksFile ?? `${gate.attunementFile}.works.json`;
   const observeNow = gate.now ? { now: () => new Date(gate.now!()) } : {};
   const localArtifactOptions = {
@@ -122,13 +121,14 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.get("/api/attunement/observe/sessions", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    return observeStatus(observeFile);
+    try { return await observeStatus(await resolveCanonicalObserveStateFile(gate.attunementFile)); }
+    catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
   server.post<{ Body: { readonly acceptVersion?: unknown; readonly threadId?: unknown } }>("/api/attunement/observe/sessions", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     try {
-      return await startObserveSessionSafe({ attunementFile: gate.attunementFile, observeFile }, {
+      return await startObserveSessionSafe({ attunementFile: gate.attunementFile }, {
         acceptVersion: request.body?.acceptVersion as number,
         threadId: request.body?.threadId as string
       }, observeNow);
@@ -137,25 +137,25 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.get<{ Params: { readonly sessionId: string } }>("/api/attunement/observe/sessions/:sessionId", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    try { return await inspectObserveSession(observeFile, request.params.sessionId); }
+    try { return await inspectObserveSession(await resolveCanonicalObserveStateFile(gate.attunementFile), request.params.sessionId); }
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
   server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/observe/sessions/:sessionId/pause", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    try { return await pauseObserveSession(observeFile, request.params.sessionId, observeNow); }
+    try { return await pauseObserveSession(await resolveCanonicalObserveStateFile(gate.attunementFile), request.params.sessionId, observeNow); }
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
   server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/observe/sessions/:sessionId/resume", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    try { return await resumeObserveSessionSafe({ attunementFile: gate.attunementFile, observeFile }, request.params.sessionId, observeNow); }
+    try { return await resumeObserveSessionSafe({ attunementFile: gate.attunementFile }, request.params.sessionId, observeNow); }
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
   server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/observe/sessions/:sessionId/forget", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    try { return await forgetObserveSession(observeFile, request.params.sessionId); }
+    try { return await forgetObserveSession(await resolveCanonicalObserveStateFile(gate.attunementFile), request.params.sessionId); }
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
@@ -422,7 +422,8 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     try {
       return await deletePersonalThreadContinuitySafe({ attunementFile: gate.attunementFile, worksFile }, request.params.threadId, { env: gate.env });
     } catch (cause) {
-      if (cause instanceof AttunementStoreError || cause instanceof ObserveStoreError) return reply.code(409).send({ errorMessage: cause.message });
+      if (cause instanceof ObserveStoreError) return sendObserveFailure(reply, cause);
+      if (cause instanceof AttunementStoreError) return reply.code(409).send({ errorMessage: cause.message });
       throw cause;
     }
   });

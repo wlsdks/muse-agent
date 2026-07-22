@@ -7,4 +7,16 @@
 export { openProductionAuthorizedContinuityPack } from "./continuity-preparation.js";
 export { recordProductionAuthorizedContinuityOutcome } from "./attunement-store.js";
 export { createObserveCollector, type ObserveCollector, type ObserveCollectorOptions } from "./observe-collector.js";
+export {
+  createObserveActiveAppSource,
+  createObserveRunner,
+  createObserveRunnerFromEnvironment,
+  readObserveAppMapping,
+  type ObserveActiveAppSource,
+  type ObserveAppMapping,
+  type ObserveCommandExecutor,
+  type ObserveCommandResult,
+  type ObserveRunner,
+  type ObserveRunnerEnvironmentOptions
+} from "./observe-runtime.js";
 export { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "./continuity-interaction-outbox.js";

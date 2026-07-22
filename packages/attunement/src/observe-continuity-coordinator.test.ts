@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { link, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,5 +56,12 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
     await expect(deletePersonalThreadContinuitySafe(target, thread.id)).resolves.toMatchObject({ thread: { id: thread.id } });
     expect((await readObserveState(target.observeFile)).sessions).toEqual([]);
     expect((await readAttunementState(target.attunementFile)).threads).toEqual([]);
+  });
+
+  it("rejects distinct paths that alias the same store inode", async () => {
+    const target = await files();
+    const thread = await createPersonalThread(target.attunementFile, { kind: "work", title: "Exact work" });
+    await link(target.attunementFile, target.observeFile);
+    await expect(startObserveSessionSafe(target, { acceptVersion: 1, threadId: thread.id })).rejects.toMatchObject({ code: "invalid" });
   });
 });

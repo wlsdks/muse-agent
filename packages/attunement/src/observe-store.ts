@@ -282,57 +282,73 @@ export async function recordObserveSample(
   sessionId: string,
   appCategory: ObserveAppCategory,
   observedAt: string,
-  options: ObserveStoreOptions & { readonly authority?: ObserveLeaseAuthority } = {}
+  authority: ObserveLeaseAuthority,
+  options: ObserveStoreOptions = {}
 ): Promise<void> {
   assertCategory(appCategory);
   assertTime(observedAt);
   await mutateObserveState(file, (state) => {
-    const session = requireSession(state, sessionId);
-    if (session.status !== "active") throw new ObserveStoreError("conflict", "Observe session is paused");
-    if (options.authority !== undefined) assertLeaseAuthority(state, session.id, options.authority, observedAt);
-    const segment = state.activeSegments.find((entry) => entry.sessionId === session.id);
-    const latestEnd = state.observations.filter((entry) => entry.sessionId === session.id).reduce<string | undefined>((latest, entry) => latest === undefined || entry.endedAt > latest ? entry.endedAt : latest, undefined);
-    const watermark = [session.createdAt, session.updatedAt, session.observedThroughAt, latestEnd, segment?.lastSeenAt]
-      .filter((entry): entry is string => entry !== null && entry !== undefined)
-      .reduce((latest, entry) => entry > latest ? entry : latest);
-    if (observedAt < watermark) throw new ObserveStoreError("conflict", "Observe sample is stale");
-    if (segment?.lastSeenAt === observedAt && segment.appCategory === appCategory) return { changed: false, result: undefined, state };
-
-    const updatedSession: ObserveSession = { ...session, observedThroughAt: observedAt };
-    let observations = state.observations;
-    let nextSegment: ObserveActiveSegment;
-    if (!segment) {
-      nextSegment = newSegment(updatedSession, appCategory, observedAt);
-    } else if (observedAt === segment.lastSeenAt) {
-      nextSegment = { ...segment, appCategory: segment.appCategory < appCategory ? segment.appCategory : appCategory };
-    } else {
-      const gapMs = timeMs(observedAt) - timeMs(segment.lastSeenAt);
-      const ageMs = timeMs(observedAt) - timeMs(segment.startedAt);
-      if (gapMs > MAX_GAP_MS) {
-        if (segment.lastSeenAt > segment.startedAt) observations = appendObservation(observations, observationFromSegment(segment, segment.lastSeenAt, options));
-        nextSegment = newSegment(updatedSession, appCategory, observedAt);
-      } else if (ageMs >= MAX_OBSERVATION_MS) {
-        const cappedAt = new Date(timeMs(segment.startedAt) + MAX_OBSERVATION_MS).toISOString();
-        observations = appendObservation(observations, observationFromSegment(segment, cappedAt, options));
-        nextSegment = newSegment(updatedSession, appCategory, observedAt);
-      } else if (segment.appCategory === appCategory) {
-        nextSegment = { ...segment, lastSeenAt: observedAt };
-      } else {
-        observations = appendObservation(observations, observationFromSegment(segment, observedAt, options));
-        nextSegment = newSegment(updatedSession, appCategory, observedAt);
-      }
-    }
-    return {
-      changed: true,
-      result: undefined,
-      state: {
-        ...state,
-        activeSegments: [nextSegment],
-        observations,
-        sessions: replaceSession(state.sessions, updatedSession)
-      }
-    };
+    assertLeaseAuthority(state, sessionId, authority, observedAt);
+    return reduceObserveSample(state, sessionId, appCategory, observedAt, options);
   });
+}
+
+/** Pure deterministic sample reducer; it has no persistence or lease authority. */
+export function reduceObserveSample(
+  state: ObserveState,
+  sessionId: string,
+  appCategory: ObserveAppCategory,
+  observedAt: string,
+  options: ObserveStoreOptions = {}
+): Mutation<void> {
+  assertCategory(appCategory);
+  assertTime(observedAt);
+  const session = requireSession(state, sessionId);
+  if (session.status !== "active") throw new ObserveStoreError("conflict", "Observe session is paused");
+  const segment = state.activeSegments.find((entry) => entry.sessionId === session.id);
+  const latestEnd = state.observations.filter((entry) => entry.sessionId === session.id).reduce<string | undefined>((latest, entry) => latest === undefined || entry.endedAt > latest ? entry.endedAt : latest, undefined);
+  const watermark = [session.createdAt, session.updatedAt, session.observedThroughAt, latestEnd, segment?.lastSeenAt]
+    .filter((entry): entry is string => entry !== null && entry !== undefined)
+    .reduce((latest, entry) => entry > latest ? entry : latest);
+  if (observedAt < watermark) throw new ObserveStoreError("conflict", "Observe sample is stale");
+  if (segment?.lastSeenAt === observedAt && segment.appCategory === appCategory) return { changed: false, result: undefined, state };
+
+  const updatedSession: ObserveSession = { ...session, observedThroughAt: observedAt };
+  let observations = state.observations;
+  let nextSegment: ObserveActiveSegment;
+  if (!segment) {
+    nextSegment = newSegment(updatedSession, appCategory, observedAt);
+  } else if (observedAt === segment.lastSeenAt) {
+    if (appCategory > segment.appCategory) return { changed: false, result: undefined, state };
+    if (segment.lastSeenAt > segment.startedAt) observations = appendObservation(observations, observationFromSegment(segment, observedAt, options));
+    nextSegment = newSegment(updatedSession, appCategory, observedAt);
+  } else {
+    const gapMs = timeMs(observedAt) - timeMs(segment.lastSeenAt);
+    const ageMs = timeMs(observedAt) - timeMs(segment.startedAt);
+    if (gapMs > MAX_GAP_MS) {
+      if (segment.lastSeenAt > segment.startedAt) observations = appendObservation(observations, observationFromSegment(segment, segment.lastSeenAt, options));
+      nextSegment = newSegment(updatedSession, appCategory, observedAt);
+    } else if (ageMs >= MAX_OBSERVATION_MS) {
+      const cappedAt = new Date(timeMs(segment.startedAt) + MAX_OBSERVATION_MS).toISOString();
+      observations = appendObservation(observations, observationFromSegment(segment, cappedAt, options));
+      nextSegment = newSegment(updatedSession, appCategory, observedAt);
+    } else if (segment.appCategory === appCategory) {
+      nextSegment = { ...segment, lastSeenAt: observedAt };
+    } else {
+      observations = appendObservation(observations, observationFromSegment(segment, observedAt, options));
+      nextSegment = newSegment(updatedSession, appCategory, observedAt);
+    }
+  }
+  return {
+    changed: true,
+    result: undefined,
+    state: {
+      ...state,
+      activeSegments: [nextSegment],
+      observations,
+      sessions: replaceSession(state.sessions, updatedSession)
+    }
+  };
 }
 
 /** Host-only primitive. The public package barrel deliberately omits it. */
@@ -343,33 +359,41 @@ export async function claimObserveLease(
   intervalMs: number,
   now: string
 ): Promise<ObserveLeaseAuthority> {
+  return mutateObserveState(file, (state) => claimObserveLeaseTransition(state, sessionId, collectorFingerprint, intervalMs, now));
+}
+
+export function claimObserveLeaseTransition(
+  state: ObserveState,
+  sessionId: string,
+  collectorFingerprint: string,
+  intervalMs: number,
+  now: string
+): Mutation<ObserveLeaseAuthority> {
   assertFingerprint(collectorFingerprint);
   assertInterval(intervalMs);
   assertTime(now);
   const ttlMs = Math.max(30_000, intervalMs * 3);
-  return mutateObserveState(file, (state) => {
-    const session = requireSession(state, sessionId);
-    if (session.status !== "active") throw new ObserveStoreError("conflict", "Observe session is paused");
-    const current = state.collectorLease;
-    if (current !== null && current.expiresAt > now) {
-      if (current.sessionId !== session.id || current.collectorFingerprint !== collectorFingerprint) throw new ObserveStoreError("conflict", "Observe collection is already active");
-      const renewed = { ...current, expiresAt: new Date(timeMs(now) + ttlMs).toISOString() };
-      return { changed: renewed.expiresAt !== current.expiresAt, result: authorityOf(renewed), state: { ...state, collectorLease: renewed } };
-    }
-    if (state.nextFencingToken === Number.MAX_SAFE_INTEGER) throw new ObserveStoreError("conflict", "Observe collector fencing tokens are exhausted");
-    const lease: ObserveCollectorLease = {
-      claimedAt: now,
-      collectorFingerprint,
-      expiresAt: new Date(timeMs(now) + ttlMs).toISOString(),
-      fencingToken: state.nextFencingToken,
-      sessionId: session.id
-    };
-    return {
-      changed: true,
-      result: authorityOf(lease),
-      state: { ...state, collectorLease: lease, nextFencingToken: state.nextFencingToken + 1 }
-    };
-  });
+  const session = requireSession(state, sessionId);
+  if (session.status !== "active") throw new ObserveStoreError("conflict", "Observe session is paused");
+  const current = state.collectorLease;
+  if (current !== null && current.expiresAt > now) {
+    if (current.sessionId !== session.id || current.collectorFingerprint !== collectorFingerprint) throw new ObserveStoreError("conflict", "Observe collection is already active");
+    const renewed = { ...current, expiresAt: new Date(timeMs(now) + ttlMs).toISOString() };
+    return { changed: renewed.expiresAt !== current.expiresAt, result: authorityOf(renewed), state: { ...state, collectorLease: renewed } };
+  }
+  if (state.nextFencingToken === Number.MAX_SAFE_INTEGER) throw new ObserveStoreError("conflict", "Observe collector fencing tokens are exhausted");
+  const lease: ObserveCollectorLease = {
+    claimedAt: now,
+    collectorFingerprint,
+    expiresAt: new Date(timeMs(now) + ttlMs).toISOString(),
+    fencingToken: state.nextFencingToken,
+    sessionId: session.id
+  };
+  return {
+    changed: true,
+    result: authorityOf(lease),
+    state: { ...state, collectorLease: lease, nextFencingToken: state.nextFencingToken + 1 }
+  };
 }
 
 /** Host-only primitive. */
@@ -380,24 +404,28 @@ export async function renewObserveLease(
   intervalMs: number,
   now: string
 ): Promise<void> {
+  await mutateObserveState(file, (state) => renewObserveLeaseTransition(state, sessionId, authority, intervalMs, now));
+}
+
+export function renewObserveLeaseTransition(state: ObserveState, sessionId: string, authority: ObserveLeaseAuthority, intervalMs: number, now: string): Mutation<void> {
   assertInterval(intervalMs);
   assertTime(now);
   const ttlMs = Math.max(30_000, intervalMs * 3);
-  await mutateObserveState(file, (state) => {
-    assertLeaseAuthority(state, sessionId, authority, now);
-    const lease = state.collectorLease!;
-    const renewed = { ...lease, expiresAt: new Date(timeMs(now) + ttlMs).toISOString() };
-    return { changed: renewed.expiresAt !== lease.expiresAt, result: undefined, state: { ...state, collectorLease: renewed } };
-  });
+  assertLeaseAuthority(state, sessionId, authority, now);
+  const lease = state.collectorLease!;
+  const renewed = { ...lease, expiresAt: new Date(timeMs(now) + ttlMs).toISOString() };
+  return { changed: renewed.expiresAt !== lease.expiresAt, result: undefined, state: { ...state, collectorLease: renewed } };
 }
 
 /** Host-only primitive. */
 export async function releaseObserveLease(file: string, sessionId: string, authority: ObserveLeaseAuthority): Promise<void> {
-  await mutateObserveState(file, (state) => {
-    if (state.collectorLease === null) return { changed: false, result: undefined, state };
-    assertLeaseAuthority(state, sessionId, authority);
-    return { changed: true, result: undefined, state: { ...state, collectorLease: null } };
-  });
+  await mutateObserveState(file, (state) => releaseObserveLeaseTransition(state, sessionId, authority));
+}
+
+export function releaseObserveLeaseTransition(state: ObserveState, sessionId: string, authority: ObserveLeaseAuthority): Mutation<void> {
+  if (state.collectorLease === null) return { changed: false, result: undefined, state };
+  assertLeaseAuthority(state, sessionId, authority);
+  return { changed: true, result: undefined, state: { ...state, collectorLease: null } };
 }
 
 export interface Mutation<Result> { readonly changed: boolean; readonly result: Result; readonly state: ObserveState }
@@ -479,7 +507,9 @@ function parseObservation(value: unknown): ObserveObservation {
 function parseSegment(value: unknown): ObserveActiveSegment {
   if (!isRecord(value) || !exactKeys(value, ["appCategory", "lastSeenAt", "sessionId", "startedAt", "threadId"])
     || !isCategory(value.appCategory) || !SESSION_ID.test(String(value.sessionId)) || !isTime(value.startedAt) || !isTime(value.lastSeenAt)
-    || value.startedAt > value.lastSeenAt) throw new ObserveStoreError("invalid", "Observe store contains an invalid active segment");
+    || value.startedAt > value.lastSeenAt || timeMs(value.lastSeenAt) - timeMs(value.startedAt) >= MAX_OBSERVATION_MS) {
+    throw new ObserveStoreError("invalid", "Observe store contains an invalid active segment");
+  }
   assertThreadId(value.threadId);
   return value as unknown as ObserveActiveSegment;
 }

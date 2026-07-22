@@ -8,6 +8,7 @@ import {
   OBSERVE_CONSENT_VERSION,
   observeStatus,
   pauseObserveSession,
+  resolveCanonicalObserveStateFile,
   resumeObserveSessionSafe,
   startObserveSessionSafe
 } from "@muse/attunement";
@@ -19,10 +20,12 @@ function environment(): Record<string, string | undefined> {
   return process.env as Record<string, string | undefined>;
 }
 
-function files(): { readonly attunementFile: string; readonly observeFile: string } {
+function files(): { readonly attunementFile: string } {
   const attunementFile = resolveAttunementFile(environment());
-  return { attunementFile, observeFile: `${attunementFile}.observe.json` };
+  return { attunementFile };
 }
+
+async function observeFile(): Promise<string> { return resolveCanonicalObserveStateFile(files().attunementFile); }
 
 function write(io: ProgramIO, value: unknown): void {
   io.stdout(`${JSON.stringify(value, null, 2)}\n`);
@@ -54,15 +57,15 @@ export function registerObserveCommands(program: Command, io: ProgramIO): void {
     });
 
   observe.command("status").action(async () => {
-    try { write(io, await observeStatus(files().observeFile)); } catch (cause) { fail(io, cause); }
+    try { write(io, await observeStatus(await observeFile())); } catch (cause) { fail(io, cause); }
   });
 
   observe.command("inspect <sessionId>").action(async (sessionId: string) => {
-    try { write(io, await inspectObserveSession(files().observeFile, sessionId)); } catch (cause) { fail(io, cause); }
+    try { write(io, await inspectObserveSession(await observeFile(), sessionId)); } catch (cause) { fail(io, cause); }
   });
 
   observe.command("pause <sessionId>").action(async (sessionId: string) => {
-    try { write(io, await pauseObserveSession(files().observeFile, sessionId)); } catch (cause) { fail(io, cause); }
+    try { write(io, await pauseObserveSession(await observeFile(), sessionId)); } catch (cause) { fail(io, cause); }
   });
 
   observe.command("resume <sessionId>").action(async (sessionId: string) => {
@@ -70,6 +73,6 @@ export function registerObserveCommands(program: Command, io: ProgramIO): void {
   });
 
   observe.command("forget <sessionId>").description("permanently delete the session and its observations").action(async (sessionId: string) => {
-    try { write(io, await forgetObserveSession(files().observeFile, sessionId)); } catch (cause) { fail(io, cause); }
+    try { write(io, await forgetObserveSession(await observeFile(), sessionId)); } catch (cause) { fail(io, cause); }
   });
 }
