@@ -59,6 +59,16 @@ export {
 } from "./private-file-lock.js";
 export { quarantineCorruptFile } from "./corrupt-file.js";
 export { isRecord, parseJson, parseJsonWith, type JsonObject, type JsonPredicate, type JsonPrimitive, type JsonValue } from "./json-utils.js";
+export {
+  CANONICAL_RUN_OUTCOMES,
+  canonicalRunOutcome,
+  decodeLocalRunReference,
+  encodeLocalRunReference,
+  isCanonicalLocalRunId,
+  isCanonicalWorkspaceRealpath,
+  type CanonicalRunOutcome,
+  type LocalRunReference
+} from "./local-run-reference.js";
 
 /** Parse common environment/config boolean spellings without inverting unknown input. */
 export function parseBooleanTriStateFromEnv(value: string | undefined): boolean | undefined {

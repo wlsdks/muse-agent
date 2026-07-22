@@ -15,6 +15,8 @@
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { canonicalRunOutcome, createRunId, isCanonicalLocalRunId } from "@muse/shared";
+
 import { isRecord } from "./credential-store.js";
 import type { ProgramIO } from "./program.js";
 
@@ -198,28 +200,39 @@ export function renderActiveContext(snapshot: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
-export async function writeRunLog(workspaceDir: string, input: RunLogInput, now = new Date()): Promise<string> {
+export async function writeRunLog(
+  workspaceDir: string,
+  input: RunLogInput,
+  now = new Date(),
+  idFactory: () => string = () => createRunId("cli")
+): Promise<string> {
   const runDir = path.join(workspaceDir, ".muse", "runs");
-  const runId = readResponseRunId(input.response) ?? `cli-${now.getTime().toString()}`;
-  const filePath = path.join(runDir, `${runId}.jsonl`);
-  const event = {
+  const responseRunId = readResponseRunId(input.response);
+  const eventFor = (runId: string) => ({
     apiUrl: input.apiUrl ?? process.env.MUSE_API_URL ?? "http://127.0.0.1:3030",
     // Outcome labels lifted to the TOP LEVEL so a trace is greppable for error-analysis
     // without descending into `response`. cli.remote responses carry these; cli.local
     // responses do not yet, so they are null there for now — but the schema
     // error-analysis reads is fixed here.
-    grounded: readResponseGrounded(input.response) ?? null,
+    grounded: canonicalRunOutcome(readResponseGrounded(input.response)) ?? null,
     message: input.message,
     model: input.model ?? null,
     recordedAt: now.toISOString(),
     response: input.response,
+    runId,
     source: input.source ?? "cli.remote",
     success: readResponseSuccess(input.response) ?? null,
     type: "chat.completed"
-  };
+  });
 
   await mkdir(runDir, { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(event)}\n`, { flag: "a" });
+  let filePath: string;
+  if (responseRunId) {
+    filePath = path.join(runDir, `${responseRunId}.jsonl`);
+    await writeFile(filePath, `${JSON.stringify(eventFor(responseRunId))}\n`, { flag: "a" });
+  } else {
+    filePath = await writeGeneratedRunLog(runDir, eventFor, idFactory);
+  }
   // Bound the run-log: it was append-per-run forever (observed 1000+ files), which
   // both wastes disk and slows every reader that globs the dir (scout-signals, the
   // flywheel, `muse trace`). Keep the most-recent MUSE_RUN_LOG_MAX_FILES; the
@@ -227,6 +240,26 @@ export async function writeRunLog(workspaceDir: string, input: RunLogInput, now 
   const cap = Number(process.env.MUSE_RUN_LOG_MAX_FILES);
   await pruneRunLogDir(runDir, Number.isFinite(cap) && cap > 0 ? cap : 2_000);
   return filePath;
+}
+
+async function writeGeneratedRunLog(
+  runDir: string,
+  eventFor: (runId: string) => Record<string, unknown>,
+  idFactory: () => string
+): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const runId = idFactory();
+    if (!isCanonicalLocalRunId(runId)) continue;
+    const filePath = path.join(runDir, `${runId}.jsonl`);
+    try {
+      await writeFile(filePath, `${JSON.stringify(eventFor(runId))}\n`, { flag: "wx" });
+      return filePath;
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw cause;
+    }
+  }
+  throw new Error("could not allocate a unique canonical local run id");
 }
 
 /**
@@ -257,7 +290,7 @@ export async function pruneRunLogDir(runDir: string, maxFiles: number): Promise<
 }
 
 function readResponseRunId(value: unknown): string | undefined {
-  if (isRecord(value) && typeof value.runId === "string" && value.runId.trim().length > 0) {
+  if (isRecord(value) && isCanonicalLocalRunId(value.runId)) {
     return value.runId;
   }
 

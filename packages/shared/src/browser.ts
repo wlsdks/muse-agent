@@ -9,3 +9,13 @@ export {
   type JsonPrimitive,
   type JsonValue
 } from "./json-utils.js";
+export {
+  CANONICAL_RUN_OUTCOMES,
+  canonicalRunOutcome,
+  decodeLocalRunReference,
+  encodeLocalRunReference,
+  isCanonicalLocalRunId,
+  isCanonicalWorkspaceRealpath,
+  type CanonicalRunOutcome,
+  type LocalRunReference
+} from "./local-run-reference.js";
