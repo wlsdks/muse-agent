@@ -27,15 +27,15 @@ describe("hasNestedUnboundedQuantifier — catastrophic-backtracking detector", 
 });
 
 describe("regex_extract — rejects catastrophic patterns instead of hanging", () => {
-  it("returns an error (no event-loop hang) for a nested-quantifier pattern", () => {
-    const out = regexTool().execute({ pattern: "(a+)+$", text: "a".repeat(50) + "!" }, { runId: "r", userId: "u" }) as { error?: string; matches?: string[] };
+  it("returns an error (no event-loop hang) for a nested-quantifier pattern", async () => {
+    const out = await regexTool().execute({ pattern: "(a+)+$", text: "a".repeat(50) + "!" }, { runId: "r", userId: "u" }) as { error?: string; matches?: string[] };
     expect(out.error).toBeTruthy();
     expect(String(out.error).toLowerCase()).toMatch(/backtrack|catastroph|simplif|vulnerab/);
     expect(out.matches).toBeUndefined();
   });
 
-  it("still extracts with a normal pattern", () => {
-    const out = regexTool().execute({ pattern: "\\d+", text: "a1 b22 c333" }, { runId: "r", userId: "u" }) as { matches?: string[] };
+  it("still extracts with a normal pattern", async () => {
+    const out = await regexTool().execute({ pattern: "\\d+", text: "a1 b22 c333" }, { runId: "r", userId: "u" }) as { matches?: string[] };
     expect(out.matches).toEqual(["1", "22", "333"]);
   });
 });

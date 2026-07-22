@@ -1,4 +1,5 @@
-import { errorMessage, isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
+import { runRegexMatchesWithTimeout } from "./regex-timeout.js";
 import type { MuseTool } from "./index.js";
 import {
   createBase64Tool,
@@ -196,6 +197,10 @@ function createUrlPartsTool(): MuseTool {
 const REGEX_EXTRACT_MAX_TEXT_LENGTH = 100_000;
 const REGEX_EXTRACT_MAX_PATTERN_LENGTH = 500;
 const REGEX_EXTRACT_MAX_MATCHES = 1_000;
+// Wall-clock ceiling for a single match, enforced off-thread. Generous for a
+// legit match over 100k chars; short enough that a catastrophic pattern cannot
+// stall a turn.
+const REGEX_EXTRACT_TIMEOUT_MS = 1_000;
 const REGEX_EXTRACT_ALLOWED_FLAGS = /^[gimsuy]*$/u;
 // A pattern like "/[a-z]+@[a-z.]+/g" compiles fine as regex SOURCE (the
 // slashes and trailing letters become literal characters), so it silently
@@ -243,6 +248,66 @@ export function hasNestedUnboundedQuantifier(pattern: string): boolean {
   return false;
 }
 
+/** Does `after` (the text right after a `)`) start with a quantifier that lets
+ *  the group repeat 2+ times — `*`, `+`, `{n,}`, or `{n,m}` with m ≥ 2? The old
+ *  guard missed the bounded `{2,50}` form, which backtracks just as badly. */
+function groupCanRepeat(after: string): boolean {
+  if (/^[*+]/u.test(after)) return true;
+  const braced = /^\{(\d*),(\d*)\}/u.exec(after);
+  if (!braced) return false;
+  const max = braced[2];
+  if (max === undefined || max.length === 0) return true; // {n,}
+  return Number(max) >= 2;
+}
+
+/** Do two alternation branches share a possible FIRST character? `a|aa` → yes
+ *  (both start 'a'), `cat|dog` → no. Overlapping branches under a repeated group
+ *  are the `(a|aa)+` catastrophic shape the nested-quantifier guard cannot see. */
+function alternationBranchesOverlap(body: string): boolean {
+  // Split on top-level `|` only (ignore `|` inside nested groups / classes).
+  const branches: string[] = [];
+  let depth = 0;
+  let inClass = false;
+  let current = "";
+  for (let i = 0; i < body.length; i += 1) {
+    const c = body[i];
+    if (c === "\\") { current += c + (body[i + 1] ?? ""); i += 1; continue; }
+    if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (!inClass && c === "(") depth += 1;
+    else if (!inClass && c === ")") depth -= 1;
+    if (c === "|" && depth === 0 && !inClass) { branches.push(current); current = ""; continue; }
+    current += c;
+  }
+  branches.push(current);
+  if (branches.length < 2) return false;
+  const firsts = branches.map((b) => b.trim().charAt(0)).filter((ch) => ch.length > 0);
+  return new Set(firsts).size < firsts.length;
+}
+
+/** A repeatable group whose body is an OVERLAPPING alternation — the `(a|aa)+`
+ *  class the nested-unbounded-quantifier guard misses because the body has no
+ *  quantifier of its own. Also catches a repeatable group whose body simply has
+ *  a nested quantifier when the OUTER quantifier is bounded (`(a+){2,50}`). */
+function hasRepeatedGroupRisk(pattern: string): boolean {
+  const stack: number[] = [];
+  for (let i = 0; i < pattern.length; i += 1) {
+    const c = pattern[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === "(") { stack.push(i); continue; }
+    if (c === ")") {
+      const start = stack.pop();
+      if (start === undefined) continue;
+      if (!groupCanRepeat(pattern.slice(i + 1))) continue;
+      const body = pattern.slice(start + 1, i).replace(/^\?[:=!]|^\?<[^>]*>/u, "");
+      if (fragmentHasUnboundedQuantifier(body) || alternationBranchesOverlap(body)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function createRegexExtractTool(): MuseTool {
   return {
     definition: {
@@ -269,7 +334,7 @@ function createRegexExtractTool(): MuseTool {
       name: "regex_extract",
       risk: "read"
     },
-    execute: (args): JsonObject => {
+    execute: async (args): Promise<JsonObject> => {
       const pattern = typeof args["pattern"] === "string" ? args["pattern"] : "";
       const flagsInput = typeof args["flags"] === "string" ? args["flags"] : "g";
       if (pattern.length === 0) {
@@ -291,30 +356,24 @@ function createRegexExtractTool(): MuseTool {
       if (REGEX_EXTRACT_LITERAL_FORM.test(pattern)) {
         return { error: "pattern must be the regex SOURCE without / delimiters — use '[a-z]+@[a-z.]+' and put flags in the 'flags' argument" };
       }
-      // Reject the nested-quantifier catastrophic-backtracking shape BEFORE
-      // compiling/running — JS regex can't be timed out on the main thread, so
-      // a pattern like (a+)+ against a long string would hang the whole agent.
-      if (hasNestedUnboundedQuantifier(pattern)) {
-        return { error: "pattern looks vulnerable to catastrophic backtracking (a quantified group whose body is also unbounded, e.g. (a+)+) — simplify it" };
+      // Fast-fail the obvious catastrophic shapes with a clear message before
+      // paying worker-startup cost. This is an OPTIMISATION, not the guarantee:
+      // static classification of ReDoS is undecidable, so the real backstop is
+      // the timeout runner below, which kills any pattern — known shape or not —
+      // that blows the deadline. (A bare `(a+)+`, and the two shapes this guard
+      // used to miss — `(a|aa)+`, `(a+){2,50}` — both hang for tens of seconds.)
+      if (hasNestedUnboundedQuantifier(pattern) || hasRepeatedGroupRisk(pattern)) {
+        return { error: "pattern looks vulnerable to catastrophic backtracking (a repeatable group whose body is also ambiguous, e.g. (a+)+ or (a|aa)+) — simplify it" };
       }
       const flags = flagsInput.includes("g") ? flagsInput : `${flagsInput}g`;
-      let regex: RegExp;
-      try {
-        regex = new RegExp(pattern, flags);
-      } catch (error) {
-        return { error: `invalid pattern: ${errorMessage(error)}` };
+      const run = await runRegexMatchesWithTimeout(pattern, flags, text, REGEX_EXTRACT_MAX_MATCHES, REGEX_EXTRACT_TIMEOUT_MS);
+      if (run.timedOut) {
+        return { error: `pattern took too long (> ${REGEX_EXTRACT_TIMEOUT_MS.toString()}ms) — it likely backtracks catastrophically on this text; simplify it` };
       }
-      const matches: string[] = [];
-      for (const match of text.matchAll(regex)) {
-        const value = match[1] ?? match[0];
-        if (typeof value === "string") {
-          matches.push(value);
-        }
-        if (matches.length >= REGEX_EXTRACT_MAX_MATCHES) {
-          break;
-        }
+      if (run.error !== undefined) {
+        return { error: `invalid pattern: ${run.error}` };
       }
-      return { matches } satisfies JsonObject;
+      return { matches: [...(run.matches ?? [])] } satisfies JsonObject;
     }
   };
 }
