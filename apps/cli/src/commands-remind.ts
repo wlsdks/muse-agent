@@ -17,9 +17,10 @@ import { isErrorLike } from "@muse/shared";
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
-import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readRemindersStrict, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -95,6 +96,52 @@ export function filterRemindersBySearch<T extends { readonly text?: unknown }>(
     return [...reminders];
   }
   return reminders.filter((r) => (typeof r.text === "string" ? r.text.toLowerCase() : "").includes(q));
+}
+
+export interface ReminderBacklogReview {
+  readonly overdue: number;
+  readonly overdueAgeBands: Readonly<Record<"under7d" | "days7to30" | "days30to90" | "days90plus", number>>;
+  readonly pending: number;
+  readonly invalidDueAt: number;
+}
+
+/** Read-only, text-free aggregation for reviewing a historical reminder backlog. */
+export function buildReminderBacklogReview(
+  reminders: readonly Pick<PersistedReminder, "dueAt" | "status">[],
+  nowMs = Date.now()
+): ReminderBacklogReview {
+  const overdueAgeBands = { days30to90: 0, days7to30: 0, days90plus: 0, under7d: 0 };
+  let pending = 0;
+  let overdue = 0;
+  let invalidDueAt = 0;
+  for (const reminder of reminders) {
+    if (reminder.status !== "pending") continue;
+    pending += 1;
+    const dueMs = Date.parse(reminder.dueAt);
+    if (!Number.isFinite(dueMs)) {
+      invalidDueAt += 1;
+      continue;
+    }
+    if (dueMs > nowMs) continue;
+    overdue += 1;
+    const ageDays = (nowMs - dueMs) / (24 * 60 * 60 * 1000);
+    if (ageDays < 7) overdueAgeBands.under7d += 1;
+    else if (ageDays < 30) overdueAgeBands.days7to30 += 1;
+    else if (ageDays < 90) overdueAgeBands.days30to90 += 1;
+    else overdueAgeBands.days90plus += 1;
+  }
+  return { invalidDueAt, overdue, overdueAgeBands, pending };
+}
+
+export function formatReminderBacklogReview(review: ReminderBacklogReview): string {
+  const bands = review.overdueAgeBands;
+  return [
+    "Reminder backlog review (read-only — no reminder was sent or changed):",
+    `  pending: ${review.pending.toString()}  overdue: ${review.overdue.toString()}  invalid due date: ${review.invalidDueAt.toString()}`,
+    `  overdue age: <7d=${bands.under7d.toString()}  7–30d=${bands.days7to30.toString()}  30–90d=${bands.days30to90.toString()}  90d+=${bands.days90plus.toString()}`,
+    "  Review one item at a time: `muse remind list --status due`, then `muse remind snooze <id>` or `muse remind clear <id>`.",
+    "  Do not use `fire` unless the reminder was already delivered through another channel."
+  ].join("\n") + "\n";
 }
 
 export function registerRemindCommands(program: Command, io: ProgramIO, helpers: RemindCommandHelpers): void {
@@ -277,6 +324,37 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
       io.stdout(formatReminderList(payload));
+    });
+
+  remind
+    .command("review")
+    .description("Read-only overdue backlog summary; never sends or changes reminders")
+    .option("--local", "Read directly from the local reminders file instead of the API")
+    .option("--json", "Print the text-free structured review")
+    .action(async (options: SharedOptions, command) => {
+      const readLocalReview = async (): Promise<ReminderBacklogReview> => {
+        const file = localRemindersFile();
+        if (!existsSync(file)) return buildReminderBacklogReview([]);
+        return buildReminderBacklogReview(await readRemindersStrict(file));
+      };
+      let review: ReminderBacklogReview;
+      if (options.local) {
+        review = await readLocalReview();
+      } else {
+        try {
+          const payload = await helpers.apiRequest(io, command, "/api/reminders?status=pending") as { reminders?: readonly PersistedReminder[] };
+          review = buildReminderBacklogReview(payload.reminders ?? []);
+        } catch (cause) {
+          if (!isApiUnreachable(cause)) throw cause;
+          io.stderr("muse: API not reachable — reviewing reminders from the local store.\n");
+          review = await readLocalReview();
+        }
+      }
+      if (options.json) {
+        helpers.writeOutput(io, review);
+        return;
+      }
+      io.stdout(formatReminderBacklogReview(review));
     });
 
   remind

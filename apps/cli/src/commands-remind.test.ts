@@ -8,7 +8,7 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { resetCliLanguageCache } from "./cli-i18n.js";
-import { filterRemindersBySearch, formatReminderList, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
+import { buildReminderBacklogReview, filterRemindersBySearch, formatReminderBacklogReview, formatReminderList, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
 
 interface ApiCall {
   readonly path: string;
@@ -80,6 +80,48 @@ describe("muse remind add — past-time guard (a date typo would fire immediatel
   it("emits no prose past-warning under --json (structured output stays clean)", async () => {
     const r = await runRemind(["2020-01-01T09:00:00Z", "old", "--local", "--json"]);
     expect(r.stderr).not.toContain("PAST");
+  });
+});
+
+describe("muse remind review — quarantine backlog", () => {
+  const nowMs = Date.parse("2026-07-22T00:00:00.000Z");
+
+  it("counts only pending overdue reminders into deterministic age bands without their text", () => {
+    const review = buildReminderBacklogReview([
+      { dueAt: "2026-07-21T00:00:00.000Z", status: "pending" },
+      { dueAt: "2026-07-02T00:00:00.000Z", status: "pending" },
+      { dueAt: "2026-05-23T00:00:00.000Z", status: "pending" },
+      { dueAt: "2026-03-23T00:00:00.000Z", status: "pending" },
+      { dueAt: "not-a-date", status: "pending" },
+      { dueAt: "2026-01-01T00:00:00.000Z", status: "fired" }
+    ], nowMs);
+
+    expect(review).toEqual({
+      invalidDueAt: 1,
+      overdue: 4,
+      overdueAgeBands: { days30to90: 1, days7to30: 1, days90plus: 1, under7d: 1 },
+      pending: 5
+    });
+    expect(formatReminderBacklogReview(review)).toContain("no reminder was sent or changed");
+    expect(formatReminderBacklogReview(review)).toContain("one item at a time");
+  });
+
+  it("uses a strict local read and leaves the reminder file byte-identical", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-rem-review-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = file;
+    const stored: PersistedReminder = {
+      createdAt: "2026-01-01T00:00:00.000Z", dueAt: "2026-07-01T00:00:00.000Z", id: "rem_review", status: "pending", text: "private reminder text"
+    };
+    await writeReminders(file, [stored]);
+    const before = await (await import("node:fs/promises")).readFile(file, "utf8");
+
+    const result = await runRemind(["review", "--local"]);
+    const after = await (await import("node:fs/promises")).readFile(file, "utf8");
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toContain("Reminder backlog review");
+    expect(result.stdout).not.toContain("private reminder text");
+    expect(after).toBe(before);
   });
 });
 
