@@ -31,7 +31,7 @@ describe("daemon resource admission receipt", () => {
     }
   });
 
-  it("preserves the exact admitted observation beside the latest unit boundary", async () => {
+  it("preserves a full-governor decision beside a newly governed unit boundary", async () => {
     const directory = await mkdtemp(join(tmpdir(), "muse-workload-receipt-"));
     const file = join(directory, "receipt.json");
     try {
@@ -46,23 +46,23 @@ describe("daemon resource admission receipt", () => {
         processCpuUserMicros: 40,
         residentMemoryBytes: 100_000_000,
         thermalState: "nominal"
-      }, 9, "2026-07-22T00:00:00.000Z");
+      }, 16, "2026-07-22T00:00:00.000Z");
       const receipt = withWorkloadBoundary(decision, {
         at: "2026-07-22T00:00:01.000Z",
         cpuDeltaMicros: 50,
         durationMs: 1_000,
-        queueDepth: 8,
+        queueDepth: 15,
         rssAfterBytes: 100_000_010,
         rssBeforeBytes: 100_000_000,
         status: "completed",
         stopRequestedDuring: false,
-        unit: "reflection"
+        unit: "followup"
       });
       await writeDaemonResourceAdmissionReceipt(file, receipt);
       expect(await readDaemonResourceAdmissionReceipt(file)).toEqual(receipt);
       expect(receipt.decision.observation.cpu).toEqual({ count: 8, loadMilli: 1_250, status: "available" });
       expect(describeDaemonResourceAdmissionReceipt(receipt, new Date("2026-07-22T01:00:00.000Z")))
-        .toContain("last unit reflection completed");
+        .toContain("last unit followup completed");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

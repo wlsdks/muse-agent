@@ -224,7 +224,7 @@ function isDecision(value: unknown): value is DaemonWorkloadDecisionV2 {
   const record = valueRecord(value);
   const reasonExpected = record?.status !== "admitted";
   if (!exactObject(value, reasonExpected ? ["at", "observation", "queueDepth", "reason", "status"] : ["at", "observation", "queueDepth", "status"])) return false;
-  if (!record || !canonicalIso(record.at) || !finiteInteger(record.queueDepth, 0, 9) || !isObservation(record.observation)) return false;
+  if (!record || !canonicalIso(record.at) || !finiteInteger(record.queueDepth, 0, DAEMON_WORKLOAD_UNIT_IDS.length) || !isObservation(record.observation)) return false;
   if (record.status === "admitted") return record.reason === undefined;
   if (record.status === "cancelled-before-claim") return record.reason === "stop-requested";
   return record.status === "deferred" && isReason(record.reason);
@@ -256,7 +256,7 @@ function isBoundary(value: unknown): value is DaemonWorkloadBoundaryV2 {
   if (record.status === "failed") keys.push("errorClass");
   if (!exactObject(record, keys)) return false;
   return canonicalIso(record.at) && (record.status === "completed" || record.status === "failed")
-    && isUnit(record.unit) && finiteInteger(record.queueDepth, 0, 8)
+    && isUnit(record.unit) && finiteInteger(record.queueDepth, 0, DAEMON_WORKLOAD_UNIT_IDS.length - 1)
     && finiteInteger(record.durationMs, 0, 86_400_000) && safeInteger(record.cpuDeltaMicros)
     && safeInteger(record.rssBeforeBytes) && safeInteger(record.rssAfterBytes)
     && typeof record.stopRequestedDuring === "boolean"
@@ -284,5 +284,5 @@ function finiteNumber(value: unknown, min: number, max: number): value is number
 function safeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0; }
 function isThermal(value: unknown): value is DaemonThermalState { return ["nominal", "fair", "serious", "critical", "unavailable"].includes(String(value)); }
 function isReason(value: unknown): value is DaemonResourceReason { return ["owner-paused", "thermal-pressure", "battery-power", "power-unavailable", "active-user", "idle-unavailable", "low-free-memory", "cpu-load"].includes(String(value)); }
-function isUnit(value: unknown): value is DaemonWorkloadUnitId { return ["reflection", "email-sync", "self-learn", "self-learn-decay", "playbook-consolidate", "memory-consolidate", "recap", "digest-flush", "browsing-sync"].includes(String(value)); }
+function isUnit(value: unknown): value is DaemonWorkloadUnitId { return (DAEMON_WORKLOAD_UNIT_IDS as readonly string[]).includes(String(value)); }
 function isErrorClass(value: unknown): value is DaemonWorkloadErrorClass { return ["timeout", "io", "provider", "model", "validation", "unknown"].includes(String(value)); }
