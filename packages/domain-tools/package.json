@@ -5,8 +5,17 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "dependencies": {
     "@muse/calendar": "workspace:*",
     "@muse/fs": "workspace:*",
@@ -20,7 +29,8 @@
     "@muse/stores": "workspace:*",
     "@muse/tools": "workspace:*",
     "imapflow": "^1.4.7",
-    "nodemailer": "^9.0.3"
+    "nodemailer": "^9.0.3",
+    "undici": "^8.5.0"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.1"

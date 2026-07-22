@@ -8,6 +8,7 @@ import { errorMessage } from "@muse/shared";
 import { fetchWithRetry, type BeforeAttempt, type RetryOptions } from "@muse/mcp-shared";
 
 import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
+import { pinnedPublicFetch } from "./public-http-pinned-fetch.js";
 
 export const MAX_PUBLIC_HTTP_REDIRECTS = 5;
 
@@ -164,7 +165,10 @@ export async function fetchPublicHttpWithRedirects(
   const initialInit = pickSafeGetInit(baseInit, retryInit, initialHeaders);
   const redirectedInit = redirectedGetInit(initialInit, redirectHeaders(initialHeaders));
   const { beforeAttempt: callerBeforeAttempt, init: _retryInit, ...retryWithoutInit } = options.retryOptions ?? {};
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  // Production default pins the connection to a connect-time-validated public
+  // address (closes the DNS-rebinding TOCTOU the preflight guard leaves open);
+  // an injected fetchImpl (tests) is used verbatim.
+  const fetchImpl = options.fetchImpl ?? pinnedPublicFetch;
   const lookupOptions = options.lookup ? { lookup: options.lookup } : {};
   const visited = new Set<string>([initialUrl.href]);
   let followsAlready = 0;
