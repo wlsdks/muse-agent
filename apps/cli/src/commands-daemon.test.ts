@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 import { readBrowsingStore } from "@muse/recall";
@@ -17,6 +18,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MuseTool } from "@muse/tools";
 
 import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
+
+const TEST_HARNESS_CLI_ENTRY = fileURLToPath(import.meta.url);
 
 function fakeChromeTools(snapshotText: string): MuseTool[] {
   const mk = (name: string, result: string): MuseTool => ({
@@ -85,7 +88,7 @@ async function runDaemon(
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
-      ...(opts.daemonCliEntry !== undefined ? { daemonCliEntry: opts.daemonCliEntry } : {}),
+      daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonTemporaryRoots ? { daemonTemporaryRoots: opts.daemonTemporaryRoots } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
@@ -103,6 +106,7 @@ async function runDaemon(
 function tmpEnv(): NodeJS.ProcessEnv {
   const dir = mkdtempSync(join(tmpdir(), "muse-daemon-"));
   return {
+    HOME: dir,
     MUSE_AMBIENT_FILE: join(dir, "ambient.json"),
     MUSE_BRIEFING_SIDECAR_FILE: join(dir, "briefing-fired.json"),
     MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
@@ -120,6 +124,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
     MUSE_REMINDERS_FILE: join(dir, "reminders.json"),
     MUSE_TASKS_FILE: join(dir, "tasks.json"),
     MUSE_LEARN_QUEUE_FILE: join(dir, "learn-queue.jsonl"),
+    MUSE_LAST_PROACTIVE_FILE: join(dir, "last-proactive-delivery.json"),
     MUSE_PLAYBOOK_FILE: join(dir, "playbook.json"),
     MUSE_LEARNING_PAUSE_FILE: join(dir, "learning-paused.json"),
     MUSE_SUPPRESSED_LESSONS_FILE: join(dir, "suppressed.json")
@@ -1608,8 +1613,29 @@ describe("validateDaemonCliEntry — persistent service entries must be stable",
 
   it("accepts an existing absolute entry outside the injected temporary roots", () => {
     const unrelatedTempRoot = mkdtempSync(join(tmpdir(), "muse-entry-other-temp-"));
-    const result = validateDaemonCliEntry(process.argv[1], { temporaryRoots: [unrelatedTempRoot] });
+    const result = validateDaemonCliEntry(TEST_HARNESS_CLI_ENTRY, { temporaryRoots: [unrelatedTempRoot] });
     expect(result).toMatchObject({ ok: true });
+  });
+
+  it("rejects an installed Vitest entrypoint before any service-manager call", async () => {
+    const vitestEntry = fileURLToPath(import.meta.resolve("vitest"));
+    const calls: (readonly string[])[] = [];
+    const plistFile = join(mkdtempSync(join(tmpdir(), "muse-install-test-runner-")), "com.muse.daemon.plist");
+    const result = await runDaemon(["--install"], {
+      daemonCliEntry: vitestEntry,
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        return { code: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("test-runner worker");
+    expect(calls).toEqual([]);
+    expect(existsSync(plistFile)).toBe(false);
   });
 });
 

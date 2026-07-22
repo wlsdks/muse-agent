@@ -395,6 +395,14 @@ export function validateDaemonCliEntry(
   } catch {
     return { ok: false, reason: `the Muse CLI entrypoint cannot be resolved: ${entry}` };
   }
+  // Environment markers such as VITEST_WORKER_ID defend the normal test
+  // path, but a subprocess can lose those markers. Persisting a test worker
+  // would turn its one-shot process into a KeepAlive crash loop, so reject
+  // package entrypoints themselves before any LaunchAgent write/load.
+  const normalized = canonical.replaceAll("\\", "/");
+  if (normalized.includes("/node_modules/vitest/") || normalized.includes("/node_modules/jest/")) {
+    return { ok: false, reason: "the Muse CLI entrypoint is a test-runner worker and cannot be persisted" };
+  }
   const temporaryRoots = options.temporaryRoots ?? defaultDaemonTemporaryRoots(process.env);
   const temporaryRoot = temporaryRoots.find((root) => isWithin(root, canonical));
   if (temporaryRoot) {
