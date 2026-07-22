@@ -832,7 +832,8 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "list",
       "review",
       "run",
-      "snooze"
+      "snooze",
+      "triage"
     ]
   },
   {

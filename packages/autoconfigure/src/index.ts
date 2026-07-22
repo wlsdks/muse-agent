@@ -75,6 +75,7 @@ export {
   resolveReconfirmCardAnsweredFile,
   resolveReconfirmCardDeliveryFile,
   resolveReminderHistoryFile,
+  resolveReminderTriageFile,
   resolveWeaknessesFile,
   resolveSessionLockFile,
   resolveSlackAfterFile,

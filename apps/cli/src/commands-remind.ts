@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
-import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readRemindersStrict, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, mutateReminders, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readRemindersStrict, readReminderStatusFilter, resolveReminderRef, serializeReminder, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -34,6 +34,7 @@ import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
 import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 import { waitForShutdownSignal } from "./async-promises.js";
+import { registerReminderTriageCommands } from "./commands-remind-triage.js";
 
 /**
  * CLI-side strict validation for `muse remind list --status
@@ -220,8 +221,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           ...(via ? { via } : {})
         };
         const file = localRemindersFile();
-        const existing = await readReminders(file);
-        await writeReminders(file, [...existing, created]);
+        await mutateReminders(file, (existing) => [...existing, created]);
         // Opt-in Apple Reminders mirror (MUSE_APPLE_REMINDERS_MIRROR). Self-gated
         // + fail-soft: it never blocks or rolls back the local write; a failure
         // surfaces as a stderr warning only.
@@ -357,6 +357,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       io.stdout(formatReminderBacklogReview(review));
     });
 
+  registerReminderTriageCommands(remind, io, helpers);
+
   remind
     .command("snooze")
     .description("Bump a reminder's dueAt forward (default 10 min)")
@@ -374,26 +376,26 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     ) => {
       const snoozeLocal = async (): Promise<Record<string, unknown>> => {
         const file = localRemindersFile();
-        const reminders = await readReminders(file);
-        const resolved = resolveLocalReminderId(id, reminders);
-        const index = reminders.findIndex((reminder) => reminder.id === resolved);
-        let nextDueAt: string;
-        if (options.in && options.in.trim().length > 0) {
-          const parsed = parseReminderDueAt(options.in, () => new Date());
-          if (isErrorLike(parsed)) {
-            throw parsed;
+        let snoozed: PersistedReminder | undefined;
+        await mutateReminders(file, (reminders) => {
+          const resolved = resolveLocalReminderId(id, reminders);
+          const index = reminders.findIndex((reminder) => reminder.id === resolved);
+          let nextDueAt: string;
+          if (options.in && options.in.trim().length > 0) {
+            const parsed = parseReminderDueAt(options.in, () => new Date());
+            if (isErrorLike(parsed)) throw parsed;
+            nextDueAt = parsed;
+          } else {
+            const currentDueMs = new Date(String(reminders[index]!.dueAt ?? "")).getTime();
+            const base = Number.isFinite(currentDueMs) ? Math.max(Date.now(), currentDueMs) : Date.now();
+            nextDueAt = new Date(base + 10 * 60_000).toISOString();
           }
-          nextDueAt = parsed;
-        } else {
-          const currentDueMs = new Date(String(reminders[index]!.dueAt ?? "")).getTime();
-          const base = Number.isFinite(currentDueMs) ? Math.max(Date.now(), currentDueMs) : Date.now();
-          nextDueAt = new Date(base + 10 * 60_000).toISOString();
-        }
-        const snoozed: PersistedReminder = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
-        const next = [...reminders];
-        next[index] = snoozed;
-        await writeReminders(file, next);
-        return serializeReminder(snoozed);
+          snoozed = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
+          const next = [...reminders];
+          next[index] = snoozed;
+          return next;
+        });
+        return serializeReminder(snoozed!);
       };
       const snoozeApi = async (): Promise<Record<string, unknown>> => {
         const body: Record<string, unknown> = {};
@@ -444,15 +446,15 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       }
       const fireLocal = async (): Promise<Record<string, unknown>> => {
         const file = localRemindersFile();
-        const reminders = await readReminders(file);
-        const resolved = resolveLocalReminderId(id, reminders);
-        const next = fireReminder(reminders, resolved, firedAt);
-        if (!next) {
-          throw new Error(`reminder not found: ${resolved}`);
-        }
-        await writeReminders(file, next);
-        const fired = next.find((reminder) => reminder.id === resolved) as PersistedReminder;
-        return serializeReminder(fired);
+        let fired: PersistedReminder | undefined;
+        await mutateReminders(file, (reminders) => {
+          const resolved = resolveLocalReminderId(id, reminders);
+          const next = fireReminder(reminders, resolved, firedAt);
+          if (!next) throw new Error(`reminder not found: ${resolved}`);
+          fired = next.find((reminder) => reminder.id === resolved);
+          return next;
+        });
+        return serializeReminder(fired!);
       };
       const fireApi = async (): Promise<Record<string, unknown>> => {
         const body: Record<string, unknown> = {};
@@ -644,10 +646,11 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     .action(async (id: string, options: { readonly local?: boolean }, command) => {
       const clearLocal = async (): Promise<string> => {
         const file = localRemindersFile();
-        const reminders = await readReminders(file);
-        const resolved = resolveLocalReminderId(id, reminders);
-        const next = reminders.filter((reminder) => reminder.id !== resolved);
-        await writeReminders(file, next);
+        let resolved = "";
+        await mutateReminders(file, (reminders) => {
+          resolved = resolveLocalReminderId(id, reminders);
+          return reminders.filter((reminder) => reminder.id !== resolved);
+        });
         return resolved;
       };
       const clearApi = async (): Promise<string> => {

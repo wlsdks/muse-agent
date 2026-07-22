@@ -92,6 +92,7 @@ export {
   resolveReconfirmCardAnsweredFile,
   resolveReconfirmCardDeliveryFile,
   resolveReminderHistoryFile,
+  resolveReminderTriageFile,
   resolveRemindersFile,
   resolveSessionLockFile,
   resolveSlackAfterFile,

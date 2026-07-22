@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { readReminders } from "@muse/stores";
+import { previewReminderTriage, readReminders } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -159,5 +159,58 @@ describe("runDueReminders — cross-process firing lock (two daemons, same remin
     expect(sent).toEqual([]);
     const after = await readReminders(remindersFile);
     expect(after.every((entry) => entry.status === "pending")).toBe(true); // untouched
+  });
+
+  it("a broken firing-lock path fails closed with zero provider sends", async () => {
+    const blocker = join(dir, "not-a-directory");
+    await writeFile(blocker, "file", "utf8");
+    remindersFile = join(blocker, "reminders.json");
+    const sent: OutboundMessage[] = [];
+    const summary = await runDueReminders({
+      destination: "@me",
+      file: remindersFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)])
+    });
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.delivered).toBe(0);
+    expect(summary.due).toBe(0);
+    expect(summary.errors[0]).toContain("lock acquisition failed");
+    expect(sent).toEqual([]);
+  });
+
+  it("holds triage outside the daemon read-to-send-to-mark critical section", async () => {
+    await seedReminders("1970-01-01T00:00:00Z");
+    let releaseSend!: () => void;
+    let markEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releaseSend = resolve; });
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
+      id: "telegram",
+      async send(message: OutboundMessage): Promise<OutboundReceipt> {
+        markEntered();
+        await release;
+        sent.push(message);
+        return { destination: message.destination, messageId: "m1", providerId: "telegram" };
+      }
+    }]);
+    const tick = runDueReminders({ destination: "@me", file: remindersFile, providerId: "telegram", registry });
+    await entered;
+
+    await expect(previewReminderTriage({
+      action: "dismiss",
+      ids: ["rem_0"],
+      ledgerFile: join(dir, "triage.json"),
+      remindersFile,
+      now: () => new Date()
+    })).rejects.toThrow("firing lock is held");
+    expect(sent).toEqual([]);
+
+    releaseSend();
+    expect((await tick).delivered).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect((await readReminders(remindersFile))[0]!.status).toBe("fired");
   });
 });

@@ -10,6 +10,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Old reminder backlogs now have an explicit, local-only triage transaction.**
+  `muse remind triage` records an exact preview before allowing a bounded
+  dismiss, snooze, retain, or local digest draft. Short-lived bearer tokens,
+  strict hash-chained receipts, one terminal batch result, and pre/post-image
+  recovery make retries idempotent and fail closed on drift. Reminder delivery
+  now holds the shared mutation boundary from read through send and mark, and a
+  broken firing lock sends nothing instead of running an external action
+  unlocked.
+
 - **User-facing outcome rates now carry a decision-grade measurement contract.**
   A browser-safe fail-closed schema binds metric ID, source/version, evidence
   class, numerator/denominator, time window, freshness, and a safe action ID as

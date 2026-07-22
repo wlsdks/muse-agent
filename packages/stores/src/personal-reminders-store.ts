@@ -141,7 +141,9 @@ export async function mutateReminders(
   return withFileLock(file, async () => {
     const current = await readReminders(file);
     const next = await fn(current);
-    await writeReminders(file, next);
+    if (next !== current) {
+      await writeReminders(file, next);
+    }
     return next;
   });
 }

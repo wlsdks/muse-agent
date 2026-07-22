@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
 
-import { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "../src/digest-lock.js";
+import { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock, withRequiredProcessLock } from "../src/digest-lock.js";
 
 let dir: string;
 let sentFile: string;
@@ -214,5 +214,17 @@ describe("withProcessLock heartbeat", () => {
     // finally's own nonce-check refuses to unlink a lock it no longer owns.
     expect(await lockExists()).toBe(true);
     expect(await fsPromises.readFile(lockPath, "utf8")).toBe("foreign-holder-nonce");
+  });
+});
+
+describe("withRequiredProcessLock", () => {
+  it("fails closed on lock infrastructure errors and never invokes the callback", async () => {
+    const eacces = Object.assign(new Error("simulated required-lock EACCES"), { code: "EACCES" });
+    vi.spyOn(fsPromises, "open").mockRejectedValueOnce(eacces);
+    vi.spyOn(fsPromises, "stat").mockRejectedValueOnce(eacces);
+    let ran = false;
+    const outcome = await withRequiredProcessLock(lockPath, async () => { ran = true; return "unsafe"; });
+    expect(ran).toBe(false);
+    expect(outcome).toEqual({ error: "simulated required-lock EACCES", kind: "lock-error" });
   });
 });

@@ -67,6 +67,11 @@ export type ProcessLockOutcome<T> =
   | { readonly kind: "ran"; readonly value: T; readonly lockError?: string }
   | { readonly kind: "lock-held" };
 
+export type RequiredProcessLockOutcome<T> =
+  | { readonly kind: "ran"; readonly value: T }
+  | { readonly kind: "lock-held" }
+  | { readonly kind: "lock-error"; readonly error: string };
+
 /** Back-compat alias — pre-generalization callers/tests import this name. */
 export type DigestLockOutcome<T> = ProcessLockOutcome<T>;
 
@@ -219,6 +224,50 @@ export async function withProcessLock<T>(
     }
     // "vanished" or a just-stolen "stale" lock — loop retries the open,
     // bounded by MAX_ACQUIRE_ATTEMPTS so a flapping lock can't spin forever.
+  }
+  return { kind: "lock-held" };
+}
+
+/**
+ * Fail-closed sibling for external-side-effect critical sections. Unlike
+ * `withProcessLock`, an infrastructure error never runs `fn` unlocked.
+ */
+export async function withRequiredProcessLock<T>(
+  lockPath: string,
+  fn: () => Promise<T>,
+  staleMs: number = DEFAULT_STALE_MS
+): Promise<RequiredProcessLockOutcome<T>> {
+  const nonce = `${process.pid.toString()}-${randomUUID()}`;
+
+  try {
+    await fs.mkdir(dirname(lockPath), { recursive: true });
+  } catch (cause) {
+    return { error: errorMessage(cause), kind: "lock-error" };
+  }
+
+  for (let attempt = 0; attempt < MAX_ACQUIRE_ATTEMPTS; attempt += 1) {
+    const attemptResult = await tryAcquireOnce(lockPath, nonce);
+    if (attemptResult === "acquired") {
+      const heartbeat = startLockHeartbeat(lockPath, nonce, staleMs);
+      try {
+        return { kind: "ran", value: await fn() };
+      } finally {
+        clearInterval(heartbeat);
+        if (await lockHoldsNonce(lockPath, nonce)) {
+          await fs.unlink(lockPath).catch(() => undefined);
+        }
+      }
+    }
+    if (typeof attemptResult === "object") {
+      return { error: errorMessage(attemptResult.error), kind: "lock-error" };
+    }
+    const probe = await probeLock(lockPath, staleMs);
+    if (probe === "live") {
+      return { kind: "lock-held" };
+    }
+    if (probe === "stale") {
+      await fs.unlink(lockPath).catch(() => undefined);
+    }
   }
   return { kind: "lock-held" };
 }

@@ -125,6 +125,59 @@ describe("muse remind review — quarantine backlog", () => {
   });
 });
 
+describe("muse remind triage — exact local preview/confirm", () => {
+  const previousReminders = process.env.MUSE_REMINDERS_FILE;
+  const previousTriage = process.env.MUSE_REMINDER_TRIAGE_FILE;
+  let remindersFile: string;
+  beforeEach(() => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-triage-cli-"));
+    remindersFile = join(dir, "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    process.env.MUSE_REMINDER_TRIAGE_FILE = join(dir, "reminder-triage.json");
+  });
+  afterEach(() => {
+    if (previousReminders === undefined) delete process.env.MUSE_REMINDERS_FILE;
+    else process.env.MUSE_REMINDERS_FILE = previousReminders;
+    if (previousTriage === undefined) delete process.env.MUSE_REMINDER_TRIAGE_FILE;
+    else process.env.MUSE_REMINDER_TRIAGE_FILE = previousTriage;
+  });
+
+  it("requires --local, makes zero API calls, and applies the exact JSON preview token once", async () => {
+    await writeReminders(remindersFile, [{ createdAt: "2026-01-01T00:00:00.000Z", dueAt: "2026-02-01T00:00:00.000Z", id: "rem_exact", status: "pending", text: "private backlog" }]);
+    const rejected = await runRemind(["triage", "preview", "dismiss", "rem_exact"]);
+    expect(rejected.error).toContain("required option '--local'");
+
+    const previewRun = await runRemind(["triage", "preview", "dismiss", "rem_exact", "--local", "--json"]);
+    expect(previewRun.error).toBeUndefined();
+    expect(previewRun.apiCalls).toHaveLength(0);
+    const preview = JSON.parse(previewRun.stdout) as { confirmToken: string; schemaVersion: string };
+    expect(preview.schemaVersion).toBe("muse.reminder-triage-preview/v1");
+
+    const confirmRun = await runRemind(["triage", "confirm", preview.confirmToken, "--local", "--json"]);
+    expect(confirmRun.error).toBeUndefined();
+    expect(confirmRun.apiCalls).toHaveLength(0);
+    expect(JSON.parse(confirmRun.stdout)).toMatchObject({ action: "dismiss", outcome: "applied", status: "applied" });
+    expect(await readReminders(remindersFile)).toEqual([]);
+
+    const replay = await runRemind(["triage", "confirm", preview.confirmToken, "--local", "--json"]);
+    expect(replay.stdout).toBe(confirmRun.stdout);
+  });
+
+  it("never resolves prefixes and drafts a local digest without changing reminders", async () => {
+    await writeReminders(remindersFile, [{ createdAt: "2026-01-01T00:00:00.000Z", dueAt: "2026-02-01T00:00:00.000Z", id: "rem_exact_long", status: "pending", text: "line one\nline two" }]);
+    const prefix = await runRemind(["triage", "preview", "retain", "rem_exact", "--local"]);
+    expect(prefix.error).toContain("exact id");
+
+    const draft = await runRemind(["triage", "preview", "draft-digest", "rem_exact_long", "--local", "--json"]);
+    const preview = JSON.parse(draft.stdout) as { confirmToken: string; digestDraft: string };
+    expect(preview.digestDraft).toContain("line one line two");
+    const before = JSON.stringify(await readReminders(remindersFile));
+    const confirmed = await runRemind(["triage", "confirm", preview.confirmToken, "--local", "--json"]);
+    expect(JSON.parse(confirmed.stdout)).toMatchObject({ action: "draft-digest", status: "applied" });
+    expect(JSON.stringify(await readReminders(remindersFile))).toBe(before);
+  });
+});
+
 describe("muse remind add — pre-dispatch <when> validation", () => {
   it("remote mode rejects an invalid <when> with the actionable error BEFORE any API call", async () => {
     const r = await runRemind(["blah-not-a-time", "buy", "milk"]);
