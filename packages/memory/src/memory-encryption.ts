@@ -73,6 +73,14 @@ export function encryptMemoryEnvelope(plaintext: string, env: NodeJS.ProcessEnv 
  * ciphertext on disk untouched (fail-closed-without-destruction).
  */
 export function decryptMemoryEnvelope(envelope: EncryptedMemoryEnvelope, env: NodeJS.ProcessEnv = process.env): string {
+  return decryptMemoryEnvelopeBytes(envelope, env).toString("utf8");
+}
+
+/**
+ * Byte-preserving decrypt primitive for strict stores that must reject invalid
+ * UTF-8 instead of accepting Buffer's replacement-character conversion.
+ */
+export function decryptMemoryEnvelopeBytes(envelope: EncryptedMemoryEnvelope, env: NodeJS.ProcessEnv = process.env): Buffer {
   const salt = Buffer.from(envelope.salt, "base64");
   const iv = Buffer.from(envelope.iv, "base64");
   const tag = Buffer.from(envelope.tag, "base64");
@@ -80,7 +88,7 @@ export function decryptMemoryEnvelope(envelope: EncryptedMemoryEnvelope, env: No
   const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(tag);
   try {
-    return Buffer.concat([decipher.update(Buffer.from(envelope.data, "base64")), decipher.final()]).toString("utf8");
+    return Buffer.concat([decipher.update(Buffer.from(envelope.data, "base64")), decipher.final()]);
   } catch {
     throw new Error("user-memory could not be decrypted: wrong MUSE_MEMORY_KEY (or the per-host key changed — e.g. a renamed machine), or the file was tampered with. The encrypted data is intact on disk; set the correct key or restore the .plaintext-backup file.");
   }

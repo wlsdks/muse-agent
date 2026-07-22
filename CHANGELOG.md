@@ -37,6 +37,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Personal Continuity can now attach one exact local Work as inert context.**
+  Work storage now has a strict encryption-aware v1 reader and same-snapshot
+  mutations, while a deterministic two-file coordinator prevents contradictory
+  Work↔PersonalThread links and dangling deletes under concurrency. CLI,
+  authenticated API, and web accept only a full canonical Work ID and project
+  bounded name/goal, status, update time, and counts—never linked IDs, thread
+  binding, outcome details, raw bytes, execution, completion, or feedback authority.
+
 - **Continuity can now attach one exact owner-authored local conversation as
   inert context.** `muse chats list` uses a strict, read-only archive catalog,
   a non-initializing active-pointer peek, and prints copy-ready references only

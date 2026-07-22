@@ -17,23 +17,20 @@
 import {
   addWorkOutcome,
   createWork,
-  deleteWork,
   getWork,
   linkWorkBoardTask,
   linkWorkFlow,
   listWorks,
   serializeWork,
-  setWorkThread,
   unlinkWorkBoardTask,
   unlinkWorkFlow,
-  unlinkWorkThread,
   updateWork,
   WorksStoreError,
   type WorkOutcomeKind,
   type WorkStatus
 } from "@muse/stores";
 import { defaultBoardFile, readBoard } from "@muse/multi-agent";
-import { readAttunementState } from "@muse/attunement";
+import { AttunementStoreError, deleteWorkContinuitySafe, projectWorkContinuity, setWorkContinuityThread } from "@muse/attunement";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -64,17 +61,23 @@ export function registerWorksRoutes(server: FastifyInstance, gate: WorksRoutesGa
     const tasks = await readBoard(defaultBoardFile());
     return tasks.some((task) => task.id === id);
   };
-  const threadExists = async (id: string): Promise<boolean> => {
-    const state = await readAttunementState(gate.attunementFile);
-    return state.threads.some((thread) => thread.id === id);
-  };
 
   server.get("/api/works", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const works = await listWorks(gate.worksFile);
-    return { works: works.map(serializeWork) };
+    return {
+      continuityReferences: works.flatMap((work) => {
+        try {
+          projectWorkContinuity(work, work.id);
+          return [{ artifactId: work.id, artifactType: "work", providerId: "local", role: "context" }];
+        } catch {
+          return [];
+        }
+      }),
+      works: works.map(serializeWork)
+    };
   });
 
   server.get("/api/works/:id", async (request, reply) => {
@@ -153,7 +156,7 @@ export function registerWorksRoutes(server: FastifyInstance, gate: WorksRoutesGa
         const work = await linkWorkBoardTask(gate.worksFile, workId, targetId, boardTaskExists);
         return { work: serializeWork(work) };
       }
-      const work = await setWorkThread(gate.worksFile, workId, targetId, threadExists);
+      const work = await setWorkContinuityThread({ attunementFile: gate.attunementFile, worksFile: gate.worksFile }, { threadId: targetId, workId });
       return { work: serializeWork(work) };
     } catch (cause) {
       return sendWorksStoreError(reply, cause, workId);
@@ -181,7 +184,7 @@ export function registerWorksRoutes(server: FastifyInstance, gate: WorksRoutesGa
         const work = await unlinkWorkBoardTask(gate.worksFile, workId, targetId);
         return { work: serializeWork(work) };
       }
-      const work = await unlinkWorkThread(gate.worksFile, workId);
+      const work = await setWorkContinuityThread({ attunementFile: gate.attunementFile, worksFile: gate.worksFile }, { workId });
       return { work: serializeWork(work) };
     } catch (cause) {
       return sendWorksStoreError(reply, cause, workId);
@@ -213,11 +216,15 @@ export function registerWorksRoutes(server: FastifyInstance, gate: WorksRoutesGa
       return reply;
     }
     const { id } = request.params as { readonly id: string };
-    const removed = await deleteWork(gate.worksFile, id);
-    if (!removed) {
-      return reply.status(404).send({ code: "WORK_NOT_FOUND", message: `no work with id '${id}'` });
+    try {
+      const removed = await deleteWorkContinuitySafe({ attunementFile: gate.attunementFile, worksFile: gate.worksFile }, id);
+      if (!removed) {
+        return reply.status(404).send({ code: "WORK_NOT_FOUND", message: `no work with id '${id}'` });
+      }
+      return reply.status(204).send();
+    } catch (cause) {
+      return sendWorksStoreError(reply, cause, id);
     }
-    return reply.status(204).send();
   });
 }
 
@@ -236,7 +243,7 @@ function sendWorksStoreError(
   cause: unknown,
   workId: string
 ): unknown {
-  if (cause instanceof WorksStoreError) {
+  if (cause instanceof WorksStoreError || cause instanceof AttunementStoreError) {
     const status = cause.message.includes(`no work with id '${workId}'`) ? 404 : 400;
     return reply.status(status).send({ code: "WORKS_STORE_ERROR", message: cause.message });
   }

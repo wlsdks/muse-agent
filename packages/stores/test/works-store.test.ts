@@ -24,6 +24,7 @@ import {
   unlinkWorkFlow,
   unlinkWorkThread,
   updateWork,
+  WorkExactReadError,
   WorksStoreError,
   writeWorks,
   type PersistedWork
@@ -47,7 +48,7 @@ const NEVER_EXISTS = () => false;
 describe("createWork / readWorks / getWork / listWorks", () => {
   it("creates a Work with the reference-only shape, empty links, active status", async () => {
     const work = await createWork(file, { name: "생일 파티 준비", goal: "다음 주 토요일까지 준비 끝내기" }, process.env, {
-      idFactory: () => "work_1",
+      idFactory: () => "work_11111111-1111-4111-8111-111111111111",
       now: () => new Date("2026-07-17T00:00:00.000Z")
     });
     expect(work).toEqual({
@@ -55,13 +56,13 @@ describe("createWork / readWorks / getWork / listWorks", () => {
       createdAtIso: "2026-07-17T00:00:00.000Z",
       flowIds: [],
       goal: "다음 주 토요일까지 준비 끝내기",
-      id: "work_1",
+      id: "work_11111111-1111-4111-8111-111111111111",
       name: "생일 파티 준비",
       outcomes: [],
       status: "active",
       updatedAtIso: "2026-07-17T00:00:00.000Z"
     });
-    expect(await getWork(file, "work_1")).toEqual(work);
+    expect(await getWork(file, "work_11111111-1111-4111-8111-111111111111")).toEqual(work);
   });
 
   it("rejects an empty name or goal", async () => {
@@ -70,10 +71,13 @@ describe("createWork / readWorks / getWork / listWorks", () => {
   });
 
   it("listWorks sorts most-recently-touched first", async () => {
-    await createWork(file, { name: "A", goal: "a" }, process.env, { idFactory: () => "a", now: () => new Date("2026-01-01T00:00:00.000Z") });
-    await createWork(file, { name: "B", goal: "b" }, process.env, { idFactory: () => "b", now: () => new Date("2026-02-01T00:00:00.000Z") });
+    await createWork(file, { name: "A", goal: "a" }, process.env, { idFactory: () => "work_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", now: () => new Date("2026-01-01T00:00:00.000Z") });
+    await createWork(file, { name: "B", goal: "b" }, process.env, { idFactory: () => "work_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", now: () => new Date("2026-02-01T00:00:00.000Z") });
     const listed = await listWorks(file);
-    expect(listed.map((w) => w.id)).toEqual(["b", "a"]);
+    expect(listed.map((w) => w.id)).toEqual([
+      "work_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "work_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    ]);
   });
 
   it("getWork returns undefined for an unknown id (never throws on a read)", async () => {
@@ -170,7 +174,7 @@ describe("short id round-trip — every read/mutate op accepts a unique id PREFI
 
 describe("referential integrity — link ops refuse a nonexistent target id (fail-close, no partial write)", () => {
   it("REFUSES linkWorkFlow to a nonexistent flow id, naming the id, and leaves the store byte-unchanged", async () => {
-    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readFile(file, "utf8");
 
     await expect(linkWorkFlow(file, work.id, "job_missing", NEVER_EXISTS)).rejects.toThrow(/no flow.*job_missing/);
@@ -181,7 +185,7 @@ describe("referential integrity — link ops refuse a nonexistent target id (fai
   });
 
   it("REFUSES linkWorkBoardTask to a nonexistent task id, naming the id, and leaves the store unchanged", async () => {
-    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readWorks(file);
 
     await expect(linkWorkBoardTask(file, work.id, "task_missing", NEVER_EXISTS)).rejects.toThrow(/no board task.*task_missing/);
@@ -190,7 +194,7 @@ describe("referential integrity — link ops refuse a nonexistent target id (fai
   });
 
   it("REFUSES setWorkThread to a nonexistent thread id, naming the id, and leaves the store unchanged", async () => {
-    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readWorks(file);
 
     await expect(setWorkThread(file, work.id, "thread_missing", NEVER_EXISTS)).rejects.toThrow(/no continuity thread.*thread_missing/);
@@ -199,7 +203,7 @@ describe("referential integrity — link ops refuse a nonexistent target id (fai
   });
 
   it("links successfully when the validator confirms the target exists", async () => {
-    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const linked = await linkWorkFlow(file, work.id, "job_1", ALWAYS_EXISTS);
     expect(linked.flowIds).toEqual(["job_1"]);
     // Idempotent re-link — no duplicate entry.
@@ -215,7 +219,7 @@ describe("referential integrity — link ops refuse a nonexistent target id (fai
 
 describe("unlink ops are idempotent (never error on an absent reference)", () => {
   it("unlinkWorkFlow / unlinkWorkThread on a Work that never had the ref is a no-op", async () => {
-    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Trip", goal: "plan it" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const afterUnlink = await unlinkWorkFlow(file, work.id, "job_never_linked");
     expect(afterUnlink.flowIds).toEqual([]);
     const afterThreadUnlink = await unlinkWorkThread(file, work.id);
@@ -225,7 +229,7 @@ describe("unlink ops are idempotent (never error on an absent reference)", () =>
 
 describe("updateWork — rename / status only", () => {
   it("renames and changes status independently", async () => {
-    const work = await createWork(file, { name: "Old name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Old name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const renamed = await updateWork(file, work.id, { name: "New name" });
     expect(renamed.name).toBe("New name");
     expect(renamed.status).toBe("active");
@@ -235,7 +239,7 @@ describe("updateWork — rename / status only", () => {
   });
 
   it("rejects an empty rename and an invalid status", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     await expect(updateWork(file, work.id, { name: "  " })).rejects.toThrow(WorksStoreError);
     await expect(updateWork(file, work.id, { status: "cancelled" as never })).rejects.toThrow(WorksStoreError);
   });
@@ -243,7 +247,7 @@ describe("updateWork — rename / status only", () => {
 
 describe("addWorkOutcome / markWorkDone", () => {
   it("appends an outcome with a server-assigned timestamp", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const updated = await addWorkOutcome(
       file,
       work.id,
@@ -255,12 +259,12 @@ describe("addWorkOutcome / markWorkDone", () => {
   });
 
   it("rejects an invalid outcome kind", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     await expect(addWorkOutcome(file, work.id, { kind: "invalid" as never })).rejects.toThrow(WorksStoreError);
   });
 
   it("markWorkDone sets status done directly (an explicit user action, not a self-report)", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const done = await markWorkDone(file, work.id);
     expect(done.status).toBe("done");
   });
@@ -268,14 +272,14 @@ describe("addWorkOutcome / markWorkDone", () => {
 
 describe("deleteWork — severs the Work reference only", () => {
   it("removes the Work entry and reports whether it existed", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     expect(await deleteWork(file, work.id)).toBe(true);
     expect(await getWork(file, work.id)).toBeUndefined();
     expect(await deleteWork(file, work.id)).toBe(false);
   });
 
   it("never touches the linked flow/task/thread ids — those live in their own stores untouched", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     await linkWorkFlow(file, work.id, "job_1", ALWAYS_EXISTS);
     // Deleting the Work only removes the Work record; this test documents
     // that deleteWork never reaches into any other store (there is none
@@ -319,8 +323,8 @@ describe("pruneDeletedFlowRefs — the lifecycle audit sweep (pure)", () => {
 
 describe("syncWorksOnFlowDelete — applied delete-sync (the acceptance test: deleting a job prunes it from a Work)", () => {
   it("prunes a deleted job id out of every Work's flowIds", async () => {
-    const w1 = await createWork(file, { name: "A", goal: "a" }, process.env, { idFactory: () => "w1" });
-    const w2 = await createWork(file, { name: "B", goal: "b" }, process.env, { idFactory: () => "w2" });
+    const w1 = await createWork(file, { name: "A", goal: "a" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
+    const w2 = await createWork(file, { name: "B", goal: "b" }, process.env, { idFactory: () => "work_22222222-2222-4222-8222-222222222222" });
     await linkWorkFlow(file, w1.id, "job_1", ALWAYS_EXISTS);
     await linkWorkFlow(file, w1.id, "job_2", ALWAYS_EXISTS);
     await linkWorkFlow(file, w2.id, "job_2", ALWAYS_EXISTS);
@@ -329,8 +333,8 @@ describe("syncWorksOnFlowDelete — applied delete-sync (the acceptance test: de
     const prunedCount = await syncWorksOnFlowDelete(file, ["job_2"]);
     expect(prunedCount).toBe(1);
 
-    expect((await getWork(file, "w1"))?.flowIds).toEqual(["job_2"]);
-    expect((await getWork(file, "w2"))?.flowIds).toEqual(["job_2"]);
+    expect((await getWork(file, "work_11111111-1111-4111-8111-111111111111"))?.flowIds).toEqual(["job_2"]);
+    expect((await getWork(file, "work_22222222-2222-4222-8222-222222222222"))?.flowIds).toEqual(["job_2"]);
   });
 
   it("is fail-open: a missing/unwritable works file never throws", async () => {
@@ -341,7 +345,7 @@ describe("syncWorksOnFlowDelete — applied delete-sync (the acceptance test: de
 
 describe("serializeWork", () => {
   it("omits threadId when unset and includes it when set", async () => {
-    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     expect(serializeWork(work)).not.toHaveProperty("threadId");
     const withThread = await setWorkThread(file, work.id, "thread_1", ALWAYS_EXISTS);
     expect(serializeWork(withThread).threadId).toBe("thread_1");
@@ -350,22 +354,24 @@ describe("serializeWork", () => {
 
 describe("encryption-at-rest — format-preserving, same envelope as contacts/playbook", () => {
   it("round-trips through encryptWorksAtRest / a later plain write stays encrypted", async () => {
-    await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_1" });
+    await createWork(file, { name: "Name", goal: "goal" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     expect(await isWorksEncrypted(file)).toBe(false);
     await encryptWorksAtRest(file);
     expect(await isWorksEncrypted(file)).toBe(true);
     // A subsequent normal mutation preserves the on-disk encrypted format.
-    await updateWork(file, "work_1", { name: "Renamed" });
+    await updateWork(file, "work_11111111-1111-4111-8111-111111111111", { name: "Renamed" });
     expect(await isWorksEncrypted(file)).toBe(true);
-    expect((await getWork(file, "work_1"))?.name).toBe("Renamed");
+    expect((await getWork(file, "work_11111111-1111-4111-8111-111111111111"))?.name).toBe("Renamed");
   });
 });
 
-describe("tolerant read — corrupt store quarantines instead of throwing", () => {
-  it("a malformed JSON file reads as empty (and does not crash the caller)", async () => {
+describe("strict read — corrupt state fails closed", () => {
+  it("a malformed JSON file throws and remains byte-stable", async () => {
     await writeWorks(file, []);
     const fs = await import("node:fs/promises");
     await fs.writeFile(file, "{not json", "utf8");
-    expect(await readWorks(file)).toEqual([]);
+    const before = await readFile(file, "utf8");
+    await expect(readWorks(file)).rejects.toThrow(WorkExactReadError);
+    expect(await readFile(file, "utf8")).toBe(before);
   });
 });

@@ -239,6 +239,7 @@ const RUN_REFERENCE = "muse-run-v1:ZXhhY3Qtd29ya3NwYWNlLXJ1bi1yZWZlcmVuY2U";
 const CHECKPOINT_REFERENCE = "muse-checkpoint-v1:ZXhhY3Qtd29ya3NwYWNlLWNoZWNrcG9pbnQtcmVmZXJlbmNl";
 const BROWSING_VISIT_ID = "13390000000000000-0a1b2c3d";
 const CONVERSATION_ID = "conv_0a1b2c3d";
+const WORK_ID = "work_123e4567-e89b-4d3a-a456-426614174000";
 
 function runLinkReview(linked: boolean) {
   const review = reminderLinkReview(false);
@@ -292,6 +293,19 @@ function conversationLinkReview(linked: boolean) {
   };
 }
 
+function workLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: WORK_ID, artifactType: "work", providerId: "local", role: "context" }] : [],
+      title: "Continue exact Work"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -334,6 +348,35 @@ test("an opened Pack shows an exact reminder as context without making it comple
   await expect.element(screen.getByText("Overdue: 2026-07-16T09:00:00.000Z", { exact: true })).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
   expect(onComplete).not.toHaveBeenCalled();
+});
+
+test("an opened Pack displays bounded Work context without an action button", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const work = {
+    artifactId: WORK_ID,
+    artifactType: "work",
+    providerId: "local",
+    role: "context",
+    summary: "Ship the safe slice",
+    title: "Work continuity",
+    workBoardTaskCount: 2,
+    workFlowCount: 1,
+    workOutcomeCount: 3,
+    workStatus: "active" as const,
+    workUpdatedAt: "2026-07-22T02:00:00.000Z"
+  };
+  const pack: OpenedPack = {
+    delivery: { id: "delivery_work" },
+    pack: {
+      evidence: [{ artifact: work, reference: work, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "work", title: "Continue exact Work" }
+    }
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={pack} /></I18nProvider>);
+  await expect.element(screen.getByText("Work continuity", { exact: false })).toBeVisible();
+  await expect.element(screen.getByText("flows: 1", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Complete next step" })).not.toBeInTheDocument();
 });
 
 test("an opened Pack shows bounded calendar timing and location as read-only context", async () => {
@@ -778,6 +821,44 @@ test("a conversation is paste-only, byte-exact, and context-only in the web link
   await expect.element(screen.getByRole("button", { name: `Remove conversation:${CONVERSATION_ID}` })).toBeVisible();
   await screen.getByRole("button", { name: `Remove conversation:${CONVERSATION_ID}` }).click();
   await expect.element(screen.getByRole("button", { name: `Remove conversation:${CONVERSATION_ID}` })).not.toBeInTheDocument();
+});
+
+test("a Work is full-id-only and context-only in the web link flow", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : workLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      if ((body as { artifactId?: string }).artifactId !== WORK_ID) throw new Error("non-canonical Work id");
+      expect(body).toEqual({ artifactId: WORK_ID, artifactType: "work", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: WORK_ID, artifactType: "work" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-work.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(<QueryClientProvider client={queryClient}><I18nProvider><ContinuityReviewView client={client} /></I18nProvider></QueryClientProvider>);
+
+  await screen.getByLabelText("Source type").selectOptions("work");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  const input = screen.getByLabelText("Exact source ID, note path, or run/checkpoint reference");
+  await input.fill(` ${WORK_ID}`);
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
+  await input.fill(WORK_ID);
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: `Remove work:${WORK_ID}` })).toBeVisible();
+  await screen.getByRole("button", { name: `Remove work:${WORK_ID}` }).click();
+  await expect.element(screen.getByRole("button", { name: `Remove work:${WORK_ID}` })).not.toBeInTheDocument();
 });
 
 test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {

@@ -33,10 +33,10 @@ describe("Attunement schema v8 checkpoint references", () => {
     const file = await storeFile();
     const raw = `${JSON.stringify(state(7), null, 2)}\n`;
     await writeFile(file, raw, "utf8");
-    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 10 });
+    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 11 });
     expect(await readFile(file, "utf8")).toBe(raw);
     await createPersonalThread(file, { kind: "work", title: "Release" }, { idFactory: () => "thread_new", now: () => new Date("2026-07-22T00:00:00.000Z") });
-    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 10 });
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 11 });
   });
 
   it("rejects a run reference in v6 and a malformed run locator in v7 byte-stably", async () => {

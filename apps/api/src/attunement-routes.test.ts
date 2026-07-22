@@ -11,13 +11,14 @@ import {
   linkArtifact,
   prepareContinuityReview,
   readAttunementState,
+  setWorkContinuityThread,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { FileCheckpointStore } from "@muse/runtime-state";
 import { writeBrowsingStore } from "@muse/recall";
 import { encodeLocalCheckpointReference, encodeLocalRunReference } from "@muse/shared";
-import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { addWorkOutcome, createWork, writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -32,6 +33,7 @@ let checkpointsDir: string;
 let notesDir: string;
 let remindersFile: string;
 let tasksFile: string;
+let worksFile: string;
 let threadId: string;
 
 const TASK: PersistedTask = {
@@ -94,6 +96,7 @@ beforeEach(async () => {
   notesDir = join(root, "notes");
   remindersFile = join(root, "reminders.json");
   tasksFile = join(root, "tasks.json");
+  worksFile = join(root, "works.json");
   await mkdir(notesDir);
   await writeTasks(tasksFile, [TASK]);
   await writeReminders(remindersFile, [REMINDER]);
@@ -128,6 +131,7 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
     remindersFile,
     tasksFile,
+    worksFile,
     ...overrides
   });
   return app;
@@ -813,6 +817,70 @@ describe("exact local conversation continuity sources", () => {
       url: `/api/attunement/threads/${threadId}/links/unlink`
     })).statusCode).toBe(200);
     expect(await readFile(conversationsFile)).toEqual(archiveBytes);
+    await app.close();
+  });
+});
+
+describe("exact local Work continuity sources", () => {
+  it("links, opens, and unlinks only the bounded context projection without changing Work bytes", async () => {
+    const work = await createWork(worksFile, { goal: "Ship the safe slice", name: "Work continuity" }, process.env, {
+      idFactory: () => "work_123e4567-e89b-4d3a-a456-426614174000",
+      now: () => new Date("2026-07-22T01:00:00.000Z")
+    });
+    const workWithOutcome = await addWorkOutcome(
+      worksFile,
+      work.id,
+      { kind: "used", note: "Work-local result only" },
+      process.env,
+      () => new Date("2026-07-22T01:30:00.000Z")
+    );
+    const workBytes = await readFile(worksFile);
+    const app = server();
+    const attunementBeforePrefix = await readFile(attunementFile);
+    expect((await app.inject({
+      method: "POST", payload: { artifactId: work.id.slice(0, 18), artifactType: "work", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(409);
+    expect(await readFile(attunementFile)).toEqual(attunementBeforePrefix);
+    expect(await readFile(worksFile)).toEqual(workBytes);
+    expect((await app.inject({
+      method: "POST", payload: { artifactId: work.id, artifactType: "work", role: "next-step" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(400);
+    expect((await app.inject({
+      method: "POST", payload: { artifactId: work.id, artifactType: "work", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(200);
+    const beforeOpen = await readAttunementState(attunementFile);
+    const feedbackBeforeOpen = beforeOpen.deliveries.filter((delivery) => delivery.outcome !== undefined);
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId: work.id,
+        artifactType: "work",
+        title: work.name,
+        workBoardTaskCount: 0,
+        workFlowCount: 0,
+        workOutcomeCount: 1,
+        workStatus: "active",
+        workUpdatedAt: workWithOutcome.updatedAtIso
+      }),
+      status: "available"
+    }));
+    const afterOpen = await readAttunementState(attunementFile);
+    expect(afterOpen.interactionReceipts).toEqual(beforeOpen.interactionReceipts);
+    expect(afterOpen.deliveries.filter((delivery) => delivery.outcome !== undefined)).toEqual(feedbackBeforeOpen);
+    expect(opened.body).not.toContain("Work-local result only");
+    expect(JSON.stringify(afterOpen)).not.toContain("Work-local result only");
+    expect((await app.inject({
+      method: "POST", payload: { artifactId: work.id, artifactType: "work" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    })).statusCode).toBe(200);
+    expect(await readFile(worksFile)).toEqual(workBytes);
+    await setWorkContinuityThread({ attunementFile, worksFile }, { threadId, workId: work.id });
+    const rejectedDelete = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/delete` });
+    expect(rejectedDelete.statusCode).toBe(409);
+    expect(rejectedDelete.json().errorMessage).toContain("clear it first");
     await app.close();
   });
 });

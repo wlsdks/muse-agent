@@ -1,8 +1,8 @@
 # Muse Work — 흐름·보드·연속성을 "일" 단위로 묶기
 
-> **Status: DESIGN (2026-07-17, fable).** 아직 아무것도 출하되지 않았다 — 이 문서는
-> Flows 트랙(P0 캔버스 → P1/P2 편집·생성)의 최종 단계 계약이다. 구현 전에 이
-> 문서의 수용 기준을 슬라이스로 쪼갠다.
+> **Status: SHIPPING IN SLICES (2026-07-22).** 로컬 Work 스토어, CLI/API 동사,
+> 결과 기록, 흐름 삭제 정리, 정확한 Personal Continuity 문맥 연결은 출하됐다.
+> 전용 웹 Work 상세와 채팅 승격은 아직 로드맵이다.
 
 ## 왜
 
@@ -36,6 +36,11 @@ Work {
 스토어가 소유하고, Work 삭제는 참조만 끊는다. 두 스토어를 잇는 순간 모든
 lifecycle op를 감사하라는 교훈(calendar↔reminder 링크)이 그대로 적용된다 —
 잡 삭제 시 Work의 flowIds에서 정리하는 훅이 수용 기준에 들어가야 한다.
+
+Work↔PersonalThread 관계를 바꾸는 제품 진입점은 두 파일을 정해진 순서로 잠그는
+관계 코디네이터를 사용한다. Work 증거 링크, `Work.threadId`, 양쪽 삭제가 서로
+모순되거나 dangling 상태를 만들려 하면 명시적 unlink/clear 전까지 실패한다.
+Continuity 안의 Work는 문맥 전용이며 Work 고유의 `done`/`outcome` 권한을 가져오지 않는다.
 
 ## 표면
 

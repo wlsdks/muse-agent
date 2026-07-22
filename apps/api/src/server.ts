@@ -371,6 +371,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     notesDir: options.notesDir ?? resolveNotesDir(env),
     remindersFile: options.remindersFile ?? resolveRemindersFile(env),
     tasksFile: options.tasksFile ?? resolveTasksFile(env),
+    worksFile: options.worksFile ?? resolveWorksFile(env),
     ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
       ? { workspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
       : {})

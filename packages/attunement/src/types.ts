@@ -8,7 +8,7 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "checkpoint", "browsing-visit", "conversation", "resource"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "checkpoint", "browsing-visit", "conversation", "work", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 const CANONICAL_BROWSING_VISIT_ID = /^[1-9][0-9]{0,19}-[0-9a-f]{8}$/u;
@@ -185,7 +185,7 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 10;
+  readonly schemaVersion: 11;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }
@@ -223,6 +223,11 @@ export interface ResolvedArtifact extends ArtifactReference {
   readonly taskStatus?: "open" | "done";
   readonly taskTags?: readonly string[];
   readonly updatedAt?: string;
+  readonly workBoardTaskCount?: number;
+  readonly workFlowCount?: number;
+  readonly workOutcomeCount?: number;
+  readonly workStatus?: "active" | "paused" | "done";
+  readonly workUpdatedAt?: string;
 }
 
 export interface ContinuityEvidence {

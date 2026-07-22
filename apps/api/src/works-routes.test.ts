@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPersonalThread } from "@muse/attunement";
+import { createPersonalThread, linkWorkContinuity } from "@muse/attunement";
 import { addTask } from "@muse/multi-agent";
 import { InMemoryScheduledJobStore, type ScheduledJobInput } from "@muse/scheduler";
 import { createWork, readWorks, writeWorks } from "@muse/stores";
@@ -48,7 +48,17 @@ describe("GET /api/works — empty store", () => {
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
     const res = await server.inject({ method: "GET", url: "/api/works" });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ works: [] });
+    expect(JSON.parse(res.body)).toEqual({ continuityReferences: [], works: [] });
+  });
+
+  it("does not advertise projection-ineligible hostile Work text", async () => {
+    const server = Fastify();
+    registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
+    await createWork(worksFile, { goal: "\u0000\t", name: "\u0000\n" }, process.env, {
+      idFactory: () => "work_11111111-1111-4111-8111-111111111111"
+    });
+    const response = await server.inject({ method: "GET", url: "/api/works" });
+    expect(response.json().continuityReferences).toEqual([]);
   });
 });
 
@@ -66,6 +76,10 @@ describe("POST /api/works — create", () => {
     const body = JSON.parse(created.body) as { id: string; name: string; status: string };
     expect(body.name).toBe("생일 파티 준비");
     expect(body.status).toBe("active");
+    const listed = await server.inject({ method: "GET", url: "/api/works" });
+    expect(JSON.parse(listed.body).continuityReferences).toEqual([
+      { artifactId: body.id, artifactType: "work", providerId: "local", role: "context" }
+    ]);
 
     const rejected = await server.inject({ method: "POST", payload: { goal: "", name: "" }, url: "/api/works" });
     expect(rejected.statusCode).toBe(400);
@@ -79,7 +93,7 @@ describe("GET /api/works/:id and PATCH", () => {
     const missing = await server.inject({ method: "GET", url: "/api/works/nope" });
     expect(missing.statusCode).toBe(404);
 
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const patched = await server.inject({
       method: "PATCH",
       payload: { name: "New name", status: "paused" },
@@ -115,7 +129,7 @@ describe("POST /api/works/:id/link — flow (validated against the real schedule
     const schedulerStore = new InMemoryScheduledJobStore({ idFactory: () => "job_1" });
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, scheduler: { store: schedulerStore }, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readWorks(worksFile);
 
     const res = await server.inject({
@@ -134,7 +148,7 @@ describe("POST /api/works/:id/link — flow (validated against the real schedule
     const job = await schedulerStore.save(JOB_INPUT);
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, scheduler: { store: schedulerStore }, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({
       method: "POST",
@@ -148,7 +162,7 @@ describe("POST /api/works/:id/link — flow (validated against the real schedule
   it("links unchecked with an honest ⚠ warning when no scheduler is configured at all", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({
       method: "POST",
@@ -166,7 +180,7 @@ describe("POST /api/works/:id/link — task (validated against the real board st
   it("REFUSES a link to a nonexistent board task id, and never mutates the store", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readWorks(worksFile);
 
     const res = await server.inject({
@@ -187,7 +201,7 @@ describe("POST /api/works/:id/link — task (validated against the real board st
 
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({
       method: "POST",
@@ -203,7 +217,7 @@ describe("POST /api/works/:id/link — thread (validated against the real attune
   it("REFUSES a link to a nonexistent thread id, and never mutates the store", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     const before = await readWorks(worksFile);
 
     const res = await server.inject({
@@ -221,7 +235,7 @@ describe("POST /api/works/:id/link — thread (validated against the real attune
     const thread = await createPersonalThread(attunementFile, { kind: "life", title: "Prepare birthday" }, { idFactory: () => "thread_1" });
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({
       method: "POST",
@@ -237,7 +251,7 @@ describe("DELETE /api/works/:id/link — unlink (idempotent, no validation neede
   it("unlinks a flow that was linked, and no-ops on one that was never there", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     await writeWorks(worksFile, [{ ...work, flowIds: ["job_1"] }]);
 
     const res = await server.inject({ method: "DELETE", payload: { id: "job_1", kind: "flow" }, url: `/api/works/${work.id}/link` });
@@ -253,7 +267,7 @@ describe("POST /api/works/:id/outcome", () => {
   it("records an outcome and rejects an invalid kind", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({
       method: "POST",
@@ -272,12 +286,36 @@ describe("DELETE /api/works/:id", () => {
   it("removes the Work; 404s a repeat delete", async () => {
     const server = Fastify();
     registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
-    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
 
     const res = await server.inject({ method: "DELETE", url: `/api/works/${work.id}` });
     expect(res.statusCode).toBe(204);
 
     const again = await server.inject({ method: "DELETE", url: `/api/works/${work.id}` });
     expect(again.statusCode).toBe(404);
+  });
+
+  it("refuses deletion while Personal Continuity still links the Work", async () => {
+    const server = Fastify();
+    registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
+    const work = await createWork(worksFile, { goal: "goal", name: "Name" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
+    const thread = await createPersonalThread(attunementFile, { kind: "work", title: "Continue" });
+    await linkWorkContinuity({ attunementFile, worksFile }, { threadId: thread.id, workId: work.id });
+    const response = await server.inject({ method: "DELETE", url: `/api/works/${work.id}` });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toContain("unlink it first");
+    expect(await readWorks(worksFile)).toHaveLength(1);
+  });
+
+  it("keeps the prior 404 contract for an unknown Work thread assignment", async () => {
+    const server = Fastify();
+    registerWorksRoutes(server, { attunementFile, authService: undefined, worksFile });
+    const thread = await createPersonalThread(attunementFile, { kind: "work", title: "Continue" });
+    const response = await server.inject({
+      method: "POST",
+      payload: { id: thread.id, kind: "thread" },
+      url: "/api/works/work_11111111-1111-4111-8111-111111111111/link"
+    });
+    expect(response.statusCode).toBe(404);
   });
 });

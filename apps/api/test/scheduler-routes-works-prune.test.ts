@@ -63,7 +63,7 @@ describe("DELETE /api/scheduler/jobs/:jobId — prunes the deleted job out of Wo
     const jobA = await service.create(JOB_A);
     const jobB = await service.create(JOB_B);
 
-    const work = await createWork(worksFile, { goal: "goal", name: "Trip" }, process.env, { idFactory: () => "work_1" });
+    const work = await createWork(worksFile, { goal: "goal", name: "Trip" }, process.env, { idFactory: () => "work_11111111-1111-4111-8111-111111111111" });
     await linkWorkFlow(worksFile, work.id, jobA.id, () => true);
     await linkWorkFlow(worksFile, work.id, jobB.id, () => true);
 

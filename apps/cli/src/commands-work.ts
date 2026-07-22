@@ -6,24 +6,21 @@
  * the API server running.
  */
 
-import { readAttunementState } from "@muse/attunement";
+import { deleteWorkContinuitySafe, projectWorkContinuity, setWorkContinuityThread } from "@muse/attunement";
 import { resolveAttunementFile, resolveWorksFile } from "@muse/autoconfigure";
 import { defaultBoardFile, readBoard } from "@muse/multi-agent";
 import { FileScheduledJobStore } from "@muse/scheduler";
 import {
   addWorkOutcome,
   createWork,
-  deleteWork,
   getWork,
   linkWorkBoardTask,
   linkWorkFlow,
   listWorks,
   markWorkDone,
   serializeWork,
-  setWorkThread,
   unlinkWorkBoardTask,
   unlinkWorkFlow,
-  unlinkWorkThread,
   WorksStoreError,
   type PersistedWork,
   type WorkOutcomeKind
@@ -76,10 +73,6 @@ async function localFlowExists(id: string): Promise<boolean> {
 async function localBoardTaskExists(id: string): Promise<boolean> {
   return (await readBoard(defaultBoardFile())).some((task) => task.id === id);
 }
-async function localThreadExists(id: string): Promise<boolean> {
-  return (await readAttunementState(localAttunementFile())).threads.some((thread) => thread.id === id);
-}
-
 function shortId(id: string): string {
   return id.length > 10 ? id.slice(0, 10) : id;
 }
@@ -89,7 +82,18 @@ export function formatWorkList(works: readonly PersistedWork[]): string {
   if (works.length === 0) {
     return 'No Work yet. Start one: muse work start "생일 파티 준비" --goal "다음 주 토요일까지 준비 끝내기"\n';
   }
-  const lines = works.map((work) => `  [${shortId(work.id)}] ${work.name} (${work.status}) — ${work.goal}`);
+  const lines = works.flatMap((work) => {
+    try {
+      const projected = projectWorkContinuity(work, work.id);
+      if (!projected) return [];
+      return [
+        `  [${shortId(work.id)}] ${projected.title} (${work.status}) — ${projected.summary}`,
+        `    continuity: muse thread link <thread-id> work ${work.id} --role context`
+      ];
+    } catch {
+      return [`  [${shortId(work.id)}] (unsafe Work text hidden) (${work.status})`];
+    }
+  });
   return `Work (${works.length.toString()}):\n${lines.join("\n")}\n`;
 }
 
@@ -129,9 +133,20 @@ export function registerWorksCommands(program: Command, io: ProgramIO, helpers: 
     .option("--local", "Read directly from the local works file instead of the API")
     .option("--json", "Print the raw API response instead of the formatted list")
     .action(async (options: SharedOptions, command) => {
-      const readLocal = async (): Promise<{ works: readonly Record<string, unknown>[] }> => ({
-        works: (await listWorks(localWorksFile())).map(serializeWork)
-      });
+      const readLocal = async (): Promise<{ continuityReferences: readonly Record<string, unknown>[]; works: readonly Record<string, unknown>[] }> => {
+        const entries = await listWorks(localWorksFile());
+        return {
+          continuityReferences: entries.flatMap((entry) => {
+            try {
+              projectWorkContinuity(entry, entry.id);
+              return [{ artifactId: entry.id, artifactType: "work", providerId: "local", role: "context" }];
+            } catch {
+              return [];
+            }
+          }),
+          works: entries.map(serializeWork)
+        };
+      };
       const payload = await worksLocalFallback(
         io,
         Boolean(options.local),
@@ -315,7 +330,7 @@ export function registerWorksCommands(program: Command, io: ProgramIO, helpers: 
           io,
           Boolean(options.local),
           async () => {
-            const removed = await deleteWork(localWorksFile(), workId);
+            const removed = await deleteWorkContinuitySafe({ attunementFile: localAttunementFile(), worksFile: localWorksFile() }, workId);
             if (!removed) throw new WorksStoreError(`no work with id '${workId}'`);
           },
           async () => {
@@ -337,7 +352,10 @@ async function localLinkOrUnlink(kind: LinkKind, workId: string, targetId: strin
   if (kind === "task") {
     return unlink ? unlinkWorkBoardTask(localWorksFile(), workId, targetId) : linkWorkBoardTask(localWorksFile(), workId, targetId, localBoardTaskExists);
   }
-  return unlink ? unlinkWorkThread(localWorksFile(), workId) : setWorkThread(localWorksFile(), workId, targetId, localThreadExists);
+  return setWorkContinuityThread(
+    { attunementFile: localAttunementFile(), worksFile: localWorksFile() },
+    unlink ? { workId } : { threadId: targetId, workId }
+  );
 }
 
 /** 원인+원문+다음 행동: surface the store's exact message, never a bare "failed". */

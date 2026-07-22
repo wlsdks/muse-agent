@@ -7,10 +7,10 @@
  * referenced stores (scheduler / board / attunement) own their own lifecycle
  * and are never touched from here.
  *
- * Same durability posture as the other personal stores (atomic fsync+rename
- * write, cross-process lock + per-file mutation queue, tolerant read with
- * corrupt-store quarantine) and the same encrypted-file convention as
- * contacts/playbook: format-preserving on write, a wrong key fails closed.
+ * Uses atomic fsync+rename writes, cross-process locks, per-file mutation
+ * queues, and a strict bounded read contract. Malformed/future state fails
+ * closed without quarantine; writes preserve the encryption format observed
+ * by the same locked snapshot.
  *
  * Link ops (`linkWorkFlow` / `linkWorkBoardTask` / `setWorkThread`) take an
  * injected existence-check callback and REFUSE a link to a nonexistent id —
@@ -24,8 +24,27 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
-import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, writeMaybeEncrypted } from "./encrypted-file.js";
-import { quarantineCorruptStore } from "./store-quarantine.js";
+import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, writeMaybeEncrypted } from "./encrypted-file.js";
+import {
+  assertValidWorkStoreState,
+  EXACT_WORK_CONTENT_MAX_BYTES,
+  isCanonicalWorkId,
+  readExactWorkCatalog,
+  readWorkStoreSnapshot,
+  WorkExactReadError
+} from "./work-exact-reader.js";
+
+export {
+  assertValidWorkStoreState,
+  EXACT_WORK_CONTENT_MAX_BYTES,
+  EXACT_WORK_PHYSICAL_MAX_BYTES,
+  isCanonicalWorkId,
+  readExactWork,
+  readExactWorkCatalog,
+  readWorkStoreSnapshot,
+  WorkExactReadError,
+  type WorkStoreSnapshot
+} from "./work-exact-reader.js";
 
 export type WorkStatus = "active" | "paused" | "done";
 export type WorkOutcomeKind = "used" | "adjusted" | "ignored";
@@ -110,40 +129,28 @@ function noWorkWithIdError(idOrPrefix: string): WorksStoreError {
 }
 
 export async function readWorks(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly PersistedWork[]> {
-  // A wrong decryption key THROWS here (fail-closed) — propagate it; an
-  // undecryptable works file is NOT corrupt and must never be quarantined
-  // to empty (that would silently erase every tracked Work).
-  const { text } = await readMaybeEncrypted(file, env);
-  if (text === undefined) {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    await quarantineCorruptStore(file);
-    return [];
-  }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { works?: unknown }).works)) {
-    await quarantineCorruptStore(file);
-    return [];
-  }
-  return (parsed as { works: unknown[] }).works.flatMap((entry): readonly PersistedWork[] => {
-    const work = coerceWork(entry);
-    return work ? [work] : [];
-  });
+  return readExactWorkCatalog(file, env);
 }
 
 export async function writeWorks(file: string, works: readonly PersistedWork[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  await withFileLock(file, () => writeWorksUnlocked(file, works, env));
+  await withFileMutationQueue(file, () => withFileLock(file, async () => {
+    const snapshot = await readWorkStoreSnapshot(file, env);
+    await writeWorkStoreStateUnlocked(file, works, snapshot.encrypted, env);
+  }));
 }
 
-async function writeWorksUnlocked(file: string, works: readonly PersistedWork[], env: NodeJS.ProcessEnv): Promise<void> {
-  const text = `${JSON.stringify({ works }, null, 2)}\n`;
-  // Callers of `mutateWorks` hold the cross-process lock across the full
-  // read-modify-write; the standalone writer takes it itself. Either way an
-  // existing encryption format is preserved, never silently dropped.
-  const encrypted = await isFileEncryptedAtRest(file);
+/** Caller must already hold the Work file lock. */
+export async function writeWorkStoreStateUnlocked(
+  file: string,
+  works: readonly PersistedWork[],
+  encrypted: boolean,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  const text = `${JSON.stringify({ version: 1, works }, null, 2)}\n`;
+  if (Buffer.byteLength(text, "utf8") > EXACT_WORK_CONTENT_MAX_BYTES) {
+    throw new WorkExactReadError("Work store plaintext exceeds the size limit");
+  }
+  assertValidWorkStoreState(works);
   await writeMaybeEncrypted(file, text, encrypted, env);
 }
 
@@ -159,10 +166,11 @@ export async function mutateWorks(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<readonly PersistedWork[]> {
   return withFileMutationQueue(file, () => withFileLock(file, async () => {
-    const current = await readWorks(file, env);
+    const snapshot = await readWorkStoreSnapshot(file, env);
+    const current = snapshot.works;
     const next = await fn(current);
     if (next !== current) {
-      await writeWorksUnlocked(file, next, env);
+      await writeWorkStoreStateUnlocked(file, next, snapshot.encrypted, env);
     }
     return next;
   }));
@@ -212,6 +220,7 @@ export async function createWork(
     status: "active",
     updatedAtIso: nowIso
   };
+  if (!isCanonicalWorkId(work.id)) throw new WorksStoreError("id factory returned a non-canonical Work id");
   await mutateWorks(file, (current) => [...current, work], env);
   return work;
 }
@@ -500,76 +509,4 @@ export async function decryptWorksAtRest(file: string, env: NodeJS.ProcessEnv = 
 /** Format-only check (no key needed). */
 export async function isWorksEncrypted(file: string): Promise<boolean> {
   return isFileEncryptedAtRest(file);
-}
-
-function isWorkStatus(value: unknown): value is WorkStatus {
-  return typeof value === "string" && WORK_STATUSES.includes(value as WorkStatus);
-}
-
-function isWorkOutcomeKind(value: unknown): value is WorkOutcomeKind {
-  return typeof value === "string" && WORK_OUTCOME_KINDS.includes(value as WorkOutcomeKind);
-}
-
-function coerceOutcome(value: unknown): WorkOutcome | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.atIso !== "string" || !isWorkOutcomeKind(candidate.kind)) {
-    return undefined;
-  }
-  return {
-    atIso: candidate.atIso,
-    kind: candidate.kind,
-    ...(typeof candidate.note === "string" && candidate.note.length > 0 ? { note: candidate.note } : {})
-  };
-}
-
-/**
- * Read-boundary coercion for one raw store entry. `id`/`name`/`goal` +
- * timestamps + `status` are mandatory; a missing/malformed one drops the
- * whole entry (same posture as `coerceContact`). Array fields default to
- * empty rather than dropping the Work, so a hand-edited works.json missing
- * `flowIds` still round-trips.
- */
-function coerceWork(value: unknown): PersistedWork | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (
-    typeof candidate.id !== "string"
-    || typeof candidate.name !== "string"
-    || typeof candidate.goal !== "string"
-    || typeof candidate.createdAtIso !== "string"
-    || typeof candidate.updatedAtIso !== "string"
-    || !isWorkStatus(candidate.status)
-  ) {
-    return undefined;
-  }
-  const flowIds = Array.isArray(candidate.flowIds)
-    ? candidate.flowIds.filter((id): id is string => typeof id === "string")
-    : [];
-  const boardTaskIds = Array.isArray(candidate.boardTaskIds)
-    ? candidate.boardTaskIds.filter((id): id is string => typeof id === "string")
-    : [];
-  const outcomes = Array.isArray(candidate.outcomes)
-    ? candidate.outcomes.flatMap((entry): readonly WorkOutcome[] => {
-        const outcome = coerceOutcome(entry);
-        return outcome ? [outcome] : [];
-      })
-    : [];
-  const threadId = typeof candidate.threadId === "string" ? candidate.threadId : undefined;
-  return {
-    boardTaskIds,
-    createdAtIso: candidate.createdAtIso,
-    flowIds,
-    goal: candidate.goal,
-    id: candidate.id,
-    name: candidate.name,
-    outcomes,
-    status: candidate.status,
-    ...(threadId !== undefined ? { threadId } : {}),
-    updatedAtIso: candidate.updatedAtIso
-  };
 }

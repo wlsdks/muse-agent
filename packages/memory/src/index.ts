@@ -505,6 +505,7 @@ export {
 } from "./memory-user-store-file.js";
 export {
   decryptMemoryEnvelope,
+  decryptMemoryEnvelopeBytes,
   encryptMemoryEnvelope,
   isEncryptedMemoryEnvelope,
   memoryEncryptionSecret,

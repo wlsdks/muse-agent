@@ -38,7 +38,7 @@ describe("formatWorkList / formatWorkDetail — pure formatting", () => {
     createdAtIso: "2026-07-17T00:00:00.000Z",
     flowIds: ["job_1"],
     goal: "다음 주 토요일까지 준비 끝내기",
-    id: "work_1234567890",
+    id: "work_123e4567-e89b-4d3a-a456-426614174000",
     name: "생일 파티 준비",
     outcomes: [{ atIso: "2026-07-17T09:00:00.000Z", kind: "used", note: "helped" }],
     status: "active",
@@ -55,6 +55,26 @@ describe("formatWorkList / formatWorkDetail — pure formatting", () => {
     expect(rendered).toContain("생일 파티 준비");
     expect(rendered).toContain("active");
     expect(rendered).toContain("다음 주 토요일까지 준비 끝내기");
+    expect(rendered).toContain(`muse thread link <thread-id> work ${work.id} --role context`);
+  });
+
+  it("cannot inject list lines or advertise an ineligible continuity reference", () => {
+    const rendered = formatWorkList([{ ...work, goal: "\u0000\t", name: "\u0000\nforged" }]);
+    expect(rendered).not.toContain("\nforged");
+    expect(rendered).not.toContain("muse thread link");
+    expect(rendered).toContain("unsafe Work text hidden");
+  });
+
+  it("sanitizes eligible hostile text while retaining the exact continuity command", () => {
+    const rendered = formatWorkList([{
+      ...work,
+      goal: "safe goal\nforged-goal",
+      name: "safe name\u001b[31m\nforged-name"
+    }]);
+    expect(rendered).not.toContain("\nforged-goal");
+    expect(rendered).not.toContain("\nforged-name");
+    expect(rendered).not.toContain("\u001b");
+    expect(rendered).toContain(`muse thread link <thread-id> work ${work.id} --role context`);
   });
 
   it("formats the full detail — links + outcomes", () => {

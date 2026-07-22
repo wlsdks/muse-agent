@@ -128,7 +128,7 @@ describe("personal-agent qualification scorer", () => {
       interactionReceipts: [],
       nextPolicyVersion: 2,
       resetReceipts: [],
-      schemaVersion: 10,
+      schemaVersion: 11,
       threads: [{ createdAt: "2026-07-21T08:00:00.000Z", id: "thread_work", kind: "work", links: [], policy: baselinePolicy(), title: "Work" }],
       undoResetReceipts: []
     };

@@ -30,9 +30,12 @@ import {
   createPersonalThread,
   createRunArtifactValidator,
   createRunExactArtifactResolver,
-  deletePersonalThread,
+  createWorkArtifactValidator,
+  createWorkExactArtifactResolver,
+  deletePersonalThreadWorkSafe,
   inspectThread,
   linkArtifact,
+  linkWorkContinuity,
   mcpProviderId,
   prepareContinuityPack,
   prepareContinuityReview,
@@ -40,6 +43,7 @@ import {
   resetThreadPolicy,
   undoThreadReset,
   unlinkArtifact,
+  unlinkWorkContinuity,
   type ArtifactLink,
   type ArtifactLinkValidator,
   type AttunementState,
@@ -57,10 +61,10 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { buildCalendarRegistry, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWorksFile } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { defaultBrowsingFile, readExactBrowsingVisit } from "@muse/recall";
-import { defaultConversationsFile, readExactConversation } from "@muse/stores";
+import { defaultConversationsFile, readExactConversation, readExactWork } from "@muse/stores";
 import type { Command } from "commander";
 
 import {
@@ -72,7 +76,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "checkpoint", "browsing-visit", "conversation", "resource"] as const;
+const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "checkpoint", "browsing-visit", "conversation", "work", "resource"] as const;
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
 
@@ -95,6 +99,10 @@ function environment(): Record<string, string | undefined> {
 
 function attunementFile(): string {
   return resolveAttunementFile(environment());
+}
+
+function worksFile(): string {
+  return resolveWorksFile(environment());
 }
 
 function tasksFile(): string {
@@ -133,7 +141,7 @@ async function explicitWorkspaceRealpath(workspaceDir: string | undefined): Prom
   }
 }
 
-function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry, workspaceDir: string | undefined, browsingFile: string, conversationsFile: string): ArtifactLinkValidator {
+function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry, workspaceDir: string | undefined, browsingFile: string, conversationsFile: string, exactWorksFile: string): ArtifactLinkValidator {
   const localValidator = createLocalArtifactValidator({
     notesDir: notesDir(),
     remindersFile: remindersFile(),
@@ -147,7 +155,8 @@ function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarR
   const conversationValidator = createConversationArtifactValidator({
     readExactConversation: (artifactId) => readExactConversation(conversationsFile, artifactId)
   });
-  return async ({ artifactId, artifactType, providerId }) => {
+  const workValidator = createWorkArtifactValidator({ readExactWork: (artifactId) => readExactWork(exactWorksFile, artifactId) });
+  return async ({ artifactId, artifactType, providerId, threadId }) => {
     if (artifactType === "resource") {
       const server = serverFromProviderId(providerId);
       const resolved = await validateMcpResource(server, artifactId, mcpCaller);
@@ -159,11 +168,12 @@ function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarR
     if (artifactType === "checkpoint") return createCheckpointArtifactValidator({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir), checkpointsDir: resolveCheckpointsDir(environment()) })({ artifactId, artifactType, providerId });
     if (artifactType === "browsing-visit") return browsingValidator({ artifactId, artifactType, providerId });
     if (artifactType === "conversation") return conversationValidator({ artifactId, artifactType, providerId });
+    if (artifactType === "work") return workValidator({ artifactId, artifactType, providerId, threadId });
     return localValidator({ artifactId, artifactType, providerId });
   };
 }
 
-function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry, workspaceDir: string | undefined, browsingFile: string, conversationsFile: string): ExactArtifactResolver {
+function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry, workspaceDir: string | undefined, browsingFile: string, conversationsFile: string, exactWorksFile: string): ExactArtifactResolver {
   const resolveLocal = createLocalExactArtifactResolver({
     notesDir: notesDir(),
     remindersFile: remindersFile(),
@@ -177,6 +187,7 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calend
   const resolveConversation = createConversationExactArtifactResolver({
     readExactConversation: (artifactId) => readExactConversation(conversationsFile, artifactId)
   });
+  const resolveWork = createWorkExactArtifactResolver({ readExactWork: (artifactId) => readExactWork(exactWorksFile, artifactId) });
   return async (link) => {
     if (link.artifactType === "resource") {
       // The resolved title/summary is UNTRUSTED external text; it is displayed
@@ -190,6 +201,7 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calend
     if (link.artifactType === "checkpoint") return createCheckpointExactArtifactResolver({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir), checkpointsDir: resolveCheckpointsDir(environment()) })(link);
     if (link.artifactType === "browsing-visit") return resolveBrowsing(link);
     if (link.artifactType === "conversation") return resolveConversation(link);
+    if (link.artifactType === "work") return resolveWork(link);
     return resolveLocal(link);
   };
 }
@@ -403,7 +415,7 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
         : "next step: none set";
     const readiness = pack.evidence.length === 0
       ? {
-          action: `link an exact source: muse thread link ${thread.id} <task|note|reminder|calendar-event|contact|run|checkpoint|browsing-visit|conversation|resource> <id> --role <context|next-step>`,
+          action: `link an exact source: muse thread link ${thread.id} <task|note|reminder|calendar-event|contact|run|checkpoint|browsing-visit|conversation|work|resource> <id> --role <context|next-step>`,
           status: "needs-link"
         }
       : availableEvidence === 0
@@ -448,6 +460,11 @@ function formatArtifactMetadata(artifact: NonNullable<ContinuityPack["nextStep"]
   if (artifact.conversationUpdatedAt) metadata.push(`updated: ${artifact.conversationUpdatedAt}`);
   if (artifact.conversationOrigin) metadata.push(`origin: ${artifact.conversationOrigin}`);
   if (artifact.conversationLastOwnerPrompt) metadata.push(`last owner prompt: ${artifact.conversationLastOwnerPrompt}`);
+  if (artifact.workStatus) metadata.push(`status: ${artifact.workStatus}`);
+  if (artifact.workUpdatedAt) metadata.push(`updated: ${artifact.workUpdatedAt}`);
+  if (artifact.workFlowCount !== undefined) metadata.push(`flows: ${artifact.workFlowCount.toString()}`);
+  if (artifact.workBoardTaskCount !== undefined) metadata.push(`board tasks: ${artifact.workBoardTaskCount.toString()}`);
+  if (artifact.workOutcomeCount !== undefined) metadata.push(`outcomes: ${artifact.workOutcomeCount.toString()}`);
   return metadata.length > 0 ? ` · ${metadata.join(" · ")}` : "";
 }
 
@@ -548,8 +565,8 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
   const now = deps.now ?? Date.now;
   const browsingFile = defaultBrowsingFile(environment());
   const conversationsFile = defaultConversationsFile(environment());
-  const validateArtifact = createArtifactValidator(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile);
-  const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile);
+  const validateArtifact = createArtifactValidator(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile, worksFile());
+  const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile, worksFile());
   const thread = program.command("thread").description("Keep an explicitly chosen life or work thread ready to resume");
 
   thread
@@ -598,6 +615,7 @@ Examples:
   $ muse thread link <thread-id> checkpoint <continuity-ref> --role context
   $ muse thread link <thread-id> browsing-visit <exact-visit-id> --role context
   $ muse thread link <thread-id> conversation <exact-conversation-id> --role context
+  $ muse thread link <thread-id> work <exact-work-id> --role context
   $ muse thread link <thread-id> calendar-event <continuity-ref> --provider local --role context
   $ muse thread link <thread-id> resource github/facebook/react/issues/123 --role context`)
     .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly provider?: string; readonly role: string }, command: Command) => {
@@ -606,6 +624,7 @@ Examples:
         const role = options.role.trim().toLowerCase();
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
         assertChoice(role, ARTIFACT_ROLES, "--role");
+        if (type === "work" && role !== "context") throw new AttunementStoreError("Work is context-only");
         const input = type === "resource"
           ? buildResourceLinkInput(artifactId, role as ArtifactLink["role"], threadId.trim())
           : type === "calendar-event"
@@ -616,7 +635,9 @@ Examples:
               role: role as ArtifactLink["role"],
               threadId: threadId.trim()
             };
-        const result = await linkArtifact(attunementFile(), input, { validateArtifact });
+        const result = type === "work"
+          ? await linkWorkContinuity({ attunementFile: attunementFile(), worksFile: worksFile() }, { threadId: threadId.trim(), workId: artifactId })
+          : await linkArtifact(attunementFile(), input, { validateArtifact });
         io.stdout(`${result.created ? "Linked" : "Already linked"} ${result.link.providerId}:${result.link.artifactType}:${result.link.artifactId} as ${result.link.role}\n`);
       });
     });
@@ -630,12 +651,14 @@ Examples:
         const type = artifactType.trim().toLowerCase();
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
         if (type === "calendar-event" && !options.provider?.trim()) throw new AttunementStoreError("a calendar-event requires --provider <configured-provider-id>");
-        const removed = await unlinkArtifact(attunementFile(), {
+        const removed = type === "work"
+          ? await unlinkWorkContinuity({ attunementFile: attunementFile(), worksFile: worksFile() }, { threadId: threadId.trim(), workId: artifactId })
+          : await unlinkArtifact(attunementFile(), {
           artifactId: type === "contact" || type === "run" || type === "checkpoint" ? artifactId : artifactId.trim(),
           artifactType: type as ArtifactLink["artifactType"],
           ...(type === "calendar-event" ? { providerId: calendarProviderId(options.provider!.trim()) } : {}),
           threadId: threadId.trim()
-        });
+          });
         if (!removed) throw new AttunementStoreError(`no ${type} link '${artifactId}' on thread '${threadId}'`);
         io.stdout(`Unlinked ${type}:${artifactId}\n`);
       });
@@ -646,7 +669,7 @@ Examples:
     .description("Delete one personal thread and its continuity deliveries and policy receipts")
     .action(async (threadId: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread delete", async () => {
-        const deleted = await deletePersonalThread(attunementFile(), threadId.trim());
+        const deleted = await deletePersonalThreadWorkSafe({ attunementFile: attunementFile(), worksFile: worksFile() }, threadId.trim());
         io.stdout(`Deleted ${deleted.thread.kind} thread ${deleted.thread.id} (${String(deleted.deletedDeliveries)} deliveries, ${String(deleted.deletedResetReceipts)} reset receipts)\n`);
       });
     });

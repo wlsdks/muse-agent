@@ -177,12 +177,14 @@ export { askTimeWeaknessNudge, isMasteredWeakness, readWeaknesses, recordTimePar
 export type { AskTimeNudge, DevFixableWeakness, WeaknessEntry } from "./weakness-ledger.js";
 export {
   addWorkOutcome,
+  assertValidWorkStoreState,
   createWork,
   decryptWorksAtRest,
   deleteWork,
   encryptWorksAtRest,
   getWork,
   isWorksEncrypted,
+  isCanonicalWorkId,
   linkWorkBoardTask,
   linkWorkFlow,
   listWorks,
@@ -190,6 +192,9 @@ export {
   mutateWorks,
   pruneDeletedFlowRefs,
   readWorks,
+  readExactWork,
+  readExactWorkCatalog,
+  readWorkStoreSnapshot,
   resolveWorkId,
   serializeWork,
   setWorkThread,
@@ -199,6 +204,8 @@ export {
   unlinkWorkThread,
   updateWork,
   WorksStoreError,
+  WorkExactReadError,
+  writeWorkStoreStateUnlocked,
   writeWorks
 } from "./works-store.js";
 export type {
@@ -209,5 +216,6 @@ export type {
   UpdateWorkInput,
   WorkOutcome,
   WorkOutcomeKind,
-  WorkStatus
+  WorkStatus,
+  WorkStoreSnapshot
 } from "./works-store.js";

@@ -49,17 +49,17 @@ evidence sufficiency, or action approval.
 ## Personal-thread contract
 
 Muse must know which part of the user's life they mean before it combines a task, note,
-reminder, calendar event, contact, run, execution checkpoint, browser visit, or owner-authored conversation. Slice A
+reminder, calendar event, contact, run, execution checkpoint, browser visit, owner-authored conversation, or Work. Slice A
 supports exact local tasks, notes, reminders, configured calendar occurrences, contacts,
 strict local run evidence, future workspace-scoped execution checkpoint evidence, and one
-exact visit from the opt-in local browsing archive, and one exact CLI/web conversation, and
+exact visit from the opt-in local browsing archive, one exact CLI/web conversation, one exact local Work, and
 only the user can create the binding. An LLM may later summarize
 linked evidence; it may not invent the association.
 
 ```ts
 interface PersonalThreadLink {
   threadId: string;
-  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact" | "run" | "checkpoint" | "browsing-visit" | "conversation";
+  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact" | "run" | "checkpoint" | "browsing-visit" | "conversation" | "work";
   providerId: "local" | `calendar:${string}`;
   artifactId: string;
   role: "context" | "next-step";
@@ -122,6 +122,13 @@ the exact origin label, and canonical update time. Assistant/system turns and hi
 metadata never cross the adapter. The artifact is context-only and grants no resume,
 next-step, receipt, outcome, feedback, permission, action, observation, or automation
 authority.
+
+A Work link accepts only its full canonical generated ID from the strict local Work
+catalog. Resolution exposes bounded name/goal, status, update time, and aggregate counts;
+flow/task IDs, thread binding, outcome details, and encrypted/raw bytes never cross the
+adapter. Work is context-only inside a Continuity Pack. Relationship-changing CLI/API
+operations use the two-store coordinator so concurrent link, assignment, and deletion
+cannot create split-brain between `works.json` and Attunement.
 
 Additional artifact types and deterministic bindings are later adapters, not a fallback in
 this path.

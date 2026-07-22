@@ -102,6 +102,13 @@ pack. It does not require desktop observation.
   title, latest owner prompt, origin, and update time. Messaging/custom origins, assistant
   and system turns, raw archives, resume, next-step selection, receipts, feedback,
   permission, Observe, and automation remain excluded.
+  Exact local Work is now supported through a context-only `work` link. The strict
+  encryption-aware catalog accepts legacy/v1 plaintext or encrypted state, and ordinary
+  mutations migrate from the locked snapshot without changing encryption format. CLI,
+  authenticated HTTP, and web require the full canonical Work ID and project only bounded
+  name/goal, status, update time, and counts. A deterministic two-store coordinator guards
+  Work links, `threadId` assignment, and both deletion directions against concurrent
+  split-brain; Work-owned completion/outcome authority is not imported into Continuity.
 - ✅ Only the user binds an item to a `threadId`; no deterministic auto-link or LLM summary is
   present in Slice A.
 - Treat `work` as one optional thread kind. It must not be the default meaning of every

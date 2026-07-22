@@ -31,10 +31,10 @@ describe("Attunement schema v10 conversation references", () => {
     const file = await storeFile();
     const raw = `${JSON.stringify(state(9), null, 2)}\n`;
     await writeFile(file, raw, "utf8");
-    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 10 });
+    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 11 });
     expect(await readFile(file, "utf8")).toBe(raw);
     await createPersonalThread(file, { kind: "work", title: "Link exact conversation" });
-    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 10 });
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 11 });
   });
 
   it("rejects conversation references in v1-v9 and accepts canonical context in v10", async () => {
@@ -48,6 +48,6 @@ describe("Attunement schema v10 conversation references", () => {
       await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
     }
     await writeFile(file, `${JSON.stringify(state(10, [link]), null, 2)}\n`, "utf8");
-    await expect(readAttunementState(file)).resolves.toMatchObject({ schemaVersion: 10, threads: [{ links: [link] }] });
+    await expect(readAttunementState(file)).resolves.toMatchObject({ schemaVersion: 11, threads: [{ links: [link] }] });
   });
 });

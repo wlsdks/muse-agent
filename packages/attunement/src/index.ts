@@ -122,6 +122,22 @@ export {
   type ConversationSourceTurn,
   type ExactConversationReader
 } from "./conversation-artifact.js";
+export {
+  createWorkArtifactValidator,
+  createWorkExactArtifactResolver,
+  projectWorkContinuity,
+  type ExactWorkReader,
+  type WorkArtifactOptions
+} from "./work-artifact.js";
+export {
+  deletePersonalThreadWorkSafe,
+  deleteWorkContinuitySafe,
+  linkWorkContinuity,
+  setWorkContinuityThread,
+  unlinkWorkContinuity,
+  type WorkContinuityFiles,
+  type WorkContinuityOptions
+} from "./work-continuity-coordinator.js";
 export { createCalendarArtifactValidator, createCalendarExactArtifactResolver } from "./calendar-artifacts.js";
 export {
   createContactArtifactValidator,
