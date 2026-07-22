@@ -87,6 +87,9 @@ states say what evidence is missing; they do not render zero as success.
   narrow LaunchAgent allowlist, and expose the resolved resident policy plus
   current admission verdict through the no-model/no-network `muse doctor
   --resources` diagnostic.
+- [x] Persist only the latest admission/defer transition as an owner-only local
+  receipt; it is written on state changes, not per tick, and is shown as
+  separate evidence in `muse doctor --resources`.
 - [ ] Inventory per-loop CPU, resident memory, model load, queue depth, and
   cancellation latency using local, privacy-safe process measurements.
 - [ ] Define hard admission states: active user, low headroom, thermal/battery

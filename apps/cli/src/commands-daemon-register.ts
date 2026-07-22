@@ -110,6 +110,7 @@ import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./c
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
 import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
+import { resolveDaemonResourceReceiptFile, resourceAdmissionReceipt, writeDaemonResourceAdmissionReceipt } from "./daemon-resource-receipt.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -281,6 +282,8 @@ export interface DaemonHelpers {
   readonly browsingSync?: (args: { readonly env: NodeJS.ProcessEnv; readonly storeFile: string; readonly limit: number }) => Promise<{ readonly synced: number; readonly total: number }>;
   /** Test seam for local resource admission; absent uses lightweight OS counters. */
   readonly resourceSnapshot?: () => DaemonResourceSnapshot;
+  /** Best-effort latest-state receipt for resource admission transitions. */
+  readonly writeResourceAdmissionReceipt?: (file: string, receipt: ReturnType<typeof resourceAdmissionReceipt>) => Promise<void>;
   /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status/--uninstall branches. */
   readonly schtasksRun?: (args: readonly string[]) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
   /**
@@ -1362,7 +1365,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // loop actually running" without depending on any one sub-tick's
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
-      let lastResourceDeferral: string | undefined;
+      let lastResourceAdmissionKey: string | undefined;
+      const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
       const runTick = async (): Promise<void> => {
         await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
@@ -1379,14 +1383,20 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await homeWatchTick();
         await briefingTick();
         const resourceAdmission = assessDaemonResourceAdmission(e, (helpers.resourceSnapshot ?? readDaemonResourceSnapshot)());
+        const resourceAdmissionKey = `${resourceAdmission.status}:${resourceAdmission.reason ?? ""}`;
+        const previousResourceAdmissionKey = lastResourceAdmissionKey;
+        const resourceAdmissionChanged = resourceAdmissionKey !== previousResourceAdmissionKey;
+        if (resourceAdmissionChanged) {
+          lastResourceAdmissionKey = resourceAdmissionKey;
+          const receipt = resourceAdmissionReceipt(resourceAdmission);
+          await (helpers.writeResourceAdmissionReceipt ?? writeDaemonResourceAdmissionReceipt)(resourceReceiptFile, receipt).catch(() => undefined);
+        }
         if (resourceAdmission.status === "defer") {
-          if (lastResourceDeferral !== resourceAdmission.reason) {
-            lastResourceDeferral = resourceAdmission.reason;
+          if (resourceAdmissionChanged) {
             io.stdout(`[${new Date().toISOString()}] resource: deferred heavyweight background work (${resourceAdmission.reason})\n`);
           }
-        } else if (lastResourceDeferral) {
+        } else if (previousResourceAdmissionKey?.startsWith("defer:") === true) {
           io.stdout(`[${new Date().toISOString()}] resource: heavyweight background work resumed\n`);
-          lastResourceDeferral = undefined;
         }
         if (resourceAdmission.status === "admit") {
           await reflectionTick();

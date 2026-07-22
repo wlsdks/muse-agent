@@ -51,7 +51,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -86,6 +86,7 @@ async function runDaemon(
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
       ...(opts.resourceSnapshot ? { resourceSnapshot: opts.resourceSnapshot } : {}),
+      ...(opts.writeResourceAdmissionReceipt ? { writeResourceAdmissionReceipt: opts.writeResourceAdmissionReceipt } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
@@ -1620,7 +1621,9 @@ describe("muse daemon — resource admission", () => {
     };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     let calls = 0;
+    const receipts: unknown[] = [];
     const snapshots = [
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 4 },
       { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 4 },
       { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }
     ];
@@ -1629,16 +1632,23 @@ describe("muse daemon — resource admission", () => {
       env,
       registry,
       resourceSnapshot: () => snapshots.shift() ?? { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); },
       runDaemonLoop: async ({ signal, tick }) => {
         await tick();
         await tick();
+        await tick();
         signal.stop();
-        return 2;
+        return 3;
       }
     });
 
     expect(result.exitCode).toBeUndefined();
     expect(calls).toBe(1);
+    expect(receipts).toHaveLength(2);
+    expect(receipts).toMatchObject([
+      { reason: "cpu-load", status: "defer" },
+      { status: "admit" }
+    ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (cpu-load)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
   });

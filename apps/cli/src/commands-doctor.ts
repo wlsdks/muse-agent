@@ -66,6 +66,7 @@ import { collectResidentDaemonRuntime } from "./personal-agent-qualification-pro
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { ProgramIO } from "./program.js";
 import { assessDaemonResourceAdmission, describeDaemonResourceAdmission, readDaemonResourceSnapshot, resolveDaemonResourcePolicy, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
+import { describeDaemonResourceAdmissionReceipt, readDaemonResourceAdmissionReceipt, resolveDaemonResourceReceiptFile } from "./daemon-resource-receipt.js";
 
 export interface DoctorCommandHelpers {
   readonly apiRequest: (
@@ -536,7 +537,7 @@ async function resolveDaemonResourceEnvironment(
     const variables = parseLaunchAgentEnvironmentVariables(await fs.readFile(daemonAutostart.plistFile, "utf8"));
     if (variables === undefined) return { env, source: "shell/default" };
     const residentEnv = Object.create(env) as NodeJS.ProcessEnv;
-    for (const key of ["MUSE_DAEMON_RESOURCE_GUARD", "MUSE_DAEMON_MIN_FREE_MEMORY_MB", "MUSE_DAEMON_MAX_LOAD_PER_CORE"] as const) {
+    for (const key of ["MUSE_DAEMON_RESOURCE_GUARD", "MUSE_DAEMON_MIN_FREE_MEMORY_MB", "MUSE_DAEMON_MAX_LOAD_PER_CORE", "MUSE_DAEMON_RESOURCE_RECEIPT_FILE", "MUSE_HOME"] as const) {
       // An absent resident key means the daemon will use its code default after
       // reboot, not the installing shell's override. Shadow every key (including
       // with `undefined`) so a valid, partial plist cannot inherit shell policy
@@ -572,8 +573,9 @@ async function daemonResourceDoctorCheckFor(
   const resourceEnvironment = await resolveDaemonResourceEnvironment(env, daemonAutostart);
   const resourcePolicy = resolveDaemonResourcePolicy(resourceEnvironment.env);
   const resourceAdmission = assessDaemonResourceAdmission(resourceEnvironment.env, snapshot);
+  const receipt = await readDaemonResourceAdmissionReceipt(resolveDaemonResourceReceiptFile(resourceEnvironment.env));
   return {
-    detail: describeDaemonResourceAdmission(resourcePolicy, snapshot, resourceAdmission, resourceEnvironment.source),
+    detail: `${describeDaemonResourceAdmission(resourcePolicy, snapshot, resourceAdmission, resourceEnvironment.source)}; ${describeDaemonResourceAdmissionReceipt(receipt)}`,
     name: "daemon resources",
     status: resourceAdmission.status === "defer" ? "warn" : "ok"
   };

@@ -204,6 +204,8 @@ describe("local doctor runtime ownership", () => {
     const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-contained-resource-"));
     const plistFile = join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist");
     mkdirSync(join(homeDir, "Library", "LaunchAgents"), { recursive: true });
+    mkdirSync(join(homeDir, ".muse"), { recursive: true });
+    writeFileSync(join(homeDir, ".muse", "daemon-resource-admission.json"), JSON.stringify({ at: "2026-07-22T00:00:00.000Z", schema: "muse.daemon-resource-admission.v1", status: "admit" }));
     writeFileSync(plistFile, buildLaunchAgentPlist({
       environmentVariables: { MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048" },
       label: "com.muse.daemon",
@@ -224,6 +226,7 @@ describe("local doctor runtime ownership", () => {
         MUSE_DAEMON_MAX_LOAD_PER_CORE: "4",
         MUSE_DAEMON_MIN_FREE_MEMORY_MB: "128",
         MUSE_DAEMON_RESOURCE_GUARD: "false",
+        MUSE_HOME: join(homeDir, "conflicting-shell-muse-home"),
         MUSE_LOCAL_ONLY: "true"
       },
       fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
@@ -234,6 +237,7 @@ describe("local doctor runtime ownership", () => {
     expect(resources).toMatchObject({ status: "warn" });
     expect(resources?.detail).toContain("LaunchAgent; guard on; min free 2048 MiB; max load 0.75/core");
     expect(resources?.detail).toContain("heavy background work deferred (low-free-memory)");
+    expect(resources?.detail).toContain("last transition admitted at 2026-07-22T00:00:00.000Z");
   });
 
   it("has a dedicated resource check that never contacts a model or remote service", async () => {
@@ -253,6 +257,30 @@ describe("local doctor runtime ownership", () => {
 
     expect(check).toMatchObject({ name: "daemon resources", status: "ok" });
     expect(check.detail).toContain("shell/default");
+    expect(check.detail).toContain("no prior transition evidence");
+  });
+
+  it("shows a latest resource transition receipt without changing the live admission verdict", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-resource-receipt-"));
+    const receiptFile = join(homeDir, ".muse", "daemon-resource-admission.json");
+    mkdirSync(join(homeDir, ".muse"), { recursive: true });
+    writeFileSync(receiptFile, JSON.stringify({ at: "2026-07-22T00:00:00.000Z", reason: "cpu-load", schema: "muse.daemon-resource-admission.v1", status: "defer" }));
+    const check = await daemonResourceDoctorCheck({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist"),
+        runtime: { state: "not-registered" }
+      },
+      daemonResourceSnapshot: { cpuCount: 8, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 },
+      env: { HOME: homeDir },
+      fetchImpl: async () => { throw new Error("resource doctor must not fetch"); },
+      homeDir
+    });
+
+    expect(check).toMatchObject({ name: "daemon resources", status: "ok" });
+    expect(check.detail).toContain("heavy background work admitted");
+    expect(check.detail).toContain("last transition deferred (cpu-load) at 2026-07-22T00:00:00.000Z");
   });
 
   it("falls back to the interactive shell self-learning gate when a valid artifact cannot be read", async () => {
