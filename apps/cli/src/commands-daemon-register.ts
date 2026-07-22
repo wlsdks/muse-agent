@@ -108,6 +108,7 @@ import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock } from "./daemon-messaging-safety.js";
+import { assessDaemonResourceAdmission, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -277,6 +278,8 @@ export interface DaemonHelpers {
    * is never called proves the gate held. Absent → the real locate + sync.
    */
   readonly browsingSync?: (args: { readonly env: NodeJS.ProcessEnv; readonly storeFile: string; readonly limit: number }) => Promise<{ readonly synced: number; readonly total: number }>;
+  /** Test seam for local resource admission; absent uses lightweight OS counters. */
+  readonly resourceSnapshot?: () => DaemonResourceSnapshot;
   /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status/--uninstall branches. */
   readonly schtasksRun?: (args: readonly string[]) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
   /**
@@ -1307,6 +1310,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // loop actually running" without depending on any one sub-tick's
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
+      let lastResourceDeferral: string | undefined;
       const runTick = async (): Promise<void> => {
         await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
@@ -1322,17 +1326,29 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await objectivesTick();
         await homeWatchTick();
         await briefingTick();
-        await reflectionTick();
-        if (emailSyncTick) await emailSyncTick();
-        await selfLearnTick();
-        await selfLearnDecayTick();
-        await playbookConsolidateTick();
-        await memoryConsolidateTick();
-        await recapTick();
-        await digestFlushTick();
+        const resourceAdmission = assessDaemonResourceAdmission(e, (helpers.resourceSnapshot ?? readDaemonResourceSnapshot)());
+        if (resourceAdmission.status === "defer") {
+          if (lastResourceDeferral !== resourceAdmission.reason) {
+            lastResourceDeferral = resourceAdmission.reason;
+            io.stdout(`[${new Date().toISOString()}] resource: deferred heavyweight background work (${resourceAdmission.reason})\n`);
+          }
+        } else if (lastResourceDeferral) {
+          io.stdout(`[${new Date().toISOString()}] resource: heavyweight background work resumed\n`);
+          lastResourceDeferral = undefined;
+        }
+        if (resourceAdmission.status === "admit") {
+          await reflectionTick();
+          if (emailSyncTick) await emailSyncTick();
+          await selfLearnTick();
+          await selfLearnDecayTick();
+          await playbookConsolidateTick();
+          await memoryConsolidateTick();
+          await recapTick();
+          await digestFlushTick();
+          await browsingAutoSyncTick();
+        }
         await messagingPollTick();
         await conflictWatchTick();
-        await browsingAutoSyncTick();
         await retentionPruneTick();
       };
 

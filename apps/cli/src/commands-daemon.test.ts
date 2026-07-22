@@ -51,7 +51,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -85,6 +85,7 @@ async function runDaemon(
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
+      ...(opts.resourceSnapshot ? { resourceSnapshot: opts.resourceSnapshot } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
@@ -1535,6 +1536,39 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
     const second = (await readProactiveHeartbeat(heartbeatDir)).daemonLoop!.at;
 
     expect(Date.parse(second)).toBeGreaterThan(Date.parse(first));
+  });
+});
+
+describe("muse daemon — resource admission", () => {
+  it("defers and then resumes opt-in heavyweight browsing sync without changing the light tick", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_BROWSING_AUTO_SYNC: "true",
+      MUSE_DAEMON_DELIVERY_ENABLED: "true"
+    };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    let calls = 0;
+    const snapshots = [
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 4 },
+      { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }
+    ];
+    const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      browsingSync: async () => { calls += 1; return { synced: 0, total: 0 }; },
+      env,
+      registry,
+      resourceSnapshot: () => snapshots.shift() ?? { cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 },
+      runDaemonLoop: async ({ signal, tick }) => {
+        await tick();
+        await tick();
+        signal.stop();
+        return 2;
+      }
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(calls).toBe(1);
+    expect(result.stdout).toContain("resource: deferred heavyweight background work (cpu-load)");
+    expect(result.stdout).toContain("resource: heavyweight background work resumed");
   });
 });
 

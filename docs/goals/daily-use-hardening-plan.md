@@ -78,6 +78,11 @@ states say what evidence is missing; they do not render zero as success.
 
 ### 3. Add resource admission and backpressure before enabling background work
 
+- [x] First admission boundary: default-on daemon-only CPU/load and free-memory
+  guard defers model, learning, email-sync, and browsing-sync work while keeping
+  heartbeat, light delivery/safety checks, polling, conflict watch, and retention
+  available. It fails open on an invalid local observation and resumes on the
+  first admitted tick.
 - [ ] Inventory per-loop CPU, resident memory, model load, queue depth, and
   cancellation latency using local, privacy-safe process measurements.
 - [ ] Define hard admission states: active user, low headroom, thermal/battery
