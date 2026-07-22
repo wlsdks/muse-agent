@@ -134,6 +134,9 @@ interface OpenedPackArtifact {
   readonly calendarTimeState?: "upcoming" | "happening" | "ended";
   readonly contactBirthday?: string;
   readonly contactRelationship?: string;
+  readonly checkpointPhase?: "start" | "act" | "failed" | "complete";
+  readonly checkpointRecordedAt?: string;
+  readonly checkpointStep?: number;
   readonly providerId: string;
   readonly reminderDueAt?: string;
   readonly reminderDueState?: "due" | "overdue";
@@ -438,6 +441,12 @@ export function OpenedPackCard({
             {artifact.artifactType === "run" && artifact.runToolNames && artifact.runToolNames.length > 0
               ? <Badge tone="neutral">{t("continuity.runTools", { tools: artifact.runToolNames.join(", ") })}</Badge>
               : null}
+            {artifact.artifactType === "checkpoint" && typeof artifact.checkpointStep === "number" && artifact.checkpointPhase
+              ? <Badge tone="neutral">{artifact.checkpointStep.toString()}:{artifact.checkpointPhase}</Badge>
+              : null}
+            {artifact.artifactType === "checkpoint" && artifact.checkpointRecordedAt
+              ? <Badge tone="neutral">{artifact.checkpointRecordedAt}</Badge>
+              : null}
           </div>
         </div>;
       })}
@@ -476,7 +485,7 @@ function taskDoneInOpenedPack(openedPack: OpenedPack, taskId: string): OpenedPac
   };
 }
 
-type LinkArtifactType = "task" | "note" | "reminder" | "calendar-event" | "contact" | "run";
+type LinkArtifactType = "task" | "note" | "reminder" | "calendar-event" | "contact" | "run" | "checkpoint";
 
 function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarProviders: readonly { readonly displayName: string; readonly id: string }[]; readonly disabled: boolean; readonly onLink: (input: { artifactId: string; artifactType: LinkArtifactType; providerId?: string; role: "context" | "next-step" }) => void }) {
   const { t } = useI18n();
@@ -486,7 +495,7 @@ function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarPr
   const [role, setRole] = useState<"context" | "next-step">("context");
   return <form onSubmit={(event) => {
     event.preventDefault();
-    const exactArtifactId = artifactType === "contact" || artifactType === "run" ? artifactId : artifactId.trim();
+    const exactArtifactId = artifactType === "contact" || artifactType === "run" || artifactType === "checkpoint" ? artifactId : artifactId.trim();
     if (exactArtifactId.trim() && (artifactType !== "calendar-event" || providerId)) onLink({ artifactId: exactArtifactId, artifactType, ...(artifactType === "calendar-event" ? { providerId } : {}), role });
   }} style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
     <input className="input" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} placeholder={t("continuity.linkId")} aria-label={t("continuity.linkId")} />
@@ -495,7 +504,7 @@ function LinkForm({ calendarProviders, disabled, onLink }: { readonly calendarPr
       setArtifactType(next);
       if (next !== "task") setRole("context");
     }} aria-label={t("continuity.linkType")}>
-      <option value="task">task</option><option value="note">note</option><option value="reminder">reminder</option><option value="calendar-event">calendar-event</option><option value="contact">contact</option><option value="run">run</option>
+      <option value="task">task</option><option value="note">note</option><option value="reminder">reminder</option><option value="calendar-event">calendar-event</option><option value="contact">contact</option><option value="run">run</option><option value="checkpoint">checkpoint</option>
     </select>
     {artifactType === "calendar-event" ? <select className="input" value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label={t("continuity.calendarProvider")}>
       <option value="">{t("continuity.calendarProvider")}</option>

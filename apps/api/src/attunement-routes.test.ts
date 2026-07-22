@@ -14,7 +14,8 @@ import {
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
-import { encodeLocalRunReference } from "@muse/shared";
+import { FileCheckpointStore } from "@muse/runtime-state";
+import { encodeLocalCheckpointReference, encodeLocalRunReference } from "@muse/shared";
 import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +25,7 @@ import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunemen
 let root: string;
 let attunementFile: string;
 let contactsFile: string;
+let checkpointsDir: string;
 let notesDir: string;
 let remindersFile: string;
 let tasksFile: string;
@@ -80,9 +82,10 @@ function calendarRegistry(): CalendarProviderRegistry {
 }
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "muse-attunement-api-"));
+  root = await realpath(await mkdtemp(join(tmpdir(), "muse-attunement-api-")));
   attunementFile = join(root, "attunement.json");
   contactsFile = join(root, "contacts.json");
+  checkpointsDir = join(root, "checkpoints");
   notesDir = join(root, "notes");
   remindersFile = join(root, "reminders.json");
   tasksFile = join(root, "tasks.json");
@@ -113,6 +116,7 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
     attunementFile,
     authService: undefined,
     contactsFile,
+    checkpointsDir,
     notesDir,
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
     remindersFile,
@@ -140,6 +144,17 @@ async function writeStrictRun(workspaceDir: string, runId = "run_api_exact"): Pr
     type: "chat.completed"
   })}\n`, "utf8");
   return reference;
+}
+
+async function writeStrictCheckpoint(workspaceDir: string, runId = "run_api_interrupted", step = 3): Promise<string> {
+  const workspaceRealpath = await realpath(workspaceDir);
+  await new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceRealpath }).save({
+    continuityEvidence: { phase: "act", query: "Continue the interrupted release review" },
+    runId,
+    state: { encodedMessages: ["must-not-appear"], metadata: { token: "private" }, output: "hidden", phase: "act" },
+    step
+  });
+  return encodeLocalCheckpointReference({ runId, step, workspaceRealpath });
 }
 
 describe("POST /api/attunement/threads/:threadId/continue", () => {
@@ -636,6 +651,69 @@ describe("exact local run continuity sources", () => {
     });
     expect(response.statusCode).toBe(409);
     await padded.close();
+    expect(await readFile(attunementFile)).toEqual(before);
+  });
+});
+
+describe("exact local checkpoint continuity sources", () => {
+  it("links, safely resolves, and unlinks one future workspace-scoped checkpoint", async () => {
+    const artifactId = await writeStrictCheckpoint(root);
+    const app = server({ workspaceDir: root });
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "checkpoint", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId, artifactType: "checkpoint", providerId: "local", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId,
+        artifactType: "checkpoint",
+        checkpointPhase: "act",
+        checkpointStep: 3,
+        providerId: "local",
+        role: "context",
+        title: "Continue the interrupted release review"
+      }),
+      status: "available"
+    }));
+    expect(opened.body).not.toContain("must-not-appear");
+    expect(opened.body).not.toContain("private");
+    expect(opened.json().pack.nextStep?.artifactType).toBe("task");
+
+    const removed = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "checkpoint" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    await app.close();
+  });
+
+  it("fails closed without explicit workspace authority and preserves padded locators", async () => {
+    const artifactId = await writeStrictCheckpoint(root, "run_api_blocked", 2);
+    const before = await readFile(attunementFile);
+    for (const app of [server(), server({ workspaceDir: await realpath(await mkdtemp(join(root, "other-"))) })]) {
+      const response = await app.inject({
+        method: "POST",
+        payload: { artifactId, artifactType: "checkpoint", role: "context" },
+        url: `/api/attunement/threads/${threadId}/links`
+      });
+      expect(response.statusCode).toBe(409);
+      await app.close();
+    }
+    const app = server({ workspaceDir: root });
+    const padded = await app.inject({
+      method: "POST",
+      payload: { artifactId: ` ${artifactId}`, artifactType: "checkpoint", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(padded.statusCode).toBe(409);
+    await app.close();
     expect(await readFile(attunementFile)).toEqual(before);
   });
 });

@@ -28,7 +28,7 @@ function state(policy = baselinePolicy()): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 7,
+    schemaVersion: 8,
     threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_life", kind: "life", links: [noteLink, taskLink], policy, title: "Plan a birthday" }],
     undoResetReceipts: []
   };
@@ -209,7 +209,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 7,
+      schemaVersion: 8,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink, taskLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };
@@ -244,7 +244,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 7,
+      schemaVersion: 8,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };

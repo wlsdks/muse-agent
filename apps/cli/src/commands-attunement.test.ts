@@ -1,11 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
-import { encodeLocalRunReference } from "@muse/shared";
+import { encodeLocalCheckpointReference, encodeLocalRunReference } from "@muse/shared";
+import { FileCheckpointStore } from "@muse/runtime-state";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -39,13 +40,19 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   const stdout: string[] = [];
   const stderr: string[] = [];
   const previous = {
+    HOME: process.env.HOME,
     MUSE_ATTUNEMENT_FILE: process.env.MUSE_ATTUNEMENT_FILE,
+    MUSE_CALENDAR_ICS_FILE: process.env.MUSE_CALENDAR_ICS_FILE,
+    MUSE_CHECKPOINTS_DIR: process.env.MUSE_CHECKPOINTS_DIR,
     MUSE_CONTACTS_FILE: process.env.MUSE_CONTACTS_FILE,
     MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
     MUSE_REMINDERS_FILE: process.env.MUSE_REMINDERS_FILE,
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
+  process.env.HOME = fixture.root;
   process.env.MUSE_ATTUNEMENT_FILE = fixture.attunementFile;
+  process.env.MUSE_CALENDAR_ICS_FILE = join(fixture.root, "calendar.ics");
+  process.env.MUSE_CHECKPOINTS_DIR = join(realpathSync(fixture.root), ".muse", "checkpoints");
   process.env.MUSE_CONTACTS_FILE = fixture.contactsFile;
   process.env.MUSE_NOTES_DIR = fixture.notesDir;
   process.env.MUSE_REMINDERS_FILE = fixture.remindersFile;
@@ -273,6 +280,38 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect((await run(f, ["continue", id])).stdout).not.toContain("not-visible");
     expect((await run(f, ["thread", "unlink", id, "run", ` ${reference}`])).stderr).toContain("no run link");
     expect(readFileSync(runFile)).toEqual(before);
+  });
+
+  it("links and renders one exact future execution checkpoint as context without resume authority", async () => {
+    const f = fixture();
+    const workspaceRealpath = realpathSync(f.root);
+    const checkpointsDir = join(workspaceRealpath, ".muse", "checkpoints");
+    const runId = "run_cli_checkpoint";
+    const store = new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspaceRealpath });
+    await store.save({
+      continuityEvidence: { phase: "act", query: "Finish the release checklist" },
+      createdAt: new Date("2026-07-22T01:02:03.000Z"),
+      runId,
+      state: { encodedMessages: ["raw-secret-must-not-appear"], phase: "act", toolOutput: "private" },
+      step: 4
+    });
+    const checkpointFile = join(checkpointsDir, "v3", readdirSync(join(checkpointsDir, "v3"))[0]!);
+    const before = readFileSync(checkpointFile);
+    const reference = encodeLocalCheckpointReference({ runId, step: 4, workspaceRealpath });
+    const id = threadId((await run(f, ["thread", "start", "Release", "checkpoint", "context", "--kind", "work"])).stdout);
+
+    expect((await run(f, ["thread", "link", id, "checkpoint", reference, "--role", "context"])).stdout)
+      .toContain(`local:checkpoint:${reference}`);
+    expect((await run(f, ["thread", "link", id, "checkpoint", reference, "--role", "next-step"])).stderr)
+      .toContain("only a local task");
+    const continued = await run(f, ["continue", id]);
+    expect(continued.stdout).toContain(`[checkpoint:${reference}] Finish the release checklist`);
+    expect(continued.stdout).toContain("Execution checkpoint 4:act");
+    expect(continued.stdout).not.toContain("raw-secret-must-not-appear");
+    expect(continued.stdout).not.toContain("private");
+    expect((await run(f, ["thread", "unlink", id, "checkpoint", ` ${reference}`])).stderr)
+      .toContain("no checkpoint link");
+    expect(readFileSync(checkpointFile)).toEqual(before);
   });
 
   it("links, resolves, and provider-scoped unlinks one exact calendar occurrence", async () => {

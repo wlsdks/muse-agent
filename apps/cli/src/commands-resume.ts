@@ -1,4 +1,4 @@
-import { errorMessage } from "@muse/shared";
+import { decodeLocalCheckpointReference, errorMessage } from "@muse/shared";
 /**
  * `muse resume` — fault-tolerant execution. A run that crashed or was interrupted
  * mid-tool-loop persisted a per-step checkpoint (the messages-so-far incl. completed
@@ -19,6 +19,12 @@ export interface ResumableRunRow {
   readonly step: number;
   readonly phase: string;
   readonly updatedAt: Date;
+}
+
+export function checkpointReferenceResumeRefusal(value: string): string | undefined {
+  return decodeLocalCheckpointReference(value)
+    ? "A Continuity checkpoint reference is context-only and cannot authorize execution. Resume with the run id shown by `muse resume`."
+    : undefined;
 }
 
 /** Pretty-print the resumable-run list (pure; exported for tests). */
@@ -44,6 +50,11 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
       });
       if (!runId) {
         io.stdout(`${formatResumableRuns(await store.listResumable())}\n`);
+        return;
+      }
+      const checkpointRefusal = checkpointReferenceResumeRefusal(runId);
+      if (checkpointRefusal) {
+        io.stderr(`${checkpointRefusal}\n`);
         return;
       }
       const latest = await store.findResumableCheckpoint(runId);

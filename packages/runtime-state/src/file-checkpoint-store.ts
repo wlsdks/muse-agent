@@ -99,6 +99,13 @@ export interface FileCheckpointStoreOptions {
   readonly continuityWorkspaceDir?: string;
 }
 
+interface CheckpointRetentionGroup {
+  readonly mtime: number;
+  readonly runId: string;
+  /** Undefined identifies the shared legacy/v2 logical group. */
+  readonly workspaceRealpath?: string;
+}
+
 export class FileCheckpointStore implements CheckpointStore {
   readonly #dir: string;
   readonly #maxPerRun: number;
@@ -152,16 +159,12 @@ export class FileCheckpointStore implements CheckpointStore {
    *  completed run's checkpoints linger for replay (P3) but never grow unbounded.
    *  Amortized — only scans the dir every Nth save (the per-step hot loop calls
    *  save many times). Best-effort — a prune failure never breaks a save. */
-  async #checkpointGroups(): Promise<readonly { readonly mtime: number; readonly runId: string }[]> {
-    const groups = new Map<string, number>();
+  async #checkpointGroups(): Promise<readonly CheckpointRetentionGroup[]> {
+    const groups: CheckpointRetentionGroup[] = [];
     const workspaceRealpath = await this.#resolveWorkspaceRealpath();
-    for (const runId of await listCheckpointRunIds(this.#dir, workspaceRealpath)) {
-      const files = [
-        ...checkpointFilePaths(this.#dir, runId),
-        ...(workspaceRealpath ? [v3CheckpointFilePath(this.#dir, workspaceRealpath, runId)] : [])
-      ];
+    for (const runId of await listUnscopedCheckpointRunIds(this.#dir)) {
       let newest = Number.NEGATIVE_INFINITY;
-      for (const file of files) {
+      for (const file of checkpointFilePaths(this.#dir, runId)) {
         try {
           newest = Math.max(newest, (await stat(file)).mtimeMs);
         } catch {
@@ -169,16 +172,25 @@ export class FileCheckpointStore implements CheckpointStore {
         }
       }
       if (!Number.isFinite(newest)) continue;
-      try {
-        groups.set(runId, Math.max(groups.get(runId) ?? Number.NEGATIVE_INFINITY, newest));
-      } catch {
-        // A concurrent delete can make a retention candidate disappear.
+      groups.push({ mtime: newest, runId });
+    }
+    if (workspaceRealpath) {
+      for (const runId of await listScopedCheckpointRunIds(this.#dir, workspaceRealpath)) {
+        try {
+          groups.push({
+            mtime: (await stat(v3CheckpointFilePath(this.#dir, workspaceRealpath, runId))).mtimeMs,
+            runId,
+            workspaceRealpath
+          });
+        } catch {
+          // A concurrent delete can make a retention candidate disappear.
+        }
       }
     }
-    return [...groups].map(([runId, mtime]) => ({ mtime, runId }));
+    return groups;
   }
 
-  async #pruneOldRuns(protectedRunId: string): Promise<void> {
+  async #pruneOldRuns(protectedRunId: string, protectedWorkspaceRealpath?: string): Promise<void> {
     this.#savesSincePrune += 1;
     if (this.#savesSincePrune < this.#pruneInterval) return;
     this.#savesSincePrune = 0;
@@ -186,14 +198,13 @@ export class FileCheckpointStore implements CheckpointStore {
       const groups = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
       if (groups.length <= this.#maxRuns) return;
       for (const candidate of groups.slice(this.#maxRuns)) {
-        if (candidate.runId === protectedRunId) continue;
-        const workspaceRealpath = await this.#resolveWorkspaceRealpath();
-        await withRunFileLocks(this.#dir, candidate.runId, workspaceRealpath, async () => {
+        if (sameRetentionGroup(candidate, { runId: protectedRunId, workspaceRealpath: protectedWorkspaceRealpath })) continue;
+        await withCheckpointFileLocks(checkpointRetentionGroupFiles(this.#dir, candidate), async () => {
           const current = [...await this.#checkpointGroups()].sort((a, b) => b.mtime - a.mtime);
-          if (current.length <= this.#maxRuns || !current.slice(this.#maxRuns).some((entry) => entry.runId === candidate.runId)) {
+          if (current.length <= this.#maxRuns || !current.slice(this.#maxRuns).some((entry) => sameRetentionGroup(entry, candidate))) {
             return;
           }
-          await removeCheckpointsForRun(this.#dir, candidate.runId, workspaceRealpath);
+          await removeCheckpointRetentionGroup(this.#dir, candidate);
         });
       }
     } catch {
@@ -260,13 +271,22 @@ export class FileCheckpointStore implements CheckpointStore {
       step: input.step
     };
     const workspaceRealpath = await this.#resolveWorkspaceRealpath();
-    const saved = workspaceRealpath
-      ? await this.#saveV3(checkpoint, input, workspaceRealpath).catch(() => this.#saveV2(checkpoint))
-      : await this.#saveV2(checkpoint);
+    let protectedWorkspaceRealpath: string | undefined;
+    let saved: ExecutionCheckpoint;
+    if (workspaceRealpath) {
+      try {
+        saved = await this.#saveV3(checkpoint, input, workspaceRealpath);
+        protectedWorkspaceRealpath = workspaceRealpath;
+      } catch {
+        saved = await this.#saveV2(checkpoint);
+      }
+    } else {
+      saved = await this.#saveV2(checkpoint);
+    }
     // Retention may lock a different run. It must run after the committing
     // run's locks are released, otherwise two concurrent saves can each hold
     // one run while pruning the other.
-    await this.#pruneOldRuns(checkpoint.runId);
+    await this.#pruneOldRuns(checkpoint.runId, protectedWorkspaceRealpath);
     return saved;
   }
 
@@ -408,29 +428,70 @@ async function listCheckpointFiles(dir: string): Promise<readonly string[]> {
   return roots.flat();
 }
 
-async function listCheckpointRunIds(dir: string, workspaceRealpath: string | undefined): Promise<readonly string[]> {
+async function listUnscopedCheckpointRunIds(dir: string): Promise<readonly string[]> {
   const runIds = new Set<string>();
   for (const file of await listCheckpointFiles(dir)) {
     const checkpoints = await readCheckpointFile(file);
     const runId = checkpoints ? checkpointRunId(checkpoints) : undefined;
     if (runId) runIds.add(runId);
   }
-  if (workspaceRealpath) {
-    let names: readonly string[] = [];
-    try {
-      const v3Dir = join(dir, CHECKPOINT_V3_DIRECTORY);
-      const info = await lstat(v3Dir);
-      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(v3Dir) !== v3Dir) return [...runIds];
-      names = (await readdir(v3Dir)).filter((name) => name.endsWith(".json"));
-    } catch {
-      names = [];
-    }
-    for (const name of names) {
-      const envelope = await readCheckpointV3File(join(dir, CHECKPOINT_V3_DIRECTORY, name));
-      if (envelope?.provenance.workspaceRealpath === workspaceRealpath) runIds.add(envelope.provenance.runId);
-    }
+  return [...runIds].sort();
+}
+
+async function listScopedCheckpointRunIds(dir: string, workspaceRealpath: string): Promise<readonly string[]> {
+  const runIds = new Set<string>();
+  let names: readonly string[] = [];
+  try {
+    const v3Dir = join(dir, CHECKPOINT_V3_DIRECTORY);
+    const info = await lstat(v3Dir);
+    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(v3Dir) !== v3Dir) return [];
+    names = (await readdir(v3Dir)).filter((name) => name.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  for (const name of names) {
+    const envelope = await readCheckpointV3File(join(dir, CHECKPOINT_V3_DIRECTORY, name));
+    if (envelope?.provenance.workspaceRealpath === workspaceRealpath) runIds.add(envelope.provenance.runId);
   }
   return [...runIds].sort();
+}
+
+async function listCheckpointRunIds(dir: string, workspaceRealpath: string | undefined): Promise<readonly string[]> {
+  const runIds = new Set(await listUnscopedCheckpointRunIds(dir));
+  if (workspaceRealpath) {
+    for (const runId of await listScopedCheckpointRunIds(dir, workspaceRealpath)) runIds.add(runId);
+  }
+  return [...runIds].sort();
+}
+
+function sameRetentionGroup(
+  left: Pick<CheckpointRetentionGroup, "runId" | "workspaceRealpath">,
+  right: Pick<CheckpointRetentionGroup, "runId" | "workspaceRealpath">
+): boolean {
+  return left.runId === right.runId && left.workspaceRealpath === right.workspaceRealpath;
+}
+
+function checkpointRetentionGroupFiles(dir: string, group: Pick<CheckpointRetentionGroup, "runId" | "workspaceRealpath">): readonly string[] {
+  return group.workspaceRealpath
+    ? [v3CheckpointFilePath(dir, group.workspaceRealpath, group.runId)]
+    : checkpointFilePaths(dir, group.runId);
+}
+
+async function removeCheckpointRetentionGroup(dir: string, group: CheckpointRetentionGroup): Promise<void> {
+  if (group.workspaceRealpath) {
+    const file = v3CheckpointFilePath(dir, group.workspaceRealpath, group.runId);
+    const envelope = await readCheckpointV3File(file);
+    if (envelope?.provenance.runId === group.runId && envelope.provenance.workspaceRealpath === group.workspaceRealpath) {
+      await rm(file, { force: true }).catch(() => undefined);
+    }
+    return;
+  }
+  for (const file of checkpointFilePaths(dir, group.runId)) {
+    const checkpoints = await readCheckpointFile(file);
+    if (checkpoints && checkpointRunId(checkpoints) === group.runId) {
+      await rm(file, { force: true }).catch(() => undefined);
+    }
+  }
 }
 
 async function removeCheckpointsForRun(dir: string, runId: string, workspaceRealpath?: string): Promise<void> {

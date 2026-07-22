@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { formatResumableRuns } from "./commands-resume.js";
+import { encodeLocalCheckpointReference } from "@muse/shared";
+import { checkpointReferenceResumeRefusal, formatResumableRuns } from "./commands-resume.js";
 
 describe("formatResumableRuns", () => {
   it("guides the user when there's nothing to resume", () => {
@@ -14,5 +15,13 @@ describe("formatResumableRuns", () => {
     expect(out).toContain("step 3");
     expect(out).toContain("act");
     expect(out).toContain("muse resume <run-id>");
+  });
+});
+
+describe("checkpointReferenceResumeRefusal", () => {
+  it("keeps Continuity checkpoint locators out of the execution authority path", () => {
+    const reference = encodeLocalCheckpointReference({ runId: "run_exact", step: 2, workspaceRealpath: "/workspace/project" });
+    expect(checkpointReferenceResumeRefusal(reference)).toContain("context-only");
+    expect(checkpointReferenceResumeRefusal("run_exact")).toBeUndefined();
   });
 });

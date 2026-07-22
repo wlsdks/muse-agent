@@ -119,6 +119,11 @@ export {
   type RunArtifactOptions
 } from "./run-artifacts.js";
 export {
+  createCheckpointArtifactValidator,
+  createCheckpointExactArtifactResolver,
+  type CheckpointArtifactOptions
+} from "./checkpoint-artifacts.js";
+export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,

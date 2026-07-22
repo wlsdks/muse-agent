@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { FileCheckpointStore } from "@muse/runtime-state";
 
-import { attachContinuityRunReferences, formatRunDetail, formatRunList, parseRunEvent, readLocalRuns } from "./commands-trace.js";
+import { attachContinuityCheckpointReferences, attachContinuityRunReferences, formatRunDetail, formatRunList, parseRunEvent, readLocalRuns } from "./commands-trace.js";
 
 const event = (over: Record<string, unknown> = {}) => JSON.stringify({
   grounded: "grounded", message: "what is my VPN MTU?", recordedAt: "2026-06-28T10:00:00Z", success: true,
@@ -44,7 +45,32 @@ describe("muse trace — local run inspector (time-travel)", () => {
     const out = formatRunDetail(parseRunEvent("r1", event())!, [{ step: 0, phase: "start" }, { step: 2, phase: "act" }]);
     expect(out).toContain("retrieved (why this answer)");
     expect(out).toContain("0.6200  vpn.md");
-    expect(out).toContain("0:start → 2:act");
+    expect(out).toContain("0:start");
+    expect(out).toContain("2:act");
+    expect(out).toContain("diagnostic-only / not linkable");
+  });
+
+  it("emits checkpoint locators only for strict future v3 evidence", async () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "muse-trace-checkpoints-")));
+    const checkpointsDir = join(workspace, "checkpoints");
+    try {
+      await new FileCheckpointStore(checkpointsDir).save({ runId: "run_exact", state: { phase: "start" }, step: 0 });
+      await new FileCheckpointStore(checkpointsDir, { continuityWorkspaceDir: workspace }).save({
+        continuityEvidence: { phase: "act", query: "continue" },
+        runId: "run_exact",
+        state: { phase: "act" },
+        step: 1
+      });
+      const linked = await attachContinuityCheckpointReferences(workspace, checkpointsDir, "run_exact", [
+        { phase: "start", step: 0 },
+        { phase: "act", step: 1 }
+      ]);
+      expect(linked[0]?.continuityReference).toBeUndefined();
+      expect(linked[1]?.continuityReference).toMatch(/^muse-checkpoint-v1:/u);
+      expect(formatRunDetail(parseRunEvent("run_exact", event())!, linked)).toContain("continuity: muse-checkpoint-v1:");
+    } finally {
+      rmSync(workspace, { force: true, recursive: true });
+    }
   });
 
   it("formatRunList marks a misgrounded / failed run distinctly", () => {

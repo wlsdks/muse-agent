@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -445,6 +445,38 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
 
       await expect(store.findByRunId("old")).resolves.toEqual([]);
       await expect(store.findByRunId("new")).resolves.toHaveLength(1);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("counts an unscoped v2 group separately from a scoped v3 group with the same run ID", async () => {
+    const dir = tmpDir();
+    const checkpointsDir = join(dir, "c");
+    try {
+      const workspace = realpathSync(mkdtempSync(join(dir, "workspace-")));
+      const runId = "same-logical-run";
+      const legacyStore = new FileCheckpointStore(checkpointsDir, { maxRuns: 10, pruneIntervalSaves: 100 });
+      await legacyStore.save({ runId, state: state("legacy"), step: 0 });
+      await sleep(5);
+
+      const scopedStore = new FileCheckpointStore(checkpointsDir, {
+        continuityWorkspaceDir: workspace,
+        maxRuns: 1,
+        pruneIntervalSaves: 1
+      });
+      await scopedStore.save({
+        continuityEvidence: { phase: "act", query: "future request" },
+        runId,
+        state: state("future"),
+        step: 1
+      });
+
+      expect(existsSync(join(checkpointsDir, "v2", checkpointFileName(runId)))).toBe(false);
+      expect(existsSync(join(checkpointsDir, "v3", checkpointV3FileName(workspace, runId)))).toBe(true);
+      await expect(scopedStore.findByRunId(runId)).resolves.toEqual([
+        expect.objectContaining({ runId, step: 1 })
+      ]);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

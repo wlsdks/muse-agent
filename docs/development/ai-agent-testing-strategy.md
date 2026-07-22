@@ -106,6 +106,7 @@ be averaged away by many easy passes.
 | GAP P1 | paraphrase/metamorphic robustness and controlled tool/API fault matrices are present only in isolated tests | add shared perturbation and fault fixtures, beginning with provider routing and Continuity |
 | GAP P1 | Attunement has outcome receipts but not an end-to-end natural-return agent suite | build cases from real life/work returns only after explicit human labels exist |
 | DONE P1 | Continuity records exact local `open-to-done` interaction receipts separately from explicit outcomes | test anchor/source binding, ambiguous/relinked/pre-delivery refusal, byte-idempotent replay, and unchanged feedback/readiness counts |
+| DONE P1 | Future v3 execution checkpoints can provide exact context-only Continuity evidence | test workspace/run/step binding, mixed-format precedence, legacy/v2 refusal, symlink and unstable-file refusal, bounded safe projection, cross-workspace isolation, and explicit resume-authority refusal |
 
 ### Implementation order
 

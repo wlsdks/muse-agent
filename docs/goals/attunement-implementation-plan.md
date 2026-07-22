@@ -78,8 +78,15 @@ pack. It does not require desktop observation.
   remain diagnostic-only because their provenance cannot be reconstructed safely. Packs
   project only bounded query/answer summaries, recorded time, outcome, success state, and
   tool names. Run evidence is context-only and cannot become a next step, receipt, outcome,
-  permission, resume target, or automation signal. Checkpoints and browser history remain
-  later adapters until they have equivalent exact workspace provenance.
+  permission, resume target, or automation signal. Future v3 execution checkpoints are now
+  supported through a separate versioned locator that binds canonical workspace, run, and
+  step provenance. CLI and HTTP require explicit workspace authority; the strict reader
+  projects only bounded query, phase, step, and recorded time. Raw state, messages, tools,
+  and output stay out. Legacy/v2 checkpoints remain resume/diagnostic-only, are never
+  migrated, and cannot be linked. A linked checkpoint is context-only and cannot authorize
+  resume, next-step selection, receipts, outcomes, feedback, permission, or automation;
+  `muse resume` explicitly refuses checkpoint locators and remains run-ID-only. Browser
+  history remains a later adapter.
 - ✅ Only the user binds an item to a `threadId`; no deterministic auto-link or LLM summary is
   present in Slice A.
 - Treat `work` as one optional thread kind. It must not be the default meaning of every

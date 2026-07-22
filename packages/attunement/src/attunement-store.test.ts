@@ -58,10 +58,10 @@ describe("Personal Continuity store", () => {
     const options = deterministicOptions();
     const thread = await createPersonalThread(file, { kind: "life", title: "Prepare for the dentist" }, options);
     const current = readFileSync(file, "utf8");
-    const legacy = current.replace('"schemaVersion": 7', '"schemaVersion": 5');
+    const legacy = current.replace('"schemaVersion": 8', '"schemaVersion": 5');
     writeFileSync(file, legacy, "utf8");
 
-    expect((await readAttunementState(file)).schemaVersion).toBe(7);
+    expect((await readAttunementState(file)).schemaVersion).toBe(8);
     expect(readFileSync(file, "utf8")).toBe(legacy);
 
     await linkArtifact(file, {
@@ -71,9 +71,9 @@ describe("Personal Continuity store", () => {
       threadId: thread.id
     }, options);
     const migrated = JSON.parse(readFileSync(file, "utf8")) as { schemaVersion: number };
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
 
-    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 7', '"schemaVersion": 5');
+    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 8', '"schemaVersion": 5');
     writeFileSync(file, forgedLegacy, "utf8");
     await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
     expect(readFileSync(file, "utf8")).toBe(forgedLegacy);

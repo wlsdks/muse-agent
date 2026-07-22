@@ -19,6 +19,8 @@ import {
   createCalendarExactArtifactResolver,
   createContactArtifactValidator,
   createContactExactArtifactResolver,
+  createCheckpointArtifactValidator,
+  createCheckpointExactArtifactResolver,
   createLocalArtifactValidator,
   createLocalContinuityTaskInteractionSourceResolver,
   createLocalExactArtifactResolver,
@@ -52,7 +54,7 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { buildCalendarRegistry, resolveAttunementFile, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { Command } from "commander";
 
@@ -65,7 +67,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "resource"] as const;
+const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "checkpoint", "resource"] as const;
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
 
@@ -143,6 +145,7 @@ function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarR
     if (artifactType === "calendar-event") return calendarValidator({ artifactId, artifactType, providerId });
     if (artifactType === "contact") return contactValidator({ artifactId, artifactType, providerId });
     if (artifactType === "run") return createRunArtifactValidator({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir) })({ artifactId, artifactType, providerId });
+    if (artifactType === "checkpoint") return createCheckpointArtifactValidator({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir), checkpointsDir: resolveCheckpointsDir(environment()) })({ artifactId, artifactType, providerId });
     return localValidator({ artifactId, artifactType, providerId });
   };
 }
@@ -165,6 +168,7 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calend
     if (link.artifactType === "calendar-event") return resolveCalendar(link);
     if (link.artifactType === "contact") return resolveContact(link);
     if (link.artifactType === "run") return createRunExactArtifactResolver({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir) })(link);
+    if (link.artifactType === "checkpoint") return createCheckpointExactArtifactResolver({ allowedWorkspaceRealpath: await explicitWorkspaceRealpath(workspaceDir), checkpointsDir: resolveCheckpointsDir(environment()) })(link);
     return resolveLocal(link);
   };
 }
@@ -539,8 +543,8 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
 
   thread
     .command("link <thread-id> <artifact-type> <artifact-id>")
-    .description("Explicitly link one exact task/note/reminder/calendar event/contact/run, or external MCP resource, to a thread")
-    .requiredOption("--role <context|next-step>", "how this source is used (calendar events, contacts, runs, and resources are context-only)")
+    .description("Explicitly link one exact task/note/reminder/calendar event/contact/run/checkpoint, or external MCP resource, to a thread")
+    .requiredOption("--role <context|next-step>", "how this source is used (calendar events, contacts, runs, checkpoints, and resources are context-only)")
     .option("--provider <id>", "exact configured calendar provider id (required for calendar-event)")
     .addHelpText("after", `
 Examples:
@@ -548,6 +552,7 @@ Examples:
   $ muse thread link <thread-id> note ideas.md --role context
   $ muse thread link <thread-id> contact <exact-contact-id> --role context
   $ muse thread link <thread-id> run <continuity-ref> --role context
+  $ muse thread link <thread-id> checkpoint <continuity-ref> --role context
   $ muse thread link <thread-id> calendar-event <continuity-ref> --provider local --role context
   $ muse thread link <thread-id> resource github/facebook/react/issues/123 --role context`)
     .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly provider?: string; readonly role: string }, command: Command) => {
@@ -581,7 +586,7 @@ Examples:
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
         if (type === "calendar-event" && !options.provider?.trim()) throw new AttunementStoreError("a calendar-event requires --provider <configured-provider-id>");
         const removed = await unlinkArtifact(attunementFile(), {
-          artifactId: type === "contact" || type === "run" ? artifactId : artifactId.trim(),
+          artifactId: type === "contact" || type === "run" || type === "checkpoint" ? artifactId : artifactId.trim(),
           artifactType: type as ArtifactLink["artifactType"],
           ...(type === "calendar-event" ? { providerId: calendarProviderId(options.provider!.trim()) } : {}),
           threadId: threadId.trim()

@@ -48,15 +48,16 @@ evidence sufficiency, or action approval.
 ## Personal-thread contract
 
 Muse must know which part of the user's life they mean before it combines a task, note,
-reminder, calendar event, contact, run, or browser visit. Slice A supports exact local tasks,
-notes, reminders, configured calendar occurrences, contacts, and strict local run evidence,
-and only the user can create the binding. An LLM may later summarize
+reminder, calendar event, contact, run, execution checkpoint, or browser visit. Slice A
+supports exact local tasks, notes, reminders, configured calendar occurrences, contacts,
+strict local run evidence, and future workspace-scoped execution checkpoint evidence, and
+only the user can create the binding. An LLM may later summarize
 linked evidence; it may not invent the association.
 
 ```ts
 interface PersonalThreadLink {
   threadId: string;
-  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact" | "run";
+  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact" | "run" | "checkpoint";
   providerId: "local" | `calendar:${string}`;
   artifactId: string;
   role: "context" | "next-step";
@@ -86,8 +87,17 @@ run ID, rejects symlinks, duplicate JSON keys, malformed outcomes, unstable file
 workspace mismatches, and projects only bounded query/answer summaries, recorded time,
 outcome, success state, and tool names. Legacy traces without internal run provenance stay
 diagnostic-only and are not rewritten. Runs remain context-only and cannot become a next
-step, interaction receipt, outcome, permission, resume target, or automation signal.
-Checkpoints remain outside Continuity until they carry equivalent workspace provenance.
+step, interaction receipt, outcome, permission, resume target, or automation signal. New v3
+execution checkpoints expose a separate versioned locator that binds the canonical workspace
+realpath, canonical run ID, and exact step. The strict reader accepts only the configured
+checkpoint root plus that explicit workspace authority and projects only the bounded
+originating user query, phase, step, and recorded time. It never exposes checkpoint state,
+messages, tool calls, or output. Legacy and v2 checkpoints remain resume/diagnostic-only and
+are never rewritten or blessed as Continuity evidence. A checkpoint link is context-only:
+`muse resume` deliberately refuses it and still accepts only a run ID; the link grants no
+resume, next-step, receipt, outcome, feedback, permission, or automation authority. These
+are execution checkpoints, not the unrelated filesystem rollback checkpoints in
+`packages/fs`.
 Additional artifact types and deterministic bindings are later adapters, not a fallback in
 this path.
 

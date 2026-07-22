@@ -10,11 +10,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now ground a thread in one exact future execution checkpoint without
+  granting resume authority.** New v3 checkpoint files bind canonical workspace, run, and
+  step provenance and expose a copyable versioned reference only after strict verification.
+  CLI, authenticated local HTTP, and paste-only web linking require explicit workspace
+  authority; Packs project only bounded query, phase, step, and recorded time. Raw state,
+  messages, tools, and output stay out. Legacy/v2 checkpoints remain resume/diagnostic-only
+  and are never migrated or linkable. Checkpoint evidence is context-only: `muse resume`
+  explicitly refuses the locator, and it cannot become a next step, receipt, outcome,
+  feedback, permission, or automation signal.
+
 - **Continuity can now ground a thread in one exact local run without treating a trace as
   authority.** `muse trace` exposes a copyable versioned reference only for strict current
   JSONL traces whose events all prove the same run ID. CLI, authenticated local HTTP, and
   web require explicit workspace authority and never search, use cwd as a resolver fallback,
-  migrate legacy traces, or substitute checkpoints. Packs expose only bounded query/answer
+  migrate legacy traces, or substitute a checkpoint for a run locator. Packs expose only bounded query/answer
   summaries, recorded time, outcome, success state, and tool names; raw event fields and
   secrets stay out. Run evidence remains context-only and cannot become a next step,
   completion receipt, feedback outcome, permission, resume target, or automation signal.
