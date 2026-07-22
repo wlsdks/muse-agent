@@ -40,4 +40,36 @@ describe("analyzeRunOutcomes — run-log failure rate + top failing topics", () 
     const entries = Array.from({ length: 8 }, (_unused, i) => ({ grounded: "abstain", message: `distinct topic number ${i.toString()} alpha${i.toString()}` }));
     expect(analyzeRunOutcomes(entries, { maxTopics: 3 }).topFailingTopics).toHaveLength(3);
   });
+
+  it("keeps legacy three-outcome lines separate from six-outcome unique-run measurements", () => {
+    const outcomes = ["grounded", "abstain", "ungrounded", "misgrounded", "contested", "error"] as const;
+    const entries = outcomes.map((grounded, index) => ({
+      fileRunId: `run_${index}`,
+      grounded,
+      lineIndex: 0,
+      message: `topic ${index}`,
+      recordedAt: `2026-07-2${index}T00:00:00.000Z`,
+      runId: `run_${index}`,
+      type: "chat.completed"
+    }));
+    const summary = analyzeRunOutcomes(entries, { now: new Date("2026-07-27T00:00:00.000Z") });
+
+    expect(summary).toMatchObject({ labelled: 3, gradedRuns: 6, technicalFailures: 5, measurementStatus: "available" });
+    expect(summary.failRate).toBeCloseTo(2 / 3, 5);
+    expect(summary.measurement?.value).toEqual({ denominator: 6, numerator: 5, unit: "ratio" });
+  });
+
+  it("deduplicates a run to its latest canonical event and excludes future or mismatched provenance", () => {
+    const base = { fileRunId: "run_a", message: "vpn", runId: "run_a", type: "chat.completed" } as const;
+    const summary = analyzeRunOutcomes([
+      { ...base, grounded: "ungrounded", lineIndex: 0, recordedAt: "2026-07-20T00:00:00.000Z" },
+      { ...base, grounded: "grounded", lineIndex: 1, recordedAt: "2026-07-20T00:00:00.000Z" },
+      { ...base, fileRunId: "wrong", grounded: "error", lineIndex: 2, recordedAt: "2026-07-21T00:00:00.000Z" },
+      { ...base, grounded: "error", lineIndex: 3, recordedAt: "2026-07-23T00:00:00.000Z" }
+    ], { now: new Date("2026-07-22T00:00:00.000Z") });
+
+    expect(summary.gradedRuns).toBe(1);
+    expect(summary.technicalFailures).toBe(0);
+    expect(summary.measurement?.window).toEqual({ endedAt: "2026-07-20T00:00:00.000Z", startedAt: "2026-07-20T00:00:00.000Z" });
+  });
 });

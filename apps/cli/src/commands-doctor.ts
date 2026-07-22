@@ -192,7 +192,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--local", "Probe local-only signals (skip the API daemon)")
     .option("--grounding", "Score the bundled faithfulness + false-refusal corpus on the local model and print the two rates")
     .option("--weaknesses", "Show the Whetstone weakness ledger — what Muse has noticed it can't answer / didn't actually do")
-    .option("--run-outcomes", "Show the grounding failure RATE over recent .muse/runs run-logs (the denominator the weakness ledger lacks) + top failing topics")
+    .option("--run-outcomes", "Show technical grounding diagnostics over canonical unique .muse/runs logs (not personal usefulness)")
     .option("--approval-rate", "Show per-gate approval/denial counts from the action log — flags a gate class being reflexively approved (a 'rubber stamp')")
     .option("--calibration", "Calibrate the 'I'm not sure' abstention threshold on the bundled edge corpus (conformal coverage guarantee)")
     .option("--alpha <rate>", "Target miss rate for --calibration (default 0.1 → answer ≥90% of answerable items)")

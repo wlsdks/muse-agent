@@ -12,23 +12,35 @@ import type { ProgramIO } from "./program.js";
  */
 export function formatRunOutcomes(summary: RunOutcomeSummary): string {
   const scope = "technical grounding diagnostics, not personal usefulness";
-  if (summary.labelled === 0) {
-    return `📉 Run grounding diagnostics: no graded runs yet — ask a few grounded questions and check back. (${scope})\n`;
+  if (!summary.measurement) {
+    return `📉 Run grounding diagnostics: no decision-grade unique runs yet — canonical timestamp and run provenance are required. (${scope})\n  action: muse doctor --run-outcomes\n`;
   }
   const pct = (n: number): string => `${(n * 100).toFixed(0)}%`;
-  const head = `📉 Run grounding diagnostics over ${summary.labelled.toString()} graded run${summary.labelled === 1 ? "" : "s"}: `
-    + `fail-rate ${pct(summary.failRate)} (${summary.grounded} grounded · ${summary.abstain} abstain · ${summary.ungrounded} ungrounded)`;
-  if (summary.topFailingTopics.length === 0) {
-    return `${head}\n  scope: ${scope}\n`;
+  const { measurement } = summary;
+  const outcomes = summary.canonicalOutcomes;
+  const head = `📉 Run grounding diagnostics over ${measurement.value.denominator.toString()} unique graded run${measurement.value.denominator === 1 ? "" : "s"}: `
+    + `technical failure-rate ${pct(measurement.value.numerator / measurement.value.denominator)} `
+    + `(${outcomes.grounded.toString()} grounded · ${outcomes.abstain.toString()} abstain · ${outcomes.ungrounded.toString()} ungrounded · `
+    + `${outcomes.misgrounded.toString()} misgrounded · ${outcomes.contested.toString()} contested · ${outcomes.error.toString()} error)`;
+  const metadata = [
+    `  scope: ${scope}`,
+    `  evidence: ${measurement.evidenceClass} · source: ${measurement.source.id}@${measurement.source.version.toString()}`,
+    `  denominator: ${measurement.value.denominator.toString()} canonical unique graded runs`,
+    `  window: ${measurement.window.startedAt} → ${measurement.window.endedAt}`,
+    `  freshness: ${measurement.freshness.status} as of ${measurement.freshness.asOf} (evaluated ${measurement.freshness.evaluatedAt})`,
+    "  action: muse doctor --run-outcomes"
+  ];
+  if (summary.technicalTopFailingTopics.length === 0) {
+    return `${head}\n${metadata.join("\n")}\n`;
   }
-  const topics = summary.topFailingTopics
+  const topics = summary.technicalTopFailingTopics
     .map((t) => `  • ${t.topic} (${t.count.toString()}×)`)
     .join("\n");
-  return `${head}\n  scope: ${scope}\n  top failing topics:\n${topics}\n`;
+  return `${head}\n${metadata.join("\n")}\n  top technical failing topics:\n${topics}\n`;
 }
 
 /** Read the run-log outcome entries from `.muse/runs/*.jsonl` (best-effort; a missing dir / bad line is skipped). */
-async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOutcomeEntry[]> {
+export async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOutcomeEntry[]> {
   const runDir = join(workspaceDir, ".muse", "runs");
   let files: string[];
   try {
@@ -44,14 +56,23 @@ async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOutcomeEn
     } catch {
       continue;
     }
-    for (const line of text.split("\n")) {
+    const fileRunId = file.slice(0, -".jsonl".length);
+    for (const [lineIndex, line] of text.split("\n").entries()) {
       if (line.trim().length === 0) continue;
       try {
         const parsed: unknown = JSON.parse(line);
         if (parsed && typeof parsed === "object") {
-          const record = parsed as { grounded?: unknown; message?: unknown };
+          const record = parsed as { grounded?: unknown; message?: unknown; recordedAt?: unknown; runId?: unknown; type?: unknown };
           if (typeof record.message === "string") {
-            entries.push({ grounded: typeof record.grounded === "string" ? record.grounded : null, message: record.message });
+            entries.push({
+              fileRunId,
+              grounded: typeof record.grounded === "string" ? record.grounded : null,
+              lineIndex,
+              message: record.message,
+              ...(typeof record.recordedAt === "string" ? { recordedAt: record.recordedAt } : {}),
+              ...(typeof record.runId === "string" ? { runId: record.runId } : {}),
+              ...(typeof record.type === "string" ? { type: record.type } : {})
+            });
           }
         }
       } catch {
@@ -64,7 +85,7 @@ async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOutcomeEn
 
 export async function runRunOutcomesDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
   const entries = await readRunOutcomeEntries(io.workspaceDir ?? process.cwd());
-  const summary = analyzeRunOutcomes(entries);
+  const summary = analyzeRunOutcomes(entries, { now: new Date() });
   if (asJson) {
     io.stdout(`${JSON.stringify(summary, null, 2)}\n`);
     return;

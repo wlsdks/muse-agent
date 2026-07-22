@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { Command } from "commander";
+import { analyzeRunOutcomes } from "@muse/proactivity";
 
 import {
   classifyHomeAlertsConfig,
@@ -393,20 +394,31 @@ describe("formatWeaknesses — the Whetstone ledger as an honest self-report", (
 
 describe("formatRunOutcomes — the failure-RATE the cumulative ledger lacks", () => {
   it("reports a fresh-start line when nothing is graded yet", () => {
-    expect(formatRunOutcomes({ labelled: 0, grounded: 0, abstain: 0, ungrounded: 0, failRate: 0, topFailingTopics: [] }))
-      .toContain("no graded runs yet");
+    expect(formatRunOutcomes(analyzeRunOutcomes([], { now: new Date("2026-07-22T00:00:00.000Z") })))
+      .toContain("no decision-grade unique runs yet");
   });
 
   it("renders the rate, the outcome breakdown, and the top failing topics", () => {
-    const out = formatRunOutcomes({
-      labelled: 4, grounded: 2, abstain: 1, ungrounded: 1, failRate: 0.5,
-      topFailingTopics: [{ topic: "office vpn mtu", count: 2 }, { topic: "dentist", count: 1 }]
-    });
-    expect(out).toContain("4 graded runs");
-    expect(out).toContain("fail-rate 50%");
+    const input = [
+      ["run_a", "grounded", "what is my rent"],
+      ["run_b", "grounded", "office vpn mtu"],
+      ["run_c", "abstain", "office vpn mtu"],
+      ["run_d", "ungrounded", "dentist"]
+    ] as const;
+    const out = formatRunOutcomes(analyzeRunOutcomes(input.map(([runId, grounded, message], lineIndex) => ({
+      fileRunId: runId,
+      grounded,
+      lineIndex,
+      message,
+      recordedAt: `2026-07-2${lineIndex.toString()}T00:00:00.000Z`,
+      runId,
+      type: "chat.completed"
+    })), { now: new Date("2026-07-24T00:00:00.000Z") }));
+    expect(out).toContain("4 unique graded runs");
+    expect(out).toContain("technical failure-rate 50%");
     expect(out).toContain("2 grounded · 1 abstain · 1 ungrounded");
     expect(out).toContain("technical grounding diagnostics, not personal usefulness");
-    expect(out).toContain("office vpn mtu (2×)");
+    expect(out).toContain("office vpn mtu (1×)");
     expect(out).toContain("dentist (1×)");
   });
 });
