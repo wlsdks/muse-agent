@@ -16,7 +16,9 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const rootDir = process.cwd();
@@ -29,10 +31,12 @@ if (!existsSync(cliEntry)) {
 
 const port = await findFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
+const schedulerRoot = mkdtempSync(join(tmpdir(), "muse-smoke-cli-scheduler-"));
 const env = {
   ...process.env,
   MUSE_MODEL: "diagnostic/smoke",
   MUSE_MODEL_PROVIDER_ID: "diagnostic",
+  MUSE_SCHEDULED_JOBS_FILE: join(schedulerRoot, "scheduled-jobs.json"),
   PORT: String(port)
 };
 
@@ -142,15 +146,17 @@ try {
       `expected array or object, got ${typeof parsed}`);
   });
 
-  await record("muse scheduler list calls /api/scheduler/jobs", () => {
-    const result = runCli([
-      "--api-url", baseUrl,
-      "scheduler", "list"
-    ]);
+  await record("muse scheduler list reads the isolated local store and prints empty-store guidance", () => {
+    const result = runCli(["scheduler", "list"]);
+    assert(result.status === 0, `expected exit 0, got ${result.status}: ${result.stderr}`);
+    assert(result.stdout.includes("No scheduled jobs"), `expected empty-store guidance, got: ${result.stdout}`);
+  });
+
+  await record("muse scheduler list --json returns structured local-store output", () => {
+    const result = runCli(["scheduler", "list", "--json"]);
     assert(result.status === 0, `expected exit 0, got ${result.status}: ${result.stderr}`);
     const parsed = JSON.parse(result.stdout);
-    assert(Array.isArray(parsed) || (parsed && typeof parsed === "object"),
-      `expected array or object, got ${typeof parsed}`);
+    assert(Array.isArray(parsed.jobs), `expected { jobs: [] }, got ${JSON.stringify(parsed)}`);
   });
 
   await record("muse chat surfaces a non-zero exit when guards block the request", () => {
@@ -184,6 +190,7 @@ try {
 
   api.kill("SIGTERM");
   await waitForExit(api, 5_000);
+  rmSync(schedulerRoot, { force: true, recursive: true });
   process.exitCode = failures > 0 ? 1 : 0;
 }
 
