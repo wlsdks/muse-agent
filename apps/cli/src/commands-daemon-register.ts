@@ -110,8 +110,9 @@ import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./c
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
 import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
-import { resolveDaemonResourceReceiptFile, resourceAdmissionReceipt, writeDaemonResourceAdmissionReceipt } from "./daemon-resource-receipt.js";
 import { DaemonHeavyWorkQueue, resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
+import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt } from "./daemon-resource-receipt.js";
+import { DaemonWorkloadGovernor, daemonWorkloadNotReady, type DaemonWorkloadCycleResult } from "./daemon-workload-governor.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -293,7 +294,7 @@ export interface DaemonHelpers {
   /** Test seam for local resource admission; absent uses lightweight OS counters. */
   readonly resourceSnapshot?: () => DaemonResourceSnapshot;
   /** Best-effort latest-state receipt for resource admission transitions. */
-  readonly writeResourceAdmissionReceipt?: (file: string, receipt: ReturnType<typeof resourceAdmissionReceipt>) => Promise<void>;
+  readonly writeResourceAdmissionReceipt?: (file: string, receipt: DaemonResourceReceipt) => Promise<void>;
   /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status/--uninstall branches. */
   readonly schtasksRun?: (args: readonly string[]) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
   /**
@@ -1526,6 +1527,27 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
       let lastResourceAdmissionKey: string | undefined;
       const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
+      const signal = new DaemonStopSignal();
+      const workloadGovernor = new DaemonWorkloadGovernor([
+        { id: "reflection", run: (claim) => reflectionTick(claim) },
+        { id: "email-sync", run: (claim) => emailSyncTick?.(claim) ?? Promise.resolve(daemonWorkloadNotReady(localOnly ? "disabled" : "unconfigured")) },
+        { id: "self-learn", run: (claim) => selfLearnTick(claim) },
+        { id: "self-learn-decay", run: (claim) => selfLearnDecayTick(claim) },
+        { id: "playbook-consolidate", run: (claim) => playbookConsolidateTick(claim) },
+        { id: "memory-consolidate", run: (claim) => memoryConsolidateTick(claim) },
+        { id: "recap", run: (claim) => recapTick(claim) },
+        { id: "digest-flush", run: (claim) => digestFlushTick(claim) },
+        { id: "browsing-sync", run: (claim) => browsingAutoSyncTick?.(claim) ?? Promise.resolve(daemonWorkloadNotReady("unconfigured")) }
+      ]);
+      const writeResourceReceipt = async (receipt: DaemonResourceReceipt): Promise<boolean> => {
+        try {
+          await (helpers.writeResourceAdmissionReceipt ?? writeDaemonResourceAdmissionReceipt)(resourceReceiptFile, receipt);
+          return true;
+        } catch {
+          io.stderr("resource: receipt-write-failed\n");
+          return false;
+        }
+      };
       const runTick = async (): Promise<void> => {
         await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
@@ -1534,18 +1556,23 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await dailyBriefTick();
         await schedulerTick();
         const liveDaemonConfig = (helpers.readDaemonConfig ?? readDaemonConfig)(configFile);
+        const resourceSnapshot = (helpers.resourceSnapshot ?? readDaemonResourceSnapshot)();
         const resourceAdmission = assessDaemonResourceAdmission(
           e,
-          (helpers.resourceSnapshot ?? readDaemonResourceSnapshot)(),
+          resourceSnapshot,
           { ownerPaused: liveDaemonConfig.heavyWorkPaused === true }
         );
+        const decisionReceipt = workloadDecisionReceipt(resourceAdmission, resourceSnapshot, workloadGovernor.queueDepth);
         const resourceAdmissionKey = `${resourceAdmission.status}:${resourceAdmission.reason ?? ""}`;
         const previousResourceAdmissionKey = lastResourceAdmissionKey;
         const resourceAdmissionChanged = resourceAdmissionKey !== previousResourceAdmissionKey;
         if (resourceAdmissionChanged) {
           lastResourceAdmissionKey = resourceAdmissionKey;
-          const receipt = resourceAdmissionReceipt(resourceAdmission);
-          await (helpers.writeResourceAdmissionReceipt ?? writeDaemonResourceAdmissionReceipt)(resourceReceiptFile, receipt).catch(() => undefined);
+          await writeResourceReceipt(decisionReceipt);
+        }
+        if (signal.stopped) {
+          await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+          return;
         }
         if (resourceAdmission.status === "defer") {
           if (resourceAdmissionChanged) {
@@ -1557,6 +1584,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await checkinsTick();
         if (resourceAdmission.status === "admit") {
           await ensureHeavyRuntime();
+          let governedCycle: DaemonWorkloadCycleResult | undefined;
           await heavyWorkQueue.run([
             { id: "followup", run: followupTick },
             { id: "pattern", run: patternTick },
@@ -1565,19 +1593,22 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             { id: "objectives", run: objectivesTick },
             { id: "home-watch", run: homeWatchTick },
             { id: "briefing", run: briefingTick },
-            { id: "reflection", run: reflectionTick },
-            ...(emailSyncTick ? [{ id: "email-sync", run: emailSyncTick }] : []),
-            { id: "self-learn", run: selfLearnTick },
-            { id: "self-learn-decay", run: selfLearnDecayTick },
-            { id: "playbook-consolidate", run: playbookConsolidateTick },
-            { id: "memory-consolidate", run: memoryConsolidateTick },
-            { id: "recap", run: recapTick },
-            { id: "digest-flush", run: digestFlushTick },
-            ...(browsingAutoSyncTick ? [{ id: "browsing-sync", run: browsingAutoSyncTick }] : [])
+            { id: "governed-maintenance", run: async () => { governedCycle = await workloadGovernor.runAdmittedCycle(signal); } }
           ], heavyWorkUnitsPerTick);
+          if (governedCycle?.status === "cancelled-before-claim") {
+            await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+            return;
+          }
+          if (governedCycle?.status === "boundary") {
+            await writeResourceReceipt(withWorkloadBoundary(decisionReceipt, governedCycle.boundary));
+            if (governedCycle.boundary.stopRequestedDuring) return;
+          }
         }
+        if (signal.stopped) return;
         await messagingPollTick();
+        if (signal.stopped) return;
         await conflictWatchTick();
+        if (signal.stopped) return;
         await retentionPruneTick();
       };
 
@@ -1589,7 +1620,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const signal = new DaemonStopSignal();
       const stop = (): void => {
         if (signal.stopped) return;
         io.stdout("\n(stopping)\n");

@@ -33,6 +33,7 @@ import { syncEmailsToNotes } from "./email-sync.js";
 import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 import { resolveGmailProvider } from "./resolve-gmail-provider.js";
+import { daemonWorkloadCancelled, daemonWorkloadCompleted, daemonWorkloadFailed, daemonWorkloadNotReady, type GovernedDaemonTick } from "./daemon-workload-governor.js";
 
 import type { TickRunState } from "./daemon-selflearn-ticks.js";
 
@@ -195,7 +196,7 @@ export interface MakeEmailSyncTickDeps {
  * (MUSE_EMAIL_SYNC_ENABLED + a configured Gmail auth — `muse setup email` or
  * MUSE_GMAIL_TOKEN), interval-throttled, fail-soft.
  */
-export function makeEmailSyncTick(deps: MakeEmailSyncTickDeps): () => Promise<void> {
+export function makeEmailSyncTick(deps: MakeEmailSyncTickDeps): GovernedDaemonTick {
   const { env: e, io, notesDir, limit, intervalMs, lastRunMs, stdout, emailSyncProvider } = deps;
   // Resolved lazily on the FIRST enabled, non-local-only tick (not eagerly
   // at setup, and not on every tick): defense in depth keeps a direct
@@ -203,24 +204,26 @@ export function makeEmailSyncTick(deps: MakeEmailSyncTickDeps): () => Promise<vo
   // local-only, and caching afterward avoids re-decrypting the credential
   // store every interval over a daemon's lifetime.
   const providerHolder: { current?: Pick<EmailProvider, "listRecent"> } = {};
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     // Defense in depth: daemon registration normally omits this entire
     // callback under local-only, and a direct lower-level call must not read
     // Gmail token/provider either.
-    if (isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e)) return;
-    if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return;
+    if (isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e)) return daemonWorkloadNotReady("internal-brake");
+    if (!parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false)) return daemonWorkloadNotReady("disabled");
     if (!providerHolder.current) {
       providerHolder.current = emailSyncProvider ?? resolveGmailProvider({ env: e, io });
     }
     const provider = providerHolder.current;
-    if (!provider) return; // opt-in: not configured, no sync
+    if (!provider) return daemonWorkloadNotReady("unconfigured");
     const nowMs = Date.now();
-    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return;
+    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return daemonWorkloadNotReady("not-due");
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     lastRunMs.current = nowMs;
     try {
       const written = await syncEmailsToNotes(provider, notesDir, limit);
       if (written > 0) stdout(`[${new Date(nowMs).toISOString()}] email-sync: ${written.toString()} email(s) → recall (ask about them with \`muse ask\`)\n`);
-    } catch { /* fail-soft — a Gmail blip must never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("provider"); }
   };
 }
 
@@ -282,12 +285,13 @@ async function defaultBrowsingSync(args: { readonly env: NodeJS.ProcessEnv; read
  * absent/false/garbage MUSE_BROWSING_AUTO_SYNC performs ZERO Chrome-file
  * access. Interval-throttled; read-only + written locally; fail-soft.
  */
-export function makeBrowsingAutoSyncTick(deps: MakeBrowsingAutoSyncTickDeps): () => Promise<void> {
+export function makeBrowsingAutoSyncTick(deps: MakeBrowsingAutoSyncTickDeps): GovernedDaemonTick {
   const { env: e, intervalMs, lastRunMs, stdout, browsingSync } = deps;
-  return async (): Promise<void> => {
-    if (!parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false)) return; // consent gate FIRST — no Chrome access when off
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false)) return daemonWorkloadNotReady("disabled"); // consent gate FIRST — no Chrome access when off
     const nowMs = Date.now();
-    if (!shouldAutoSyncBrowsing(lastRunMs.current, nowMs, intervalMs)) return;
+    if (!shouldAutoSyncBrowsing(lastRunMs.current, nowMs, intervalMs)) return daemonWorkloadNotReady("not-due");
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     lastRunMs.current = nowMs;
     try {
       const storeFile = e.MUSE_BROWSING_FILE?.trim()?.length
@@ -295,6 +299,7 @@ export function makeBrowsingAutoSyncTick(deps: MakeBrowsingAutoSyncTickDeps): ()
         : join(homedir(), ".muse", "browsing.json");
       const { synced } = await (browsingSync ?? defaultBrowsingSync)({ env: e, limit: BROWSING_SYNC_LIMIT, storeFile });
       if (synced > 0) stdout(`[${new Date(nowMs).toISOString()}] browsing: synced ${synced.toString()} new visit${synced === 1 ? "" : "s"} (ask about them with \`muse ask\`)\n`);
-    } catch { /* fail-soft — a Chrome-file hiccup must never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("io"); }
   };
 }

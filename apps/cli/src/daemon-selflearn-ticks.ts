@@ -31,13 +31,14 @@ import {
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
 import { FileUserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
-import { isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
+import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readPendingLearnEvents, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
+import { DEFAULT_DIGEST_HOUR, isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
 
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { deliverEveningRecapIfDue, gatherEveningRecap } from "./commands-recap.js";
+import { deliverEveningRecapIfDue, gatherEveningRecap, shouldFireRecap } from "./commands-recap.js";
+import { daemonWorkloadCancelled, daemonWorkloadCompleted, daemonWorkloadFailed, daemonWorkloadNotReady, type GovernedDaemonTick } from "./daemon-workload-governor.js";
 import { consolidatePlaybook } from "./playbook-consolidate.js";
 import { runMemoryConsolidationTick } from "./memory-consolidate-tick.js";
 import { promoteRecalledMemories, resolveMemoryUserId } from "./commands-memory.js";
@@ -90,12 +91,19 @@ export interface MakeSelfLearnTickDeps {
  * one distill per tick); every write lands on PROBATION until a real
  * reinforce graduates it. Silent unless it actually learns something.
  */
-export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): () => Promise<void> {
+export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): GovernedDaemonTick {
   const { env: e, stdout, followupModel, noticeSink, intervalMs, lastRunMs, selfLearnDistill, contradictionClassify } = deps;
-  return async (): Promise<void> => {
-    if (!selfLearnEnabled(e) || !followupModel) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!selfLearnEnabled(e)) return daemonWorkloadNotReady("disabled");
+    if (!followupModel) return daemonWorkloadNotReady("unconfigured");
     const nowMs = Date.now();
-    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return;
+    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return daemonWorkloadNotReady("not-due");
+    try {
+      if ((await readPendingLearnEvents(resolveLearnQueueFile(e))).length === 0) return daemonWorkloadNotReady("internal-brake");
+    } catch {
+      return daemonWorkloadNotReady("internal-brake");
+    }
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     lastRunMs.current = nowMs;
     try {
       const playbookFile = resolvePlaybookFile(e);
@@ -163,7 +171,8 @@ export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): () => Promise<vo
           });
         }
       }
-    } catch { /* fail-soft — background learning must never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("model"); }
   };
 }
 
@@ -183,17 +192,22 @@ export interface MakeSelfLearnDecayTickDeps {
  * switch + the learning-pause brake (a paused user's bank is frozen);
  * model-free, so it runs without a model, on a slow daily cadence.
  */
-export function makeSelfLearnDecayTick(deps: MakeSelfLearnDecayTickDeps): () => Promise<void> {
+export function makeSelfLearnDecayTick(deps: MakeSelfLearnDecayTickDeps): GovernedDaemonTick {
   const { env: e, stdout, noticeSink, intervalMs, lastRunMs } = deps;
-  return async (): Promise<void> => {
-    if (!selfLearnEnabled(e)) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!selfLearnEnabled(e)) return daemonWorkloadNotReady("disabled");
     const nowMs = Date.now();
-    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return;
-    lastRunMs.current = nowMs;
+    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return daemonWorkloadNotReady("not-due");
     try {
-      if (await isLearningPaused(resolveLearningPauseFile(e))) return; // brake: paused ⇒ bank frozen
+      if (await isLearningPaused(resolveLearningPauseFile(e))) return daemonWorkloadNotReady("internal-brake");
       const playbookFile = resolvePlaybookFile(e);
-      const beforeReward = new Map((await queryPlaybook(playbookFile)).map((s) => [s.id, s.reward ?? 0]));
+      const existing = await queryPlaybook(playbookFile);
+      if (!existing.some((entry) => entry.probation !== true && (entry.reward ?? 0) > 0)) {
+        return daemonWorkloadNotReady("internal-brake");
+      }
+      if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+      lastRunMs.current = nowMs;
+      const beforeReward = new Map(existing.map((s) => [s.id, s.reward ?? 0]));
       const decayed = await decayStalePlaybookRewards(playbookFile, { nowMs });
       if (decayed > 0) {
         stdout(`[${new Date(nowMs).toISOString()}] decay: ${decayed.toString()} stale strateg${decayed === 1 ? "y" : "ies"} faded toward neutral\n`);
@@ -213,7 +227,8 @@ export function makeSelfLearnDecayTick(deps: MakeSelfLearnDecayTickDeps): () => 
           });
         }
       }
-    } catch { /* fail-soft — background maintenance must never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("io"); }
   };
 }
 
@@ -241,15 +256,15 @@ export interface MakePlaybookConsolidateTickDeps {
  * per tick, the same MUSE_SELFLEARN switch + learning-pause brake, off
  * without a model.
  */
-export function makePlaybookConsolidateTick(deps: MakePlaybookConsolidateTickDeps): () => Promise<void> {
+export function makePlaybookConsolidateTick(deps: MakePlaybookConsolidateTickDeps): GovernedDaemonTick {
   const { env: e, stdout, followupModel, intervalMs, lastRunMs, consolidateMerge, consolidateValidate } = deps;
-  return async (): Promise<void> => {
-    if (!selfLearnEnabled(e) || !followupModel) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!selfLearnEnabled(e)) return daemonWorkloadNotReady("disabled");
+    if (!followupModel) return daemonWorkloadNotReady("unconfigured");
     const nowMs = Date.now();
-    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return;
-    lastRunMs.current = nowMs;
+    if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return daemonWorkloadNotReady("not-due");
     try {
-      if (await isLearningPaused(resolveLearningPauseFile(e))) return; // brake: paused ⇒ bank frozen
+      if (await isLearningPaused(resolveLearningPauseFile(e))) return daemonWorkloadNotReady("internal-brake");
       const playbookFile = resolvePlaybookFile(e);
       // The playbook file is a single-user ~/.muse bucket — operate on the
       // whole file (no external userId resolution); the merged strategy
@@ -259,7 +274,9 @@ export function makePlaybookConsolidateTick(deps: MakePlaybookConsolidateTickDep
       // graduated / avoided bank is never autonomously merged.
       const pending = entries.filter((x) => x.probation === true && (x.reward ?? 0) > PLAYBOOK_AVOID_BELOW);
       const clusters = clusterByTextSimilarity(pending, (x) => x.text, strategyTextSimilarity, 0.6).filter((c) => c.length >= 2);
-      if (clusters.length === 0) return;
+      if (clusters.length === 0) return daemonWorkloadNotReady("internal-brake");
+      if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+      lastRunMs.current = nowMs;
       const cluster = clusters[0]!; // ≤1 per tick (brake-first)
       const userId = cluster[0]!.userId;
       const tag = cluster.find((x) => x.tag)?.tag;
@@ -289,7 +306,8 @@ export function makePlaybookConsolidateTick(deps: MakePlaybookConsolidateTickDep
         validate
       });
       if (merged > 0) stdout(`[${new Date(nowMs).toISOString()}] consolidate: merged ${cluster.length.toString()} near-duplicate pending learning(s) into 1 (still on probation; see \`muse learned\`)\n`);
-    } catch { /* fail-soft — background maintenance must never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("model"); }
   };
 }
 
@@ -299,9 +317,10 @@ export interface MakeMemoryConsolidateTickDeps {
   readonly lastRunMs: TickRunState;
 }
 
-export function makeMemoryConsolidateTick(deps: MakeMemoryConsolidateTickDeps): () => Promise<void> {
+export function makeMemoryConsolidateTick(deps: MakeMemoryConsolidateTickDeps): GovernedDaemonTick {
   const { env: e, stdout, lastRunMs } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!selfLearnEnabled(e)) return daemonWorkloadNotReady("disabled");
     const sleepPromoteEnabled = parseBoolean(e.MUSE_SLEEP_PROMOTE, false);
     const persist = sleepPromoteEnabled
       ? async () => {
@@ -315,17 +334,29 @@ export function makeMemoryConsolidateTick(deps: MakeMemoryConsolidateTickDeps): 
           return { promoted: result.promoted.length };
         }
       : undefined;
-    const nextState = await runMemoryConsolidationTick({
-      enabled: selfLearnEnabled(e),
-      nowMs: Date.now(),
-      lastRunMs: lastRunMs.current,
-      readHits: () => readRecallHits(resolveRecallHitsFile(e)),
-      log: (line) => stdout(line + "\n"),
-      useActrRanking: true, // rank fade/promote by ACT-R activation like the manual path
-      persistFade: (fadeKeys) => writeFadedMemoryKeys(resolveFadedMemoriesFile(e), fadeKeys, Date.now()),
-      ...(persist !== undefined ? { persist } : {})
-    });
-    lastRunMs.current = nextState.lastRunMs;
+    const previous = lastRunMs.current;
+    let cancelled = false;
+    try {
+      const nextState = await runMemoryConsolidationTick({
+        claim: () => {
+          const accepted = (claim ?? (() => true))();
+          cancelled = !accepted;
+          return accepted;
+        },
+        enabled: true,
+        nowMs: Date.now(),
+        lastRunMs: previous,
+        readHits: () => readRecallHits(resolveRecallHitsFile(e)),
+        log: (line) => stdout(line + "\n"),
+        useActrRanking: true,
+        persistFade: (fadeKeys) => writeFadedMemoryKeys(resolveFadedMemoriesFile(e), fadeKeys, Date.now()),
+        ...(persist !== undefined ? { persist } : {})
+      });
+      lastRunMs.current = nextState.lastRunMs;
+      if (cancelled) return daemonWorkloadCancelled();
+      if (nextState.lastRunMs === previous) return daemonWorkloadNotReady("not-due");
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("io"); }
   };
 }
 
@@ -345,17 +376,20 @@ export interface MakeRecapTickDeps {
  * self-deduped to once per calendar day via a sidecar. Off by default;
  * turns `muse recap` from an on-demand report into anticipation.
  */
-export function makeRecapTick(deps: MakeRecapTickDeps): () => Promise<void> {
+export function makeRecapTick(deps: MakeRecapTickDeps): GovernedDaemonTick {
   const { env: e, stdout, messagingRegistry, provider, destination, recapHour, recapSidecar } = deps;
-  return async (): Promise<void> => {
-    if (!parseBoolean(e.MUSE_RECAP_ENABLED, false)) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!parseBoolean(e.MUSE_RECAP_ENABLED, false)) return daemonWorkloadNotReady("disabled");
     let lastFiredISO: string | undefined;
     try {
       lastFiredISO = (JSON.parse(readFileSync(recapSidecar, "utf8")) as { lastFired?: string }).lastFired;
     } catch { /* no sidecar yet ⇒ never fired */ }
+    const now = new Date();
+    if (!shouldFireRecap(now, lastFiredISO, recapHour)) return daemonWorkloadNotReady("not-due");
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     try {
       const outcome = await deliverEveningRecapIfDue({
-        now: new Date(),
+        now,
         recapHour,
         ...(lastFiredISO !== undefined ? { lastFiredISO } : { lastFiredISO: undefined }),
         gather: (now) => gatherEveningRecap(e, now),
@@ -368,7 +402,8 @@ export function makeRecapTick(deps: MakeRecapTickDeps): () => Promise<void> {
         }
       });
       if (outcome === "fired") stdout(`[${new Date().toISOString()}] recap: delivered the evening recap\n`);
-    } catch { /* fail-soft — the recap is a daily nicety, never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("provider"); }
   };
 }
 
@@ -403,12 +438,13 @@ export interface MakeDigestFlushTickDeps {
  * single paired messaging channel. No paired channel ⇒ an honest skip,
  * never a silent log-sink send (fail-close).
  */
-export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): () => Promise<void> {
+export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaemonTick {
   const { stdout, messagingRegistry, provider, destination, digestEnabled, quietHours, digestQueueFile, digestHourRaw, digestSentFile, dayRhythmConfigFile, channelOwnersFile } = deps;
-  return async (): Promise<void> => {
-    if (!digestEnabled) return;
+  return async (claim): ReturnType<GovernedDaemonTick> => {
+    if (!digestEnabled) return daemonWorkloadNotReady("disabled");
     const activeQuietHours = resolveQuietHoursOption(quietHours);
-    if (activeQuietHours && isQuietHour(new Date().getHours(), activeQuietHours)) return;
+    const now = new Date();
+    if (activeQuietHours && isQuietHour(now.getHours(), activeQuietHours)) return daemonWorkloadNotReady("internal-brake");
     const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
     let effectiveProvider = provider;
     let effectiveDestination = destination;
@@ -421,12 +457,15 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): () => Promis
         const paired = await resolveSinglePairedChannel(channelOwnersFile, messagingRegistry);
         if (!paired) {
           stdout(`[${new Date().toISOString()}] digest: day rhythm on but no channel paired\n`);
-          return;
+          return daemonWorkloadNotReady("unconfigured");
         }
         effectiveProvider = paired.providerId;
         effectiveDestination = paired.destination;
       }
     }
+    const digestHour = effectiveDigestHour ?? DEFAULT_DIGEST_HOUR;
+    if (now.getHours() !== digestHour) return daemonWorkloadNotReady("not-due");
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     try {
       const summary = await runDigestFlushIfDue({
         destination: effectiveDestination,
@@ -446,6 +485,7 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): () => Promis
         }
         stdout("\n");
       }
-    } catch { /* fail-soft — the daily digest is a nicety, never break the daemon */ }
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("provider"); }
   };
 }

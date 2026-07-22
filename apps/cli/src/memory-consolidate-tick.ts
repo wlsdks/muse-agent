@@ -1,6 +1,7 @@
 import { planMemoryConsolidationTick, type MemoryConsolidationTickState, type RecallHitLike } from "@muse/memory";
 
 export interface MemoryConsolidationTickDeps {
+  readonly claim?: () => boolean;
   readonly enabled: boolean;
   readonly nowMs: number;
   readonly lastRunMs: number | undefined;
@@ -47,6 +48,7 @@ export async function runMemoryConsolidationTick(deps: MemoryConsolidationTickDe
     ...(deps.useActrRanking !== undefined ? { useActrRanking: deps.useActrRanking } : {})
   });
   if (result.ran && result.plan) {
+    if (deps.claim && !deps.claim()) return { lastRunMs: deps.lastRunMs };
     if (deps.persist) {
       let promoted = 0;
       try { promoted = (await deps.persist()).promoted; } catch { /* fail-soft */ }
