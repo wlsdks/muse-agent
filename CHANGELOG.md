@@ -14,12 +14,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   CLI daemon shares the same fail-closed macOS HID-idle and AC-power probes as
   the API, layers them over CPU/load and free-memory admission, and supports a
   persisted `auto | paused` owner mode. An admitted cycle scans cheap readiness
-  checks but claims at most one of nine named heavyweight units; stop requests
-  before claim start nothing, while a stop during legacy work is recorded
-  truthfully at the completed/failed boundary. Strict owner-only v2 evidence
+  checks across sixteen named delivery, watch, model, sync, and consolidation
+  units. One fair cursor applies the owner's global cap to actual claims (and
+  preserves the historical maximum of eight claims when uncapped); stop requests
+  before claim start nothing, while a stop during work is recorded truthfully at
+  the completed/failed boundary. Strict owner-only v2 evidence
   keeps the admission observation beside the latest unit CPU/RSS/duration and
   queue measurements, while `doctor --resources` separates its live verdict
-  from legacy, historical, or stale receipt evidence.
+  from legacy, historical, or stale receipt evidence. The resource diagnostic
+  now labels its own probe RSS/CPU separately from the verified LaunchAgent PID,
+  and `doctor --model-memory` performs an explicit loopback-only Ollama `/api/ps`
+  read to report already-loaded model allocation without loading or generating.
 
 - **Old reminder backlogs now have an explicit, local-only triage transaction.**
   `muse remind triage` records an exact preview before allowing a bounded

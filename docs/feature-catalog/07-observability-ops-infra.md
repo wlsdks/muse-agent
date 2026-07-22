@@ -21,7 +21,7 @@ CLI base used: `node /Users/jinan/.nvm/.../v24.16.0/bin/node apps/cli/dist/index
 ## 1. CLI ops commands (verification)
 
 ### doctor — runtime health check ✅ ran
-- `muse doctor` runs model/MCP/calendar/scheduler/encryption/notes/messaging/searxng checks. Rich flag set: `--full`, `--json`, `--local`, `--grounding` (scores faithfulness + false-refusal corpus), `--weaknesses` (Whetstone weakness ledger), `--run-outcomes` (grounding failure RATE over `.muse/runs`), `--calibration` + `--alpha <rate>` (conformal 'I'm not sure' threshold), `--watch` + `--interval`.
+- `muse doctor` runs model/MCP/calendar/scheduler/encryption/notes/messaging/searxng checks. Rich flag set: `--full`, `--json`, `--local`, `--resources` (live admission plus separately labelled probe/resident RSS), `--model-memory` (loopback-only Ollama loaded-model allocation; no generation), `--grounding` (scores faithfulness + false-refusal corpus), `--weaknesses` (Whetstone weakness ledger), `--run-outcomes` (grounding failure RATE over `.muse/runs`), `--calibration` + `--alpha <rate>` (conformal 'I'm not sure' threshold), `--watch` + `--interval`.
 - Evidence: ran `doctor --local` → `Overall: WARN — 4 warning(s) (14 ok / 4 warn / 0 fail across 18 checks)`. Reports local-only ON (default), default model `ollama/gemma4:12b`, at-rest encryption gaps, official MCP (github/notion/linear/sentry) disabled-by-default.
 - All four flag families from the prompt (`--weaknesses`/`--grounding`/`--run-outcomes`/`--calibration`) EXIST. 🧪 tests under apps/cli + compat-doctor.ts (17 symbols).
 

@@ -27,6 +27,20 @@ describe("macOS system resource observation", () => {
     expect(readMacAcPower(() => "malformed", "darwin")).toBeUndefined();
   });
 
+  it("scopes IORegistry to the direct IOHIDSystem service instead of reading the full registry tree", () => {
+    const calls: { executable: string; args: readonly string[]; maxBuffer: number }[] = [];
+    const probe = (executable: string, args: readonly string[], options: { readonly maxBuffer: number }) => {
+      calls.push({ args, executable, maxBuffer: options.maxBuffer });
+      return '"HIDIdleTime" = 5000000000';
+    };
+    expect(readMacIdleMs(probe, "darwin")).toBe(5_000);
+    expect(calls).toEqual([{
+      args: ["-r", "-c", "IOHIDSystem", "-d", "1"],
+      executable: "/usr/sbin/ioreg",
+      maxBuffer: 256 * 1024
+    }]);
+  });
+
   it("keeps equality inclusive and unknown power fail closed", () => {
     expect(isOsIdleEnough(300_000, 300_000)).toBe(true);
     expect(isOsIdleEnough(299_999, 300_000)).toBe(false);

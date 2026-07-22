@@ -410,31 +410,35 @@ export interface MakeFollowupTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makeFollowupTick(deps: MakeFollowupTickDeps): () => Promise<void> {
+export function makeFollowupTick(deps: MakeFollowupTickDeps): GovernedDaemonTick {
   const { followupModel, destination, followupsFile, interruptionBudget, provider, messagingRegistry, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!followupModel) {
       stdout(`[${new Date().toISOString()}] followup: skipped (no model resolved)\n`);
-      return;
+      return daemonWorkloadNotReady("unconfigured");
     }
-    const summary = await runDueFollowups({
-      destination,
-      file: followupsFile,
-      interruptionBudget,
-      model: followupModel.model,
-      modelProvider: followupModel.modelProvider,
-      providerId: provider,
-      registry: messagingRegistry
-    });
-    const tag = `[${new Date().toISOString()}]`;
-    stdout(`${tag} followup: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
-    if (summary.errors.length > 0) {
-      stdout(`, ${summary.errors.length.toString()} error(s)`);
-      for (const error of summary.errors) {
-        stdout(`\n  ! ${error}`);
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    try {
+      const summary = await runDueFollowups({
+        destination,
+        file: followupsFile,
+        interruptionBudget,
+        model: followupModel.model,
+        modelProvider: followupModel.modelProvider,
+        providerId: provider,
+        registry: messagingRegistry
+      });
+      const tag = `[${new Date().toISOString()}]`;
+      stdout(`${tag} followup: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
+      if (summary.errors.length > 0) {
+        stdout(`, ${summary.errors.length.toString()} error(s)`);
+        for (const error of summary.errors) {
+          stdout(`\n  ! ${error}`);
+        }
       }
-    }
-    stdout("\n");
+      stdout("\n");
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("model"); }
   };
 }
 
@@ -487,14 +491,15 @@ export interface MakePatternTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makePatternTick(deps: MakePatternTickDeps): () => Promise<void> {
+export function makePatternTick(deps: MakePatternTickDeps): GovernedDaemonTick {
   const { env: e, quietHours, destination, interruptionBudget, messagingRegistry, provider, followupModel, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     const activeQuietHours = resolveQuietHoursOption(quietHours);
     if (activeQuietHours && isQuietHour(new Date().getHours(), activeQuietHours)) {
       stdout(`[${new Date().toISOString()}] pattern: held (quiet hours)\n`);
-      return;
+      return daemonWorkloadNotReady("internal-brake");
     }
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     // SDT criterion (Green & Swets): the pattern category's firing floor
     // adapts to the user's OWN response history — dismiss-heavy raises it,
     // acted-on lowers it. Fail-soft to the default floor on any error.
@@ -507,32 +512,35 @@ export function makePatternTick(deps: MakePatternTickDeps): () => Promise<void> 
         minConfidence = adjustConfidenceFloor(0.7, sdtCriterion(patternStats));
       }
     } catch { /* default floor */ }
-    const summary = await runDuePatternNotices({
-      destination,
-      interruptionBudget,
-      patternsFiredFile: resolvePatternsFiredFile(e),
-      ...(minConfidence !== undefined ? { select: { minConfidence } } : {}),
-      providerId: provider,
-      registry: messagingRegistry,
-      ...(followupModel
-        ? {
-            composeSuggestion: (match: PatternMatch): Promise<string | undefined> =>
-              synthesizePatternSuggestion(
-                {
-                  category: match.category,
-                  confidence: match.confidence,
-                  fallbackSuggestion: match.suggestion,
-                  groundedFacts: renderPatternFacts(match)
-                },
-                {
-                  model: followupModel.model,
-                  modelProvider: followupModel.modelProvider as Parameters<typeof synthesizePatternSuggestion>[1]["modelProvider"]
-                }
-              )
-          }
-        : {})
-    });
-    stdout(`[${new Date().toISOString()}] pattern: delivered ${summary.delivered.toString()}/${summary.fireable.toString()} fireable\n`);
+    try {
+      const summary = await runDuePatternNotices({
+        destination,
+        interruptionBudget,
+        patternsFiredFile: resolvePatternsFiredFile(e),
+        ...(minConfidence !== undefined ? { select: { minConfidence } } : {}),
+        providerId: provider,
+        registry: messagingRegistry,
+        ...(followupModel
+          ? {
+              composeSuggestion: (match: PatternMatch): Promise<string | undefined> =>
+                synthesizePatternSuggestion(
+                  {
+                    category: match.category,
+                    confidence: match.confidence,
+                    fallbackSuggestion: match.suggestion,
+                    groundedFacts: renderPatternFacts(match)
+                  },
+                  {
+                    model: followupModel.model,
+                    modelProvider: followupModel.modelProvider as Parameters<typeof synthesizePatternSuggestion>[1]["modelProvider"]
+                  }
+                )
+            }
+          : {})
+      });
+      stdout(`[${new Date().toISOString()}] pattern: delivered ${summary.delivered.toString()}/${summary.fireable.toString()} fireable\n`);
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed(followupModel ? "model" : "io"); }
   };
 }
 
@@ -611,11 +619,11 @@ async function resolveTodaysReconfirmCard(
  * No paired channel ⇒ an honest skip, never a silent log-sink send
  * (fail-close — day rhythm never guesses a recipient).
  */
-export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void> {
+export function makeBriefingTick(deps: MakeBriefingTickDeps): GovernedDaemonTick {
   const { env: e, tasksFile, leadMinutes, calendarRegistry, briefingCalendarLister, knowledgeEnrich, destination, messagingRegistry, objectivesFile, provider, stdout, dayRhythmConfigFile, channelOwnersFile, reconfirmCardAnsweredFile, reconfirmCardDeliveryFile } = deps;
   const nowFn = deps.now ?? (() => new Date());
   const userMemoryStore = deps.userMemoryStore ?? new FileUserMemoryStore();
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     const envEnabled = parseBoolean(e.MUSE_BRIEFING_ENABLED, false);
     const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
     // The env-flag path stays byte-compatible for existing users: once it's
@@ -624,7 +632,7 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
     const dayRhythmDriven = !envEnabled && dayRhythm.enabled;
     if (!envEnabled && !dayRhythm.enabled) {
       stdout(`[${new Date().toISOString()}] briefing: skipped (set MUSE_BRIEFING_ENABLED, or turn on 하루 리듬 day rhythm)\n`);
-      return;
+      return daemonWorkloadNotReady("disabled");
     }
     const now = nowFn();
     if (dayRhythmDriven) {
@@ -632,7 +640,7 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
       const withinMorningWindow = hour >= dayRhythm.morningHour && hour < dayRhythm.morningHour + 2;
       if (!withinMorningWindow) {
         stdout(`[${now.toISOString()}] briefing: held (day rhythm morning window is ${dayRhythm.morningHour.toString()}:00-${(dayRhythm.morningHour + 2).toString()}:00)\n`);
-        return;
+        return daemonWorkloadNotReady("not-due");
       }
     }
     let effectiveProvider = provider;
@@ -641,11 +649,12 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
       const paired = await resolveSinglePairedChannel(channelOwnersFile, messagingRegistry);
       if (!paired) {
         stdout(`[${now.toISOString()}] briefing: day rhythm on but no channel paired\n`);
-        return;
+        return daemonWorkloadNotReady("unconfigured");
       }
       effectiveProvider = paired.providerId;
       effectiveDestination = paired.destination;
     }
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     let imminent: Awaited<ReturnType<typeof deriveBriefingImminent>> = [];
     try {
       imminent = await deriveBriefingImminent(tasksFile, { leadMinutes, now });
@@ -657,7 +666,8 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
         imminent = [...imminent, ...(await deriveCalendarBriefingImminent(calendarLister, { leadMinutes, now }))];
       } catch { /* fail-soft — calendar unavailable */ }
     }
-    const summary = await runDueSituationalBriefing({
+    try {
+      const summary = await runDueSituationalBriefing({
       birthdayLine: async () => {
         try {
           const contacts = await queryContacts(resolveContactsFile(e));
@@ -684,8 +694,10 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): () => Promise<void
             reconfirmCard: () => resolveTodaysReconfirmCard(userMemoryStore, resolveDefaultUserId(e), reconfirmCardAnsweredFile, now)
           }
         : {})
-    });
-    stdout(`[${now.toISOString()}] briefing: ${summary.delivered > 0 ? "delivered" : "quiet (deduped or nothing to say)"}\n`);
+      });
+      stdout(`[${now.toISOString()}] briefing: ${summary.delivered > 0 ? "delivered" : "quiet (deduped or nothing to say)"}\n`);
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("provider"); }
   };
 }
 

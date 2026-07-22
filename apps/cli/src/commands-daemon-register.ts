@@ -111,8 +111,8 @@ import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./c
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
 import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
-import { DaemonHeavyWorkQueue, resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
-import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt } from "./daemon-resource-receipt.js";
+import { resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
+import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 import { DaemonWorkloadGovernor, daemonWorkloadNotReady, type DaemonWorkloadCycleResult } from "./daemon-workload-governor.js";
 import { emptyDaemonWorkloadProfile, readDaemonWorkloadProfile, recordDaemonWorkloadReceipt, resolveDaemonWorkloadProfileFile, writeDaemonWorkloadProfile } from "./daemon-workload-profile.js";
 
@@ -1526,7 +1526,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // loop actually running" without depending on any one sub-tick's
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
-      const heavyWorkQueue = new DaemonHeavyWorkQueue();
       const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
       let lastResourceAdmissionKey: string | undefined;
       const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
@@ -1535,6 +1534,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       let workloadProfile = await readDaemonWorkloadProfile(workloadProfileFile)
         ?? emptyDaemonWorkloadProfile();
       const workloadGovernor = new DaemonWorkloadGovernor([
+        { id: "followup", run: (claim) => followupTick(claim) },
+        { id: "pattern", run: (claim) => patternTick(claim) },
+        { id: "ambient", run: (claim) => ambientTick(claim) },
+        { id: "web-watch", run: (claim) => webWatchTick(claim) },
+        { id: "objectives", run: (claim) => objectivesTick(claim) },
+        { id: "home-watch", run: (claim) => homeWatchTick(claim) },
+        { id: "briefing", run: (claim) => briefingTick(claim) },
         { id: "reflection", run: (claim) => reflectionTick(claim) },
         { id: "email-sync", run: (claim) => emailSyncTick?.(claim) ?? Promise.resolve(daemonWorkloadNotReady(localOnly ? "disabled" : "unconfigured")) },
         { id: "self-learn", run: (claim) => selfLearnTick(claim) },
@@ -1605,22 +1611,21 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
             return;
           }
-          let governedCycle: DaemonWorkloadCycleResult | undefined;
-          await heavyWorkQueue.run([
-            { id: "followup", run: followupTick },
-            { id: "pattern", run: patternTick },
-            { id: "ambient", run: ambientTick },
-            { id: "web-watch", run: webWatchTick },
-            { id: "objectives", run: objectivesTick },
-            { id: "home-watch", run: homeWatchTick },
-            { id: "briefing", run: briefingTick },
-            { id: "governed-maintenance", run: async () => { governedCycle = await workloadGovernor.runAdmittedCycle(signal); } }
-          ], heavyWorkUnitsPerTick, () => !signal.stopped);
-          if (governedCycle?.status === "cancelled-before-claim") {
-            await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
-            return;
-          }
-          if (governedCycle?.status === "boundary") {
+          // Historically an uncapped tick attempted seven delivery/watch lanes
+          // plus one maintenance lane. Keep that upper bound while putting all
+          // sixteen claimable units behind one fair cursor and one measurement
+          // boundary. An explicit cap remains a cap on actual claimed work,
+          // not on cheap not-ready checks.
+          const cycleBudget = heavyWorkUnitsPerTick === 0 ? 8 : Math.min(heavyWorkUnitsPerTick, 8);
+          const completedUnits = new Set<DaemonWorkloadUnitId>();
+          for (let completed = 0; completed < cycleBudget; completed += 1) {
+            const governedCycle: DaemonWorkloadCycleResult = await workloadGovernor.runAdmittedCycle(signal, completedUnits);
+            if (governedCycle.status === "no-work") break;
+            if (governedCycle.status === "cancelled-before-claim") {
+              await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+              return;
+            }
+            completedUnits.add(governedCycle.boundary.unit);
             await writeResourceReceipt(withWorkloadBoundary(decisionReceipt, governedCycle.boundary));
             if (governedCycle.boundary.stopRequestedDuring) return;
           }

@@ -16,16 +16,12 @@ const RECEIPT_SCHEMA = "muse.daemon-workload-receipt/v2";
 const MAX_RECEIPT_BYTES = 64 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export type DaemonWorkloadUnitId =
-  | "reflection"
-  | "email-sync"
-  | "self-learn"
-  | "self-learn-decay"
-  | "playbook-consolidate"
-  | "memory-consolidate"
-  | "recap"
-  | "digest-flush"
-  | "browsing-sync";
+export const DAEMON_WORKLOAD_UNIT_IDS = [
+  "followup", "pattern", "ambient", "web-watch", "objectives", "home-watch", "briefing",
+  "reflection", "email-sync", "self-learn", "self-learn-decay", "playbook-consolidate",
+  "memory-consolidate", "recap", "digest-flush", "browsing-sync"
+] as const;
+export type DaemonWorkloadUnitId = typeof DAEMON_WORKLOAD_UNIT_IDS[number];
 export type DaemonWorkloadErrorClass = "timeout" | "io" | "provider" | "model" | "validation" | "unknown";
 
 export interface DaemonResourceAdmissionReceiptV1 {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { atomicWriteFile } from "@muse/stores/atomic-file-store";
 
-import type { DaemonResourceReceipt, DaemonWorkloadBoundaryV2, DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
+import { DAEMON_WORKLOAD_UNIT_IDS, type DaemonResourceReceipt, type DaemonWorkloadBoundaryV2, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 
 const SCHEMA = "muse.daemon-workload-profile/v1";
 const MAX_BYTES = 64 * 1024;
@@ -151,7 +151,7 @@ function isProfile(value: unknown): value is DaemonWorkloadProfile {
     || !integer(record.admitted) || !integer(record.boundaries) || !integer(record.cancelled) || !integer(record.deferred)
     || !record.units || typeof record.units !== "object" || Array.isArray(record.units)) return false;
   const units = record.units as Record<string, unknown>;
-  const allowed = new Set(["reflection", "email-sync", "self-learn", "self-learn-decay", "playbook-consolidate", "memory-consolidate", "recap", "digest-flush", "browsing-sync"]);
+  const allowed = new Set<string>(DAEMON_WORKLOAD_UNIT_IDS);
   if (!Object.entries(units).every(([key, unit]) => allowed.has(key) && isUnitProfile(unit))) return false;
   const observedBoundaries = (Object.values(units) as DaemonWorkloadUnitProfile[]).reduce(
     (sum, unit) => sum + unit.completed + unit.failed,

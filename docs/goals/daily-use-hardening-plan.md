@@ -95,7 +95,7 @@ states say what evidence is missing; they do not render zero as success.
   `--resume-heavy-work` escape hatch. It persists locally, is re-read on each
   tick without restart, holds only model/sync/consolidation work, and records
   the bounded `owner-paused` deferral reason.
-- [ ] Inventory per-loop CPU, resident memory, model load, queue depth, and
+- [x] Inventory per-loop CPU, resident memory, model load, queue depth, and
   cancellation latency using local, privacy-safe process measurements.
 - [ ] Define hard admission states: active user, low headroom, thermal/battery
   pressure when available, and idle. Heavy work must defer or cancel outside

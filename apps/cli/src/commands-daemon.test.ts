@@ -1761,14 +1761,15 @@ describe("muse daemon — resource admission", () => {
     expect(receipts).toMatchObject([
       { decision: { reason: "active-user", status: "deferred" } },
       { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "pattern" } },
       { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "email-sync" } },
       { decision: { reason: "owner-paused", status: "deferred" } }
     ]);
     expect(JSON.parse(readFileSync(join(env.HOME!, ".muse", "daemon-workload-profile.json"), "utf8"))).toMatchObject({
-      admitted: 1,
-      boundaries: 1,
+      admitted: 2,
+      boundaries: 2,
       deferred: 2,
-      units: { "email-sync": { completed: 1, failed: 0 } }
+      units: { "email-sync": { completed: 1, failed: 0 }, pattern: { completed: 1, failed: 0 } }
     });
   });
 
@@ -1803,17 +1804,18 @@ describe("muse daemon — resource admission", () => {
 
     expect(result.exitCode).toBeUndefined();
     expect(calls).toBe(1);
-    expect(receipts).toHaveLength(3);
+    expect(receipts).toHaveLength(4);
     expect(receipts).toMatchObject([
       { decision: { reason: "cpu-load", status: "deferred" } },
       { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "pattern" } },
       { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "browsing-sync" } }
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (cpu-load)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
   });
 
-  it("counts the governed maintenance lane as one capped round-robin unit", async () => {
+  it("applies the cap across delivery and maintenance with one fair cursor", async () => {
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
       MUSE_BROWSING_AUTO_SYNC: "true",
@@ -1828,11 +1830,11 @@ describe("muse daemon — resource admission", () => {
       registry,
       resourceSnapshot: () => ({ cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }),
       runDaemonLoop: async ({ signal, tick }) => {
-        for (let round = 0; round < 7; round += 1) await tick();
+        await tick();
         expect(browsingCalls).toBe(0);
         await tick();
         signal.stop();
-        return 8;
+        return 2;
       }
     });
 
@@ -1870,6 +1872,7 @@ describe("muse daemon — resource admission", () => {
     expect(receipts).toMatchObject([
       { decision: { reason: "owner-paused", status: "deferred" } },
       { decision: { status: "admitted" } },
+      { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "pattern" } },
       { decision: { status: "admitted" }, lastBoundary: { status: "completed", unit: "browsing-sync" } }
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (owner-paused)");
@@ -2009,7 +2012,10 @@ describe("muse daemon — resource admission", () => {
     });
     expect(modelCalls).toBe(1);
     expect(browsingSync).not.toHaveBeenCalled();
-    expect(receipts.at(-1)).toMatchObject({ decision: { reason: "stop-requested", status: "cancelled-before-claim" } });
+    expect(receipts.at(-1)).toMatchObject({
+      decision: { status: "admitted" },
+      lastBoundary: { status: "completed", stopRequestedDuring: true, unit: "followup" }
+    });
   });
 
   it("finishes a claimed unit truthfully after stop and skips following optional ticks", async () => {

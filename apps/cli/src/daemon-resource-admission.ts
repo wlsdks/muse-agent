@@ -133,7 +133,8 @@ export function describeDaemonResourceAdmission(
   policy: DaemonResourcePolicy,
   snapshot: DaemonResourceSnapshot,
   admission: DaemonResourceAdmission,
-  source: "LaunchAgent" | "shell/default"
+  source: "LaunchAgent" | "shell/default",
+  processLabel = "Muse"
 ): string {
   const limits = policy.guardEnabled
     ? `mode ${policy.backgroundMode}${policy.backgroundModeMalformed ? " (invalid explicit value; held)" : ""}; guard on; min idle ${(policy.minIdleMs / 1_000).toString()}s; min free ${policy.minFreeMemoryMb.toString()} MiB; max load ${policy.maxLoadPerCore.toString()}/core`
@@ -142,7 +143,7 @@ export function describeDaemonResourceAdmission(
     ? `observed ${(snapshot.freeMemoryBytes / MEBIBYTE).toFixed(0)} MiB free, load ${snapshot.load1.toFixed(2)}/${snapshot.cpuCount.toString()} cores`
     : "OS resource observation unavailable";
   const processObserved = Number.isSafeInteger(snapshot.residentMemoryBytes) && Number.isSafeInteger(snapshot.processCpuUserMicros) && Number.isSafeInteger(snapshot.processCpuSystemMicros)
-    ? `, Muse RSS ${(snapshot.residentMemoryBytes! / MEBIBYTE).toFixed(0)} MiB, process CPU ${((snapshot.processCpuUserMicros! + snapshot.processCpuSystemMicros!) / 1_000).toFixed(0)} ms`
+    ? `, ${processLabel} RSS ${(snapshot.residentMemoryBytes! / MEBIBYTE).toFixed(0)} MiB, process CPU ${((snapshot.processCpuUserMicros! + snapshot.processCpuSystemMicros!) / 1_000).toFixed(0)} ms`
     : "";
   const platformObserved = snapshot.platform === "darwin"
     ? `, idle ${snapshot.idleMs === undefined ? "unavailable" : `${(snapshot.idleMs / 1_000).toFixed(0)}s`}, power ${snapshot.onAcPower === true ? "AC" : snapshot.onAcPower === false ? "battery" : "unavailable"}`

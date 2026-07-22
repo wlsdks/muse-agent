@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 import { analyzeRunOutcomes } from "@muse/proactivity";
 
@@ -17,6 +17,7 @@ import {
   episodeIndexHealth,
   findOllamaModelTag,
   localOnlyCheck,
+  localModelMemoryDoctorCheck,
   modelEnvCheck,
   notesIndexHealth,
   officialMcpChecks,
@@ -31,6 +32,7 @@ import {
   resolveDoctorLocalRuntime,
   registerDoctorCommand,
   residentDaemonRuntimeCheck,
+  readResidentDaemonProcessSnapshot,
   resolveMuseEnvPath,
   runLocalDoctor,
   selfLearningCheck,
@@ -262,6 +264,8 @@ describe("local doctor runtime ownership", () => {
 
     expect(check).toMatchObject({ name: "daemon resources", status: "ok" });
     expect(check.detail).toContain("shell/default");
+    expect(check.detail).not.toContain("Muse RSS");
+    expect(check.detail).toContain("resident daemon process metrics unavailable");
     expect(check.detail).toContain("no prior transition evidence");
     expect(check.detail).toContain("no cumulative workload profile");
   });
@@ -340,6 +344,51 @@ describe("local doctor runtime ownership", () => {
 });
 
 describe("resident daemon truth", () => {
+  it("reads resource figures only for the service-manager PID", () => {
+    let invocation: readonly unknown[] = [];
+    const snapshot = readResidentDaemonProcessSnapshot({
+      artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+      kind: "darwin",
+      plistFile: "/tmp/com.muse.daemon.plist",
+      runtime: { pid: 4321, state: "running" }
+    }, (executable, args, options) => {
+      invocation = [executable, args, options];
+      return "  136672   0.2\n";
+    });
+
+    expect(snapshot).toEqual({ cpuPercent: 0.2, residentMemoryBytes: 136672 * 1024 });
+    expect(invocation).toEqual([
+      "/bin/ps",
+      ["-p", "4321", "-o", "rss=,%cpu="],
+      { encoding: "utf8", maxBuffer: 16 * 1024, timeout: 1_000 }
+    ]);
+  });
+
+  it("labels doctor and resident process measurements separately", async () => {
+    const check = await daemonResourceDoctorCheck({
+      daemonAutostartStatus: {
+        artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+        kind: "darwin",
+        plistFile: "/missing/com.muse.daemon.plist",
+        runtime: { pid: 4321, state: "running" }
+      },
+      daemonResourceSnapshot: {
+        cpuCount: 8,
+        freeMemoryBytes: 4 * 1024 * 1024 * 1024,
+        load1: 1,
+        processCpuSystemMicros: 2_000,
+        processCpuUserMicros: 3_000,
+        residentMemoryBytes: 64 * 1024 * 1024
+      },
+      env: { HOME: "/isolated" },
+      residentDaemonProcessSnapshot: { cpuPercent: 0.2, residentMemoryBytes: 128 * 1024 * 1024 }
+    });
+
+    expect(check.detail).toContain("doctor probe RSS 64 MiB, process CPU 5 ms");
+    expect(check.detail).toContain("resident daemon RSS 128 MiB, CPU 0.2%");
+    expect(check.detail).not.toContain("Muse RSS");
+  });
+
   it("accepts a complete, internally consistent resident proof", () => {
     const check = residentDaemonRuntimeCheck(residentRuntime());
 
@@ -420,6 +469,37 @@ describe("resident daemon truth", () => {
     } finally {
       process.exitCode = priorExitCode;
     }
+  });
+});
+
+describe("local model memory doctor", () => {
+  it("summarizes already-loaded local models without a generation request", async () => {
+    let request: { readonly input: string; readonly method?: string } | undefined;
+    const check = await localModelMemoryDoctorCheck({
+      env: { HOME: "/isolated", OLLAMA_BASE_URL: "http://localhost:11434" },
+      fetchImpl: async (input, init) => {
+        request = { input: String(input), method: init?.method };
+        return new Response(JSON.stringify({ models: [{ context_length: 4096, name: "qwen3:8b", size: 5_000_000_000, size_vram: 4_000_000_000 }] }));
+      },
+      homeDir: "/isolated"
+    });
+
+    expect(request).toEqual({ input: "http://localhost:11434/api/ps", method: "GET" });
+    expect(check).toMatchObject({ name: "local model memory", status: "ok" });
+    expect(check.detail).toContain("qwen3:8b");
+    expect(check.detail).toContain("context 4,096");
+  });
+
+  it("does not contact configured remote Ollama from the local diagnostic", async () => {
+    const fetchImpl = vi.fn();
+    const check = await localModelMemoryDoctorCheck({
+      env: { HOME: "/isolated", OLLAMA_BASE_URL: "https://ollama.example.com" },
+      fetchImpl,
+      homeDir: "/isolated"
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(check).toMatchObject({ status: "warn" });
+    expect(check.detail).toContain("no request sent");
   });
 });
 

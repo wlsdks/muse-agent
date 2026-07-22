@@ -7,7 +7,11 @@ export const MAC_POWER_OUTPUT_LIMIT_BYTES = 64 * 1024;
 const IOREG_PATH = "/usr/sbin/ioreg";
 const PMSET_PATH = "/usr/bin/pmset";
 
-export type MacResourceProbe = () => string;
+export type MacResourceProbe = (
+  executable: string,
+  args: readonly string[],
+  options: { readonly maxBuffer: number; readonly timeout: number }
+) => string;
 
 export function parseHidIdleSeconds(ioregOutput: string): number | undefined {
   const match = /"HIDIdleTime"\s*=\s*(\d+)/u.exec(ioregOutput);
@@ -28,7 +32,11 @@ export function readMacIdleMs(
 ): number | undefined {
   if (platform !== "darwin") return undefined;
   try {
-    const seconds = parseHidIdleSeconds(runIoreg());
+    const seconds = parseHidIdleSeconds(runIoreg(
+      IOREG_PATH,
+      ["-r", "-c", "IOHIDSystem", "-d", "1"],
+      { maxBuffer: MAC_IDLE_OUTPUT_LIMIT_BYTES, timeout: MAC_RESOURCE_PROBE_TIMEOUT_MS }
+    ));
     return seconds === undefined ? undefined : Math.round(seconds * 1_000);
   } catch {
     return undefined;
@@ -41,7 +49,11 @@ export function readMacAcPower(
 ): boolean | undefined {
   if (platform !== "darwin") return undefined;
   try {
-    return parseOnAcPower(runPmset());
+    return parseOnAcPower(runPmset(
+      PMSET_PATH,
+      ["-g", "batt"],
+      { maxBuffer: MAC_POWER_OUTPUT_LIMIT_BYTES, timeout: MAC_RESOURCE_PROBE_TIMEOUT_MS }
+    ));
   } catch {
     return undefined;
   }
@@ -55,18 +67,12 @@ export function isPowerOkForLlm(onAcPower: boolean | undefined): boolean {
   return onAcPower === true;
 }
 
-function defaultIoreg(): string {
-  return execFileSync(IOREG_PATH, ["-c", "IOHIDSystem"], {
+function defaultIoreg(executable: string, args: readonly string[], options: { readonly maxBuffer: number; readonly timeout: number }): string {
+  return execFileSync(executable, [...args], {
     encoding: "utf8",
-    maxBuffer: MAC_IDLE_OUTPUT_LIMIT_BYTES,
-    timeout: MAC_RESOURCE_PROBE_TIMEOUT_MS
+    maxBuffer: options.maxBuffer,
+    timeout: options.timeout
   });
 }
 
-function defaultPmset(): string {
-  return execFileSync(PMSET_PATH, ["-g", "batt"], {
-    encoding: "utf8",
-    maxBuffer: MAC_POWER_OUTPUT_LIMIT_BYTES,
-    timeout: MAC_RESOURCE_PROBE_TIMEOUT_MS
-  });
-}
+const defaultPmset = defaultIoreg;

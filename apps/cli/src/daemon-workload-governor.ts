@@ -1,5 +1,5 @@
 import type { DaemonStopSignal } from "./commands-daemon-loop.js";
-import type { DaemonWorkloadBoundaryV2, DaemonWorkloadErrorClass, DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
+import { DAEMON_WORKLOAD_UNIT_IDS, type DaemonWorkloadBoundaryV2, type DaemonWorkloadErrorClass, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 
 export type DaemonWorkloadNotReadyReason = "disabled" | "unconfigured" | "not-due" | "internal-brake";
 export type DaemonWorkloadTickOutcome =
@@ -36,7 +36,7 @@ export class DaemonWorkloadGovernor {
     private readonly units: readonly DaemonWorkloadUnit[],
     private readonly metrics: DaemonWorkloadMetrics = defaultMetrics()
   ) {
-    if (units.length > 9) throw new Error("daemon workload governor supports at most 9 units");
+    if (units.length > DAEMON_WORKLOAD_UNIT_IDS.length) throw new Error(`daemon workload governor supports at most ${DAEMON_WORKLOAD_UNIT_IDS.length.toString()} units`);
     if (new Set(units.map((unit) => unit.id)).size !== units.length) throw new Error("daemon workload unit ids must be unique");
   }
 
@@ -44,17 +44,23 @@ export class DaemonWorkloadGovernor {
     return this.units.length;
   }
 
-  async runAdmittedCycle(signal: DaemonStopSignal): Promise<DaemonWorkloadCycleResult> {
+  async runAdmittedCycle(
+    signal: DaemonStopSignal,
+    excludedUnits: ReadonlySet<DaemonWorkloadUnitId> = new Set()
+  ): Promise<DaemonWorkloadCycleResult> {
     if (this.inFlight) return { status: "no-work" };
     this.inFlight = true;
     try {
-      return await this.runExclusiveCycle(signal);
+      return await this.runExclusiveCycle(signal, excludedUnits);
     } finally {
       this.inFlight = false;
     }
   }
 
-  private async runExclusiveCycle(signal: DaemonStopSignal): Promise<DaemonWorkloadCycleResult> {
+  private async runExclusiveCycle(
+    signal: DaemonStopSignal,
+    excludedUnits: ReadonlySet<DaemonWorkloadUnitId>
+  ): Promise<DaemonWorkloadCycleResult> {
     if (signal.stopped) return { status: "cancelled-before-claim" };
     const total = this.units.length;
     if (total === 0) return { status: "no-work" };
@@ -63,6 +69,7 @@ export class DaemonWorkloadGovernor {
       if (signal.stopped) return { status: "cancelled-before-claim" };
       const index = (this.cursor + offset) % total;
       const unit = this.units[index]!;
+      if (excludedUnits.has(unit.id)) continue;
       let claimed = false;
       let claimAtMs = 0;
       let cpuBefore = 0;

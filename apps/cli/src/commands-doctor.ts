@@ -12,6 +12,7 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
@@ -21,7 +22,7 @@ import { readDayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
 export { dayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { findOllamaModelTag, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
-import { probeOllamaModels } from "./ollama-probe.js";
+import { probeOllamaLoadedModels, probeOllamaModels } from "./ollama-probe.js";
 import { bluetoothShortcutsCheck, brightnessShortcutCheck, focusShortcutsCheck, readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 import { listShortcutNames } from "@muse/macos";
 import { embedModelCheck, formatBytes, recallCalibrationCheck } from "./commands-doctor-checks.js";
@@ -67,7 +68,7 @@ import type { RuntimeQualificationObservation } from "./personal-agent-qualifica
 import type { ProgramIO } from "./program.js";
 import { assessDaemonResourceAdmission, readDaemonResourceSnapshot, resolveDaemonResourcePolicy, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import { readDaemonResourceAdmissionReceipt, resolveDaemonResourceReceiptFile } from "./daemon-resource-receipt.js";
-import { describeDaemonResourceStatus } from "./daemon-resource-status.js";
+import { describeDaemonResourceStatus, type ResidentDaemonProcessSnapshot } from "./daemon-resource-status.js";
 import { describeDaemonWorkloadProfile, readDaemonWorkloadProfile, resolveDaemonWorkloadProfileFile } from "./daemon-workload-profile.js";
 
 export interface DoctorCommandHelpers {
@@ -115,6 +116,37 @@ export interface DoctorLocalRuntimeOptions {
   readonly residentDaemonRuntime?: RuntimeQualificationObservation;
   /** Deterministic test/embedding seam; production reads OS counters only. */
   readonly daemonResourceSnapshot?: DaemonResourceSnapshot;
+  /** Deterministic seam for the separately observed resident LaunchAgent process. */
+  readonly residentDaemonProcessSnapshot?: ResidentDaemonProcessSnapshot;
+}
+
+type ResidentProcessProbe = (
+  executable: string,
+  args: readonly string[],
+  options: { readonly encoding: "utf8"; readonly maxBuffer: number; readonly timeout: number }
+) => string;
+
+/** Read only the verified LaunchAgent PID; never infer a daemon from process names. */
+export function readResidentDaemonProcessSnapshot(
+  daemonAutostart: DaemonAutostartStatus,
+  probe: ResidentProcessProbe = (executable, args, options) => execFileSync(executable, args, options)
+): ResidentDaemonProcessSnapshot | undefined {
+  if (daemonAutostart.kind !== "darwin" || daemonAutostart.runtime.state !== "running") return undefined;
+  try {
+    const output = probe(
+      "/bin/ps",
+      ["-p", daemonAutostart.runtime.pid.toString(), "-o", "rss=,%cpu="],
+      { encoding: "utf8", maxBuffer: 16 * 1024, timeout: 1_000 }
+    ).trim();
+    const match = /^(\d+)\s+([0-9]+(?:\.[0-9]+)?)$/u.exec(output);
+    if (!match) return undefined;
+    const rssKiB = Number(match[1]);
+    const cpuPercent = Number(match[2]);
+    if (!Number.isSafeInteger(rssKiB) || rssKiB <= 0 || !Number.isFinite(cpuPercent) || cpuPercent < 0) return undefined;
+    return { cpuPercent, residentMemoryBytes: rssKiB * 1024 };
+  } catch {
+    return undefined;
+  }
 }
 
 function doctorPath(env: MuseEnvironment, museHome: string, envKey: string, filename: string): string {
@@ -200,6 +232,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--weaknesses", "Show the Whetstone weakness ledger — what Muse has noticed it can't answer / didn't actually do")
     .option("--run-outcomes", "Show technical grounding diagnostics over canonical unique .muse/runs logs (not personal usefulness)")
     .option("--resources", "Show the resident daemon's CPU/RAM admission policy without contacting models or remote services")
+    .option("--model-memory", "Show models already loaded in local Ollama memory without loading or generating")
     .option("--approval-rate", "Show per-gate approval/denial counts from the action log — flags a gate class being reflexively approved (a 'rubber stamp')")
     .option("--calibration", "Calibrate the 'I'm not sure' abstention threshold on the bundled edge corpus (conformal coverage guarantee)")
     .option("--alpha <rate>", "Target miss rate for --calibration (default 0.1 → answer ≥90% of answerable items)")
@@ -217,6 +250,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         readonly weaknesses?: boolean;
         readonly runOutcomes?: boolean;
         readonly resources?: boolean;
+        readonly modelMemory?: boolean;
         readonly approvalRate?: boolean;
         readonly calibration?: boolean;
         readonly alpha?: string;
@@ -254,6 +288,12 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         } else {
           io.stdout(`daemon resources — ${check.detail}\n`);
         }
+        return;
+      }
+      if (options.modelMemory) {
+        const check = await localModelMemoryDoctorCheck(helpers.localRuntime);
+        if (options.json) helpers.writeOutput(io, { checks: [check] });
+        else io.stdout(`local model memory — ${check.detail}\n`);
         return;
       }
       // --approval-rate is a read-only view over the action log's gated approve/deny outcomes.
@@ -570,7 +610,8 @@ async function resolveDoctorDaemonAutostart(
 async function daemonResourceDoctorCheckFor(
   env: MuseEnvironment,
   daemonAutostart: DaemonAutostartStatus,
-  snapshot: DaemonResourceSnapshot
+  snapshot: DaemonResourceSnapshot,
+  residentProcess?: ResidentDaemonProcessSnapshot
 ): Promise<LocalCheck> {
   const resourceEnvironment = await resolveDaemonResourceEnvironment(env, daemonAutostart);
   const resourcePolicy = resolveDaemonResourcePolicy(resourceEnvironment.env);
@@ -578,7 +619,7 @@ async function daemonResourceDoctorCheckFor(
   const receipt = await readDaemonResourceAdmissionReceipt(resolveDaemonResourceReceiptFile(resourceEnvironment.env));
   const profile = await readDaemonWorkloadProfile(resolveDaemonWorkloadProfileFile(resourceEnvironment.env));
   return {
-    detail: `${describeDaemonResourceStatus({ admission: resourceAdmission, policy: resourcePolicy, receipt, snapshot, source: resourceEnvironment.source })}; ${describeDaemonWorkloadProfile(profile)}`,
+    detail: `${describeDaemonResourceStatus({ admission: resourceAdmission, policy: resourcePolicy, receipt, residentProcess, snapshot, source: resourceEnvironment.source })}; ${describeDaemonWorkloadProfile(profile)}`,
     name: "daemon resources",
     status: resourceAdmission.status === "defer" ? "warn" : "ok"
   };
@@ -596,8 +637,34 @@ export async function daemonResourceDoctorCheck(runtimeOptions: DoctorLocalRunti
   return daemonResourceDoctorCheckFor(
     env,
     daemonAutostart,
-    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot()
+    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot(),
+    runtimeOptions.residentDaemonProcessSnapshot ?? readResidentDaemonProcessSnapshot(daemonAutostart)
   );
+}
+
+/** Explicit local-only GET /api/ps diagnostic; never sends prompts or loads a model. */
+export async function localModelMemoryDoctorCheck(runtimeOptions: DoctorLocalRuntimeOptions = {}): Promise<LocalCheck> {
+  const runtime = resolveDoctorLocalRuntime(runtimeOptions);
+  const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
+  const result = await probeOllamaLoadedModels(resolveOllamaUrl(env), { fetchImpl: runtime.fetchImpl });
+  if (!result.reachable) {
+    return {
+      detail: result.reason === "non-local-url"
+        ? "held: configured Ollama URL is not loopback; no request sent"
+        : `local Ollama unavailable${result.status === undefined ? "" : ` (HTTP ${result.status.toString()})`}`,
+      name: "local model memory",
+      status: "warn"
+    };
+  }
+  if (result.models.length === 0) return { detail: "no models currently loaded", name: "local model memory", status: "ok" };
+  const totalBytes = result.models.reduce((sum, model) => sum + (model.size ?? 0), 0);
+  const totalVramBytes = result.models.reduce((sum, model) => sum + (model.sizeVram ?? 0), 0);
+  const rows = result.models.map((model) => `${model.name} allocated ${formatBytes(model.size ?? 0)}, GPU/unified ${formatBytes(model.sizeVram ?? 0)}${model.contextLength === undefined ? "" : `, context ${model.contextLength.toLocaleString("en-US")}`}`);
+  return {
+    detail: `${result.models.length.toString()} loaded; allocated ${formatBytes(totalBytes)}, GPU/unified ${formatBytes(totalVramBytes)}; ${rows.join("; ")}`,
+    name: "local model memory",
+    status: "ok"
+  };
 }
 
 function withResidentRuntime(response: unknown, resident: ResidentDaemonRuntimeCheck): unknown {
@@ -658,7 +725,8 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   checks.push(await daemonResourceDoctorCheckFor(
     env,
     daemonAutostart,
-    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot()
+    runtimeOptions.daemonResourceSnapshot ?? readDaemonResourceSnapshot(),
+    runtimeOptions.residentDaemonProcessSnapshot ?? readResidentDaemonProcessSnapshot(daemonAutostart)
   ));
 
   // Model env — mirrors the runtime's resolveDefaultModel so local-only's

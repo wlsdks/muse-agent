@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DaemonStopSignal } from "./commands-daemon-loop.js";
+import { DAEMON_WORKLOAD_UNIT_IDS } from "./daemon-resource-receipt.js";
 import {
   DaemonWorkloadGovernor,
   daemonWorkloadCancelled,
@@ -21,8 +22,8 @@ function metrics(values: number[]): DaemonWorkloadMetrics {
 }
 
 describe("DaemonWorkloadGovernor", () => {
-  it("claims every continuously-ready unit within nine admitted cycles", async () => {
-    const ids = ["reflection", "email-sync", "self-learn", "self-learn-decay", "playbook-consolidate", "memory-consolidate", "recap", "digest-flush", "browsing-sync"] as const;
+  it("claims every continuously-ready unit within one full admitted rotation", async () => {
+    const ids = DAEMON_WORKLOAD_UNIT_IDS;
     const claimed: string[] = [];
     const governor = new DaemonWorkloadGovernor(ids.map((id) => ({
       id,
@@ -37,6 +38,26 @@ describe("DaemonWorkloadGovernor", () => {
       expect((await governor.runAdmittedCycle(new DaemonStopSignal())).status).toBe("boundary");
     }
     expect(claimed).toEqual(ids);
+  });
+
+  it("does not claim a unit twice when a batch excludes completed boundaries", async () => {
+    const claimed: string[] = [];
+    const governor = new DaemonWorkloadGovernor(["pattern", "browsing-sync"].map((id) => ({
+      id: id as DaemonWorkloadUnit["id"],
+      run: async (claim) => {
+        expect(claim!()).toBe(true);
+        claimed.push(id);
+        return daemonWorkloadCompleted();
+      }
+    })));
+    const completed = new Set<DaemonWorkloadUnit["id"]>();
+    for (let index = 0; index < 2; index += 1) {
+      const result = await governor.runAdmittedCycle(new DaemonStopSignal(), completed);
+      expect(result.status).toBe("boundary");
+      if (result.status === "boundary") completed.add(result.boundary.unit);
+    }
+    expect(await governor.runAdmittedCycle(new DaemonStopSignal(), completed)).toEqual({ status: "no-work" });
+    expect(claimed).toEqual(["pattern", "browsing-sync"]);
   });
 
   it("rejects an overlapping cycle while a claimed unit remains in flight", async () => {

@@ -42,15 +42,19 @@ export interface MakeAmbientTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makeAmbientTick(deps: MakeAmbientTickDeps): () => Promise<void> {
+export function makeAmbientTick(deps: MakeAmbientTickDeps): GovernedDaemonTick {
   const { ambientRunner, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!ambientRunner) {
       stdout(`[${new Date().toISOString()}] ambient: skipped (no rules)\n`);
-      return;
+      return daemonWorkloadNotReady("unconfigured");
     }
-    const summary = await ambientRunner.tick();
-    stdout(`[${new Date().toISOString()}] ambient: delivered ${summary.delivered.toString()}\n`);
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    try {
+      const summary = await ambientRunner.tick();
+      stdout(`[${new Date().toISOString()}] ambient: delivered ${summary.delivered.toString()}\n`);
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("provider"); }
   };
 }
 
@@ -59,15 +63,19 @@ export interface MakeWebWatchTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makeWebWatchTick(deps: MakeWebWatchTickDeps): () => Promise<void> {
+export function makeWebWatchTick(deps: MakeWebWatchTickDeps): GovernedDaemonTick {
   const { webWatchRunner, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!webWatchRunner) {
       stdout(`[${new Date().toISOString()}] web-watch: skipped (no config)\n`);
-      return;
+      return daemonWorkloadNotReady("unconfigured");
     }
-    const summary = await webWatchRunner.tick();
-    stdout(`[${new Date().toISOString()}] web-watch: delivered ${summary.delivered.toString()}\n`);
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    try {
+      const summary = await webWatchRunner.tick();
+      stdout(`[${new Date().toISOString()}] web-watch: delivered ${summary.delivered.toString()}\n`);
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("io"); }
   };
 }
 
@@ -76,15 +84,19 @@ export interface MakeHomeWatchTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makeHomeWatchTick(deps: MakeHomeWatchTickDeps): () => Promise<void> {
+export function makeHomeWatchTick(deps: MakeHomeWatchTickDeps): GovernedDaemonTick {
   const { homeWatchRunner, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!homeWatchRunner) {
       stdout(`[${new Date().toISOString()}] home-watch: skipped (no config)\n`);
-      return;
+      return daemonWorkloadNotReady("unconfigured");
     }
-    const summary = await homeWatchRunner.tick();
-    stdout(`[${new Date().toISOString()}] home-watch: delivered ${summary.delivered.toString()}\n`);
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    try {
+      const summary = await homeWatchRunner.tick();
+      stdout(`[${new Date().toISOString()}] home-watch: delivered ${summary.delivered.toString()}\n`);
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("io"); }
   };
 }
 
@@ -100,28 +112,32 @@ export interface MakeObjectivesTickDeps {
   readonly stdout: (message: string) => void;
 }
 
-export function makeObjectivesTick(deps: MakeObjectivesTickDeps): () => Promise<void> {
+export function makeObjectivesTick(deps: MakeObjectivesTickDeps): GovernedDaemonTick {
   const { evaluate, actuator, file, stdout } = deps;
-  return async (): Promise<void> => {
+  return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!evaluate || !actuator) {
       stdout(`[${new Date().toISOString()}] objectives: skipped (no model resolved)\n`);
-      return;
+      return daemonWorkloadNotReady("unconfigured");
     }
-    const summary = await runDueObjectives({
-      act: actuator.act,
-      escalate: actuator.escalate,
-      evaluate,
-      file
-    });
-    const tag = `[${new Date().toISOString()}]`;
-    stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);
-    if (summary.errors.length > 0) {
-      stdout(`, ${summary.errors.length.toString()} error(s)`);
-      for (const error of summary.errors) {
-        stdout(`\n  ! ${error}`);
+    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    try {
+      const summary = await runDueObjectives({
+        act: actuator.act,
+        escalate: actuator.escalate,
+        evaluate,
+        file
+      });
+      const tag = `[${new Date().toISOString()}]`;
+      stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);
+      if (summary.errors.length > 0) {
+        stdout(`, ${summary.errors.length.toString()} error(s)`);
+        for (const error of summary.errors) {
+          stdout(`\n  ! ${error}`);
+        }
       }
-    }
-    stdout("\n");
+      stdout("\n");
+      return daemonWorkloadCompleted();
+    } catch { return daemonWorkloadFailed("model"); }
   };
 }
 
