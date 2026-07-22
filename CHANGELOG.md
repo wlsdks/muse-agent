@@ -10,6 +10,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now ground a thread in one exact local run without treating a trace as
+  authority.** `muse trace` exposes a copyable versioned reference only for strict current
+  JSONL traces whose events all prove the same run ID. CLI, authenticated local HTTP, and
+  web require explicit workspace authority and never search, use cwd as a resolver fallback,
+  migrate legacy traces, or substitute checkpoints. Packs expose only bounded query/answer
+  summaries, recorded time, outcome, success state, and tool names; raw event fields and
+  secrets stay out. Run evidence remains context-only and cannot become a next step,
+  completion receipt, feedback outcome, permission, resume target, or automation signal.
+
 - **Continuity can now ground a thread in one exact local contact.** `muse contacts
   list` exposes the copyable canonical ID, while CLI, authenticated local HTTP, and web
   accept only that byte-identical ID—never a name, alias, prefix, address, Apple Contacts

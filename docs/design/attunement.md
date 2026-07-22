@@ -12,7 +12,7 @@ related: [../strategy/attunement.md, ../goals/attunement-implementation-plan.md,
 The full Attunement loop is **not shipped**. Slice A is implemented as a user-invoked tracer:
 the user creates a `life` or `work` thread, links exact sources, opens a pack through the CLI
 or local web/API surface, and records one of four outcomes. Exact local tasks and notes plus
-context-only reminders, configured-calendar occurrences, and contacts are available; Observe, automatic affiliation, further source
+context-only reminders, configured-calendar occurrences, contacts, and strict workspace-scoped run evidence are available; Observe, automatic affiliation, further source
 adapters, and proactive timing-aware help remain roadmap work.
 
 In plain language: start with an unfinished life or work thread the user chooses, build a
@@ -49,13 +49,14 @@ evidence sufficiency, or action approval.
 
 Muse must know which part of the user's life they mean before it combines a task, note,
 reminder, calendar event, contact, run, or browser visit. Slice A supports exact local tasks,
-notes, reminders, configured calendar occurrences, and contacts, and only the user can create the binding. An LLM may later summarize
+notes, reminders, configured calendar occurrences, contacts, and strict local run evidence,
+and only the user can create the binding. An LLM may later summarize
 linked evidence; it may not invent the association.
 
 ```ts
 interface PersonalThreadLink {
   threadId: string;
-  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact";
+  artifactType: "task" | "note" | "reminder" | "calendar-event" | "contact" | "run";
   providerId: "local" | `calendar:${string}`;
   artifactId: string;
   role: "context" | "next-step";
@@ -76,13 +77,24 @@ summary, location, start/end, and all-day state at display time. A contact link 
 the byte-identical canonical ID shown by `muse contacts list`; it never searches a name,
 alias, prefix, email, phone, handle, Apple Contacts, or a live address book. Its separate
 Adapter projects only bounded name, relationship, birthday, and user-authored context—never
-recipient addresses, aliases, or graph edges—and it remains context-only. Additional
-artifact types and deterministic bindings are later adapters, not a fallback in this path.
+recipient addresses, aliases, or graph edges—and it remains context-only. A run link stores
+a versioned locator containing the canonical workspace realpath and canonical run ID. The
+CLI captures workspace authority once; HTTP accepts only an explicit server option or
+`MUSE_CONTINUITY_WORKSPACE`; neither surface consults an ambient cwd while resolving a
+locator. The strict reader requires every bounded JSONL event to carry the same internal
+run ID, rejects symlinks, duplicate JSON keys, malformed outcomes, unstable files, and
+workspace mismatches, and projects only bounded query/answer summaries, recorded time,
+outcome, success state, and tool names. Legacy traces without internal run provenance stay
+diagnostic-only and are not rewritten. Runs remain context-only and cannot become a next
+step, interaction receipt, outcome, permission, resume target, or automation signal.
+Checkpoints remain outside Continuity until they carry equivalent workspace provenance.
+Additional artifact types and deterministic bindings are later adapters, not a fallback in
+this path.
 
 ### Continuity preparation module
 
 `@muse/attunement` owns the shared preparation boundary. The local-source Module and the
-strict contact and calendar Adapters meet at the same validator/resolver Interfaces.
+strict contact, calendar, and run Adapters meet at the same validator/resolver Interfaces.
 It resolves only already-linked canonical IDs, normalizes bounded user text, preserves valid
 stored due timestamps and exact task tags, and never searches for a replacement. Preparation
 captures its clock once, derives `due|overdue` on the transient task or pending-reminder

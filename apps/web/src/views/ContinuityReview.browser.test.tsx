@@ -220,6 +220,21 @@ function contactLinkReview(linked: boolean) {
   };
 }
 
+const RUN_REFERENCE = "muse-run-v1:ZXhhY3Qtd29ya3NwYWNlLXJ1bi1yZWZlcmVuY2U";
+
+function runLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: RUN_REFERENCE, artifactType: "run", providerId: "local", role: "context" }] : [],
+      title: "Verify release evidence"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -322,6 +337,61 @@ test("an opened Pack shows only the safe contact projection as read-only context
   await expect.element(screen.getByText(/must-not-appear@example\.com/u)).not.toBeInTheDocument();
 });
 
+test("an opened Pack shows only bounded run evidence as read-only context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const run = {
+    artifactId: RUN_REFERENCE,
+    artifactType: "run",
+    providerId: "local",
+    role: "context",
+    runOutcome: "grounded" as const,
+    runRecordedAt: "2026-07-22T00:00:00.000Z",
+    runSuccess: true,
+    runToolNames: ["task_read", "shell"],
+    summary: "The focused release gate passed.",
+    title: "Verify the release gate"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_run" },
+    pack: {
+      evidence: [{ artifact: run, reference: run, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "work", title: "Release" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText(`Verify the release gate · run:${RUN_REFERENCE}`, { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("The focused release gate passed.", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Run outcome: grounded", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Run succeeded", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Tools: task_read, shell", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+  await expect.element(screen.getByText(/must-not-appear|127\.0\.0\.1/u)).not.toBeInTheDocument();
+});
+
+test("an opened Pack does not mislabel an unknown run success state as failure", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const run = {
+    artifactId: RUN_REFERENCE,
+    artifactType: "run",
+    providerId: "local",
+    role: "context",
+    runSuccess: null,
+    title: "Legacy success state"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_run_unknown" },
+    pack: {
+      evidence: [{ artifact: run, reference: run, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "work", title: "Release" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText("Run succeeded", { exact: true })).not.toBeInTheDocument();
+  await expect.element(screen.getByText("Run failed", { exact: true })).not.toBeInTheDocument();
+});
+
 test("a reminder can be explicitly linked and unlinked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
@@ -353,7 +423,7 @@ test("a reminder can be explicitly linked and unlinked only as context", async (
   await screen.getByLabelText("Source type").selectOptions("reminder");
   await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
   await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
-  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("reminder_den");
+  await screen.getByLabelText("Exact task/reminder/contact ID, note path, or run reference").fill("reminder_den");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).toBeVisible();
 
@@ -395,15 +465,61 @@ test("a contact requires a pasted exact id and can be linked only as context", a
   await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
   await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
   await expect.element(screen.getByRole("option", { name: "Kim Minji" })).not.toBeInTheDocument();
-  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill(" person_김민지_Aa ");
+  await screen.getByLabelText("Exact task/reminder/contact ID, note path, or run reference").fill(" person_김민지_Aa ");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
-  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("person_김민지_Aa");
+  await screen.getByLabelText("Exact task/reminder/contact ID, note path, or run reference").fill("person_김민지_Aa");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).toBeVisible();
 
   await screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(3);
+});
+
+test("a run requires a pasted exact reference and can be linked only as context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : runLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      if ((body as { artifactId?: string }).artifactId !== RUN_REFERENCE) throw new Error("non-canonical run reference");
+      expect(body).toEqual({ artifactId: RUN_REFERENCE, artifactType: "run", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: RUN_REFERENCE, artifactType: "run" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-run.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Verify release evidence", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("run");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("option", { name: "Verify the release gate" })).not.toBeInTheDocument();
+  const input = screen.getByLabelText("Exact task/reminder/contact ID, note path, or run reference");
+  await input.fill(` ${RUN_REFERENCE}`);
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
+  await input.fill(RUN_REFERENCE);
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: `Remove run:${RUN_REFERENCE}` })).toBeVisible();
+
+  await screen.getByRole("button", { name: `Remove run:${RUN_REFERENCE}` }).click();
+  await expect.element(screen.getByRole("button", { name: `Remove run:${RUN_REFERENCE}` })).not.toBeInTheDocument();
   expect(post).toHaveBeenCalledTimes(3);
 });
 
@@ -437,7 +553,7 @@ test("a calendar occurrence requires an explicit configured provider and can be 
   await expect.element(screen.getByText("Review roadmap", { exact: true })).toBeVisible();
   await screen.getByLabelText("Source type").selectOptions("calendar-event");
   await expect.element(screen.getByRole("button", { name: "Link source" })).toBeDisabled();
-  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("cev1_exact");
+  await screen.getByLabelText("Exact task/reminder/contact ID, note path, or run reference").fill("cev1_exact");
   await screen.getByLabelText("Calendar provider").selectOptions("work-calendar");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).toBeVisible();

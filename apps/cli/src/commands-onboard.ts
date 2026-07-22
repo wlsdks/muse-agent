@@ -200,6 +200,9 @@ export interface OnboardHelpers {
   readonly confirm?: (message: string) => Promise<boolean>;
   /** Test seam — platform override for the install path (mirrors `DaemonHelpers.platform`). */
   readonly platform?: NodeJS.Platform;
+  /** Stable-entry validation seams shared with `muse daemon --install`. */
+  readonly daemonCliEntry?: DaemonHelpers["daemonCliEntry"];
+  readonly daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"];
   readonly runLaunchctl?: DaemonHelpers["runLaunchctl"];
   readonly schtasksRun?: DaemonHelpers["schtasksRun"];
   /**
@@ -251,6 +254,8 @@ async function offerBackgroundDaemon(io: ProgramIO, helpers: OnboardHelpers): Pr
   }
   try {
     const result = await installDaemonAutostart(io, process.env, {
+      ...(helpers.daemonCliEntry !== undefined ? { daemonCliEntry: helpers.daemonCliEntry } : {}),
+      ...(helpers.daemonTemporaryRoots ? { daemonTemporaryRoots: helpers.daemonTemporaryRoots } : {}),
       platform: plat,
       ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
       ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})

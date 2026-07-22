@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
+import { encodeLocalRunReference } from "@muse/shared";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +17,7 @@ interface Fixture {
   readonly contactsFile: string;
   readonly notesDir: string;
   readonly remindersFile: string;
+  readonly root: string;
   readonly taskFile: string;
 }
 
@@ -28,6 +30,7 @@ function fixture(): Fixture {
     contactsFile: join(root, "contacts.json"),
     notesDir,
     remindersFile: join(root, "reminders.json"),
+    root,
     taskFile: join(root, "tasks.json")
   };
 }
@@ -51,7 +54,7 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   try {
     const program = new Command();
     program.exitOverride();
-    registerAttunementCommands(program, { stderr: (line: string) => stderr.push(line), stdout: (line: string) => stdout.push(line) }, deps ?? {});
+    registerAttunementCommands(program, { stderr: (line: string) => stderr.push(line), stdout: (line: string) => stdout.push(line), workspaceDir: fixture.root }, deps ?? {});
     await program.parseAsync(["node", "muse", ...args]);
   } catch (cause) {
     exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
@@ -237,6 +240,39 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(continued.stdout).toContain("Prefers a quiet dinner");
     expect(continued.stdout).not.toContain(CONTACT.email!);
     expect(readFileSync(f.contactsFile)).toEqual(contactsBefore);
+  });
+
+  it("links and renders one exact strict local run as context only", async () => {
+    const f = fixture();
+    const workspaceRealpath = realpathSync(f.root);
+    const runId = "run_cli_exact";
+    const runsDir = join(workspaceRealpath, ".muse", "runs");
+    mkdirSync(runsDir, { recursive: true });
+    const event = {
+      apiUrl: "http://127.0.0.1:3030",
+      grounded: "grounded",
+      message: "Continue the release",
+      model: null,
+      recordedAt: "2026-07-22T00:00:00.000Z",
+      response: { response: "The release checklist is ready.", secret: "not-visible", toolsUsed: ["task_read"] },
+      runId,
+      source: "cli.local",
+      success: true,
+      type: "chat.completed"
+    };
+    const runFile = join(runsDir, `${runId}.jsonl`);
+    writeFileSync(runFile, `${JSON.stringify(event)}\n`, "utf8");
+    const before = readFileSync(runFile);
+    const reference = encodeLocalRunReference({ runId, workspaceRealpath });
+    const id = threadId((await run(f, ["thread", "start", "Release", "continuity", "--kind", "work"])).stdout);
+
+    expect((await run(f, ["thread", "link", id, "run", reference, "--role", "context"])).stdout).toContain(`local:run:${reference}`);
+    expect((await run(f, ["thread", "link", id, "run", reference, "--role", "next-step"])).stderr).toContain("only a local task");
+    expect((await run(f, ["continue", id])).stdout).toContain(`[run:${reference}] Continue the release`);
+    expect((await run(f, ["continue", id])).stdout).toContain("The release checklist is ready.");
+    expect((await run(f, ["continue", id])).stdout).not.toContain("not-visible");
+    expect((await run(f, ["thread", "unlink", id, "run", ` ${reference}`])).stderr).toContain("no run link");
+    expect(readFileSync(runFile)).toEqual(before);
   });
 
   it("links, resolves, and provider-scoped unlinks one exact calendar occurrence", async () => {

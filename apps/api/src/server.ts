@@ -363,7 +363,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     env,
     notesDir: options.notesDir ?? resolveNotesDir(env),
     remindersFile: options.remindersFile ?? resolveRemindersFile(env),
-    tasksFile: options.tasksFile ?? resolveTasksFile(env)
+    tasksFile: options.tasksFile ?? resolveTasksFile(env),
+    ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
+      ? { workspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
+      : {})
   });
   registerProgressiveAutonomyRoutes(server, {
     attunementFile: options.attunementFile ?? resolveAttunementFile(env),

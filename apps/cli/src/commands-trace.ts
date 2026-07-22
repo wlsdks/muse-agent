@@ -7,22 +7,45 @@
  * `muse runs` wraps the admin API; this is the local read.
  */
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Command } from "commander";
 
 import { FileCheckpointStore, resolveCheckpointsDir, type MuseEnvironment } from "@muse/autoconfigure";
 import type { SourceCheckSignals } from "@muse/recall";
+import { readLocalRunEvidenceStrict } from "@muse/runtime-state";
+import { encodeLocalRunReference, isCanonicalLocalRunId, isCanonicalWorkspaceRealpath } from "@muse/shared";
 
 import type { ProgramIO } from "./program.js";
 
 export interface RunSummary {
+  readonly continuityReference?: string;
   readonly runId: string;
   readonly query: string;
   readonly grounded: string | null;
   readonly success: boolean | null;
   readonly recordedAt: string;
+}
+
+export async function attachContinuityRunReferences(
+  workspaceDir: string | undefined,
+  runs: readonly RunSummary[]
+): Promise<readonly RunSummary[]> {
+  if (!workspaceDir) return runs;
+  let workspaceRealpath: string;
+  try {
+    workspaceRealpath = await realpath(workspaceDir);
+  } catch {
+    return runs;
+  }
+  if (!isCanonicalWorkspaceRealpath(workspaceRealpath)) return runs;
+  return Promise.all(runs.map(async (run) => {
+    if (!isCanonicalLocalRunId(run.runId)) return run;
+    const continuityReference = encodeLocalRunReference({ runId: run.runId, workspaceRealpath });
+    const evidence = await readLocalRunEvidenceStrict({ allowedWorkspaceRealpath: workspaceRealpath, reference: continuityReference });
+    return evidence.kind === "available" ? { ...run, continuityReference } : run;
+  }));
 }
 
 interface DecompositionSignals {
@@ -124,13 +147,17 @@ export function formatRunList(runs: readonly RunSummary[]): string {
   for (const r of runs.slice(0, 25)) {
     const mark = r.success === false ? "✗" : r.grounded === "misgrounded" ? "⚠" : "✓";
     lines.push(`  ${mark} ${r.runId}  ${r.grounded ?? "—"}  "${r.query.slice(0, 50)}"`);
+    lines.push(r.continuityReference
+      ? `    continuity: ${r.continuityReference}`
+      : "    continuity: diagnostic-only / not linkable");
   }
   return lines.join("\n");
 }
 
-export function formatRunDetail(detail: RunDetail, checkpoints: readonly { readonly step: number; readonly phase: string }[]): string {
+export function formatRunDetail(detail: RunDetail, checkpoints: readonly { readonly step: number; readonly phase: string }[], continuityReference?: string): string {
   const lines = [
     `Run ${detail.runId}  (${detail.recordedAt})`,
+    `  continuity: ${continuityReference ?? "diagnostic-only / not linkable"}`,
     `  Q: ${detail.query}`,
     `  A: ${detail.answer.slice(0, 300)}${detail.answer.length > 300 ? "…" : ""}`,
     `  grounding: ${detail.grounded ?? "—"}   success: ${String(detail.success)}   tools: ${detail.toolsUsed.length > 0 ? detail.toolsUsed.join(", ") : "none"}`
@@ -174,7 +201,7 @@ export function registerTraceCommand(program: Command, io: ProgramIO): void {
       const workspaceDir = io.workspaceDir ?? process.cwd();
       const runsDir = join(workspaceDir, ".muse", "runs");
       if (!runId) {
-        io.stdout(`${formatRunList(await readLocalRuns(runsDir))}\n`);
+        io.stdout(`${formatRunList(await attachContinuityRunReferences(io.workspaceDir, await readLocalRuns(runsDir)))}\n`);
         return;
       }
       let raw: string;
@@ -191,6 +218,7 @@ export function registerTraceCommand(program: Command, io: ProgramIO): void {
       }
       const store = new FileCheckpointStore(resolveCheckpointsDir(process.env as MuseEnvironment));
       const checkpoints = await store.findByRunId(runId);
-      io.stdout(`${formatRunDetail(detail, checkpoints.map((c) => ({ phase: typeof (c.state as { phase?: unknown }).phase === "string" ? (c.state as { phase: string }).phase : "?", step: c.step })))}\n`);
+      const linked = await attachContinuityRunReferences(io.workspaceDir, [detail]);
+      io.stdout(`${formatRunDetail(detail, checkpoints.map((c) => ({ phase: typeof (c.state as { phase?: unknown }).phase === "string" ? (c.state as { phase: string }).phase : "?", step: c.step })), linked[0]?.continuityReference)}\n`);
     });
 }

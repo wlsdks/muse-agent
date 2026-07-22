@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { formatRunDetail, formatRunList, parseRunEvent, readLocalRuns } from "./commands-trace.js";
+import { attachContinuityRunReferences, formatRunDetail, formatRunList, parseRunEvent, readLocalRuns } from "./commands-trace.js";
 
 const event = (over: Record<string, unknown> = {}) => JSON.stringify({
   grounded: "grounded", message: "what is my VPN MTU?", recordedAt: "2026-06-28T10:00:00Z", success: true,
@@ -54,6 +54,43 @@ describe("muse trace — local run inspector (time-travel)", () => {
     ]);
     expect(out).toContain("✓ g");
     expect(out).toContain("⚠ m");
+    expect(out).toContain("diagnostic-only / not linkable");
+  });
+
+  it("emits a Continuity locator only for a strict internally-bound trace", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "muse-trace-continuity-"));
+    const runsDir = join(workspace, ".muse", "runs");
+    mkdirSync(runsDir, { recursive: true });
+    try {
+      const strict = {
+        apiUrl: "http://127.0.0.1:3030",
+        grounded: "grounded",
+        message: "strict query",
+        model: null,
+        recordedAt: "2026-07-22T00:00:00.000Z",
+        response: { response: "strict answer", toolsUsed: [] },
+        runId: "run_strict",
+        source: "cli.local",
+        success: true,
+        type: "chat.completed"
+      };
+      writeFileSync(join(runsDir, "run_strict.jsonl"), `${JSON.stringify(strict)}\n`);
+      writeFileSync(join(runsDir, "run_legacy.jsonl"), event({ recordedAt: "2026-07-21T00:00:00.000Z" }));
+      const runs = await attachContinuityRunReferences(workspace, await readLocalRuns(runsDir));
+      expect(runs.find((run) => run.runId === "run_strict")?.continuityReference).toMatch(/^muse-run-v1:/u);
+      expect(runs.find((run) => run.runId === "run_legacy")?.continuityReference).toBeUndefined();
+      const output = formatRunList(runs);
+      expect(output).toContain("continuity: muse-run-v1:");
+      expect(output).toContain("diagnostic-only / not linkable");
+    } finally {
+      rmSync(workspace, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps diagnostic trace output available when workspace authority cannot be a locator", async () => {
+    const runs = [{ grounded: "grounded", query: "q", recordedAt: "2026-07-22T00:00:00.000Z", runId: "run_exact", success: true }];
+    await expect(attachContinuityRunReferences("/", runs)).resolves.toEqual(runs);
+    expect(formatRunList(await attachContinuityRunReferences("/", runs))).toContain("diagnostic-only / not linkable");
   });
 });
 

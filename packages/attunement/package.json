@@ -13,6 +13,7 @@
   "dependencies": {
     "@muse/calendar": "workspace:*",
     "@muse/policy": "workspace:*",
+    "@muse/runtime-state": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*"
   }

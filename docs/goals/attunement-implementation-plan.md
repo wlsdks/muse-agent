@@ -3,7 +3,7 @@ title: Attunement implementation plan
 audience: [product, engineering, evaluation]
 purpose: Deliver and falsify the first Attunement closed loop through dependency-ordered slices
 status: proposed
-updated: 2026-07-13
+updated: 2026-07-22
 related: [../strategy/attunement.md, ../design/attunement.md, ../privacy-and-data.md]
 ---
 
@@ -37,7 +37,8 @@ Terms used below:
 ## Slice A — user-invoked Continuity Pack
 
 **Implemented local CLI experience:** the user runs `muse thread start <title> --kind life|work`,
-explicitly links local tasks, notes, reminders, configured calendar occurrences, and contacts, then runs `muse continue <thread-id>`.
+explicitly links local tasks, notes, reminders, configured calendar occurrences, contacts, and
+strict local run evidence, then runs `muse continue <thread-id>`.
 Muse shows the connected source IDs and one user-linked open task. Reminders are context
 only. The user records `used`, `adjusted`,
 `ignored`, or `rejected` explicitly with `muse thread outcome`; opening is a separate delivery
@@ -70,8 +71,15 @@ pack. It does not require desktop observation.
   they cannot become a next step, factual interaction receipt, outcome, permission, or
   automation. Contacts accept only the copyable canonical local ID, expose a bounded
   non-recipient projection, remain context-only, and never search names, aliases, prefixes,
-  addresses, Apple Contacts, or a hidden web catalog. Run logs/checkpoints and browser
-  history are later adapters.
+  addresses, Apple Contacts, or a hidden web catalog. Strict current CLI run logs are also
+  supported through a versioned reference that binds the canonical workspace realpath and
+  run ID. CLI, HTTP, and web require explicit workspace authority and never search nearby
+  runs or fall back to cwd. Every event must carry the same internal run ID; older traces
+  remain diagnostic-only because their provenance cannot be reconstructed safely. Packs
+  project only bounded query/answer summaries, recorded time, outcome, success state, and
+  tool names. Run evidence is context-only and cannot become a next step, receipt, outcome,
+  permission, resume target, or automation signal. Checkpoints and browser history remain
+  later adapters until they have equivalent exact workspace provenance.
 - ✅ Only the user binds an item to a `threadId`; no deterministic auto-link or LLM summary is
   present in Slice A.
 - Treat `work` as one optional thread kind. It must not be the default meaning of every

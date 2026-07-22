@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -111,6 +112,8 @@ describe("muse onboard — closing hints (R2-3)", () => {
 });
 
 describe("muse onboard — background-daemon offer (R3-5)", () => {
+  const stableDaemonCliEntry = fileURLToPath(import.meta.url);
+
   function runIo(): { io: ProgramIO; out: string[] } {
     const out: string[] = [];
     const io: ProgramIO = {
@@ -127,6 +130,8 @@ describe("muse onboard — background-daemon offer (R3-5)", () => {
     const program = new Command();
     registerOnboardCommand(program, io, {
       confirm: async () => true,
+      daemonCliEntry: stableDaemonCliEntry,
+      daemonTemporaryRoots: [],
       platform: "darwin",
       runLaunchctl: async (args) => {
         calls.push([...args]);
@@ -145,6 +150,8 @@ describe("muse onboard — background-daemon offer (R3-5)", () => {
     const program = new Command();
     registerOnboardCommand(program, io, {
       confirm: async () => true,
+      daemonCliEntry: stableDaemonCliEntry,
+      daemonTemporaryRoots: [],
       platform: "win32",
       schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: "" })
     });

@@ -8,7 +8,7 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "resource"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "run", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 /**
@@ -179,7 +179,7 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 6;
+  readonly schemaVersion: 7;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }
@@ -197,6 +197,10 @@ export interface ResolvedArtifact extends ArtifactReference {
   /** Display-only temporal state for a pending reminder. */
   readonly reminderDueState?: "due" | "overdue";
   readonly reminderStatus?: "pending" | "fired";
+  readonly runOutcome?: "abstain" | "grounded" | "misgrounded" | "contested" | "ungrounded" | "error" | null;
+  readonly runRecordedAt?: string;
+  readonly runSuccess?: boolean | null;
+  readonly runToolNames?: readonly string[];
   readonly summary?: string;
   readonly taskDueAt?: string;
   /** Display-only temporal state derived once by Continuity preparation. */

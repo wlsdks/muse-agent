@@ -11,6 +11,7 @@
   "references": [
     { "path": "../calendar" },
     { "path": "../policy" },
+    { "path": "../runtime-state" },
     { "path": "../shared" },
     { "path": "../stores" }
   ]

@@ -590,12 +590,14 @@ describe("cli program", () => {
         })
       })
     ]);
-    await expect(readFile(path.join(workspaceDir, ".muse/runs/local-tui-first turn.jsonl"), "utf8"))
-      .resolves
-      .toContain("\"source\":\"cli.local\"");
-    await expect(readFile(path.join(workspaceDir, ".muse/runs/local-tui-second turn.jsonl"), "utf8"))
-      .resolves
-      .toContain("\"message\":\"second turn\"");
+    const runsDir = path.join(workspaceDir, ".muse/runs");
+    const runFiles = await readdir(runsDir);
+    expect(runFiles).toHaveLength(2);
+    expect(runFiles).toEqual(runFiles.map(() => expect.stringMatching(/^cli_[0-9a-f-]{36}\.jsonl$/u)));
+    const runEvents = await Promise.all(runFiles.map((file) => readFile(path.join(runsDir, file), "utf8")));
+    expect(runEvents.join("\n")).toContain("\"source\":\"cli.local\"");
+    expect(runEvents.join("\n")).toContain("\"message\":\"first turn\"");
+    expect(runEvents.join("\n")).toContain("\"message\":\"second turn\"");
   });
 
   it("runs remote TUI chat through the API chat route", async () => {

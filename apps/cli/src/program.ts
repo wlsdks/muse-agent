@@ -134,6 +134,9 @@ export interface ProgramIO {
 }
 
 const defaultIO: ProgramIO = {
+  // Capture workspace authority once at process startup. Continuity run locators
+  // consume this explicit value and never re-resolve an ambient cwd later.
+  workspaceDir: process.cwd(),
   stderr: (message) => {
     process.stderr.write(message);
   },
@@ -903,4 +906,3 @@ export function formatUnknownCommand(attempted: string, known: readonly string[]
   }
   return `${lines.join("\n")}\n`;
 }
-

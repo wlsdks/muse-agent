@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiRequest, ARGV_MAX_CHARS, assertArgvWithinLimit, buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readConfigStore, readResponseGrounded, readResponseSuccess, setConfigValue, summarizeRetrieval, unsetConfigValue, writeConfigStore } from "./program-helpers.js";
+import { apiRequest, ARGV_MAX_CHARS, assertArgvWithinLimit, buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readConfigStore, readResponseGrounded, readResponseSuccess, setConfigValue, summarizeRetrieval, unsetConfigValue, writeConfigStore, writeRunLog } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 describe("summarizeRetrieval + buildAskRunLog retrieval — 'why this answer' trace (P1.2)", () => {
@@ -331,6 +331,64 @@ describe("pruneRunLogDir — bound the unbounded run-log (retention)", () => {
       expect(await pruneRunLogDir(dir, 0)).toBe(0); // invalid cap → no-op
     } finally {
       rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("writeRunLog — canonical collision-safe identity", () => {
+  it("never uses a noncanonical response id as a path", async () => {
+    const { readFile, rm } = await import("node:fs/promises");
+    const workspace = mkdtempSync(join(tmpdir(), "muse-runlog-id-"));
+    try {
+      const file = await writeRunLog(workspace, { message: "q", response: { grounded: { verdict: "contested" }, runId: "../../escape", success: true } }, new Date("2026-07-22T00:00:00.000Z"), () => "cli_safe");
+      expect(file).toBe(join(workspace, ".muse", "runs", "cli_safe.jsonl"));
+      const event = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+      expect(event).toMatchObject({ grounded: "contested", runId: "cli_safe" });
+    } finally {
+      await rm(workspace, { force: true, recursive: true });
+    }
+  });
+
+  it("retries an atomically colliding fallback instead of appending unrelated events", async () => {
+    const { readFile, rm, writeFile } = await import("node:fs/promises");
+    const workspace = mkdtempSync(join(tmpdir(), "muse-runlog-collision-"));
+    const runs = join(workspace, ".muse", "runs");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(runs, { recursive: true });
+    await writeFile(join(runs, "cli_collision.jsonl"), "existing\n", "utf8");
+    const ids = ["cli_collision", "cli_unique"];
+    try {
+      const file = await writeRunLog(workspace, { message: "q", response: {} }, new Date("2026-07-22T00:00:00.000Z"), () => ids.shift()!);
+      expect(file).toBe(join(runs, "cli_unique.jsonl"));
+      expect(await readFile(join(runs, "cli_collision.jsonl"), "utf8")).toBe("existing\n");
+    } finally {
+      await rm(workspace, { force: true, recursive: true });
+    }
+  });
+
+  it("appends successive events carrying the same canonical real run id", async () => {
+    const { readFile, rm } = await import("node:fs/promises");
+    const workspace = mkdtempSync(join(tmpdir(), "muse-runlog-append-"));
+    try {
+      const response = { grounded: "grounded", runId: "run_shared", success: true };
+      const first = await writeRunLog(workspace, { message: "first", response });
+      const second = await writeRunLog(workspace, { message: "second", response });
+      expect(second).toBe(first);
+      const events = (await readFile(first, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(events.map((event) => event.message)).toEqual(["first", "second"]);
+      expect(events.every((event) => event.runId === "run_shared")).toBe(true);
+    } finally {
+      await rm(workspace, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a malformed present outcome instead of laundering it to null", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "muse-runlog-outcome-"));
+    const { rm } = await import("node:fs/promises");
+    try {
+      await expect(writeRunLog(workspace, { message: "q", response: { grounded: "invented", runId: "run_exact" } })).rejects.toThrow(/malformed grounded outcome/u);
+    } finally {
+      await rm(workspace, { force: true, recursive: true });
     }
   });
 });
