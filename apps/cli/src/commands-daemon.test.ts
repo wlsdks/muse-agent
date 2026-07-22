@@ -1967,6 +1967,37 @@ describe("muse daemon — resource admission", () => {
     expect(heavy).not.toHaveBeenCalled();
   });
 
+  it("starts no later outer lane when the first admitted lane requests stop", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true" };
+    await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
+      { createdAt: "2026-01-01T00:00:00Z", id: "fu-stop-outer", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "stop after this lane", userId: "owner" }
+    ]);
+    const browsingSync = vi.fn(async () => ({ synced: 0, total: 0 }));
+    const receipts: DaemonResourceReceipt[] = [];
+    let modelCalls = 0;
+    let signal: DaemonStopSignal | undefined;
+    await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      browsingSync,
+      env,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      resolveFollowupModel: async () => ({
+        model: "test-model",
+        modelProvider: {
+          generate: async () => {
+            modelCalls += 1;
+            signal?.stop();
+            return { output: "completed first lane" };
+          }
+        } as never
+      }),
+      runDaemonLoop: async (options) => { signal = options.signal; await options.tick(); return 1; },
+      writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+    });
+    expect(modelCalls).toBe(1);
+    expect(browsingSync).not.toHaveBeenCalled();
+    expect(receipts.at(-1)).toMatchObject({ decision: { reason: "stop-requested", status: "cancelled-before-claim" } });
+  });
+
   it("finishes a claimed unit truthfully after stop and skips following optional ticks", async () => {
     const env = { ...tmpEnv(), MUSE_EMAIL_SYNC_ENABLED: "true" };
     const messagingPoll = vi.fn(async () => ({ errors: [], ingestedByProvider: {} }));

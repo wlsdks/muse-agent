@@ -1582,8 +1582,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           io.stdout(`[${new Date().toISOString()}] resource: heavyweight background work resumed\n`);
         }
         await checkinsTick();
+        if (signal.stopped) {
+          await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+          return;
+        }
         if (resourceAdmission.status === "admit") {
           await ensureHeavyRuntime();
+          if (signal.stopped) {
+            await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+            return;
+          }
           let governedCycle: DaemonWorkloadCycleResult | undefined;
           await heavyWorkQueue.run([
             { id: "followup", run: followupTick },
@@ -1594,7 +1602,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             { id: "home-watch", run: homeWatchTick },
             { id: "briefing", run: briefingTick },
             { id: "governed-maintenance", run: async () => { governedCycle = await workloadGovernor.runAdmittedCycle(signal); } }
-          ], heavyWorkUnitsPerTick);
+          ], heavyWorkUnitsPerTick, () => !signal.stopped);
           if (governedCycle?.status === "cancelled-before-claim") {
             await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
             return;
@@ -1602,6 +1610,10 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           if (governedCycle?.status === "boundary") {
             await writeResourceReceipt(withWorkloadBoundary(decisionReceipt, governedCycle.boundary));
             if (governedCycle.boundary.stopRequestedDuring) return;
+          }
+          if (signal.stopped) {
+            await writeResourceReceipt(cancelledDecisionReceipt(resourceSnapshot, workloadGovernor.queueDepth));
+            return;
           }
         }
         if (signal.stopped) return;

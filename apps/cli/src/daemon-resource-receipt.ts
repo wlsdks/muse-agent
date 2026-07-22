@@ -30,7 +30,7 @@ export type DaemonWorkloadErrorClass = "timeout" | "io" | "provider" | "model" |
 
 export interface DaemonResourceAdmissionReceiptV1 {
   readonly at: string;
-  readonly reason?: "cpu-load" | "low-free-memory" | "owner-paused";
+  readonly reason?: "cpu-load" | "low-free-memory";
   readonly schema: typeof LEGACY_SCHEMA;
   readonly status: "admit" | "defer";
 }
@@ -86,9 +86,12 @@ export function resolveDaemonResourceReceiptFile(env: NodeJS.ProcessEnv): string
 
 /** Legacy constructor retained only for v1 read/write compatibility tests. */
 export function resourceAdmissionReceipt(admission: DaemonResourceAdmission, at = new Date().toISOString()): DaemonResourceAdmissionReceiptV1 {
+  if (admission.status === "defer" && admission.reason !== "cpu-load" && admission.reason !== "low-free-memory") {
+    throw new Error("legacy resource receipt only supports cpu-load or low-free-memory deferral");
+  }
   return {
     at,
-    ...(admission.reason === "cpu-load" || admission.reason === "low-free-memory" || admission.reason === "owner-paused" ? { reason: admission.reason } : {}),
+    ...(admission.reason === "cpu-load" || admission.reason === "low-free-memory" ? { reason: admission.reason } : {}),
     schema: LEGACY_SCHEMA,
     status: admission.status
   };
@@ -211,7 +214,7 @@ function isLegacyReceipt(value: unknown): value is DaemonResourceAdmissionReceip
   if (!exactObject(value, valueRecord(value)?.status === "defer" ? ["at", "reason", "schema", "status"] : ["at", "schema", "status"])) return false;
   const record = value as Record<string, unknown>;
   return record.schema === LEGACY_SCHEMA && canonicalIso(record.at)
-    && (record.status === "admit" || (record.status === "defer" && (record.reason === "cpu-load" || record.reason === "low-free-memory" || record.reason === "owner-paused")));
+    && (record.status === "admit" || (record.status === "defer" && (record.reason === "cpu-load" || record.reason === "low-free-memory")));
 }
 
 function isV2Receipt(value: unknown): value is DaemonWorkloadReceiptV2 {

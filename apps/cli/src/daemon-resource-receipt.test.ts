@@ -141,13 +141,14 @@ describe("daemon resource admission receipt", () => {
     }
   });
 
-  it("keeps an owner pause as a strict latest transition reason", async () => {
+  it("keeps owner pause out of the frozen legacy v1 reason set", async () => {
     const directory = await mkdtemp(join(tmpdir(), "muse-resource-receipt-owner-pause-"));
     const file = join(directory, "receipt.json");
     try {
-      const receipt = resourceAdmissionReceipt({ reason: "owner-paused", status: "defer" }, "2026-07-22T00:00:00.000Z");
-      await writeDaemonResourceAdmissionReceipt(file, receipt);
-      expect(await readDaemonResourceAdmissionReceipt(file)).toEqual(receipt);
+      expect(() => resourceAdmissionReceipt({ reason: "owner-paused", status: "defer" }, "2026-07-22T00:00:00.000Z"))
+        .toThrow("legacy resource receipt only supports");
+      await writeFile(file, JSON.stringify({ at: "2026-07-22T00:00:00.000Z", reason: "owner-paused", schema: "muse.daemon-resource-admission.v1", status: "defer" }), "utf8");
+      expect(await readDaemonResourceAdmissionReceipt(file)).toBeUndefined();
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
