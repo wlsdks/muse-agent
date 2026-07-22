@@ -42,7 +42,7 @@ import {
 import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } from "./chunks.js";
 export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
-import { cosine, loadIndex, type ReindexSummary } from "./notes-index.js";
+import { cosine, loadIndex, type NotesIndex } from "./notes-index.js";
 import { buildNoteContextBlock } from "./context-blocks.js";
 import { formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
 import { answerIsRefusal, stripEchoedCiteAs } from "./text.js";
@@ -230,7 +230,7 @@ export interface GroundedRecallResult {
 async function resolveIndexForModel(
   indexFile: string,
   requestedEmbedModel: string | undefined
-): Promise<{ readonly files: ReindexSummary["index"]["files"]; readonly embedModel: string | undefined; readonly indexBuiltAtIso: string | undefined }> {
+): Promise<{ readonly files: NotesIndex["files"]; readonly embedModel: string | undefined; readonly indexBuiltAtIso: string | undefined }> {
   const index = await loadIndex(indexFile);
   if (!index) {
     return { embedModel: requestedEmbedModel, files: [], indexBuiltAtIso: undefined };

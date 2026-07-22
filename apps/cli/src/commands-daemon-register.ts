@@ -68,6 +68,7 @@ import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArg
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
 
+import { autoReindexBudgetEnvironment } from "./auto-reindex-budget.js";
 import { closestCommandName } from "./closest-command.js";
 import { resolveCliLanguage, t } from "./cli-i18n.js";
 import { readConfigStore } from "./program-config.js";
@@ -556,6 +557,7 @@ export async function installDaemonAutostart(
   }
   Object.assign(safetyEnvironment, daemonResourcePolicyEnvironment(e));
   Object.assign(safetyEnvironment, backgroundModelExecutionBudgetEnvironment(e));
+  Object.assign(safetyEnvironment, autoReindexBudgetEnvironment(e));
   const plist = buildLaunchAgentPlist({
     environmentVariables: safetyEnvironment,
     label: LAUNCH_AGENT_LABEL,

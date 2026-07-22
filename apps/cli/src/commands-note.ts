@@ -15,7 +15,8 @@ import { isRecord , errorMessage} from "@muse/shared";
 import type { SpeechToTextProvider } from "@muse/voice";
 import type { Command } from "commander";
 
-import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
+import { autoReindexNotes, isNotesIndexStale } from "./commands-notes-rag.js";
+import { autoReindexNotice } from "./auto-reindex-budget.js";
 import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
@@ -204,8 +205,10 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
       let indexed = false;
       try {
         if (await isNotesIndexStale(notesDir, notesIndexPath())) {
-          const summary = await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: options.embedModel ?? DEFAULT_EMBED_MODEL });
-          indexed = summary.embedded > 0 || summary.skipped > 0;
+          const summary = await autoReindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: options.embedModel ?? DEFAULT_EMBED_MODEL }, process.env);
+          indexed = summary.status === "complete";
+          const notice = autoReindexNotice(summary);
+          if (notice) io.stderr(`(${notice})\n`);
         } else {
           indexed = true;
         }

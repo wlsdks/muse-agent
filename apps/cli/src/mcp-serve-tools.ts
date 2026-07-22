@@ -37,6 +37,7 @@ import { recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import {
   allUserMemoryFacts,
   isNotesIndexStale,
+  loadIndex,
   reindexNotes,
   runGroundedRecall,
   type MemoryFact
@@ -53,6 +54,7 @@ import type { MuseTool } from "@muse/tools";
 import { embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
+import { resolveAutoReindexBudget, type AutoReindexBudget } from "./auto-reindex-budget.js";
 
 export interface McpServeDependencies {
   readonly notesDir: string;
@@ -62,6 +64,7 @@ export interface McpServeDependencies {
   readonly embedFn: (text: string, model: string) => Promise<readonly number[]>;
   /** The one guarded model URL resolver shared by direct embed + stale reindex. */
   readonly baseUrlResolver: () => string;
+  readonly autoReindexBudget?: AutoReindexBudget;
   readonly userMemoryStore: UserMemoryStore;
   readonly userId: string;
   readonly modelProvider?: ModelProvider;
@@ -125,6 +128,7 @@ export function resolveMcpServeDependencies(
   return {
     answerModel: resolveDefaultModel(env),
     answerTemperature: resolveAnswerTemperature(env),
+    autoReindexBudget: resolveAutoReindexBudget(env),
     baseUrlResolver,
     embedFn: (text, model) => embed(text, model, {
       baseUrlResolver,
@@ -219,23 +223,35 @@ function buildKnowledgeSearchTool(deps: McpServeDependencies): MuseTool {
 }
 
 /** Best-effort refresh so a fresh/edited note is retrievable; never blocks the answer on failure. */
-async function bestEffortReindex(deps: McpServeDependencies): Promise<void> {
+interface BestEffortReindexResult {
+  readonly embedModel: string;
+  readonly indexLoadFailed: boolean;
+}
+
+async function bestEffortReindex(deps: McpServeDependencies): Promise<BestEffortReindexResult> {
+  let priorModel: string | undefined;
   try {
+    priorModel = (await loadIndex(deps.notesIndexFile))?.model;
     const stale = await isNotesIndexStale(deps.notesDir, deps.notesIndexFile);
     if (stale) {
       // Preflight the guarded resolver before reindexNotes can hit its
       // fail-soft per-chunk path and persist an empty index.
       deps.baseUrlResolver();
-      await reindexNotes({
+      const summary = await reindexNotes({
         baseUrlResolver: deps.baseUrlResolver,
         dir: deps.notesDir,
+        ...(deps.autoReindexBudget ?? resolveAutoReindexBudget({})),
         indexPath: deps.notesIndexFile,
         model: deps.embedModel
       });
+      if (summary.status === "complete") return { embedModel: summary.index?.model ?? deps.embedModel, indexLoadFailed: false };
+      return { embedModel: priorModel ?? (await loadIndex(deps.notesIndexFile))?.model ?? deps.embedModel, indexLoadFailed: false };
     }
   } catch {
     // Best-effort: muse_recall still runs against whatever index exists.
+    if (priorModel === undefined) return { embedModel: deps.embedModel, indexLoadFailed: true };
   }
+  return { embedModel: priorModel ?? deps.embedModel, indexLoadFailed: false };
 }
 
 function buildMuseRecallTool(deps: McpServeDependencies): MuseTool {
@@ -265,7 +281,17 @@ function buildMuseRecallTool(deps: McpServeDependencies): MuseTool {
       const modelProvider = deps.modelProvider;
       const answerModel = deps.answerModel;
 
-      await bestEffortReindex(deps);
+      const reindex = await bestEffortReindex(deps);
+      if (reindex.indexLoadFailed) {
+        return {
+          answer: "I'm not sure — the notes index is unavailable this turn.",
+          citations: [],
+          groundedChunkCount: 0,
+          notesUnavailable: true,
+          refusal: true,
+          verdict: "none"
+        };
+      }
 
       const generateAnswer = async (generateArgs: { readonly system: string; readonly user: string; readonly model: string; readonly temperature?: number }): Promise<string> => {
         const response = await modelProvider.generate({
@@ -282,7 +308,7 @@ function buildMuseRecallTool(deps: McpServeDependencies): MuseTool {
       let result;
       try {
         result = await runGroundedRecall({
-          options: { answerModel, embedModel: deps.embedModel, temperature: deps.answerTemperature },
+          options: { answerModel, embedModel: reindex.embedModel, temperature: deps.answerTemperature },
           query: question,
           runtime: { embedFn: (text, model) => deps.embedFn(text, model) as Promise<number[]>, generateAnswer },
           sources: { notesDir: deps.notesDir, notesIndexFile: deps.notesIndexFile }
@@ -597,4 +623,3 @@ export function buildMcpServeTools(deps: McpServeDependencies): readonly MuseToo
     buildProposeActionTool(deps)
   ];
 }
-

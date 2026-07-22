@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **606** variables.
+Total: **610** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -58,6 +58,8 @@ Total: **606** variables.
 | `MUSE_AUTH_MAX_USERS` | packages/autoconfigure |
 | `MUSE_AUTH_SECRETS_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTOMATION_REJECTED_PROPOSALS_FILE` | packages/autoconfigure |
+| `MUSE_AUTO_REINDEX_EMBED_TIMEOUT_MS` | apps/cli |
+| `MUSE_AUTO_REINDEX_MAX_EMBEDDINGS` | apps/cli |
 | `MUSE_AUX_` | packages/autoconfigure |
 | `MUSE_AUX_COMPACTION` | packages/autoconfigure |
 | `MUSE_AUX_COMPACTION_MODEL` | packages/autoconfigure |
@@ -201,7 +203,9 @@ Total: **606** variables.
 | `MUSE_EMAIL_SYNC_ENABLED` | apps/cli |
 | `MUSE_EMAIL_SYNC_INTERVAL_MS` | apps/cli |
 | `MUSE_EMAIL_SYNC_LIMIT` | apps/cli |
+| `MUSE_EMBED_ABORTED` | packages/recall |
 | `MUSE_EMBED_MODEL` | apps/api, apps/cli, packages/autoconfigure |
+| `MUSE_EMBED_TIMEOUT` | packages/recall |
 | `MUSE_EPISODES_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_EPISODES_INDEX_FILE` | apps/cli, packages/recall |
 | `MUSE_EPISODIC_MEMORY_ENABLED` | apps/api, apps/cli |

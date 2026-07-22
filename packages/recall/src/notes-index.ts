@@ -6,21 +6,53 @@
  */
 
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { errorMessage } from "@muse/shared";
+import { readdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { errorMessage, parseStrictJson } from "@muse/shared";
 
-import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
+import { atomicWriteFile, withFileLock, withFileMutationQueue, withRequiredProcessLock } from "@muse/stores";
 import { homedir } from "node:os";
-import { basename as pathBasename, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
+import { basename as pathBasename, dirname as pathDirname, isAbsolute, join as pathJoin, relative as pathRelative, resolve as pathResolve, sep as pathSep } from "node:path";
 
 import { annotateNoteChunks } from "@muse/agent-core";
 
 import { parsePdfBuffer } from "./document-reader.js";
-import { embed } from "./embed.js";
+import { embed, EmbedAbortedError } from "./embed.js";
 import { chunkText, NOTES_CHUNKER_VERSION } from "./notes-chunk.js";
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
 const DEFAULT_CHUNK_CHARS = 600;
+const NOTES_ANNOTATION_VERSION = 1;
+const REINDEX_CHECKPOINT_VERSION = 1;
+const REINDEX_CHECKPOINT_MAX_BYTES = 64 * 1024 * 1024;
+const REINDEX_CHECKPOINT_MAX_CHUNKS = 4_096;
+
+export type NotesIndexCommitPhase =
+  | "before-checkpoint-commit"
+  | "after-checkpoint-commit"
+  | "before-sidecar-write"
+  | "after-sidecar-write"
+  | "before-json-commit"
+  | "after-json-commit"
+  | "before-checkpoint-delete"
+  | "after-checkpoint-delete";
+
+class NotesIndexFaultInjectionError extends Error {
+  constructor(readonly phase: NotesIndexCommitPhase, cause: unknown) {
+    super(`injected notes-index interruption at ${phase}`, { cause });
+    this.name = "NotesIndexFaultInjectionError";
+  }
+}
+
+function invokeCommitPhaseForTesting(
+  options: Pick<ReindexOptions, "onCommitPhaseForTesting"> | undefined,
+  phase: NotesIndexCommitPhase
+): void {
+  try {
+    options?.onCommitPhaseForTesting?.(phase);
+  } catch (cause) {
+    throw new NotesIndexFaultInjectionError(phase, cause);
+  }
+}
 
 /**
  * Note-corpus file formats the index includes. PDFs are special-cased in
@@ -82,6 +114,13 @@ export interface NotesIndex {
   readonly model: string;
   readonly builtAtIso: string;
   readonly files: FileEntry[];
+}
+
+interface PersistedNotesIndex extends NotesIndex {
+  readonly embeddingCount?: number;
+  readonly embeddingDim?: number;
+  readonly embeddingFile?: string;
+  readonly embeddingSha256?: string;
 }
 
 function hashSourceBytes(sourceBytes: Uint8Array): string {
@@ -218,44 +257,49 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   // back on the next run, so an undiscarded mismatch would otherwise
   // be silently overwritten with zero trace.
   if ((candidate as { version?: unknown }).version === 1 && isV1NotesIndex(candidate)) {
-    // v1 stored embeddings inline in the JSON — migrate losslessly (no
-    // re-embedding): the same vectors are rewritten into the v2 sidecar.
+    // Keep loaders read-only. The next explicit/automatic reindex publish
+    // upgrades this verified inline v1 snapshot to the generation layout.
     const v1 = candidate as unknown as NotesIndex;
     if (Array.isArray(v1.files)) {
-      const migrated: NotesIndex = { builtAtIso: v1.builtAtIso, files: v1.files, model: v1.model, version: NOTES_INDEX_SCHEMA_VERSION };
-      await saveIndex(path, migrated);
-      return loadIndex(path);
+      return { builtAtIso: v1.builtAtIso, files: v1.files, model: v1.model, version: NOTES_INDEX_SCHEMA_VERSION };
     }
   }
   if (!isNotesIndexValid(candidate)) {
-    await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
   const inlineFiles = (candidate as NotesIndex).files;
   if (!Array.isArray(inlineFiles)) {
     return candidate as NotesIndex;
   }
-  // Self-heal: a v2 JSON still carrying inline embedding arrays (hand-written
-  // index, test fixture, or interrupted save) is accepted and rewritten into
-  // the sidecar layout instead of being discarded.
+  // Accept verified inline v2 fixtures without mutating disk. A reader must
+  // never bypass the reindex writer transaction.
   const firstChunk = inlineFiles.flatMap((file) => file.chunks)[0];
   if (firstChunk && Array.isArray((firstChunk as { embedding?: unknown }).embedding)) {
-    // Reload from the healed sidecar so EVERY load returns the same
-    // representation (Float32Array views) — a first-load/second-load
-    // representation split breaks byte-identical parity guarantees.
-    const healed: NotesIndex = { builtAtIso: (candidate as NotesIndex).builtAtIso, files: inlineFiles, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION };
-    await saveIndex(path, healed);
-    return loadIndex(path);
+    return { builtAtIso: (candidate as NotesIndex).builtAtIso, files: inlineFiles, model: (candidate as NotesIndex).model, version: NOTES_INDEX_SCHEMA_VERSION };
   }
   if (inlineFiles.length === 0 || inlineFiles.every((file) => file.chunks.length === 0)) {
     return candidate as NotesIndex;
   }
-  const meta = candidate as unknown as { readonly embeddingDim?: number; readonly embeddingCount?: number; readonly files?: readonly { readonly path: string; readonly mtimeMs?: number; readonly chunks: readonly { readonly file: string; readonly chunkIndex: number; readonly text: string }[] }[] };
+  const meta = candidate as unknown as PersistedNotesIndex & { readonly files?: readonly { readonly path: string; readonly mtimeMs?: number; readonly chunks: readonly { readonly file: string; readonly chunkIndex: number; readonly text: string }[] }[] };
   const dim = meta.embeddingDim ?? 0;
   const count = meta.embeddingCount ?? 0;
   let bin: Buffer;
   try {
-    bin = await readFile(embeddingsSidecarPath(path));
+    let sidecar = embeddingsSidecarPath(path);
+    if (meta.embeddingFile !== undefined || meta.embeddingSha256 !== undefined) {
+      const stem = pathBasename(path).replace(/\.json$/u, "");
+      if (
+        typeof meta.embeddingFile !== "string"
+        || typeof meta.embeddingSha256 !== "string"
+        || !/^[0-9a-f]{64}$/u.test(meta.embeddingSha256)
+        || isAbsolute(meta.embeddingFile)
+        || pathBasename(meta.embeddingFile) !== meta.embeddingFile
+        || !meta.embeddingFile.startsWith(`${stem}.embeddings.`)
+      ) return undefined;
+      sidecar = pathJoin(pathDirname(path), meta.embeddingFile);
+    }
+    bin = await readFile(sidecar);
+    if (meta.embeddingSha256 !== undefined && hashSourceBytes(bin) !== meta.embeddingSha256) return undefined;
   } catch {
     return undefined;
   }
@@ -270,7 +314,6 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
     || !Array.isArray(meta.files)
     || bin.byteLength !== expectedBytes
   ) {
-    await backupVersionMismatchedStore(path, candidate.version);
     return undefined;
   }
   const all = new Float32Array(bin.buffer, bin.byteOffset, count * dim);
@@ -301,7 +344,7 @@ export function isNotesIndexValid(candidate: unknown): boolean {
     && candidate.files.every((file) => isPersistedIndexFile(file));
 }
 
-async function saveIndex(path: string, index: NotesIndex): Promise<void> {
+async function saveIndex(path: string, index: NotesIndex, options?: Pick<ReindexOptions, "onCommitPhaseForTesting" | "signal">): Promise<boolean> {
   // v2 layout: embeddings live in a Float32 binary sidecar, JSON keeps metadata.
   // JSON-encoded float arrays cost ~19 bytes per number — measured 464MB /
   // 659ms parse / 2.9GB RSS at 10k notes, vs 92MB / ~ms / ~10% RSS as float32.
@@ -309,7 +352,23 @@ async function saveIndex(path: string, index: NotesIndex): Promise<void> {
   // point, and a crash between the two leaves a v2 JSON whose byte-length
   // check fails on load (treated as stale, reindexed) rather than silently
   // mismatched vectors. Both writes are atomic (tmp + fsync + rename).
+  let expectedDim: number | undefined;
+  for (const file of index.files) {
+    for (const chunk of file.chunks) {
+      const embedding = Array.from(chunk.embedding);
+      if (embedding.length === 0 || embedding.some((value) => !Number.isFinite(value))) {
+        throw new Error(`invalid embedding vector for ${chunk.file}`);
+      }
+      expectedDim ??= embedding.length;
+      if (embedding.length !== expectedDim) {
+        throw new Error(`embedding dimension mismatch for ${chunk.file}: expected ${expectedDim.toString()}, received ${embedding.length.toString()}`);
+      }
+    }
+  }
+  if (options?.signal?.aborted) return false;
+  let committed = false;
   await withFileMutationQueue(path, () => withFileLock(path, async () => {
+    if (options?.signal?.aborted) return;
     let dim = 0;
     let count = 0;
     for (const file of index.files) {
@@ -323,17 +382,29 @@ async function saveIndex(path: string, index: NotesIndex): Promise<void> {
     const metaFiles = index.files.map((file) => ({
       ...file,
       chunks: file.chunks.map((chunk) => {
-        if (chunk.embedding.length === dim) {
-          bin.set(chunk.embedding, at * dim);
-        }
+        bin.set(chunk.embedding, at * dim);
         at += 1;
         const { embedding: _embedding, ...rest } = chunk;
         return rest;
       })
     }));
-    await atomicWriteFile(embeddingsSidecarPath(path), new Uint8Array(bin.buffer, 0, count * dim * Float32Array.BYTES_PER_ELEMENT));
-    await atomicWriteFile(path, `${JSON.stringify({ ...index, embeddingCount: count, embeddingDim: dim, files: metaFiles }, null, 2)}\n`);
+    const embeddingBytes = new Uint8Array(bin.buffer, 0, count * dim * Float32Array.BYTES_PER_ELEMENT);
+    const embeddingSha256 = hashSourceBytes(embeddingBytes);
+    const stem = pathBasename(path).replace(/\.json$/u, "");
+    const embeddingFile = `${stem}.embeddings.${embeddingSha256}.bin`;
+    // Immutable generation first, metadata pointer last. Lock-free readers
+    // always have a durable target for whichever committed JSON they saw.
+    invokeCommitPhaseForTesting(options, "before-sidecar-write");
+    await atomicWriteFile(pathJoin(pathDirname(path), embeddingFile), embeddingBytes);
+    invokeCommitPhaseForTesting(options, "after-sidecar-write");
+    if (options?.signal?.aborted) return;
+    invokeCommitPhaseForTesting(options, "before-json-commit");
+    if (options?.signal?.aborted) return;
+    await atomicWriteFile(path, `${JSON.stringify({ ...index, embeddingCount: count, embeddingDim: dim, embeddingFile, embeddingSha256, files: metaFiles }, null, 2)}\n`);
+    committed = true;
+    invokeCommitPhaseForTesting(options, "after-json-commit");
   }));
+  return committed;
 }
 
 function isV1NotesIndex(value: unknown): value is NotesIndex {
@@ -381,13 +452,197 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+interface CorpusIdentity {
+  readonly realpath: string;
+  readonly dev: number;
+  readonly ino: number;
+  readonly uid: number;
+}
+
+interface CheckpointFileIdentity {
+  readonly relativePath: string;
+  readonly realpath: string;
+  readonly dev: number;
+  readonly ino: number;
+  readonly uid: number;
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly sourceSha256: string;
+}
+
+interface ReindexCheckpointBase {
+  readonly version: typeof REINDEX_CHECKPOINT_VERSION;
+  readonly baseGeneration: string;
+  readonly corpus: CorpusIdentity;
+  readonly model: string;
+  readonly chunkChars: number;
+  readonly overlap: number;
+  readonly chunkerVersion: typeof NOTES_CHUNKER_VERSION;
+  readonly annotationVersion: typeof NOTES_ANNOTATION_VERSION;
+  readonly file: CheckpointFileIdentity;
+}
+
+interface ReindexProgressCheckpoint extends ReindexCheckpointBase {
+  readonly kind: "progress";
+  readonly nextChunkIndex: number;
+  readonly chunks: readonly IndexChunk[];
+  readonly embeddingDim: number;
+}
+
+interface ReindexRequiresFullCheckpoint extends ReindexCheckpointBase {
+  readonly kind: "requires-full";
+  readonly reason: "checkpoint-too-large";
+}
+
+type ReindexCheckpoint = ReindexProgressCheckpoint | ReindexRequiresFullCheckpoint;
+
+export function reindexCheckpointPath(indexPath: string): string {
+  return `${indexPath}.reindex-checkpoint.json`;
+}
+
+type FileStats = NonNullable<Awaited<ReturnType<typeof stat>>>;
+
+function ownerUid(stats: FileStats): number {
+  return Number(stats.uid);
+}
+
+function ownedByCurrentUser(stats: FileStats): boolean {
+  const uid = process.getuid?.();
+  return uid === undefined || Number(stats.uid) === uid;
+}
+
+async function corpusIdentity(dir: string): Promise<CorpusIdentity> {
+  const canonical = await realpath(dir);
+  const stats = await stat(canonical);
+  if (!stats.isDirectory() || !ownedByCurrentUser(stats)) throw new Error("notes corpus must be an owner-controlled directory");
+  return { dev: Number(stats.dev), ino: Number(stats.ino), realpath: canonical, uid: ownerUid(stats) };
+}
+
+async function checkpointFileIdentity(path: string, corpus: CorpusIdentity): Promise<{ readonly bytes: Buffer; readonly identity: CheckpointFileIdentity }> {
+  const canonical = await realpath(path);
+  const relativePath = pathRelative(corpus.realpath, canonical);
+  if (relativePath.length === 0 || isAbsolute(relativePath) || relativePath === ".." || relativePath.startsWith(`..${pathSep}`)) {
+    throw new Error("note source escapes the canonical notes corpus");
+  }
+  const stats = await stat(canonical);
+  if (!stats.isFile() || !ownedByCurrentUser(stats)) throw new Error("note source must be an owner-controlled regular file");
+  const bytes = await readFile(canonical);
+  return {
+    bytes,
+    identity: {
+      dev: Number(stats.dev),
+      ino: Number(stats.ino),
+      mtimeMs: stats.mtimeMs,
+      realpath: canonical,
+      relativePath,
+      size: stats.size,
+      sourceSha256: hashSourceBytes(bytes),
+      uid: ownerUid(stats)
+    }
+  };
+}
+
+function sameIdentity(left: CorpusIdentity | CheckpointFileIdentity, right: CorpusIdentity | CheckpointFileIdentity): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function currentLiveGeneration(indexPath: string): Promise<string> {
+  try {
+    return hashSourceBytes(await readFile(indexPath));
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return "none";
+    throw cause;
+  }
+}
+
+function finiteEmbedding(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "number" && Number.isFinite(item));
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+function checkpointFromUnknown(value: unknown): ReindexCheckpoint | undefined {
+  if (!isRecord(value) || value.version !== REINDEX_CHECKPOINT_VERSION || (value.kind !== "progress" && value.kind !== "requires-full")) return undefined;
+  const commonKeys = ["version", "baseGeneration", "corpus", "model", "chunkChars", "overlap", "chunkerVersion", "annotationVersion", "file", "kind"] as const;
+  if (!hasExactKeys(value, value.kind === "progress" ? [...commonKeys, "nextChunkIndex", "chunks", "embeddingDim"] : [...commonKeys, "reason"])) return undefined;
+  if (typeof value.baseGeneration !== "string" || typeof value.model !== "string" || value.chunkerVersion !== NOTES_CHUNKER_VERSION || value.annotationVersion !== NOTES_ANNOTATION_VERSION) return undefined;
+  if (!Number.isSafeInteger(value.chunkChars) || (value.chunkChars as number) < 120 || !Number.isSafeInteger(value.overlap) || (value.overlap as number) < 0) return undefined;
+  if (!isRecord(value.corpus) || !hasExactKeys(value.corpus, ["realpath", "dev", "ino", "uid"]) || typeof value.corpus.realpath !== "string" || !Number.isFinite(value.corpus.dev) || !Number.isFinite(value.corpus.ino) || !Number.isFinite(value.corpus.uid)) return undefined;
+  if (!isRecord(value.file) || typeof value.file.relativePath !== "string" || value.file.relativePath.length === 0 || isAbsolute(value.file.relativePath) || value.file.relativePath === ".." || value.file.relativePath.startsWith(`..${pathSep}`)) return undefined;
+  if (!hasExactKeys(value.file, ["relativePath", "realpath", "dev", "ino", "uid", "size", "mtimeMs", "sourceSha256"])) return undefined;
+  if (typeof value.file.realpath !== "string" || !Number.isFinite(value.file.dev) || !Number.isFinite(value.file.ino) || !Number.isFinite(value.file.uid) || !Number.isFinite(value.file.size) || !Number.isFinite(value.file.mtimeMs) || typeof value.file.sourceSha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.file.sourceSha256)) return undefined;
+  const base = value as unknown as ReindexCheckpointBase;
+  if (value.kind === "requires-full") return value.reason === "checkpoint-too-large" ? { ...base, kind: "requires-full", reason: "checkpoint-too-large" } : undefined;
+  if (!Number.isSafeInteger(value.nextChunkIndex) || (value.nextChunkIndex as number) < 0 || !Number.isSafeInteger(value.embeddingDim) || (value.embeddingDim as number) <= 0 || !Array.isArray(value.chunks) || value.chunks.length > REINDEX_CHECKPOINT_MAX_CHUNKS) return undefined;
+  const chunks: IndexChunk[] = [];
+  for (const chunk of value.chunks) {
+    if (!isRecord(chunk) || !hasExactKeys(chunk, ["chunkIndex", "embedding", "file", "text"]) || !Number.isSafeInteger(chunk.chunkIndex) || typeof chunk.file !== "string" || typeof chunk.text !== "string" || !finiteEmbedding(chunk.embedding) || chunk.embedding.length !== value.embeddingDim) return undefined;
+    chunks.push({ chunkIndex: chunk.chunkIndex as number, embedding: chunk.embedding, file: chunk.file, text: chunk.text });
+  }
+  if (chunks.length !== value.nextChunkIndex) return undefined;
+  return { ...base, chunks, embeddingDim: value.embeddingDim as number, kind: "progress", nextChunkIndex: value.nextChunkIndex as number };
+}
+
+async function loadCheckpoint(indexPath: string): Promise<ReindexCheckpoint | undefined> {
+  const path = reindexCheckpointPath(indexPath);
+  try {
+    const stats = await stat(path);
+    if (!stats.isFile() || !ownedByCurrentUser(stats) || stats.size > REINDEX_CHECKPOINT_MAX_BYTES) return undefined;
+    return checkpointFromUnknown(parseStrictJson(await readFile(path, "utf8"), {
+      maxArrayItems: REINDEX_CHECKPOINT_MAX_CHUNKS,
+      maxDepth: 16,
+      // 64 MiB is the primary bound. Allow normal 768/1024-dimension vectors
+      // across thousands of chunks without treating a valid checkpoint as corrupt.
+      maxNodes: 8_388_608,
+      maxObjectMembers: REINDEX_CHECKPOINT_MAX_CHUNKS * 8
+    }));
+  } catch {
+    return undefined;
+  }
+}
+
+async function checkpointFilePresent(indexPath: string): Promise<boolean> {
+  try {
+    await stat(reindexCheckpointPath(indexPath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeCheckpoint(
+  indexPath: string,
+  checkpoint: ReindexCheckpoint,
+  options?: Pick<ReindexOptions, "onCommitPhaseForTesting">
+): Promise<"written" | "too-large"> {
+  if (!checkpointFromUnknown(checkpoint)) throw new Error("refusing to persist an invalid reindex checkpoint");
+  const serialized = `${JSON.stringify(checkpoint)}\n`;
+  if (Buffer.byteLength(serialized, "utf8") > REINDEX_CHECKPOINT_MAX_BYTES) return "too-large";
+  invokeCommitPhaseForTesting(options, "before-checkpoint-commit");
+  await atomicWriteFile(reindexCheckpointPath(indexPath), serialized);
+  invokeCommitPhaseForTesting(options, "after-checkpoint-commit");
+  return "written";
+}
+
+async function clearCheckpoint(
+  indexPath: string,
+  options?: Pick<ReindexOptions, "onCommitPhaseForTesting">
+): Promise<void> {
+  invokeCommitPhaseForTesting(options, "before-checkpoint-delete");
+  await rm(reindexCheckpointPath(indexPath), { force: true });
+  invokeCommitPhaseForTesting(options, "after-checkpoint-delete");
+}
+
 /**
  * Reusable reindex routine — used by `muse notes reindex` AND by
  * `muse ask` for auto-reindex when stale. Returns a summary so the
  * caller can decide whether to log progress (CLI) or stay silent
  * (auto-mode).
  */
-export interface ReindexSummary {
+interface ReindexWorkCounters {
   readonly indexPath: string;
   /** Markdown files found under the notes dir (0 ⇒ nothing to index). */
   readonly totalFiles: number;
@@ -395,8 +650,23 @@ export interface ReindexSummary {
   readonly skipped: number;
   readonly failed: number;
   readonly totalChunks: number;
-  readonly index: NotesIndex;
+  readonly index: NotesIndex | undefined;
+  readonly attemptedEmbeddings: number;
+  readonly pendingFiles: number;
 }
+
+export type ReindexWorkSummary =
+  | (ReindexWorkCounters & { readonly status: "complete" })
+  | (ReindexWorkCounters & { readonly status: "pending"; readonly pendingReason: "budget" | "embedding-error" | "checkpoint-too-large" });
+
+export type ReindexSummary =
+  | ReindexWorkSummary
+  | { readonly status: "busy"; readonly pendingReason: "writer-active"; readonly indexPath: string; readonly attemptedEmbeddings: 0 }
+  | { readonly status: "aborted"; readonly pendingReason: "caller-abort"; readonly indexPath: string; readonly attemptedEmbeddings: number; readonly index?: NotesIndex; readonly progress?: Omit<ReindexWorkCounters, "index" | "indexPath" | "attemptedEmbeddings"> };
+
+export type FullReindexSummary =
+  | (Omit<ReindexWorkCounters, "index"> & { readonly index: NotesIndex; readonly status: "complete" })
+  | (Omit<ReindexWorkCounters, "index"> & { readonly index: NotesIndex; readonly status: "pending"; readonly pendingReason: "embedding-error" });
 
 /**
  * The line(s) `muse notes reindex` prints after a run. When ZERO markdown
@@ -408,7 +678,7 @@ export interface ReindexSummary {
  * exported for direct test coverage.
  */
 export function formatReindexOutcome(
-  summary: Pick<ReindexSummary, "totalFiles" | "embedded" | "skipped" | "failed" | "totalChunks" | "indexPath">,
+  summary: Pick<Extract<ReindexSummary, { readonly status: "complete" | "pending" }>, "totalFiles" | "embedded" | "skipped" | "failed" | "totalChunks" | "indexPath"> & { readonly status?: "complete" | "pending" },
   context: { readonly dir: string }
 ): string {
   if (summary.totalFiles === 0) {
@@ -419,11 +689,11 @@ export function formatReindexOutcome(
       `Once you have notes, \`muse ask\` / \`muse recall\` will ground answers on them.`
     ].join("\n");
   }
-  return `Done. ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} failed. ${summary.totalChunks.toString()} chunks total in ${summary.indexPath}`;
+  const prefix = summary.status === "pending" ? "Incomplete." : "Done.";
+  return `${prefix} ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} failed. ${summary.totalChunks.toString()} chunks total in ${summary.indexPath}`;
 }
 
-export async function reindexNotes(
-  options: {
+export interface ReindexOptions {
     readonly dir: string;
     readonly model: string;
     readonly chunkChars?: number;
@@ -434,123 +704,307 @@ export async function reindexNotes(
     readonly fetchImpl?: typeof globalThis.fetch;
     /** Resolve the Ollama base URL; defaults to `OLLAMA_BASE_URL` or localhost. */
     readonly baseUrlResolver?: () => string;
-  }
-): Promise<ReindexSummary> {
+    /** Automatic paths bound attempted embedding fetches; undefined is an explicit full run. */
+    readonly maxEmbeddingAttempts?: number;
+    /** Per-embedding timeout override used by bounded automatic paths. */
+    readonly embedTimeoutMs?: number;
+  readonly signal?: AbortSignal;
+  /** Deterministic fault seam for serialized checkpoint-cap tests only. */
+  readonly checkpointMaxBytesForTesting?: number;
+  /** Test-only: runs once immediately after acquiring the required writer lock, before any mutation. */
+  readonly onWriterLockAcquiredForTesting?: () => void;
+  /** Test-only: injects a deterministic interruption at an exact durable commit boundary. */
+  readonly onCommitPhaseForTesting?: (phase: NotesIndexCommitPhase) => void;
+}
+
+export function reindexNotes(options: ReindexOptions & { readonly maxEmbeddingAttempts?: undefined }): Promise<FullReindexSummary>;
+export function reindexNotes(options: ReindexOptions): Promise<ReindexSummary>;
+export async function reindexNotes(options: ReindexOptions): Promise<ReindexSummary> {
   const chunkChars = Math.max(120, options.chunkChars ?? DEFAULT_CHUNK_CHARS);
   const indexPath = options.indexPath ?? defaultIndexPath();
-  const existing = options.force ? undefined : await loadIndex(indexPath);
-  const known = new Map<string, FileEntry>();
-  if (existing && existing.model === options.model) {
-    for (const entry of existing.files) known.set(entry.path, entry);
-  }
-  const found = await walkMarkdown(options.dir);
-  const next: FileEntry[] = [];
-  let embedded = 0, skipped = 0, failed = 0;
-  let position = 0;
-  // `[i/N]` position so a long reindex shows progress, not a silent stall.
-  // Cached files stay quiet (they're instant); embedded/failed files report
-  // their position among the N found.
-  for (const { path, mtimeMs } of found) {
-    position += 1;
-    const at = `[${position.toString()}/${found.length.toString()}] `;
-    const prior = known.get(path);
-    const isPdf = /\.pdf$/iu.test(path);
-    let sourceBytes: Buffer | undefined;
-    let sourceHash: string | undefined;
-    if (!isPdf) {
+  const earlyAborted = (): Extract<ReindexSummary, { readonly status: "aborted" }> => ({ attemptedEmbeddings: 0, indexPath, pendingReason: "caller-abort", status: "aborted" });
+  if (options.signal?.aborted) return earlyAborted();
+  const outcome = await withRequiredProcessLock(`${indexPath}.reindex.lock`, async () => {
+    options.onWriterLockAcquiredForTesting?.();
+    if (options.signal?.aborted) return earlyAborted();
+    // Readers never mutate. Preserve only a schema-mismatched store here,
+    // after the required writer lock has been acquired and before rebuilding.
+    try {
+      const raw = JSON.parse(await readFile(indexPath, "utf8")) as unknown;
+      if (isRecord(raw) && raw.version !== 1 && raw.version !== NOTES_INDEX_SCHEMA_VERSION) {
+        await backupVersionMismatchedStore(indexPath, raw.version);
+      }
+    } catch {
+      // Missing/malformed stores are rebuilt in place; loadIndex remains pure.
+    }
+    const bounded = options.maxEmbeddingAttempts !== undefined;
+    if (!bounded || options.force === true) await clearCheckpoint(indexPath);
+    else if (await checkpointFilePresent(indexPath) && !(await loadCheckpoint(indexPath))) await clearCheckpoint(indexPath);
+    const found = await walkMarkdown(options.dir);
+    let liveIndex = options.force === true ? undefined : await loadIndex(indexPath);
+    const stagingPath = bounded && liveIndex !== undefined && liveIndex.model !== options.model
+      ? `${indexPath}.reindex-staging.json`
+      : indexPath;
+    let index = options.force === true ? undefined : await loadIndex(stagingPath);
+    if (index?.model !== options.model) index = undefined;
+    let currentFiles = index?.files.slice() ?? [];
+    const foundPaths = new Set(found.map((entry) => entry.path));
+    let embedded = 0;
+    let skipped = 0;
+    let failed = 0;
+    let attemptedEmbeddings = 0;
+    let pendingFiles = 0;
+    const counters = (status: "complete" | "pending", pendingReason?: "budget" | "embedding-error" | "checkpoint-too-large"): Extract<ReindexSummary, { readonly status: "complete" | "pending" }> => ({
+      attemptedEmbeddings,
+      embedded,
+      failed,
+      index: stagingPath === indexPath ? index : liveIndex,
+      indexPath,
+      pendingFiles,
+      skipped,
+      status,
+      ...(status === "pending" ? { pendingReason: pendingReason! } : {}),
+      totalChunks: (stagingPath === indexPath ? index : liveIndex)?.files.reduce((sum, file) => sum + file.chunks.length, 0) ?? 0,
+      totalFiles: found.length
+    } as Extract<ReindexSummary, { readonly status: "complete" | "pending" }>);
+    const aborted = (): Extract<ReindexSummary, { readonly status: "aborted" }> => ({
+      attemptedEmbeddings,
+      ...(stagingPath === indexPath && index ? { index } : liveIndex ? { index: liveIndex } : {}),
+      indexPath,
+      pendingReason: "caller-abort",
+      progress: { embedded, failed, pendingFiles, skipped, totalChunks: index?.files.reduce((sum, file) => sum + file.chunks.length, 0) ?? 0, totalFiles: found.length },
+      status: "aborted"
+    });
+    if (options.signal?.aborted) return aborted();
+
+    if (stagingPath !== indexPath && liveIndex) {
+      const retainedLive = liveIndex.files.filter((entry) => foundPaths.has(entry.path));
+      if (retainedLive.length !== liveIndex.files.length) {
+        if (options.signal?.aborted) return aborted();
+        liveIndex = { ...liveIndex, builtAtIso: new Date().toISOString(), files: retainedLive };
+        if (!(await saveIndex(indexPath, liveIndex, options))) return aborted();
+      }
+    }
+
+    // Deletions are a complete local fact and need no embedding. Commit them
+    // before a bounded file can become pending, so ghost entries disappear.
+    const retained = currentFiles.filter((entry) => foundPaths.has(entry.path));
+    if (retained.length !== currentFiles.length && stagingPath === indexPath) {
+      if (options.signal?.aborted) return aborted();
+      index = { builtAtIso: new Date().toISOString(), files: retained, model: options.model, version: NOTES_INDEX_SCHEMA_VERSION };
+      if (!(await saveIndex(indexPath, index, options))) return aborted();
+      currentFiles = retained;
+    }
+    if (found.length === 0) {
+      if (stagingPath !== indexPath || !index) {
+        if (options.signal?.aborted) return aborted();
+        index = { builtAtIso: new Date().toISOString(), files: [], model: options.model, version: NOTES_INDEX_SCHEMA_VERSION };
+        if (!(await saveIndex(indexPath, index, options))) return aborted();
+        liveIndex = index;
+      }
+      if (options.signal?.aborted) return aborted();
+      await clearCheckpoint(indexPath);
+      return counters("complete");
+    }
+    const corpus = await corpusIdentity(options.dir);
+    const overlap = Math.min(200, Math.max(0, Math.floor(chunkChars / 20)));
+
+    for (let position = 0; position < found.length; position += 1) {
+      if (options.signal?.aborted) return aborted();
+      const { path, mtimeMs } = found[position]!;
+      const at = `[${(position + 1).toString()}/${found.length.toString()}] `;
+      const known = new Map(currentFiles.map((entry) => [entry.path, entry]));
+      const prior = known.get(path);
+      const isPdf = /\.pdf$/iu.test(path);
+      let captured: Awaited<ReturnType<typeof checkpointFileIdentity>>;
       try {
-        sourceBytes = await readFile(path);
-        sourceHash = hashSourceBytes(sourceBytes);
+        captured = await checkpointFileIdentity(path, corpus);
       } catch (cause) {
         failed += 1;
+        pendingFiles += 1;
         options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${errorMessage(cause)})`);
         continue;
       }
-    }
-    if (prior && prior.mtimeMs === mtimeMs) {
-      if (
-        isPdf
-        || (
-          prior.chunkerVersion === NOTES_CHUNKER_VERSION
-          && prior.sourceHash === sourceHash
-        )
-      ) {
-        next.push(prior);
+      const sourceHash = captured.identity.sourceSha256;
+      if (prior && prior.mtimeMs === mtimeMs && (isPdf || (prior.chunkerVersion === NOTES_CHUNKER_VERSION && prior.sourceHash === sourceHash))) {
+        const cachedCheckpoint = bounded ? await loadCheckpoint(indexPath) : undefined;
+        // A post-JSON crash may leave a stale checkpoint for THIS file even
+        // though its source identity is already committed. Never clear a
+        // checkpoint owned by a later file: sorted cached predecessors must
+        // not erase resumable work for the changed file that follows them.
+        if (cachedCheckpoint && sameIdentity(cachedCheckpoint.file, captured.identity)) {
+          await clearCheckpoint(indexPath);
+        }
         skipped += 1;
         continue;
       }
-    }
-    let body: string;
-    let chunkerVersion: typeof NOTES_CHUNKER_VERSION | undefined;
-    try {
-      if (isPdf) {
-        body = await extractNoteText(path);
-      } else {
-        body = sourceBytes!.toString("utf8");
-        chunkerVersion = NOTES_CHUNKER_VERSION;
-      }
-    } catch (cause) {
-      failed += 1;
-      options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${errorMessage(cause)})`);
-      continue;
-    }
-    const overlap = Math.min(200, Math.max(0, Math.floor(chunkChars / 20)));
-    const chunks = chunkText(body, chunkChars, overlap);
-    // Contextual annotation (measured: bare-value chunks 5/6 → 6/6): the
-    // EMBEDDED text carries "[<file> · <nearest heading>]" so a chunk that is
-    // meaningless alone keeps its referent; the STORED text stays raw so the
-    // gate, citations, and receipts are unchanged.
-    const annotated = annotateNoteChunks(pathBasename(path), body, chunks);
-    const out: IndexChunk[] = [];
-    for (let i = 0; i < chunks.length; i += 1) {
+      let body: string;
       try {
-        const embedding = await embed(annotated[i]?.embedText ?? chunks[i]!, options.model, {
-          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
-          ...(options.baseUrlResolver ? { baseUrlResolver: options.baseUrlResolver } : {})
-        });
-        out.push({ chunkIndex: i, embedding, file: path, text: chunks[i]! });
+        body = isPdf ? await extractNoteText(path) : captured.bytes.toString("utf8");
       } catch (cause) {
-        options.onProgress?.(`embed failed for ${path} chunk ${i.toString()}: ${errorMessage(cause)}`);
+        failed += 1;
+        pendingFiles += 1;
+        options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${errorMessage(cause)})`);
+        continue;
       }
-    }
-    // A file with no successfully-embedded chunks is NOT "embedded" — count it
-    // as failed and don't store a hollow entry (which would report false
-    // success and then return zero recall hits). Carry forward any prior good
-    // index entry for this file so a transient embed outage doesn't wipe it.
-    if (out.length === 0) {
-      failed += 1;
-      const priorEntry = known.get(path);
-      if (priorEntry) {
-        next.push(priorEntry);
+      const chunks = chunkText(body, chunkChars, overlap);
+      const annotated = annotateNoteChunks(pathBasename(path), body, chunks);
+      const baseGeneration = await currentLiveGeneration(stagingPath);
+      const checkpointBase: ReindexCheckpointBase = {
+        annotationVersion: NOTES_ANNOTATION_VERSION,
+        baseGeneration,
+        chunkChars,
+        chunkerVersion: NOTES_CHUNKER_VERSION,
+        corpus,
+        file: captured.identity,
+        model: options.model,
+        overlap,
+        version: REINDEX_CHECKPOINT_VERSION
+      };
+      let checkpoint = bounded ? await loadCheckpoint(indexPath) : undefined;
+      const committedDim = currentFiles.flatMap((file) => file.chunks)[0]?.embedding.length;
+      if (checkpoint && (
+        checkpoint.baseGeneration !== baseGeneration
+        || checkpoint.model !== options.model
+        || checkpoint.chunkChars !== chunkChars
+        || checkpoint.overlap !== overlap
+        || checkpoint.annotationVersion !== NOTES_ANNOTATION_VERSION
+        || !sameIdentity(checkpoint.corpus, corpus)
+        || !sameIdentity(checkpoint.file, captured.identity)
+      )) {
+        await clearCheckpoint(indexPath);
+        checkpoint = undefined;
       }
-      options.onProgress?.(`${at}✗ ${path} (embedding failed — kept ${priorEntry ? "previous index entry" : "nothing"})`);
-      continue;
+      if (checkpoint?.kind === "progress" && committedDim !== undefined && checkpoint.embeddingDim !== committedDim) {
+        await clearCheckpoint(indexPath);
+        checkpoint = undefined;
+      }
+      if (checkpoint?.kind === "progress" && checkpoint.chunks.some((chunk, chunkIndex) => (
+        chunk.chunkIndex !== chunkIndex
+        || chunk.file !== path
+        || chunk.text !== chunks[chunkIndex]
+      ))) {
+        await clearCheckpoint(indexPath);
+        checkpoint = undefined;
+      }
+      if (checkpoint?.kind === "requires-full") {
+        pendingFiles += found.length - position;
+        return counters("pending", "checkpoint-too-large");
+      }
+      if (bounded && chunks.length > REINDEX_CHECKPOINT_MAX_CHUNKS) {
+        await writeCheckpoint(indexPath, { ...checkpointBase, kind: "requires-full", reason: "checkpoint-too-large" });
+        pendingFiles += found.length - position;
+        return counters("pending", "checkpoint-too-large");
+      }
+      const out: IndexChunk[] = checkpoint?.kind === "progress" ? checkpoint.chunks.map((chunk) => ({ ...chunk, embedding: [...chunk.embedding] })) : [];
+      let fileFailed = false;
+      for (let i = out.length; i < chunks.length; i += 1) {
+        if (options.signal?.aborted) return aborted();
+        if (bounded && attemptedEmbeddings >= options.maxEmbeddingAttempts!) {
+          pendingFiles += found.length - position;
+          return counters("pending", "budget");
+        }
+        attemptedEmbeddings += 1;
+        try {
+          const embedding = await embed(annotated[i]?.embedText ?? chunks[i]!, options.model, {
+            ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+            ...(options.baseUrlResolver ? { baseUrlResolver: options.baseUrlResolver } : {}),
+            ...(options.embedTimeoutMs !== undefined ? { timeoutMs: options.embedTimeoutMs } : {}),
+            ...(options.signal ? { signal: options.signal } : {})
+          });
+          if (options.signal?.aborted) return aborted();
+          const currentIdentity = await checkpointFileIdentity(path, corpus);
+          if (!sameIdentity(currentIdentity.identity, captured.identity)) {
+            if (options.signal?.aborted) return aborted();
+            await clearCheckpoint(indexPath);
+            failed += 1;
+            pendingFiles += found.length - position;
+            return counters("pending", "embedding-error");
+          }
+          if (options.signal?.aborted) return aborted();
+          const expectedDim = out[0]?.embedding.length
+            ?? currentFiles.flatMap((file) => file.chunks)[0]?.embedding.length;
+          if (!finiteEmbedding(embedding) || (expectedDim !== undefined && embedding.length !== expectedDim)) {
+            throw new Error(`embedding dimension mismatch for ${path}`);
+          }
+          out.push({ chunkIndex: i, embedding, file: path, text: chunks[i]! });
+          if (bounded) {
+            const progress: ReindexProgressCheckpoint = { ...checkpointBase, chunks: out, embeddingDim: embedding.length, kind: "progress", nextChunkIndex: out.length };
+            if (options.signal?.aborted) return aborted();
+            const progressBytes = `${JSON.stringify(progress)}\n`;
+            const checkpointCap = options.checkpointMaxBytesForTesting ?? REINDEX_CHECKPOINT_MAX_BYTES;
+            if (Buffer.byteLength(progressBytes, "utf8") > checkpointCap || await writeCheckpoint(indexPath, progress, options) === "too-large") {
+              if (options.signal?.aborted) return aborted();
+              await writeCheckpoint(indexPath, { ...checkpointBase, kind: "requires-full", reason: "checkpoint-too-large" });
+              pendingFiles += found.length - position;
+              return counters("pending", "checkpoint-too-large");
+            }
+          }
+        } catch (cause) {
+          if (cause instanceof NotesIndexFaultInjectionError) throw cause;
+          if (cause instanceof EmbedAbortedError || options.signal?.aborted) return aborted();
+          options.onProgress?.(`embed failed for ${path} chunk ${i.toString()}: ${errorMessage(cause)}`);
+          fileFailed = true;
+          if (bounded) {
+            failed += 1;
+            pendingFiles += found.length - position;
+            return counters("pending", "embedding-error");
+          }
+        }
+      }
+      if (fileFailed || out.length !== chunks.length) {
+        failed += 1;
+        pendingFiles += 1;
+        options.onProgress?.(`${at}✗ ${path} (embedding failed — kept ${prior ? "previous index entry" : "nothing"})`);
+        continue;
+      }
+      const finalIdentity = await checkpointFileIdentity(path, corpus);
+      if (options.signal?.aborted) return aborted();
+      if (!sameIdentity(finalIdentity.identity, captured.identity)) {
+        await clearCheckpoint(indexPath);
+        failed += 1;
+        pendingFiles += 1;
+        continue;
+      }
+      const completed: FileEntry = {
+        chunks: out,
+        ...(!isPdf ? { chunkerVersion: NOTES_CHUNKER_VERSION, sourceHash } : {}),
+        mtimeMs,
+        path
+      };
+      currentFiles = [...currentFiles.filter((entry) => entry.path !== path && foundPaths.has(entry.path)), completed]
+        .sort((left, right) => left.path.localeCompare(right.path));
+      index = { builtAtIso: new Date().toISOString(), files: currentFiles, model: options.model, version: NOTES_INDEX_SCHEMA_VERSION };
+      if (options.signal?.aborted) return aborted();
+      if (!(await saveIndex(stagingPath, index, options))) return aborted();
+      if (options.signal?.aborted) return aborted();
+      await clearCheckpoint(indexPath, options);
+      embedded += 1;
+      options.onProgress?.(`${at}+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
     }
-    next.push({
-      chunks: out,
-      ...(chunkerVersion !== undefined && sourceHash !== undefined ? { chunkerVersion, sourceHash } : {}),
-      mtimeMs,
-      path
-    });
-    embedded += 1;
-    options.onProgress?.(`${at}+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
-  }
-  const index: NotesIndex = {
-    builtAtIso: new Date().toISOString(),
-    files: next,
-    model: options.model,
-    version: NOTES_INDEX_SCHEMA_VERSION
-  };
-  await saveIndex(indexPath, index);
-  return {
-    embedded,
-    failed,
-    index,
-    indexPath,
-    skipped,
-    totalFiles: found.length,
-    totalChunks: next.reduce((sum, f) => sum + f.chunks.length, 0)
-  };
+    if (!bounded && !index) {
+      if (options.signal?.aborted) return aborted();
+      index = { builtAtIso: new Date().toISOString(), files: currentFiles, model: options.model, version: NOTES_INDEX_SCHEMA_VERSION };
+      if (!(await saveIndex(indexPath, index, options))) return aborted();
+    }
+    if (pendingFiles > 0 || failed > 0) return counters("pending", "embedding-error");
+    if (stagingPath !== indexPath) {
+      if (!index || index.files.length !== found.length) {
+        pendingFiles = Math.max(1, found.length - (index?.files.length ?? 0));
+        return counters("pending", "budget");
+      }
+      if (options.signal?.aborted) return aborted();
+      if (!(await saveIndex(indexPath, index, options))) return aborted();
+      liveIndex = index;
+      if (options.signal?.aborted) return aborted();
+      await rm(stagingPath, { force: true });
+      await clearCheckpoint(indexPath);
+    }
+    return counters("complete");
+  });
+  if (outcome.kind === "lock-held") return { attemptedEmbeddings: 0, indexPath, pendingReason: "writer-active", status: "busy" };
+  if (outcome.kind === "lock-error") throw new Error(`notes reindex lock failed: ${outcome.error}`);
+  return outcome.value;
 }
 
 /**
@@ -563,6 +1017,10 @@ export async function isNotesIndexStale(dir: string, indexPath?: string): Promis
   if (!index) return true;
   const builtMs = new Date(index.builtAtIso).getTime();
   if (!Number.isFinite(builtMs)) return true;
+  const files = await walkMarkdown(dir);
+  const indexedPaths = new Set(index.files.map((entry) => pathResolve(entry.path)));
+  const currentPaths = new Set(files.map((entry) => pathResolve(entry.path)));
+  if (indexedPaths.size !== currentPaths.size || [...indexedPaths].some((path) => !currentPaths.has(path))) return true;
   // Dogfood-found case: a previous test run built the index against
   // a tmp NOTES_DIR (e.g. /var/folders/.../tmp.XYZ/notes/n.md) and the
   // index file remained under ~/.muse/. Subsequent `muse ask` loaded
@@ -592,7 +1050,6 @@ export async function isNotesIndexStale(dir: string, indexPath?: string): Promis
       return true;
     }
   }
-  const files = await walkMarkdown(dir);
   for (const { mtimeMs } of files) {
     if (mtimeMs > builtMs) return true;
   }

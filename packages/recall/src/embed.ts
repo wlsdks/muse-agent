@@ -17,6 +17,24 @@ export { cosineSimilarity } from "@muse/agent-core";
 
 export const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
 
+export class EmbedAbortedError extends Error {
+  readonly code = "MUSE_EMBED_ABORTED";
+
+  constructor(cause?: unknown) {
+    super("embedding request aborted by caller", cause === undefined ? undefined : { cause });
+    this.name = "EmbedAbortedError";
+  }
+}
+
+export class EmbedTimeoutError extends Error {
+  readonly code = "MUSE_EMBED_TIMEOUT";
+
+  constructor(baseUrl: string, timeoutMs: number, cause?: unknown) {
+    super(`embeddings ${baseUrl}/api/embeddings timed out after ${timeoutMs.toString()}ms`, cause === undefined ? undefined : { cause });
+    this.name = "EmbedTimeoutError";
+  }
+}
+
 function resolveEmbedTransportBaseUrl(baseUrl: string, requireLocalOnly?: true): string {
   if (!isLocalOnlyEnabled(process.env) && requireLocalOnly !== true) {
     return baseUrl;
@@ -55,6 +73,8 @@ export interface EmbedOptions {
    * values fall back to the default.
    */
   readonly timeoutMs?: number;
+  /** Optional owner cancellation. Caller abort takes precedence over timeout. */
+  readonly signal?: AbortSignal;
 }
 
 export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
@@ -63,23 +83,36 @@ export async function embed(text: string, model: string, options: EmbedOptions =
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
     ? (options.timeoutMs as number)
     : DEFAULT_EMBED_TIMEOUT_MS;
-  const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  if (options.signal?.aborted) {
+    throw new EmbedAbortedError(options.signal.reason);
+  }
+  const timeoutController = new AbortController();
+  const timer = setTimeout(() => timeoutController.abort(new DOMException("embedding timeout", "TimeoutError")), timeoutMs);
+  timer.unref?.();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutController.signal])
+    : timeoutController.signal;
   let resp: Response;
   try {
     resp = await fetchImpl(`${baseUrl}/api/embeddings`, {
       body: JSON.stringify({ model, prompt: text }),
       headers: { "content-type": "application/json" },
       method: "POST",
-      ...(timeoutSignal ? { signal: timeoutSignal } : {})
+      signal
     });
   } catch (cause) {
     // Fetch implementations do not agree on the rejection they surface when
     // our timeout signal aborts: Node fetch uses TimeoutError, while adapters
     // commonly reject with AbortError. The signal is the source of truth.
-    if (timeoutSignal?.aborted || (cause instanceof DOMException && cause.name === "TimeoutError")) {
-      throw new Error(`embeddings ${baseUrl}/api/embeddings timed out after ${timeoutMs.toString()}ms`, { cause });
+    if (options.signal?.aborted) {
+      throw new EmbedAbortedError(cause);
+    }
+    if (timeoutController.signal.aborted || (cause instanceof DOMException && cause.name === "TimeoutError")) {
+      throw new EmbedTimeoutError(baseUrl, timeoutMs, cause);
     }
     throw cause;
+  } finally {
+    clearTimeout(timer);
   }
   if (!resp.ok) {
     throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);

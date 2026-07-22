@@ -7,7 +7,7 @@ import { LocalDirNotesProvider, type Task } from "@muse/domain-tools";
 import { readPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import type { CalendarEvent } from "@muse/calendar";
 import { isLocalOnlyEnabled, type ModelProvider } from "@muse/model";
-import { NOTES_INDEX_SCHEMA_VERSION } from "@muse/recall";
+import { NOTES_INDEX_SCHEMA_VERSION, reindexNotes } from "@muse/recall";
 import type { MuseToolContext } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -168,6 +168,57 @@ describe("buildMcpServeTools", () => {
 
       expect(resolverCalls).toBe(1);
       expect(readFileSync(indexPath, "utf8")).toBe(priorBytes);
+    });
+
+    it("keeps MCP recall on the last complete model while a bounded migration is pending", async () => {
+      const indexPath = join(notesDir, "notes-index.json");
+      writeFileSync(join(notesDir, "a.md"), "alpha decision");
+      writeFileSync(join(notesDir, "b.md"), "beta decision");
+      const fetchResponse = (async () => new Response(JSON.stringify({ embedding: [1, 0] }), { status: 200 })) as typeof globalThis.fetch;
+      await reindexNotes({ dir: notesDir, fetchImpl: fetchResponse, force: true, indexPath, model: "old-model" });
+      writeFileSync(join(notesDir, "a.md"), "alpha decision changed");
+      const queriedModels: string[] = [];
+      const priorFetch = globalThis.fetch;
+      globalThis.fetch = fetchResponse;
+      try {
+        const tools = buildMcpServeTools(baseDeps({
+          answerModel: "ollama/test",
+          baseUrlResolver: () => "http://127.0.0.1:11434",
+          embedFn: async (_text, model) => { queriedModels.push(model); return [1, 0]; },
+          embedModel: "new-model",
+          modelProvider: { generate: async () => ({ output: "I'm not sure." }) } as unknown as ModelProvider,
+          notesIndexFile: indexPath
+        }, notesDir));
+        const museRecall = tools.find((tool) => tool.definition.name === "muse_recall")!;
+        await museRecall.execute({ question: "what was the alpha decision?" }, context);
+      } finally {
+        globalThis.fetch = priorFetch;
+      }
+      expect(queriedModels).toContain("old-model");
+      expect(queriedModels).not.toContain("new-model");
+    });
+
+    it("fails soft with notesUnavailable when the initial index read has an I/O error", async () => {
+      const unreadableIndexPath = join(notesDir, "index-is-a-directory");
+      mkdirSync(unreadableIndexPath);
+      let embeds = 0;
+      let generations = 0;
+      const tools = buildMcpServeTools(baseDeps({
+        answerModel: "ollama/test",
+        embedFn: async () => { embeds += 1; return [1, 0]; },
+        modelProvider: { generate: async () => { generations += 1; return { output: "must not generate" }; } } as unknown as ModelProvider,
+        notesIndexFile: unreadableIndexPath
+      }, notesDir));
+      const museRecall = tools.find((tool) => tool.definition.name === "muse_recall")!;
+      await expect(museRecall.execute({ question: "what do my notes say?" }, context)).resolves.toMatchObject({
+        citations: [],
+        groundedChunkCount: 0,
+        notesUnavailable: true,
+        refusal: true,
+        verdict: "none"
+      });
+      expect(embeds).toBe(0);
+      expect(generations).toBe(0);
     });
   });
 

@@ -1,13 +1,12 @@
-import { promises as fsPromises } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadIndex, NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
+import { loadIndex, NOTES_INDEX_SCHEMA_VERSION, reindexNotes } from "./notes-index.js";
 
-describe("loadIndex — version-mismatch backup (DS-20: even a rebuildable cache should never silently overwrite its source without a trace)", () => {
+describe("loadIndex — pure reader and writer-owned mismatch backup", () => {
   let dir: string;
   let file: string;
 
@@ -33,16 +32,13 @@ describe("loadIndex — version-mismatch backup (DS-20: even a rebuildable cache
     expect(await loadIndex(file)).toBeUndefined();
   });
 
-  it("preserves the original file's content at a backup path before falling back to undefined", async () => {
+  it("does not rename or write a version mismatch while reading", async () => {
     const raw = JSON.stringify(mismatchedPayload);
     await writeFile(file, raw);
     await loadIndex(file);
     const entries = await readdir(dir);
-    const backupName = entries.find((name) => name.startsWith("notes-index.json.bak-v999-"));
-    expect(backupName).toBeDefined();
-    const backedUp = await readFile(join(dir, backupName!), "utf8");
-    expect(backedUp).toBe(raw);
-    await expect(readFile(file, "utf8")).rejects.toThrow();
+    expect(entries).toEqual(["notes-index.json"]);
+    expect(await readFile(file, "utf8")).toBe(raw);
   });
 
   it("does NOT create a backup when the version matches (regression guard — no behavior change on the healthy path)", async () => {
@@ -53,10 +49,20 @@ describe("loadIndex — version-mismatch backup (DS-20: even a rebuildable cache
     expect(entries.some((name) => name.includes(".bak-"))).toBe(false);
   });
 
-  it("a backup-rename failure is fail-soft — the read still returns undefined without throwing", async () => {
-    await writeFile(file, JSON.stringify(mismatchedPayload));
-    const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("EACCES: permission denied"));
-    await expect(loadIndex(file)).resolves.toBeUndefined();
-    expect(renameSpy).toHaveBeenCalled();
+  it("preserves a version mismatch only inside the required reindex writer transaction", async () => {
+    const raw = JSON.stringify(mismatchedPayload);
+    await writeFile(file, raw);
+    await writeFile(join(dir, "a.md"), "alpha");
+    await reindexNotes({
+      dir,
+      fetchImpl: (async () => new Response(JSON.stringify({ embedding: [1, 0] }), { status: 200 })) as typeof globalThis.fetch,
+      indexPath: file,
+      maxEmbeddingAttempts: 1,
+      model: "test-model"
+    });
+    const backupName = (await readdir(dir)).find((name) => name.startsWith("notes-index.json.bak-v999-"));
+    expect(backupName).toBeDefined();
+    expect(await readFile(join(dir, backupName!), "utf8")).toBe(raw);
+    expect((await loadIndex(file))?.model).toBe("test-model");
   });
 });

@@ -102,6 +102,11 @@ states say what evidence is missing; they do not render zero as success.
   idle; correctness/security work never silently degrades.
 - [ ] Put budgets around model concurrency, context/KV cache size, indexing
   batches, browser work, and retry loops. Queue one bounded unit at a time.
+  Background model execution and automatic notes indexing are now bounded.
+  Notes refresh uses one attempted embedding by default, persists exact
+  resumable progress, publishes only complete files through immutable vector
+  generations, and leaves explicit full reindex unlimited. Context/KV and
+  shared retry-loop budgets remain open.
 - [x] Emit only decision-grade telemetry: work admitted/deferred/cancelled and
   the policy reason. Do not sample a costly always-on dashboard.
 - [x] Aggregate claimed-unit duration, CPU delta, maximum positive RSS growth,

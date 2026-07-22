@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_EMBED_TIMEOUT_MS, cosineSimilarity, embed } from "./embed.js";
+import { DEFAULT_EMBED_TIMEOUT_MS, EmbedAbortedError, EmbedTimeoutError, cosineSimilarity, embed } from "./embed.js";
 
 const opts = (fetchImpl: typeof globalThis.fetch) => ({
   fetchImpl,
@@ -83,6 +83,41 @@ describe("embed", () => {
     ).rejects.toThrow(/timed out/u);
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
     expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it("rejects an already-aborted caller before fetch and distinguishes it from timeout", async () => {
+    const controller = new AbortController();
+    controller.abort("owner stopped");
+    let calls = 0;
+    await expect(embed("hi", "m", {
+      ...opts((async () => { calls += 1; throw new Error("must not fetch"); }) as typeof globalThis.fetch),
+      signal: controller.signal
+    })).rejects.toBeInstanceOf(EmbedAbortedError);
+    expect(calls).toBe(0);
+  });
+
+  it("uses distinct stable timeout and caller-abort error codes", async () => {
+    const never: typeof globalThis.fetch = (_input, init) => new Promise((_resolve, reject) => {
+      (init?.signal as AbortSignal | undefined)?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+    await expect(embed("hi", "m", { ...opts(never), timeoutMs: 5 })).rejects.toMatchObject({ code: "MUSE_EMBED_TIMEOUT" });
+    const controller = new AbortController();
+    const pending = embed("hi", "m", { ...opts(never), signal: controller.signal, timeoutMs: 1_000 });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "MUSE_EMBED_ABORTED" });
+    expect(new EmbedTimeoutError("http://o.test", 5).code).toBe("MUSE_EMBED_TIMEOUT");
+  });
+
+  it("gives caller abort precedence when it overlaps the timeout abort", async () => {
+    const controller = new AbortController();
+    const pendingFetch: typeof globalThis.fetch = (_input, init) => new Promise((_resolve, reject) => {
+      (init?.signal as AbortSignal).addEventListener("abort", () => {
+        controller.abort("owner stopped during timeout");
+        reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+    });
+    await expect(embed("hi", "m", { ...opts(pendingFetch), signal: controller.signal, timeoutMs: 5 }))
+      .rejects.toBeInstanceOf(EmbedAbortedError);
   });
 
   it("returns the vector and clears the timer on a successful fetch — no leaked timer keeping the event loop alive", async () => {

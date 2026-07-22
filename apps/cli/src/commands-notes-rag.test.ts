@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NOTES_CHUNKER_VERSION } from "@muse/recall";
+import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { chunkText, cosine, defaultIndexPath, extractDocumentText, formatNoteFolders, formatRecentNotes, formatRelatedNotes, formatRelativeAge, formatReindexOutcome, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, rankRelatedNotes, reindexNotes, resolveIndexNotePath, selectRecentNotes, summarizeNoteFolders } from "./commands-notes-rag.js";
+import { chunkText, cosine, defaultIndexPath, extractDocumentText, formatNoteFolders, formatRecentNotes, formatRelatedNotes, formatRelativeAge, formatReindexOutcome, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, rankRelatedNotes, registerNotesRagCommands, reindexNotes, resolveIndexNotePath, selectRecentNotes, summarizeNoteFolders } from "./commands-notes-rag.js";
+import type { ProgramIO } from "./program.js";
 
 describe("summarizeNoteFolders — group notes by top-level collection + last activity", () => {
   const DAY = 86_400_000;
@@ -282,14 +284,14 @@ describe("reindexNotes ingests PDFs alongside markdown (P14)", () => {
     expect(summary.embedded).toBe(2);
 
     // The PDF's extracted text is in the index, not lost.
-    const pdfChunks = summary.index.files.flatMap((f) => f.chunks).filter((c) => c.file.endsWith("memo.pdf"));
+    const pdfChunks = summary.index!.files.flatMap((f) => f.chunks).filter((c) => c.file.endsWith("memo.pdf"));
     expect(pdfChunks.some((c) => c.text.includes("Quarterly budget memo body"))).toBe(true);
     // Indexed the EXTRACTED text, not the raw PDF bytes.
     expect(pdfChunks.every((c) => !c.text.includes("endobj"))).toBe(true);
 
     // Retrieval over the index: a "budget" query ranks the PDF chunk top, decoy excluded.
     const queryEmbedding = [1, 0, 0];
-    const ranked = summary.index.files
+    const ranked = summary.index!.files
       .flatMap((f) => f.chunks.map((c) => ({ file: c.file, score: cosine(queryEmbedding, c.embedding) })))
       .sort((a, b) => b.score - a.score);
     expect(ranked[0]?.file.endsWith("memo.pdf")).toBe(true);
@@ -318,9 +320,9 @@ describe("reindexNotes — a corrupt document is skipped VISIBLY, not silently (
     // Partial-failure tolerance: the good note ingested, the run did NOT abort.
     expect(summary.embedded).toBe(1);
     expect(summary.failed).toBeGreaterThanOrEqual(1);
-    expect(summary.index.files.some((f) => f.path.endsWith("good.md"))).toBe(true);
+    expect(summary.index!.files.some((f) => f.path.endsWith("good.md"))).toBe(true);
     // The corrupt file is not stored as a hollow entry.
-    expect(summary.index.files.some((f) => f.path.endsWith("corrupt.pdf"))).toBe(false);
+    expect(summary.index!.files.some((f) => f.path.endsWith("corrupt.pdf"))).toBe(false);
     // VISIBILITY: the skip is reported via onProgress, not swallowed.
     expect(progress.some((l) => /^\[\d+\/\d+\] ✗ /.test(l) && l.includes("corrupt.pdf") && /could not read/.test(l))).toBe(true);
     expect(progress.some((l) => /^\[\d+\/\d+\] \+ /.test(l) && l.includes("good.md"))).toBe(true);
@@ -375,7 +377,7 @@ describe("reindexNotes — an embedding failure is counted, not reported as succ
     expect(summary.failed).toBeGreaterThanOrEqual(1);
     // A file with zero successfully-embedded chunks must not be stored as a
     // hollow "indexed" entry that silently returns no recall hits.
-    const stored = summary.index.files.find((f) => f.path.endsWith("note.md"));
+    const stored = summary.index!.files.find((f) => f.path.endsWith("note.md"));
     expect(stored?.chunks.length ?? 0).toBe(0);
   });
 });
@@ -473,6 +475,121 @@ describe("formatReindexOutcome — honest empty-state vs summary", () => {
     expect(out).toContain("2 embedded");
     expect(out).toContain("7 chunks total");
     expect(out).not.toContain("No notes to index");
+  });
+});
+
+describe("muse notes reindex — explicit Commander surface", () => {
+  async function runExplicitCommand(args: readonly string[], io: ProgramIO): Promise<void> {
+    const program = new Command();
+    program.exitOverride();
+    registerNotesRagCommands(program, io);
+    await program.parseAsync(["node", "muse", "notes", "reindex", ...args]);
+  }
+
+  const budgetCases = [
+    { label: "zero", max: "0", timeout: "0" },
+    { label: "invalid", max: "not-a-number", timeout: "5s" }
+  ] as const;
+
+  it.each(budgetCases)("ignores $label automatic budgets and fetches every explicit multi-chunk embedding", async ({ max, timeout }) => {
+    const root = await mkdtemp(join(tmpdir(), "muse-notes-command-full-"));
+    const notesDir = join(root, "notes");
+    const indexPath = join(root, "state", "notes-index.json");
+    await mkdir(notesDir, { recursive: true });
+    const body = "explicit command content ".repeat(80);
+    await writeFile(join(notesDir, "multi.md"), body);
+    const expectedChunks = chunkText(body, 120, 6).length;
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io = { stderr: (text: string) => stderr.push(text), stdout: (text: string) => stdout.push(text) } as ProgramIO;
+    const priorFetch = globalThis.fetch;
+    const priorExitCode = process.exitCode;
+    const priorEnv = { ...process.env };
+    let fetches = 0;
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      return new Response(JSON.stringify({ embedding: [1, 0] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    process.exitCode = undefined;
+    Object.assign(process.env, {
+      HOME: root,
+      MUSE_AUTO_REINDEX_EMBED_TIMEOUT_MS: timeout,
+      MUSE_AUTO_REINDEX_MAX_EMBEDDINGS: max,
+      MUSE_NOTES_DIR: notesDir,
+      MUSE_NOTES_INDEX_FILE: indexPath,
+      OLLAMA_BASE_URL: "http://127.0.0.1:11434"
+    });
+    try {
+      await runExplicitCommand(["--dir", notesDir, "--model", "test-model", "--chunk-chars", "120"], io);
+      expect(fetches).toBe(expectedChunks);
+      expect(stdout.join("")).toContain("Done.");
+      expect(stdout.join("")).not.toContain("Incomplete.");
+      expect(stderr).toEqual([]);
+      expect(process.exitCode).toBeUndefined();
+      expect((JSON.parse(await readFile(indexPath, "utf8")) as { model: string }).model).toBe("test-model");
+    } finally {
+      globalThis.fetch = priorFetch;
+      process.exitCode = priorExitCode;
+      for (const key of Object.keys(process.env)) if (!(key in priorEnv)) delete process.env[key];
+      Object.assign(process.env, priorEnv);
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("traverses every chunk on full failure, reports Incomplete, exits 1, and preserves the prior generation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-notes-command-failure-"));
+    const notesDir = join(root, "notes");
+    const indexPath = join(root, "state", "notes-index.json");
+    const note = join(notesDir, "single.md");
+    await mkdir(notesDir, { recursive: true });
+    await writeFile(note, "prior complete generation");
+    await reindexNotes({
+      dir: notesDir,
+      fetchImpl: fakeEmbedFetch(),
+      force: true,
+      indexPath,
+      model: "test-model"
+    });
+    const priorIndexBytes = await readFile(indexPath);
+    const changedBody = "explicit command failure traversal ".repeat(80);
+    await writeFile(note, changedBody);
+    const expectedChunks = chunkText(changedBody, 120, 6).length;
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io = { stderr: (text: string) => stderr.push(text), stdout: (text: string) => stdout.push(text) } as ProgramIO;
+    const priorFetch = globalThis.fetch;
+    const priorExitCode = process.exitCode;
+    const priorEnv = { ...process.env };
+    let fetches = 0;
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      if (fetches === 2) return new Response("injected middle-chunk failure", { status: 500 });
+      return new Response(JSON.stringify({ embedding: [1, 0, 0] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    process.exitCode = undefined;
+    Object.assign(process.env, {
+      HOME: root,
+      MUSE_AUTO_REINDEX_EMBED_TIMEOUT_MS: "250",
+      MUSE_AUTO_REINDEX_MAX_EMBEDDINGS: "1",
+      MUSE_NOTES_DIR: notesDir,
+      MUSE_NOTES_INDEX_FILE: indexPath,
+      OLLAMA_BASE_URL: "http://127.0.0.1:11434"
+    });
+    try {
+      await runExplicitCommand(["--dir", notesDir, "--model", "test-model", "--chunk-chars", "120"], io);
+      expect(fetches).toBe(expectedChunks);
+      expect(stdout.join("")).toContain("Incomplete.");
+      expect(stdout.join("")).not.toContain("Done.");
+      expect(stderr.join("")).toContain("failed to embed");
+      expect(process.exitCode).toBe(1);
+      expect(await readFile(indexPath)).toEqual(priorIndexBytes);
+    } finally {
+      globalThis.fetch = priorFetch;
+      process.exitCode = priorExitCode;
+      for (const key of Object.keys(process.env)) if (!(key in priorEnv)) delete process.env[key];
+      Object.assign(process.env, priorEnv);
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });
 

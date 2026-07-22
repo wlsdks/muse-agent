@@ -16,7 +16,8 @@ import { corpusOnboardingHint, formatCorpusOverview, queryHasAdHocGrounding, typ
 import type { AskOptions } from "./ask-command-options.js";
 import { listNoteFiles, notesCorpusFileCount } from "./ask-corpus-helpers.js";
 import { userHasOtherPersonalData } from "./ask-user-data-presence.js";
-import { isNotesIndexStale, loadIndex, reindexNotes } from "./commands-notes-rag.js";
+import { autoReindexNotes, isNotesIndexStale, loadIndex, type ReindexSummary } from "./commands-notes-rag.js";
+import { autoReindexNotice } from "./auto-reindex-budget.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import { resolvePersona } from "./program-helpers.js";
@@ -75,7 +76,7 @@ export async function prepareAskContext(
 ): Promise<AskContextResult> {
   const userKey = defaultUserKey(options.user, options.persona);
   const topK = parseBoundedInt(options.top, "--top", 1, 20, 3);
-  const embedModel = options.embedModel ?? DEFAULT_EMBED_MODEL;
+  let embedModel = options.embedModel ?? DEFAULT_EMBED_MODEL;
 
   // Auto-stale check + incremental reindex (default on). JARVIS
   // shouldn't make the user remember to run reindex; if a note
@@ -86,6 +87,7 @@ export async function prepareAskContext(
   // with the default just because --embed-model was omitted.
   // The mismatch is still surfaced by the explicit guard below.
   let existingIndexModel: string | undefined;
+  let priorAutoSummary: ReindexSummary | undefined;
   try {
     existingIndexModel = (JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex).model;
   } catch {
@@ -95,7 +97,7 @@ export async function prepareAskContext(
     try {
       const stale = await isNotesIndexStale(notesDir, notesIndexPath());
       if (stale) {
-        const summary = await reindexNotes({
+        const summary = await autoReindexNotes({
           dir: notesDir,
           indexPath: notesIndexPath(),
           // resolveIndexModel preserves a custom index model but migrates
@@ -106,10 +108,13 @@ export async function prepareAskContext(
           // a silent multi-second hang, and a skipped unreadable
           // file is visible rather than swallowed.
           onProgress: (line) => io.stderr(`  ${line}\n`)
-        });
-        if (summary.embedded > 0 || summary.failed > 0) {
+        }, process.env);
+        priorAutoSummary = summary;
+        if (summary.status === "complete" && (summary.embedded > 0 || summary.failed > 0)) {
           io.stderr(`(notes index refreshed: ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} skipped)\n`);
         }
+        const notice = autoReindexNotice(summary);
+        if (notice) io.stderr(`(${notice})\n`);
       }
     } catch (cause) {
       io.stderr(`(auto-reindex skipped: ${errorMessage(cause)})\n`);
@@ -133,9 +138,17 @@ export async function prepareAskContext(
     if (resolveIndexModel(index.model, embedModel) === embedModel && options.autoReindex !== false) {
       io.stderr(`(embedding default upgraded '${index.model}' → '${embedModel}' — re-indexing your notes once)\n`);
       try {
-        await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
+        const summary = priorAutoSummary ?? await autoReindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) }, process.env);
+        const notice = autoReindexNotice(summary);
+        if (notice) io.stderr(`(${notice})\n`);
         index = (await loadIndex(notesIndexPath())) as NotesIndex | undefined;
-        if (!index) throw new Error("re-indexed notes index failed to load");
+        if (!index) return { kind: "error" };
+        if (index.model !== embedModel && summary.status !== "complete") {
+          io.stderr(`(using last complete '${index.model}' index while the upgrade resumes)\n`);
+          embedModel = index.model;
+        } else if (index.model !== embedModel) {
+          return { kind: "error" };
+        }
       } catch (cause) {
         io.stderr(`Re-index failed (${errorMessage(cause)}). Try: ollama pull ${embedModel}\n`);
         return { kind: "error" };

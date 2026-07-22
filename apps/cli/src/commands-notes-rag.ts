@@ -20,7 +20,7 @@ import { errorMessage } from "@muse/shared";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename as pathBasename, join as pathJoin, relative as pathRelative, sep as pathSep } from "node:path";
 
-import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveNotesDir, resolveNotesIndexFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 export { chunkText } from "./notes-chunk.js";
@@ -29,6 +29,7 @@ import { reportNoModelConfigured } from "./no-model-message.js";
 import { formatBridges, selectBridges } from "./note-bridges.js";
 import { classifyNoteContradiction, formatNoteConflicts, selectConflictCandidatePairs, selectSemanticConflictCandidatePairs, type ConflictNote, type NoteConflict } from "./note-conflicts.js";
 import {
+  autoReindexNotes,
   cosine,
   defaultIndexPath,
   formatReindexOutcome,
@@ -53,8 +54,10 @@ import { coreShellRanking, readTrails, resolveTrailsFile, topCoRecalled } from "
 import type { ProgramIO } from "./program.js";
 
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { autoReindexNotice } from "./auto-reindex-budget.js";
 
 export { DEFAULT_EMBED_MODEL, LEGACY_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
+export { autoReindexNotes, reindexNotes };
 
 export {
   NOTE_FILE_RE,
@@ -69,11 +72,10 @@ export {
   noteCentroid,
   parseRagBoundedInt,
   rankRelatedNotes,
-  reindexNotes,
   resolveIndexNotePath,
   walkMarkdown
 } from "./notes-index.js";
-export type { RelatedNote, ReindexSummary } from "./notes-index.js";
+export type { FullReindexSummary, RelatedNote, ReindexSummary } from "./notes-index.js";
 
 export {
   REVISIT_INTERVALS_DAYS,
@@ -143,7 +145,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
       const dir = options.dir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
       const model = options.model;
       const chunkChars = parseRagBoundedInt(options.chunkChars, "--chunk-chars", 120, 8000, DEFAULT_CHUNK_CHARS);
-      const indexPath = defaultIndexPath();
+      const indexPath = resolveNotesIndexFile(process.env as Record<string, string | undefined>);
 
       io.stdout(`muse notes reindex — dir=${dir} model=${model} chunk=${chunkChars.toString()}\n`);
       const summary = await reindexNotes({
@@ -288,13 +290,16 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
           const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
           const stale = await isNotesIndexStale(notesDir, indexPath);
           if (stale) {
-            const summary = await reindexNotes({
+            const summary = await autoReindexNotes({
               dir: notesDir,
               indexPath,
               model: existingIndexModel ?? options.model
-            });
-            if (summary.embedded > 0 && !options.json) {
+            }, process.env);
+            if (summary.status === "complete" && summary.embedded > 0 && !options.json) {
               io.stderr(`(auto-refreshed notes index: ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached)\n`);
+            } else if (!options.json) {
+              const notice = autoReindexNotice(summary);
+              if (notice) io.stderr(`(${notice})\n`);
             }
           }
         } catch (cause) {
@@ -588,4 +593,3 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
       io.stdout(`${formatBridges(bridges)}\n`);
     });
 }
-

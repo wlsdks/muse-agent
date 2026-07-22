@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NOTES_CHUNKER_VERSION } from "./notes-chunk.js";
 import {
-  embeddingsSidecarPath,
   isNotesIndexStale,
   loadIndex,
   NOTES_INDEX_SCHEMA_VERSION,
@@ -31,6 +30,21 @@ const v1Index = () => ({
   version: 1
 });
 
+async function persistedGenerationFixture(): Promise<{ readonly indexPath: string; readonly sidecar: string }> {
+  const indexPath = join(dir, "notes-index.json");
+  await writeFile(join(dir, "a.md"), "alpha");
+  await reindexNotes({
+    baseUrlResolver: () => "http://127.0.0.1:11434",
+    dir,
+    fetchImpl: (async () => new Response(JSON.stringify({ embedding: [0.25, -0.5, 1] }), { status: 200 })) as typeof globalThis.fetch,
+    force: true,
+    indexPath,
+    model: "test-embed"
+  });
+  const metadata = JSON.parse(await readFile(indexPath, "utf8")) as { embeddingFile: string };
+  return { indexPath, sidecar: join(dir, metadata.embeddingFile) };
+}
+
 describe("notes-index v2 — binary embedding sidecar", () => {
   it("persists exact text-source provenance through reindex and reload", async () => {
     const sourceText = "# 생활\n\n현재 집은 부산 해운대다.\n";
@@ -49,7 +63,7 @@ describe("notes-index v2 — binary embedding sidecar", () => {
       model: "test-embed"
     });
 
-    expect(summary.index.files[0]).toMatchObject({
+    expect(summary.index!.files[0]).toMatchObject({
       chunkerVersion: NOTES_CHUNKER_VERSION,
       sourceHash: expectedSourceHash
     });
@@ -155,14 +169,13 @@ describe("notes-index v2 — binary embedding sidecar", () => {
     });
   });
 
-  it("migrates a v1 JSON losslessly: same vectors, sidecar written, JSON no longer carries arrays", async () => {
+  it("loads a v1 JSON losslessly without mutating disk; the next writer owns migration", async () => {
     const indexPath = join(dir, "notes-index.json");
     await writeFile(indexPath, JSON.stringify(v1Index()));
     const loaded = await loadIndex(indexPath);
     expect(loaded?.version).toBe(NOTES_INDEX_SCHEMA_VERSION);
     expect([...loaded!.files[1]!.chunks[1]!.embedding]).toEqual([2, 3, 4]);
-    expect((await stat(embeddingsSidecarPath(indexPath))).size).toBe(3 * 3 * 4);
-    expect((await readFile(indexPath, "utf8"))).not.toContain("0.125");
+    expect((await readFile(indexPath, "utf8"))).toContain("0.125");
   });
 
   it("a reloaded v2 index round-trips embeddings within float32 precision and keeps text/paths exact", async () => {
@@ -178,30 +191,27 @@ describe("notes-index v2 — binary embedding sidecar", () => {
   });
 
   it("a truncated sidecar is rejected (byte-length check) — stale, never mismatched vectors", async () => {
-    const indexPath = join(dir, "notes-index.json");
-    await writeFile(indexPath, JSON.stringify(v1Index()));
-    await loadIndex(indexPath);
-    const sidecar = embeddingsSidecarPath(indexPath);
+    const { indexPath, sidecar } = await persistedGenerationFixture();
     const bytes = await readFile(sidecar);
     await writeFile(sidecar, bytes.subarray(0, bytes.byteLength - 4));
     expect(await loadIndex(indexPath)).toBeUndefined();
   });
 
   it("a missing sidecar is treated as no index (reindex path), not a crash", async () => {
-    const indexPath = join(dir, "notes-index.json");
-    await writeFile(indexPath, JSON.stringify(v1Index()));
-    await loadIndex(indexPath);
-    await rm(embeddingsSidecarPath(indexPath));
+    const { indexPath, sidecar } = await persistedGenerationFixture();
+    await rm(sidecar);
     expect(await loadIndex(indexPath)).toBeUndefined();
   });
 
   it("rejects a sidecar whose declared vector count does not match metadata chunks", async () => {
-    const indexPath = join(dir, "notes-index.json");
-    await writeFile(indexPath, JSON.stringify(v1Index()));
-    await loadIndex(indexPath);
+    const { indexPath } = await persistedGenerationFixture();
     const metadata = JSON.parse(await readFile(indexPath, "utf8")) as { embeddingCount: number };
-    await writeFile(indexPath, JSON.stringify({ ...metadata, ...JSON.parse(await readFile(indexPath, "utf8")), embeddingCount: metadata.embeddingCount + 1 }));
+    await writeFile(indexPath, JSON.stringify({ ...metadata, embeddingCount: metadata.embeddingCount + 1 }));
+    const before = await readFile(indexPath);
+    const siblingsBefore = await readdir(dirname(indexPath));
     expect(await loadIndex(indexPath)).toBeUndefined();
+    expect(await readFile(indexPath)).toEqual(before);
+    expect(await readdir(dirname(indexPath))).toEqual(siblingsBefore);
   });
 
   it("treats malformed index metadata as stale instead of throwing from the loader", async () => {

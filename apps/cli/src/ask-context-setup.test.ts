@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { prepareAskContext } from "./ask-context-setup.js";
 import { reindexNotes } from "./commands-notes-rag.js";
+import { DEFAULT_EMBED_MODEL, LEGACY_EMBED_MODEL } from "./embed-model-default.js";
 import type { ProgramIO } from "./program.js";
 
 const fakeEmbedFetch: typeof globalThis.fetch = async () =>
@@ -61,6 +62,36 @@ describe("prepareAskContext v2 sidecar hydration", () => {
       const embedding = (chunk as { embedding?: ArrayLike<number> }).embedding;
       expect(embedding).toBeDefined();
       expect(embedding!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("spends the automatic embedding budget only once across stale refresh and legacy-model migration", async () => {
+    for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
+    const dir = await mkdtemp(join(tmpdir(), "muse-ask-budget-once-"));
+    const notesDir = join(dir, "notes");
+    const indexPath = join(dir, "notes-index.json");
+    process.env.MUSE_NOTES_DIR = notesDir;
+    process.env.MUSE_NOTES_INDEX_FILE = indexPath;
+    await mkdir(notesDir, { recursive: true });
+    await writeFile(join(notesDir, "a.md"), "alpha");
+    await writeFile(join(notesDir, "b.md"), "beta");
+    await reindexNotes({ dir: notesDir, fetchImpl: fakeEmbedFetch, indexPath, model: LEGACY_EMBED_MODEL });
+    await writeFile(join(notesDir, "a.md"), "alpha changed");
+    const priorFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      return new Response(JSON.stringify({ embedding: [1, 0, 0, 0] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    try {
+      const { io } = collectIo();
+      const context = await prepareAskContext("what changed?", { embedModel: DEFAULT_EMBED_MODEL } as never, io);
+      expect(context.kind).toBe("ready");
+      if (context.kind === "ready") expect(context.embedModel).toBe(LEGACY_EMBED_MODEL);
+      expect(fetches).toBe(1);
+    } finally {
+      globalThis.fetch = priorFetch;
+      await rm(dir, { force: true, recursive: true });
     }
   });
 });

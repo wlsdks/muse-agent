@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { demoteStaleHits } from "@muse/recall";
+import { isRecord } from "@muse/shared";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -184,7 +185,7 @@ async function defaultReadIndexModel(indexPath: string): Promise<string | undefi
 
 export interface RefreshStaleNotesIndexDeps {
   readonly isStale?: (notesDir: string, indexPath: string) => Promise<boolean>;
-  readonly reindex?: (args: { dir: string; indexPath: string; model: string }) => Promise<unknown>;
+  readonly reindex?: (args: { dir: string; indexPath: string; model: string; maxEmbeddingAttempts: number; embedTimeoutMs: number }) => Promise<unknown>;
   readonly readIndexModel?: (indexPath: string) => Promise<string | undefined>;
 }
 
@@ -199,16 +200,22 @@ export async function refreshStaleNotesIndexForChat(
   env: Record<string, string | undefined>,
   embedModel: string,
   deps: RefreshStaleNotesIndexDeps = {}
-): Promise<void> {
+): Promise<string> {
   const indexPath = defaultNotesIndexFile();
   const { resolveNotesDir } = await import("@muse/autoconfigure");
   const notesDir = resolveNotesDir(env);
   const existingModel = await (deps.readIndexModel ?? defaultReadIndexModel)(indexPath);
   const modelStale = notesIndexNeedsModelMigration(existingModel, embedModel);
   const isStale = deps.isStale ?? (async (d: string, i: string) => (await import("./commands-notes-rag.js")).isNotesIndexStale(d, i));
-  if (!modelStale && !(await isStale(notesDir, indexPath))) return;
-  const reindex = deps.reindex ?? (async (a: { dir: string; indexPath: string; model: string }) => (await import("./commands-notes-rag.js")).reindexNotes(a));
-  await reindex({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
+  if (!modelStale && !(await isStale(notesDir, indexPath))) return existingModel ?? embedModel;
+  const { resolveAutoReindexBudget } = await import("./auto-reindex-budget.js");
+  const budget = resolveAutoReindexBudget(env);
+  const reindex = deps.reindex ?? (async (a: { dir: string; indexPath: string; model: string; maxEmbeddingAttempts: number; embedTimeoutMs: number }) => (await import("./commands-notes-rag.js")).reindexNotes(a));
+  const targetModel = pickReindexModel(existingModel, embedModel);
+  const summary = await reindex({ ...budget, dir: notesDir, indexPath, model: targetModel });
+  return isRecord(summary) && typeof summary.status === "string" && summary.status !== "complete"
+    ? existingModel ?? targetModel
+    : targetModel;
 }
 
 /**
@@ -272,13 +279,13 @@ export async function retrieveChatGrounding(
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
   if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
-  const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
+  let embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`
   // already extends. The desktop companion only ever calls `chat`, so without
   // this a note the user just added is unreachable until they remember to run
   // `muse notes reindex`. Fail-soft: search whatever index exists.
   if (chatAutoReindexEnabled(env)) {
-    await refreshStaleNotesIndexForChat(env, embedModel).catch(() => undefined);
+    embedModel = await refreshStaleNotesIndexForChat(env, embedModel).catch(() => embedModel);
   }
   try {
     const hits = await (opts.searchRecall ?? searchRecall)({

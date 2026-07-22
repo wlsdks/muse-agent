@@ -7,9 +7,10 @@
  * `extractNoteText` to avoid clashing with the document reader's).
  */
 
-import { reindexNotes as reindexNotesCore, type ReindexSummary } from "@muse/recall";
+import { reindexNotes as reindexNotesCore, type FullReindexSummary, type ReindexOptions, type ReindexSummary } from "@muse/recall";
 
 import { resolveOllamaUrl } from "./ollama-url.js";
+import { resolveAutoReindexBudget } from "./auto-reindex-budget.js";
 
 export {
   NOTE_FILE_RE,
@@ -27,11 +28,33 @@ export {
   resolveIndexNotePath,
   walkMarkdown,
   type RelatedNote,
-  type ReindexSummary
+  type ReindexSummary,
+  type FullReindexSummary
 } from "@muse/recall";
 
 export async function reindexNotes(
-  options: Omit<Parameters<typeof reindexNotesCore>[0], "baseUrlResolver">
+  options: Omit<ReindexOptions, "baseUrlResolver" | "maxEmbeddingAttempts">
+): Promise<FullReindexSummary> {
+  const baseUrlResolver = options.fetchImpl
+    ? () => process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434"
+    : resolveOllamaUrl;
+  const summary = await reindexNotesCore({ baseUrlResolver, ...options }) as ReindexSummary;
+  if (summary.status === "busy") throw new Error("another notes index writer is active; retry shortly");
+  if (summary.status === "aborted") throw new Error("notes reindex cancelled");
+  if (!summary.index) throw new Error("notes reindex completed without a readable index");
+  return { ...summary, index: summary.index } as FullReindexSummary;
+}
+
+export async function autoReindexNotes(
+  options: Omit<Parameters<typeof reindexNotesCore>[0], "baseUrlResolver" | "embedTimeoutMs" | "maxEmbeddingAttempts">,
+  env: Record<string, string | undefined> = process.env
 ): Promise<ReindexSummary> {
-  return reindexNotesCore({ baseUrlResolver: resolveOllamaUrl, ...options });
+  const baseUrlResolver = options.fetchImpl
+    ? () => env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434"
+    : resolveOllamaUrl;
+  return reindexNotesCore({
+    baseUrlResolver,
+    ...resolveAutoReindexBudget(env),
+    ...options
+  });
 }

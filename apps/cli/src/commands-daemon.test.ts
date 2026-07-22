@@ -950,6 +950,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const plistFile = join(dir, "com.muse.daemon.plist");
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
+      MUSE_AUTO_REINDEX_EMBED_TIMEOUT_MS: "5000",
+      MUSE_AUTO_REINDEX_MAX_EMBEDDINGS: "1",
       MUSE_BACKGROUND_MODEL_MAX_CONCURRENCY: "1",
       MUSE_BACKGROUND_MODEL_MAX_INPUT_BYTES: "65536",
       MUSE_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS: "512",
@@ -1002,6 +1004,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_QUEUE</key>\n    <string>2</string>");
     expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_INPUT_BYTES</key>\n    <string>65536</string>");
     expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS</key>\n    <string>512</string>");
+    expect(plist).toContain("<key>MUSE_AUTO_REINDEX_MAX_EMBEDDINGS</key>\n    <string>1</string>");
+    expect(plist).toContain("<key>MUSE_AUTO_REINDEX_EMBED_TIMEOUT_MS</key>\n    <string>5000</string>");
     expect(plist).not.toContain("MUSE_PROACTIVE_PROVIDER");
     expect(plist).not.toContain("must-not-enter-plist");
     // The exact argv passed to the seam, IN ORDER — unload adopts the fresh

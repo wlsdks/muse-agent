@@ -63,34 +63,45 @@ describe("notesIndexNeedsModelMigration — a chat-only user's legacy index must
 });
 
 describe("refreshStaleNotesIndexForChat — re-embeds on a MODEL change even when content is fresh", () => {
-  const calls: { dir: string; indexPath: string; model: string }[] = [];
+  const isolatedEnv = { MUSE_NOTES_DIR: "/tmp/muse-chat-grounding-test-notes" };
+  const calls: { dir: string; indexPath: string; model: string; maxEmbeddingAttempts: number; embedTimeoutMs: number }[] = [];
   afterEach(() => { calls.length = 0; });
   const deps = (existingModel: string | undefined, contentStale: boolean) => ({
     isStale: async () => contentStale,
     readIndexModel: async () => existingModel,
-    reindex: async (a: { dir: string; indexPath: string; model: string }) => { calls.push(a); }
+    reindex: async (a: { dir: string; indexPath: string; model: string; maxEmbeddingAttempts: number; embedTimeoutMs: number }) => { calls.push(a); }
   });
 
   it("a legacy-model index with FRESH content is still re-embedded to the default (the migration bug)", async () => {
-    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(LEGACY_EMBED_MODEL, false));
+    await refreshStaleNotesIndexForChat(isolatedEnv, DEFAULT_EMBED_MODEL, deps(LEGACY_EMBED_MODEL, false));
     expect(calls).toHaveLength(1);
     expect(calls[0]!.model).toBe(DEFAULT_EMBED_MODEL); // migrated, not left on v1
+    expect(calls[0]).toMatchObject({ embedTimeoutMs: 5_000, maxEmbeddingAttempts: 1 });
   });
 
   it("an already-default index with FRESH content is NOT re-embedded (no wasted work)", async () => {
-    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, false));
+    await refreshStaleNotesIndexForChat(isolatedEnv, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, false));
     expect(calls).toHaveLength(0);
   });
 
   it("a CUSTOM-model index with fresh content is preserved, not migrated", async () => {
-    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps("mxbai-embed-large", false));
+    await refreshStaleNotesIndexForChat(isolatedEnv, DEFAULT_EMBED_MODEL, deps("mxbai-embed-large", false));
     expect(calls).toHaveLength(0);
   });
 
   it("the existing CONTENT-stale path still re-embeds (no regression)", async () => {
-    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, true));
+    await refreshStaleNotesIndexForChat(isolatedEnv, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, true));
     expect(calls).toHaveLength(1);
     expect(calls[0]!.model).toBe(DEFAULT_EMBED_MODEL);
+  });
+
+  it("keeps query embeddings on the last complete model while migration is pending", async () => {
+    const effective = await refreshStaleNotesIndexForChat(isolatedEnv, DEFAULT_EMBED_MODEL, {
+      isStale: async () => false,
+      readIndexModel: async () => LEGACY_EMBED_MODEL,
+      reindex: async () => ({ status: "pending" })
+    });
+    expect(effective).toBe(LEGACY_EMBED_MODEL);
   });
 });
 
