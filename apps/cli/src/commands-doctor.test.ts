@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -37,6 +37,7 @@ import {
 } from "./commands-doctor.js";
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { WeaknessEntry } from "@muse/stores";
+import { buildLaunchAgentPlist } from "./commands-daemon.js";
 
 function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {}): RuntimeQualificationObservation {
   return {
@@ -165,6 +166,56 @@ describe("local doctor runtime ownership", () => {
     expect(selfLearning?.detail).toContain("runtime not registered");
     expect(selfLearning?.detail).toContain("muse daemon --install");
     expect(selfLearning?.detail).not.toContain("learning while idle");
+  });
+
+  it("reports the contained LaunchAgent self-learning gate instead of the interactive shell", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-contained-daemon-"));
+    const plistFile = join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    mkdirSync(join(homeDir, "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(plistFile, buildLaunchAgentPlist({
+      environmentVariables: { MUSE_SELFLEARN_ENABLED: "false" },
+      label: "com.muse.daemon",
+      programArguments: ["/stable/node", "/stable/muse/dist/index.js", "daemon"],
+      stderrPath: join(homeDir, ".muse", "logs", "daemon.err.log"),
+      stdoutPath: join(homeDir, ".muse", "logs", "daemon.log")
+    }));
+
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+        kind: "darwin",
+        plistFile,
+        runtime: { pid: 4321, state: "running" }
+      },
+      env: { HOME: homeDir, MUSE_LOCAL_ONLY: "true", MUSE_SELFLEARN_ENABLED: "true" },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir
+    });
+
+    const selfLearning = report.checks.find((check) => check.name === "self-learning");
+    expect(selfLearning?.status).toBe("warn");
+    expect(selfLearning?.detail).toContain("OFF");
+    expect(selfLearning?.detail).not.toContain("learning while idle");
+  });
+
+  it("falls back to the interactive shell self-learning gate when a valid artifact cannot be read", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-contained-daemon-fallback-"));
+    const plistFile = join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { entrypoint: "/stable/muse/dist/index.js", state: "valid" },
+        kind: "darwin",
+        plistFile,
+        runtime: { pid: 4321, state: "running" }
+      },
+      env: { HOME: homeDir, MUSE_LOCAL_ONLY: "true", MUSE_SELFLEARN_ENABLED: "true" },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir
+    });
+
+    const selfLearning = report.checks.find((check) => check.name === "self-learning");
+    expect(selfLearning?.status).toBe("ok");
+    expect(selfLearning?.detail).toContain("learning while idle");
   });
 
   it("keeps self-learning at warning on an unmanaged platform with runtime unknown", async () => {

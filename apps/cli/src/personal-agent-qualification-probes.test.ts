@@ -73,6 +73,7 @@ function qualificationFixture(options: {
   readonly overdueFollowup?: boolean;
   readonly report?: "present" | "missing";
   readonly liveArgumentMismatch?: boolean;
+  readonly omitLiveHome?: boolean;
   readonly liveProvider?: string;
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "muse-qualify-fixture-"));
@@ -129,7 +130,8 @@ function qualificationFixture(options: {
     ...liveArgs.map((arg) => `    ${arg}`),
     "  }",
     "  environment = {",
-    ...Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+    ...Object.entries(env)
+      .filter((entry): entry is [string, string] => entry[1] !== undefined && (!options.omitLiveHome || entry[0] !== "HOME"))
       .map(([key, value]) => `    ${key} => ${value}`),
     "  }",
     "  pid = 4321",
@@ -273,6 +275,17 @@ describe("qualification collector integration", () => {
     expect(report.gates.map((gate) => gate.status)).toEqual(["passed", "passed", "passed"]);
     expect(JSON.stringify(report)).not.toMatch(/stable-muse-entry|PRIVATE|4321|muse-qualify-fixture/iu);
     expect(exactFixtureManifest(fixture.root)).toEqual(before);
+  });
+
+  it("keeps the host home only as a heartbeat-path fallback when launchctl omits it", async () => {
+    const fixture = qualificationFixture({ omitLiveHome: true });
+    const report = qualifyPersonalAgent(
+      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    );
+
+    expect(report.status, JSON.stringify(report)).toBe("qualified");
+    expect(report.gates[1].evidence.heartbeatState).toBe("fresh");
+    expect(report.gates[1].evidence.processIdentityMatch).toBe(true);
   });
 
   it("fails a real overdue delivery backlog and refuses to synthesize disk/live identity", async () => {

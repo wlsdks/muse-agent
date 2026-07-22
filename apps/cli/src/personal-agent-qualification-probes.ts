@@ -362,7 +362,13 @@ function sameRelevantEnvironment(
   disk: Readonly<Record<string, string>>,
   live: Readonly<Record<string, string>>
 ): boolean {
-  return Object.entries(disk).every(([key, value]) => live[key] === value);
+  return Object.entries(disk).every(([key, value]) => {
+    // launchctl may omit account-home variables that the child inherits from
+    // its user context. Their absence is not evidence that a persisted safety
+    // definition drifted; every other disk variable remains strict.
+    if ((key === "HOME" || key === "USERPROFILE") && live[key] === undefined) return true;
+    return live[key] === value;
+  });
 }
 
 function stableLiveCommand(
@@ -492,8 +498,18 @@ async function inspectResidentDaemonRuntime(
   }
 
   const processStartMs = await processStartTime(livePid, run);
+  // launchctl's effective job environment often omits HOME even though the
+  // daemon resolves its default stores from the OS account home. Keep live
+  // service variables authoritative, but carry only that host location
+  // fallback so heartbeat discovery does not become a false PID mismatch.
+  const hostHome = effectiveHome(env);
   const effectiveRuntimeEnv: NodeJS.ProcessEnv = liveEnvironment
-    ? { ...liveEnvironment }
+    ? {
+        ...liveEnvironment,
+        ...(liveEnvironment.HOME?.trim() || liveEnvironment.USERPROFILE?.trim() || !hostHome
+          ? {}
+          : { HOME: hostHome })
+      }
     : { ...env, ...(diskEnvironment ?? {}) };
   const heartbeat = await readHeartbeat(heartbeatFileFor(effectiveRuntimeEnv), nowMs, processStartMs, livePid);
   const orphan = await inspectOrphanApiProcesses(platform, run);

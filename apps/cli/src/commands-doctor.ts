@@ -50,6 +50,7 @@ import {
   describeDaemonAutostartForDoctor,
   getDaemonAutostartStatus,
   isDaemonAutostartHealthy,
+  parseLaunchAgentEnvironmentVariables,
   resolveLaunchAgentFile,
   type DaemonAutostartStatus
 } from "./commands-daemon.js";
@@ -477,6 +478,30 @@ async function collectDoctorResidentRuntime(
   const runtime = resolveDoctorLocalRuntime(runtimeOptions);
   const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
   return residentDaemonRuntimeCheck(await collectResidentDaemonRuntime({ env }));
+}
+
+/**
+ * Doctor usually reports the interactive shell configuration. A resident daemon,
+ * however, receives the environment persisted in its LaunchAgent plist. Prefer a
+ * parsed, valid artifact's explicit gate so the report describes the process that
+ * actually runs while the user is away. Any absent, malformed, or unreadable value
+ * deliberately falls back to the shell view rather than inventing a disabled gate.
+ */
+async function resolveDaemonSelfLearningEnabled(
+  env: MuseEnvironment,
+  daemonAutostart: DaemonAutostartStatus
+): Promise<boolean> {
+  const shellEnabled = parseBoolean(env.MUSE_SELFLEARN_ENABLED, true);
+  if (daemonAutostart.kind !== "darwin" || daemonAutostart.artifact.state !== "valid") {
+    return shellEnabled;
+  }
+
+  try {
+    const variables = parseLaunchAgentEnvironmentVariables(await fs.readFile(daemonAutostart.plistFile, "utf8"));
+    return parseBoolean(variables?.MUSE_SELFLEARN_ENABLED, shellEnabled);
+  } catch {
+    return shellEnabled;
+  }
 }
 
 function withResidentRuntime(response: unknown, resident: ResidentDaemonRuntimeCheck): unknown {
@@ -930,7 +955,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
       detail: describeDaemonAutostartForDoctor(daemonAutostart),
       healthy: isDaemonAutostartHealthy(daemonAutostart)
     },
-    enabled: parseBoolean(env.MUSE_SELFLEARN_ENABLED, true),
+    enabled: await resolveDaemonSelfLearningEnabled(env, daemonAutostart),
     paused: await isLearningPaused(resolveLearningPauseFile(env)).catch(() => false),
     queued
   }));
