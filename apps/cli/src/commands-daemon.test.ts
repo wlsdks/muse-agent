@@ -570,6 +570,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     writeFileSync(plistFile, buildLaunchAgentPlist({
       environmentVariables: {
         MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "2",
         MUSE_DAEMON_PROVIDER_LOCK: "log",
         MUSE_SELFLEARN_ENABLED: "false"
       },
@@ -628,6 +629,33 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(status.stdout).toContain("delivery:   enabled");
     expect(status.stdout).toContain("route-lock: disabled");
     expect(status.stdout).not.toContain("self-learn: disabled (safety gate)");
+  });
+
+  it("--status reads the resident heavy-work cap and treats its absence as unbounded", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-status-heavy-work-cap-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const makePlist = (environmentVariables?: Record<string, string>) => buildLaunchAgentPlist({
+      ...(environmentVariables ? { environmentVariables } : {}),
+      label: "com.muse.daemon",
+      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      stderrPath: join(dir, "daemon.err.log"),
+      stdoutPath: join(dir, "daemon.out.log")
+    });
+    const common = {
+      env: { ...tmpEnv(), MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "1", MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin" as const,
+      registry: new MessagingProviderRegistry([capturingProvider([], "log")]),
+      runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"PID" = 733;\n};\n' })
+    };
+
+    writeFileSync(plistFile, makePlist({ MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "2" }), "utf8");
+    const resident = await runDaemon(["--status"], common);
+    expect(resident.stdout).toContain("2 unit(s) per admitted tick");
+    expect(resident.stdout).not.toContain("1 unit(s) per admitted tick");
+
+    writeFileSync(plistFile, makePlist(), "utf8");
+    const absent = await runDaemon(["--status"], common);
+    expect(absent.stdout).toContain("unbounded");
   });
 
   it("--status reports a launchctl probe failure as unknown instead of pretending the job is absent", async () => {
@@ -914,6 +942,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       ...tmpEnv(),
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "2",
       MUSE_DAEMON_MAX_LOAD_PER_CORE: "0.5",
       MUSE_DAEMON_MIN_FREE_MEMORY_MB: "2048",
       MUSE_DAEMON_PROVIDER_LOCK: "log",
@@ -950,6 +979,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_DAEMON_RESOURCE_GUARD</key>\n    <string>true</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_MIN_FREE_MEMORY_MB</key>\n    <string>2048</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_MAX_LOAD_PER_CORE</key>\n    <string>0.5</string>");
+    expect(plist).toContain("<key>MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK</key>\n    <string>2</string>");
     expect(plist).not.toContain("MUSE_PROACTIVE_PROVIDER");
     expect(plist).not.toContain("must-not-enter-plist");
     // The exact argv passed to the seam, IN ORDER — unload adopts the fresh
@@ -1704,6 +1734,33 @@ describe("muse daemon — resource admission", () => {
     ]);
     expect(result.stdout).toContain("resource: deferred heavyweight background work (cpu-load)");
     expect(result.stdout).toContain("resource: heavyweight background work resumed");
+  });
+
+  it("honors an opted-in heavy-work unit cap and round-robins deferred units", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_BROWSING_AUTO_SYNC: "true",
+      MUSE_DAEMON_DELIVERY_ENABLED: "true",
+      MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "1"
+    };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    let browsingCalls = 0;
+    const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      browsingSync: async () => { browsingCalls += 1; return { synced: 0, total: 0 }; },
+      env,
+      registry,
+      resourceSnapshot: () => ({ cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }),
+      runDaemonLoop: async ({ signal, tick }) => {
+        for (let round = 0; round < 15; round += 1) await tick();
+        expect(browsingCalls).toBe(0);
+        await tick();
+        signal.stop();
+        return 16;
+      }
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(browsingCalls).toBe(1);
   });
 
   it("re-reads owner pause each tick, defers heavy work, and resumes without a restart", async () => {

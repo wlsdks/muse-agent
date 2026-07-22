@@ -111,6 +111,7 @@ import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, 
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
 import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import { resolveDaemonResourceReceiptFile, resourceAdmissionReceipt, writeDaemonResourceAdmissionReceipt } from "./daemon-resource-receipt.js";
+import { DaemonHeavyWorkQueue, resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -449,6 +450,31 @@ function resolveDaemonStatusSafetyGates(
 }
 
 /**
+ * Resource policy is part of the resident contract too. A valid LaunchAgent
+ * must shadow the invoking shell even when it omits this key (omission means
+ * the documented unbounded default), otherwise status could advertise a cap
+ * the already-running daemon never received.
+ */
+function resolveDaemonStatusHeavyWorkUnitsPerTick(
+  shellEnv: NodeJS.ProcessEnv,
+  autostart: DaemonAutostartStatus
+): number {
+  if (autostart.kind === "darwin" && autostart.artifact.state === "valid") {
+    try {
+      const variables = parseLaunchAgentEnvironmentVariables(readFileSync(autostart.plistFile, "utf8"));
+      if (variables !== undefined) {
+        return resolveDaemonHeavyWorkUnitsPerTick({
+          MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: variables.MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK
+        });
+      }
+    } catch {
+      // Fall through to the current shell/default when the artifact vanishes.
+    }
+  }
+  return resolveDaemonHeavyWorkUnitsPerTick(shellEnv);
+}
+
+/**
  * The core of `muse daemon --install`: write + load a macOS LaunchAgent, or
  * register a Windows scheduled task, through the SAME injected runner seams
  * `registerDaemonCommands` uses (never real launchctl/schtasks under vitest —
@@ -520,6 +546,10 @@ export async function installDaemonAutostart(
   }
   if (providerLock === "log") {
     safetyEnvironment.MUSE_DAEMON_PROVIDER_LOCK = "log";
+  }
+  const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
+  if (heavyWorkUnitsPerTick > 0) {
+    safetyEnvironment.MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK = heavyWorkUnitsPerTick.toString();
   }
   Object.assign(safetyEnvironment, daemonResourcePolicyEnvironment(e));
   const plist = buildLaunchAgentPlist({
@@ -1038,7 +1068,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         const statusSafety = resolveDaemonStatusSafetyGates(e, autostart);
         io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}; safety=${statusSafety.source}):\n`);
         io.stdout(`  delivery:   ${statusSafety.deliveryBrakeEngaged ? "heartbeat-only (brake engaged)" : "enabled"}\n`);
-        io.stdout(`  heavy-work: ${fileConfig.heavyWorkPaused ? "paused by owner (model/sync/consolidation held)" : "eligible (subject to resource admission)"}\n`);
+        const heavyWorkBudget = resolveDaemonStatusHeavyWorkUnitsPerTick(e, autostart);
+        io.stdout(`  heavy-work: ${fileConfig.heavyWorkPaused ? "paused by owner (model/sync/consolidation held)" : `eligible (subject to resource admission; ${heavyWorkBudget === 0 ? "unbounded" : `${heavyWorkBudget.toString()} unit(s) per admitted tick`})`}\n`);
         io.stdout(`  route-lock: ${statusSafety.providerLock === "log" ? "log-only" : "disabled"}\n`);
         io.stdout(`  proactive:  ${statusSafety.deliveryBrakeEngaged ? "blocked (delivery brake engaged)" : "enabled"}\n`);
         io.stdout(`  reminders:  ${statusSafety.deliveryBrakeEngaged ? "blocked (delivery brake engaged)" : "enabled"}\n`);
@@ -1491,6 +1522,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // loop actually running" without depending on any one sub-tick's
       // internals. Fail-soft — a heartbeat write failure never breaks a tick.
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
+      const heavyWorkQueue = new DaemonHeavyWorkQueue();
+      const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
       let lastResourceAdmissionKey: string | undefined;
       const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
       const runTick = async (): Promise<void> => {
@@ -1524,22 +1557,24 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await checkinsTick();
         if (resourceAdmission.status === "admit") {
           await ensureHeavyRuntime();
-          await followupTick();
-          await patternTick();
-          await ambientTick();
-          await webWatchTick();
-          await objectivesTick();
-          await homeWatchTick();
-          await briefingTick();
-          await reflectionTick();
-          if (emailSyncTick) await emailSyncTick();
-          await selfLearnTick();
-          await selfLearnDecayTick();
-          await playbookConsolidateTick();
-          await memoryConsolidateTick();
-          await recapTick();
-          await digestFlushTick();
-          if (browsingAutoSyncTick) await browsingAutoSyncTick();
+          await heavyWorkQueue.run([
+            { id: "followup", run: followupTick },
+            { id: "pattern", run: patternTick },
+            { id: "ambient", run: ambientTick },
+            { id: "web-watch", run: webWatchTick },
+            { id: "objectives", run: objectivesTick },
+            { id: "home-watch", run: homeWatchTick },
+            { id: "briefing", run: briefingTick },
+            { id: "reflection", run: reflectionTick },
+            ...(emailSyncTick ? [{ id: "email-sync", run: emailSyncTick }] : []),
+            { id: "self-learn", run: selfLearnTick },
+            { id: "self-learn-decay", run: selfLearnDecayTick },
+            { id: "playbook-consolidate", run: playbookConsolidateTick },
+            { id: "memory-consolidate", run: memoryConsolidateTick },
+            { id: "recap", run: recapTick },
+            { id: "digest-flush", run: digestFlushTick },
+            ...(browsingAutoSyncTick ? [{ id: "browsing-sync", run: browsingAutoSyncTick }] : [])
+          ], heavyWorkUnitsPerTick);
         }
         await messagingPollTick();
         await conflictWatchTick();
