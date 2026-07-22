@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -134,14 +134,13 @@ describe("recordPendingApproval under concurrency — no crash / corruption (tmp
   it("grants exactly one claim across independent processes and a fresh reload", async () => {
     const file = join(dir, "cross-process-claim.json");
     await recordPendingApproval(file, approval(77));
-    const root = join(process.cwd(), "../..");
-    const tsx = join(root, "node_modules", ".bin", "tsx");
-    const moduleUrl = pathToFileURL(join(process.cwd(), "src", "pending-approval-store.ts")).href;
+    const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+    const moduleUrl = new URL("../src/pending-approval-store.ts", import.meta.url).href;
     const script = `import { claimPendingApproval } from ${JSON.stringify(moduleUrl)}; void (async () => { const result = await claimPendingApproval(process.argv[1], "p77", { surface: "cli" }); process.stdout.write(JSON.stringify(result)); })();`;
 
     const outcomes = await Promise.all([
-      execFileAsync(tsx, ["--eval", script, file], { cwd: process.cwd() }),
-      execFileAsync(tsx, ["--eval", script, file], { cwd: process.cwd() })
+      execFileAsync(process.execPath, ["--import", "tsx", "--eval", script, file], { cwd: packageRoot }),
+      execFileAsync(process.execPath, ["--import", "tsx", "--eval", script, file], { cwd: packageRoot })
     ]);
     const claims = outcomes.map(({ stdout }) => JSON.parse(stdout) as { claimedByThisCall: boolean; state: string });
     expect(claims.filter((claim) => claim.claimedByThisCall)).toHaveLength(1);
