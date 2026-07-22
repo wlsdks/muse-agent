@@ -114,6 +114,11 @@ export {
   type ContactArtifactOptions
 } from "./contact-artifacts.js";
 export {
+  createRunArtifactValidator,
+  createRunExactArtifactResolver,
+  type RunArtifactOptions
+} from "./run-artifacts.js";
+export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,
