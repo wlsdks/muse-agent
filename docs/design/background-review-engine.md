@@ -164,6 +164,29 @@ STAY as on-demand surfaces.
 - **Security is code, not the review prompt.** The skill body risk-scan +
   quarantine (already built) still gates anything the review authors.
 
+### Background model execution budget
+
+The preference and skill arms are genuine fire-and-forget work, so production
+wires them through a shared background view of the configured model provider.
+It defaults to one active call and two queued calls. A new foreground model
+call never waits for that queue: it cooperatively cancels active review calls,
+while an adapter that ignores cancellation continues to occupy its background
+slot until it actually settles. The queue never starts work while any
+foreground call is active.
+
+Background requests also have a 64 KiB provider-bound input ceiling and a
+512-token output ceiling. Oversized input is rejected rather than silently
+truncated. Owners can tune the bounded ranges with
+`MUSE_BACKGROUND_MODEL_MAX_CONCURRENCY`,
+`MUSE_BACKGROUND_MODEL_MAX_QUEUE`,
+`MUSE_BACKGROUND_MODEL_MAX_INPUT_BYTES`, and
+`MUSE_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS`. Their exact ranges/defaults are
+`1..4`/`1`, `0..32`/`2`, `1024..1048576`/`65536`, and `1..4096`/`512`,
+respectively. Unset, blank, non-decimal-integer, and out-of-range values return
+to those safe defaults; only valid explicit values enter the resident
+LaunchAgent allowlist. Runtime observability exposes only fixed-size counters
+and queue/cancellation state, never prompt contents.
+
 ## 6. Incremental build plan (each slice verifiable)
 
 1. **[DONE] Counters + engine skeleton.** `createBackgroundReviewHook` with

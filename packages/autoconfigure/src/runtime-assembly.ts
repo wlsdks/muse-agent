@@ -174,6 +174,11 @@ import {
   createUserMemoryStore
 } from "./store-factories.js";
 import { createUsageRecordingProvider } from "./usage-recording-provider.js";
+import {
+  createBackgroundModelExecutionBudgetProviders,
+  resolveBackgroundModelExecutionBudgetOptions,
+  type BackgroundModelExecutionBudgetSnapshot
+} from "./background-model-execution-budget.js";
 import { buildRuntimeToolRegistry } from "./runtime-tool-registry.js";
 import {
   createBudgetedLlmDetector,
@@ -243,6 +248,7 @@ export interface MuseRuntimeAssembly {
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
     readonly latencyQuery: LatencyQuery;
     readonly metrics: InMemoryAgentMetrics;
+    readonly modelExecutionBudgetSnapshot?: () => BackgroundModelExecutionBudgetSnapshot;
     readonly sloEvaluator: SloAlertEvaluator;
     readonly tokenCostQuery: TokenCostQuery;
     readonly tokenUsageSink: TokenUsageSink;
@@ -429,6 +435,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const modelAndStores = buildModelAndStoreStack(env, db, tokenUsageSink, options.mcpConnector);
   const {
     modelProvider,
+    backgroundModelProvider,
+    modelExecutionBudgetSnapshot,
     conversationSummaryStore,
     taskMemoryStore,
     userMemoryStore,
@@ -482,6 +490,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const { schedulerHandle, skillRegistryPromise, toolRegistry } = tooling;
 
   const hooksAndProviders = buildHooksAndContextProviders({
+    backgroundModelProvider,
     calendarRegistry,
     contextReferenceStore,
     defaultModel,
@@ -601,6 +610,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       followupSuggestionStore,
       latencyQuery,
       metrics: agentMetrics,
+      ...(modelExecutionBudgetSnapshot ? { modelExecutionBudgetSnapshot } : {}),
       sloEvaluator,
       ...(telemetryAggregator ? { telemetryAggregator } : {}),
       tokenCostQuery,
@@ -737,7 +747,16 @@ function buildModelAndStoreStack(
   // bypassing the runtime's recordTokenUsageEvent) still records token usage. The
   // runtime flags its own requests so this decorator skips them (no double-count).
   const baseModelProvider = createModelProvider(env);
-  const modelProvider = baseModelProvider ? createUsageRecordingProvider(baseModelProvider, tokenUsageSink) : baseModelProvider;
+  const usageRecordingProvider = baseModelProvider
+    ? createUsageRecordingProvider(baseModelProvider, tokenUsageSink)
+    : baseModelProvider;
+  const budgetProviders = usageRecordingProvider
+    ? createBackgroundModelExecutionBudgetProviders(
+      usageRecordingProvider,
+      resolveBackgroundModelExecutionBudgetOptions(env)
+    )
+    : undefined;
+  const modelProvider = budgetProviders?.foreground;
   const conversationSummaryStore = createConversationSummaryStore(db, env);
   const taskMemoryStore = createTaskMemoryStore(db, env);
   const userMemoryStore = createUserMemoryStore(db, env);
@@ -758,6 +777,8 @@ function buildModelAndStoreStack(
 
   return {
     modelProvider,
+    backgroundModelProvider: budgetProviders?.background,
+    modelExecutionBudgetSnapshot: budgetProviders?.snapshot,
     conversationSummaryStore,
     taskMemoryStore,
     userMemoryStore,
@@ -926,6 +947,7 @@ function buildToolingStack(params: {
 function buildHooksAndContextProviders(params: {
   readonly env: MuseEnvironment;
   readonly modelProvider: ModelProvider | undefined;
+  readonly backgroundModelProvider: ModelProvider | undefined;
   readonly defaultModel: string | undefined;
   readonly userMemoryStore: UserMemoryStore;
   readonly followupsFile: string;
@@ -936,6 +958,7 @@ function buildHooksAndContextProviders(params: {
   const {
     env,
     modelProvider,
+    backgroundModelProvider,
     defaultModel,
     userMemoryStore,
     followupsFile,
@@ -956,7 +979,7 @@ function buildHooksAndContextProviders(params: {
     : undefined;
   const reviewArmDeps = {
     env,
-    ...(modelProvider ? { modelProvider } : {}),
+    ...(backgroundModelProvider ? { modelProvider: backgroundModelProvider } : {}),
     ...(defaultModel ? { defaultModel } : {}),
     userMemoryStore
   };

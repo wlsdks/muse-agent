@@ -24,6 +24,12 @@ Env knobs that activate the daemon path:
 `MUSE_FOLLOWUP_TICK_MS`, `MUSE_FOLLOWUP_MAX_PER_TICK`,
 `MUSE_FOLLOWUP_QUIET_HOURS`.
 
+The opt-in LLM fallback remains an awaited foreground hook: its extracted
+promise must be available before the hook persists the turn's follow-ups. It
+therefore does not use the fire-and-forget background-review queue. Its daily
+call cap remains the controlling budget; changing that latency contract needs
+a separate persistence design that can merge late detector results safely.
+
 The text below preserves the original design rationale — kept for
 reference even though every step now exists in code.
 

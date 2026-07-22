@@ -950,6 +950,10 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const plistFile = join(dir, "com.muse.daemon.plist");
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
+      MUSE_BACKGROUND_MODEL_MAX_CONCURRENCY: "1",
+      MUSE_BACKGROUND_MODEL_MAX_INPUT_BYTES: "65536",
+      MUSE_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS: "512",
+      MUSE_BACKGROUND_MODEL_MAX_QUEUE: "2",
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_DAEMON_DELIVERY_ENABLED: "false",
       MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK: "2",
@@ -994,6 +998,10 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_DAEMON_MIN_FREE_MEMORY_MB</key>\n    <string>2048</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_MAX_LOAD_PER_CORE</key>\n    <string>0.5</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_HEAVY_WORK_UNITS_PER_TICK</key>\n    <string>2</string>");
+    expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_CONCURRENCY</key>\n    <string>1</string>");
+    expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_QUEUE</key>\n    <string>2</string>");
+    expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_INPUT_BYTES</key>\n    <string>65536</string>");
+    expect(plist).toContain("<key>MUSE_BACKGROUND_MODEL_MAX_OUTPUT_TOKENS</key>\n    <string>512</string>");
     expect(plist).not.toContain("MUSE_PROACTIVE_PROVIDER");
     expect(plist).not.toContain("must-not-enter-plist");
     // The exact argv passed to the seam, IN ORDER — unload adopts the fresh
