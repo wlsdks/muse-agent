@@ -191,6 +191,9 @@ importers:
       '@muse/recall':
         specifier: workspace:*
         version: link:../../packages/recall
+      '@muse/runtime-state':
+        specifier: workspace:*
+        version: link:../../packages/runtime-state
       '@muse/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
