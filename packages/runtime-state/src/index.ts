@@ -230,4 +230,5 @@ export * from "./run-history.js";
 export * from "./run-history-in-memory.js";
 export * from "./run-history-kysely.js";
 export * from "./session-tags.js";
+export * from "./local-run-evidence.js";
 export { FileCheckpointStore, type FileCheckpointStoreOptions } from "./file-checkpoint-store.js";

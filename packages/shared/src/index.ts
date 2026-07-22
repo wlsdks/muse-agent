@@ -59,6 +59,7 @@ export {
 } from "./private-file-lock.js";
 export { quarantineCorruptFile } from "./corrupt-file.js";
 export { isRecord, parseJson, parseJsonWith, type JsonObject, type JsonPredicate, type JsonPrimitive, type JsonValue } from "./json-utils.js";
+export { parseStrictJson, StrictJsonError, type StrictJsonOptions } from "./strict-json.js";
 export {
   CANONICAL_RUN_OUTCOMES,
   canonicalRunOutcome,

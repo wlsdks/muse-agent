@@ -9,6 +9,7 @@ export {
   type JsonPrimitive,
   type JsonValue
 } from "./json-utils.js";
+export { parseStrictJson, StrictJsonError, type StrictJsonOptions } from "./strict-json.js";
 export {
   CANONICAL_RUN_OUTCOMES,
   canonicalRunOutcome,
