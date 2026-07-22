@@ -5,6 +5,26 @@ import { render } from "vitest-browser-react";
 import type { ApiClient } from "../api/client.js";
 import { I18nProvider } from "../i18n/index.js";
 import { AutonomyView } from "./Autonomy.js";
+import { writePersonalStatusFocus } from "./personal-status-navigation.js";
+
+test("personal-status veto intent is consumed once by the destination view and focuses the veto panel", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  writePersonalStatusFocus("autonomy", "vetoes");
+  const get = vi.fn(async (path: string) => {
+    if (path === "/api/autonomy/review") return { opportunity: null, schemaVersion: 1 };
+    if (path === "/api/vetoes") return { vetoes: [] };
+    throw new Error(`unexpected GET ${path}`);
+  });
+  const client = { baseUrl: "http://veto-focus.test", get, post: vi.fn() } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}><I18nProvider><AutonomyView client={client} /></I18nProvider></QueryClientProvider>
+  );
+
+  await expect.element(screen.getByRole("tab", { name: "Avoidances" })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => document.activeElement?.id).toBe("vetoes");
+  expect(window.sessionStorage.getItem("muse.personal-status.focus.v1")).toBeNull();
+});
 
 test("an exact organic opportunity can be reviewed counterfactually and advances to the empty state", async () => {
   window.localStorage.setItem("muse.lang", "en");

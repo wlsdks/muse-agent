@@ -380,6 +380,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     env,
     pendingApprovalsFile: options.pendingApprovalsFile ?? resolvePendingApprovalsFile(env),
     proposedActionsFile: options.proposedActionsFile ?? resolveProposedActionsStatusFile(env),
+    reconfirmCardAnsweredFile: options.reconfirmCardAnsweredFile ?? resolveReconfirmCardAnsweredFile(env),
     userMemoryStore: options.userMemoryStore,
     vetoesFile: options.vetoesFile ?? resolveVetoesFile(env)
   });

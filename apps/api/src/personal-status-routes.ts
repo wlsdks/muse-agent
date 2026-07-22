@@ -21,7 +21,7 @@ import {
   type ReadOnlySourceFailure,
   type ReadOnlySourceInspection
 } from "@muse/shared";
-import { inspectProposedActionsSource, inspectVetoesSource } from "@muse/stores";
+import { inspectProposedActionsSource, inspectVetoesSource, localDateKey } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -38,6 +38,7 @@ export interface PersonalStatusRoutesOptions {
   readonly now?: () => Date;
   readonly pendingApprovalsFile: string;
   readonly proposedActionsFile: string;
+  readonly reconfirmCardAnsweredFile: string;
   readonly residentInspector?: () => Promise<ResidentDaemonInspection>;
   readonly userMemoryStore?: Pick<UserMemoryStore, "findByUserId">;
   readonly vetoesFile: string;
@@ -57,6 +58,10 @@ function canonicalAt(value: string, nowMs: number): boolean {
 function text(value: string, max: number): string {
   const clean = value.replace(/[\x00-\x1f\x7f-\x9f]/gu, " ").replace(/\s+/gu, " ").trim();
   return clean.length <= max ? clean : `${clean.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function fitsId(prefix: string, value: string): boolean {
+  return value.trim().length > 0 && `${prefix}${value}`.length <= 200;
 }
 
 function source(
@@ -117,7 +122,7 @@ function projectPendingApprovals(
   let excluded = inspected.value.excludedCount;
   const cards: PersonalStatusCard[] = [];
   for (const approval of inspected.value.pending) {
-    if (approval.userId !== context.userId || !canonicalAt(approval.createdAt, context.now.getTime())
+    if (!fitsId("approval:", approval.id) || approval.id.length > 200 || approval.userId !== context.userId || !canonicalAt(approval.createdAt, context.now.getTime())
       || !canonicalAt(approval.expiresAt, Number.MAX_SAFE_INTEGER) || Date.parse(approval.expiresAt) <= context.now.getTime()) {
       excluded += 1;
       continue;
@@ -146,7 +151,7 @@ function projectProposals(
   let excluded = inspected.value.excludedCount;
   const cards: PersonalStatusCard[] = [];
   for (const proposal of inspected.value.proposals) {
-    if (proposal.status !== "pending" || proposal.userId !== context.userId || proposal.expiresAt === undefined
+    if (!fitsId("proposal:", proposal.id) || proposal.status !== "pending" || proposal.userId !== context.userId || proposal.expiresAt === undefined
       || !canonicalAt(proposal.createdAt, context.now.getTime()) || !canonicalAt(proposal.expiresAt, Number.MAX_SAFE_INTEGER)
       || Date.parse(proposal.expiresAt) <= context.now.getTime()) {
       excluded += 1;
@@ -198,27 +203,36 @@ function projectAttunement(
   let excluded = 0;
   const cards: PersonalStatusCard[] = [];
   const orderedDeliveries = state.deliveries.slice().sort((left, right) => left.openedAt.localeCompare(right.openedAt));
-  const eligible = orderedDeliveries.filter((delivery) => delivery.evidenceClass === "organic").slice(0, 20);
-  const next = eligible.find((delivery) => delivery.outcome?.evidenceClass !== "organic");
-  if (next && canonicalAt(next.openedAt, context.now.getTime())) {
-    const thread = state.threads.find((candidate) => candidate.id === next.threadId);
-    if (thread) {
+  let selectedFeedback = false;
+  for (const delivery of orderedDeliveries.slice(0, 20)) {
+    const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
+    const completedOrganic = delivery.evidenceClass === "organic" && delivery.outcome?.evidenceClass === "organic";
+    if (selectedFeedback || completedOrganic || !thread || !fitsId("feedback:", delivery.id)
+      || !canonicalAt(delivery.openedAt, context.now.getTime())) {
+      excluded += 1;
+      continue;
+    }
+    const ownerFeedbackEligible = delivery.evidenceClass === "organic" && delivery.outcome === undefined;
+    const heldReason = delivery.evidenceClass !== "organic"
+      ? `${delivery.evidenceClass} delivery는 기술 검증 근거이므로 개인 효과 피드백으로 승격하지 않습니다.`
+      : `기존 ${delivery.outcome?.evidenceClass ?? "unknown"} 피드백은 기술 전용이며 변경하지 않습니다.`;
       cards.push({
         action: { id: "review-continuity-feedback", target: { focus: "continuity-feedback-review", type: "view", view: "continuity" } },
         deadline: null,
-        detail: next.outcome ? "기존 기술용 피드백은 개인 효과 근거가 아니므로 별도 검토가 필요합니다." : "실제 생활·업무 결과를 소유자가 직접 남길 차례입니다.",
-        id: `feedback:${next.id}`,
+        detail: ownerFeedbackEligible ? "실제 생활·업무 결과를 소유자가 직접 남길 차례입니다." : heldReason,
+        id: `feedback:${delivery.id}`,
         kind: "continuity-feedback",
-        observedAt: new Date(next.openedAt).toISOString(),
-        priority: next.outcome ? 35 : 30,
+        observedAt: new Date(delivery.openedAt).toISOString(),
+        priority: ownerFeedbackEligible ? 30 : 35,
         sourceId: "attunement",
-        status: next.outcome ? "held" : "attention",
+        status: ownerFeedbackEligible ? "attention" : "held",
         title: text(thread.title, 160)
       });
-    } else excluded += 1;
-  } else if (next) excluded += 1;
+    selectedFeedback = true;
+  }
+  excluded += Math.max(0, orderedDeliveries.length - 20);
   for (const thread of state.threads) {
-    if (thread.links.length === 0 || !canonicalAt(thread.createdAt, context.now.getTime())) { excluded += 1; continue; }
+    if (!fitsId("thread:", thread.id) || thread.links.length === 0 || !canonicalAt(thread.createdAt, context.now.getTime())) { excluded += 1; continue; }
     cards.push({
       action: { id: "open-continuity", target: { type: "view", view: "continuity" } },
       deadline: null,
@@ -271,7 +285,10 @@ function projectLearning(
   for (const { entry } of latest.values()) {
     const autoEvidenceValid = entry.source !== "auto" || (Boolean(entry.sessionId?.trim()) && Boolean(entry.evidenceExcerpt?.trim()));
     if (entry.retraction === true || (entry.source !== "user" && entry.source !== "auto") || !autoEvidenceValid
-      || currentValue(memory!, entry) !== entry.value || Date.parse(entry.learnedAt) < cutoff) {
+      || !memory || currentValue(memory, entry) !== entry.value || Date.parse(entry.learnedAt) < cutoff
+      || !fitsId(`learning:${entry.kind}:`, entry.key)
+      || (entry.sessionId !== undefined && (entry.sessionId.trim().length === 0 || entry.sessionId.length > 200))
+      || (entry.evidenceExcerpt !== undefined && (entry.evidenceExcerpt.trim().length === 0 || entry.evidenceExcerpt.length > 280))) {
       excluded += 1;
       continue;
     }
@@ -299,13 +316,16 @@ function projectLearning(
 
 function projectReconfirmation(
   memory: UserMemory | undefined,
-  failure: ReadOnlySourceFailure | undefined,
+  inspected: ReadOnlySourceInspection<{ readonly lastAnsweredDate: string }>,
   context: ProjectionContext
 ): { readonly cards: readonly PersonalStatusCard[]; readonly row: PersonalStatusSource } {
-  if (failure) return failedSource("reconfirmation", "learning-review", context.generatedAt, failure);
+  if (inspected.result !== "available") return failedSource("reconfirmation", "learning-review", context.generatedAt, inspected);
+  if (inspected.value.lastAnsweredDate === localDateKey(context.now)) {
+    return { cards: [], row: source("reconfirmation", context.generatedAt, "available", 0, 1) };
+  }
   const model = memory?.userModel ? reviveUserModelSlotDates(memory.userModel) : undefined;
   const top = model ? selectReconfirmableSlots(model, { now: context.now })[0] : undefined;
-  if (!top || !canonicalAt(top.slot.updatedAt.toISOString(), context.now.getTime())) {
+  if (!top || !fitsId("learning-review:", top.slot.id) || !canonicalAt(top.slot.updatedAt.toISOString(), context.now.getTime())) {
     return { cards: [], row: source("reconfirmation", context.generatedAt, "available", 0, top ? 1 : 0) };
   }
   const card: PersonalStatusCard = {
@@ -331,7 +351,7 @@ function projectVetoes(
   let excluded = inspected.value.excludedCount;
   const cards: PersonalStatusCard[] = [];
   for (const veto of inspected.value.vetoes) {
-    if (veto.userId !== context.userId || !canonicalAt(veto.vetoedAt, context.now.getTime())) { excluded += 1; continue; }
+    if (!fitsId("veto:", veto.id) || veto.userId !== context.userId || !canonicalAt(veto.vetoedAt, context.now.getTime())) { excluded += 1; continue; }
     cards.push({
       action: { id: "open-vetoes", target: { focus: "vetoes", type: "view", view: "autonomy" } },
       deadline: null,
@@ -395,16 +415,41 @@ async function loadMemory(
   }
 }
 
+async function inspectReconfirmation(file: string): Promise<ReadOnlySourceInspection<{ readonly lastAnsweredDate: string }>> {
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch (cause) {
+    const code = cause && typeof cause === "object" ? (cause as { readonly code?: unknown }).code : undefined;
+    if (code === "ENOENT") return { errorCode: "missing", result: "absent" };
+    return { errorCode: code === "EACCES" || code === "EPERM" ? "permission-denied" : "io-error", result: "unreadable" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { errorCode: "invalid-json", result: "corrupt" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || Object.keys(parsed).length !== 1 || !("lastAnsweredDate" in parsed)
+    || typeof (parsed as { readonly lastAnsweredDate?: unknown }).lastAnsweredDate !== "string"
+    || !/^\d{4}-\d{2}-\d{2}$/u.test((parsed as { readonly lastAnsweredDate: string }).lastAnsweredDate)) {
+    return { errorCode: "invalid-schema", result: "corrupt" };
+  }
+  return { result: "available", value: parsed as { readonly lastAnsweredDate: string } };
+}
+
 export async function collectPersonalStatus(options: PersonalStatusRoutesOptions): Promise<PersonalStatusResponse> {
   const now = options.now?.() ?? new Date();
   const context: ProjectionContext = { generatedAt: now.toISOString(), now, userId: options.defaultUserId };
-  const [runtime, approvals, proposals, attunement, provenance, memoryResult, vetoes] = await Promise.all([
+  const [runtime, approvals, proposals, attunement, provenance, memoryResult, reconfirmation, vetoes] = await Promise.all([
     options.residentInspector?.() ?? inspectResidentDaemon({ env: { ...options.env }, inspectOrphans: false }),
     inspectPendingApprovalsSource(options.pendingApprovalsFile),
     inspectProposedActionsSource(options.proposedActionsFile),
     inspectAttunement(options.attunementFile),
     inspectBeliefProvenanceSource(options.beliefProvenanceFile, { ...options.env }),
     loadMemory(options.userMemoryStore, context.userId),
+    inspectReconfirmation(options.reconfirmCardAnsweredFile),
     inspectVetoesSource(options.vetoesFile)
   ]);
   const projectedRuntime = projectRuntime(runtime, context);
@@ -412,7 +457,7 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
   const projectedProposals = projectProposals(proposals, context);
   const projectedAttunement = projectAttunement(attunement, context);
   const projectedLearning = projectLearning(provenance, memoryResult.memory, memoryResult.failure, context);
-  const projectedReconfirmation = projectReconfirmation(memoryResult.memory, memoryResult.failure, context);
+  const projectedReconfirmation = projectReconfirmation(memoryResult.memory, reconfirmation, context);
   const projectedVetoes = projectVetoes(vetoes, context);
   const rows = [
     projectedRuntime.row,
@@ -423,7 +468,7 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
     projectedReconfirmation.row,
     projectedVetoes.row
   ];
-  const status = buildPersonalStatus({
+  return buildPersonalStatus({
     cards: [
       ...projectedRuntime.cards,
       ...projectedApprovals.cards,
@@ -436,16 +481,6 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
     generatedAt: context.generatedAt,
     sources: rows
   });
-  const countedRows = rows.map((row): PersonalStatusSource => {
-    if (row.result !== "available") return row;
-    const includedCount = status.cards.filter((card) => card.sourceId === row.id).length;
-    return {
-      ...row,
-      excludedCount: row.excludedCount + Math.max(0, row.includedCount - includedCount),
-      includedCount
-    };
-  });
-  return buildPersonalStatus({ cards: status.cards, generatedAt: context.generatedAt, sources: countedRows });
 }
 
 export function registerPersonalStatusRoutes(server: FastifyInstance, options: PersonalStatusRoutesOptions): void {

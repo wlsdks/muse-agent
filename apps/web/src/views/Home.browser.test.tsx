@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
+import { userEvent } from "vitest/browser";
 import { cleanup, render } from "vitest-browser-react";
 
 import { writeAutoContinueThread } from "./home-logic.js";
@@ -208,6 +209,10 @@ test("approval queue opens a separate dialog and only the explicit dialog decisi
   await expect.element(screen.getByRole("dialog", { name: "Approval waiting" })).toBeVisible();
   expect(post).not.toHaveBeenCalled();
   await expect.element(screen.getByRole("button", { name: "Approve once" })).toHaveFocus();
+  await userEvent.tab();
+  await expect.element(screen.getByRole("button", { name: "Deny" })).toHaveFocus();
+  await userEvent.tab();
+  await expect.element(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
   await screen.getByRole("button", { name: "Cancel" }).click();
   expect(post).not.toHaveBeenCalled();
 
@@ -215,6 +220,39 @@ test("approval queue opens a separate dialog and only the explicit dialog decisi
   await screen.getByRole("button", { name: "Approve once" }).click();
   expect(post).toHaveBeenCalledTimes(1);
   await expect.element(screen.getByRole("dialog", { name: "Approval waiting" })).not.toBeInTheDocument();
+});
+
+test.each([
+  ["en", ["Copy status command", "Review", "Copy review command", "Review feedback", "Open continuity", "Review memory", "Open learning history", "Open avoidances"]],
+  ["ko", ["상태 명령 복사", "검토하기", "검토 명령 복사", "피드백 검토", "연속성 열기", "기억 확인", "배움 이력 열기", "하지 않을 것 열기"]]
+] as const)("%s exposes an accessible action name for every personal-status family", async (lang, names) => {
+  const cards: readonly PersonalStatusCard[] = [
+    { action: { id: "inspect-runtime", target: { command: "muse daemon --status", type: "command" } }, deadline: null, detail: "runtime", id: "runtime:resident", kind: "runtime-trust", observedAt: "2026-07-22T10:00:00.000Z", priority: 10, sourceId: "resident-runtime", status: "held", title: "Runtime" },
+    { action: { id: "review-approval", target: { itemId: "a1", review: "approval", type: "local-review" } }, deadline: "2026-07-22T13:00:00.000Z", detail: "approval", id: "approval:a1", kind: "external-approval", observedAt: "2026-07-22T10:00:00.000Z", priority: 20, sourceId: "pending-approvals", status: "attention", title: "Approval" },
+    { action: { id: "show-proposal-command", target: { command: "muse propose list", type: "command" } }, deadline: "2026-07-22T13:00:00.000Z", detail: "proposal", id: "proposal:p1", kind: "external-proposal", observedAt: "2026-07-22T10:00:00.000Z", priority: 20, sourceId: "proposed-actions", status: "attention", title: "Proposal" },
+    { action: { id: "review-continuity-feedback", target: { focus: "continuity-feedback-review", type: "view", view: "continuity" } }, deadline: null, detail: "feedback", id: "feedback:d1", kind: "continuity-feedback", observedAt: "2026-07-22T10:00:00.000Z", priority: 30, sourceId: "attunement", status: "attention", title: "Feedback" },
+    { action: { id: "open-continuity", target: { type: "view", view: "continuity" } }, deadline: null, detail: "thread", id: "thread:t1", kind: "continuity-thread", observedAt: "2026-07-22T10:00:00.000Z", priority: 50, sourceId: "attunement", status: "ready", title: "Thread" },
+    { action: { id: "review-learning", target: { focus: "memory-reconfirm", type: "local-focus" } }, deadline: null, detail: "review", id: "learning-review:s1", kind: "learning-review", observedAt: "2026-07-22T10:00:00.000Z", priority: 40, sourceId: "reconfirmation", status: "attention", title: "Memory" },
+    { action: { id: "open-learning-history", target: { focus: "learning-history", type: "view", view: "journey" } }, deadline: null, detail: "learning", id: "learning:fact:k1", kind: "learning-change", observedAt: "2026-07-22T10:00:00.000Z", priority: 60, sourceId: "belief-provenance", status: "info", title: "Learning" },
+    { action: { id: "open-vetoes", target: { focus: "vetoes", type: "view", view: "autonomy" } }, deadline: null, detail: "veto", id: "veto:v1", kind: "veto", observedAt: "2026-07-22T10:00:00.000Z", priority: 60, sourceId: "vetoes", status: "info", title: "Veto" }
+  ];
+  const screen = await renderHome({ get: homeGet({ status: personalStatus(cards) }), lang, post: vi.fn() });
+  for (const name of names) await expect.element(screen.getByRole("button", { name, exact: true })).toBeVisible();
+});
+
+test("runtime and proposal commands copy their exact read-only CLI commands without posting", async () => {
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const cards: readonly PersonalStatusCard[] = [
+    { action: { id: "inspect-runtime", target: { command: "muse daemon --status", type: "command" } }, deadline: null, detail: "runtime", id: "runtime:resident", kind: "runtime-trust", observedAt: "2026-07-22T10:00:00.000Z", priority: 10, sourceId: "resident-runtime", status: "held", title: "Runtime" },
+    { action: { id: "show-proposal-command", target: { command: "muse propose list", type: "command" } }, deadline: "2026-07-22T13:00:00.000Z", detail: "proposal", id: "proposal:p1", kind: "external-proposal", observedAt: "2026-07-22T10:00:00.000Z", priority: 20, sourceId: "proposed-actions", status: "attention", title: "Proposal" }
+  ];
+  const post = vi.fn();
+  const screen = await renderHome({ get: homeGet({ status: personalStatus(cards) }), post });
+  await screen.getByRole("button", { name: "Copy status command" }).click();
+  await screen.getByRole("button", { name: "Copy review command" }).click();
+  expect(writeText).toHaveBeenNthCalledWith(1, "muse daemon --status");
+  expect(writeText).toHaveBeenNthCalledWith(2, "muse propose list");
+  expect(post).not.toHaveBeenCalled();
 });
 
 test("continuity feedback action carries the exact view and focus intent without posting", async () => {

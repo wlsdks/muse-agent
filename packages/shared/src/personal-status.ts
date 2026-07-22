@@ -94,7 +94,7 @@ export type PersonalStatusAdmission =
 
 const TOP_KEYS = ["cards", "generatedAt", "overall", "schemaVersion", "sources"] as const;
 const CARD_KEYS = ["action", "deadline", "detail", "id", "kind", "observedAt", "priority", "sourceId", "status", "title", "unavailableReason"] as const;
-const SOURCE_IDS = ["resident-runtime", "pending-approvals", "proposed-actions", "attunement", "user-memory", "belief-provenance", "reconfirmation", "vetoes"] as const;
+export const PERSONAL_STATUS_SOURCE_IDS = ["resident-runtime", "pending-approvals", "proposed-actions", "attunement", "user-memory", "belief-provenance", "reconfirmation", "vetoes"] as const;
 const RESULTS = ["available", "absent", "corrupt", "unreadable", "unsupported"] as const;
 const ERROR_BY_RESULT: Readonly<Record<Exclude<PersonalStatusSourceResult, "available">, readonly PersonalStatusSourceErrorCode[]>> = {
   absent: ["missing"],
@@ -130,7 +130,7 @@ function safeCount(value: unknown): value is number {
 
 function sourceRow(value: unknown, generatedAt: string): value is PersonalStatusSource {
   if (!isRecord(value) || !exactKeysWithOptional(value, ["excludedCount", "id", "includedCount", "observedAt", "result"], ["errorCode"])) return false;
-  if (!SOURCE_IDS.includes(value.id as PersonalStatusSourceId) || !RESULTS.includes(value.result as PersonalStatusSourceResult)
+  if (!PERSONAL_STATUS_SOURCE_IDS.includes(value.id as PersonalStatusSourceId) || !RESULTS.includes(value.result as PersonalStatusSourceResult)
     || !canonicalInstant(value.observedAt) || value.observedAt > generatedAt
     || !safeCount(value.includedCount) || !safeCount(value.excludedCount)) return false;
   if (value.result === "available") return value.errorCode === undefined;
@@ -210,7 +210,7 @@ function cardRow(value: unknown, generatedAt: string): value is PersonalStatusCa
   if (!isRecord(value) || !exactKeysWithOptional(value, CARD_KEYS.filter((key) => key !== "action" && key !== "unavailableReason"), ["action", "unavailableReason"]) || !canonicalInstant(value.observedAt) || value.observedAt > generatedAt
     || !bounded(value.title, 160) || !bounded(value.detail, 500, true) || !idMatches(value)) return false;
   const rule = VARIANTS[`${String(value.kind)}:${String(value.status)}`];
-  if (!rule || value.priority !== rule.priority || !SOURCE_IDS.includes(value.sourceId as PersonalStatusSourceId)) return false;
+  if (!rule || value.priority !== rule.priority || !PERSONAL_STATUS_SOURCE_IDS.includes(value.sourceId as PersonalStatusSourceId)) return false;
   const allowedSources = Array.isArray(rule.sourceId) ? rule.sourceId : [rule.sourceId];
   if (!allowedSources.includes(value.sourceId as PersonalStatusSourceId)) return false;
   if (rule.deadline === "required") {
@@ -251,12 +251,20 @@ export function admitPersonalStatus(input: unknown): PersonalStatusAdmission {
   const generatedAt = input.generatedAt;
   if (!input.sources.every((row) => sourceRow(row, generatedAt))) return { kind: "excluded", reason: "invalid-source" };
   const sources = input.sources as PersonalStatusSource[];
-  if (new Set(sources.map((source) => source.id)).size !== sources.length) return { kind: "excluded", reason: "invalid-source" };
+  if (sources.length !== PERSONAL_STATUS_SOURCE_IDS.length
+    || sources.some((source, index) => source.id !== PERSONAL_STATUS_SOURCE_IDS[index])) {
+    return { kind: "excluded", reason: "invalid-source" };
+  }
   if (input.cards.length > PERSONAL_STATUS_MAX_CARDS || !input.cards.every((row) => cardRow(row, generatedAt))) return { kind: "excluded", reason: "invalid-card" };
   const cards = input.cards as PersonalStatusCard[];
   if (new Set(cards.map((card) => card.id)).size !== cards.length
     || sources.some((source) => cards.filter((card) => card.sourceId === source.id).length > PERSONAL_STATUS_MAX_CARDS_PER_SOURCE)
     || cards.some((card, index) => index > 0 && comparePersonalStatusCards(cards[index - 1]!, card) > 0)) return { kind: "excluded", reason: "invalid-order" };
+  if (sources.some((source) => source.result === "available"
+    ? source.includedCount !== cards.filter((card) => card.sourceId === source.id).length
+    : cards.filter((card) => card.sourceId === source.id).length !== 1)) {
+    return { kind: "excluded", reason: "invalid-source" };
+  }
   if (input.overall !== expectedOverall(cards, sources)) return { kind: "excluded", reason: "invalid-overall" };
   return { kind: "admitted", status: input as unknown as PersonalStatusResponse };
 }
@@ -275,12 +283,21 @@ export function buildPersonalStatus(input: {
     perSource.set(card.sourceId, count + 1);
     return true;
   }).slice(0, PERSONAL_STATUS_MAX_CARDS);
+  const sources = input.sources.map((row): PersonalStatusSource => {
+    if (row.result !== "available") return row;
+    const includedCount = cards.filter((card) => card.sourceId === row.id).length;
+    return {
+      ...row,
+      excludedCount: row.excludedCount + Math.max(0, row.includedCount - includedCount),
+      includedCount
+    };
+  });
   const status: PersonalStatusResponse = {
     cards,
     generatedAt: input.generatedAt,
-    overall: expectedOverall(cards, input.sources),
+    overall: expectedOverall(cards, sources),
     schemaVersion: PERSONAL_STATUS_SCHEMA_VERSION,
-    sources: input.sources
+    sources
   };
   const admitted = admitPersonalStatus(status);
   if (admitted.kind === "excluded") throw new TypeError(`Invalid personal status: ${admitted.reason}`);

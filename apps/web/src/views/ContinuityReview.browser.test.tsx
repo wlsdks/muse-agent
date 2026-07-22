@@ -14,6 +14,21 @@ import {
   type InteractionReport,
   type OpenedPack
 } from "./ContinuityReview.js";
+import { writePersonalStatusFocus } from "./personal-status-navigation.js";
+
+test("personal-status feedback intent is consumed once after the destination review loads", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  writePersonalStatusFocus("continuity", "continuity-feedback-review");
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : reminderLinkReview(false));
+  const client = { baseUrl: "http://continuity-focus.test", get, post: vi.fn() } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await render(<QueryClientProvider client={queryClient}><I18nProvider><ContinuityReviewView client={client} /></I18nProvider></QueryClientProvider>);
+
+  await expect.poll(() => document.activeElement?.id).toBe("continuity-feedback-review");
+  expect(window.sessionStorage.getItem("muse.personal-status.focus.v1")).toBeNull();
+});
 
 test("recent deliveries cannot bypass the canonical provenance-aware review queue", async () => {
   window.localStorage.setItem("muse.lang", "en");

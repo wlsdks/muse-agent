@@ -46,6 +46,10 @@ async function fixture(options: { readonly provenance?: readonly Record<string, 
     attunement: join(root, "attunement.json"),
     provenance: join(root, "belief-provenance.json"),
     proposals: join(root, "proposed-actions.json"),
+    reconfirmation: join(root, "reconfirm-card-answered.json"),
+    residentHeartbeat: join(root, "daemon-heartbeat.json"),
+    residentPlist: join(root, "com.muse.daemon.plist"),
+    userMemory: join(root, "user-memory.json"),
     vetoes: join(root, "vetoes.json")
   };
   mkdirSync(root, { recursive: true });
@@ -78,6 +82,9 @@ async function fixture(options: { readonly provenance?: readonly Record<string, 
   writeFileSync(files.vetoes, JSON.stringify({ vetoes: [
     { id: "veto_1", objectiveId: "followup", reason: "먼저 묻기", scope: "messaging", userId: USER_ID, vetoedAt: "2026-07-20T09:00:00.000Z" }
   ] }));
+  writeFileSync(files.reconfirmation, JSON.stringify({ lastAnsweredDate: "2026-07-21" }));
+  writeFileSync(files.residentHeartbeat, JSON.stringify({ at: "2026-07-22T11:59:00.000Z", pid: 42 }));
+  writeFileSync(files.residentPlist, "<plist><dict><key>Label</key><string>com.muse.daemon</string></dict></plist>\n");
   const thread = await createPersonalThread(files.attunement, { kind: "work", title: "출시 준비" }, {
     idFactory: () => "thread_1",
     now: () => new Date("2026-07-21T09:00:00.000Z")
@@ -100,7 +107,19 @@ async function fixture(options: { readonly provenance?: readonly Record<string, 
     updatedAt: NOW,
     userId: USER_ID
   };
-  const findByUserId = vi.fn(async () => memory);
+  writeFileSync(files.userMemory, JSON.stringify({ ...memory, updatedAt: memory.updatedAt.toISOString() }));
+  const findByUserId = vi.fn(async () => {
+    const parsed = JSON.parse(readFileSync(files.userMemory, "utf8")) as Omit<UserMemory, "updatedAt"> & { readonly updatedAt: string };
+    return { ...parsed, updatedAt: new Date(parsed.updatedAt) };
+  });
+  const upsertUserModelSlot = vi.fn();
+  const removeUserModelSlot = vi.fn();
+  const residentInspector = vi.fn(async () => {
+    readFileSync(files.residentHeartbeat);
+    readFileSync(files.residentPlist);
+    return resident();
+  });
+  const userMemoryStore = { findByUserId, removeUserModelSlot, upsertUserModelSlot };
   const routeOptions: PersonalStatusRoutesOptions = {
     attunementFile: files.attunement,
     authService: undefined,
@@ -110,11 +129,12 @@ async function fixture(options: { readonly provenance?: readonly Record<string, 
     now: () => NOW,
     pendingApprovalsFile: files.approvals,
     proposedActionsFile: files.proposals,
-    residentInspector: async () => resident(),
-    userMemoryStore: { findByUserId },
+    reconfirmCardAnsweredFile: files.reconfirmation,
+    residentInspector,
+    userMemoryStore,
     vetoesFile: files.vetoes
   };
-  return { files, findByUserId, root, routeOptions };
+  return { files, findByUserId, removeUserModelSlot, residentInspector, root, routeOptions, upsertUserModelSlot };
 }
 
 describe("GET /api/personal-status", () => {
@@ -139,6 +159,9 @@ describe("GET /api/personal-status", () => {
     expect(body.cards.some((card: { readonly id: string }) => card.id === "approval:approval_other")).toBe(false);
     expect(body.cards.some((card: { readonly id: string }) => card.id === "proposal:proposal_equal_expiry")).toBe(false);
     expect(state.findByUserId).toHaveBeenCalledWith(USER_ID);
+    expect(state.residentInspector).toHaveBeenCalledTimes(1);
+    expect(state.upsertUserModelSlot).not.toHaveBeenCalled();
+    expect(state.removeUserModelSlot).not.toHaveBeenCalled();
     expect({
       entries: readdirSync(state.root).sort(),
       files: Object.fromEntries(Object.entries(state.files).map(([key, file]) => [key, fingerprint(file)]))
@@ -167,6 +190,49 @@ describe("GET /api/personal-status", () => {
     });
     const retracted = await collectPersonalStatus(retractionLast.routeOptions);
     expect(retracted.cards.some((card) => card.id === "learning:preference:focus_time")).toBe(false);
+  });
+
+  it("treats an empty owner memory snapshot as available-empty instead of crashing", async () => {
+    const state = await fixture();
+    const status = await collectPersonalStatus({
+      ...state.routeOptions,
+      userMemoryStore: { findByUserId: vi.fn(async () => undefined) }
+    });
+
+    expect(status.cards.some((card) => card.kind === "learning-change")).toBe(false);
+    expect(status.sources).toContainEqual(expect.objectContaining({ id: "user-memory", includedCount: 0, result: "available" }));
+    expect(status.sources.find((row) => row.id === "belief-provenance")?.excludedCount).toBeGreaterThan(0);
+  });
+
+  it.each(["controlled", "unclassified"] as const)("keeps %s continuity evidence on a held review path", async (evidenceClass) => {
+    const state = await fixture();
+    const attunement = JSON.parse(readFileSync(state.files.attunement, "utf8")) as { deliveries: Array<{ evidenceClass: string }> };
+    attunement.deliveries[0]!.evidenceClass = evidenceClass;
+    writeFileSync(state.files.attunement, `${JSON.stringify(attunement, null, 2)}\n`);
+
+    const status = await collectPersonalStatus(state.routeOptions);
+    expect(status.cards).toContainEqual(expect.objectContaining({
+      id: "feedback:delivery_1",
+      kind: "continuity-feedback",
+      status: "held"
+    }));
+    expect(status.cards.filter((card) => card.kind === "learning-change")).toHaveLength(1);
+  });
+
+  it("excludes oversized owner records without failing the aggregate", async () => {
+    const state = await fixture({ provenance: [{
+      evidenceExcerpt: "x".repeat(281), key: "focus_time", kind: "preference", learnedAt: "2026-07-21T08:00:00.000Z",
+      sessionId: "session_1", source: "auto", userId: USER_ID, value: "morning"
+    }] });
+    const approvals = JSON.parse(readFileSync(state.files.approvals, "utf8")) as { pending: Array<{ id: string }> };
+    approvals.pending[0]!.id = "a".repeat(200);
+    writeFileSync(state.files.approvals, JSON.stringify(approvals));
+
+    const status = await collectPersonalStatus(state.routeOptions);
+    expect(status.cards.some((card) => card.kind === "external-approval")).toBe(false);
+    expect(status.cards.some((card) => card.kind === "learning-change")).toBe(false);
+    expect(status.sources.find((row) => row.id === "pending-approvals")?.excludedCount).toBeGreaterThan(0);
+    expect(status.sources.find((row) => row.id === "belief-provenance")?.excludedCount).toBeGreaterThan(0);
   });
 
   it("rejects identity-bearing query input", async () => {

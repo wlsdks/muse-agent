@@ -4,6 +4,7 @@ import {
   admitPersonalStatus,
   buildPersonalStatus,
   PERSONAL_STATUS_SCHEMA_VERSION,
+  PERSONAL_STATUS_SOURCE_IDS,
   type PersonalStatusCard,
   type PersonalStatusResponse,
   type PersonalStatusSource
@@ -31,12 +32,15 @@ const RUNTIME: PersonalStatusCard = {
 };
 
 function response(overrides: Partial<PersonalStatusResponse> = {}): PersonalStatusResponse {
+  const sources = PERSONAL_STATUS_SOURCE_IDS.map((id): PersonalStatusSource => id === "resident-runtime"
+    ? SOURCE
+    : { excludedCount: 0, id, includedCount: 0, observedAt: NOW, result: "available" });
   return {
     cards: [RUNTIME],
     generatedAt: NOW,
     overall: "clear",
     schemaVersion: PERSONAL_STATUS_SCHEMA_VERSION,
-    sources: [SOURCE],
+    sources,
     ...overrides
   };
 }
@@ -64,9 +68,11 @@ describe("personal-status v1 contract", () => {
   });
 
   it("enforces source result/error/count coherence", () => {
-    expect(admitPersonalStatus(response({ sources: [{ ...SOURCE, errorCode: "missing" }] }))).toEqual({ kind: "excluded", reason: "invalid-source" });
-    expect(admitPersonalStatus(response({ sources: [{ ...SOURCE, errorCode: "missing", includedCount: 0, result: "absent" }] }))).toEqual({ kind: "excluded", reason: "invalid-overall" });
-    expect(admitPersonalStatus(response({ sources: [{ ...SOURCE, errorCode: "io-error", includedCount: 0, result: "corrupt" }] }))).toEqual({ kind: "excluded", reason: "invalid-source" });
+    const rows = response().sources;
+    expect(admitPersonalStatus(response({ sources: [{ ...SOURCE, errorCode: "missing" }, ...rows.slice(1)] }))).toEqual({ kind: "excluded", reason: "invalid-source" });
+    expect(admitPersonalStatus(response({ cards: [], overall: "clear", sources: [{ ...SOURCE, includedCount: 999 }, ...rows.slice(1)] }))).toEqual({ kind: "excluded", reason: "invalid-source" });
+    expect(admitPersonalStatus(response({ sources: [...rows].reverse() }))).toEqual({ kind: "excluded", reason: "invalid-source" });
+    expect(admitPersonalStatus(response({ sources: rows.slice(0, -1) }))).toEqual({ kind: "excluded", reason: "invalid-source" });
   });
 
   it("sorts, deduplicates and derives held before attention", () => {
@@ -94,7 +100,7 @@ describe("personal-status v1 contract", () => {
       status: "attention",
       title: "Review draft"
     };
-    const sources: PersonalStatusSource[] = [SOURCE, { ...SOURCE, id: "pending-approvals" }];
+    const sources = response().sources.map((row) => row.id === "pending-approvals" ? { ...row, includedCount: 1 } : row);
     const built = buildPersonalStatus({ cards: [approval, RUNTIME, held], generatedAt: NOW, sources });
     expect(built.cards.map((card) => card.id)).toEqual(["runtime:resident", "approval:a1"]);
     expect(built.overall).toBe("held");
@@ -113,7 +119,9 @@ describe("personal-status v1 contract", () => {
       status: "attention",
       title: id
     });
-    const sources: PersonalStatusSource[] = [{ ...SOURCE, id: "pending-approvals", includedCount: 3 }];
+    const sources = response({ cards: [] }).sources.map((row) => row.id === "resident-runtime"
+      ? { ...row, includedCount: 0 }
+      : row.id === "pending-approvals" ? { ...row, includedCount: 3 } : row);
     const built = buildPersonalStatus({
       cards: [approval("late", "2026-07-22T14:00:00.000Z", "2026-07-22T11:59:00.000Z"), approval("early-old", "2026-07-22T13:00:00.000Z", "2026-07-22T10:00:00.000Z"), approval("early-new", "2026-07-22T13:00:00.000Z", "2026-07-22T11:00:00.000Z")],
       generatedAt: NOW,
@@ -146,8 +154,10 @@ describe("personal-status v1 contract", () => {
       unavailable("veto", "vetoes")
     ];
     for (const card of cases) {
-      const source: PersonalStatusSource = { errorCode: "missing", excludedCount: 0, id: card.sourceId, includedCount: 0, observedAt: NOW, result: "absent" };
-      expect(admitPersonalStatus({ ...response(), cards: [card], overall: "unavailable", sources: [source] }).kind, `${card.kind}/${card.sourceId}`).toBe("admitted");
+      const sources = response({ cards: [] }).sources.map((row): PersonalStatusSource => row.id === card.sourceId
+        ? { errorCode: "missing", excludedCount: 0, id: row.id, includedCount: 0, observedAt: NOW, result: "absent" }
+        : { ...row, includedCount: 0 });
+      expect(admitPersonalStatus({ ...response(), cards: [card], overall: "held", sources }).kind, `${card.kind}/${card.sourceId}`).toBe("admitted");
     }
     expect(admitPersonalStatus(response({ cards: [{ ...RUNTIME, kind: "continuity-thread", status: "info" } as PersonalStatusCard] }))).toEqual({ kind: "excluded", reason: "invalid-card" });
   });
