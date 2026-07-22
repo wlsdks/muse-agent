@@ -103,6 +103,31 @@ describe("daemon resource admission receipt", () => {
     }
   });
 
+  it("rejects forbidden and missing boundary-conditional fields", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-workload-boundary-fields-"));
+    const file = join(directory, "receipt.json");
+    try {
+      const decision = workloadDecisionReceipt({ status: "admit" }, {
+        cpuCount: 8, freeMemoryBytes: 4_000_000_000, load1: 1, platform: "linux"
+      }, 1, "2026-07-22T00:00:00.000Z");
+      const completed = {
+        at: "2026-07-22T00:00:01.000Z", cpuDeltaMicros: 1, durationMs: 1, queueDepth: 0,
+        rssAfterBytes: 2, rssBeforeBytes: 1, status: "completed", stopRequestedDuring: false,
+        unit: "reflection"
+      };
+      for (const lastBoundary of [
+        { ...completed, errorClass: "model" },
+        { ...completed, boundaryLatencyMs: 1 },
+        { ...completed, status: "failed" }
+      ]) {
+        await writeFile(file, JSON.stringify({ ...decision, lastBoundary }), "utf8");
+        expect(await readDaemonResourceAdmissionReceipt(file)).toBeUndefined();
+      }
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("treats malformed, expanded, or unavailable evidence as absent", async () => {
     const directory = await mkdtemp(join(tmpdir(), "muse-resource-receipt-invalid-"));
     const file = join(directory, "receipt.json");
