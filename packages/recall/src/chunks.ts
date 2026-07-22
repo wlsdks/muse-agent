@@ -1,19 +1,14 @@
 import { classifyRetrievalConfidence, cosineSimilarity, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, resolveRecallConfidentAt, selectByMmr, selectByScoreGap, type RetrievalConfidence } from "@muse/agent-core";
 
-export interface IndexChunk {
+interface RetrievalIndexChunk {
   readonly file: string;
   readonly chunkIndex: number;
   readonly text: string;
   readonly embedding: number[] | Float32Array;
 }
 
-export interface FileEntry {
-  readonly path: string;
-  readonly chunks: readonly IndexChunk[];
-}
-
 export interface ScoredChunk {
-  readonly chunk: IndexChunk;
+  readonly chunk: RetrievalIndexChunk;
   readonly file: string;
   readonly score: number;
 }

@@ -11,9 +11,11 @@
 import { readFile } from "node:fs/promises";
 
 import { CalendarProviderError } from "./errors.js";
+import { selectExactCalendarEvent } from "./exact-event.js";
 import { expandRecurringEvent, parseIcsCalendar } from "./ics-parse.js";
 import type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
@@ -60,6 +62,23 @@ export class LocalIcsCalendarProvider implements CalendarProvider {
       .flatMap((event) => expandRecurringEvent(event, range.from, range.to))
       .filter((event) => event.endsAt.getTime() >= range.from.getTime() && event.startsAt.getTime() <= range.to.getTime())
       .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  }
+
+  async resolveExactEvent(locator: CalendarEventLocator): Promise<CalendarEvent | undefined> {
+    let text: string;
+    try {
+      text = await this.read(this.file);
+    } catch (cause) {
+      throw new CalendarProviderError(this.id, "READ_FAILED", `Failed to read exact calendar source: ${this.file}`, cause);
+    }
+    const blocks = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gu) ?? [];
+    const baseEvents = parseIcsCalendar(text, this.id);
+    if (baseEvents.length !== blocks.length) {
+      throw new CalendarProviderError(this.id, "MALFORMED_EVENT", "Local .ics source contains a malformed event");
+    }
+    const instant = new Date(locator.startsAt);
+    const events = baseEvents.flatMap((event) => expandRecurringEvent(event, instant, instant));
+    return selectExactCalendarEvent(events, locator, this.id);
   }
 
   async createEvent(_input: CalendarEventInput): Promise<CalendarEvent> {

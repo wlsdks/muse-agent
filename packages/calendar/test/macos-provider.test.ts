@@ -31,6 +31,18 @@ const provider = (osascriptPath: string, timeoutMs?: number) =>
   new MacOsCalendarProvider({ osascriptPath, ...(timeoutMs ? { timeoutMs } : {}) });
 
 describe.skipIf(process.platform === "win32")("MacOsCalendarProvider — listEvents output parsing", () => {
+  it("resolves an exact uid+start through one bounded read script", async () => {
+    const bin = fakeOsascript("cat >/dev/null\nprintf 'uid1\\t2026-05-30T09:00:00Z\\t2026-05-30T09:30:00Z\\tStandup\\t\\tfalse\\n'");
+    await expect(provider(bin).resolveExactEvent({ eventId: "uid1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .resolves.toMatchObject({ id: "uid1", title: "Standup" });
+  });
+  it("distinguishes malformed exact rows from a genuinely absent event", async () => {
+    const malformed = fakeOsascript("cat >/dev/null\nprintf 'uid1\\tnot-a-date\\t2026-05-30T09:30:00Z\\tStandup\\t\\tfalse\\n'");
+    await expect(provider(malformed).resolveExactEvent({ eventId: "uid1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .rejects.toMatchObject({ code: "MALFORMED_RESPONSE" });
+    const empty = fakeOsascript("cat >/dev/null\nprintf ''");
+    await expect(provider(empty).resolveExactEvent({ eventId: "missing", startsAt: "2026-05-30T09:00:00.000Z" })).resolves.toBeUndefined();
+  });
   it("parses the tab-separated lines into events (allDay from the 6th field, optional location)", async () => {
     // Z-suffixed ISO keeps the date assertions timezone-independent.
     const bin = fakeOsascript(

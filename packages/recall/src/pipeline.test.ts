@@ -437,6 +437,7 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     await writeIndex(files);
     const base = {
       embedFn: fakeEmbed,
+      extras: { refineChunks: true },
       options: { embedModel: EMBED_MODEL, topK: 1 },
       query: "what MTU does my VPN use?",
       sources: { notesDir, notesIndexFile: indexFile }
@@ -448,9 +449,15 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
         httpAttempts: 1, order: texts.map((_text, index) => index), outcome: "success" as const, ...(pairHints ? { pairHints } : {})
       }), { mode: "correction-pair" as const })
     });
+    const runFailure = () => prepareGroundedRecall({
+      ...base,
+      rerankFn: Object.assign(async () => ({ httpAttempts: 1, outcome: "timeout" as const }), { mode: "correction-pair" as const })
+    });
 
-    expect(await runSelector()).toEqual(conflictOnly);
-    expect(await runSelector([{ current: 0, stale: 1 }])).toEqual(conflictOnly);
+    const baselineBytes = JSON.stringify(conflictOnly);
+    expect(JSON.stringify(await runSelector())).toBe(baselineBytes);
+    expect(JSON.stringify(await runSelector([{ current: 0, stale: 1 }]))).toBe(baselineBytes);
+    expect(JSON.stringify(await runFailure())).toBe(baselineBytes);
   });
 
   it("reuses a matching first-retrieval snapshot without invoking the reranker twice", async () => {
@@ -497,6 +504,48 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     expect(rerankCalls).toBe(2);
   });
 
+  it("reuses only an exact freshly audited temporal authority", async () => {
+    const files = [
+      { embedding: [1, 0, 0], path: join(notesDir, "vpn.md"), text: "WireGuard VPN MTU is 1380." },
+      { embedding: [0.9, 0.1, 0], path: join(notesDir, "vpn-other.md"), text: "VPN routing overview." },
+      { embedding: [0.8, 0.2, 0], path: join(notesDir, "vpn-tail.md"), text: "VPN meeting notes." }
+    ];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    let rerankCalls = 0;
+    const rerankFn = async () => { rerankCalls += 1; return [0]; };
+    const authority = Object.freeze({
+      chunkerVersion: "muse.notes.chunk-text.v1" as const, graphDigest: null, indexDigest: "1".repeat(64),
+      rawStoreDigest: "2".repeat(64), schema: "muse.temporal-claim-snapshot-authority.v1" as const,
+      sourceProvenanceDigest: null, storeRevision: 1, storeState: "empty" as const
+    });
+    const first = await retrieveAndRankNotes({
+      conflictAwareSelection: true, embedFn: fakeEmbed, embedModel: EMBED_MODEL, indexFiles: index?.files ?? [], json: true, notesDir,
+      onStderr: () => {}, query: "vpn mtu", rerankFn, scope: undefined,
+      snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile },
+      temporalClaimAuthority: authority, topK: 2
+    });
+    const base = {
+      embedFn: fakeEmbed, options: { embedModel: EMBED_MODEL, topK: 2 }, query: "vpn mtu", rerankFn,
+      retrievalSnapshot: first.snapshot, sources: { notesDir, notesIndexFile: indexFile }
+    };
+    await prepareGroundedRecall({ ...base, prepareTemporalClaimContext: async () => ({ authority }) });
+    expect(rerankCalls).toBe(1);
+    const replacedIndex = JSON.parse(await readFile(indexFile, "utf8")) as {
+      files: Array<{ chunks: Array<{ text: string }> }>;
+    };
+    replacedIndex.files[0]!.chunks[0]!.text = "WireGuard VPN MTU is 1420.";
+    await writeFile(indexFile, JSON.stringify(replacedIndex));
+    await prepareGroundedRecall({ ...base, prepareTemporalClaimContext: async () => ({ authority }) });
+    expect(rerankCalls).toBe(2);
+    await prepareGroundedRecall({
+      ...base,
+      prepareTemporalClaimContext: async () => ({ authority: { ...authority, storeRevision: 2 } })
+    });
+    expect(rerankCalls).toBe(3);
+  });
+
   it("reuses pair-aware reranker selection from the first snapshot with one logical invocation", async () => {
     const files = [
       { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2)], path: join(notesDir, "rent-stale.md"), text: "I used to pay office rent 1200; no longer current." },
@@ -529,6 +578,137 @@ describe("prepareGroundedRecall — the prepare-only entry point (--with-tools c
     expect(rerankCalls).toBe(1);
     expect(first.scored.map((item) => item.file)).toEqual([files[2]!.path, files[1]!.path, files[0]!.path]);
     expect(prepared.scored).toEqual(first.scored);
+  });
+
+  it("refinement pins only the selector-verified current identity ahead of an unrelated correction pair", async () => {
+    const targetStale = { embedding: [0.95, 0, Math.sqrt(1 - 0.95 ** 2), 0, 0, 0], path: join(notesDir, "rent-stale.md"), text: "I used to pay office rent 1200; no longer current." };
+    const unrelatedCurrent = { embedding: [0.99, Math.sqrt(1 - 0.99 ** 2), 0, 0, 0, 0], path: join(notesDir, "gym-current.md"), text: "The gym is on Harbor Street now." };
+    const unrelatedStale = { embedding: [0.9, 0, 0, Math.sqrt(1 - 0.9 ** 2), 0, 0], path: join(notesDir, "gym-stale.md"), text: "The gym used to be on Cedar Street; no longer current." };
+    const targetCurrent = { embedding: [0.4, 0, 0, 0, Math.sqrt(1 - 0.4 ** 2), 0], path: join(notesDir, "rent-current.md"), text: "Office rent is 1300 now." };
+    const tail = { embedding: [0.3, 0, 0, 0, 0, Math.sqrt(1 - 0.3 ** 2)], path: join(notesDir, "tail.md"), text: "Unrelated archive." };
+    const files = [targetStale, unrelatedCurrent, unrelatedStale, targetCurrent, tail];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    let rerankCalls = 0;
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]) => {
+      rerankCalls += 1;
+      const targetStaleIndex = texts.findIndex((text) => text.includes("used to pay"));
+      const targetCurrentIndex = texts.findIndex((text) => text.includes("1300 now"));
+      const unrelatedCurrentIndex = texts.findIndex((text) => text.includes("Harbor Street"));
+      const unrelatedStaleIndex = texts.findIndex((text) => text.includes("Cedar Street"));
+      return {
+        httpAttempts: 1,
+        order: [unrelatedCurrentIndex, unrelatedStaleIndex, targetCurrentIndex, targetStaleIndex],
+        outcome: "success" as const,
+        pairHints: [{ current: targetCurrentIndex, stale: targetStaleIndex }]
+      };
+    }, { mode: "correction-pair" as const });
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const first = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
+        embedFn: async () => [1, 0, 0, 0, 0, 0],
+        embedModel: EMBED_MODEL,
+        indexFiles: index?.files ?? [],
+        json: true,
+        notesDir,
+        onStderr: () => {},
+        query: "what is the office rent",
+        rerankFn,
+        scope: undefined,
+        snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile },
+        topK: 4
+      });
+
+      const prepared = await prepareGroundedRecall({
+        embedFn: async () => [1, 0, 0, 0, 0, 0],
+        extras: { refineChunks: true },
+        options: { embedModel: EMBED_MODEL, topK: 4 },
+        query: "what is the office rent",
+        rerankFn,
+        retrievalSnapshot: first.snapshot,
+        sources: { notesDir, notesIndexFile: indexFile }
+      });
+
+      expect(rerankCalls).toBe(1);
+      expect(first.verifiedCorrectionPair).toEqual({
+        current: { chunkIndex: 0, file: targetCurrent.path },
+        stale: { chunkIndex: 0, file: targetStale.path }
+      });
+      expect(prepared.scored.map((item) => item.file)).toEqual([
+        targetCurrent.path,
+        unrelatedCurrent.path,
+        unrelatedStale.path,
+        targetStale.path
+      ]);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
+  });
+
+  it("does not substitute or pin when near-duplicate dedup removes the exact stale identity", async () => {
+    const targetStale = { embedding: [0.95, Math.sqrt(1 - 0.95 ** 2)], path: join(notesDir, "rent-stale.md"), text: "I used to pay office rent 1200; no longer current." };
+    const unrelatedCurrent = { embedding: [0.99, Math.sqrt(1 - 0.99 ** 2)], path: join(notesDir, "gym-current.md"), text: "The gym is on Harbor Street now." };
+    const nearDuplicateStale = { embedding: [0.9, Math.sqrt(1 - 0.9 ** 2)], path: join(notesDir, "gym-stale.md"), text: "The gym used to be on Cedar Street; no longer current." };
+    const targetCurrent = { embedding: [0.4, Math.sqrt(1 - 0.4 ** 2)], path: join(notesDir, "rent-current.md"), text: "Office rent is 1300 now." };
+    const tail = { embedding: [-0.3, Math.sqrt(1 - 0.3 ** 2)], path: join(notesDir, "tail.md"), text: "Unrelated archive." };
+    const files = [targetStale, unrelatedCurrent, nearDuplicateStale, targetCurrent, tail];
+    for (const file of files) await writeFile(file.path, file.text);
+    await writeIndex(files);
+    const index = await loadIndex(indexFile);
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]) => {
+      const targetStaleIndex = texts.findIndex((text) => text.includes("used to pay"));
+      const targetCurrentIndex = texts.findIndex((text) => text.includes("1300 now"));
+      const unrelatedCurrentIndex = texts.findIndex((text) => text.includes("Harbor Street"));
+      const nearDuplicateStaleIndex = texts.findIndex((text) => text.includes("Cedar Street"));
+      return {
+        httpAttempts: 1,
+        order: [unrelatedCurrentIndex, nearDuplicateStaleIndex, targetCurrentIndex, targetStaleIndex],
+        outcome: "success" as const,
+        pairHints: [{ current: targetCurrentIndex, stale: targetStaleIndex }]
+      };
+    }, { mode: "correction-pair" as const });
+    process.env.MUSE_RECALL_GRAPH_HOP = "false";
+    process.env.MUSE_RECALL_SECOND_HOP = "false";
+    try {
+      const first = await retrieveAndRankNotes({
+        conflictAwareSelection: true,
+        embedFn: async () => [1, 0],
+        embedModel: EMBED_MODEL,
+        indexFiles: index?.files ?? [],
+        json: true,
+        notesDir,
+        onStderr: () => {},
+        query: "what is the office rent",
+        rerankFn,
+        scope: undefined,
+        snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile },
+        topK: 4
+      });
+      const prepared = await prepareGroundedRecall({
+        embedFn: async () => [1, 0],
+        extras: { refineChunks: true },
+        options: { embedModel: EMBED_MODEL, topK: 4 },
+        query: "what is the office rent",
+        rerankFn,
+        retrievalSnapshot: first.snapshot,
+        sources: { notesDir, notesIndexFile: indexFile }
+      });
+
+      expect(first.verifiedCorrectionPair?.stale).toEqual({ chunkIndex: 0, file: targetStale.path });
+      expect(prepared.scored.map((item) => item.file)).toEqual([
+        unrelatedCurrent.path,
+        targetCurrent.path,
+        nearDuplicateStale.path
+      ]);
+      expect(prepared.scored.map((item) => item.file)).not.toContain(targetStale.path);
+    } finally {
+      delete process.env.MUSE_RECALL_GRAPH_HOP;
+      delete process.env.MUSE_RECALL_SECOND_HOP;
+    }
   });
 
   it("rejects a snapshot whose query identity differs and performs normal retrieval", async () => {

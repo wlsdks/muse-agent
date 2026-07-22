@@ -147,6 +147,79 @@ function opened(nextStep: "direct" | "hidden"): OpenedPack {
   };
 }
 
+function reminderLinkReview(linked: boolean) {
+  const emptyEvaluation = {
+    automationGate: { reasons: ["manual"], status: "hold" as const },
+    firstPacks: { considered: 0, rejected: 0, used: 0 },
+    improvementGate: { reason: "need natural evidence", status: "awaiting-feedback" },
+    outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+    totalDeliveries: 0,
+    withOutcome: 0
+  };
+  return {
+    deliveries: [],
+    evaluation: {
+      ...emptyEvaluation,
+      byKind: { life: emptyEvaluation, work: emptyEvaluation },
+      longitudinalGate: {
+        byKind: {
+          life: { distinctUtcDates: 0, distinctUtcDatesTarget: 2, explicitFeedback: 0, explicitFeedbackTarget: 10, remainingDates: 2, remainingFeedback: 10 },
+          work: { distinctUtcDates: 0, distinctUtcDatesTarget: 2, explicitFeedback: 0, explicitFeedbackTarget: 10, remainingDates: 2, remainingFeedback: 10 }
+        },
+        reasons: ["needs natural feedback"],
+        status: "collecting" as const
+      },
+      technicalEvidence: {
+        overall: {
+          deliveries: { controlled: 0, organic: 0, unclassified: 0 },
+          outcomes: {
+            controlled: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            organic: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+            unclassified: { adjusted: 0, ignored: 0, rejected: 0, used: 0 }
+          }
+        }
+      }
+    },
+    resetReceipts: [],
+    reviewQueue: { progress: { eligibleDeliveries: 0, remainingFeedback: 0, remainingPacks: 20, reviewedDeliveries: 0, target: 20 } },
+    threads: [{
+      id: "thread_life",
+      kind: "life" as const,
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "reminder_dentist", artifactType: "reminder", providerId: "local", role: "context" }] : [],
+      policy: { detail: "standard", nextStep: "direct", suppression: "none", version: 1 },
+      title: "Prepare for dentist"
+    }]
+  };
+}
+
+function calendarLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    calendarProviders: [{ displayName: "Work", id: "work-calendar" }],
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "calendar:work-calendar", role: "context" }] : [],
+      title: "Review roadmap"
+    }]
+  };
+}
+
+function contactLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "person_김민지_Aa", artifactType: "contact", providerId: "local", role: "context" }] : [],
+      title: "Plan a quiet dinner"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -155,6 +228,223 @@ test("an opened Pack shows its core-derived task status, due state, timestamp, a
   await expect.element(screen.getByText("Open", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Overdue: 2026-07-16T10:00:00.000Z", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("Tags: birthday, Jamie", { exact: true })).toBeVisible();
+});
+
+test("an opened Pack shows an exact reminder as context without making it completable", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const reminder = {
+    artifactId: "reminder_dentist",
+    artifactType: "reminder",
+    providerId: "local",
+    reminderDueAt: "2026-07-16T09:00:00.000Z",
+    reminderDueState: "overdue" as const,
+    reminderStatus: "pending" as const,
+    role: "context",
+    title: "Bring the referral letter"
+  };
+  const reminderPack: OpenedPack = {
+    delivery: { id: "delivery_reminder" },
+    pack: {
+      evidence: [{ artifact: reminder, reference: reminder, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "life", title: "Prepare for dentist" }
+    }
+  };
+  const onComplete = vi.fn();
+  const screen = await render(<I18nProvider><OpenedPackCard
+    currentInteractionState="none"
+    onComplete={onComplete}
+    openedPack={reminderPack}
+  /></I18nProvider>);
+
+  await expect.element(screen.getByText("Bring the referral letter · reminder:reminder_dentist", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("pending reminder", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Overdue: 2026-07-16T09:00:00.000Z", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
+test("an opened Pack shows bounded calendar timing and location as read-only context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const calendar = {
+    artifactId: "cev1_exact",
+    artifactType: "calendar-event",
+    calendarEndsAt: "2026-07-20T10:00:00.000Z",
+    calendarLocation: "Room 4",
+    calendarStartsAt: "2026-07-20T09:00:00.000Z",
+    calendarTimeState: "upcoming" as const,
+    providerId: "calendar:work-calendar",
+    role: "context",
+    title: "Review roadmap"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_calendar" },
+    pack: {
+      evidence: [{ artifact: calendar, reference: calendar, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "work", title: "Roadmap" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText("Review roadmap · calendar-event:cev1_exact", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("2026-07-20T09:00:00.000Z", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("upcoming", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Room 4", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+});
+
+test("an opened Pack shows only the safe contact projection as read-only context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const contact = {
+    artifactId: "person_김민지_Aa",
+    artifactType: "contact",
+    contactBirthday: "03-14",
+    contactRelationship: "close friend",
+    providerId: "local",
+    role: "context",
+    summary: "Prefers a quiet dinner",
+    title: "Kim Minji"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_contact" },
+    pack: {
+      evidence: [{ artifact: contact, reference: contact, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "life", title: "Plan a quiet dinner" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText("Kim Minji · contact:person_김민지_Aa", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Prefers a quiet dinner", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("close friend", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("03-14", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+  await expect.element(screen.getByText(/must-not-appear@example\.com/u)).not.toBeInTheDocument();
+});
+
+test("a reminder can be explicitly linked and unlinked only as context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : reminderLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      expect(body).toEqual({ artifactId: "reminder_den", artifactType: "reminder", role: "context" });
+      linked = true;
+      return { artifactId: "reminder_dentist", artifactType: "reminder", providerId: "local", role: "context" };
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "reminder_dentist", artifactType: "reminder" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-reminder.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Prepare for dentist", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("reminder");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("reminder_den");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove reminder:reminder_dentist" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
+});
+
+test("a contact requires a pasted exact id and can be linked only as context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : contactLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      if ((body as { artifactId?: string }).artifactId === " person_김민지_Aa ") throw new Error("non-canonical contact id");
+      expect(body).toEqual({ artifactId: "person_김민지_Aa", artifactType: "contact", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "person_김민지_Aa", artifactType: "contact" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-contact.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Plan a quiet dinner", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("contact");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("option", { name: "Kim Minji" })).not.toBeInTheDocument();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill(" person_김민지_Aa ");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("person_김민지_Aa");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(3);
+});
+
+test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : calendarLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      expect(body).toEqual({ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "work-calendar", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "work-calendar" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-calendar.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Review roadmap", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("calendar-event");
+  await expect.element(screen.getByRole("button", { name: "Link source" })).toBeDisabled();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("cev1_exact");
+  await screen.getByLabelText("Calendar provider").selectOptions("work-calendar");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
 });
 
 test("a hidden next step exposes only its safe type:id marker", async () => {

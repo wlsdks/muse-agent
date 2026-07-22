@@ -19,6 +19,7 @@ import { spawnWithTimeout } from "./eval-recall-candidate-pool.mjs";
 import { createProductionFixture } from "./eval-recall-production-path.mjs";
 import {
   canonicalLoopbackBaseUrl,
+  createAuditedLoopbackFetch,
   jsonBytes,
   manifestTree,
   modelInfo,
@@ -37,8 +38,22 @@ export const DIAGNOSTICS_ROOT_RELATIVE = ".muse-dev/evals/recall-pair-aware-v1";
 export const TOP_K = 3;
 export const REFINE_CHUNKS = true;
 export const RERANK_MODEL = "qwen3:8b";
-export const RESULT_SCHEMA_VERSION = "muse-recall-pair-aware-v1.v1";
-export const CHILD_SCHEMA_VERSION = "muse-recall-pair-aware-v1-child.v1";
+export const RESULT_SCHEMA_VERSION = "muse-recall-pair-aware-v1.v2";
+export const CHILD_SCHEMA_VERSION = "muse-recall-pair-aware-v1-child.v2";
+export const FAILURE_CODES = Object.freeze([
+  "CHILD_OUTPUT_INVALID",
+  "CHILD_OUTPUT_MISSING",
+  "CHILD_TIMEOUT",
+  "CHILD_TRIAL_FAILED",
+  "INVALID_ARGUMENTS",
+  "MODEL_NOT_ALLOWLISTED",
+  "NETWORK_ACCOUNTING_MISMATCH",
+  "OWNER_STATE_CHANGED",
+  "OWNER_STATE_CHECK_FAILED",
+  "PAIR_AWARE_EVAL_FAILED",
+  "PARENT_TIMEOUT",
+  "RERANK_PRELOAD_OR_SELECTOR_FAILED"
+]);
 export const PRODUCTION_FLOORS = Object.freeze({
   "embeddinggemma": { absent: 20, ordinary: 18 },
   "nomic-embed-text": { absent: 10, ordinary: 17 },
@@ -58,6 +73,25 @@ const RUNTIME_SOURCE_PATHS = Object.freeze([
 
 const rate = (passed, total) => Number((passed / total).toFixed(6));
 export { nearestRank };
+
+function failure(code) {
+  const error = new Error(code);
+  Object.defineProperty(error, "code", { enumerable: false, value: code });
+  return error;
+}
+
+export function pairAwareFailureCode(error) {
+  try {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    return typeof code === "string" && FAILURE_CODES.includes(code) ? code : "PAIR_AWARE_EVAL_FAILED";
+  } catch {
+    return "PAIR_AWARE_EVAL_FAILED";
+  }
+}
+
+export function formatPairAwareFailure(error) {
+  return `${pairAwareFailureCode(error)}\n`;
+}
 
 function scorePrepared(testCase, prepared, sourceForFile) {
   const sources = prepared.scored.map((item) => sourceForFile(item.file));
@@ -238,19 +272,36 @@ export function buildPairAwareResult({ models: rawModels, ownerState, runMetadat
   const rerankerLogicalInvocations = models.reduce((sum, model) => sum + model.arms.C.reranker.logicalInvocations, 0);
   const embeddingRequests = models.reduce((sum, model) => sum + model.embeddingAccounting.totalRequests, 0);
   const warmupHttpAttempts = models.reduce((sum, model) => sum + model.warmup.httpAttempts, 0);
-  const localOllamaControlRequests = models.reduce((sum, model) => sum + model.networkAccounting.localOllamaControlRequests, 0);
+  const network = models.reduce((summary, model) => {
+    for (const key of Object.keys(summary)) summary[key] += model.networkAccounting[key];
+    return summary;
+  }, {
+    answerRequests: 0,
+    controlRequests: 0,
+    deniedExternalRequests: 0,
+    embeddingRequests: 0,
+    otherLoopbackRequests: 0,
+    preloadRequests: 0,
+    selectorRequests: 0,
+    totalLoopbackRequests: 0
+  });
   const payload = {
     accounting: {
+      answerRequests: network.answerRequests,
       caseArmTrialExecutions: models.length * RECALL_FRESHNESS_DATASET.cases.length * ARMS.length * 2,
       collapsedCasesPerModelArm: RECALL_FRESHNESS_DATASET.cases.length,
-      externalNetworkRequests: models.reduce((sum, model) => sum + model.networkAccounting.externalRequests, 0),
-      generativeAnswerRequests: 0,
-      localOllamaControlRequests,
+      deniedExternalRequests: network.deniedExternalRequests,
+      externalNetworkRequests: network.deniedExternalRequests,
+      generativeAnswerRequests: network.answerRequests,
+      localOllamaControlRequests: network.controlRequests,
       localOllamaEmbeddingRequests: embeddingRequests,
-      localOllamaRequests: embeddingRequests + rerankerHttpAttempts + warmupHttpAttempts + localOllamaControlRequests,
+      localOllamaRequests: network.totalLoopbackRequests,
+      otherLoopbackRequests: network.otherLoopbackRequests,
       prepareCalls: models.length * RECALL_FRESHNESS_DATASET.cases.length * ARMS.length * 2,
+      preloadRequests: network.preloadRequests,
       rerankerHttpAttempts,
       rerankerLogicalInvocations,
+      selectorRequests: network.selectorRequests,
       toolExecutions: 0,
       warmupHttpAttempts
     },
@@ -275,7 +326,8 @@ export function buildPairAwareResult({ models: rawModels, ownerState, runMetadat
 }
 
 export function validateOwnerState(ownerState) {
-  if (!ownerState.unchanged || ownerState.beforeSha256 !== ownerState.afterSha256) throw new Error("owner-state mismatch");
+  if (typeof ownerState?.beforeSha256 !== "string" || typeof ownerState?.afterSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(ownerState.beforeSha256) || !/^[a-f0-9]{64}$/u.test(ownerState.afterSha256)) throw failure("OWNER_STATE_CHECK_FAILED");
+  if (!ownerState.unchanged || ownerState.beforeSha256 !== ownerState.afterSha256) throw failure("OWNER_STATE_CHANGED");
   return ownerState;
 }
 
@@ -285,11 +337,20 @@ export function validatePairAwareResult(result) {
   if (dataset.cases !== 60 || dataset.corpusEntries !== 60 || dataset.dataOrigin !== "synthetic frozen v1" || dataset.datasetVersion !== DATASET_VERSION || dataset.datasetSha256 !== datasetSha256() || dataset.heldOut !== false || dataset.organicEvidence !== false) throw new Error("dataset provenance mismatch");
   if (executionStatus !== "COMPLETE" || trials !== 2 || canonicalJson(arms) !== canonicalJson({ A: { conflictAwareSelection: false, reranker: false }, B: { conflictAwareSelection: true, reranker: false }, C: { conflictAwareSelection: true, reranker: RERANK_MODEL } })) throw new Error("execution contract mismatch");
   if (models.length !== 4 || canonicalJson(models.map((model) => model.modelTag)) !== canonicalJson(ALLOWLISTED_MODELS)) throw new Error("model allowlist mismatch");
-  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts > 480) throw new Error("accounting mismatch");
-  if (accounting.localOllamaRequests !== accounting.localOllamaEmbeddingRequests + accounting.rerankerHttpAttempts + accounting.warmupHttpAttempts + accounting.localOllamaControlRequests) throw new Error("local Ollama accounting mismatch");
+  if (accounting.caseArmTrialExecutions !== 1_440 || accounting.prepareCalls !== 1_440 || accounting.collapsedCasesPerModelArm !== 60 || accounting.generativeAnswerRequests !== 0 || accounting.answerRequests !== 0 || accounting.toolExecutions !== 0 || accounting.externalNetworkRequests !== 0 || accounting.deniedExternalRequests !== 0 || accounting.otherLoopbackRequests !== 0 || accounting.rerankerLogicalInvocations > 480 || accounting.rerankerHttpAttempts > 480) throw new Error("accounting mismatch");
+  if (accounting.selectorRequests !== accounting.rerankerHttpAttempts + accounting.warmupHttpAttempts) throw new Error("selector accounting mismatch");
+  if (accounting.preloadRequests !== models.length || accounting.localOllamaEmbeddingRequests !== models.reduce((sum, model) => sum + model.networkAccounting.embeddingRequests, 0)) throw new Error("observed request accounting mismatch");
+  if (accounting.localOllamaRequests !== accounting.localOllamaEmbeddingRequests + accounting.selectorRequests + accounting.preloadRequests + accounting.localOllamaControlRequests + accounting.answerRequests + accounting.otherLoopbackRequests) throw new Error("local Ollama accounting mismatch");
   validateOwnerState(ownerState);
   for (const model of models) {
     if (model.reranker?.modelTag !== RERANK_MODEL || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(model.reranker.digest) || !model.reranker.resolvedTag) throw new Error("reranker provenance mismatch");
+    if (!model.warmup?.afterIndex || model.warmup.embeddingRequests !== 1 || model.warmup.httpAttempts !== 1 || model.warmup.outcome !== "success" || model.warmup.preloadRequests !== 1 || model.warmup.selectorRequests !== 1) throw new Error("warmup provenance mismatch");
+    validateObservedNetworkAccounting(model.networkAccounting, {
+      controlRequests: 4,
+      embeddingRequests: model.embeddingAccounting.totalRequests,
+      preloadRequests: model.warmup.preloadRequests,
+      selectorRequests: model.warmup.selectorRequests + model.arms.C.reranker.httpAttempts
+    });
     for (const arm of ARMS) {
       const metrics = model.arms[arm].metrics;
       const all = metrics.filter((metric) => metric.locale === "all");
@@ -311,7 +372,9 @@ function childEnv(baseUrl, home) {
     HOME: home,
     LANG: process.env.LANG ?? "C.UTF-8",
     LC_ALL: process.env.LC_ALL ?? "C.UTF-8",
+    MUSE_CLI_CONFIG_FILE: join(home, "config.json"),
     MUSE_LOCAL_ONLY: "true",
+    MUSE_MODEL_KEYS_FILE: join(home, "models.json"),
     MUSE_RECALL_RERANK: RERANK_MODEL,
     OLLAMA_BASE_URL: baseUrl,
     PATH: process.env.PATH ?? "",
@@ -319,13 +382,47 @@ function childEnv(baseUrl, home) {
   };
 }
 
+const NETWORK_ACCOUNTING_KEYS = Object.freeze([
+  "answerRequests",
+  "controlRequests",
+  "deniedExternalRequests",
+  "embeddingRequests",
+  "otherLoopbackRequests",
+  "preloadRequests",
+  "selectorRequests",
+  "totalLoopbackRequests"
+]);
+
+export function validateObservedNetworkAccounting(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw failure("NETWORK_ACCOUNTING_MISMATCH");
+  if (canonicalJson(Object.keys(value).sort()) !== canonicalJson([...NETWORK_ACCOUNTING_KEYS].sort())) throw failure("NETWORK_ACCOUNTING_MISMATCH");
+  if (NETWORK_ACCOUNTING_KEYS.some((key) => !Number.isSafeInteger(value[key]) || value[key] < 0)) throw failure("NETWORK_ACCOUNTING_MISMATCH");
+  const summedLoopback = value.answerRequests
+    + value.controlRequests
+    + value.embeddingRequests
+    + value.otherLoopbackRequests
+    + value.preloadRequests
+    + value.selectorRequests;
+  if (value.totalLoopbackRequests !== summedLoopback
+    || value.answerRequests !== 0
+    || value.deniedExternalRequests !== 0
+    || value.otherLoopbackRequests !== 0
+    || value.controlRequests !== expected.controlRequests
+    || value.embeddingRequests !== expected.embeddingRequests
+    || value.preloadRequests !== expected.preloadRequests
+    || value.selectorRequests !== expected.selectorRequests) {
+    throw failure("NETWORK_ACCOUNTING_MISMATCH");
+  }
+  return value;
+}
+
 function validateChildModel(value, modelTag) {
   if (value.schemaVersion !== CHILD_SCHEMA_VERSION || value.modelTag !== modelTag || value.trials?.length !== 2) throw new Error(`${modelTag}: child identity mismatch`);
   if (!/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.digest) || !Number.isInteger(value.dimension) || value.dimension <= 0 || !value.resolvedTag || !value.ollamaVersion) throw new Error(`${modelTag}: model provenance mismatch`);
   if (!value.reranker || value.reranker.modelTag !== RERANK_MODEL || !/^(?:sha256:)?[a-f0-9]{64}$/u.test(value.reranker.digest)) throw new Error(`${modelTag}: reranker provenance mismatch`);
-  if (value.networkAccounting?.externalRequests !== 0 || value.networkAccounting.localOllamaControlRequests !== 4) throw new Error(`${modelTag}: network accounting mismatch`);
-  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || value.warmup.httpAttempts !== 1 || value.warmup.outcome !== "success") throw new Error(`${modelTag}: warmup mismatch`);
-  if (!Number.isInteger(value.embeddingAccounting?.indexRequests) || value.embeddingAccounting.indexRequests < 60 || !Number.isInteger(value.embeddingAccounting.measuredRequests) || value.embeddingAccounting.measuredRequests < 360 || value.embeddingAccounting.warmupRequests !== 1 || value.embeddingAccounting.totalRequests !== value.embeddingAccounting.indexRequests + value.embeddingAccounting.measuredRequests + 1) throw new Error(`${modelTag}: embedding accounting mismatch`);
+  if (!value.warmup?.afterIndex || value.warmup.embeddingRequests !== 1 || value.warmup.httpAttempts !== 1 || value.warmup.outcome !== "success" || value.warmup.preloadRequests !== 1 || value.warmup.selectorRequests !== 1) throw new Error(`${modelTag}: warmup mismatch`);
+  if (!Number.isInteger(value.embeddingAccounting?.indexRequests) || value.embeddingAccounting.indexRequests < 60 || !Number.isInteger(value.embeddingAccounting.measuredRequests) || value.embeddingAccounting.measuredRequests < 360 || value.embeddingAccounting.warmupRequests !== 1 || value.embeddingAccounting.totalRequests !== value.embeddingAccounting.indexRequests + value.embeddingAccounting.measuredRequests + value.embeddingAccounting.warmupRequests) throw new Error(`${modelTag}: embedding accounting mismatch`);
+  let trialSelectorRequests = 0;
   for (let trialIndex = 0; trialIndex < 2; trialIndex += 1) {
     const trial = value.trials[trialIndex];
     if (trial.modelTag !== modelTag || trial.trial !== trialIndex + 1 || canonicalJson(trial.accounting) !== canonicalJson({ caseArmExecutions: 180, generativeAnswerRequests: 0, prepareCalls: 180, toolExecutions: 0 })) throw new Error(`${modelTag}: trial accounting mismatch`);
@@ -339,47 +436,86 @@ function validateChildModel(value, modelTag) {
         if (outcome.caseId !== testCase.caseId || outcome.category !== testCase.category || outcome.arm !== arm || outcome.locale !== testCase.locale || !Number.isInteger(outcome.promptBytes) || outcome.promptBytes <= 0) throw new Error(`${modelTag}/${arm}: outcome identity mismatch`);
         if (![0, 1].includes(decision.logicalInvocations) || !Number.isInteger(decision.httpAttempts) || decision.httpAttempts < 0 || decision.httpAttempts > 1) throw new Error(`${modelTag}/${arm}: reranker call bound mismatch`);
         if (arm !== "C" && (decision.eligible || decision.logicalInvocations !== 0 || decision.httpAttempts !== 0 || decision.outcome !== "absent")) throw new Error(`${modelTag}/${arm}: reranker isolation mismatch`);
-        if (arm === "C" && decision.logicalInvocations !== (decision.eligible ? 1 : 0)) throw new Error(`${modelTag}/${arm}: reranker eligibility mismatch`);
+        if (arm === "C") {
+          if (decision.logicalInvocations !== (decision.eligible ? 1 : 0)) throw new Error(`${modelTag}/${arm}: reranker eligibility mismatch`);
+          trialSelectorRequests += decision.httpAttempts;
+        }
       }
     }
   }
+  validateObservedNetworkAccounting(value.networkAccounting, {
+    controlRequests: 4,
+    embeddingRequests: value.embeddingAccounting.totalRequests,
+    preloadRequests: value.warmup.preloadRequests,
+    selectorRequests: value.warmup.selectorRequests + trialSelectorRequests
+  });
   return value;
 }
 
 async function childModel({ baseUrl, home, modelTag, outputPath }) {
-  const [{ createOllamaEmbedder }, { createWarmedRecallRerankFn }] = await Promise.all([
-    import("../packages/autoconfigure/dist/index.js"),
+  const [{ loadIndex }, { embed: cliEmbed }, { retrieveAndRankNotes }] = await Promise.all([
+    import("../packages/recall/dist/index.js"),
+    import("../apps/cli/dist/embed.js"),
     import("../apps/cli/dist/ask-note-retrieval.js")
   ]);
   if (!home || !process.env.TMPDIR?.startsWith(home)) throw new Error("child HOME/TMPDIR isolation missing");
-  const rawEmbed = createOllamaEmbedder(modelTag, { MUSE_LOCAL_ONLY: "true", OLLAMA_BASE_URL: baseUrl });
-  let embeddingRequests = 0;
-  const embed = async (text, model = modelTag) => { embeddingRequests += 1; return rawEmbed(text, model); };
-  const [embedInfo, rerankerInfo] = await Promise.all([modelInfo(baseUrl, modelTag), modelInfo(baseUrl, RERANK_MODEL)]);
+  const runtimeEnv = Object.freeze(childEnv(baseUrl, home));
+  const audit = createAuditedLoopbackFetch(baseUrl);
+  const embed = (text, model = modelTag) => cliEmbed(text, model, { fetchImpl: audit.fetch }, runtimeEnv);
+  const [embedInfo, rerankerInfo] = await Promise.all([
+    modelInfo(baseUrl, modelTag, audit.fetch),
+    modelInfo(baseUrl, RERANK_MODEL, audit.fetch)
+  ]);
   const fixture = await createProductionFixture({ embed, home, modelTag });
-  const indexRequests = embeddingRequests;
-  const warmVector = await embed("Post-index embedder readiness check for pair-aware frozen-v1 recall.");
-  const warmed = await createWarmedRecallRerankFn(process.env, {
-    candidateTexts: ["Retired 기준은 더 이상 유효하지 않습니다.", "The current standard is active now.", "A separate observation does not answer the query."],
-    query: "현재 기준과 current standard를 고르세요."
-  }, { timeoutMs: 4_000 });
-  if (!warmed || warmed.warmup.outcome !== "success" || warmed.warmup.httpAttempts !== 1 || !warmed.warmup.order?.length) throw new Error("RERANK_WARMUP_FAILED");
-  if (warmVector.length !== fixture.index.embeddingDimension) throw new Error("DIMENSION_DRIFT");
-  const measuredStart = embeddingRequests;
+  const afterIndex = audit.snapshot();
+  const index = await loadIndex(fixture.indexPath);
+  const warmupCase = RECALL_FRESHNESS_DATASET.cases.find((testCase) => testCase.category === "correction-pair");
+  if (!index || !warmupCase) throw new Error("PAIR_AWARE_EVAL_FAILED");
+  const warmupResult = await retrieveAndRankNotes({
+    conflictAwareSelection: true,
+    embedModel: modelTag,
+    indexFiles: index.files,
+    json: true,
+    notesDir: fixture.notesDir,
+    onStderr: () => {},
+    query: warmupCase.query,
+    scope: undefined,
+    snapshotIdentity: { indexBuiltAtIso: index.builtAtIso, notesIndexFile: fixture.indexPath },
+    topK: TOP_K
+  }, { env: runtimeEnv, fetchFn: audit.fetch });
+  const afterWarmup = audit.snapshot();
+  const warmup = {
+    afterIndex: true,
+    embeddingRequests: afterWarmup.embeddingRequests - afterIndex.embeddingRequests,
+    httpAttempts: afterWarmup.selectorRequests - afterIndex.selectorRequests,
+    outcome: warmupResult.rerankDecision?.outcome,
+    preloadRequests: afterWarmup.preloadRequests - afterIndex.preloadRequests,
+    selectorRequests: afterWarmup.selectorRequests - afterIndex.selectorRequests
+  };
+  const rerankFn = warmupResult.snapshot?.rerankFn;
+  if (!rerankFn || warmupResult.notesUnavailable || warmup.outcome !== "success" || warmup.httpAttempts !== 1 || warmup.preloadRequests !== 1 || warmup.selectorRequests !== 1 || warmup.embeddingRequests !== 1) {
+    throw failure("RERANK_PRELOAD_OR_SELECTOR_FAILED");
+  }
   const trials = [];
   for (let trial = 1; trial <= 2; trial += 1) {
-    trials.push(await executePairAwareTrial({ embedFn: embed, indexPath: fixture.indexPath, modelTag, notesDir: fixture.notesDir, prepare: fixture.prepare, rerankFn: warmed.rerankFn, sourceForFile: fixture.sourceForFile, trial }));
+    trials.push(await executePairAwareTrial({ embedFn: embed, indexPath: fixture.indexPath, modelTag, notesDir: fixture.notesDir, prepare: fixture.prepare, rerankFn, sourceForFile: fixture.sourceForFile, trial }));
   }
+  const networkAccounting = audit.snapshot();
   const value = {
     ...embedInfo,
     dimension: fixture.index.embeddingDimension,
-    embeddingAccounting: { indexRequests, measuredRequests: embeddingRequests - measuredStart, totalRequests: embeddingRequests, warmupRequests: 1 },
+    embeddingAccounting: {
+      indexRequests: afterIndex.embeddingRequests,
+      measuredRequests: networkAccounting.embeddingRequests - afterWarmup.embeddingRequests,
+      totalRequests: networkAccounting.embeddingRequests,
+      warmupRequests: warmup.embeddingRequests
+    },
     modelTag,
-    networkAccounting: { externalRequests: 0, localOllamaControlRequests: 4 },
+    networkAccounting,
     reranker: { ...rerankerInfo, modelTag: RERANK_MODEL },
     schemaVersion: CHILD_SCHEMA_VERSION,
     trials,
-    warmup: { afterIndex: true, embeddingRequests: 1, httpAttempts: warmed.warmup.httpAttempts, outcome: warmed.warmup.outcome }
+    warmup
   };
   validateChildModel(value, modelTag);
   await writeAtomic(outputPath, jsonBytes(value));
@@ -396,39 +532,94 @@ function parseInternalArgs(args) {
 
 export function normalizeCliArgs(args) { return args.filter((item) => item !== "--"); }
 
+/**
+ * Runs an evaluation body while guaranteeing a second owner-state capture.
+ * The after manifest is collected in `finally`, including body failures and
+ * timeouts surfaced by a child. Owner drift/check failure takes precedence so
+ * a failed eval can never hide a mutation of the user's real Muse state.
+ */
+export async function runWithOwnerStateGuard({ afterPath, beforePath, capture = manifestTree, ownerRoot, run, write = writeAtomic }) {
+  let after;
+  let before;
+  let operationError;
+  let ownerState;
+  let value;
+  try {
+    before = await capture(ownerRoot);
+    await write(beforePath, jsonBytes(before));
+    value = await run();
+  } catch (error) {
+    operationError = error;
+  } finally {
+    if (before) {
+      try {
+        after = await capture(ownerRoot);
+        await write(afterPath, jsonBytes(after));
+        ownerState = validateOwnerState({
+          afterSha256: after.manifestSha256,
+          beforeSha256: before.manifestSha256,
+          unchanged: before.manifestSha256 === after.manifestSha256
+        });
+      } catch (error) {
+        operationError = pairAwareFailureCode(error) === "OWNER_STATE_CHANGED"
+          ? error
+          : failure("OWNER_STATE_CHECK_FAILED");
+      }
+    } else {
+      operationError = failure("OWNER_STATE_CHECK_FAILED");
+    }
+  }
+  if (operationError) throw operationError;
+  return { ownerState, value };
+}
+
+function childFailure(reasonCode) {
+  if (reasonCode === "TIMEOUT") return failure("CHILD_TIMEOUT");
+  if (reasonCode === "PARTIAL_OUTPUT") return failure("CHILD_OUTPUT_MISSING");
+  return failure("CHILD_TRIAL_FAILED");
+}
+
 async function parentMain(smokeModel) {
   const { detectStaleMarker } = await import("../packages/recall/dist/index.js");
   const { validateDataset } = await import("./eval-recall-freshness-ablation.mjs");
   validateDataset(RECALL_FRESHNESS_DATASET, detectStaleMarker);
   const requestedModels = smokeModel ? [smokeModel] : [...ALLOWLISTED_MODELS];
-  if (requestedModels.some((model) => !ALLOWLISTED_MODELS.includes(model))) throw new Error("model is not allowlisted");
+  if (requestedModels.some((model) => !ALLOWLISTED_MODELS.includes(model))) throw failure("MODEL_NOT_ALLOWLISTED");
   const started = Date.now();
   const sessionDir = join(diagnosticsRoot, new Date().toISOString().replaceAll(/[:.]/gu, "-"));
-  await mkdir(sessionDir, { recursive: true });
+  await mkdir(sessionDir, { mode: 0o700, recursive: true });
   const ownerRoot = join(homedir(), ".muse");
-  const before = await manifestTree(ownerRoot);
-  await writeAtomic(join(sessionDir, "owner-before.json"), jsonBytes(before));
   const baseUrl = canonicalLoopbackBaseUrl(process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434");
-  const models = [];
-  for (const modelTag of requestedModels) {
-    const remaining = PARENT_TIMEOUT_MS - (Date.now() - started);
-    if (remaining <= 0) throw new Error("PARENT_TIMEOUT");
-    const home = join(sessionDir, "homes", safeName(modelTag));
-    await mkdir(join(home, "tmp"), { recursive: true });
-    const outputPath = join(sessionDir, `${safeName(modelTag)}.json`);
-    const run = await spawnWithTimeout(process.execPath, [fileURLToPath(import.meta.url), "--child", "1", "--model", modelTag, "--out", outputPath, "--home", home], { env: childEnv(baseUrl, home), outputPath, timeoutMs: Math.min(CHILD_TIMEOUT_MS, remaining) });
-    if (!run.ok) throw new Error(`${modelTag}:${run.reasonCode}`);
-    models.push(validateChildModel(JSON.parse(await readFile(outputPath, "utf8")), modelTag));
-  }
-  if (Date.now() - started >= PARENT_TIMEOUT_MS) throw new Error("PARENT_TIMEOUT");
-  const after = await manifestTree(ownerRoot);
-  if (Date.now() - started >= PARENT_TIMEOUT_MS) throw new Error("PARENT_TIMEOUT");
-  await writeAtomic(join(sessionDir, "owner-after.json"), jsonBytes(after));
-  const ownerState = { afterSha256: after.manifestSha256, beforeSha256: before.manifestSha256, unchanged: before.manifestSha256 === after.manifestSha256 };
-  validateOwnerState(ownerState);
+  const guarded = await runWithOwnerStateGuard({
+    afterPath: join(sessionDir, "owner-after.json"),
+    beforePath: join(sessionDir, "owner-before.json"),
+    ownerRoot,
+    run: async () => {
+      const models = [];
+      for (const modelTag of requestedModels) {
+        const remaining = PARENT_TIMEOUT_MS - (Date.now() - started);
+        if (remaining <= 0) throw failure("PARENT_TIMEOUT");
+        const home = join(sessionDir, "homes", safeName(modelTag));
+        await mkdir(join(home, "tmp"), { mode: 0o700, recursive: true });
+        const outputPath = join(sessionDir, `${safeName(modelTag)}.json`);
+        const child = await spawnWithTimeout(process.execPath, [fileURLToPath(import.meta.url), "--child", "1", "--model", modelTag, "--out", outputPath, "--home", home], { env: childEnv(baseUrl, home), outputPath, timeoutMs: Math.min(CHILD_TIMEOUT_MS, remaining) });
+        if (!child.ok) throw childFailure(child.reasonCode);
+        try {
+          models.push(validateChildModel(JSON.parse(await readFile(outputPath, "utf8")), modelTag));
+        } catch {
+          throw failure("CHILD_OUTPUT_INVALID");
+        }
+      }
+      if (Date.now() - started >= PARENT_TIMEOUT_MS) throw failure("PARENT_TIMEOUT");
+      return models;
+    }
+  });
+  if (Date.now() - started >= PARENT_TIMEOUT_MS) throw failure("PARENT_TIMEOUT");
+  const models = guarded.value;
+  const ownerState = guarded.ownerState;
   if (smokeModel) {
     const model = summarizeModel(models[0]);
-    process.stdout.write(`${canonicalJson({ arms: model.arms, model: smokeModel, qualification: "DEVELOPMENT_ONLY", status: "SMOKE_PASS", trials: 2 })}\n`);
+    process.stdout.write(`${canonicalJson({ arms: model.arms, model: smokeModel, networkAccounting: model.networkAccounting, qualification: "DEVELOPMENT_ONLY", schemaVersion: RESULT_SCHEMA_VERSION, status: "SMOKE_PASS", trials: 2 })}\n`);
     return;
   }
   const result = buildPairAwareResult({
@@ -446,13 +637,14 @@ async function main() {
   const args = normalizeCliArgs(process.argv.slice(2));
   if (args[0] === "--child") {
     const options = parseInternalArgs(args.slice(2));
-    if (!options.model || !options.out || !options.home) throw new Error("missing child options");
+    if (!options.model || !options.out || !options.home) throw failure("INVALID_ARGUMENTS");
+    if (!ALLOWLISTED_MODELS.includes(options.model)) throw failure("MODEL_NOT_ALLOWLISTED");
     await childModel({ baseUrl: canonicalLoopbackBaseUrl(process.env.OLLAMA_BASE_URL), home: options.home, modelTag: options.model, outputPath: options.out });
     return;
   }
   if (args.length === 0) return parentMain();
   if (args.length === 2 && args[0] === "--smoke-model") return parentMain(args[1]);
-  throw new Error("Usage: eval-recall-pair-aware-v1.mjs [--smoke-model <allowlisted-model>]");
+  throw failure("INVALID_ARGUMENTS");
 }
 
-if (pathToFileURL(process.argv[1] ?? "").href === import.meta.url) main().catch((error) => { process.stderr.write(`${error?.stack ?? error}\n`); process.exitCode = 1; });
+if (pathToFileURL(process.argv[1] ?? "").href === import.meta.url) main().catch((error) => { process.stderr.write(formatPairAwareFailure(error)); process.exitCode = 1; });

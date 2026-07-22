@@ -624,6 +624,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "recent",
       "reindex",
       "related",
+      "relations",
       "rename",
       "review",
       "save",

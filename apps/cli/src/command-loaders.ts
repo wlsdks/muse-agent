@@ -51,8 +51,10 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     load: async (program, io, _deps) => {
     const m0 = await import("./commands-notes.js");
     const m1 = await import("./commands-notes-rag.js");
+    const m2 = await import("./commands-note-relations.js");
     m0.registerNotesCommands(program, io, _deps as never);
     m1.registerNotesRagCommands(program, io);
+    m2.registerNoteRelationsCommands(program, io);
     },
   },
   {

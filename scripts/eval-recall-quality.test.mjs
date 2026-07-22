@@ -7,18 +7,231 @@ import { test } from "node:test";
 
 import {
   classifyRecallOutcome,
+  executeProductionRecallQualityCase,
   evaluateRecallQualityGate,
+  isExactModelResident,
   observeCorrectionFreshness,
   observeRecallQuality,
   RECALL_MEMORY_CORPUS,
   RECALL_QUALITY_CASES,
+  RECALL_QUALITY_CORRECTION_SCORER_VERSION,
+  RECALL_QUALITY_RESULT_SCHEMA_VERSION,
   scoreRecallHit1,
   scoreRecallQualityCase,
-  scoreCorrectionFreshnessCase
+  scoreCorrectionFreshnessCase,
+  scorePreparedRecallQualityCase,
+  sanitizeRecallQualityCases,
+  validateRecallQualityResult
 } from "./eval-recall-quality.mjs";
+import { canonicalJson, createAuditedLoopbackFetch, sha256 } from "./recall-eval-runtime-common.mjs";
 
 const POSITIVE = { note: "x", expectedSource: "fact:car" };
 const ABSENT = { note: "x", expectedSource: null };
+
+test("audited recall transport observes request classes and denies non-loopback without retaining content", async () => {
+  const dispatched = [];
+  const audit = createAuditedLoopbackFetch("http://127.0.0.1:11434", async (input) => {
+    dispatched.push(String(input));
+    return new Response("{}", { status: 200 });
+  });
+  await audit.fetch("http://127.0.0.1:11434/api/tags");
+  await audit.fetch("http://127.0.0.1:11434/api/embeddings", { method: "POST", body: JSON.stringify({ model: "embed", prompt: "private embedding text" }) });
+  await audit.fetch("http://127.0.0.1:11434/api/generate", { method: "POST", body: JSON.stringify({ model: "local", stream: false, keep_alive: "5m" }) });
+  await audit.fetch("http://127.0.0.1:11434/api/generate", { method: "POST", body: JSON.stringify({ model: "local", prompt: "private selector text", format: "json", stream: false }) });
+  await audit.fetch("http://127.0.0.1:11434/api/generate", { method: "POST", body: JSON.stringify({ model: "local", prompt: "answer request", stream: false }) });
+  await assert.rejects(audit.fetch("https://example.com/api/generate", { method: "POST" }), /EXTERNAL_REQUEST_DENIED/u);
+  assert.deepEqual(audit.snapshot(), {
+    answerRequests: 1,
+    controlRequests: 1,
+    deniedExternalRequests: 1,
+    embeddingRequests: 1,
+    otherLoopbackRequests: 0,
+    preloadRequests: 1,
+    selectorRequests: 1,
+    totalLoopbackRequests: 5
+  });
+  assert.equal(dispatched.length, 5);
+  assert.doesNotMatch(JSON.stringify(audit.snapshot()), /private|answer request/iu);
+});
+
+test("production solver cases contain no expected source or freshness labels", () => {
+  const cases = sanitizeRecallQualityCases();
+  assert.equal(cases.length, RECALL_QUALITY_CASES.length);
+  assert.deepEqual(Object.keys(cases[0]).sort(), ["caseId", "note", "query"]);
+  assert.equal(Object.isFrozen(cases[0]), true);
+  assert.doesNotMatch(JSON.stringify(cases), /expectedSource|currentSource|staleSource/u);
+});
+
+test("cold residency requires the exact resolved tag and digest", () => {
+  const digest = "a".repeat(64);
+  const expected = { digest: `sha256:${digest}`, resolvedTag: "gemma4:12b" };
+  assert.equal(isExactModelResident({ models: [{ digest, model: "gemma4:12b" }] }, expected), true);
+  assert.equal(isExactModelResident({ models: [{ digest, model: "gemma4:latest" }] }, expected), false);
+  assert.equal(isExactModelResident({ models: [{ digest: "b".repeat(64), model: "gemma4:12b" }] }, expected), false);
+});
+
+function frozenSnapshot(rerankFn) {
+  const result = Object.freeze({
+    notesUnavailable: false,
+    preGapScored: Object.freeze([]),
+    queryVec: Object.freeze([1]),
+    rerankDecision: Object.freeze({ eligible: true, httpAttempts: 1, logicalInvocations: 1, outcome: "success" }),
+    scored: Object.freeze([]),
+    splitClauses: Object.freeze([]),
+    subqueryEmbeddings: Object.freeze([])
+  });
+  return Object.freeze({
+    identity: Object.freeze({
+      conflictAwareSelection: true,
+      embedModel: "embed",
+      indexBuiltAtIso: "2026-07-21T00:00:00.000Z",
+      notesDir: "/isolated/notes",
+      notesIndexFile: "/isolated/index.json",
+      query: "where now?",
+      rerankResultHash: "hash",
+      scope: undefined,
+      topK: 3
+    }),
+    rerankFn,
+    result
+  });
+}
+
+test("production case executes CLI retrieval once then prepares from its exact immutable snapshot", async () => {
+  const rerankFn = Object.assign(async () => undefined, { mode: "correction-pair" });
+  const snapshot = frozenSnapshot(rerankFn);
+  const accounting = { preloadRequests: 0, selectorRequests: 0 };
+  let retrievedInput;
+  let preparedInput;
+  const observed = await executeProductionRecallQualityCase({
+    embedFn: async () => [1],
+    embedModel: "embed",
+    indexBuiltAtIso: "2026-07-21T00:00:00.000Z",
+    indexFiles: [],
+    networkSnapshot: () => ({ ...accounting }),
+    notesDir: "/isolated/notes",
+    notesIndexFile: "/isolated/index.json",
+    prepare: async (input) => {
+      preparedInput = input;
+      return { scored: [{ file: "/isolated/notes/current.md" }], verdict: "confident" };
+    },
+    retrieve: async (input) => {
+      retrievedInput = input;
+      accounting.preloadRequests += 1;
+      accounting.selectorRequests += 1;
+      return { snapshot };
+    },
+    runtime: { env: Object.freeze({ HOME: "/isolated" }), fetchFn: async () => new Response() },
+    sourceForFile: () => "fact:current",
+    testCase: Object.freeze({ caseId: "recall-01", note: "opaque", query: "where now?" })
+  });
+  assert.deepEqual(Object.keys(retrievedInput).sort(), ["embedModel", "indexFiles", "json", "notesDir", "onStderr", "query", "scope", "snapshotIdentity", "topK"]);
+  assert.equal(preparedInput.retrievalSnapshot, snapshot);
+  assert.equal(preparedInput.rerankFn, snapshot.rerankFn);
+  assert.equal(observed.snapshotReused, true);
+  assert.deepEqual(observed.sources, ["fact:current"]);
+  assert.deepEqual(accounting, { preloadRequests: 1, selectorRequests: 1 });
+});
+
+test("production case fails closed if prepare reruns the selector", async () => {
+  const rerankFn = Object.assign(async () => undefined, { mode: "correction-pair" });
+  const accounting = { preloadRequests: 0, selectorRequests: 0 };
+  await assert.rejects(executeProductionRecallQualityCase({
+    embedFn: async () => [1],
+    embedModel: "embed",
+    indexBuiltAtIso: "2026-07-21T00:00:00.000Z",
+    indexFiles: [],
+    networkSnapshot: () => ({ ...accounting }),
+    notesDir: "/isolated/notes",
+    notesIndexFile: "/isolated/index.json",
+    prepare: async () => {
+      accounting.selectorRequests += 1;
+      return { scored: [], verdict: "none" };
+    },
+    retrieve: async () => {
+      accounting.preloadRequests += 1;
+      accounting.selectorRequests += 1;
+      return { snapshot: frozenSnapshot(rerankFn) };
+    },
+    runtime: {},
+    sourceForFile: () => null,
+    testCase: { caseId: "recall-01", note: "opaque", query: "where now?" }
+  }), /PRODUCTION_PHASE_DRIFT/u);
+});
+
+test("production result validator reconciles pass^3 accounting and rejects mutation", () => {
+  const payload = {
+    accounting: {
+      answerRequests: 0,
+      controlRequests: 6,
+      deniedExternalRequests: 0,
+      embeddingRequests: 94,
+      otherLoopbackRequests: 0,
+      preloadRequests: 72,
+      selectorRequests: 72,
+      totalLoopbackRequests: 244
+    },
+    coldPreload: { residentAfterFirst: true, residentBefore: false, verified: true },
+    failures: ["recall-04", "recall-07", "recall-09"],
+    floors: {
+      absent: { passed: 8, required: 8, total: 8 },
+      correction: { passed: 2, required: 2, total: 2 },
+      ordinary: { passed: 11, total: 14 }
+    },
+    models: {
+      embed: { digest: "a".repeat(64), resolvedTag: "embed:latest" },
+      reranker: { digest: "b".repeat(64), resolvedTag: "reranker:12b" }
+    },
+    networkAccountingValid: true,
+    organicEffectiveness: "NOT_PROVEN",
+    passK: { executedCaseRuns: 72, requestedCaseRuns: 72 },
+    repeat: 3,
+    schemaVersion: RECALL_QUALITY_RESULT_SCHEMA_VERSION,
+    scorerVersion: RECALL_QUALITY_CORRECTION_SCORER_VERSION,
+    status: "passed",
+    summary: { gate: true, passed: 21, rate: 0.875, total: 24 }
+  };
+  const value = { ...payload, resultHash: sha256(`${canonicalJson(payload)}\n`) };
+  assert.equal(validateRecallQualityResult(value, 3), value);
+  assert.throws(() => validateRecallQualityResult({ ...value, accounting: { ...value.accounting, answerRequests: 1 } }, 3), /CHILD_FAILED/u);
+});
+
+test("failed pass^3 accounting uses actual short-circuited executions without masking the quality failure", () => {
+  const payload = {
+    accounting: {
+      answerRequests: 0,
+      controlRequests: 6,
+      deniedExternalRequests: 0,
+      embeddingRequests: 84,
+      otherLoopbackRequests: 0,
+      preloadRequests: 62,
+      selectorRequests: 62,
+      totalLoopbackRequests: 214
+    },
+    coldPreload: { residentAfterFirst: true, residentBefore: false, verified: true },
+    failures: ["recall-01", "recall-02", "recall-03", "recall-04", "recall-05"],
+    floors: {
+      absent: { passed: 8, required: 8, total: 8 },
+      correction: { passed: 1, required: 2, total: 2 },
+      ordinary: { passed: 10, total: 14 }
+    },
+    models: {
+      embed: { digest: "a".repeat(64), resolvedTag: "embed:latest" },
+      reranker: { digest: "b".repeat(64), resolvedTag: "reranker:12b" }
+    },
+    networkAccountingValid: true,
+    organicEffectiveness: "NOT_PROVEN",
+    passK: { executedCaseRuns: 62, requestedCaseRuns: 72 },
+    reasonCode: "THRESHOLD_NOT_MET",
+    repeat: 3,
+    schemaVersion: RECALL_QUALITY_RESULT_SCHEMA_VERSION,
+    scorerVersion: RECALL_QUALITY_CORRECTION_SCORER_VERSION,
+    status: "failed",
+    summary: { gate: false, passed: 19, rate: 19 / 24, total: 24 }
+  };
+  const value = { ...payload, resultHash: sha256(`${canonicalJson(payload)}\n`) };
+  assert.equal(validateRecallQualityResult(value, 3), value);
+});
 
 test("aggregate keeps the honest 18/24 baseline failed even when both hard floors pass", () => {
   assert.deepEqual(evaluateRecallQualityGate({
@@ -76,6 +289,32 @@ test("correction freshness fails if the retained pair does not prefer current af
   const verdict = scoreCorrectionFreshnessCase(observed, testCase);
   assert.equal(verdict.ok, false);
   assert.match(verdict.detail, /current was not preferred/iu);
+});
+
+test("v2 production scorer requires actual current top-1 before the retained stale counterpart", () => {
+  const testCase = {
+    expectedSource: "fact:home_city",
+    freshness: { currentSource: "fact:home_city", staleSource: "fact:home_city_old" }
+  };
+  assert.equal(RECALL_QUALITY_CORRECTION_SCORER_VERSION, "recall-quality-correction-order-v2");
+  assert.equal(scorePreparedRecallQualityCase({
+    confidence: "ambiguous",
+    sources: ["fact:home_city", "d:budget", "fact:home_city_old"]
+  }, testCase).ok, true);
+  for (const sources of [
+    ["d:budget", "fact:home_city", "fact:home_city_old"],
+    ["fact:home_city_old", "fact:home_city"],
+    ["fact:home_city"]
+  ]) {
+    assert.equal(scorePreparedRecallQualityCase({ confidence: "confident", sources }, testCase).ok, false, sources.join(","));
+  }
+});
+
+test("v2 production scorer keeps ordinary confidence/wrong-top and absent abstention teeth", () => {
+  assert.equal(scorePreparedRecallQualityCase({ confidence: "confident", sources: ["fact:car"] }, POSITIVE).ok, true);
+  assert.equal(scorePreparedRecallQualityCase({ confidence: "ambiguous", sources: ["fact:car"] }, POSITIVE).ok, false);
+  assert.equal(scorePreparedRecallQualityCase({ confidence: "confident", sources: ["d:budget"] }, ABSENT).ok, false);
+  assert.equal(scorePreparedRecallQualityCase({ confidence: "ambiguous", sources: ["d:budget"] }, ABSENT).ok, true);
 });
 
 test("mutation: stale retained/current absent plus unrelated fresh is explicit retention failure, never confident-unrelated", () => {

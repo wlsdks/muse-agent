@@ -2,32 +2,56 @@
  * CLI binding of `@muse/recall`'s notes retrieval stage — embeds through the
  * CLI's models.json-merged endpoint (the package default is env-only), and
  * optionally binds a local-LLM listwise reranker when MUSE_RECALL_RERANK
- * names an Ollama model (e.g. qwen3:8b). Measured 2026-07-15: cosine top-1
- * 3/8 on lexical-distractor queries vs 8/8 reranked, ~200ms warm on qwen3:8b.
+ * names an Ollama model (e.g. qwen3:8b). Eligible correction-aware retrieval
+ * defers one bounded empty preload until explicit temporal-edge activation is
+ * known to be inert, then keeps the selector's independent 4-second ceiling.
  */
+
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import {
   detectStaleMarker,
+  filterNotesByScope,
   retrieveAndRankNotes as retrieveAndRankNotesCore,
   type NoteRetrievalResult,
+  type RecallRerankContext,
   type RecallRerankExecution,
   type RecallRerankFn,
-  type RecallRerankPairHint
+  type RecallRerankPairHint,
+  type TemporalClaimContextV1,
+  type TemporalClaimSnapshotAuthorityV1
 } from "@muse/recall";
 
 import { resolveDefaultModel } from "@muse/autoconfigure";
 
 import { embed } from "./embed.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
+import { auditNoteRelationsStore, temporalClaimGraphFromAuditV1 } from "./note-relations-audit.js";
+import { resolveNoteRelationsPathSnapshot } from "./note-relations-store.js";
 
 export type { NoteRetrievalResult } from "@muse/recall";
 
 type CoreParams = Parameters<typeof retrieveAndRankNotesCore>[0];
+type CliRetrievalParams = Omit<CoreParams, "embedFn" | "env">;
 const PRODUCTION_RERANK_TIMEOUT_MS = 4000;
+const PRODUCTION_RERANK_PRELOAD_TIMEOUT_MS = 30_000;
+const PRODUCTION_RERANK_KEEP_ALIVE = "5m";
+
+type FetchFn = typeof globalThis.fetch;
+
+export interface RecallRetrievalRuntime {
+  /** Authoritative environment snapshot for URL/model resolution. */
+  readonly env?: NodeJS.ProcessEnv;
+  /** One transport seam shared by preload, selector, and embeddings. */
+  readonly fetchFn?: FetchFn;
+}
 
 export interface RecallRerankOptions {
   /** Request timeout; bounded by the unchanged 4,000ms production ceiling. */
   readonly timeoutMs?: number;
+  /** Injectable transport used by audited evaluation runners. */
+  readonly fetchFn?: FetchFn;
 }
 
 export interface RecallRerankWarmup {
@@ -71,7 +95,11 @@ export interface ParsedCorrectionPairReply {
 }
 
 /** Parses the correction selector's exact single-pair/null closed response. */
-export function parseCorrectionPairReply(reply: string, candidateCount: number): ParsedCorrectionPairReply | undefined {
+export function parseCorrectionPairReply(
+  reply: string,
+  candidateCount: number,
+  allowedCorrectionPairs?: readonly RecallRerankPairHint[]
+): ParsedCorrectionPairReply | undefined {
   if (!Number.isSafeInteger(candidateCount) || candidateCount <= 0) return undefined;
   let parsed: unknown;
   try { parsed = JSON.parse(reply.trim()); }
@@ -86,6 +114,10 @@ export function parseCorrectionPairReply(reply: string, candidateCount: number):
   const current = (raw.current as number) - 1;
   const stale = (raw.stale as number) - 1;
   if (current < 0 || stale < 0 || current >= candidateCount || stale >= candidateCount || current === stale) return undefined;
+  if (
+    allowedCorrectionPairs
+    && !allowedCorrectionPairs.some((pair) => pair.current === current && pair.stale === stale)
+  ) return undefined;
   return { pair: { current, stale } };
 }
 
@@ -142,43 +174,41 @@ export function parseRerankReply(reply: string, candidateCount: number): readonl
 async function ollamaRerank(
   query: string,
   candidateTexts: readonly string[],
+  context: RecallRerankContext | undefined,
   model: string,
-  timeoutMs: number
+  timeoutMs: number,
+  base: string,
+  fetchFn: FetchFn
 ): Promise<RecallRerankExecution> {
-  const base = resolveOllamaUrl(process.env).replace(/\/+$/u, "");
   const firstStaleIndex = candidateTexts.findIndex((text) => detectStaleMarker(text));
   const currentCount = firstStaleIndex === -1 ? candidateTexts.length : firstStaleIndex;
-  const currentList = candidateTexts
-    .slice(0, currentCount)
-    .map((text, index) => `[${(index + 1).toString()}] ${text}`)
-    .join("\n");
-  const staleList = candidateTexts
-    .slice(currentCount)
-    .map((text, index) => `[${(currentCount + index + 1).toString()}] ${text}`)
-    .join("\n");
-  const staleRange = currentCount < candidateTexts.length
-    ? `${(currentCount + 1).toString()}-${candidateTexts.length.toString()}`
-    : "none";
-  const pairShape = currentCount > 0 && currentCount < candidateTexts.length
-    ? `Return ONLY one exact JSON shape: {"pair":null} or {"pair":{"current":1,"stale":${(currentCount + 1).toString()}}}. No prose and no other keys.`
+  const allowedCorrectionPairs = normalizeAllowedCorrectionPairs(context, candidateTexts, currentCount);
+  if (!allowedCorrectionPairs) return { httpAttempts: 0, outcome: "invalid" };
+  const oneBasedAllowedPairs = allowedCorrectionPairs.map((pair) => ({ current: pair.current + 1, stale: pair.stale + 1 }));
+  const pairCards = allowedCorrectionPairs.map((pair, index) => [
+    `PAIR CARD ${(index + 1).toString()}`,
+    `exact tuple: ${JSON.stringify(oneBasedAllowedPairs[index])}`,
+    `current text [${(pair.current + 1).toString()}]: ${candidateTexts[pair.current]}`,
+    `stale text [${(pair.stale + 1).toString()}]: ${candidateTexts[pair.stale]}`
+  ].join("\n")).join("\n\n");
+  const pairShape = oneBasedAllowedPairs.length > 0
+    ? "Return ONLY one JSON object. Its pair must be null or an object with exactly the integer keys current and stale. When non-null, those integers must exactly equal one tuple from the allowed list. No prose and no other keys."
     : "Return ONLY the exact JSON shape {\"pair\":null}. No prose and no other keys.";
   const prompt = [
     "Choose the pair that most directly answers the query. Select at most one correction pair only when two documents state the same fact.",
     "질문에 가장 직접 답하는 같은 사실의 최신/과거 문서 한 쌍만 선택하세요.",
     "Ignore correction pairs about any other topic.",
     "For a valid pair, stale must contain an explicit old or superseded marker; current must not.",
-    `The current index MUST be in 1-${currentCount.toString()}; the stale index MUST be in ${staleRange}.`,
+    "Each card is one complete allowed proposal. Compare cards as units; never combine the current text from one card with the stale text from another.",
+    "Any pair not exactly shown as a card tuple is invalid; return {\"pair\":null}.",
     "If uncertain, same-index, or either field would be null, return exactly {\"pair\":null}.",
     pairShape,
     `Query / 질문: ${query}`,
-    `CURRENT / NON-STALE CANDIDATES (allowed current indices: 1-${currentCount.toString()})\n${currentList}`,
-    currentCount < candidateTexts.length
-      ? `EXPLICIT-STALE CANDIDATES (allowed stale indices: ${staleRange})\n${staleList}`
-      : "EXPLICIT-STALE CANDIDATES (allowed stale indices: none)\nNo explicit-stale candidate is available; return exactly {\"pair\":null}.",
+    pairCards || "NO ALLOWED PAIR CARDS. Return exactly {\"pair\":null}.",
     "Choose the pair that most directly answers the query; otherwise return exactly {\"pair\":null}."
   ].join("\n\n");
   try {
-    const res = await fetch(`${base}/api/generate`, {
+    const res = await fetchFn(`${base}/api/generate`, {
       body: JSON.stringify({ format: "json", model, options: { num_predict: 64, temperature: 0 }, prompt, stream: false, think: false }),
       headers: { "content-type": "application/json" },
       method: "POST",
@@ -195,7 +225,7 @@ async function ollamaRerank(
       return { httpAttempts: 1, outcome: "invalid" };
     }
     if (!response.trim()) return { httpAttempts: 1, outcome: "empty" };
-    const parsed = parseCorrectionPairReply(response, candidateTexts.length);
+    const parsed = parseCorrectionPairReply(response, candidateTexts.length, allowedCorrectionPairs);
     const identityOrder = candidateTexts.map((_text, index) => index);
     return parsed
       ? { httpAttempts: 1, order: identityOrder, outcome: "success", ...(parsed.pair ? { pairHints: [parsed.pair] } : {}) }
@@ -206,23 +236,111 @@ async function ollamaRerank(
   }
 }
 
-/** Select one local-only reranker function for the entire ask turn. */
-export function createRecallRerankFn(env: NodeJS.ProcessEnv = process.env, options: RecallRerankOptions = {}): RecallRerankFn | undefined {
+function normalizeAllowedCorrectionPairs(
+  context: RecallRerankContext | undefined,
+  candidateTexts: readonly string[],
+  currentCount: number
+): readonly RecallRerankPairHint[] | undefined {
+  const pairs = context?.allowedCorrectionPairs ?? [];
+  if (!Array.isArray(pairs) || pairs.length > 6) return undefined;
+  const seen = new Set<string>();
+  const normalized: RecallRerankPairHint[] = [];
+  for (const pair of pairs) {
+    if (typeof pair !== "object" || pair === null || Array.isArray(pair)) return undefined;
+    const keys = Object.keys(pair).sort();
+    if (keys.length !== 2 || keys[0] !== "current" || keys[1] !== "stale") return undefined;
+    if (
+      !Number.isSafeInteger(pair.current)
+      || !Number.isSafeInteger(pair.stale)
+      || pair.current < 0
+      || pair.stale < 0
+      || pair.current >= currentCount
+      || pair.stale < currentCount
+      || pair.stale >= candidateTexts.length
+      || detectStaleMarker(candidateTexts[pair.current] ?? "")
+      || !detectStaleMarker(candidateTexts[pair.stale] ?? "")
+    ) return undefined;
+    const key = `${pair.current.toString()}:${pair.stale.toString()}`;
+    if (seen.has(key)) return undefined;
+    seen.add(key);
+    normalized.push({ current: pair.current, stale: pair.stale });
+  }
+  return normalized.sort((left, right) => left.current - right.current || left.stale - right.stale);
+}
+
+interface RecallRerankBinding {
+  readonly base: string;
+  readonly fetchFn: FetchFn;
+  readonly model: string;
+  readonly rerankFn: RecallRerankFn;
+}
+
+function defaultFetch(input: string | URL | Request, init?: RequestInit): ReturnType<FetchFn> {
+  return globalThis.fetch(input, init);
+}
+
+function createRecallRerankBinding(env: NodeJS.ProcessEnv, options: RecallRerankOptions): RecallRerankBinding | undefined {
   const rerankModel = resolveRerankModel(env);
   const timeoutMs = options.timeoutMs ?? PRODUCTION_RERANK_TIMEOUT_MS;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > PRODUCTION_RERANK_TIMEOUT_MS) return undefined;
-  return rerankModel
-    ? Object.assign(
-        (query: string, texts: readonly string[]) => ollamaRerank(query, texts, rerankModel, timeoutMs),
-        { mode: "correction-pair" as const }
-      )
-    : undefined;
+  if (!rerankModel || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > PRODUCTION_RERANK_TIMEOUT_MS) return undefined;
+  const base = resolveOllamaUrl(env).replace(/\/+$/u, "");
+  const fetchFn = options.fetchFn ?? defaultFetch;
+  const rerankFn = Object.assign(
+    (query: string, texts: readonly string[], context?: RecallRerankContext) =>
+      ollamaRerank(query, texts, context, rerankModel, timeoutMs, base, fetchFn),
+    { mode: "correction-pair" as const }
+  );
+  return { base, fetchFn, model: rerankModel, rerankFn };
+}
+
+async function preloadRecallRerankBinding(binding: RecallRerankBinding): Promise<boolean> {
+  try {
+    const response = await binding.fetchFn(`${binding.base}/api/generate`, {
+      body: JSON.stringify({ keep_alive: PRODUCTION_RERANK_KEEP_ALIVE, model: binding.model, stream: false }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: AbortSignal.timeout(PRODUCTION_RERANK_PRELOAD_TIMEOUT_MS)
+    });
+    if (!response.ok) return false;
+    const body: unknown = await response.json();
+    return typeof body === "object"
+      && body !== null
+      && !Array.isArray(body)
+      && "done" in body
+      && body.done === true
+      && "done_reason" in body
+      && body.done_reason === "load"
+      && "model" in body
+      && body.model === binding.model
+      && "response" in body
+      && body.response === "";
+  } catch {
+    return false;
+  }
+}
+
+function isRecallRerankPreloadEligible(params: CliRetrievalParams): boolean {
+  if (params.conflictAwareSelection === false) return false;
+  const liveFiles = params.indexFiles.filter((file) => existsSync(file.path));
+  const eligibleFiles = params.scope
+    ? filterNotesByScope(liveFiles, params.notesDir, params.scope)
+    : liveFiles;
+  const texts = eligibleFiles.flatMap((file) => file.chunks.map((chunk) => chunk.text));
+  return texts.length > params.topK
+    && texts.some((text) => detectStaleMarker(text))
+    && texts.some((text) => !detectStaleMarker(text));
+}
+
+/** Select one local-only reranker function for the entire ask turn. */
+export function createRecallRerankFn(env: NodeJS.ProcessEnv = process.env, options: RecallRerankOptions = {}): RecallRerankFn | undefined {
+  const envSnapshot = Object.freeze({ ...env });
+  return createRecallRerankBinding(envSnapshot, options)?.rerankFn;
 }
 
 /**
- * Constructs and explicitly warms the reranker. Callers choose when to invoke
- * this seam, typically only after their embedder preflight/model switch has
- * completed; normal command construction never issues a warmup request.
+ * Legacy diagnostic seam that invokes the selector itself with supplied text.
+ * Production ask retrieval uses the private empty preload above so no query or
+ * candidate content is sent during model loading.
  */
 export async function createWarmedRecallRerankFn(
   env: NodeJS.ProcessEnv,
@@ -231,7 +349,7 @@ export async function createWarmedRecallRerankFn(
 ): Promise<WarmedRecallReranker | undefined> {
   const rerankFn = createRecallRerankFn(env, options);
   if (!rerankFn) return undefined;
-  const response = await rerankFn(warmup.query, warmup.candidateTexts);
+  const response = await rerankFn(warmup.query, warmup.candidateTexts, { allowedCorrectionPairs: [] });
   const execution: RecallRerankExecution = typeof response === "object"
     && response !== null
     && !Array.isArray(response)
@@ -244,13 +362,69 @@ export async function createWarmedRecallRerankFn(
 }
 
 export async function retrieveAndRankNotes(
-  params: Omit<CoreParams, "embedFn">
+  params: CliRetrievalParams,
+  runtime: RecallRetrievalRuntime = {}
 ): Promise<NoteRetrievalResult> {
-  const selectedRerankFn = Object.hasOwn(params, "rerankFn") ? params.rerankFn : createRecallRerankFn();
+  const envSnapshot = Object.freeze({ ...(runtime.env ?? process.env) });
+  const fetchFn = runtime.fetchFn ?? defaultFetch;
+  let temporalClaimGraph = (params as CoreParams).temporalClaimGraph;
+  let temporalClaimAuthority = (params as CoreParams & { readonly temporalClaimAuthority?: TemporalClaimSnapshotAuthorityV1 }).temporalClaimAuthority;
+  if (!Object.hasOwn(params, "temporalClaimGraph")) {
+    const context = await captureTemporalClaimContext(envSnapshot);
+    temporalClaimGraph = context.graph;
+    temporalClaimAuthority = context.authority;
+  }
+  const hasExplicitRerankFn = Object.hasOwn(params, "rerankFn");
+  const binding = hasExplicitRerankFn ? undefined : createRecallRerankBinding(envSnapshot, { fetchFn });
+  const selectedRerankFn = hasExplicitRerankFn ? params.rerankFn : undefined;
+  const prepareRerankFn = binding && isRecallRerankPreloadEligible(params)
+    ? async () => await preloadRecallRerankBinding(binding) ? binding.rerankFn : undefined
+    : undefined;
   return retrieveAndRankNotesCore({
     ...params,
     conflictAwareSelection: params.conflictAwareSelection !== false,
-    embedFn: embed,
-    ...(selectedRerankFn ? { rerankFn: selectedRerankFn } : {})
-  });
+    embedFn: (text, model) => embed(text, model, { fetchImpl: fetchFn }, envSnapshot),
+    env: envSnapshot,
+    ...(temporalClaimGraph ? { temporalClaimGraph } : {}),
+    ...(temporalClaimAuthority ? { temporalClaimAuthority } : {}),
+    ...(selectedRerankFn ? { rerankFn: selectedRerankFn } : {}),
+    ...(prepareRerankFn ? { prepareRerankFn } : {})
+  } as CoreParams);
+}
+
+/** Capture a complete fail-closed authority even when the local store cannot be audited. */
+export async function captureTemporalClaimContext(
+  env: NodeJS.ProcessEnv = process.env
+): Promise<TemporalClaimContextV1> {
+  try {
+    const audit = await auditNoteRelationsStore(resolveNoteRelationsPathSnapshot(Object.freeze({ ...env })));
+    const graph = temporalClaimGraphFromAuditV1(audit);
+    const sourceProvenanceDigest = graph
+      ? createHash("sha256").update(JSON.stringify(graph.relations.map(({ current, stale }) => ({ current, stale })))).digest("hex")
+      : null;
+    const authority = Object.freeze({
+      chunkerVersion: "muse.notes.chunk-text.v1",
+      graphDigest: audit.semanticDigest,
+      indexDigest: audit.indexRawDigest,
+      rawStoreDigest: audit.rawDigest,
+      schema: "muse.temporal-claim-snapshot-authority.v1",
+      sourceProvenanceDigest,
+      storeRevision: audit.revision,
+      storeState: audit.state
+    } satisfies TemporalClaimSnapshotAuthorityV1);
+    return Object.freeze({ authority, ...(graph ? { graph } : {}) });
+  } catch {
+    return Object.freeze({
+      authority: Object.freeze({
+        chunkerVersion: "muse.notes.chunk-text.v1",
+        graphDigest: null,
+        indexDigest: null,
+        rawStoreDigest: null,
+        schema: "muse.temporal-claim-snapshot-authority.v1",
+        sourceProvenanceDigest: null,
+        storeRevision: 0,
+        storeState: "unavailable"
+      })
+    });
+  }
 }

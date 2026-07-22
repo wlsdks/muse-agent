@@ -1,10 +1,18 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { embeddingsSidecarPath, loadIndex, NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
+import { NOTES_CHUNKER_VERSION } from "./notes-chunk.js";
+import {
+  embeddingsSidecarPath,
+  isNotesIndexStale,
+  loadIndex,
+  NOTES_INDEX_SCHEMA_VERSION,
+  reindexNotes
+} from "./notes-index.js";
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "notes-index-v2-")); });
@@ -24,6 +32,129 @@ const v1Index = () => ({
 });
 
 describe("notes-index v2 — binary embedding sidecar", () => {
+  it("persists exact text-source provenance through reindex and reload", async () => {
+    const sourceText = "# 생활\n\n현재 집은 부산 해운대다.\n";
+    const sourceBytes = Buffer.from(sourceText, "utf8");
+    const notePath = join(dir, "생활.md");
+    const indexPath = join(dir, "notes-index.json");
+    await writeFile(notePath, sourceBytes);
+    const expectedSourceHash = createHash("sha256").update(sourceBytes).digest("hex");
+
+    const summary = await reindexNotes({
+      baseUrlResolver: () => "http://127.0.0.1:11434",
+      dir,
+      fetchImpl: (async () => new Response(JSON.stringify({ embedding: [0.25, 0.75] }), { status: 200 })) as typeof globalThis.fetch,
+      force: true,
+      indexPath,
+      model: "test-embed"
+    });
+
+    expect(summary.index.files[0]).toMatchObject({
+      chunkerVersion: NOTES_CHUNKER_VERSION,
+      sourceHash: expectedSourceHash
+    });
+    expect((await loadIndex(indexPath))?.files[0]).toMatchObject({
+      chunkerVersion: NOTES_CHUNKER_VERSION,
+      sourceHash: expectedSourceHash
+    });
+  });
+
+  it("reindexes same-mtime text when its exact source bytes change", async () => {
+    const originalText = "# 생활\n\n현재 집은 부산이다.\n";
+    const changedText = "# 생활\n\n현재 집은 서울이다.\n";
+    const notePath = join(dir, "생활.md");
+    const indexPath = join(dir, "notes-index.json");
+    const fixedTime = new Date("2026-07-21T00:00:00.000Z");
+    let embedCalls = 0;
+    const fetchImpl = (async () => {
+      embedCalls += 1;
+      return new Response(JSON.stringify({ embedding: [embedCalls, 0.75] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    await writeFile(notePath, originalText);
+    await utimes(notePath, fixedTime, fixedTime);
+    const originalMtimeMs = (await stat(notePath)).mtimeMs;
+
+    await reindexNotes({
+      baseUrlResolver: () => "http://127.0.0.1:11434",
+      dir,
+      fetchImpl,
+      force: true,
+      indexPath,
+      model: "test-embed"
+    });
+    await writeFile(notePath, changedText);
+    await utimes(notePath, fixedTime, fixedTime);
+    expect((await stat(notePath)).mtimeMs).toBe(originalMtimeMs);
+
+    expect(await isNotesIndexStale(dir, indexPath)).toBe(true);
+    const reindexed = await reindexNotes({
+      baseUrlResolver: () => "http://127.0.0.1:11434",
+      dir,
+      fetchImpl,
+      indexPath,
+      model: "test-embed"
+    });
+
+    expect(reindexed.embedded).toBe(1);
+    expect(reindexed.skipped).toBe(0);
+    expect(embedCalls).toBe(2);
+    expect((await loadIndex(indexPath))?.files[0]).toMatchObject({
+      chunks: [{ text: changedText.trim() }],
+      sourceHash: createHash("sha256").update(changedText).digest("hex")
+    });
+  });
+
+  it("retries a same-mtime source change after a failed embedding preserves the prior entry", async () => {
+    const originalText = "# 생활\n\n현재 집은 부산이다.\n";
+    const changedText = "# 생활\n\n현재 집은 서울이다.\n";
+    const notePath = join(dir, "생활.md");
+    const indexPath = join(dir, "notes-index.json");
+    const fixedTime = new Date("2026-07-21T00:00:00.000Z");
+    const originalSourceHash = createHash("sha256").update(originalText).digest("hex");
+    const changedSourceHash = createHash("sha256").update(changedText).digest("hex");
+    let embedCalls = 0;
+    let failEmbedding = false;
+    const fetchImpl = (async () => {
+      embedCalls += 1;
+      if (failEmbedding) throw new Error("embedding offline");
+      return new Response(JSON.stringify({ embedding: [embedCalls, 0.75] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    const reindex = (force = false) => reindexNotes({
+      baseUrlResolver: () => "http://127.0.0.1:11434",
+      dir,
+      fetchImpl,
+      ...(force ? { force: true } : {}),
+      indexPath,
+      model: "test-embed"
+    });
+    await writeFile(notePath, originalText);
+    await utimes(notePath, fixedTime, fixedTime);
+    const originalMtimeMs = (await stat(notePath)).mtimeMs;
+    await reindex(true);
+
+    await writeFile(notePath, changedText);
+    await utimes(notePath, fixedTime, fixedTime);
+    expect((await stat(notePath)).mtimeMs).toBe(originalMtimeMs);
+    failEmbedding = true;
+    const failed = await reindex();
+
+    expect(failed).toMatchObject({ embedded: 0, failed: 1, skipped: 0 });
+    expect((await loadIndex(indexPath))?.files[0]).toMatchObject({
+      chunks: [{ text: originalText.trim() }],
+      sourceHash: originalSourceHash
+    });
+    expect(await isNotesIndexStale(dir, indexPath)).toBe(true);
+
+    failEmbedding = false;
+    const retried = await reindex();
+    expect(retried).toMatchObject({ embedded: 1, failed: 0, skipped: 0 });
+    expect(embedCalls).toBe(3);
+    expect((await loadIndex(indexPath))?.files[0]).toMatchObject({
+      chunks: [{ text: changedText.trim() }],
+      sourceHash: changedSourceHash
+    });
+  });
+
   it("migrates a v1 JSON losslessly: same vectors, sidecar written, JSON no longer carries arrays", async () => {
     const indexPath = join(dir, "notes-index.json");
     await writeFile(indexPath, JSON.stringify(v1Index()));

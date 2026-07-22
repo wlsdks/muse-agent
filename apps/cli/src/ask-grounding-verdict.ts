@@ -13,7 +13,7 @@
  */
 
 import { buildAttributedRepairPrompt, buildGroundingReverifyPrompt, citedSourcesIn, enforceAnswerCitations, explainGroundingVerdict, parseGroundingReverifyJson, repairToEvidence, REPAIR_SYSTEM_PROMPT, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify } from "@muse/agent-core";
-import { augmentNoteEvidenceWithCited, answerIsRefusal, buildDiskContents, citationPrecisionNotice, citationRecallNotice, collectCitedNoteAges, composeChatSystemContent, contactGroundingEvidence, drawBestGroundedRedraft, formatNonNoteReceipts, formatSourceReceipts, formatStalenessWarning, groundingVerdictNotice, relativizeNoteSource, renderMemoryFact, shouldSuggestRepair, sourceCheckSignals, stripEchoedCiteAs, untrustedBrowsingMatch, untrustedEpisodeMatch, untrustedFeedMatch, untrustedOnlyGroundingNotice, type FileEntry, type IndexChunk, type SourceCheckSignals } from "@muse/recall";
+import { augmentNoteEvidenceWithCited, answerIsRefusal, buildDiskContents, citationPrecisionNotice, citationRecallNotice, collectCitedNoteAges, composeChatSystemContent, contactGroundingEvidence, drawBestGroundedRedraft, formatNonNoteReceipts, formatSourceReceipts, formatStalenessWarning, groundingVerdictNotice, relativizeNoteSource, renderMemoryFact, shouldSuggestRepair, sourceCheckSignals, stripEchoedCiteAs, untrustedBrowsingMatch, untrustedEpisodeMatch, untrustedFeedMatch, untrustedOnlyGroundingNotice, type FileEntry, type ScoredChunk, type SourceCheckSignals } from "@muse/recall";
 import { allUserMemoryFacts } from "@muse/recall";
 import { resolveAnswerTemperature, type MuseEnvironment } from "@muse/autoconfigure";
 import { existsSync } from "node:fs";
@@ -28,8 +28,6 @@ import { embed } from "./embed.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import { summarizeRetrieval, type RetrievalTraceEntry } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
-
-type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 
 export interface GroundingVerdictResult {
   readonly collectedAnswer: string;

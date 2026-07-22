@@ -8,11 +8,11 @@
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
-export const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
+export const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "resource"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 /**
- * A source provider id. `"local"` backs task/note artifacts read from Muse's
+ * A source provider id. `"local"` backs task/note/reminder artifacts read from Muse's
  * own on-disk stores; `mcp:<server>` backs a `resource` read at display time
  * from a connected external MCP server. The string is deliberately narrow: an
  * unknown/malformed provider id is rejected fail-close so a corrupt store never
@@ -21,10 +21,12 @@ export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 export type ArtifactProviderId = string;
 
 const MCP_PROVIDER_PATTERN = /^mcp:[A-Za-z0-9._-]+$/u;
+const CALENDAR_PROVIDER_PATTERN = /^calendar:[A-Za-z0-9._-]+$/u;
 
 /** `"local"` or `mcp:<server>` (server = one or more of `[A-Za-z0-9._-]`). */
 export function isValidProviderId(value: unknown): value is ArtifactProviderId {
-  return value === "local" || (typeof value === "string" && MCP_PROVIDER_PATTERN.test(value));
+  return value === "local" || (typeof value === "string"
+    && (MCP_PROVIDER_PATTERN.test(value) || CALENDAR_PROVIDER_PATTERN.test(value)));
 }
 
 /** Build the canonical provider id for an external MCP server. */
@@ -32,15 +34,20 @@ export function mcpProviderId(server: string): string {
   return `mcp:${server}`;
 }
 
+/** Build the canonical persisted provider id for one configured calendar adapter. */
+export function calendarProviderId(providerId: string): string {
+  return `calendar:${providerId}`;
+}
+
 /**
  * Provider/type coherence (the grounding invariant): a `resource` is external
- * and MUST carry an `mcp:` provider; a `task`/`note` is Muse-local and MUST be
+ * and MUST carry an `mcp:` provider; a `task`/`note`/`reminder` is Muse-local and MUST be
  * `local`. Enforced at parse and at link time so the two can never be crossed.
  */
 export function isCoherentArtifactProvider(artifactType: ArtifactType, providerId: string): boolean {
-  return artifactType === "resource"
-    ? MCP_PROVIDER_PATTERN.test(providerId)
-    : providerId === "local";
+  if (artifactType === "resource") return MCP_PROVIDER_PATTERN.test(providerId);
+  if (artifactType === "calendar-event") return CALENDAR_PROVIDER_PATTERN.test(providerId);
+  return providerId === "local";
 }
 
 export const ARTIFACT_ROLES = ["context", "next-step"] as const;
@@ -172,13 +179,24 @@ export interface AttunementState {
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 6;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }
 
 /** An adapter-resolved artifact. The core never asks an adapter to search. */
 export interface ResolvedArtifact extends ArtifactReference {
+  readonly calendarAllDay?: boolean;
+  readonly calendarEndsAt?: string;
+  readonly calendarLocation?: string;
+  readonly calendarStartsAt?: string;
+  readonly calendarTimeState?: "upcoming" | "happening" | "ended";
+  readonly contactBirthday?: string;
+  readonly contactRelationship?: string;
+  readonly reminderDueAt?: string;
+  /** Display-only temporal state for a pending reminder. */
+  readonly reminderDueState?: "due" | "overdue";
+  readonly reminderStatus?: "pending" | "fired";
   readonly summary?: string;
   readonly taskDueAt?: string;
   /** Display-only temporal state derived once by Continuity preparation. */

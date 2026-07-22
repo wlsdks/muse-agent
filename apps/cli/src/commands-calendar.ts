@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
-import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
+import { encodeCalendarEventReference, eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
 import { computeAvailability } from "@muse/mcp-shared";
 import { readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/stores";
 import { detectCalendarConflicts, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
@@ -142,6 +142,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         // `formatCalendarEvents` and `--json` emit consistent output
         // regardless of mode.
         const events = raw.map((event) => ({
+          continuityRef: encodeCalendarEventReference(event),
           endsAtIso: event.endsAt.toISOString(),
           id: event.id,
           providerId: event.providerId,
@@ -855,4 +856,3 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       );
     });
 }
-

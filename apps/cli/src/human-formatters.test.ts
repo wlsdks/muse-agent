@@ -160,6 +160,18 @@ describe("formatCalendarEvents renders in the local timezone, not UTC", () => {
   it("returns the empty-window message for no events", () => {
     expect(formatCalendarEvents({ events: [] })).toBe("Calendar: (no events in window)\n");
   });
+
+  it("prints a copyable continuity reference without replacing the mutation id", () => {
+    const out = formatCalendarEvents({ events: [{
+      continuityRef: "cev1_exact",
+      id: "event-mutation-id",
+      providerId: "work",
+      startsAtIso: "2026-05-20T09:00:00.000Z",
+      title: "Review"
+    }] }, "UTC");
+    expect(out).toContain("[event-mu]");
+    expect(out).toContain("continuity-ref: cev1_exact");
+  });
 });
 
 describe("formatCitations", () => {

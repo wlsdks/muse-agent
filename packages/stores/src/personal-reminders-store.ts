@@ -61,6 +61,13 @@ export interface PersistedReminder {
 
 export type ReminderStatusFilter = "pending" | "fired" | "all" | "due";
 
+export class ReminderStoreUnavailableError extends Error {
+  constructor() {
+    super("reminder store cannot be read or validated");
+    this.name = "ReminderStoreUnavailableError";
+  }
+}
+
 export async function readReminders(file: string): Promise<readonly PersistedReminder[]> {
   let raw: string;
   try {
@@ -82,6 +89,41 @@ export async function readReminders(file: string): Promise<readonly PersistedRem
   return (parsed as { reminders: unknown[] }).reminders.flatMap((entry): readonly PersistedReminder[] =>
     isPersistedReminder(entry) ? [entry] : []
   );
+}
+
+/** Strict, non-mutating reader for exact-source and audit seams. Unlike the
+ * recovery-oriented reader above, it never quarantines malformed bytes or
+ * normalizes an unreadable/invalid store to an empty list. */
+export async function readRemindersStrict(file: string): Promise<readonly PersistedReminder[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    throw new ReminderStoreUnavailableError();
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new ReminderStoreUnavailableError();
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { reminders?: unknown }).reminders)) {
+    throw new ReminderStoreUnavailableError();
+  }
+  const entries = (parsed as { reminders: unknown[] }).reminders;
+  if (entries.some((entry) => !isPersistedReminder(entry))) {
+    throw new ReminderStoreUnavailableError();
+  }
+  const reminders = entries as readonly PersistedReminder[];
+  if (new Set(reminders.map((reminder) => reminder.id)).size !== reminders.length) {
+    throw new ReminderStoreUnavailableError();
+  }
+  return reminders;
+}
+
+/** Exact reminder lookup with strict, byte-preserving store semantics. */
+export async function readReminderByIdStrict(file: string, id: string): Promise<PersistedReminder | undefined> {
+  return (await readRemindersStrict(file)).find((reminder) => reminder.id === id);
 }
 
 /**

@@ -17,7 +17,7 @@
  *   - DELETE /api/calendar/credentials/:providerId — remove credentials
  */
 
-import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
+import { encodeCalendarEventReference, type CalendarCredentialStore, type CalendarProviderRegistry } from "@muse/calendar";
 import type { ResolvedIntegrationEnvironment } from "@muse/autoconfigure";
 import { errorMessage, type JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
@@ -76,6 +76,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       return {
         events: events.map((event) => ({
           allDay: event.allDay,
+          continuityRef: encodeCalendarEventReference(event),
           endsAtIso: event.endsAt.toISOString(),
           id: event.id,
           location: event.location ?? null,

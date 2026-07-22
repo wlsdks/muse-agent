@@ -10,6 +10,40 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Continuity can now ground a thread in one exact local contact.** `muse contacts
+  list` exposes the copyable canonical ID, while CLI, authenticated local HTTP, and web
+  accept only that byte-identical ID—never a name, alias, prefix, address, Apple Contacts
+  lookup, or hidden catalog selection. Packs project only bounded name, relationship,
+  birthday, and user-authored context; email, phone, handle, aliases, and graph edges stay
+  out of the Continuity surface. Contact evidence is context-only and cannot become a next
+  step, recipient, completion receipt, outcome, permission, send, or automation signal.
+
+- **Continuity can now ground a thread in one exact configured calendar occurrence.**
+  Calendar listings expose a versioned, copyable Continuity reference separate from the
+  provider's mutation ID. CLI, authenticated local HTTP, and web linking require the user to
+  choose the exact registered provider; all five calendar adapters resolve without primary
+  fallback or title search. Packs show a bounded read-only projection and transient
+  upcoming/happening/ended state. Calendar context cannot become a next step, factual
+  interaction, outcome, permission, or automation signal, and provider-scoped unlinking
+  cannot remove a same-reference link from another calendar.
+
+- **Continuity can now resume with an exact local reminder in context.** The
+  user may explicitly link a full reminder ID or unique prefix from CLI, local
+  HTTP, or web; Muse stores the canonical ID and shows bounded text, pending or
+  fired status, and valid due state in the next Pack. A shared local-source
+  Module keeps task, note, and reminder resolution fail-closed. Reminder reads
+  never search by text, quarantine or rewrite the source store, create factual
+  interaction receipts or outcomes, become next steps, or widen automation.
+
+- **Recall can honor an explicit, user-authored temporal correction.** Notes
+  may link one current fact to one stale fact through a provenance-bound local
+  relation. Recall activates only an unambiguous exact pair, keeps the current
+  source ahead of the stale source, and re-audits the graph, note index, and
+  prepared snapshot before reuse. The path fails closed on ties, missing or
+  duplicate sources, stale provenance, and concurrent index changes. Its
+  controlled implementation matrix passes, but sealed and organic personal
+  effectiveness remain **NOT_PROVEN**; no historical recall result is promoted.
+
 - **Personal-agent qualification is now explicit and fail-closed.** `muse
   qualify` combines a provenance-bound canonical capability report with the
   live LaunchAgent identity, heartbeat/process binding, orphan-process scan,

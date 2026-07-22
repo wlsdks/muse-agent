@@ -11,7 +11,12 @@ import {
   CONTINUITY_IMPROVEMENT_COHORT_SIZE,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   buildContinuityInteractionReport,
+  calendarProviderId,
   computeContinuityEvaluation,
+  createCalendarArtifactValidator,
+  createCalendarExactArtifactResolver,
+  createContactArtifactValidator,
+  createContactExactArtifactResolver,
   createLocalArtifactValidator,
   createLocalContinuityTaskInteractionSourceResolver,
   createLocalExactArtifactResolver,
@@ -43,7 +48,8 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { resolveAttunementFile, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, resolveAttunementFile, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { Command } from "commander";
 
 import {
@@ -55,7 +61,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
-const ARTIFACT_TYPES = ["task", "note", "resource"] as const;
+const ARTIFACT_TYPES = ["task", "note", "reminder", "calendar-event", "contact", "resource"] as const;
 const ARTIFACT_ROLES = ["context", "next-step"] as const;
 const OUTCOMES = ["used", "adjusted", "ignored", "rejected"] as const;
 
@@ -67,6 +73,7 @@ export interface AttunementCommandDeps {
    * closed with a "connect the MCP server first" message.
    */
   readonly mcpResourceCaller?: McpToolCaller;
+  readonly calendarRegistry?: CalendarProviderRegistry;
   /** One Pack captures this clock exactly once for deterministic due-state rendering. */
   readonly now?: () => number;
 }
@@ -83,8 +90,16 @@ function tasksFile(): string {
   return resolveTasksFile(environment());
 }
 
+function remindersFile(): string {
+  return resolveRemindersFile(environment());
+}
+
 function notesDir(): string {
   return resolveNotesDir(environment());
+}
+
+function contactsFile(): string {
+  return resolveContactsFile(environment());
 }
 
 function assertChoice(value: string, allowed: readonly string[], name: string): void {
@@ -93,25 +108,39 @@ function assertChoice(value: string, allowed: readonly string[], name: string): 
 
 /**
  * The store refuses unvalidated links. This adapter is the only place that
- * knows the local task/notes providers and the external MCP resource provider,
+ * knows the local task/note/reminder adapters and the external MCP resource provider,
  * so it returns their exact, canonical identifiers rather than trusting a CLI
  * argument. A `resource` is confirmed to exist on its named, connected MCP
  * server before any link is stored.
  */
-function createArtifactValidator(mcpCaller: McpToolCaller | undefined): ArtifactLinkValidator {
-  const localValidator = createLocalArtifactValidator({ notesDir: notesDir(), tasksFile: tasksFile() });
+function createArtifactValidator(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry): ArtifactLinkValidator {
+  const localValidator = createLocalArtifactValidator({
+    notesDir: notesDir(),
+    remindersFile: remindersFile(),
+    tasksFile: tasksFile()
+  });
+  const calendarValidator = createCalendarArtifactValidator(calendarRegistry);
+  const contactValidator = createContactArtifactValidator({ contactsFile: contactsFile() });
   return async ({ artifactId, artifactType, providerId }) => {
     if (artifactType === "resource") {
       const server = serverFromProviderId(providerId);
       const resolved = await validateMcpResource(server, artifactId, mcpCaller);
       return { artifactId: resolved.artifactId, artifactType, providerId: resolved.providerId };
     }
+    if (artifactType === "calendar-event") return calendarValidator({ artifactId, artifactType, providerId });
+    if (artifactType === "contact") return contactValidator({ artifactId, artifactType, providerId });
     return localValidator({ artifactId, artifactType, providerId });
   };
 }
 
-function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): ExactArtifactResolver {
-  const resolveLocal = createLocalExactArtifactResolver({ notesDir: notesDir(), tasksFile: tasksFile() });
+function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined, calendarRegistry: CalendarProviderRegistry): ExactArtifactResolver {
+  const resolveLocal = createLocalExactArtifactResolver({
+    notesDir: notesDir(),
+    remindersFile: remindersFile(),
+    tasksFile: tasksFile()
+  });
+  const resolveCalendar = createCalendarExactArtifactResolver(calendarRegistry);
+  const resolveContact = createContactExactArtifactResolver({ contactsFile: contactsFile() });
   return async (link) => {
     if (link.artifactType === "resource") {
       // The resolved title/summary is UNTRUSTED external text; it is displayed
@@ -119,6 +148,8 @@ function createResolveExactArtifact(mcpCaller: McpToolCaller | undefined): Exact
       // undefined ⇒ `unavailable`, never a fabricated placeholder.
       return resolveMcpResourceArtifact(serverFromProviderId(link.providerId), link.artifactId, link.role, mcpCaller);
     }
+    if (link.artifactType === "calendar-event") return resolveCalendar(link);
+    if (link.artifactType === "contact") return resolveContact(link);
     return resolveLocal(link);
   };
 }
@@ -181,6 +212,13 @@ function buildResourceLinkInput(rawArtifactId: string, role: ArtifactLink["role"
     );
   }
   return { artifactId: resourceId, artifactType: "resource", providerId: mcpProviderId(server), role, threadId };
+}
+
+function buildCalendarLinkInput(rawArtifactId: string, provider: string | undefined, role: ArtifactLink["role"], threadId: string) {
+  if (role !== "context") throw new AttunementStoreError("a calendar-event is context-only; only a local task can be a next-step");
+  const exactProvider = provider?.trim();
+  if (!exactProvider) throw new AttunementStoreError("a calendar-event requires --provider <configured-provider-id>");
+  return { artifactId: rawArtifactId, artifactType: "calendar-event" as const, providerId: calendarProviderId(exactProvider), role, threadId };
 }
 
 export type ContinuityFeedbackCohort = CoreContinuityFeedbackCohort;
@@ -310,7 +348,7 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
         : "next step: none set";
     const readiness = pack.evidence.length === 0
       ? {
-          action: `link an exact local source: muse thread link ${thread.id} <task|note|resource> <id> --role <context|next-step>`,
+          action: `link an exact source: muse thread link ${thread.id} <task|note|reminder|resource> <id> --role <context|next-step>`,
           status: "needs-link"
         }
       : availableEvidence === 0
@@ -335,7 +373,7 @@ async function formatThreadReview(state: AttunementState, resolveExactArtifact: 
   return `${lines.join("\n")}\n`;
 }
 
-function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): string {
+function formatArtifactMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): string {
   const metadata: string[] = [];
   if (artifact.taskDueAt && artifact.taskDueState) {
     metadata.push(`${artifact.taskDueState}: ${artifact.taskDueAt}`);
@@ -343,6 +381,13 @@ function formatTaskMetadata(artifact: NonNullable<ContinuityPack["nextStep"]>): 
   if (artifact.taskTags && artifact.taskTags.length > 0) {
     metadata.push(`tags: ${JSON.stringify(artifact.taskTags)}`);
   }
+  if (artifact.reminderStatus) metadata.push(`status: ${artifact.reminderStatus}`);
+  if (artifact.reminderDueAt) {
+    metadata.push(`${artifact.reminderDueState ?? "due"}: ${artifact.reminderDueAt}`);
+  }
+  if (artifact.calendarStartsAt) metadata.push(`${artifact.calendarTimeState ?? "calendar"}: ${artifact.calendarStartsAt}`);
+  if (artifact.calendarEndsAt) metadata.push(`ends: ${artifact.calendarEndsAt}`);
+  if (artifact.calendarLocation) metadata.push(`location: ${artifact.calendarLocation}`);
   return metadata.length > 0 ? ` · ${metadata.join(" · ")}` : "";
 }
 
@@ -361,7 +406,7 @@ function formatEvidence(pack: ContinuityPack): string[] {
     const detail = pack.policy.detail === "standard" && artifact.summary && !isContextualNextStep
       ? ` — ${artifact.summary}`
       : "";
-    return `  - ${prefix} ${artifact.title}${detail}${formatTaskMetadata(artifact)}`;
+    return `  - ${prefix} ${artifact.title}${detail}${formatArtifactMetadata(artifact)}`;
   });
 }
 
@@ -439,9 +484,10 @@ async function commandAction(command: Command, io: ProgramIO, label: string, act
 
 export function registerAttunementCommands(program: Command, io: ProgramIO, deps: AttunementCommandDeps = {}): void {
   const mcpResourceCaller = deps.mcpResourceCaller ?? defaultMcpResourceCaller();
+  const calendarRegistry = deps.calendarRegistry ?? buildCalendarRegistry(environment());
   const now = deps.now ?? Date.now;
-  const validateArtifact = createArtifactValidator(mcpResourceCaller);
-  const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller);
+  const validateArtifact = createArtifactValidator(mcpResourceCaller, calendarRegistry);
+  const resolveExactArtifact = createResolveExactArtifact(mcpResourceCaller, calendarRegistry);
   const thread = program.command("thread").description("Keep an explicitly chosen life or work thread ready to resume");
 
   thread
@@ -478,14 +524,17 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
 
   thread
     .command("link <thread-id> <artifact-type> <artifact-id>")
-    .description("Explicitly link one exact local task/note, or an external MCP resource (<server>/<resource-id>), to a thread")
+    .description("Explicitly link one exact task/note/reminder/calendar event/contact, or external MCP resource, to a thread")
     .requiredOption("--role <context|next-step>", "how this source is used (a resource is context-only)")
+    .option("--provider <id>", "exact configured calendar provider id (required for calendar-event)")
     .addHelpText("after", `
 Examples:
   $ muse thread link <thread-id> task <task-id> --role next-step
   $ muse thread link <thread-id> note ideas.md --role context
+  $ muse thread link <thread-id> contact <exact-contact-id> --role context
+  $ muse thread link <thread-id> calendar-event <continuity-ref> --provider local --role context
   $ muse thread link <thread-id> resource github/facebook/react/issues/123 --role context`)
-    .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly role: string }, command: Command) => {
+    .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly provider?: string; readonly role: string }, command: Command) => {
       await commandAction(command, io, "thread link", async () => {
         const type = artifactType.trim().toLowerCase();
         const role = options.role.trim().toLowerCase();
@@ -493,6 +542,8 @@ Examples:
         assertChoice(role, ARTIFACT_ROLES, "--role");
         const input = type === "resource"
           ? buildResourceLinkInput(artifactId, role as ArtifactLink["role"], threadId.trim())
+          : type === "calendar-event"
+            ? buildCalendarLinkInput(artifactId, options.provider, role as ArtifactLink["role"], threadId.trim())
           : {
               artifactId,
               artifactType: type as ArtifactLink["artifactType"],
@@ -506,12 +557,19 @@ Examples:
 
   thread
     .command("unlink <thread-id> <artifact-type> <artifact-id>")
-    .description("Remove one exact local source link from a thread")
-    .action(async (threadId: string, artifactType: string, artifactId: string, _options: unknown, command: Command) => {
+    .description("Remove one exact source link from a thread")
+    .option("--provider <id>", "exact configured calendar provider id (required for calendar-event)")
+    .action(async (threadId: string, artifactType: string, artifactId: string, options: { readonly provider?: string }, command: Command) => {
       await commandAction(command, io, "thread unlink", async () => {
         const type = artifactType.trim().toLowerCase();
         assertChoice(type, ARTIFACT_TYPES, "artifact type");
-        const removed = await unlinkArtifact(attunementFile(), { artifactId: artifactId.trim(), artifactType: type as ArtifactLink["artifactType"], threadId: threadId.trim() });
+        if (type === "calendar-event" && !options.provider?.trim()) throw new AttunementStoreError("a calendar-event requires --provider <configured-provider-id>");
+        const removed = await unlinkArtifact(attunementFile(), {
+          artifactId: type === "contact" ? artifactId : artifactId.trim(),
+          artifactType: type as ArtifactLink["artifactType"],
+          ...(type === "calendar-event" ? { providerId: calendarProviderId(options.provider!.trim()) } : {}),
+          threadId: threadId.trim()
+        });
         if (!removed) throw new AttunementStoreError(`no ${type} link '${artifactId}' on thread '${threadId}'`);
         io.stdout(`Unlinked ${type}:${artifactId}\n`);
       });

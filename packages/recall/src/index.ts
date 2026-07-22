@@ -25,6 +25,7 @@ export * from "./mime.js";
 export * from "./document-reader.js";
 export * from "./notes-chunk.js";
 export * from "./notes-index.js";
+export * from "./temporal-claim-graph.js";
 export * from "./notes-links.js";
 export * from "./live-files.js";
 export * from "./episode-index.js";

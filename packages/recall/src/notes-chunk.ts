@@ -1,6 +1,12 @@
 import { applyOverlap } from "@muse/agent-core";
 
 /**
+ * Stable identity for the stored-text chunking algorithm used by the notes
+ * index. Bump this only when `chunkText` semantics change.
+ */
+export const NOTES_CHUNKER_VERSION = "muse.notes.chunk-text.v1" as const;
+
+/**
  * Paragraph-ish chunking — split by blank lines, then pack into
  * <= chunkChars so each chunk is a coherent embedding target.
  * Tiny enough that re-chunking on schema change is cheap.

@@ -2,8 +2,9 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeTasks, type PersistedTask } from "@muse/stores";
+import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
+import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +13,9 @@ import type { McpToolCaller } from "./attunement-mcp-resource.js";
 
 interface Fixture {
   readonly attunementFile: string;
+  readonly contactsFile: string;
   readonly notesDir: string;
+  readonly remindersFile: string;
   readonly taskFile: string;
 }
 
@@ -20,7 +23,13 @@ function fixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), "muse-attunement-cli-"));
   const notesDir = join(root, "notes");
   mkdirSync(notesDir);
-  return { attunementFile: join(root, "attunement.json"), notesDir, taskFile: join(root, "tasks.json") };
+  return {
+    attunementFile: join(root, "attunement.json"),
+    contactsFile: join(root, "contacts.json"),
+    notesDir,
+    remindersFile: join(root, "reminders.json"),
+    taskFile: join(root, "tasks.json")
+  };
 }
 
 async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDeps): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
@@ -28,11 +37,15 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   const stderr: string[] = [];
   const previous = {
     MUSE_ATTUNEMENT_FILE: process.env.MUSE_ATTUNEMENT_FILE,
+    MUSE_CONTACTS_FILE: process.env.MUSE_CONTACTS_FILE,
     MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
+    MUSE_REMINDERS_FILE: process.env.MUSE_REMINDERS_FILE,
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
   process.env.MUSE_ATTUNEMENT_FILE = fixture.attunementFile;
+  process.env.MUSE_CONTACTS_FILE = fixture.contactsFile;
   process.env.MUSE_NOTES_DIR = fixture.notesDir;
+  process.env.MUSE_REMINDERS_FILE = fixture.remindersFile;
   process.env.MUSE_TASKS_FILE = fixture.taskFile;
   let exitCode: number | undefined;
   try {
@@ -64,6 +77,45 @@ const TASK: PersistedTask = {
   status: "open",
   title: "Send the flower options"
 };
+
+const REMINDER: PersistedReminder = {
+  createdAt: "2026-07-14T00:00:00.000Z",
+  dueAt: "2026-07-18T09:00:00.000Z",
+  id: "reminder_cli_dentist",
+  status: "pending",
+  text: "Bring the referral letter"
+};
+
+const CONTACT: Contact = {
+  about: "Prefers a quiet dinner",
+  email: "must-not-appear@example.com",
+  id: "person_김민지_Aa",
+  name: "Kim Minji",
+  relationship: "close friend"
+};
+
+const CALENDAR_EVENT: CalendarEvent = {
+  allDay: false,
+  endsAt: new Date("2026-07-20T10:00:00.000Z"),
+  id: "event_cli_review",
+  location: "Room 4",
+  providerId: "work-calendar",
+  startsAt: new Date("2026-07-20T09:00:00.000Z"),
+  title: "Review roadmap"
+};
+
+function calendarRegistry(): CalendarProviderRegistry {
+  const provider: CalendarProvider & { resolveExactEvent(locator: { readonly eventId: string; readonly startsAt: string }): Promise<CalendarEvent | undefined> } = {
+    createEvent: async () => CALENDAR_EVENT,
+    deleteEvent: async () => undefined,
+    describe: () => ({ credentials: [], description: "Work calendar", displayName: "Work", id: "work-calendar", local: true }),
+    id: "work-calendar",
+    listEvents: async () => [CALENDAR_EVENT],
+    resolveExactEvent: async (locator) => locator.eventId === CALENDAR_EVENT.id && locator.startsAt === CALENDAR_EVENT.startsAt.toISOString() ? CALENDAR_EVENT : undefined,
+    updateEvent: async () => CALENDAR_EVENT
+  };
+  return new CalendarProviderRegistry([provider]);
+}
 
 describe("muse thread / continue — Personal Continuity", () => {
   it("requires an explicit equal life/work kind — there is no hidden default", async () => {
@@ -134,6 +186,79 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(outcome.stdout).toContain("Recorded ignored");
     const next = await run(f, ["thread", "continue", id]);
     expect(next.stdout).toContain("Previous pack: ignored");
+  });
+
+  it("links and reviews one exact reminder as read-only context", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    await writeReminders(f.remindersFile, [REMINDER]);
+    const reminderBefore = readFileSync(f.remindersFile);
+    const deps: AttunementCommandDeps = { now: () => Date.parse("2026-07-19T09:00:00.000Z") };
+    const started = await run(f, ["thread", "start", "Prepare", "for", "dentist", "--kind", "life"], deps);
+    const id = threadId(started.stdout);
+
+    const linked = await run(f, ["thread", "link", id, "reminder", "reminder_cli_d", "--role", "context"], deps);
+    expect(linked.stdout).toContain(`local:reminder:${REMINDER.id}`);
+    const rejectedNextStep = await run(f, ["thread", "link", id, "reminder", REMINDER.id, "--role", "next-step"], deps);
+    expect(rejectedNextStep.exitCode).toBe(1);
+    expect(rejectedNextStep.stderr).toContain("only a local task can be a next-step");
+
+    await run(f, ["thread", "link", id, "task", TASK.id, "--role", "next-step"], deps);
+    const continued = await run(f, ["continue", id], deps);
+    expect(continued.stdout).toContain(`[reminder:${REMINDER.id}] ${REMINDER.text}`);
+    expect(continued.stdout).toContain(`status: pending · overdue: ${REMINDER.dueAt}`);
+    expect(await readFileSync(f.remindersFile)).toEqual(reminderBefore);
+
+    const attunementBeforeReview = readFileSync(f.attunementFile);
+    const review = await run(f, ["thread", "review", "--json"], deps);
+    expect(review.stdout).toContain(`"artifactType": "reminder"`);
+    expect(readFileSync(f.attunementFile)).toEqual(attunementBeforeReview);
+    expect(readFileSync(f.remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("links and renders one exact contact id as safe context only", async () => {
+    const f = fixture();
+    await writeContacts(f.contactsFile, [CONTACT]);
+    const contactsBefore = readFileSync(f.contactsFile);
+    const started = await run(f, ["thread", "start", "Plan", "a", "dinner", "--kind", "life"]);
+    const id = threadId(started.stdout);
+
+    const linked = await run(f, ["thread", "link", id, "contact", CONTACT.id, "--role", "context"]);
+    expect(linked.stdout).toContain(`local:contact:${CONTACT.id}`);
+    expect((await run(f, ["thread", "link", id, "contact", CONTACT.name, "--role", "context"])).stderr)
+      .toContain("no local contact with exact id");
+    expect((await run(f, ["thread", "link", id, "contact", CONTACT.id, "--role", "next-step"])).stderr)
+      .toContain("only a local task");
+    expect((await run(f, ["thread", "unlink", id, "contact", ` ${CONTACT.id}`])).stderr)
+      .toContain("no contact link");
+
+    const continued = await run(f, ["continue", id]);
+    expect(continued.stdout).toContain(`[contact:${CONTACT.id}] ${CONTACT.name}`);
+    expect(continued.stdout).toContain("Prefers a quiet dinner");
+    expect(continued.stdout).not.toContain(CONTACT.email!);
+    expect(readFileSync(f.contactsFile)).toEqual(contactsBefore);
+  });
+
+  it("links, resolves, and provider-scoped unlinks one exact calendar occurrence", async () => {
+    const f = fixture();
+    const deps: AttunementCommandDeps = { calendarRegistry: calendarRegistry(), now: () => Date.parse("2026-07-19T09:00:00.000Z") };
+    const id = threadId((await run(f, ["thread", "start", "Review", "roadmap", "--kind", "work"], deps)).stdout);
+    const reference = encodeCalendarEventReference(CALENDAR_EVENT);
+
+    const missingProvider = await run(f, ["thread", "link", id, "calendar-event", reference, "--role", "context"], deps);
+    expect(missingProvider.exitCode).toBe(1);
+    expect(missingProvider.stderr).toContain("requires --provider");
+
+    const linked = await run(f, ["thread", "link", id, "calendar-event", reference, "--provider", "work-calendar", "--role", "context"], deps);
+    expect(linked.stdout).toContain(`calendar:work-calendar:calendar-event:${reference}`);
+    const continued = await run(f, ["continue", id], deps);
+    expect(continued.stdout).toContain(`[calendar-event:${reference}] Review roadmap`);
+    expect(continued.stdout).toContain("upcoming: 2026-07-20T09:00:00.000Z");
+    expect(continued.stdout).toContain("location: Room 4");
+
+    const unlinked = await run(f, ["thread", "unlink", id, "calendar-event", reference, "--provider", "work-calendar"], deps);
+    expect(unlinked.stdout).toContain(`Unlinked calendar-event:${reference}`);
+    expect((await readAttunementState(f.attunementFile)).threads[0]?.links).toHaveLength(0);
   });
 
   it("shows an exact overdue due and safely escaped JSON tags from the linked task", async () => {

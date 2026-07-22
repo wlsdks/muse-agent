@@ -25,9 +25,7 @@ import type { SessionFeedReflectionGrounding } from "./ask-session-grounding.js"
 import type { AskStreamResult, DecompositionTrustSignals } from "./ask-result-output.js";
 import { buildAskRunLog, writeRunLog, type RetrievalTraceEntry } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
-import type { SourceCheckSignals, IndexChunk } from "@muse/recall";
-
-type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
+import type { ScoredChunk, SourceCheckSignals } from "@muse/recall";
 
 /** S2 warm honesty (B2): the deterministic, on-brand close on an honest refusal. */
 const WARM_REFUSAL_CLOSE =

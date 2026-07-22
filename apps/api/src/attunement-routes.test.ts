@@ -13,7 +13,8 @@ import {
   readAttunementState,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
-import { writeTasks, type PersistedTask } from "@muse/stores";
+import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
+import { writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -21,7 +22,9 @@ import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunemen
 
 let root: string;
 let attunementFile: string;
+let contactsFile: string;
 let notesDir: string;
+let remindersFile: string;
 let tasksFile: string;
 let threadId: string;
 
@@ -35,13 +38,57 @@ const TASK: PersistedTask = {
   title: "Send flower options"
 };
 
+const REMINDER: PersistedReminder = {
+  createdAt: "2026-07-14T00:00:00.000Z",
+  dueAt: "2026-07-16T09:00:00.000Z",
+  id: "reminder_api_dentist",
+  status: "pending",
+  text: "Bring the referral letter"
+};
+
+const CONTACT: Contact = {
+  about: "Prefers a quiet dinner",
+  email: "must-not-appear@example.com",
+  id: "person_김민지_Aa",
+  name: "Kim Minji",
+  relationship: "close friend"
+};
+
+const CALENDAR_EVENT: CalendarEvent = {
+  allDay: false,
+  endsAt: new Date("2026-07-18T10:00:00.000Z"),
+  id: "event_api_review",
+  location: "Studio 2",
+  notes: "Bring the private attendee roster, but only this summary is projected.",
+  providerId: "work-calendar",
+  startsAt: new Date("2026-07-18T09:00:00.000Z"),
+  title: "Portfolio review"
+};
+
+function calendarRegistry(): CalendarProviderRegistry {
+  const provider: CalendarProvider & { resolveExactEvent(locator: { readonly eventId: string; readonly startsAt: string }): Promise<CalendarEvent | undefined> } = {
+    createEvent: async () => CALENDAR_EVENT,
+    deleteEvent: async () => undefined,
+    describe: () => ({ credentials: [], description: "Work calendar", displayName: "Work", id: "work-calendar", local: true }),
+    id: "work-calendar",
+    listEvents: async () => [CALENDAR_EVENT],
+    resolveExactEvent: async (locator) => locator.eventId === CALENDAR_EVENT.id && locator.startsAt === CALENDAR_EVENT.startsAt.toISOString() ? CALENDAR_EVENT : undefined,
+    updateEvent: async () => CALENDAR_EVENT
+  };
+  return new CalendarProviderRegistry([provider]);
+}
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "muse-attunement-api-"));
   attunementFile = join(root, "attunement.json");
+  contactsFile = join(root, "contacts.json");
   notesDir = join(root, "notes");
+  remindersFile = join(root, "reminders.json");
   tasksFile = join(root, "tasks.json");
   await mkdir(notesDir);
   await writeTasks(tasksFile, [TASK]);
+  await writeReminders(remindersFile, [REMINDER]);
+  await writeContacts(contactsFile, [CONTACT]);
   const thread = await createPersonalThread(attunementFile, { kind: "life", title: "Prepare birthday" }, {
     idFactory: () => "api",
     now: () => new Date("2026-07-14T00:00:00.000Z")
@@ -64,8 +111,10 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
   registerAttunementRoutes(app, {
     attunementFile,
     authService: undefined,
+    contactsFile,
     notesDir,
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
+    remindersFile,
     tasksFile,
     ...overrides
   });
@@ -139,6 +188,147 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
       interaction: expect.objectContaining({ state: "none" })
     }));
     expect(await readFile(attunementFile, "utf8")).toBe(beforeInteractions);
+  });
+
+  it("links, projects, reviews, and unlinks one exact reminder without mutating reminder bytes", async () => {
+    const app = server();
+    const reminderBefore = await readFile(remindersFile);
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: "reminder_api_d", artifactType: "reminder", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId: REMINDER.id, artifactType: "reminder", role: "context" });
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId: REMINDER.id,
+        reminderDueAt: REMINDER.dueAt,
+        reminderDueState: "overdue",
+        reminderStatus: "pending",
+        title: REMINDER.text
+      }),
+      reference: { artifactId: REMINDER.id, artifactType: "reminder", providerId: "local", role: "context" },
+      status: "available"
+    }));
+
+    const attunementBeforeReview = await readFile(attunementFile);
+    const review = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    expect(review.statusCode).toBe(200);
+    expect(review.json().reviewQueue.next.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({ artifactId: REMINDER.id, reminderStatus: "pending" })
+    }));
+    expect(await readFile(attunementFile)).toEqual(attunementBeforeReview);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+
+    const unlinked = await app.inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(unlinked.statusCode).toBe(200);
+    expect(unlinked.json()).toEqual({ removed: true });
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("links, projects, and unlinks one exact contact without exposing recipient fields", async () => {
+    const app = server();
+    const contactsBefore = await readFile(contactsFile);
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId: CONTACT.id, artifactType: "contact", providerId: "local", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    const evidence = opened.json().pack.evidence.find((entry: { reference: { artifactType: string } }) => entry.reference.artifactType === "contact");
+    expect(evidence).toEqual({
+      artifact: {
+        artifactId: CONTACT.id,
+        artifactType: "contact",
+        contactRelationship: CONTACT.relationship,
+        providerId: "local",
+        role: "context",
+        summary: CONTACT.about,
+        title: CONTACT.name
+      },
+      reference: { artifactId: CONTACT.id, artifactType: "contact", providerId: "local", role: "context" },
+      status: "available"
+    });
+    expect(JSON.stringify(evidence)).not.toContain(CONTACT.email);
+
+    const unlinked = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(unlinked.json()).toEqual({ removed: true });
+    expect(await readFile(contactsFile)).toEqual(contactsBefore);
+  });
+
+  it("rejects contact names and contact next-steps before opening a delivery", async () => {
+    const app = server();
+    const byName = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.name, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(byName.statusCode).toBe(409);
+    const padded = await app.inject({
+      method: "POST",
+      payload: { artifactId: ` ${CONTACT.id}`, artifactType: "contact", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(padded.statusCode).toBe(409);
+    const nextStep = await app.inject({
+      method: "POST",
+      payload: { artifactId: CONTACT.id, artifactType: "contact", role: "next-step" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(nextStep.statusCode).toBe(400);
+    expect((await readAttunementState(attunementFile)).deliveries).toHaveLength(0);
+  });
+
+  it("rejects a reminder next-step before reading or writing either store", async () => {
+    const attunementBefore = await readFile(attunementFile);
+    const reminderBefore = await readFile(remindersFile);
+    const response = await server().inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder", role: "next-step" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ errorMessage: "only a local task can be a next-step" });
+    expect(await readFile(attunementFile)).toEqual(attunementBefore);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
+  });
+
+  it("maps an unavailable reminder store to a structured conflict without opening a delivery", async () => {
+    const app = server();
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId: REMINDER.id, artifactType: "reminder", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    await writeFile(remindersFile, "{");
+    const attunementBefore = await readFile(attunementFile);
+    const reminderBefore = await readFile(remindersFile);
+
+    const response = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ errorMessage: "reminder store cannot be read or validated" });
+    expect(await readFile(attunementFile)).toEqual(attunementBefore);
+    expect(await readFile(remindersFile)).toEqual(reminderBefore);
   });
 
   it("maps unavailable preparation to a structured 409 without a delivery", async () => {
@@ -324,5 +514,84 @@ describe("GET /api/attunement/threads — the Work view's thread-picker feed", (
     expect(body.threads).toHaveLength(1);
     expect(body.threads[0]).toEqual({ id: threadId, kind: "life", title: "Prepare birthday" });
     await app.close();
+  });
+});
+
+describe("calendar-event continuity sources", () => {
+  it("lists configured providers and links, resolves, and unlinks one exact occurrence", async () => {
+    const registry = calendarRegistry();
+    const app = server({ calendarRegistry: registry });
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+
+    const before = await app.inject({ method: "GET", url: "/api/attunement/review" });
+    expect(before.json().calendarProviders).toEqual([{ displayName: "Work", id: "work-calendar" }]);
+
+    const linked = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().link).toMatchObject({ artifactId, artifactType: "calendar-event", providerId: "calendar:work-calendar", role: "context" });
+
+    const opened = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().pack.evidence).toContainEqual(expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId,
+        artifactType: "calendar-event",
+        calendarLocation: "Studio 2",
+        calendarStartsAt: CALENDAR_EVENT.startsAt.toISOString(),
+        calendarTimeState: "upcoming",
+        providerId: "calendar:work-calendar",
+        role: "context",
+        title: "Portfolio review"
+      }),
+      status: "available"
+    }));
+
+    const removed = await app.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    expect((await readAttunementState(attunementFile)).threads[0]?.links).not.toContainEqual(expect.objectContaining({ artifactId }));
+    await app.close();
+  });
+
+  it("rejects missing and unregistered providers without writing a link", async () => {
+    const app = server({ calendarRegistry: calendarRegistry() });
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+    for (const providerId of [undefined, "guessed-calendar"]) {
+      const response = await app.inject({
+        method: "POST",
+        payload: { artifactId, artifactType: "calendar-event", ...(providerId ? { providerId } : {}), role: "context" },
+        url: `/api/attunement/threads/${threadId}/links`
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect((await readAttunementState(attunementFile)).threads[0]?.links).toHaveLength(1);
+    await app.close();
+  });
+
+  it("can unlink stale calendar context after its provider is removed", async () => {
+    const artifactId = encodeCalendarEventReference(CALENDAR_EVENT);
+    const linkedApp = server({ calendarRegistry: calendarRegistry() });
+    expect((await linkedApp.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar", role: "context" },
+      url: `/api/attunement/threads/${threadId}/links`
+    })).statusCode).toBe(200);
+    await linkedApp.close();
+
+    const removedApp = server({ calendarRegistry: new CalendarProviderRegistry() });
+    const removed = await removedApp.inject({
+      method: "POST",
+      payload: { artifactId, artifactType: "calendar-event", providerId: "work-calendar" },
+      url: `/api/attunement/threads/${threadId}/links/unlink`
+    });
+    expect(removed.json()).toEqual({ removed: true });
+    await removedApp.close();
   });
 });

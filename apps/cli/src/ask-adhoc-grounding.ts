@@ -17,12 +17,10 @@ import { readFile } from "node:fs/promises";
 import { chunkText, lexicalOverlap, lexicalTokens } from "@muse/agent-core";
 import { fetchReadableUrl } from "@muse/domain-tools";
 import { isInteractiveWebEgressAllowed, isLocalOnlyEnabled } from "@muse/model";
-import { looksLikeBinaryContent, selectFilePassages, urlGroundingSource, type IndexChunk } from "@muse/recall";
+import { looksLikeBinaryContent, selectFilePassages, urlGroundingSource, type ScoredChunk } from "@muse/recall";
 
 import { readClipboardText } from "./clipboard-reader.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
-
-type ScoredChunk = { chunk: IndexChunk; file: string; score: number };
 
 export async function applyAdHocGrounding(params: {
   readonly options: {
@@ -242,4 +240,3 @@ export async function applyAdHocGrounding(params: {
 
   return { notesUnavailable };
 }
-

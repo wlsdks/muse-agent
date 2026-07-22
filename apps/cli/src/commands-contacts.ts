@@ -12,7 +12,7 @@
 import { overdueContacts, type OverdueContact } from "@muse/agent-core";
 import { interactionsFromEvents, resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
 import { readLocalEvents } from "./today-local-sources.js";
-import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
+import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isCanonicalContactId, isContactsEncrypted, linkContacts, mutateContactsWithResult, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
 import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
@@ -39,6 +39,7 @@ async function readNoteBodies(dir: string): Promise<string[]> {
 }
 
 function describeContact(contact: Contact): string {
+  const exactId = isCanonicalContactId(contact.id) ? contact.id : "invalid id; repair contacts store";
   const aliases = contact.aliases && contact.aliases.length > 0 ? ` (aka ${contact.aliases.join(", ")})` : "";
   const role = contact.relationship ? ` [your ${contact.relationship}]` : "";
   const reach = [contactIdentifier(contact), contact.phone]
@@ -49,7 +50,7 @@ function describeContact(contact: Contact): string {
     ? `\n    ↔ ${contact.connections.map((c) => `${c.as ? `${c.as} ` : "connected to "}${c.to}`).join(", ")}`
     : "";
   const note = contact.about ? `\n    ℹ ${contact.about}` : "";
-  return `${contact.name}${aliases}${role}${reachLabel}${edges}${note}`;
+  return `${contact.name} [id: ${exactId}]${aliases}${role}${reachLabel}${edges}${note}`;
 }
 
 /**

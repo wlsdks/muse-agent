@@ -107,6 +107,12 @@ export type {
   TimingStoreOptions
 } from "./timing-store.js";
 export { createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, readCanonicalLocalNote, type LocalArtifactValidatorOptions } from "./local-artifacts.js";
+export { createCalendarArtifactValidator, createCalendarExactArtifactResolver } from "./calendar-artifacts.js";
+export {
+  createContactArtifactValidator,
+  createContactExactArtifactResolver,
+  type ContactArtifactOptions
+} from "./contact-artifacts.js";
 export {
   AttunementStoreError,
   type ArtifactLinkValidator,

@@ -1975,7 +1975,7 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
     expect((result.matches as Array<{ path: string }>).length).toBe(2);
   });
 
-  it("muse.notes.search mode=llm-judge tolerates prose wrap; returns [] on malformed JSON", async () => {
+  it("muse.notes.search mode=llm-judge tolerates prose wrap; reports malformed JSON as judge failure", async () => {
     const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -1997,7 +1997,9 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
       notesDir: dir
     }));
     const badResult = await bad.callTool!("search", { mode: "llm-judge", query: "x" });
-    expect((badResult.matches as Array<{ path: string }>).length).toBe(0);
+    expect(badResult).toEqual({
+      error: "llm-judge could not select over 1 candidate notes — re-run with mode: 'substring'"
+    });
   });
 });
 

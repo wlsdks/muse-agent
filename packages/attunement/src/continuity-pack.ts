@@ -24,12 +24,39 @@ function latestOutcome(state: AttunementState, threadId: string) {
   return deliveries[0]?.outcome?.outcome;
 }
 
-function deriveTaskTemporalState(artifact: ResolvedArtifact, nowMs: number): ResolvedArtifact {
-  if (artifact.artifactType !== "task" || artifact.taskDueAt === undefined) return artifact;
-  const dueMs = Date.parse(artifact.taskDueAt);
+function deriveTemporalState(artifact: ResolvedArtifact, nowMs: number): ResolvedArtifact {
+  if (artifact.artifactType === "calendar-event" && artifact.calendarStartsAt && artifact.calendarEndsAt) {
+    const startsAt = Date.parse(artifact.calendarStartsAt);
+    const endsAt = Date.parse(artifact.calendarEndsAt);
+    if (Number.isFinite(startsAt) && Number.isFinite(endsAt) && endsAt >= startsAt) {
+      return {
+        ...artifact,
+        calendarTimeState: endsAt < nowMs ? "ended" : startsAt <= nowMs ? "happening" : "upcoming"
+      };
+    }
+  }
+  const dueAt = artifact.artifactType === "task"
+    ? artifact.taskDueAt
+    : artifact.artifactType === "reminder"
+      ? artifact.reminderDueAt
+      : undefined;
+  if (dueAt === undefined) return artifact;
+  const dueMs = Date.parse(dueAt);
   if (!Number.isFinite(dueMs)) {
-    const { taskDueAt: _invalidDueAt, taskDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
+    if (artifact.artifactType === "task") {
+      const { taskDueAt: _invalidDueAt, taskDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
+      return withoutInvalidDue;
+    }
+    const { reminderDueAt: _invalidDueAt, reminderDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
     return withoutInvalidDue;
+  }
+  if (artifact.artifactType === "reminder") {
+    return {
+      ...artifact,
+      ...(artifact.reminderStatus === "pending"
+        ? { reminderDueState: dueMs < nowMs ? "overdue" as const : "due" as const }
+        : {})
+    };
   }
   return {
     ...artifact,
@@ -70,7 +97,7 @@ export async function buildContinuityPack(
 
   for (const link of thread.links) {
     const resolved = await resolveExactArtifact(link);
-    const artifact = resolved ? deriveTaskTemporalState(requireExactResolvedArtifact(link, resolved), nowMs) : undefined;
+    const artifact = resolved ? deriveTemporalState(requireExactResolvedArtifact(link, resolved), nowMs) : undefined;
     evidence.push({
       reference: {
         artifactId: link.artifactId,

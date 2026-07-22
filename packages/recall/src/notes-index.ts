@@ -5,6 +5,7 @@
  * `commands-notes-rag.ts`, chat-grounding lazy-imports these by name.
  */
 
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { errorMessage } from "@muse/shared";
 
@@ -16,7 +17,7 @@ import { annotateNoteChunks } from "@muse/agent-core";
 
 import { parsePdfBuffer } from "./document-reader.js";
 import { embed } from "./embed.js";
-import { chunkText } from "./notes-chunk.js";
+import { chunkText, NOTES_CHUNKER_VERSION } from "./notes-chunk.js";
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
 const DEFAULT_CHUNK_CHARS = 600;
@@ -44,16 +45,20 @@ export async function extractNoteText(path: string): Promise<string> {
   return readFile(path, "utf8");
 }
 
-interface IndexChunk {
+export interface IndexChunk {
   readonly file: string;
   readonly chunkIndex: number;
   readonly text: string;
-  readonly embedding: number[];
+  readonly embedding: number[] | Float32Array;
 }
 
-interface FileEntry {
+export interface FileEntry {
   readonly path: string;
   readonly mtimeMs: number;
+  /** Exact raw source-byte digest at index time; absent on legacy v2 and PDFs. */
+  readonly sourceHash?: string;
+  /** Stored-text chunker identity at index time; absent on legacy v2 and PDFs. */
+  readonly chunkerVersion?: typeof NOTES_CHUNKER_VERSION;
   readonly chunks: readonly IndexChunk[];
 }
 
@@ -72,11 +77,15 @@ export function embeddingsSidecarPath(indexPath: string): string {
   return `${indexPath.replace(/\.json$/u, "")}.embeddings.bin`;
 }
 
-interface NotesIndex {
+export interface NotesIndex {
   readonly version: typeof NOTES_INDEX_SCHEMA_VERSION;
   readonly model: string;
   readonly builtAtIso: string;
   readonly files: FileEntry[];
+}
+
+function hashSourceBytes(sourceBytes: Uint8Array): string {
+  return createHash("sha256").update(sourceBytes).digest("hex");
 }
 
 export function defaultIndexPath(): string {
@@ -126,7 +135,7 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
 }
 
 /** A note's centroid embedding — the component-wise mean of its chunk embeddings. Pure. */
-export function noteCentroid(chunks: readonly { readonly embedding: readonly number[] }[]): number[] {
+export function noteCentroid(chunks: readonly { readonly embedding: ArrayLike<number> }[]): number[] {
   if (chunks.length === 0) {
     return [];
   }
@@ -337,10 +346,18 @@ function isV1NotesIndex(value: unknown): value is NotesIndex {
 }
 
 function isPersistedIndexFile(value: unknown, requireEmbedding = false): boolean {
+  const hasNoTextProvenance = isRecord(value)
+    && value.sourceHash === undefined
+    && value.chunkerVersion === undefined;
+  const hasValidTextProvenance = isRecord(value)
+    && typeof value.sourceHash === "string"
+    && /^[0-9a-f]{64}$/u.test(value.sourceHash)
+    && value.chunkerVersion === NOTES_CHUNKER_VERSION;
   return isRecord(value)
     && typeof value.path === "string"
     && typeof value.mtimeMs === "number"
     && Number.isFinite(value.mtimeMs)
+    && (hasNoTextProvenance || hasValidTextProvenance)
     && Array.isArray(value.chunks)
     && value.chunks.every((chunk) => isPersistedIndexChunk(chunk, requireEmbedding));
 }
@@ -437,14 +454,41 @@ export async function reindexNotes(
     position += 1;
     const at = `[${position.toString()}/${found.length.toString()}] `;
     const prior = known.get(path);
+    const isPdf = /\.pdf$/iu.test(path);
+    let sourceBytes: Buffer | undefined;
+    let sourceHash: string | undefined;
+    if (!isPdf) {
+      try {
+        sourceBytes = await readFile(path);
+        sourceHash = hashSourceBytes(sourceBytes);
+      } catch (cause) {
+        failed += 1;
+        options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${errorMessage(cause)})`);
+        continue;
+      }
+    }
     if (prior && prior.mtimeMs === mtimeMs) {
-      next.push(prior);
-      skipped += 1;
-      continue;
+      if (
+        isPdf
+        || (
+          prior.chunkerVersion === NOTES_CHUNKER_VERSION
+          && prior.sourceHash === sourceHash
+        )
+      ) {
+        next.push(prior);
+        skipped += 1;
+        continue;
+      }
     }
     let body: string;
+    let chunkerVersion: typeof NOTES_CHUNKER_VERSION | undefined;
     try {
-      body = await extractNoteText(path);
+      if (isPdf) {
+        body = await extractNoteText(path);
+      } else {
+        body = sourceBytes!.toString("utf8");
+        chunkerVersion = NOTES_CHUNKER_VERSION;
+      }
     } catch (cause) {
       failed += 1;
       options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${errorMessage(cause)})`);
@@ -482,7 +526,12 @@ export async function reindexNotes(
       options.onProgress?.(`${at}✗ ${path} (embedding failed — kept ${priorEntry ? "previous index entry" : "nothing"})`);
       continue;
     }
-    next.push({ chunks: out, mtimeMs, path });
+    next.push({
+      chunks: out,
+      ...(chunkerVersion !== undefined && sourceHash !== undefined ? { chunkerVersion, sourceHash } : {}),
+      mtimeMs,
+      path
+    });
     embedded += 1;
     options.onProgress?.(`${at}+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
   }
@@ -505,9 +554,9 @@ export async function reindexNotes(
 }
 
 /**
- * Returns true when at least one Markdown file under `dir` has an
- * mtime newer than the index's `builtAtIso`. Cheap (stat-only). Use
- * to skip the embed loop when nothing's changed.
+ * Returns true when the indexed notes corpus no longer matches disk.
+ * Text notes are read and hashed so preserved mtimes cannot hide source-byte
+ * changes; PDFs and newly discovered files retain the existing mtime check.
  */
 export async function isNotesIndexStale(dir: string, indexPath?: string): Promise<boolean> {
   const index = await loadIndex(indexPath ?? defaultIndexPath());
@@ -524,6 +573,10 @@ export async function isNotesIndexStale(dir: string, indexPath?: string): Promis
   //   - indexed file no longer exists on disk     → ghost stale
   const resolvedDir = pathResolve(dir);
   for (const entry of index.files) {
+    const isPdf = /\.pdf$/iu.test(entry.path);
+    if (!isPdf && (entry.sourceHash === undefined || entry.chunkerVersion !== NOTES_CHUNKER_VERSION)) {
+      return true;
+    }
     const resolvedPath = pathResolve(entry.path);
     const insideDir = resolvedPath === resolvedDir
       || resolvedPath.startsWith(`${resolvedDir}${pathSep}`);
@@ -532,6 +585,9 @@ export async function isNotesIndexStale(dir: string, indexPath?: string): Promis
     }
     try {
       await stat(entry.path);
+      if (!isPdf && hashSourceBytes(await readFile(entry.path)) !== entry.sourceHash) {
+        return true;
+      }
     } catch {
       return true;
     }

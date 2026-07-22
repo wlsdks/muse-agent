@@ -64,10 +64,85 @@ export function canonicalLoopbackBaseUrl(raw = "http://127.0.0.1:11434") {
   return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/u, "")}`;
 }
 
-export async function modelInfo(baseUrl, modelTag) {
+const emptyNetworkAccounting = () => ({
+  answerRequests: 0,
+  controlRequests: 0,
+  deniedExternalRequests: 0,
+  embeddingRequests: 0,
+  otherLoopbackRequests: 0,
+  preloadRequests: 0,
+  selectorRequests: 0,
+  totalLoopbackRequests: 0
+});
+
+function requestUrl(input) {
+  if (typeof input === "string" || input instanceof URL) return new URL(input);
+  if (typeof Request !== "undefined" && input instanceof Request) return new URL(input.url);
+  throw new Error("RECALL_EVAL_REQUEST_SHAPE");
+}
+
+function parsedBody(init) {
+  if (typeof init?.body !== "string") return undefined;
+  try {
+    const value = JSON.parse(init.body);
+    return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A content-blind transport sensor for local recall evals. It rejects every
+ * non-loopback destination before dispatch and retains counts only — never a
+ * prompt, candidate, embedding vector, response body, header, or absolute
+ * owner path. The body is inspected transiently only to distinguish Ollama's
+ * empty model preload from the bounded correction selector.
+ */
+export function createAuditedLoopbackFetch(baseUrl, fetchImpl = globalThis.fetch) {
+  const canonicalBase = canonicalLoopbackBaseUrl(baseUrl);
+  const allowed = new URL(canonicalBase);
+  const accounting = emptyNetworkAccounting();
+  const auditedFetch = async (input, init = {}) => {
+    const url = requestUrl(input);
+    if (url.origin !== allowed.origin) {
+      accounting.deniedExternalRequests += 1;
+      throw new Error("RECALL_EVAL_EXTERNAL_REQUEST_DENIED");
+    }
+
+    accounting.totalLoopbackRequests += 1;
+    const method = String(init.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase();
+    const body = parsedBody(init);
+    if (method === "POST" && url.pathname.endsWith("/api/embeddings")) {
+      accounting.embeddingRequests += 1;
+    } else if (method === "POST" && url.pathname.endsWith("/api/generate")) {
+      const isPreload = body !== undefined
+        && !("prompt" in body)
+        && body.stream === false
+        && body.keep_alive === "5m";
+      const isSelector = body !== undefined
+        && typeof body.prompt === "string"
+        && body.format === "json"
+        && body.stream === false;
+      if (isPreload) accounting.preloadRequests += 1;
+      else if (isSelector) accounting.selectorRequests += 1;
+      else accounting.answerRequests += 1;
+    } else if (method === "GET" && ["/api/ps", "/api/tags", "/api/version"].some((path) => url.pathname.endsWith(path))) {
+      accounting.controlRequests += 1;
+    } else {
+      accounting.otherLoopbackRequests += 1;
+    }
+    return fetchImpl(input, init);
+  };
+  return {
+    fetch: auditedFetch,
+    snapshot: () => Object.freeze({ ...accounting })
+  };
+}
+
+export async function modelInfo(baseUrl, modelTag, fetchImpl = globalThis.fetch) {
   const [versionResponse, tagsResponse] = await Promise.all([
-    fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(10_000) }),
-    fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(10_000) })
+    fetchImpl(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(10_000) }),
+    fetchImpl(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(10_000) })
   ]);
   if (!versionResponse.ok || !tagsResponse.ok) throw new Error("OLLAMA_UNREACHABLE");
   const version = await versionResponse.json();

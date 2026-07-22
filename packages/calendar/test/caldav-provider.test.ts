@@ -36,6 +36,51 @@ const RANGE: CalendarRange = { from: new Date("2026-05-30T00:00:00Z"), to: new D
 const ok = (body: string): Response => new Response(body, { status: 200 });
 
 describe("CalDAVCalendarProvider — listEvents (REPORT)", () => {
+  it("resolves an exact id+start with one read-only REPORT", async () => {
+    const fetch = recordingFetch(() => ok(multistatus(vevent)));
+    const provider = new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    await expect(provider.resolveExactEvent({ eventId: "ev1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .resolves.toMatchObject({ id: "ev1", title: "Standup" });
+    expect(fetch.calls).toHaveLength(1);
+    expect(fetch.calls[0]?.method).toBe("REPORT");
+  });
+
+  it("reconstructs a recurring occurrence stably across windows and provider restarts", async () => {
+    const recurring = [
+      "BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:daily", "SUMMARY:Daily sync",
+      "DTSTART:20260528T090000Z", "DTEND:20260528T093000Z", "RRULE:FREQ=DAILY;COUNT=4",
+      "END:VEVENT", "END:VCALENDAR"
+    ].join("\r\n");
+    const make = () => new CalDAVCalendarProvider({ fetchImpl: recordingFetch(() => ok(multistatus(recurring))).impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    const first = make();
+    const may29 = await first.listEvents({ from: new Date("2026-05-29T09:00:00Z"), to: new Date("2026-05-29T09:00:00Z") });
+    const may30 = await first.listEvents({ from: new Date("2026-05-30T09:00:00Z"), to: new Date("2026-05-30T09:00:00Z") });
+    expect(may29[0]).toMatchObject({ id: "daily-1", providerEventId: "daily" });
+    expect(may30[0]).toMatchObject({ id: "daily-2", providerEventId: "daily" });
+    await expect(make().resolveExactEvent({ eventId: "daily", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .resolves.toMatchObject({ id: "daily-2", providerEventId: "daily", title: "Daily sync" });
+  });
+
+  it("bounds a hung REPORT with an abort signal", async () => {
+    const hung = (async (_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    })) as unknown as typeof fetch;
+    const provider = new CalDAVCalendarProvider({ fetchImpl: hung, password: "p", retry: { retries: 0 }, timeoutMs: 25, url: "https://dav.test/cal/", username: "u" });
+    const started = Date.now();
+    await expect(provider.resolveExactEvent({ eventId: "ev1", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .rejects.toMatchObject({ code: "REPORT_TIMEOUT" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("distinguishes malformed exact data from a genuinely absent event", async () => {
+    const malformed = ["BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:bad", "DTSTART:not-a-date", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const bad = new CalDAVCalendarProvider({ fetchImpl: recordingFetch(() => ok(multistatus(malformed))).impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    await expect(bad.resolveExactEvent({ eventId: "bad", startsAt: "2026-05-30T09:00:00.000Z" }))
+      .rejects.toMatchObject({ code: "MALFORMED_RESPONSE" });
+
+    const empty = new CalDAVCalendarProvider({ fetchImpl: recordingFetch(() => ok('<D:multistatus xmlns:D="DAV:"/>')).impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    await expect(empty.resolveExactEvent({ eventId: "missing", startsAt: "2026-05-30T09:00:00.000Z" })).resolves.toBeUndefined();
+  });
   it("issues a REPORT with Depth:1, basic auth, and a time-range filter, then parses the multistatus into events", async () => {
     const fetch = recordingFetch(() => ok(multistatus(vevent)));
     const provider = new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://dav.test/cal", username: "u" });

@@ -28,7 +28,7 @@ function state(policy = baselinePolicy()): AttunementState {
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 3,
+    schemaVersion: 6,
     threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_life", kind: "life", links: [noteLink, taskLink], policy, title: "Plan a birthday" }],
     undoResetReceipts: []
   };
@@ -39,6 +39,31 @@ function buildContinuityPack(current: AttunementState, threadId: string, resolve
 }
 
 describe("buildContinuityPack", () => {
+  it.each([
+    ["2026-07-18T10:00:00.000Z", "2026-07-18T10:45:00.000Z", "upcoming"],
+    ["2026-07-18T08:30:00.000Z", "2026-07-18T09:45:00.000Z", "happening"],
+    ["2026-07-18T07:00:00.000Z", "2026-07-18T08:00:00.000Z", "ended"]
+  ] as const)("derives calendar window %s..%s as %s without creating a next step", async (startsAt, endsAt, expected) => {
+    const calendarLink: ArtifactLink = {
+      artifactId: "cev1_ref",
+      artifactType: "calendar-event",
+      linkedAt: "2026-07-17T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "calendar:gcal",
+      role: "context",
+      threadId: "thread_life"
+    };
+    const current = { ...state(), threads: [{ ...state().threads[0]!, links: [calendarLink] }] };
+    const pack = await prepareContinuityPack(current, "thread_life", async (link) => ({
+      ...link,
+      calendarEndsAt: endsAt,
+      calendarStartsAt: startsAt,
+      title: "Calendar event"
+    }), { now: () => Date.parse("2026-07-18T09:00:00.000Z") });
+    expect(pack.evidence[0]?.artifact?.calendarTimeState).toBe(expected);
+    expect(pack.nextStep).toBeUndefined();
+    expect(pack.interactionAnchor).toBeUndefined();
+  });
   it("captures one preparation time and derives one shared overdue task artifact", async () => {
     const now = vi.fn(() => Date.parse("2026-07-18T09:00:00.001Z"));
     const pack = await prepareContinuityPack(state(), "thread_life", async (link) => ({
@@ -78,6 +103,36 @@ describe("buildContinuityPack", () => {
     }), { now: () => Date.parse("2026-07-18T09:00:00.000Z") });
 
     expect(pack.evidence.find((entry) => entry.reference.artifactType === "task")?.artifact?.taskDueState).toBe("due");
+  });
+
+  it.each([
+    ["pending", "2026-07-17T09:00:00.000Z", "overdue"],
+    ["pending", "2026-07-19T09:00:00.000Z", "due"],
+    ["fired", "2026-07-17T09:00:00.000Z", undefined]
+  ] as const)("derives reminder temporal state for %s", async (reminderStatus, reminderDueAt, expected) => {
+    const reminderLink: ArtifactLink = {
+      artifactId: "reminder_dentist",
+      artifactType: "reminder",
+      linkedAt: "2026-07-14T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "local",
+      role: "context",
+      threadId: "thread_life"
+    };
+    const current: AttunementState = {
+      ...state(),
+      threads: [{ ...state().threads[0]!, links: [reminderLink, taskLink] }]
+    };
+    const pack = await prepareContinuityPack(current, "thread_life", async (link) => link.artifactType === "reminder"
+      ? { ...link, reminderDueAt, reminderStatus, title: "Dentist reminder" }
+      : { ...link, taskStatus: "open", title: "Finish invitation list" }, {
+      now: () => Date.parse("2026-07-18T09:00:00.000Z")
+    });
+
+    const reminder = pack.evidence.find((entry) => entry.reference.artifactType === "reminder")?.artifact;
+    expect(reminder?.reminderDueState).toBe(expected);
+    expect(pack.nextStep?.artifactType).toBe("task");
+    expect(pack.interactionAnchor?.artifactId).toBe(taskLink.artifactId);
   });
 
   it("resolves only the selected thread's stored links, preserving unavailable references", async () => {
@@ -154,7 +209,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 3,
+      schemaVersion: 6,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink, taskLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };
@@ -189,7 +244,7 @@ describe("buildContinuityPack", () => {
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 3,
+      schemaVersion: 6,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };

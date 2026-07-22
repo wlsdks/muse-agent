@@ -1,17 +1,33 @@
 import { promises as fs } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { readTaskById, readTaskByIdStrict, readTasks } from "@muse/stores";
+import {
+  readRemindersStrict,
+  readTaskById,
+  readTaskByIdStrict,
+  readTasks,
+  ReminderStoreUnavailableError,
+  type PersistedReminder
+} from "@muse/stores";
 
 import { AttunementStoreError } from "./attunement-store.js";
 
 import type { ArtifactLinkValidator } from "./attunement-store.js";
-import type { ExactArtifactResolver } from "./types.js";
+import type { ArtifactLink, ArtifactType, ExactArtifactResolver, ResolvedArtifact } from "./types.js";
 import type { ContinuityTaskInteractionSourceResolver } from "./interaction-evidence.js";
 
 export interface LocalArtifactValidatorOptions {
   readonly notesDir: string;
+  readonly remindersFile?: string;
   readonly tasksFile: string;
+}
+
+type LocalArtifactType = Exclude<ArtifactType, "resource">;
+
+interface LocalContinuityArtifactAdapter {
+  readonly artifactType: LocalArtifactType;
+  canonicalize(rawId: string): Promise<string>;
+  resolve(link: ArtifactLink): Promise<ResolvedArtifact | undefined>;
 }
 
 export interface CanonicalLocalNote {
@@ -89,47 +105,119 @@ async function canonicalTaskId(tasksFile: string, raw: string): Promise<string> 
   throw new AttunementStoreError(`task id prefix '${id}' is ambiguous; pass the full id`);
 }
 
-/** Canonicalizes only local task/note links; external resources require their own connected-MCP validator. */
+function boundedReminderText(text: string): string | undefined {
+  const normalized = text.replace(/\s+/gu, " ").trim();
+  return normalized ? normalized.slice(0, 240) : undefined;
+}
+
+async function readContinuityReminders(remindersFile: string): Promise<readonly PersistedReminder[]> {
+  try {
+    return await readRemindersStrict(remindersFile);
+  } catch (cause) {
+    if (cause instanceof ReminderStoreUnavailableError) {
+      throw new AttunementStoreError(cause.message);
+    }
+    throw cause;
+  }
+}
+
+async function canonicalReminderId(remindersFile: string, raw: string): Promise<string> {
+  const id = raw.trim();
+  if (id.length === 0) throw new AttunementStoreError("reminder id must not be empty");
+  const reminders = await readContinuityReminders(remindersFile);
+  if (reminders.some((reminder) => reminder.id === id)) return id;
+  const matches = reminders.filter((reminder) => reminder.id.startsWith(id));
+  if (matches.length === 1) return matches[0]!.id;
+  if (matches.length === 0) throw new AttunementStoreError(`no local reminder with id or unique prefix '${id}'`);
+  throw new AttunementStoreError(`reminder id prefix '${id}' is ambiguous; pass the full id`);
+}
+
+function projectReminder(reminder: PersistedReminder, link: ArtifactLink): ResolvedArtifact | undefined {
+  const title = boundedReminderText(reminder.text);
+  if (!title || !Number.isFinite(Date.parse(reminder.dueAt))) return undefined;
+  return {
+    artifactId: reminder.id,
+    artifactType: "reminder",
+    providerId: "local",
+    reminderDueAt: reminder.dueAt,
+    reminderStatus: reminder.status,
+    role: link.role,
+    title
+  };
+}
+
+function createLocalArtifactAdapters(
+  options: LocalArtifactValidatorOptions
+): ReadonlyMap<LocalArtifactType, LocalContinuityArtifactAdapter> {
+  const adapters: LocalContinuityArtifactAdapter[] = [
+    {
+      artifactType: "task",
+      canonicalize: (rawId) => canonicalTaskId(options.tasksFile, rawId),
+      resolve: async (link) => {
+        const task = await readTaskById(options.tasksFile, link.artifactId);
+        if (!task) return undefined;
+        const summary = boundedTaskNotes(task.notes);
+        const taskDueAt = validTaskDueAt(task.dueAt);
+        return {
+          artifactId: task.id,
+          artifactType: "task",
+          providerId: "local",
+          role: link.role,
+          ...(summary ? { summary } : {}),
+          ...(taskDueAt ? { taskDueAt } : {}),
+          taskStatus: task.status,
+          ...(task.tags && task.tags.length > 0 ? { taskTags: [...task.tags] } : {}),
+          title: task.title,
+          updatedAt: task.completedAt ?? task.createdAt
+        };
+      }
+    },
+    {
+      artifactType: "note",
+      canonicalize: async (rawId) => {
+        const note = await readCanonicalLocalNote(options.notesDir, rawId);
+        if (!note) throw new AttunementStoreError(`no local note with exact id '${rawId}'`);
+        return note.artifactId;
+      },
+      resolve: async (link) => {
+        const note = await readCanonicalLocalNote(options.notesDir, link.artifactId);
+        return note?.artifactId === link.artifactId ? { ...note, role: link.role } : undefined;
+      }
+    }
+  ];
+  const remindersFile = options.remindersFile;
+  if (remindersFile) {
+    adapters.push({
+      artifactType: "reminder",
+      canonicalize: (rawId) => canonicalReminderId(remindersFile, rawId),
+      resolve: async (link) => {
+        const reminders = await readContinuityReminders(remindersFile);
+        const reminder = reminders.find((candidate) => candidate.id === link.artifactId);
+        return reminder ? projectReminder(reminder, link) : undefined;
+      }
+    });
+  }
+  return new Map(adapters.map((adapter) => [adapter.artifactType, adapter]));
+}
+
+/** Canonicalizes configured local sources; external resources require their own connected-MCP validator. */
 export function createLocalArtifactValidator(options: LocalArtifactValidatorOptions): ArtifactLinkValidator {
+  const adapters = createLocalArtifactAdapters(options);
   return async ({ artifactId, artifactType, providerId }) => {
     if (providerId !== "local") throw new AttunementStoreError("local artifact validation requires the local provider");
-    if (artifactType === "task") return { artifactId: await canonicalTaskId(options.tasksFile, artifactId), artifactType, providerId };
-    if (artifactType === "note") {
-      const note = await readCanonicalLocalNote(options.notesDir, artifactId);
-      if (!note) throw new AttunementStoreError(`no local note with exact id '${artifactId}'`);
-      return { artifactId: note.artifactId, artifactType, providerId };
-    }
-    throw new AttunementStoreError("local artifact validation supports task and note only");
+    const adapter = artifactType === "resource" ? undefined : adapters.get(artifactType);
+    if (!adapter) throw new AttunementStoreError(`local artifact validation does not support configured type '${artifactType}'`);
+    return { artifactId: await adapter.canonicalize(artifactId), artifactType, providerId };
   };
 }
 
 /** Resolve only the already-linked local sources; it never searches or guesses. */
 export function createLocalExactArtifactResolver(options: LocalArtifactValidatorOptions): ExactArtifactResolver {
+  const adapters = createLocalArtifactAdapters(options);
   return async (link) => {
     if (link.providerId !== "local") return undefined;
-    if (link.artifactType === "task") {
-      const task = await readTaskById(options.tasksFile, link.artifactId);
-      if (!task) return undefined;
-      const summary = boundedTaskNotes(task.notes);
-      const taskDueAt = validTaskDueAt(task.dueAt);
-      return {
-        artifactId: task.id,
-        artifactType: "task",
-        providerId: "local",
-        role: link.role,
-        ...(summary ? { summary } : {}),
-        ...(taskDueAt ? { taskDueAt } : {}),
-        taskStatus: task.status,
-        ...(task.tags && task.tags.length > 0 ? { taskTags: [...task.tags] } : {}),
-        title: task.title,
-        updatedAt: task.completedAt ?? task.createdAt
-      };
-    }
-    if (link.artifactType === "note") {
-      const note = await readCanonicalLocalNote(options.notesDir, link.artifactId);
-      return note?.artifactId === link.artifactId ? { ...note, role: link.role } : undefined;
-    }
-    return undefined;
+    const adapter = link.artifactType === "resource" ? undefined : adapters.get(link.artifactType);
+    return adapter?.resolve(link);
   };
 }
 

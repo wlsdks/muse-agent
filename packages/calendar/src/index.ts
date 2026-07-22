@@ -21,13 +21,16 @@
 
 export type {
   CalendarEvent,
+  CalendarEventLocator,
   CalendarEventInput,
   CalendarEventUpdate,
   CalendarProvider,
+  ExactCalendarEventProvider,
   CalendarProviderInfo,
   CalendarRange,
   CredentialRequirement
 } from "./types.js";
+export { decodeCalendarEventReference, encodeCalendarEventReference, selectExactCalendarEvent } from "./exact-event.js";
 export { CalendarProviderError, CalendarValidationError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
 export { eventsToIcs, type IcsEvent } from "./ics-export.js";
 export { CalendarProviderRegistry } from "./registry.js";
