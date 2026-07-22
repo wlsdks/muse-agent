@@ -279,6 +279,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Doctor runtime diagnostics now have a cohesive internal boundary.** The
+  oversized CLI command module keeps argument/runtime assembly, while resident
+  resource policy, verified-PID process observation, workload evidence, and
+  loopback-only Ollama memory reporting live in a dedicated module. Public
+  command exports and output remain unchanged.
+
 - **The console loads faster and the Flows list reads cleaner.** The canvas
   stack now loads only when you open Flows (main bundle gzip 198→143 KB);
   flow names and next-run times sit on separate lines with long names
