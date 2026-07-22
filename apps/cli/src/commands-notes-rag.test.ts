@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NOTES_CHUNKER_VERSION } from "@muse/recall";
 import { describe, expect, it } from "vitest";
 
 import { chunkText, cosine, defaultIndexPath, extractDocumentText, formatNoteFolders, formatRecentNotes, formatRelatedNotes, formatRelativeAge, formatReindexOutcome, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, rankRelatedNotes, reindexNotes, resolveIndexNotePath, selectRecentNotes, summarizeNoteFolders } from "./commands-notes-rag.js";
@@ -140,7 +142,13 @@ describe("isNotesIndexStale", () => {
     // post-now build time).
     const payload = {
       builtAtIso: new Date(Date.now() + 60_000).toISOString(),
-      files: [{ chunks: [], mtimeMs: Date.now() - 60_000, path: notePath }],
+      files: [{
+        chunkerVersion: NOTES_CHUNKER_VERSION,
+        chunks: [],
+        mtimeMs: Date.now() - 60_000,
+        path: notePath,
+        sourceHash: createHash("sha256").update("# kept\n").digest("hex")
+      }],
       model: "nomic-embed-text",
       version: 2
     };

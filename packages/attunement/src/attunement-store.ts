@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, readTaskByIdStrict } from "@muse/stores";
+import { atomicWriteFile, isCanonicalContactId, readTaskByIdStrict } from "@muse/stores";
 import { isRecord, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
@@ -114,7 +114,7 @@ const EMPTY_STATE: AttunementState = {
   interactionReceipts: [],
   nextPolicyVersion: 1,
   resetReceipts: [],
-  schemaVersion: 5,
+  schemaVersion: 6,
   threads: [],
   undoResetReceipts: []
 };
@@ -151,18 +151,20 @@ function isFingerprint(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
 }
 
-function isReference(value: unknown, schemaVersion = 5): value is ArtifactReference {
+function isReference(value: unknown, schemaVersion = 6): value is ArtifactReference {
   return isRecord(value)
     && isNonEmptyString(value.artifactId)
     && isOneOf(value.artifactType, ARTIFACT_TYPES)
     && (schemaVersion >= 4 || value.artifactType !== "reminder")
     && (schemaVersion >= 5 || value.artifactType !== "calendar-event")
+    && (schemaVersion >= 6 || value.artifactType !== "contact")
+    && (value.artifactType !== "contact" || isCanonicalContactId(value.artifactId))
     && isValidProviderId(value.providerId)
     && isCoherentArtifactProvider(value.artifactType, value.providerId)
     && isOneOf(value.role, ARTIFACT_ROLES);
 }
 
-function isLink(value: unknown, schemaVersion = 5): value is ArtifactLink {
+function isLink(value: unknown, schemaVersion = 6): value is ArtifactLink {
   if (!isRecord(value) || !isReference(value, schemaVersion)) return false;
   return isNonEmptyString(value.linkedAt)
     && value.linkedBy === "user"
@@ -177,7 +179,7 @@ function isPolicy(value: unknown): value is PersonalThread["policy"] {
     && isSafeVersion(value.version);
 }
 
-function isThread(value: unknown, schemaVersion = 5): value is PersonalThread {
+function isThread(value: unknown, schemaVersion = 6): value is PersonalThread {
   return isRecord(value)
     && isNonEmptyString(value.createdAt)
     && isNonEmptyString(value.id)
@@ -192,7 +194,7 @@ function isEvidenceClass(value: unknown): boolean {
   return isOneOf(value, CONTINUITY_EVIDENCE_CLASSES);
 }
 
-function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion = 5): value is ContinuityDelivery {
+function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion = 6): value is ContinuityDelivery {
   if (!isRecord(value)
     || !Array.isArray(value.evidenceRefs)
     || !value.evidenceRefs.every((reference) => isReference(reference, schemaVersion))
@@ -266,7 +268,7 @@ function isUndoResetReceipt(value: unknown): value is UndoResetReceipt {
 function parseState(value: unknown): AttunementState {
   const schemaVersion = isRecord(value) && typeof value.schemaVersion === "number" ? value.schemaVersion : 0;
   if (!isRecord(value)
-    || (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5)
+    || (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3 && schemaVersion !== 4 && schemaVersion !== 5 && schemaVersion !== 6)
     || !Array.isArray(value.threads)
     || !value.threads.every((thread) => isThread(thread, schemaVersion))
     || !Array.isArray(value.deliveries)
@@ -300,7 +302,7 @@ function parseState(value: unknown): AttunementState {
       : [],
     nextPolicyVersion: value.nextPolicyVersion,
     resetReceipts: value.resetReceipts,
-    schemaVersion: 5,
+    schemaVersion: 6,
     threads: value.threads,
     undoResetReceipts: value.undoResetReceipts
   };
@@ -330,6 +332,10 @@ function validateTitle(value: string): string {
  * but neither a raw nor a returned note ID may express a path escape.
  */
 function assertSafeArtifactId(value: string, artifactType: ArtifactLink["artifactType"], source: string): string {
+  if (artifactType === "contact") {
+    if (!isCanonicalContactId(value)) throw new AttunementStoreError(`${source} returned a non-canonical contact id`);
+    return value;
+  }
   const id = value.trim();
   if (id.length === 0) throw new AttunementStoreError(`${source} returned an empty canonical id`);
   if (artifactType === "resource") {
@@ -552,7 +558,7 @@ export async function linkArtifact(
   input: LinkArtifactInput,
   options: LinkArtifactOptions
 ): Promise<{ readonly created: boolean; readonly link: ArtifactLink }> {
-  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task, note, reminder, calendar-event, or resource");
+  if (!ARTIFACT_TYPES.includes(input.artifactType)) throw new AttunementStoreError("artifact type must be task, note, reminder, calendar-event, contact, or resource");
   if (!ARTIFACT_ROLES.includes(input.role)) throw new AttunementStoreError("artifact role must be context or next-step");
   if (input.role === "next-step" && input.artifactType !== "task") {
     throw new AttunementStoreError("only a local task can be a next-step");
@@ -560,7 +566,7 @@ export async function linkArtifact(
   const requestedProvider = input.providerId ?? "local";
   if (!isValidProviderId(requestedProvider) || !isCoherentArtifactProvider(input.artifactType, requestedProvider)) {
     throw new AttunementStoreError(
-      `provider '${requestedProvider}' does not match a ${input.artifactType} (task/note/reminder are 'local'; calendar-event is 'calendar:<provider>'; resource is 'mcp:<server>')`
+      `provider '${requestedProvider}' does not match a ${input.artifactType} (task/note/reminder/contact are 'local'; calendar-event is 'calendar:<provider>'; resource is 'mcp:<server>')`
     );
   }
   if (typeof options?.validateArtifact !== "function") {
@@ -823,7 +829,7 @@ export async function recordContinuityTaskCompletionInteraction(
     return {
       changed: true,
       result: { kind: "recorded", receipt },
-      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 5 }
+      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 6 }
     };
   });
 }

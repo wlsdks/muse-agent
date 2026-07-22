@@ -207,6 +207,19 @@ function calendarLinkReview(linked: boolean) {
   };
 }
 
+function contactLinkReview(linked: boolean) {
+  const review = reminderLinkReview(false);
+  return {
+    ...review,
+    threads: [{
+      ...review.threads[0],
+      linkCount: linked ? 1 : 0,
+      links: linked ? [{ artifactId: "person_김민지_Aa", artifactType: "contact", providerId: "local", role: "context" }] : [],
+      title: "Plan a quiet dinner"
+    }]
+  };
+}
+
 test("an opened Pack shows its core-derived task status, due state, timestamp, and tags", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(<I18nProvider><OpenedPackCard openedPack={opened("direct")} /></I18nProvider>);
@@ -280,6 +293,35 @@ test("an opened Pack shows bounded calendar timing and location as read-only con
   await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
 });
 
+test("an opened Pack shows only the safe contact projection as read-only context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const contact = {
+    artifactId: "person_김민지_Aa",
+    artifactType: "contact",
+    contactBirthday: "03-14",
+    contactRelationship: "close friend",
+    providerId: "local",
+    role: "context",
+    summary: "Prefers a quiet dinner",
+    title: "Kim Minji"
+  };
+  const screen = await render(<I18nProvider><OpenedPackCard openedPack={{
+    delivery: { id: "delivery_contact" },
+    pack: {
+      evidence: [{ artifact: contact, reference: contact, status: "available" }],
+      policy: { nextStep: "direct" },
+      thread: { kind: "life", title: "Plan a quiet dinner" }
+    }
+  }} /></I18nProvider>);
+
+  await expect.element(screen.getByText("Kim Minji · contact:person_김민지_Aa", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Prefers a quiet dinner", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("close friend", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("03-14", { exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Mark next step done" })).not.toBeInTheDocument();
+  await expect.element(screen.getByText(/must-not-appear@example\.com/u)).not.toBeInTheDocument();
+});
+
 test("a reminder can be explicitly linked and unlinked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
@@ -311,13 +353,58 @@ test("a reminder can be explicitly linked and unlinked only as context", async (
   await screen.getByLabelText("Source type").selectOptions("reminder");
   await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
   await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
-  await screen.getByLabelText("Exact task/reminder ID or note path").fill("reminder_den");
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("reminder_den");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).toBeVisible();
 
   await screen.getByRole("button", { name: "Remove reminder:reminder_dentist" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove reminder:reminder_dentist" })).not.toBeInTheDocument();
   expect(post).toHaveBeenCalledTimes(2);
+});
+
+test("a contact requires a pasted exact id and can be linked only as context", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let linked = false;
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
+    ? interactionReport({ includeDelivery: false })
+    : contactLinkReview(linked));
+  const post = vi.fn(async (path: string, body: unknown) => {
+    if (path === "/api/attunement/threads/thread_life/links") {
+      if ((body as { artifactId?: string }).artifactId === " person_김민지_Aa ") throw new Error("non-canonical contact id");
+      expect(body).toEqual({ artifactId: "person_김민지_Aa", artifactType: "contact", role: "context" });
+      linked = true;
+      return {};
+    }
+    if (path === "/api/attunement/threads/thread_life/links/unlink") {
+      expect(body).toEqual({ artifactId: "person_김민지_Aa", artifactType: "contact" });
+      linked = false;
+      return {};
+    }
+    throw new Error(`unexpected POST ${path}`);
+  });
+  const client = { baseUrl: "http://continuity-contact.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await expect.element(screen.getByText("Plan a quiet dinner", { exact: true })).toBeVisible();
+  await screen.getByLabelText("Source type").selectOptions("contact");
+  await expect.element(screen.getByLabelText("How Muse may use it")).toHaveValue("context");
+  await expect.element(screen.getByLabelText("How Muse may use it").getByRole("option", { name: "next-step" })).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("option", { name: "Kim Minji" })).not.toBeInTheDocument();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill(" person_김민지_Aa ");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByText(/could not validate/u)).toBeVisible();
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("person_김민지_Aa");
+  await screen.getByRole("button", { name: "Link source" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" }).click();
+  await expect.element(screen.getByRole("button", { name: "Remove contact:person_김민지_Aa" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(3);
 });
 
 test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {
@@ -350,7 +437,7 @@ test("a calendar occurrence requires an explicit configured provider and can be 
   await expect.element(screen.getByText("Review roadmap", { exact: true })).toBeVisible();
   await screen.getByLabelText("Source type").selectOptions("calendar-event");
   await expect.element(screen.getByRole("button", { name: "Link source" })).toBeDisabled();
-  await screen.getByLabelText("Exact task/reminder ID or note path").fill("cev1_exact");
+  await screen.getByLabelText("Exact task/reminder/contact ID or note path").fill("cev1_exact");
   await screen.getByLabelText("Calendar provider").selectOptions("work-calendar");
   await screen.getByRole("button", { name: "Link source" }).click();
   await expect.element(screen.getByRole("button", { name: "Remove calendar-event:cev1_exact" })).toBeVisible();

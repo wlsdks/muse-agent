@@ -56,6 +56,64 @@ export interface Contact {
   readonly about?: string;
 }
 
+export class ContactStoreUnavailableError extends Error {
+  readonly code: "AMBIGUOUS_ID" | "INVALID_ID" | "MALFORMED_STORE";
+
+  constructor(code: ContactStoreUnavailableError["code"], message: string) {
+    super(message);
+    this.name = "ContactStoreUnavailableError";
+    this.code = code;
+  }
+}
+
+const CONTACT_ID_MAX_LENGTH = 256;
+const CONTACT_NAME_MAX_LENGTH = 512;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
+const CONTACT_KEYS = new Set(["about", "aliases", "birthday", "connections", "email", "handle", "id", "name", "phone", "relationship"]);
+const CONNECTION_KEYS = new Set(["as", "to"]);
+
+function isCanonicalContactString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string"
+    && value.length > 0
+    && value.length <= maxLength
+    && value === value.trim()
+    && !CONTROL_CHARACTERS.test(value);
+}
+
+export function isCanonicalContactId(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length > 0
+    && Buffer.byteLength(value, "utf8") <= CONTACT_ID_MAX_LENGTH
+    && value === value.trim()
+    && !CONTROL_CHARACTERS.test(value);
+}
+
+function malformedContact(message: string): never {
+  throw new ContactStoreUnavailableError("MALFORMED_STORE", `contacts store is malformed: ${message}`);
+}
+
+function strictContact(value: unknown, index: number): Contact {
+  if (!value || typeof value !== "object" || Array.isArray(value)) malformedContact(`row ${index.toString()} must be an object`);
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).some((key) => !CONTACT_KEYS.has(key))) malformedContact(`row ${index.toString()} has an unknown field`);
+  if (!isCanonicalContactId(row.id)) malformedContact(`row ${index.toString()} has an invalid id`);
+  if (!isCanonicalContactString(row.name, CONTACT_NAME_MAX_LENGTH)) malformedContact(`row ${index.toString()} has an invalid name`);
+  for (const key of ["about", "birthday", "email", "handle", "phone", "relationship"] as const) {
+    if (row[key] !== undefined && typeof row[key] !== "string") malformedContact(`row ${index.toString()} has an invalid ${key}`);
+  }
+  if (row.aliases !== undefined && (!Array.isArray(row.aliases) || row.aliases.some((alias) => typeof alias !== "string"))) {
+    malformedContact(`row ${index.toString()} has invalid aliases`);
+  }
+  if (row.connections !== undefined && (!Array.isArray(row.connections) || row.connections.some((connection) => {
+    if (!connection || typeof connection !== "object" || Array.isArray(connection)) return true;
+    const edge = connection as Record<string, unknown>;
+    return Object.keys(edge).some((key) => !CONNECTION_KEYS.has(key))
+      || !isCanonicalContactString(edge.to, CONTACT_NAME_MAX_LENGTH)
+      || (edge.as !== undefined && typeof edge.as !== "string");
+  }))) malformedContact(`row ${index.toString()} has invalid connections`);
+  return row as unknown as Contact;
+}
+
 /** A contact-store mutation and the value derived from its locked snapshot. */
 export interface ContactMutation<TResult> {
   readonly contacts: readonly Contact[];
@@ -174,6 +232,40 @@ export async function readContacts(file: string, env: NodeJS.ProcessEnv = proces
     const contact = coerceContact(entry);
     return contact ? [contact] : [];
   });
+}
+
+/**
+ * Read the current serialized people graph without tolerant dropping or
+ * quarantine. This is the exact-evidence Interface: every malformed row makes
+ * the whole read unavailable, while the source bytes remain untouched.
+ */
+export async function readContactsStrict(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly Contact[]> {
+  const { text } = await readMaybeEncrypted(file, env);
+  if (text === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    malformedContact("invalid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || Object.keys(parsed as Record<string, unknown>).some((key) => key !== "contacts")
+    || !Array.isArray((parsed as { readonly contacts?: unknown }).contacts)) {
+    malformedContact("expected exactly one contacts array");
+  }
+  const contacts = (parsed as { readonly contacts: readonly unknown[] }).contacts.map(strictContact);
+  const seen = new Set<string>();
+  for (const contact of contacts) {
+    if (seen.has(contact.id)) throw new ContactStoreUnavailableError("AMBIGUOUS_ID", `contacts store contains duplicate id '${contact.id}'`);
+    seen.add(contact.id);
+  }
+  return contacts;
+}
+
+/** Exact byte-identical ID lookup. Never resolves a name, alias, prefix, or address. */
+export async function readContactByIdStrict(file: string, id: string, env: NodeJS.ProcessEnv = process.env): Promise<Contact | undefined> {
+  if (!isCanonicalContactId(id)) throw new ContactStoreUnavailableError("INVALID_ID", "contact id must be canonical and 1-256 characters");
+  return (await readContactsStrict(file, env)).find((contact) => contact.id === id);
 }
 
 export async function writeContacts(file: string, contacts: readonly Contact[], env: NodeJS.ProcessEnv = process.env): Promise<void> {

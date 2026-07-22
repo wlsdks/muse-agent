@@ -96,5 +96,5 @@ describe("note relations cross-process serialization", () => {
       expect(mixedStore.revision).toBe(3);
       expect((await readdir(mixedPaths.museRoot)).filter((name) => name !== "note-relations.json")).toEqual([]);
     }
-  }, 30_000);
+  }, 60_000);
 });

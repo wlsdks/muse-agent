@@ -121,11 +121,11 @@ describe("muse contacts — people graph + recipient resolution", () => {
   it("add → list → resolve reflects through the real ~/.muse/contacts.json store", async () => {
     const file = contactsFile();
     const added = await run(file, ["add", "Bob", "--email", "bob@example.com", "--alias", "Bobby"]);
-    expect(added.stdout).toContain("Added Bob (aka Bobby) — bob@example.com");
+    expect(added.stdout).toMatch(/Added Bob \[id: contact_[^\]]+\] \(aka Bobby\) — bob@example\.com/u);
     expect(added.exitCode).toBeUndefined();
 
     const listed = await run(file, ["list"]);
-    expect(listed.stdout).toContain("Bob (aka Bobby) — bob@example.com");
+    expect(listed.stdout).toMatch(/Bob \[id: contact_[^\]]+\] \(aka Bobby\) — bob@example\.com/u);
 
     // Resolve by name and by alias.
     expect((await run(file, ["resolve", "Bob"])).stdout).toContain("bob@example.com");
@@ -164,10 +164,10 @@ describe("muse contacts — people graph + recipient resolution", () => {
     const file = contactsFile();
     const added = await run(file, ["add", "Mom", "--phone", "+1 415 555 0101"]);
     expect(added.exitCode).toBeUndefined();
-    expect(added.stdout).toContain("Mom — +1 415 555 0101");
+    expect(added.stdout).toMatch(/Mom \[id: contact_[^\]]+\] — \+1 415 555 0101/u);
 
     const listed = await run(file, ["list"]);
-    expect(listed.stdout).toContain("Mom — +1 415 555 0101");
+    expect(listed.stdout).toMatch(/Mom \[id: contact_[^\]]+\] — \+1 415 555 0101/u);
     expect(listed.stdout).not.toContain("(no email/handle/phone)");
   });
 
@@ -285,6 +285,18 @@ describe("muse contacts list --json — scripting parity with overdue/dupes/rela
     const r = await run(file, ["list", "--json"]);
     expect(r.exitCode).toBeUndefined();
     expect(JSON.parse(r.stdout)).toEqual([]);
+  });
+});
+
+describe("muse contacts list — copyable exact IDs", () => {
+  it("does not print a legacy non-canonical id as if Continuity could link it", async () => {
+    const file = contactsFile();
+    writeFileSync(file, JSON.stringify({ contacts: [{ id: " legacy\ncontact ", name: "Legacy" }] }), "utf8");
+
+    const listed = await run(file, ["list"]);
+
+    expect(listed.stdout).toContain("Legacy [id: invalid id; repair contacts store]");
+    expect(listed.stdout).not.toContain("legacy\ncontact");
   });
 });
 

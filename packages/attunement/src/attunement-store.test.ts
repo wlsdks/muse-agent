@@ -53,31 +53,47 @@ describe("Personal Continuity store", () => {
     expect((await readAttunementState(file)).threads.map((thread) => thread.kind)).toEqual(["life", "work"]);
   });
 
-  it("reads schema v4 byte-stably, migrates on explicit mutation, and rejects v4 calendar laundering", async () => {
+  it("reads schema v5 byte-stably, migrates on explicit mutation, and rejects v5 contact laundering", async () => {
     const file = stateFile();
     const options = deterministicOptions();
     const thread = await createPersonalThread(file, { kind: "life", title: "Prepare for the dentist" }, options);
     const current = readFileSync(file, "utf8");
-    const legacy = current.replace('"schemaVersion": 5', '"schemaVersion": 4');
+    const legacy = current.replace('"schemaVersion": 6', '"schemaVersion": 5');
     writeFileSync(file, legacy, "utf8");
 
-    expect((await readAttunementState(file)).schemaVersion).toBe(5);
+    expect((await readAttunementState(file)).schemaVersion).toBe(6);
     expect(readFileSync(file, "utf8")).toBe(legacy);
 
     await linkArtifact(file, {
-      artifactId: "cev1_WyJldmVudCIsIjIwMjYtMDctMjJUMDk6MDA6MDAuMDAwWiJd",
-      artifactType: "calendar-event",
-      providerId: "calendar:local",
+      artifactId: "person_김민지",
+      artifactType: "contact",
       role: "context",
       threadId: thread.id
     }, options);
     const migrated = JSON.parse(readFileSync(file, "utf8")) as { schemaVersion: number };
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
 
-    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 5', '"schemaVersion": 4');
+    const forgedLegacy = readFileSync(file, "utf8").replace('"schemaVersion": 6', '"schemaVersion": 5');
     writeFileSync(file, forgedLegacy, "utf8");
     await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
     expect(readFileSync(file, "utf8")).toBe(forgedLegacy);
+  });
+
+  it("rejects a non-canonical contact id in schema v6 without rewriting bytes", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Plan a dinner" }, options);
+    await linkArtifact(file, {
+      artifactId: "person_exact",
+      artifactType: "contact",
+      role: "context",
+      threadId: thread.id
+    }, options);
+    const forged = readFileSync(file, "utf8").replace('"artifactId": "person_exact"', '"artifactId": " person_exact"');
+    writeFileSync(file, forged, "utf8");
+
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(forged);
   });
 
   it("accepts only explicit local links and never guesses between next-step tasks", async () => {
@@ -108,6 +124,12 @@ describe("Personal Continuity store", () => {
     await expect(linkArtifact(file, {
       artifactId: "note.md",
       artifactType: "note",
+      role: "next-step",
+      threadId: thread.id
+    }, options)).rejects.toThrow("only a local task");
+    await expect(linkArtifact(file, {
+      artifactId: "person_exact",
+      artifactType: "contact",
       role: "next-step",
       threadId: thread.id
     }, options)).rejects.toThrow("only a local task");

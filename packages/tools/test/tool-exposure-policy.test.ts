@@ -201,6 +201,8 @@ describe("Korean prompts must be able to reach a tool", () => {
     expect(keywordMatchesPromptTokens("몇 살", tokenize("나 몇 살이야?"))).toBe(true);
     expect(keywordMatchesPromptTokens("몇 살", tokenize("비밀번호 알려줘"))).toBe(false);
     expect(keywordMatchesPromptTokens("몇 살", tokenize("살빼는 법 알려줘"))).toBe(false);
+    expect(keywordMatchesPromptTokens("할 일", tokenize("할머니가 일했다는 이야기"))).toBe(false);
+    expect(keywordMatchesPromptTokens("할 일", tokenize("내 할 일 목록 보여줘"))).toBe(true);
   });
 
   it("still requires every word of an ASCII multi-word keyword", () => {
