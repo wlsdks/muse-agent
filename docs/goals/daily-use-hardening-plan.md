@@ -61,15 +61,15 @@ or explicitly owner-confirmed.
 produce a user-effectiveness percentage, learning success rate, or autonomy
 promotion signal.
 
-### 2. Build an actionable personal status, not a vanity dashboard — next
+### 2. Build an actionable personal status, not a vanity dashboard — complete
 
-- [ ] Default surface: blocked/held actions, pending owner feedback, continuity
+- [x] Default surface: blocked/held actions, pending owner feedback, continuity
   review progress, and the next safe action.
-- [ ] Learning surface: exact source-backed facts/preferences/strategies added,
+- [x] Learning surface: exact source-backed facts/preferences/strategies added,
   corrections awaiting review, and user vetoes; no inferred “learning score.”
-- [ ] Trust surface: delivery brake state, external drafts awaiting approval,
+- [x] Trust surface: delivery brake state, external drafts awaiting approval,
   runtime health, and an explanation of why Muse is held.
-- [ ] Keep raw token/cost/latency/tool counters under Diagnostics; rename their
+- [x] Keep raw token/cost/latency/tool counters under Diagnostics; rename their
   existing web surface to system metrics only if navigation evidence shows a
   user needs it.
 
@@ -106,13 +106,13 @@ states say what evidence is missing; they do not render zero as success.
 zero new model/tool jobs, records a bounded deferral reason, and foreground chat
 remains responsive. On recovery it resumes at most one bounded unit.
 
-### 4. Triage old reminder backlog without automation
+### 4. Triage old reminder backlog without automation — complete
 
 - [x] Show counts/age bands only until the owner reviews the backlog; never send
   historical reminders merely because delivery is re-enabled.
-- [ ] Offer explicit per-item or owner-confirmed bounded-batch choices:
+- [x] Offer explicit per-item or owner-confirmed bounded-batch choices:
   dismiss, snooze to a supplied time, retain, or draft a digest.
-- [ ] Record an immutable action receipt for each choice; bulk operations require
+- [x] Record an immutable action receipt for each choice; bulk operations require
   an exact preview and all-or-nothing validation.
 
 **Gate:** a simulated backlog cannot cause an external send, deletion, or state

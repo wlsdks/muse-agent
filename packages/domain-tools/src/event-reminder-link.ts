@@ -1,4 +1,4 @@
-import { readReminders, writeReminders, type PersistedReminder } from "@muse/stores";
+import { mutateReminders, type PersistedReminder } from "@muse/stores";
 
 /**
  * Event↔reminder lifecycle sync. `--remind` links a reminder to its event by
@@ -60,11 +60,12 @@ export function rescheduleRemindersForEvent(
 /** Applied delete-sync: best-effort read→remove→write; returns removed count (0 on any failure). */
 export async function syncRemindersOnEventDelete(remindersFile: string, eventId: string): Promise<number> {
   try {
-    const reminders = await readReminders(remindersFile);
-    const { kept, removed } = removeRemindersForEvent(reminders, eventId);
-    if (removed > 0) {
-      await writeReminders(remindersFile, kept);
-    }
+    let removed = 0;
+    await mutateReminders(remindersFile, (reminders) => {
+      const result = removeRemindersForEvent(reminders, eventId);
+      removed = result.removed;
+      return removed > 0 ? result.kept : reminders;
+    });
     return removed;
   } catch {
     return 0;
@@ -79,11 +80,12 @@ export async function syncRemindersOnEventReschedule(
   newStart: Date
 ): Promise<number> {
   try {
-    const reminders = await readReminders(remindersFile);
-    const { next, shifted } = rescheduleRemindersForEvent(reminders, eventId, oldStart, newStart);
-    if (shifted > 0) {
-      await writeReminders(remindersFile, next);
-    }
+    let shifted = 0;
+    await mutateReminders(remindersFile, (reminders) => {
+      const result = rescheduleRemindersForEvent(reminders, eventId, oldStart, newStart);
+      shifted = result.shifted;
+      return shifted > 0 ? result.next : reminders;
+    });
     return shifted;
   } catch {
     return 0;

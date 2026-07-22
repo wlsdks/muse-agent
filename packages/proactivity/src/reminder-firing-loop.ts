@@ -3,12 +3,11 @@ import { composeIdentityPrompt } from "@muse/prompts";
 import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { appendReminderHistory, withProcessLock } from "@muse/stores";
+import { appendReminderHistory, withRequiredProcessLock } from "@muse/stores";
 import {
   filterReminders,
   fireReminder,
   mutateReminders,
-  readReminders,
   type PersistedReminder
 } from "@muse/stores";
 import type {
@@ -81,115 +80,82 @@ export interface RunDueRemindersSummary {
   readonly fired: readonly PersistedReminder[];
   /** Set only when another daemon held the firing lock for this tick — no
    *  read, send, or mark was attempted at all. Absent on every other path. */
-  readonly outcome?: "lock-held";
+  readonly outcome?: "lock-held" | "lock-error";
 }
 
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
   const lockPath = `${options.file}.firing.lock`;
-  const lockOutcome = await withProcessLock(lockPath, () => runDueRemindersUnderLock(options));
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueRemindersUnderLock(options));
   if (lockOutcome.kind === "lock-held") {
     return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention): the tick still ran,
-    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
-    // rather than silencing reminders.
-    return {
-      ...lockOutcome.value,
-      errors: [`reminder-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
-    };
+  if (lockOutcome.kind === "lock-error") {
+    return { delivered: 0, due: 0, errors: [`reminder-tick: lock acquisition failed: ${lockOutcome.error}`], fired: [], outcome: "lock-error" };
   }
   return lockOutcome.value;
 }
 
 async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
   const now = options.now ?? (() => new Date());
-  const all = await readReminders(options.file);
-  const due = filterReminders(all, "due", now);
+  let summary: RunDueRemindersSummary = { delivered: 0, due: 0, errors: [], fired: [] };
+  await mutateReminders(options.file, async (all) => {
+    const due = filterReminders(all, "due", now);
+    if (due.length === 0) return all;
 
-  if (due.length === 0) {
-    return { delivered: 0, due: 0, errors: [], fired: [] };
-  }
+    const errors: string[] = [];
+    let delivered = 0;
+    const fired: PersistedReminder[] = [];
+    let next: readonly PersistedReminder[] = all;
+    const phaseDActive = isActiveSessionWindow(now(), options);
 
-  const errors: string[] = [];
-  let delivered = 0;
-  const fired: PersistedReminder[] = [];
-
-  // Phase D — decide once whether the active-session window allows
-  // agent-synthesized notices for this tick. All three pieces must
-  // be wired AND the activity tracker must report something within
-  // the window. Mirrors the proactive-tick gate so a shared
-  // activity tracker unlocks both daemons in lockstep.
-  const phaseDActive = isActiveSessionWindow(now(), options);
-
-  for (const reminder of due) {
-    // Phase C: per-reminder routing wins when set; the loop's
-    // defaults are the fallback when the reminder doesn't
-    // declare a destination. Resolved before the try so the
-    // history record can attribute the failure to the same
-    // resolved destination on the failure path.
-    const providerId = reminder.via?.providerId ?? options.providerId;
-    const destination = reminder.via?.destination ?? options.destination;
-    const deliveredText = phaseDActive
-      ? await synthesizeReminderText(reminder, options).catch((cause) => {
-          const message = errorMessage(cause);
-          errors.push(`${reminder.id} synthesis: ${message}`);
-          return reminder.text;
-        })
-      : reminder.text;
-    try {
-      await sendWithRetry(options.registry, providerId, {
-        destination,
-        text: deliveredText
-      });
-      const firedAtIso = now().toISOString();
-      // Persist per-delivery under the cross-process lock, RE-READING the
-      // current file inside it: the loop's in-memory `next` doesn't include a
-      // reminder a chat `add` wrote after this tick started, so a plain write
-      // would clobber it (the reported daemon-vs-chat lost-write). Marking THIS
-      // reminder fired by id merges with concurrent adds instead.
-      let justFired: PersistedReminder | undefined;
-      await mutateReminders(options.file, (current) => {
-        const updated = fireReminder(current, reminder.id, firedAtIso);
-        if (!updated) return current;
-        justFired = updated.find((entry) => entry.id === reminder.id);
-        return updated;
-      });
-      if (justFired) {
-        fired.push(justFired);
-      }
-      delivered += 1;
-      if (options.historyFile) {
-        await appendReminderHistory(options.historyFile, {
-          destination,
-          firedAtIso,
-          providerId,
-          reminderId: reminder.id,
-          status: "delivered",
-          text: deliveredText
-        });
-      }
-    } catch (cause) {
-      const message = errorMessage(cause);
-      errors.push(`${reminder.id}: ${message}`);
-      if (options.historyFile) {
-        await appendReminderHistory(options.historyFile, {
-          destination,
-          error: message,
-          firedAtIso: now().toISOString(),
-          providerId,
-          reminderId: reminder.id,
-          status: "failed",
-          text: deliveredText
-        });
+    for (const reminder of due) {
+      const providerId = reminder.via?.providerId ?? options.providerId;
+      const destination = reminder.via?.destination ?? options.destination;
+      const deliveredText = phaseDActive
+        ? await synthesizeReminderText(reminder, options).catch((cause) => {
+            const message = errorMessage(cause);
+            errors.push(`${reminder.id} synthesis: ${message}`);
+            return reminder.text;
+          })
+        : reminder.text;
+      try {
+        await sendWithRetry(options.registry, providerId, { destination, text: deliveredText });
+        const firedAtIso = now().toISOString();
+        const updated = fireReminder(next, reminder.id, firedAtIso);
+        const justFired = updated?.find((entry) => entry.id === reminder.id);
+        if (updated) next = updated;
+        if (justFired) fired.push(justFired);
+        delivered += 1;
+        if (options.historyFile) {
+          await appendReminderHistory(options.historyFile, {
+            destination,
+            firedAtIso,
+            providerId,
+            reminderId: reminder.id,
+            status: "delivered",
+            text: deliveredText
+          });
+        }
+      } catch (cause) {
+        const message = errorMessage(cause);
+        errors.push(`${reminder.id}: ${message}`);
+        if (options.historyFile) {
+          await appendReminderHistory(options.historyFile, {
+            destination,
+            error: message,
+            firedAtIso: now().toISOString(),
+            providerId,
+            reminderId: reminder.id,
+            status: "failed",
+            text: deliveredText
+          });
+        }
       }
     }
-  }
-
-  // No trailing batch write — the per-delivery writeReminders
-  // above already persisted every status flip.
-
-  return { delivered, due: due.length, errors, fired };
+    summary = { delivered, due: due.length, errors, fired };
+    return next;
+  });
+  return summary;
 }
 
 function isActiveSessionWindow(now: Date, options: RunDueRemindersOptions): boolean {

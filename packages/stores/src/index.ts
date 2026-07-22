@@ -41,8 +41,8 @@ export {
   readReconfirmCardDelivery
 } from "./reconfirm-card-delivery-store.js";
 export type { ReconfirmCardDeliveryState } from "./reconfirm-card-delivery-store.js";
-export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock } from "./digest-lock.js";
-export type { DigestLockOutcome, ProcessLockOutcome } from "./digest-lock.js";
+export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock, withRequiredProcessLock } from "./digest-lock.js";
+export type { DigestLockOutcome, ProcessLockOutcome, RequiredProcessLockOutcome } from "./digest-lock.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { withFileLock } from "./encrypted-file.js";
 export {
@@ -117,6 +117,8 @@ export { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemory
 export type { RecallHitRecord } from "./personal-recall-hits-store.js";
 export { appendReminderHistory, readReminderHistory } from "./personal-reminder-history-store.js";
 export type { ReminderHistoryEntry } from "./personal-reminder-history-store.js";
+export { buildReminderTriageDigest, confirmReminderTriage, previewReminderTriage, readReminderTriageLedgerStrict, ReminderTriageLockError, ReminderTriageStoreError } from "./personal-reminder-triage-store.js";
+export type { ConfirmReminderTriageOptions, PreviewReminderTriageOptions, ReminderTriageAction, ReminderTriageItemResult, ReminderTriageOutcome, ReminderTriagePreview, ReminderTriageResult } from "./personal-reminder-triage-store.js";
 export { compareRemindersByDueAt, filterReminders, fireReminder, mutateReminders, nextReminderOccurrence, normalizeReminderRecurrence, parseReminderDueAt, parseReminderVia, readReminderByIdStrict, readReminders, readRemindersStrict, readReminderStatusFilter, ReminderStoreUnavailableError, resolveReminderRef, serializeReminder, serializeReminderForModel, snoozeReminder, writeReminders } from "./personal-reminders-store.js";
 export type { PersistedReminder, ReminderRecurrence } from "./personal-reminders-store.js";
 export { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTaskById, readTaskByIdStrict, readTasks, readTaskStatusFilter, resolveTaskRef, resolveTasksDueLine, selectTasksDueWithin, serializeTask, serializeTaskForModel, TaskStoreUnavailableError, writeTasks } from "./personal-tasks-store.js";

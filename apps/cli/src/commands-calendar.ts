@@ -20,7 +20,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
 import { encodeCalendarEventReference, eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
 import { computeAvailability } from "@muse/mcp-shared";
-import { readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/stores";
+import { mutateReminders, recordTimeParseWeakness, recordWeakness, type PersistedReminder } from "@muse/stores";
 import { detectCalendarConflicts, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 export { removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 import type { Command } from "commander";
@@ -519,7 +519,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         }
         reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`, event.id);
         const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
-        await writeReminders(remindersFile, [...await readReminders(remindersFile), reminder]);
+        await mutateReminders(remindersFile, (current) => [...current, reminder!]);
       }
       if (options.json) {
         helpers.writeOutput(io, {
@@ -565,11 +565,11 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       let clearedReminders = 0;
       try {
         const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
-        const { kept, removed } = removeRemindersForEvent(await readReminders(remindersFile), match.id);
-        if (removed > 0) {
-          await writeReminders(remindersFile, kept);
+        await mutateReminders(remindersFile, (current) => {
+          const { kept, removed } = removeRemindersForEvent(current, match.id);
           clearedReminders = removed;
-        }
+          return removed > 0 ? kept : current;
+        });
       } catch {
         // reminders cleanup is best-effort
       }
@@ -657,11 +657,11 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       if (options.at !== undefined) {
         try {
           const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
-          const { next, shifted } = rescheduleRemindersForEvent(await readReminders(remindersFile), match.id, match.startsAt, updated.startsAt);
-          if (shifted > 0) {
-            await writeReminders(remindersFile, next);
+          await mutateReminders(remindersFile, (current) => {
+            const { next, shifted } = rescheduleRemindersForEvent(current, match.id, match.startsAt, updated.startsAt);
             shiftedReminders = shifted;
-          }
+            return shifted > 0 ? next : current;
+          });
         } catch {
           // reminders reschedule is best-effort
         }

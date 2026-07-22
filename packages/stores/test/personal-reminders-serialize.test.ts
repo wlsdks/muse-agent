@@ -110,9 +110,10 @@ describe("strict exact reminder reads", () => {
 
   it("returns only an exact id without changing the store", async () => {
     const { file } = await tmp();
-    await writeReminders(file, [base, { ...base, id: "r10", text: "other" }]);
+    const strictBase = { ...base, createdAt: "2026-01-01T00:00:00.000Z", dueAt: "2026-01-01T09:00:00.000Z" };
+    await writeReminders(file, [strictBase, { ...strictBase, id: "r10", text: "other" }]);
     const before = await readFile(file);
-    await expect(readReminderByIdStrict(file, "r1")).resolves.toEqual(base);
+    await expect(readReminderByIdStrict(file, "r1")).resolves.toEqual(strictBase);
     await expect(readReminderByIdStrict(file, "r")).resolves.toBeUndefined();
     expect(await readFile(file)).toEqual(before);
   });

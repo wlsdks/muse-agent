@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **586** variables.
+Total: **598** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -52,7 +52,7 @@ Total: **586** variables.
 | `MUSE_APP_NAME` | packages/autoconfigure |
 | `MUSE_ASK_REASONING_PRINCIPLES` | apps/cli |
 | `MUSE_ATTUNEMENT_FILE` | packages/autoconfigure |
-| `MUSE_AUTHORED_SKILLS_DIR` | apps/api, apps/cli, packages/autoconfigure |
+| `MUSE_AUTHORED_SKILLS_DIR` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_JWT_EXPIRATION_MS` | packages/autoconfigure |
 | `MUSE_AUTH_JWT_SECRET` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_MAX_USERS` | packages/autoconfigure |
@@ -152,6 +152,7 @@ Total: **586** variables.
 | `MUSE_CONTACTS_FILE` | packages/autoconfigure |
 | `MUSE_CONTEXT_REF_MAX_ENTRIES` | packages/autoconfigure |
 | `MUSE_CONTEXT_REF_TTL_MS` | packages/autoconfigure |
+| `MUSE_CONTINUITY_WORKSPACE` | apps/api, packages/autoconfigure |
 | `MUSE_CONVERSATIONS_FILE` | packages/stores |
 | `MUSE_CONVERSATION_SUMMARY_FILE` | packages/autoconfigure, packages/memory |
 | `MUSE_CONVERSATION_SUMMARY_PERSIST` | packages/autoconfigure |
@@ -161,8 +162,14 @@ Total: **586** variables.
 | `MUSE_CREDENTIAL_KEY` | apps/api, packages/autoconfigure, packages/stores |
 | `MUSE_CROSS_LINGUAL_COSINE_FLOOR` | packages/recall |
 | `MUSE_DAEMON_CONFIG_FILE` | apps/cli, packages/autoconfigure |
+| `MUSE_DAEMON_DELIVERY_ENABLED` | apps/api, apps/cli |
+| `MUSE_DAEMON_MAX_LOAD_PER_CORE` | apps/cli |
+| `MUSE_DAEMON_MIN_FREE_MEMORY_MB` | apps/cli |
 | `MUSE_DAEMON_OFFER_FILE` | apps/cli |
-| `MUSE_DAEMON_PLIST_FILE` | apps/cli |
+| `MUSE_DAEMON_PLIST_FILE` | apps/cli, packages/runtime-state |
+| `MUSE_DAEMON_PROVIDER_LOCK` | apps/cli |
+| `MUSE_DAEMON_RESOURCE_GUARD` | apps/cli |
+| `MUSE_DAEMON_RESOURCE_RECEIPT_FILE` | apps/cli |
 | `MUSE_DAEMON_SETTINGS_FILE` | packages/stores |
 | `MUSE_DAILY_BRIEF_SIDECAR_FILE` | apps/cli |
 | `MUSE_DEFAULT_MODEL` | apps/api, apps/cli, packages/autoconfigure |
@@ -212,6 +219,7 @@ Total: **586** variables.
 | `MUSE_FOCUS_OFF_SHORTCUT` | apps/cli, packages/macos |
 | `MUSE_FOCUS_ON_SHORTCUT` | apps/cli, packages/macos |
 | `MUSE_FOLLOWUPS_FILE` | apps/cli, packages/autoconfigure |
+| `MUSE_FOLLOWUPS_LIST_MAX` | packages/autoconfigure |
 | `MUSE_FOLLOWUP_CAPTURE_ENABLED` | packages/autoconfigure |
 | `MUSE_FOLLOWUP_DEFAULT_DESTINATION` | apps/api |
 | `MUSE_FOLLOWUP_DEFAULT_PROVIDER` | apps/api |
@@ -241,8 +249,8 @@ Total: **586** variables.
 | `MUSE_HISTORY_SEARCH_ENABLED` | packages/autoconfigure |
 | `MUSE_HISTORY_SEARCH_HYBRID` | packages/autoconfigure |
 | `MUSE_HOME` | apps/cli |
-| `MUSE_HOMEASSISTANT_TOKEN` | apps/cli, packages/autoconfigure, packages/prompts |
-| `MUSE_HOMEASSISTANT_URL` | apps/cli, packages/autoconfigure, packages/prompts |
+| `MUSE_HOMEASSISTANT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
+| `MUSE_HOMEASSISTANT_URL` | apps/cli, packages/autoconfigure, packages/domain-tools, packages/prompts |
 | `MUSE_HOME_WATCH_CONFIG` | apps/api, apps/cli |
 | `MUSE_HOME_WATCH_DESTINATION` | apps/api |
 | `MUSE_HOME_WATCH_ENABLED` | apps/api |
@@ -274,6 +282,7 @@ Total: **586** variables.
 | `MUSE_KNOWLEDGE_SEARCH_ENABLED` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_LANG` | apps/cli |
 | `MUSE_LAST_PROACTIVE_FILE` | packages/autoconfigure |
+| `MUSE_LAUNCH_AGENT_LABEL` | packages/runtime-state |
 | `MUSE_LEARNING_PAUSE_FILE` | packages/autoconfigure |
 | `MUSE_LEARN_QUEUE_FILE` | packages/stores |
 | `MUSE_LINE_CHANNEL_ACCESS_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
@@ -290,6 +299,7 @@ Total: **586** variables.
 | `MUSE_LOOPBACK_MCP_ENABLED` | packages/autoconfigure |
 | `MUSE_MACOS_ACTUATORS` | apps/cli, packages/prompts |
 | `MUSE_MACOS_CALENDAR_NAME` | apps/cli, packages/autoconfigure |
+| `MUSE_MAC_HELPER` | packages/macos |
 | `MUSE_MATH_ENABLED` | packages/autoconfigure |
 | `MUSE_MATRIX_ACCESS_TOKEN` | packages/autoconfigure |
 | `MUSE_MATRIX_HOMESERVER_URL` | packages/autoconfigure |
@@ -347,6 +357,7 @@ Total: **586** variables.
 | `MUSE_NOTES_PROVIDERS` | packages/autoconfigure |
 | `MUSE_NOTES_SEARCH_END` | packages/domain-tools |
 | `MUSE_NOTE_PROVENANCE_FILE` | packages/autoconfigure |
+| `MUSE_NOTE_RELATIONS_FILE` | apps/cli |
 | `MUSE_NOTION_DATABASE_ID` | packages/autoconfigure |
 | `MUSE_NOTION_MCP_ENABLED` | apps/cli, packages/autoconfigure |
 | `MUSE_NOTION_TASKS_DATABASE_ID` | packages/autoconfigure |
@@ -419,14 +430,14 @@ Total: **586** variables.
 | `MUSE_PROACTIVE_PRESENCE_FILE` | apps/api |
 | `MUSE_PROACTIVE_PROVIDER` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_PROACTIVE_QUIET_HOURS` | apps/api, apps/cli, packages/autoconfigure, packages/proactivity |
-| `MUSE_PROACTIVE_SIDECAR_FILE` | apps/api, apps/cli, packages/autoconfigure, packages/stores |
+| `MUSE_PROACTIVE_SIDECAR_FILE` | apps/api, apps/cli, packages/autoconfigure, packages/runtime-state, packages/stores |
 | `MUSE_PROACTIVE_TICK_MS` | apps/api, packages/autoconfigure |
 | `MUSE_PROACTIVE_TRUST_FILE` | apps/api, apps/cli |
 | `MUSE_PROGRESSIVE_AUTONOMY_FILE` | packages/autoconfigure |
 | `MUSE_PROGRESSIVE_AUTONOMY_OPPORTUNITIES_FILE` | packages/autoconfigure |
 | `MUSE_PROGRESSIVE_AUTONOMY_SHADOW_OBSERVE` | packages/autoconfigure |
 | `MUSE_PROMPT_TOKEN_BUDGET` | packages/autoconfigure |
-| `MUSE_PROPOSED_ACTIONS_FILE` | apps/cli |
+| `MUSE_PROPOSED_ACTIONS_FILE` | apps/api, apps/cli |
 | `MUSE_PRUNE_META_FILE` | apps/cli |
 | `MUSE_QUORUM_HEDGE` | apps/cli |
 | `MUSE_RATE_LIMIT_CHAT_DISABLED` | apps/api |
@@ -457,6 +468,7 @@ Total: **586** variables.
 | `MUSE_REMINDER_HISTORY_FILE` | apps/cli, packages/autoconfigure, packages/mcp |
 | `MUSE_REMINDER_QUIET_HOURS` | apps/api, apps/cli, apps/web, packages/autoconfigure, packages/proactivity |
 | `MUSE_REMINDER_TICK_MS` | apps/api, packages/autoconfigure |
+| `MUSE_REMINDER_TRIAGE_FILE` | packages/autoconfigure |
 | `MUSE_REQUIRE_AUTH` | apps/api, packages/autoconfigure |
 | `MUSE_RESPONSE_CASUAL_LURE_STRIP_ENABLED` | packages/autoconfigure |
 | `MUSE_RESPONSE_COUNT_CONSISTENCY_ENABLED` | packages/autoconfigure |
@@ -480,7 +492,7 @@ Total: **586** variables.
 | `MUSE_RUNTIME_SPEC` | apps/cli |
 | `MUSE_RUNTIME_SPEC_TEXT` | apps/cli |
 | `MUSE_RUN_LOG_MAX_FILES` | apps/cli |
-| `MUSE_SCHEDULED_JOBS_FILE` | packages/autoconfigure, packages/scheduler |
+| `MUSE_SCHEDULED_JOBS_FILE` | apps/cli, packages/autoconfigure, packages/scheduler |
 | `MUSE_SCHEDULER_CRON_ENABLED` | packages/autoconfigure |
 | `MUSE_SCHEDULER_MAX_EXECUTIONS` | packages/autoconfigure |
 | `MUSE_SCHEDULER_MAX_JOBS` | packages/autoconfigure |
