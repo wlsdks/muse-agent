@@ -73,6 +73,23 @@ describe("personal-status v1 contract", () => {
     expect(admitPersonalStatus(response({ cards: [], overall: "clear", sources: [{ ...SOURCE, includedCount: 999 }, ...rows.slice(1)] }))).toEqual({ kind: "excluded", reason: "invalid-source" });
     expect(admitPersonalStatus(response({ sources: [...rows].reverse() }))).toEqual({ kind: "excluded", reason: "invalid-source" });
     expect(admitPersonalStatus(response({ sources: rows.slice(0, -1) }))).toEqual({ kind: "excluded", reason: "invalid-source" });
+    const absentApprovals = rows.map((row): PersonalStatusSource => row.id === "pending-approvals"
+      ? { errorCode: "missing", excludedCount: 0, id: row.id, includedCount: 0, observedAt: NOW, result: "absent" }
+      : row);
+    const actionableFromAbsent: PersonalStatusCard = {
+      action: { id: "review-approval", target: { itemId: "laundered", review: "approval", type: "local-review" } },
+      deadline: "2026-07-22T13:00:00.000Z",
+      detail: "must not be admitted",
+      id: "approval:laundered",
+      kind: "external-approval",
+      observedAt: "2026-07-22T11:00:00.000Z",
+      priority: 20,
+      sourceId: "pending-approvals",
+      status: "attention",
+      title: "Laundered approval"
+    };
+    expect(admitPersonalStatus(response({ cards: [actionableFromAbsent, RUNTIME], overall: "attention", sources: absentApprovals })))
+      .toEqual({ kind: "excluded", reason: "invalid-source" });
   });
 
   it("sorts, deduplicates and derives held before attention", () => {

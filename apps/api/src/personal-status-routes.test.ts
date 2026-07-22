@@ -5,11 +5,14 @@ import { join } from "node:path";
 
 import { createPersonalThread, linkArtifact } from "@muse/attunement";
 import type { UserMemory } from "@muse/memory";
+import { MessagingProviderRegistry, type MessagingProvider } from "@muse/messaging";
 import type { ResidentDaemonInspection } from "@muse/runtime-state";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
 import { collectPersonalStatus, registerPersonalStatusRoutes, type PersonalStatusRoutesOptions } from "./personal-status-routes.js";
+import { buildServer } from "./server.js";
+import type { ServerOptions } from "./server-options.js";
 
 const NOW = new Date("2026-07-22T12:00:00.000Z");
 const USER_ID = "owner";
@@ -219,6 +222,25 @@ describe("GET /api/personal-status", () => {
     expect(status.cards.filter((card) => card.kind === "learning-change")).toHaveLength(1);
   });
 
+  it("keeps the canonical pending organic review visible ahead of earlier technical deliveries", async () => {
+    const state = await fixture();
+    const attunement = JSON.parse(readFileSync(state.files.attunement, "utf8")) as {
+      deliveries: Array<{ evidenceClass: string; evidenceRefs: unknown[]; id: string; openedAt: string; policyVersion: number; threadId: string }>;
+    };
+    const organic = { ...attunement.deliveries[0]!, id: "organic_pending", openedAt: "2026-07-22T10:30:00.000Z" };
+    attunement.deliveries = Array.from({ length: 20 }, (_, index) => ({
+      ...organic,
+      evidenceClass: "controlled",
+      id: `controlled_${index.toString().padStart(2, "0")}`,
+      openedAt: `2026-07-22T09:${index.toString().padStart(2, "0")}:00.000Z`
+    })).concat(organic);
+    writeFileSync(state.files.attunement, `${JSON.stringify(attunement, null, 2)}\n`);
+
+    const status = await collectPersonalStatus(state.routeOptions);
+    expect(status.cards).toContainEqual(expect.objectContaining({ id: "feedback:organic_pending", status: "attention" }));
+    expect(status.cards).toContainEqual(expect.objectContaining({ id: "feedback:controlled_00", status: "held" }));
+  });
+
   it("excludes oversized owner records without failing the aggregate", async () => {
     const state = await fixture({ provenance: [{
       evidenceExcerpt: "x".repeat(281), key: "focus_time", kind: "preference", learnedAt: "2026-07-21T08:00:00.000Z",
@@ -242,5 +264,45 @@ describe("GET /api/personal-status", () => {
     const response = await server.inject({ method: "GET", url: "/api/personal-status?userId=other" });
     expect(response.statusCode).toBe(400);
     expect(state.findByUserId).not.toHaveBeenCalled();
+  });
+
+  it("does not cross approval resolution, messaging send, or POST handler boundaries on the production server GET", async () => {
+    const state = await fixture();
+    const approvalToolResolver = vi.fn(() => undefined);
+    const send = vi.fn(async (message: { readonly destination: string }) => ({
+      destination: message.destination,
+      messageId: "must-not-send",
+      providerId: "telegram" as const
+    }));
+    const provider: MessagingProvider = {
+      describe: () => ({ description: "test", displayName: "Telegram", id: "telegram" }),
+      id: "telegram",
+      send
+    };
+    const server = buildServer({
+      approvalToolResolver,
+      attunementFile: state.files.attunement,
+      beliefProvenanceFile: state.files.provenance,
+      env: { HOME: state.root, MUSE_DEFAULT_USER_ID: USER_ID, MUSE_LOCAL_ONLY: "true" },
+      localOnly: true,
+      logger: false,
+      messaging: new MessagingProviderRegistry([provider]),
+      pendingApprovalsFile: state.files.approvals,
+      proposedActionsFile: state.files.proposals,
+      reconfirmCardAnsweredFile: state.files.reconfirmation,
+      userMemoryStore: state.routeOptions.userMemoryStore as ServerOptions["userMemoryStore"],
+      vetoesFile: state.files.vetoes
+    });
+    const postHandler = vi.fn();
+    server.addHook("onRequest", async (request) => {
+      if (request.method === "POST") postHandler();
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/personal-status" });
+    expect(response.statusCode).toBe(200);
+    expect(approvalToolResolver).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(postHandler).not.toHaveBeenCalled();
+    await server.close();
   });
 });

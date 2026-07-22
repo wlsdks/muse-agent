@@ -203,34 +203,39 @@ function projectAttunement(
   let excluded = 0;
   const cards: PersonalStatusCard[] = [];
   const orderedDeliveries = state.deliveries.slice().sort((left, right) => left.openedAt.localeCompare(right.openedAt));
-  let selectedFeedback = false;
-  for (const delivery of orderedDeliveries.slice(0, 20)) {
+  const representedDeliveries = new Set<string>();
+  const addFeedbackCard = (delivery: AttunementState["deliveries"][number]): void => {
     const thread = state.threads.find((candidate) => candidate.id === delivery.threadId);
-    const completedOrganic = delivery.evidenceClass === "organic" && delivery.outcome?.evidenceClass === "organic";
-    if (selectedFeedback || completedOrganic || !thread || !fitsId("feedback:", delivery.id)
+    if (!thread || !fitsId("feedback:", delivery.id)
       || !canonicalAt(delivery.openedAt, context.now.getTime())) {
-      excluded += 1;
-      continue;
+      return;
     }
     const ownerFeedbackEligible = delivery.evidenceClass === "organic" && delivery.outcome === undefined;
     const heldReason = delivery.evidenceClass !== "organic"
       ? `${delivery.evidenceClass} delivery는 기술 검증 근거이므로 개인 효과 피드백으로 승격하지 않습니다.`
       : `기존 ${delivery.outcome?.evidenceClass ?? "unknown"} 피드백은 기술 전용이며 변경하지 않습니다.`;
-      cards.push({
-        action: { id: "review-continuity-feedback", target: { focus: "continuity-feedback-review", type: "view", view: "continuity" } },
-        deadline: null,
-        detail: ownerFeedbackEligible ? "실제 생활·업무 결과를 소유자가 직접 남길 차례입니다." : heldReason,
-        id: `feedback:${delivery.id}`,
-        kind: "continuity-feedback",
-        observedAt: new Date(delivery.openedAt).toISOString(),
-        priority: ownerFeedbackEligible ? 30 : 35,
-        sourceId: "attunement",
-        status: ownerFeedbackEligible ? "attention" : "held",
-        title: text(thread.title, 160)
-      });
-    selectedFeedback = true;
-  }
-  excluded += Math.max(0, orderedDeliveries.length - 20);
+    cards.push({
+      action: { id: "review-continuity-feedback", target: { focus: "continuity-feedback-review", type: "view", view: "continuity" } },
+      deadline: null,
+      detail: ownerFeedbackEligible ? "실제 생활·업무 결과를 소유자가 직접 남길 차례입니다." : heldReason,
+      id: `feedback:${delivery.id}`,
+      kind: "continuity-feedback",
+      observedAt: new Date(delivery.openedAt).toISOString(),
+      priority: ownerFeedbackEligible ? 30 : 35,
+      sourceId: "attunement",
+      status: ownerFeedbackEligible ? "attention" : "held",
+      title: text(thread.title, 160)
+    });
+    representedDeliveries.add(delivery.id);
+  };
+  const canonicalOrganicNext = orderedDeliveries
+    .filter((delivery) => delivery.evidenceClass === "organic")
+    .slice(0, 20)
+    .find((delivery) => delivery.outcome?.evidenceClass !== "organic");
+  if (canonicalOrganicNext) addFeedbackCard(canonicalOrganicNext);
+  const technicalNext = orderedDeliveries.find((delivery) => delivery.evidenceClass !== "organic");
+  if (technicalNext && technicalNext.id !== canonicalOrganicNext?.id) addFeedbackCard(technicalNext);
+  excluded += orderedDeliveries.filter((delivery) => !representedDeliveries.has(delivery.id)).length;
   for (const thread of state.threads) {
     if (!fitsId("thread:", thread.id) || thread.links.length === 0 || !canonicalAt(thread.createdAt, context.now.getTime())) { excluded += 1; continue; }
     cards.push({

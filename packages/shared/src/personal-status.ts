@@ -260,9 +260,14 @@ export function admitPersonalStatus(input: unknown): PersonalStatusAdmission {
   if (new Set(cards.map((card) => card.id)).size !== cards.length
     || sources.some((source) => cards.filter((card) => card.sourceId === source.id).length > PERSONAL_STATUS_MAX_CARDS_PER_SOURCE)
     || cards.some((card, index) => index > 0 && comparePersonalStatusCards(cards[index - 1]!, card) > 0)) return { kind: "excluded", reason: "invalid-order" };
-  if (sources.some((source) => source.result === "available"
-    ? source.includedCount !== cards.filter((card) => card.sourceId === source.id).length
-    : cards.filter((card) => card.sourceId === source.id).length !== 1)) {
+  if (sources.some((source) => {
+    const sourceCards = cards.filter((card) => card.sourceId === source.id);
+    if (source.result === "available") return source.includedCount !== sourceCards.length;
+    return sourceCards.length !== 1
+      || sourceCards[0]?.id !== `source:${source.id}`
+      || sourceCards[0]?.status !== "unavailable"
+      || sourceCards[0]?.action !== undefined;
+  })) {
     return { kind: "excluded", reason: "invalid-source" };
   }
   if (input.overall !== expectedOverall(cards, sources)) return { kind: "excluded", reason: "invalid-overall" };
