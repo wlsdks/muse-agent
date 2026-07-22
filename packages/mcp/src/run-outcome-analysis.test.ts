@@ -57,6 +57,10 @@ describe("analyzeRunOutcomes — run-log failure rate + top failing topics", () 
     expect(summary).toMatchObject({ labelled: 3, gradedRuns: 6, technicalFailures: 5, measurementStatus: "available" });
     expect(summary.failRate).toBeCloseTo(2 / 3, 5);
     expect(summary.measurement?.value).toEqual({ denominator: 6, numerator: 5, unit: "ratio" });
+    expect(Object.keys(summary).sort()).toEqual([
+      "abstain", "canonicalOutcomes", "failRate", "gradedRuns", "grounded", "labelled", "measurement",
+      "measurementStatus", "technicalFailures", "technicalTopFailingTopics", "topFailingTopics", "ungrounded"
+    ]);
   });
 
   it("deduplicates a run to its latest canonical event and excludes future or mismatched provenance", () => {

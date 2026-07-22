@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { baselinePolicy, computeContinuityEvaluation, type AttunementState, type ContinuityEvidenceClass } from "@muse/attunement";
 
 import {
   AGENT_CAPABILITY_MATRIX_ID,
@@ -118,6 +119,24 @@ describe("personal-agent qualification scorer", () => {
       reasonCodes: ["organic-personal-effectiveness-not-proven"],
       status: "not-proven"
     });
+  });
+
+  it.each(["controlled", "unclassified"] as const)("cannot promote %s-only Attunement evidence into qualification effectiveness", (evidenceClass: ContinuityEvidenceClass) => {
+    const state: AttunementState = {
+      deliveries: [{ evidenceClass, evidenceRefs: [], id: `delivery_${evidenceClass}`, openedAt: "2026-07-21T09:00:00.000Z", policyVersion: 1, threadId: "thread_work" }],
+      interactionReceipts: [],
+      nextPolicyVersion: 2,
+      resetReceipts: [],
+      schemaVersion: 8,
+      threads: [{ createdAt: "2026-07-21T08:00:00.000Z", id: "thread_work", kind: "work", links: [], policy: baselinePolicy(), title: "Work" }],
+      undoResetReceipts: []
+    };
+    const evaluation = computeContinuityEvaluation(state, { now: () => NOW.getTime() });
+    const report = qualifyPersonalAgent(passingObservations());
+
+    expect(evaluation.measurements.filter((metric) => metric.claim !== "technical-diagnostic")).toEqual([]);
+    expect(report.effectiveness).toEqual({ reasonCodes: ["organic-personal-effectiveness-not-proven"], status: "not-proven" });
+    expect(JSON.stringify(report.effectiveness)).not.toMatch(/percent|rate|learning|autonomy/iu);
   });
 
   it("never averages away a runtime failure", () => {

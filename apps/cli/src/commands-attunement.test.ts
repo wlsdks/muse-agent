@@ -622,6 +622,7 @@ describe("muse thread stats — kill-criterion instrument", () => {
     expect(parsed.withOutcome).toBe(4);
     expect(parsed.outcomes).toEqual({ adjusted: 0, ignored: 1, rejected: 1, used: 2 });
     expect(parsed.firstPacks).toEqual({ considered: 5, rejected: 1, used: 2 });
+    expect(parsed).toMatchObject({ schemaVersion: 3, measurementStatus: "insufficient" });
     expect(parsed.longitudinalGate).toMatchObject({
       byKind: { work: { distinctUtcDates: 1, explicitFeedback: 4, remainingFeedback: 6 } },
       status: "collecting"

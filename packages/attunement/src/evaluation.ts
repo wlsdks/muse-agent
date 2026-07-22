@@ -181,6 +181,10 @@ function evaluateKind(deliveries: readonly ContinuityDelivery[], scope: "overall
 }
 
 export function computeContinuityEvaluation(state: AttunementState, options: { readonly now?: () => number } = {}): ContinuityEvaluation {
+  for (const delivery of state.deliveries) {
+    timestampMs(delivery.openedAt, "openedAt", delivery.id);
+    if (delivery.outcome) timestampMs(delivery.outcome.recordedAt, "recordedAt", delivery.id);
+  }
   const evaluatedAt = new Date((options.now ?? Date.now)()).toISOString();
   const kinds = new Map(state.threads.map((thread) => [thread.id, thread.kind]));
   const forKind = (kind: PersonalThreadKind) => state.deliveries.filter((delivery) => kinds.get(delivery.threadId) === kind);

@@ -82,6 +82,68 @@ describe("computeContinuityEvaluation longitudinal evidence", () => {
     expect(personal(missing)).toEqual([]);
     expect(personal([], true)).toEqual([]);
   });
+
+  it.each(["controlled", "unclassified"] as const)("fails closed on malformed %s technical timestamps", (evidenceClass) => {
+    const current = delivery("work", 0, 17);
+    const malformedOpened = { ...current, evidenceClass, openedAt: "not-a-timestamp" };
+    const malformedOutcome = {
+      ...current,
+      outcome: { ...current.outcome!, evidenceClass, recordedAt: "not-a-timestamp" }
+    };
+
+    expect(() => computeContinuityEvaluation(state([malformedOpened]), now))
+      .toThrow(new ContinuityEvaluationError(`delivery '${malformedOpened.id}' has an invalid openedAt timestamp`));
+    expect(() => computeContinuityEvaluation(state([malformedOutcome]), now))
+      .toThrow(new ContinuityEvaluationError(`delivery '${malformedOutcome.id}' has an invalid recordedAt timestamp`));
+  });
+
+  it.each(["controlled", "unclassified"] as const)("emits the exact technical metric list and denominators for %s-only delivery provenance", (evidenceClass) => {
+    const current = { ...delivery("work", 0, 17), evidenceClass };
+    const evaluation = computeContinuityEvaluation(state([current]), now);
+
+    expect(evaluation.measurements.map((metric) => metric.id)).toEqual([
+      "continuity.technical.delivery.organic.overall",
+      "continuity.technical.delivery.controlled.overall",
+      "continuity.technical.delivery.unclassified.overall",
+      "continuity.technical.outcome.organic.overall",
+      "continuity.technical.outcome.controlled.overall",
+      "continuity.technical.outcome.unclassified.overall"
+    ]);
+    expect(evaluation.measurements.find((metric) => metric.id === `continuity.technical.delivery.${evidenceClass}.overall`)?.value)
+      .toEqual({ denominator: 1, numerator: 1, unit: "count-of-total" });
+    expect(evaluation.measurements.find((metric) => metric.id === "continuity.technical.outcome.organic.overall")?.value)
+      .toEqual({ denominator: 1, numerator: 1, unit: "count-of-total" });
+    expect(evaluation.measurements.filter((metric) => metric.claim !== "technical-diagnostic")).toEqual([]);
+  });
+
+  it("keeps a mixed outcome technical and a factual-receipt-only state measurement-empty", () => {
+    const current = delivery("work", 0, 17);
+    const mixed = { ...current, outcome: { ...current.outcome!, evidenceClass: "controlled" as const } };
+    const mixedEvaluation = computeContinuityEvaluation(state([mixed]), now);
+    const receiptOnly = state([]);
+    const receipt = {
+      artifactId: "task_1", completedAt: "2026-07-17T12:00:00.000Z", deliveryId: current.id,
+      doneStateFingerprint: "done", eventId: "event_1", evidenceClass: "organic" as const, id: "receipt_1",
+      linkedAt: "2026-07-17T08:00:00.000Z", openStateFingerprint: "open", providerId: "local" as const,
+      recordedAt: "2026-07-17T12:00:00.000Z", role: "next-step" as const, runId: "run_1",
+      threadId: "thread_work", transition: "open-to-done" as const
+    };
+
+    expect(mixedEvaluation.measurements.find((metric) => metric.id === "continuity.technical.outcome.controlled.overall")?.value)
+      .toEqual({ denominator: 1, numerator: 1, unit: "count-of-total" });
+    expect(mixedEvaluation.measurements.filter((metric) => metric.claim !== "technical-diagnostic")).toEqual([]);
+    expect(computeContinuityEvaluation({ ...receiptOnly, interactionReceipts: [receipt] }, now).measurements).toEqual([]);
+  });
+
+  it("marks the Attunement 30-day freshness boundary exactly", () => {
+    const current = { ...delivery("work", 0, 17), evidenceClass: "controlled" as const, outcome: undefined };
+    const asOf = Date.parse(current.openedAt);
+    const metricAt = (nowMs: number) => computeContinuityEvaluation(state([current]), { now: () => nowMs }).measurements
+      .find((metric) => metric.id === "continuity.technical.delivery.controlled.overall");
+
+    expect(metricAt(asOf + 2_592_000_000)?.freshness.status).toBe("fresh");
+    expect(metricAt(asOf + 2_592_000_001)?.freshness.status).toBe("stale");
+  });
   it("fixes the denominator to the first 20 organic deliveries and counts only organic outcome pairs", () => {
     const firstWindow = Array.from({ length: 20 }, (_, index) => ({
       ...delivery("work", index, 16),

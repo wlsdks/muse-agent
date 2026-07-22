@@ -83,4 +83,53 @@ describe("admitDecisionMetric", () => {
   it("binds freshness TTL to the source contract", () => {
     expectExcluded({ ...BASE, freshness: { ...BASE.freshness, staleAfterMs: 86_400_000 } }, "incoherent-source-contract");
   });
+
+  it("exhaustively enforces the source, metric id, claim, evidence, unit, and action matrix", () => {
+    const sources = [{ id: "run-grounding-log", version: 1 }, { id: "attunement-state", version: 8 }] as const;
+    const claims = ["technical-diagnostic", "personal-effectiveness", "learning", "autonomy"] as const;
+    const evidenceClasses = ["organic", "controlled", "unclassified"] as const;
+    const units = ["ratio", "count-of-total"] as const;
+    const actions = ["inspect-run-grounding", "review-continuity-feedback", "inspect-continuity-technical-evidence"] as const;
+    const scopes = ["overall", "life", "work"] as const;
+    const metricIds = [
+      "run.grounding.failure-rate",
+      ...scopes.flatMap((scope) => [
+        `continuity.first-20.used.${scope}`,
+        `continuity.first-20.rejected.${scope}`,
+        ...(["delivery", "outcome"] as const).flatMap((kind) => evidenceClasses.map((evidenceClass) => `continuity.technical.${kind}.${evidenceClass}.${scope}`))
+      ])
+    ];
+
+    for (const currentSource of sources) for (const id of metricIds) for (const claim of claims) {
+      for (const evidenceClass of evidenceClasses) for (const unit of units) for (const actionId of actions) {
+        const runValid = currentSource.id === "run-grounding-log"
+          && id === "run.grounding.failure-rate" && claim === "technical-diagnostic"
+          && evidenceClass === "unclassified" && unit === "ratio" && actionId === "inspect-run-grounding";
+        const personalValid = currentSource.id === "attunement-state"
+          && /^continuity\.first-20\.(used|rejected)\.(overall|life|work)$/u.test(id)
+          && claim === "personal-effectiveness" && evidenceClass === "organic"
+          && unit === "ratio" && actionId === "review-continuity-feedback";
+        const technicalMatch = /^continuity\.technical\.(delivery|outcome)\.(organic|controlled|unclassified)\.(overall|life|work)$/u.exec(id);
+        const technicalValid = currentSource.id === "attunement-state" && technicalMatch?.[2] === evidenceClass
+          && claim === "technical-diagnostic" && unit === "count-of-total"
+          && actionId === "inspect-continuity-technical-evidence";
+        const result = admitDecisionMetric({
+          ...BASE,
+          actionId,
+          claim,
+          evidenceClass,
+          freshness: {
+            ...BASE.freshness,
+            staleAfterMs: currentSource.id === "run-grounding-log" ? 604_800_000 : 2_592_000_000
+          },
+          id,
+          source: currentSource,
+          value: { ...BASE.value, unit }
+        });
+
+        expect(result.kind, `${currentSource.id}/${id}/${claim}/${evidenceClass}/${unit}/${actionId}`)
+          .toBe(runValid || personalValid || technicalValid ? "admitted" : "excluded");
+      }
+    }
+  });
 });

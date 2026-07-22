@@ -488,6 +488,11 @@ describe("GET /api/attunement/evaluation integrity", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(expected);
+    expect(response.json()).toMatchObject({
+      firstPacks: { considered: 1, rejected: 0, used: 1 },
+      outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 1 },
+      schemaVersion: 3
+    });
     expect(response.json().longitudinalGate).toMatchObject({
       byKind: { life: { distinctUtcDates: 1, explicitFeedback: 1, remainingFeedback: 9 } },
       status: "collecting"

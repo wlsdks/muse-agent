@@ -878,6 +878,21 @@ test("a complete organic window renders the API measurement contract instead of 
   await expect.element(screen.getByText("100%", { exact: true })).not.toBeInTheDocument();
 });
 
+test("Korean Continuity copy labels insufficient evidence and the safe review action", async () => {
+  window.localStorage.setItem("muse.lang", "ko");
+  const response = reminderLinkReview(true);
+  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions" ? interactionReport({ includeDelivery: false }) : response);
+  const client = { baseUrl: "http://decision-metric-ko.test", get, post: vi.fn() } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const screen = await render(<QueryClientProvider client={queryClient}>
+    <I18nProvider><ContinuityReviewView client={client} /></I18nProvider>
+  </QueryClientProvider>);
+
+  await expect.element(screen.getByText("근거 부족 — 개인 효과 백분율을 만들지 않습니다.", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByRole("link", { name: "대기 중인 피드백 검토" }).first()).toHaveAttribute("href", "#continuity-feedback-review");
+  await expect.element(screen.getByText("0%", { exact: true })).not.toBeInTheDocument();
+});
+
 test("an interaction query failure stays scoped and fail-closes task completion without blocking the Pack", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const emptyEvaluation = {
