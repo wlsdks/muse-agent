@@ -41,7 +41,7 @@ export {
   readReconfirmCardDelivery
 } from "./reconfirm-card-delivery-store.js";
 export type { ReconfirmCardDeliveryState } from "./reconfirm-card-delivery-store.js";
-export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock, withRequiredProcessLock } from "./digest-lock.js";
+export { DIGEST_LOCK_STALE_MS, withDigestLock, withProcessLock, withRequiredDigestLock, withRequiredProcessLock } from "./digest-lock.js";
 export type { DigestLockOutcome, ProcessLockOutcome, RequiredProcessLockOutcome } from "./digest-lock.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { withFileLock } from "./encrypted-file.js";

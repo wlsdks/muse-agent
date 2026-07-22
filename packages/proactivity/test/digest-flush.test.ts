@@ -1,10 +1,10 @@
-import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { appendDigestItem, readDigestQueue, readDigestSentDate } from "@muse/stores";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
 
@@ -35,6 +35,11 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(dir, { force: true, recursive: true });
 });
+
+async function directoryBytes(): Promise<Readonly<Record<string, string>>> {
+  const entries = (await readdir(dir)).sort();
+  return Object.fromEntries(await Promise.all(entries.map(async (entry) => [entry, (await readFile(join(dir, entry))).toString("base64")] as const)));
+}
 
 describe("formatDigestItemLine — the single render shared by the flush AND `muse digest list` (CLI preview matches the flush verbatim)", () => {
   it("neutralizes an injection span in the rendered line", () => {
@@ -126,6 +131,249 @@ describe("compileDigestMessage", () => {
 });
 
 describe("runDigestFlushIfDue", () => {
+  it("fails closed before the callback when the required digest lock cannot be acquired", async () => {
+    const claim = vi.fn(() => true);
+    const readQueue = vi.fn(readDigestQueue);
+    const before = await directoryBytes();
+    const summary = await runDigestFlushIfDue({
+      claim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: {
+        readQueue,
+        withRequiredLock: async <T>(_file: string, _fn: () => Promise<T>) => ({ error: "simulated EACCES", kind: "lock-error" })
+      },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry(),
+      sentFile
+    });
+
+    expect(summary).toEqual({
+      errors: ["digest-flush: required lock acquisition failed: simulated EACCES"],
+      itemCount: 0,
+      outcome: "lock-error"
+    });
+    expect(claim).not.toHaveBeenCalled();
+    expect(readQueue).not.toHaveBeenCalled();
+    expect(await directoryBytes()).toEqual(before);
+  });
+
+  it("uses the real required lock fail-closed when the lock directory cannot exist", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const nonDirectory = join(dir, "not-a-directory");
+    await writeFile(nonDirectory, "occupied", "utf8");
+    const impossibleSentFile = join(nonDirectory, "digest-sent.json");
+    const before = await directoryBytes();
+    const claim = vi.fn(() => true);
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      claim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile: impossibleSentFile
+    });
+
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.errors[0]).toMatch(/required lock acquisition failed/iu);
+    expect(claim).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
+    expect(await directoryBytes()).toEqual(before);
+  });
+
+  it("treats a queue-read failure as visible preflight work without claiming or mutating files", async () => {
+    const claim = vi.fn(() => true);
+    const before = await directoryBytes();
+    const summary = await runDigestFlushIfDue({
+      claim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: {
+        readQueue: async () => { throw new Error("queue unreadable"); },
+        withRequiredLock: async <T>(_file: string, fn: () => Promise<T>) => ({ kind: "ran", value: await fn() })
+      },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry(),
+      sentFile
+    });
+
+    expect(summary).toMatchObject({ itemCount: 0, outcome: "preflight-failed" });
+    expect(summary.errors).toEqual(["digest-flush: queue read failed: queue unreadable"]);
+    expect(claim).not.toHaveBeenCalled();
+    expect(await directoryBytes()).toEqual(before);
+  });
+
+  it("reads one non-empty snapshot under the lock, then claims immediately before send", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const events: string[] = [];
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      claim: () => { events.push("claim"); return true; },
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: {
+        drainQueue: async (file, upToAt) => { events.push("drain"); return import("@muse/stores").then(({ drainDigestQueue }) => drainDigestQueue(file, upToAt)); },
+        markSent: async (file, now) => { events.push("mark"); return import("@muse/stores").then(({ markDigestSent }) => markDigestSent(file, now)); },
+        readQueue: async (file) => { events.push("read"); return readDigestQueue(file); },
+        send: async (registry, providerId, message) => { events.push("send"); return registry.send(providerId, message); },
+        withRequiredLock: async <T>(_file: string, fn: () => Promise<T>) => { events.push("lock"); return { kind: "ran", value: await fn() }; }
+      },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+
+    expect(summary.outcome).toBe("sent");
+    expect(events).toEqual(["lock", "read", "claim", "send", "drain", "mark"]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("preserves queue and sent-marker bytes when a non-empty snapshot is cancelled at claim", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    await writeFile(sentFile, "{\"date\":\"2026-07-11\"}\n", "utf8");
+    const before = await directoryBytes();
+    const sent: OutboundMessage[] = [];
+    const claim = vi.fn(() => false);
+    const drainQueue = vi.fn();
+    const markSent = vi.fn();
+    const summary = await runDigestFlushIfDue({
+      claim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: { drainQueue, markSent },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+
+    expect(summary.outcome).toBe("cancelled-before-claim");
+    expect(claim).toHaveBeenCalledOnce();
+    expect(sent).toEqual([]);
+    expect(drainQueue).not.toHaveBeenCalled();
+    expect(markSent).not.toHaveBeenCalled();
+    expect(await directoryBytes()).toEqual(before);
+  });
+
+  it("branches a sent-marker read fault by queue state without hiding pending work", async () => {
+    const sentReadFailure = { alreadySentToday: async () => { throw new Error("sent marker unreadable"); } };
+    const emptyClaim = vi.fn(() => true);
+    const empty = await runDigestFlushIfDue({
+      claim: emptyClaim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: sentReadFailure,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry(),
+      sentFile
+    });
+    expect(empty).toMatchObject({ itemCount: 0, outcome: "empty" });
+    expect(empty.errors).toEqual(["digest-flush: sent-sidecar read failed, proceeding: sent marker unreadable"]);
+    expect(emptyClaim).not.toHaveBeenCalled();
+
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const sent: OutboundMessage[] = [];
+    const pendingClaim = vi.fn(() => true);
+    const pending = await runDigestFlushIfDue({
+      claim: pendingClaim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: sentReadFailure,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(pending).toMatchObject({ itemCount: 1, outcome: "sent" });
+    expect(pending.errors).toEqual(["digest-flush: sent-sidecar read failed, proceeding: sent marker unreadable"]);
+    expect(pendingClaim).toHaveBeenCalledOnce();
+    expect(sent).toHaveLength(1);
+
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 19, 0, 0), source: "ambient-notice", text: "notice two" });
+    const beforeCancel = await directoryBytes();
+    const cancelledClaim = vi.fn(() => false);
+    const cancelled = await runDigestFlushIfDue({
+      claim: cancelledClaim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: sentReadFailure,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(cancelled).toMatchObject({ itemCount: 1, outcome: "cancelled-before-claim" });
+    expect(cancelled.errors).toEqual(["digest-flush: sent-sidecar read failed, proceeding: sent marker unreadable"]);
+    expect(cancelledClaim).toHaveBeenCalledOnce();
+    expect(await directoryBytes()).toEqual(beforeCancel);
+
+    const failedClaim = vi.fn(() => true);
+    const failed = await runDigestFlushIfDue({
+      claim: failedClaim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: sentReadFailure,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([], { failWith: new Error("upstream 500") })]),
+      sentFile
+    });
+    expect(failed).toMatchObject({ itemCount: 1, outcome: "send-failed" });
+    expect(failed.errors).toEqual([
+      "digest-flush: sent-sidecar read failed, proceeding: sent marker unreadable",
+      "digest-flush: send failed, queue preserved: upstream 500"
+    ]);
+    expect(failedClaim).toHaveBeenCalledOnce();
+    expect(await directoryBytes()).toEqual(beforeCancel);
+  });
+
+  it("keeps a claimed send failure retryable and reports post-send cleanup faults as sent", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const beforeFailure = await directoryBytes();
+    const failedClaim = vi.fn(() => true);
+    const failed = await runDigestFlushIfDue({
+      claim: failedClaim,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([], { failWith: new Error("upstream 500") })]),
+      sentFile
+    });
+    expect(failed.outcome).toBe("send-failed");
+    expect(failedClaim).toHaveBeenCalledOnce();
+    expect(await directoryBytes()).toEqual(beforeFailure);
+
+    const sent: OutboundMessage[] = [];
+    const cleanup = await runDigestFlushIfDue({
+      claim: () => true,
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      operationsForTesting: {
+        drainQueue: async () => { throw new Error("drain unavailable"); },
+        markSent: async () => { throw new Error("mark unavailable"); }
+      },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(cleanup.outcome).toBe("sent");
+    expect(cleanup.errors).toEqual([
+      "digest-flush: drain failed after a successful send: drain unavailable",
+      "digest-flush: sent-sidecar mark failed (may re-fire next tick): mark unavailable"
+    ]);
+    expect(sent).toHaveLength(1);
+    expect(await readDigestQueue(digestFile)).toHaveLength(1);
+    expect(await readDigestSentDate(sentFile)).toBeUndefined();
+  });
+
   it("fires once at the digest hour: sends the compiled message, drains the queue, marks the sidecar", async () => {
     await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
     const sent: OutboundMessage[] = [];

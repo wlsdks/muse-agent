@@ -1354,6 +1354,26 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("rebuilds the single briefing factory with the lazily resolved knowledge enricher", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BRIEFING_ENABLED: "true" };
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ createdAt: "2026-01-01T00:00:00Z", dueAt: dueSoon, id: "t-late", status: "open", title: "Submit the continuity report" }]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const resolver = vi.fn(async () => async () => "late-bound continuity context");
+
+    const result = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env,
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      resolveKnowledgeEnrich: resolver
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(resolver).toHaveBeenCalledOnce();
+    expect(sent.some((message) => message.text.includes("late-bound continuity context"))).toBe(true);
+  });
+
   it("--once briefing names an upcoming birthday from the user's contacts", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BRIEFING_ENABLED: "true" };
     const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
@@ -1820,6 +1840,8 @@ describe("muse daemon — resource admission", () => {
   });
 
   it("applies the cap across delivery and maintenance with one fair cursor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 12, 18, 5, 0));
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
       MUSE_BROWSING_AUTO_SYNC: "true",
@@ -1828,22 +1850,33 @@ describe("muse daemon — resource admission", () => {
     };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     let browsingCalls = 0;
-    const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
-      browsingSync: async () => { browsingCalls += 1; return { synced: 0, total: 0 }; },
-      env,
-      registry,
-      resourceSnapshot: () => ({ cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }),
-      runDaemonLoop: async ({ signal, tick }) => {
-        await tick();
-        expect(browsingCalls).toBe(0);
-        await tick();
-        signal.stop();
-        return 2;
-      }
-    });
+    const receipts: DaemonResourceReceipt[] = [];
+    try {
+      const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
+        browsingSync: async () => { browsingCalls += 1; return { synced: 0, total: 0 }; },
+        env,
+        registry,
+        resourceSnapshot: () => ({ cpuCount: 4, freeMemoryBytes: 4 * 1024 * 1024 * 1024, load1: 1 }),
+        runDaemonLoop: async ({ signal, tick }) => {
+          await tick();
+          expect(browsingCalls).toBe(0);
+          await tick();
+          signal.stop();
+          return 2;
+        },
+        writeResourceAdmissionReceipt: async (_file, receipt) => { receipts.push(receipt); }
+      });
 
-    expect(result.exitCode).toBeUndefined();
-    expect(browsingCalls).toBe(1);
+      expect(result.exitCode).toBeUndefined();
+      expect(browsingCalls).toBe(1);
+      expect(receipts.flatMap((receipt) => "lastBoundary" in receipt && receipt.lastBoundary ? [receipt.lastBoundary.unit] : [])).toEqual([
+        "pattern",
+        "browsing-sync"
+      ]);
+      expect(receipts.some((receipt) => "lastBoundary" in receipt && receipt.lastBoundary?.unit === "digest-flush")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("re-reads owner pause each tick, defers heavy work, and resumes without a restart", async () => {

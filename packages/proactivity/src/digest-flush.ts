@@ -32,8 +32,9 @@ import {
   drainDigestQueue,
   markDigestSent,
   readDigestQueue,
-  withDigestLock,
-  type DigestQueueItem
+  withRequiredDigestLock,
+  type DigestQueueItem,
+  type RequiredProcessLockOutcome
 } from "@muse/stores";
 
 import { sendWithRetry } from "@muse/mcp-shared";
@@ -133,15 +134,49 @@ export interface RunDigestFlushOptions {
   /** Local hour the digest fires at. Default 18 (`DEFAULT_DIGEST_HOUR`). */
   readonly digestHour?: number;
   readonly now?: () => Date;
+  /** Optional admission boundary. Called exactly once only after a non-empty
+   * snapshot is compiled under the required lock and immediately before the
+   * external send. */
+  readonly claim?: () => boolean;
+  /** Deterministic fault/operation seam. Production callers omit this and use
+   * the real stores, required process lock, and messaging transport. */
+  readonly operationsForTesting?: Partial<DigestFlushOperations>;
 }
 
-export type RunDigestFlushOutcome = "not-due" | "already-sent-today" | "empty" | "sent" | "send-failed" | "lock-held";
+export type RunDigestFlushOutcome =
+  | "not-due"
+  | "already-sent-today"
+  | "empty"
+  | "lock-held"
+  | "lock-error"
+  | "preflight-failed"
+  | "cancelled-before-claim"
+  | "sent"
+  | "send-failed";
 
 export interface RunDigestFlushSummary {
   readonly outcome: RunDigestFlushOutcome;
   readonly itemCount: number;
   readonly errors: readonly string[];
 }
+
+export interface DigestFlushOperations {
+  readonly alreadySentToday: typeof digestAlreadySentToday;
+  readonly drainQueue: typeof drainDigestQueue;
+  readonly markSent: typeof markDigestSent;
+  readonly readQueue: typeof readDigestQueue;
+  readonly send: typeof sendWithRetry;
+  readonly withRequiredLock: <T>(sentFile: string, fn: () => Promise<T>) => Promise<RequiredProcessLockOutcome<T>>;
+}
+
+const DEFAULT_DIGEST_FLUSH_OPERATIONS: DigestFlushOperations = {
+  alreadySentToday: digestAlreadySentToday,
+  drainQueue: drainDigestQueue,
+  markSent: markDigestSent,
+  readQueue: readDigestQueue,
+  send: sendWithRetry,
+  withRequiredLock: withRequiredDigestLock
+};
 
 /**
  * Run one digest-flush check. The caller is responsible for the quiet-hours
@@ -155,69 +190,99 @@ export async function runDigestFlushIfDue(options: RunDigestFlushOptions): Promi
     return { errors: [], itemCount: 0, outcome: "not-due" };
   }
 
-  // The check→send→drain→mark critical section runs under the cross-process
-  // digest lock (`withDigestLock`, `${sentFile}.lock`) so the api daemon and
+  const operations: DigestFlushOperations = {
+    ...DEFAULT_DIGEST_FLUSH_OPERATIONS,
+    ...options.operationsForTesting
+  };
+
+  // The check→send→drain→mark critical section runs under the REQUIRED
+  // cross-process digest lock (`${sentFile}.lock`) so the api daemon and
   // the CLI daemon can't both pass `digestAlreadySentToday` before either
   // marks — see digest-lock.ts. A LIVE held lock (the other daemon owns this
   // tick) short-circuits to "lock-held" with no send attempted at all.
-  const lockOutcome = await withDigestLock(options.sentFile, () => runFlushUnderLock(options, now));
+  // Infrastructure failure is fail-closed: delaying one digest is safer than
+  // running this external side effect unlocked and risking a double send.
+  const lockOutcome = await operations.withRequiredLock(
+    options.sentFile,
+    () => runFlushUnderLock(options, now, operations)
+  );
   if (lockOutcome.kind === "lock-held") {
     return { errors: [], itemCount: 0, outcome: "lock-held" };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention — a weird fs error): the
-    // flush still ran, unlocked, so this degrades to the pre-lock duplicate-
-    // send risk rather than silencing the digest.
-    return { ...lockOutcome.value, errors: [`digest-flush: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors] };
+  if (lockOutcome.kind === "lock-error") {
+    return {
+      errors: [`digest-flush: required lock acquisition failed: ${lockOutcome.error}`],
+      itemCount: 0,
+      outcome: "lock-error"
+    };
   }
   return lockOutcome.value;
 }
 
-async function runFlushUnderLock(options: RunDigestFlushOptions, now: Date): Promise<RunDigestFlushSummary> {
+async function runFlushUnderLock(
+  options: RunDigestFlushOptions,
+  now: Date,
+  operations: DigestFlushOperations
+): Promise<RunDigestFlushSummary> {
   // Fail-open on a corrupt/unreadable sidecar: never let a broken "already
   // sent" marker permanently silence the daily flush (§4 of the plan).
   let alreadySent: boolean;
   try {
-    alreadySent = await digestAlreadySentToday(options.sentFile, now);
+    alreadySent = await operations.alreadySentToday(options.sentFile, now);
   } catch (cause) {
-    return runFlushAfterSentCheck(options, now, [`digest-flush: sent-sidecar read failed, proceeding: ${errorMessage(cause)}`]);
+    return runFlushAfterSentCheck(
+      options,
+      now,
+      [`digest-flush: sent-sidecar read failed, proceeding: ${errorMessage(cause)}`],
+      operations
+    );
   }
   if (alreadySent) {
     return { errors: [], itemCount: 0, outcome: "already-sent-today" };
   }
-  return runFlushAfterSentCheck(options, now, []);
+  return runFlushAfterSentCheck(options, now, [], operations);
 }
 
 async function runFlushAfterSentCheck(
   options: RunDigestFlushOptions,
   now: Date,
-  priorErrors: readonly string[]
+  priorErrors: readonly string[],
+  operations: DigestFlushOperations
 ): Promise<RunDigestFlushSummary> {
   const errors = [...priorErrors];
   // The snapshot: everything read here is what this message is ABOUT (the
   // header's "N건" count), but the drain below removes only the individually
   // RENDERED items — a folded-overflow item is not drained (see
   // `compileDigestMessage`'s `upToAt`) and survives for a later flush.
-  const items = await readDigestQueue(options.digestFile);
+  let items: readonly DigestQueueItem[];
+  try {
+    items = await operations.readQueue(options.digestFile);
+  } catch (cause) {
+    errors.push(`digest-flush: queue read failed: ${errorMessage(cause)}`);
+    return { errors, itemCount: 0, outcome: "preflight-failed" };
+  }
   if (items.length === 0) {
     return { errors, itemCount: 0, outcome: "empty" };
   }
 
   const { text, upToAt } = compileDigestMessage(items);
+  if (options.claim && !options.claim()) {
+    return { errors, itemCount: items.length, outcome: "cancelled-before-claim" };
+  }
   try {
-    await sendWithRetry(options.registry, options.providerId, { destination: options.destination, text });
+    await operations.send(options.registry, options.providerId, { destination: options.destination, text });
   } catch (cause) {
     errors.push(`digest-flush: send failed, queue preserved: ${errorMessage(cause)}`);
     return { errors, itemCount: items.length, outcome: "send-failed" };
   }
 
   try {
-    await drainDigestQueue(options.digestFile, upToAt);
+    await operations.drainQueue(options.digestFile, upToAt);
   } catch (cause) {
     errors.push(`digest-flush: drain failed after a successful send: ${errorMessage(cause)}`);
   }
   try {
-    await markDigestSent(options.sentFile, now);
+    await operations.markSent(options.sentFile, now);
   } catch (cause) {
     errors.push(`digest-flush: sent-sidecar mark failed (may re-fire next tick): ${errorMessage(cause)}`);
   }

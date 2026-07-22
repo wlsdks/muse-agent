@@ -1013,13 +1013,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const proposedActionsFile = e.MUSE_PROPOSED_ACTIONS_FILE?.trim()?.length
         ? e.MUSE_PROPOSED_ACTIONS_FILE.trim()
         : join(homedir(), ".muse", "proposed-actions.json");
-      let objectivesActuator = !followupModel
+      const objectivesActionLogFile = resolveActionLogFile(e);
+      const buildObjectivesActuator = () => !followupModel
         ? undefined
         : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
           ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
           : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
-      const objectivesActionLogFile = resolveActionLogFile(e);
-      let objectivesEvaluate = followupModel
+      const buildObjectivesEvaluate = (): ReturnType<typeof createModelObjectiveEvaluator> | undefined => followupModel
         ? createModelObjectiveEvaluator({
             evidenceDeps: {
               ...(calendarRegistry.list().length > 0
@@ -1037,31 +1037,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             modelProvider: followupModel.modelProvider
           })
         : undefined;
+      let objectivesActuator = buildObjectivesActuator();
+      let objectivesEvaluate = buildObjectivesEvaluate();
 
       if (options.status) {
         // Status is an explicit interactive inspection, not a resident tick.
         // Resolve here so it can truthfully distinguish enabled from disabled
         // integrations, while the background loop stays lazy.
         followupModel = await (helpers.resolveFollowupModel ?? defaultFollowupModel)(e);
-        objectivesActuator = !followupModel
-          ? undefined
-          : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
-            ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
-            : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
-        objectivesEvaluate = followupModel
-          ? createModelObjectiveEvaluator({
-              evidenceDeps: {
-                ...(calendarRegistry.list().length > 0
-                  ? { listCalendarEvents: (range: { readonly from: Date; readonly to: Date }) => calendarRegistry.listEvents(range) }
-                  : {}),
-                queryActionLog: () => queryActionLog(objectivesActionLogFile, {}),
-                readReminders: () => readReminders(remindersFile),
-                readTasks: () => readTasks(tasksFile)
-              },
-              model: followupModel.model,
-              modelProvider: followupModel.modelProvider
-            })
-          : undefined;
+        objectivesActuator = buildObjectivesActuator();
+        objectivesEvaluate = buildObjectivesEvaluate();
         await resolveCliLanguage(e, () => readConfigStore(io));
         // Will it come back after a reboot, and is it actually alive now?
         // Artifact existence and runtime state are deliberately separate: a
@@ -1184,7 +1169,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         stdout: io.stdout
       });
 
-      let followupTick = makeFollowupTick({
+      const buildFollowupTick = (): ReturnType<typeof makeFollowupTick> => makeFollowupTick({
         destination,
         followupModel,
         followupsFile,
@@ -1193,6 +1178,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         provider,
         stdout: io.stdout
       });
+      let followupTick = buildFollowupTick();
 
       const checkinsTick = makeCheckinsTick({
         destination,
@@ -1204,7 +1190,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         stdout: io.stdout
       });
 
-      let patternTick = makePatternTick({
+      const buildPatternTick = (): ReturnType<typeof makePatternTick> => makePatternTick({
         destination,
         env: e,
         followupModel,
@@ -1214,21 +1200,27 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         quietHours,
         stdout: io.stdout
       });
+      let patternTick = buildPatternTick();
 
       let ambientTick = makeAmbientTick({ ambientRunner, stdout: io.stdout });
 
       let webWatchTick = makeWebWatchTick({ stdout: io.stdout, webWatchRunner });
 
-      let objectivesTick = makeObjectivesTick({
+      const buildObjectivesTick = (): ReturnType<typeof makeObjectivesTick> => makeObjectivesTick({
         actuator: objectivesActuator,
         evaluate: objectivesEvaluate,
         file: objectivesFile,
         stdout: io.stdout
       });
+      let objectivesTick = buildObjectivesTick();
 
       const homeWatchTick = makeHomeWatchTick({ homeWatchRunner, stdout: io.stdout });
 
-      let briefingTick = makeBriefingTick({
+      // One construction seam keeps the provider-lock structural invariant
+      // auditable while still rebuilding after lazy knowledge initialization.
+      // `knowledgeEnrich` is read when this builder runs, not captured forever
+      // as the initial undefined value.
+      const buildBriefingTick = (): ReturnType<typeof makeBriefingTick> => makeBriefingTick({
         briefingCalendarLister: helpers.briefingCalendarLister,
         calendarRegistry,
         channelOwnersFile,
@@ -1245,6 +1237,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         stdout: io.stdout,
         tasksFile
       });
+      let briefingTick = buildBriefingTick();
 
       const reflectionIntervalRaw = e.MUSE_REFLECTION_INTERVAL_MS ? Number(e.MUSE_REFLECTION_INTERVAL_MS) : DEFAULT_REFLECTION_INTERVAL_MS;
       const reflectionIntervalMs = Number.isFinite(reflectionIntervalRaw) && reflectionIntervalRaw > 0 ? reflectionIntervalRaw : DEFAULT_REFLECTION_INTERVAL_MS;
@@ -1478,29 +1471,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             webWatchTick = makeWebWatchTick({ stdout: io.stdout, webWatchRunner });
           }
 
-          objectivesActuator = !followupModel
-            ? undefined
-            : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
-              ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
-              : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
-          objectivesEvaluate = followupModel
-            ? createModelObjectiveEvaluator({
-                evidenceDeps: {
-                  ...(calendarRegistry.list().length > 0
-                    ? { listCalendarEvents: (range: { readonly from: Date; readonly to: Date }) => calendarRegistry.listEvents(range) }
-                    : {}),
-                  queryActionLog: () => queryActionLog(objectivesActionLogFile, {}),
-                  readReminders: () => readReminders(remindersFile),
-                  readTasks: () => readTasks(tasksFile)
-                },
-                model: followupModel.model,
-                modelProvider: followupModel.modelProvider
-              })
-            : undefined;
-          followupTick = makeFollowupTick({ destination, followupModel, followupsFile, interruptionBudget, messagingRegistry, provider, stdout: io.stdout });
-          patternTick = makePatternTick({ destination, env: e, followupModel, interruptionBudget, messagingRegistry, provider, quietHours, stdout: io.stdout });
-          objectivesTick = makeObjectivesTick({ actuator: objectivesActuator, evaluate: objectivesEvaluate, file: objectivesFile, stdout: io.stdout });
-          briefingTick = makeBriefingTick({ briefingCalendarLister: helpers.briefingCalendarLister, calendarRegistry, channelOwnersFile, dayRhythmConfigFile, destination, env: e, knowledgeEnrich, leadMinutes, messagingRegistry, objectivesFile, provider, reconfirmCardAnsweredFile: resolveReconfirmCardAnsweredFile(e), reconfirmCardDeliveryFile: resolveReconfirmCardDeliveryFile(e), stdout: io.stdout, tasksFile });
+          objectivesActuator = buildObjectivesActuator();
+          objectivesEvaluate = buildObjectivesEvaluate();
+          followupTick = buildFollowupTick();
+          patternTick = buildPatternTick();
+          objectivesTick = buildObjectivesTick();
+          briefingTick = buildBriefingTick();
           reflectionTick = makeReflectionTick({ env: e, followupModel, intervalMs: reflectionIntervalMs, lastRunMs: lastReflectionMs, stdout: io.stdout });
           emailSyncTick = localOnly ? undefined : (helpers.makeEmailSyncTick ?? makeEmailSyncTick)({ env: e, intervalMs: emailSyncIntervalMs, io, lastRunMs: lastEmailSyncMs, limit: emailSyncLimit, notesDir: resolveNotesDir(e), stdout: io.stdout, ...(helpers.emailSyncProvider ? { emailSyncProvider: helpers.emailSyncProvider } : {}) });
           selfLearnTick = makeSelfLearnTick({ env: e, followupModel, intervalMs: selfLearnIntervalMs, lastRunMs: lastSelfLearnMs, noticeSink, stdout: io.stdout, ...(helpers.selfLearnDistill ? { selfLearnDistill: helpers.selfLearnDistill } : {}), ...(helpers.contradictionClassify ? { contradictionClassify: helpers.contradictionClassify } : {}) });

@@ -31,6 +31,7 @@ import {
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
 import { FileUserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { errorMessage } from "@muse/shared";
 import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readPendingLearnEvents, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
 import { DEFAULT_DIGEST_HOUR, isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
 
@@ -421,6 +422,10 @@ export interface MakeDigestFlushTickDeps {
   readonly dayRhythmConfigFile: string;
   /** `~/.muse/channel-owners.json` — day-rhythm's auto-route source when `provider` is still the "log" default. */
   readonly channelOwnersFile: string;
+  /** Deterministic test seam; production uses `runDigestFlushIfDue`. */
+  readonly digestFlush?: typeof runDigestFlushIfDue;
+  /** Clock seam shared by the hour preflight and digest core. */
+  readonly now?: () => Date;
 }
 
 /**
@@ -440,10 +445,11 @@ export interface MakeDigestFlushTickDeps {
  */
 export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaemonTick {
   const { stdout, messagingRegistry, provider, destination, digestEnabled, quietHours, digestQueueFile, digestHourRaw, digestSentFile, dayRhythmConfigFile, channelOwnersFile } = deps;
+  const digestFlush = deps.digestFlush ?? runDigestFlushIfDue;
   return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!digestEnabled) return daemonWorkloadNotReady("disabled");
     const activeQuietHours = resolveQuietHoursOption(quietHours);
-    const now = new Date();
+    const now = deps.now?.() ?? new Date();
     if (activeQuietHours && isQuietHour(now.getHours(), activeQuietHours)) return daemonWorkloadNotReady("internal-brake");
     const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
     let effectiveProvider = provider;
@@ -465,13 +471,19 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaem
     }
     const digestHour = effectiveDigestHour ?? DEFAULT_DIGEST_HOUR;
     if (now.getHours() !== digestHour) return daemonWorkloadNotReady("not-due");
-    if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
+    let claimed = false;
+    const claimDigest = (): boolean => {
+      const accepted = (claim ?? (() => true))();
+      if (accepted) claimed = true;
+      return accepted;
+    };
     try {
-      const summary = await runDigestFlushIfDue({
+      const summary = await digestFlush({
+        claim: claimDigest,
         destination: effectiveDestination,
         digestFile: digestQueueFile,
         ...(effectiveDigestHour !== undefined && Number.isFinite(effectiveDigestHour) ? { digestHour: effectiveDigestHour } : {}),
-        now: () => new Date(),
+        now: () => now,
         providerId: effectiveProvider,
         registry: messagingRegistry,
         sentFile: digestSentFile
@@ -485,7 +497,27 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaem
         }
         stdout("\n");
       }
-      return daemonWorkloadCompleted();
-    } catch { return daemonWorkloadFailed("provider"); }
+      switch (summary.outcome) {
+        case "sent":
+          if (!claimed) throw new Error("digest flush reported sent without claiming");
+          return daemonWorkloadCompleted();
+        case "send-failed":
+          if (!claimed) throw new Error("digest flush reported send-failed without claiming");
+          return daemonWorkloadFailed("provider");
+        case "cancelled-before-claim":
+          return daemonWorkloadCancelled();
+        case "lock-error":
+        case "lock-held":
+        case "preflight-failed":
+          return daemonWorkloadNotReady("internal-brake");
+        case "already-sent-today":
+        case "empty":
+        case "not-due":
+          return daemonWorkloadNotReady("not-due");
+      }
+    } catch (cause) {
+      stdout(`[${new Date().toISOString()}] digest: ${claimed ? "failed" : "preflight-failed"} (${errorMessage(cause)})\n`);
+      return claimed ? daemonWorkloadFailed("provider") : daemonWorkloadNotReady("internal-brake");
+    }
   };
 }

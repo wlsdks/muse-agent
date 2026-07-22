@@ -278,3 +278,10 @@ export async function withRequiredProcessLock<T>(
 export async function withDigestLock<T>(sentFile: string, fn: () => Promise<T>): Promise<DigestLockOutcome<T>> {
   return withProcessLock(`${sentFile}.lock`, fn, DIGEST_LOCK_STALE_MS);
 }
+
+/** Fail-closed digest sibling for an external send critical section. A broken
+ * lock can delay one digest tick, but it must never permit an unlocked double
+ * send. Live contention remains a cheap `lock-held` no-op. */
+export async function withRequiredDigestLock<T>(sentFile: string, fn: () => Promise<T>): Promise<RequiredProcessLockOutcome<T>> {
+  return withRequiredProcessLock(`${sentFile}.lock`, fn, DIGEST_LOCK_STALE_MS);
+}
