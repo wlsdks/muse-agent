@@ -61,6 +61,7 @@ function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {
     orphanRootCount: 0,
     pidAgreement: true,
     platform: "darwin",
+    restart: { failureCount: 0, state: "closed" },
     runtime: "running",
     stableMuseCommand: true,
     ...observationOverrides

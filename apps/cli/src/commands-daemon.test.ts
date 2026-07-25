@@ -7,7 +7,14 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 import { readBrowsingStore } from "@muse/recall";
-import { parseResidentDaemonTerminalStateReceipt } from "@muse/runtime-state";
+import {
+  beginResidentDaemonRestartState,
+  decideResidentDaemonRestartAdmission,
+  parseResidentDaemonRestartStateReceipt,
+  parseResidentDaemonTerminalStateReceipt,
+  recordResidentDaemonRestartFailure,
+  recordResidentDaemonRestartSuccess
+} from "@muse/runtime-state";
 
 import { LogMessagingProvider, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
@@ -28,6 +35,7 @@ import {
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 import { RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED } from "./resident-daemon-heartbeat.js";
+import { openResidentDaemonRestartStateJournal } from "./resident-daemon-restart-state.js";
 import { openResidentDaemonTerminalStateJournal } from "./resident-daemon-terminal-state.js";
 
 function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
@@ -89,7 +97,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; openResidentTerminalJournal?: DaemonHelpers["openResidentTerminalJournal"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; openResidentTerminalJournal?: DaemonHelpers["openResidentTerminalJournal"]; openResidentRestartJournal?: DaemonHelpers["openResidentRestartJournal"]; residentRestartSleep?: DaemonHelpers["residentRestartSleep"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -158,6 +166,15 @@ async function runDaemon(
         markStable: async () => ({} as never),
         recordFailure: async () => ({} as never)
       })),
+      openResidentRestartJournal: opts.openResidentRestartJournal ?? (async () => ({
+        current: () => ({ sequence: 1, state: "closed" } as never),
+        decideAdmission: async () => ({ state: "admit" }),
+        file: "/test/resident-daemon-restart-state.json",
+        recordFailure: async () => ({ sequence: 1, state: "closed" } as never),
+        recordSuccess: async () => ({ sequence: 1, state: "closed" } as never),
+        reset: async () => ({ sequence: 1, state: "closed" } as never)
+      })),
+      ...(opts.residentRestartSleep ? { residentRestartSleep: opts.residentRestartSleep } : {}),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonRuntimeExecutable !== undefined
         ? { daemonRuntimeExecutable: opts.daemonRuntimeExecutable }
@@ -287,6 +304,85 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     ]);
   });
 
+  it("durably records an escaped resident tick failure before stopping that generation", async () => {
+    const env = tmpEnv();
+    const probeAt = new Date("2026-07-25T21:00:01.000Z");
+    let restartState = beginResidentDaemonRestartState({
+      baseDelayMs: 100,
+      failureThreshold: 1,
+      failureWindowMs: 60_000,
+      maxDelayMs: 1_000,
+      openCooldownMs: 1_000
+    }, new Date("2026-07-25T21:00:00.000Z"));
+    restartState = recordResidentDaemonRestartFailure(restartState, {
+      at: new Date("2026-07-25T21:00:00.000Z"),
+      failureSequence: 10
+    });
+    restartState = decideResidentDaemonRestartAdmission(restartState, {
+      generation: testResidentLeaseIdentity().generation,
+      now: probeAt
+    }).receipt;
+    const terminalFailure = vi.fn(async () => ({ sequence: 77 } as never));
+    const restartFailure = vi.fn(async (failureSequence: number) => {
+      restartState = recordResidentDaemonRestartFailure(restartState, {
+        at: probeAt,
+        failureSequence
+      });
+      return restartState;
+    });
+
+    const result = await runDaemon(["--provider", "log"], {
+      env,
+      openResidentRestartJournal: async () => ({
+        current: () => restartState,
+        decideAdmission: async (generation) => {
+          const decision = decideResidentDaemonRestartAdmission(restartState, {
+            generation,
+            now: probeAt
+          });
+          restartState = decision.receipt;
+          return decision.admission;
+        },
+        file: "/test/resident-restart-state.json",
+        recordFailure: restartFailure,
+        recordSuccess: async (generation) => {
+          restartState = recordResidentDaemonRestartSuccess(restartState, {
+            generation,
+            now: probeAt
+          });
+          return restartState;
+        },
+        reset: async () => ({} as never)
+      }),
+      openResidentTerminalJournal: async () => ({
+        current: () => ({ failures: [{ sequence: 10 }] } as never),
+        file: "/test/resident-terminal-state.json",
+        markStable: async () => ({} as never),
+        recordFailure: terminalFailure
+      }),
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()]),
+      runDaemonLoop: async (options) => {
+        await options.onError?.(new Error("escaped probe tick"));
+        expect(options.signal.stopped).toBe(true);
+        return 0;
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(terminalFailure).toHaveBeenCalledOnce();
+    expect(restartFailure).toHaveBeenCalledWith(77);
+    expect(restartState).toMatchObject({
+      failureCount: 1,
+      probeGeneration: null,
+      state: "open"
+    });
+    expect(() => recordResidentDaemonRestartSuccess(restartState, {
+      generation: testResidentLeaseIdentity().generation,
+      now: probeAt
+    })).toThrow("open resident restart circuit cannot succeed");
+    expect(result.stderr).toContain("tick error: escaped probe tick\n");
+  });
+
   it("persists a redacted reason-coded terminal failure after the last stable point", async () => {
     const env = tmpEnv();
     const terminalFile = join(env.HOME!, "terminal-state.json");
@@ -371,15 +467,29 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
           throw Object.assign(new Error("private provider credential"), { code: "EAUTH" });
         }
       }
+    },
+    {
+      expected: {
+        exitClass: "authentication",
+        reasonCode: "provider-auth-failed"
+      },
+      name: "calendar provider authentication",
+      options: {
+        buildCalendarRegistry: () => {
+          throw Object.assign(new Error("private calendar credential"), { code: "EAUTH" });
+        }
+      }
     }
   ] as const)("records a reason-coded $name startup failure before runtime initialization", async ({ expected, options }) => {
     const env = tmpEnv();
     const terminalFile = join(env.HOME!, `terminal-${expected.reasonCode}.json`);
+    const restartFile = join(env.HOME!, ".muse", "resident-daemon-restart-state.json");
     env.MUSE_DAEMON_TERMINAL_STATE_FILE = terminalFile;
 
     const result = await runDaemon(["--once", "--provider", "log"], {
       ...options,
       env,
+      openResidentRestartJournal: openResidentDaemonRestartStateJournal,
       openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
       registry: new MessagingProviderRegistry([new LogMessagingProvider()])
     });
@@ -391,6 +501,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       ...expected,
       lastStablePoint: "writer-authority-acquired"
     });
+    expect(parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8")))
+      .toMatchObject({ failureCount: 1, state: "closed" });
   });
 
   it.each([
@@ -425,6 +537,119 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
         lastStablePoint: "writer-authority-acquired",
         reasonCode: "configuration-invalid"
       });
+  });
+
+  it("bounds repeated startup failures, waits in open state, and closes only after a successful probe tick", async () => {
+    const env = tmpEnv();
+    const restartFile = join(env.HOME!, ".muse", "resident-daemon-restart-state.json");
+    let observedAt = new Date("2026-07-25T20:00:00.000Z");
+    let leaseSequence = 0;
+    const waits: number[] = [];
+    const acquireResidentWriterLease: NonNullable<DaemonHelpers["acquireResidentWriterLease"]> =
+      async () => {
+        leaseSequence += 1;
+        return {
+          ...testResidentLeaseIdentity(),
+          generation: `restart_generation_${leaseSequence.toString().padStart(2, "0")}`,
+          leaseSequence,
+          release: async () => undefined,
+          validate: async () => true,
+          waitMs: 0
+        };
+      };
+    const openResidentRestartJournal: NonNullable<DaemonHelpers["openResidentRestartJournal"]> =
+      async (options = {}) => openResidentDaemonRestartStateJournal({
+        ...options,
+        now: () => observedAt,
+        policy: {
+          baseDelayMs: 1_000,
+          failureThreshold: 3,
+          failureWindowMs: 60_000,
+          maxDelayMs: 4_000,
+          openCooldownMs: 30_000
+        }
+      });
+    const residentRestartSleep = async (milliseconds: number): Promise<void> => {
+      waits.push(milliseconds);
+      observedAt = new Date(observedAt.getTime() + milliseconds);
+    };
+    const common = {
+      acquireResidentWriterLease,
+      env,
+      openResidentRestartJournal,
+      openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()]),
+      residentRestartSleep
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const failed = await runDaemon(["--once", "--provider", "log"], {
+        ...common,
+        readDaemonConfig: () => {
+          throw new SyntaxError(`private invalid config ${attempt.toString()}`);
+        }
+      });
+      expect(failed.exitCode).toBe(1);
+    }
+    expect(parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8")))
+      .toMatchObject({ failureCount: 3, state: "open" });
+
+    const recovered = await runDaemon(["--once", "--provider", "log"], common);
+    expect(recovered.exitCode).toBeUndefined();
+    expect(waits).toEqual([1_000, 2_000, 30_000]);
+    expect(parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8")))
+      .toMatchObject({
+        failureCount: 0,
+        state: "closed"
+      });
+  });
+
+  it("offers an exact owner-visible restart circuit reset under the resident writer lease", async () => {
+    const env = tmpEnv();
+    const journal = await openResidentDaemonRestartStateJournal({ env });
+    await journal.recordFailure(70);
+    const release = vi.fn(async () => undefined);
+
+    const result = await runDaemon(["--reset-restart-circuit"], {
+      acquireResidentWriterLease: async () => ({
+        ...testResidentLeaseIdentity(),
+        release,
+        validate: async () => true,
+        waitMs: 0
+      }),
+      env,
+      openResidentRestartJournal: openResidentDaemonRestartStateJournal,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()])
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(result.stdout).toMatch(/^muse daemon restart circuit reset: state=closed, sequence=\d+\n$/u);
+    expect(release).toHaveBeenCalledOnce();
+    expect(parseResidentDaemonRestartStateReceipt(readFileSync(journal.file, "utf8")))
+      .toMatchObject({
+        failureCount: 0,
+        lastFailureSequence: 70,
+        state: "closed"
+      });
+  });
+
+  it.each([
+    ["--print"],
+    ["--interval", "7"],
+    ["--lead-minutes", "7"],
+    ["--provider", "log"],
+    ["--destination", "owner"]
+  ])("rejects restart reset combined with explicit run/config option %s", async (...flags) => {
+    const openRestart = vi.fn<NonNullable<DaemonHelpers["openResidentRestartJournal"]>>();
+    const result = await runDaemon(["--reset-restart-circuit", ...flags], {
+      env: tmpEnv(),
+      openResidentRestartJournal: openRestart,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()])
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("muse daemon --reset-restart-circuit must be used by itself.\n");
+    expect(openRestart).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -2754,13 +2979,38 @@ describe("runDaemonLoop — foreground loop shuts down cleanly on a stop signal"
     let ticks = 0;
     await runDaemonLoop({
       intervalMs: 1000,
-      onError: (e) => errors.push(e),
+      onError: (e) => {
+        errors.push(e);
+      },
       signal,
       sleep: async () => { signal.stop(); },
       tick: async () => { ticks += 1; throw new Error("tick boom"); }
     });
     expect(ticks).toBe(1);
     expect(errors).toHaveLength(1);
+  });
+
+  it("awaits failure handling before it can sleep or retry", async () => {
+    const signal = new DaemonStopSignal();
+    const events: string[] = [];
+    const ran = await runDaemonLoop({
+      intervalMs: 1000,
+      onError: async () => {
+        await Promise.resolve();
+        events.push("failure-persisted");
+        signal.stop();
+      },
+      signal,
+      sleep: async () => {
+        events.push("slept");
+      },
+      tick: async () => {
+        events.push("tick-failed");
+        throw new Error("tick boom");
+      }
+    });
+    expect(ran).toBe(0);
+    expect(events).toEqual(["tick-failed", "failure-persisted"]);
   });
 
   it("an already-stopped signal runs zero ticks", async () => {

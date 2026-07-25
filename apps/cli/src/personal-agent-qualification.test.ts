@@ -77,6 +77,7 @@ function runtimeObservation(
     orphanRootCount: 0,
     pidAgreement: true,
     platform: "darwin",
+    restart: { failureCount: 0, state: "closed", updatedAt: NOW.toISOString() },
     runtime: "running",
     stableMuseCommand: true,
     ...observationOverrides

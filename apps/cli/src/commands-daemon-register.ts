@@ -60,6 +60,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
+import { setTimeout as sleep } from "node:timers/promises";
 
 // node:child_process has no /promises submodule (unlike fs/timers) — a
 // phantom import of it has now broken the build twice; the regression
@@ -143,6 +144,11 @@ import {
   RESIDENT_DAEMON_TERMINAL_STATE_UNAVAILABLE,
   type ResidentDaemonTerminalStateJournal
 } from "./resident-daemon-terminal-state.js";
+import {
+  openResidentDaemonRestartStateJournal,
+  RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE,
+  type ResidentDaemonRestartStateJournal
+} from "./resident-daemon-restart-state.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -346,6 +352,10 @@ export interface DaemonHelpers {
   readonly createResidentHeartbeatWriter?: typeof createResidentDaemonHeartbeatWriter;
   /** Test seam — bounded owner-only terminal diagnostic journal. */
   readonly openResidentTerminalJournal?: typeof openResidentDaemonTerminalStateJournal;
+  /** Test seam — durable restart budget and circuit-breaker journal. */
+  readonly openResidentRestartJournal?: typeof openResidentDaemonRestartStateJournal;
+  /** Test seam — interruptible-by-process-exit wait before a delayed restart attempt. */
+  readonly residentRestartSleep?: (milliseconds: number) => Promise<void>;
   /** Test seam — production persists process.argv[1] after stable-entry validation. */
   readonly daemonCliEntry?: string;
   /** Test seam — production persists canonical process.execPath after stable-runtime validation. */
@@ -443,6 +453,87 @@ async function openDaemonTerminalJournal(
   }
 }
 
+async function openDaemonRestartJournal(
+  io: ProgramIO,
+  env: NodeJS.ProcessEnv,
+  signal: DaemonStopSignal,
+  helpers: DaemonHelpers
+): Promise<ResidentDaemonRestartStateJournal | undefined> {
+  try {
+    return await (helpers.openResidentRestartJournal
+      ?? openResidentDaemonRestartStateJournal)({ env });
+  } catch {
+    io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE}\n`);
+    process.exitCode = 1;
+    signal.stop();
+    return undefined;
+  }
+}
+
+async function awaitDaemonRestartAdmission(
+  io: ProgramIO,
+  terminalJournal: ResidentDaemonTerminalStateJournal,
+  restartJournal: ResidentDaemonRestartStateJournal,
+  generation: string,
+  signal: DaemonStopSignal,
+  helpers: DaemonHelpers
+): Promise<boolean> {
+  try {
+    const failures = terminalJournal.current().failures;
+    const latestFailure = Array.isArray(failures) ? failures.at(-1) : undefined;
+    if (latestFailure) await restartJournal.recordFailure(latestFailure.sequence);
+    while (!signal.stopped) {
+      const admission = await restartJournal.decideAdmission(generation);
+      if (admission.state === "admit" || admission.state === "half-open-probe") {
+        return true;
+      }
+      io.stderr(
+        `muse daemon restart ${admission.state}: waiting ${admission.delayMs.toString()} ms until ${admission.until}\n`
+      );
+      await (helpers.residentRestartSleep ?? (async (milliseconds: number) => {
+        await sleep(milliseconds);
+      }))(admission.delayMs);
+    }
+  } catch {
+    io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE}\n`);
+    process.exitCode = 1;
+    signal.stop();
+  }
+  return false;
+}
+
+async function recordDaemonRestartSuccess(
+  io: ProgramIO,
+  journal: ResidentDaemonRestartStateJournal,
+  generation: string,
+  signal: DaemonStopSignal
+): Promise<boolean> {
+  try {
+    await journal.recordSuccess(generation);
+    return true;
+  } catch {
+    io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE}\n`);
+    process.exitCode = 1;
+    signal.stop();
+    return false;
+  }
+}
+
+async function recordDaemonRestartFailure(
+  io: ProgramIO,
+  journal: ResidentDaemonRestartStateJournal,
+  failureSequence: number,
+  signal: DaemonStopSignal
+): Promise<void> {
+  try {
+    await journal.recordFailure(failureSequence);
+  } catch {
+    io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE}\n`);
+    process.exitCode = 1;
+    signal.stop();
+  }
+}
+
 async function markDaemonTerminalStable(
   io: ProgramIO,
   journal: ResidentDaemonTerminalStateJournal,
@@ -494,18 +585,42 @@ async function recordDaemonTerminalFailure(
   signal: DaemonStopSignal,
   cause: unknown,
   context?: Parameters<ResidentDaemonTerminalStateJournal["recordFailure"]>[1]
-): Promise<void> {
+): Promise<ReturnType<ResidentDaemonTerminalStateJournal["current"]> | undefined> {
   const recordedCause = cause instanceof ResidentDaemonDomainError ? cause.cause : cause;
   const recordedContext = cause instanceof ResidentDaemonDomainError
     ? { domain: cause.domain }
     : context;
   try {
-    await journal.recordFailure(recordedCause, recordedContext);
+    return await journal.recordFailure(recordedCause, recordedContext);
   } catch {
     io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_TERMINAL_STATE_UNAVAILABLE}\n`);
     process.exitCode = 1;
     signal.stop();
+    return undefined;
   }
+}
+
+async function handleDaemonLoopFailure(
+  io: ProgramIO,
+  terminalJournal: ResidentDaemonTerminalStateJournal,
+  restartJournal: ResidentDaemonRestartStateJournal,
+  signal: DaemonStopSignal,
+  cause: unknown,
+  label: "heartbeat" | "tick"
+): Promise<void> {
+  io.stderr(`${label} error: ${errorMessage(cause)}\n`);
+  const failure = await recordDaemonTerminalFailure(
+    io,
+    terminalJournal,
+    signal,
+    cause,
+    { domain: "runtime" }
+  );
+  if (failure) {
+    await recordDaemonRestartFailure(io, restartJournal, failure.sequence, signal);
+  }
+  process.exitCode = 1;
+  signal.stop();
 }
 
 async function recordDaemonStartupFailure(
@@ -518,12 +633,26 @@ async function recordDaemonStartupFailure(
   const lease = await acquireDaemonWriterAuthority(io, env, helpers);
   if (!lease) return;
   const signal = new DaemonStopSignal();
+  let restartJournal: ResidentDaemonRestartStateJournal | undefined;
   try {
     if (!await validateDaemonWriterAuthority(io, lease, signal)) return;
     const journal = await openDaemonTerminalJournal(io, env, lease, signal, helpers);
     if (!journal) return;
+    restartJournal = await openDaemonRestartJournal(io, env, signal, helpers);
+    if (!restartJournal) return;
+    if (!await awaitDaemonRestartAdmission(
+      io,
+      journal,
+      restartJournal,
+      lease.generation,
+      signal,
+      helpers
+    )) return;
     if (!await markDaemonTerminalStable(io, journal, signal, "writer-authority-acquired")) return;
-    await recordDaemonTerminalFailure(io, journal, signal, cause, context);
+    const failure = await recordDaemonTerminalFailure(io, journal, signal, cause, context);
+    if (failure) {
+      await recordDaemonRestartFailure(io, restartJournal, failure.sequence, signal);
+    }
   } finally {
     await releaseDaemonWriterAuthority(io, lease);
   }
@@ -855,6 +984,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--init", "Write the resolved provider + destination to the daemon config file, then exit")
     .option("--pause-heavy-work", "Pause model, sync, and consolidation daemon work until resumed (heartbeat and safety work continue)")
     .option("--resume-heavy-work", "Resume model, sync, and consolidation daemon work on the next tick")
+    .option("--reset-restart-circuit", "Reset the owner-local resident restart circuit, then exit")
     .option("--install", "Write a macOS LaunchAgent plist AND load it via launchctl so the daemon survives logout/reboot, then exit")
     .option("--safe", "With --install, persist local-only + log lock + delivery brake + self-learning off for controlled activation")
     .option("--uninstall", "Unload the macOS LaunchAgent (or remove the Windows scheduled task) and delete its file, then exit")
@@ -869,6 +999,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       readonly init?: boolean;
       readonly pauseHeavyWork?: boolean;
       readonly resumeHeavyWork?: boolean;
+      readonly resetRestartCircuit?: boolean;
       readonly install?: boolean;
       readonly safe?: boolean;
       readonly uninstall?: boolean;
@@ -876,14 +1007,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       readonly leadMinutes: string;
       readonly provider?: string;
       readonly destination?: string;
-    }) => {
+    }, command: Command) => {
       const e = env();
       const residentExecutionRequested = !options.init
         && !options.install
         && !options.uninstall
         && !options.status
         && !options.pauseHeavyWork
-        && !options.resumeHeavyWork;
+        && !options.resumeHeavyWork
+        && !options.resetRestartCircuit;
       if (options.safe && !options.install) {
         io.stderr("muse daemon --safe is only valid with --install; it persists a contained LaunchAgent activation profile.\n");
         process.exitCode = 1;
@@ -892,6 +1024,47 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       if (options.pauseHeavyWork && options.resumeHeavyWork) {
         io.stderr("muse daemon --pause-heavy-work and --resume-heavy-work cannot be used together.\n");
         process.exitCode = 1;
+        return;
+      }
+      if (
+        options.resetRestartCircuit
+        && (
+          options.once
+          || options.print
+          || options.init
+          || options.install
+          || options.uninstall
+          || options.status
+          || options.pauseHeavyWork
+          || options.resumeHeavyWork
+          || options.provider !== undefined
+          || options.destination !== undefined
+          || command.getOptionValueSource("interval") === "cli"
+          || command.getOptionValueSource("leadMinutes") === "cli"
+        )
+      ) {
+        io.stderr("muse daemon --reset-restart-circuit must be used by itself.\n");
+        process.exitCode = 1;
+        return;
+      }
+      if (options.resetRestartCircuit) {
+        const lease = await acquireDaemonWriterAuthority(io, e, helpers);
+        if (!lease) return;
+        const signal = new DaemonStopSignal();
+        try {
+          if (!await validateDaemonWriterAuthority(io, lease, signal)) return;
+          const restartJournal = await openDaemonRestartJournal(io, e, signal, helpers);
+          if (!restartJournal) return;
+          const reset = await restartJournal.reset();
+          io.stdout(
+            `muse daemon restart circuit reset: state=${reset.state}, sequence=${reset.sequence.toString()}\n`
+          );
+        } catch {
+          io.stderr(`muse daemon restart reset failed: ${RESIDENT_DAEMON_RESTART_STATE_UNAVAILABLE}\n`);
+          process.exitCode = 1;
+        } finally {
+          await releaseDaemonWriterAuthority(io, lease);
+        }
         return;
       }
       const deliveryBrakeEngaged = !parseBoolean(e.MUSE_DAEMON_DELIVERY_ENABLED, true);
@@ -920,10 +1093,21 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         const signal = new DaemonStopSignal();
         const heartbeatDir = defaultProactiveHeartbeatDir(e);
         let terminalJournal: ResidentDaemonTerminalStateJournal | undefined;
+        let restartJournal: ResidentDaemonRestartStateJournal | undefined;
         try {
           if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
           terminalJournal = await openDaemonTerminalJournal(io, e, residentLease, signal, helpers);
           if (!terminalJournal) return;
+          restartJournal = await openDaemonRestartJournal(io, e, signal, helpers);
+          if (!restartJournal) return;
+          if (!await awaitDaemonRestartAdmission(
+            io,
+            terminalJournal,
+            restartJournal,
+            residentLease.generation,
+            signal,
+            helpers
+          )) return;
           if (!await markDaemonTerminalStable(io, terminalJournal, signal, "writer-authority-acquired")) return;
           const heartbeatWriter = (helpers.createResidentHeartbeatWriter
             ?? createResidentDaemonHeartbeatWriter)({
@@ -939,7 +1123,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           const heartbeatOnlyTick = async (): Promise<void> => {
             if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
             if (!await recordResidentHeartbeat(io, heartbeatWriter, signal, true)) return;
-            await markDaemonTerminalStable(io, terminalJournal!, signal, "tick-completed");
+            if (!await markDaemonTerminalStable(io, terminalJournal!, signal, "tick-completed")) return;
+            await recordDaemonRestartSuccess(
+              io,
+              restartJournal!,
+              residentLease.generation,
+              signal
+            );
           };
           io.stdout("muse daemon — delivery brake engaged (heartbeat-only)\n");
           if (options.once) {
@@ -959,9 +1149,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             io.stdout(`  running heartbeat every ${interval.toString()} s — ctrl-c to stop\n`);
             await (helpers.runDaemonLoop ?? runDaemonLoop)({
               intervalMs: interval * 1000,
-              onError: (cause) => {
-                io.stderr(`heartbeat error: ${errorMessage(cause)}\n`);
-              },
+              onError: (cause) => handleDaemonLoopFailure(
+                io,
+                terminalJournal!,
+                restartJournal!,
+                signal,
+                cause,
+                "heartbeat"
+              ),
               signal,
               tick: heartbeatOnlyTick
             });
@@ -971,7 +1166,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           }
         } catch (cause) {
           if (terminalJournal) {
-            await recordDaemonTerminalFailure(io, terminalJournal, signal, cause, { domain: "runtime" });
+            const failure = await recordDaemonTerminalFailure(
+              io,
+              terminalJournal,
+              signal,
+              cause,
+              { domain: "runtime" }
+            );
+            if (failure && restartJournal) {
+              await recordDaemonRestartFailure(io, restartJournal, failure.sequence, signal);
+            }
           }
           throw cause;
         } finally {
@@ -1183,7 +1387,15 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const dayRhythmConfigFile = resolveMuseCliConfigFilePath(e);
       const channelOwnersFile = resolveIntegrationEnvironment(e).messaging.ownersFile;
 
-      const calendarRegistry = (helpers.buildCalendarRegistry ?? buildCalendarRegistry)(e);
+      let calendarRegistry: ReturnType<typeof buildCalendarRegistry>;
+      try {
+        calendarRegistry = (helpers.buildCalendarRegistry ?? buildCalendarRegistry)(e);
+      } catch (cause) {
+        if (residentExecutionRequested) {
+          await recordDaemonStartupFailure(io, e, helpers, cause, { domain: "provider" });
+        }
+        throw cause;
+      }
       const tasksFile = resolveTasksFile(e);
       const historyFile = resolveProactiveHistoryFile(e);
       const sidecarFile = e.MUSE_PROACTIVE_SIDECAR_FILE?.trim()?.length
@@ -1434,10 +1646,21 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const signal = new DaemonStopSignal();
       const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
       let terminalJournal: ResidentDaemonTerminalStateJournal | undefined;
+      let restartJournal: ResidentDaemonRestartStateJournal | undefined;
       try {
       if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
       terminalJournal = await openDaemonTerminalJournal(io, e, residentLease, signal, helpers);
       if (!terminalJournal) return;
+      restartJournal = await openDaemonRestartJournal(io, e, signal, helpers);
+      if (!restartJournal) return;
+      if (!await awaitDaemonRestartAdmission(
+        io,
+        terminalJournal,
+        restartJournal,
+        residentLease.generation,
+        signal,
+        helpers
+      )) return;
       if (!await markDaemonTerminalStable(io, terminalJournal, signal, "configuration-loaded")) return;
       if (!await markDaemonTerminalStable(io, terminalJournal, signal, "writer-authority-acquired")) return;
       const heartbeatWriter = (helpers.createResidentHeartbeatWriter
@@ -2002,7 +2225,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         if (signal.stopped) return;
         await retentionPruneTick();
         if (!await recordResidentHeartbeat(io, heartbeatWriter, signal, true)) return;
-        await markDaemonTerminalStable(io, terminalJournal!, signal, "tick-completed");
+        if (!await markDaemonTerminalStable(io, terminalJournal!, signal, "tick-completed")) return;
+        await recordDaemonRestartSuccess(
+          io,
+          restartJournal!,
+          residentLease.generation,
+          signal
+        );
       };
 
       if (!await markDaemonTerminalStable(io, terminalJournal, signal, "runtime-initialized")) return;
@@ -2042,9 +2271,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       try {
         await (helpers.runDaemonLoop ?? runDaemonLoop)({
           intervalMs: interval * 1000,
-          onError: (cause) => {
-            io.stderr(`tick error: ${errorMessage(cause)}\n`);
-          },
+          onError: (cause) => handleDaemonLoopFailure(
+            io,
+            terminalJournal!,
+            restartJournal!,
+            signal,
+            cause,
+            "tick"
+          ),
           signal,
           tick: runTick
         });
@@ -2055,7 +2289,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       }
       } catch (cause) {
         if (terminalJournal) {
-          await recordDaemonTerminalFailure(io, terminalJournal, signal, cause, { domain: "runtime" });
+          const failure = await recordDaemonTerminalFailure(
+            io,
+            terminalJournal,
+            signal,
+            cause,
+            { domain: "runtime" }
+          );
+          if (failure && restartJournal) {
+            await recordDaemonRestartFailure(io, restartJournal, failure.sequence, signal);
+          }
         }
         throw cause;
       } finally {

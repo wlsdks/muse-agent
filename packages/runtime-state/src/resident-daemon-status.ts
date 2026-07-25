@@ -12,6 +12,11 @@ import {
   type ResidentDaemonFailureReasonCode,
   type ResidentDaemonStablePoint
 } from "./resident-daemon-terminal-state.js";
+import {
+  parseResidentDaemonRestartStateReceipt,
+  resolveResidentDaemonRestartStateFilePath,
+  validateResidentDaemonRestartStatePath
+} from "./resident-daemon-restart-state.js";
 
 export const MUSE_LAUNCH_AGENT_LABEL = "com.muse.daemon";
 export const RESIDENT_DAEMON_HEARTBEAT_VERSION = 1 as const;
@@ -157,7 +162,26 @@ export interface ResidentDaemonObservation {
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;
+  readonly restart?: ResidentDaemonRestartObservation;
   readonly terminal?: ResidentDaemonTerminalObservation;
+}
+
+export interface ResidentDaemonRestartObservation {
+  readonly failureCount?: number;
+  readonly lastFailureAt?: string | null;
+  readonly notBeforeAt?: string | null;
+  readonly sequence?: number;
+  readonly state:
+    | "closed"
+    | "backoff"
+    | "open"
+    | "half-open"
+    | "generation-mismatch"
+    | "missing"
+    | "invalid"
+    | "stale"
+    | "unknown";
+  readonly updatedAt?: string;
 }
 
 export interface ResidentDaemonTerminalFailureSummary {
@@ -235,6 +259,14 @@ export const RESIDENT_DAEMON_HEALTH_REASON = {
   pidMismatch: "daemon-pid-mismatch",
   platformUnverified: "background-runtime-platform-unverified",
   processProbeUnverified: "orphan-process-probe-unverified",
+  restartBackoff: "daemon-restart-backoff-active",
+  restartCircuitHalfOpen: "daemon-restart-circuit-half-open",
+  restartCircuitOpen: "daemon-restart-circuit-open",
+  restartGenerationMismatch: "daemon-restart-generation-mismatch",
+  restartStateInvalid: "daemon-restart-state-invalid",
+  restartStateMissing: "daemon-restart-state-missing",
+  restartStateStale: "daemon-restart-state-stale",
+  restartStateUnverified: "daemon-restart-state-unverified",
   residentProcessMissing: "resident-process-missing",
   terminalConfigurationInvalid: "daemon-terminal-configuration-invalid",
   terminalGenerationMismatch: "daemon-terminal-generation-mismatch",
@@ -254,6 +286,7 @@ export type ResidentDaemonHealthReasonCode =
 export interface ResidentDaemonHealthResult {
   readonly status: "healthy" | "failed" | "unverified";
   readonly reasonCodes: readonly ResidentDaemonHealthReasonCode[];
+  readonly restart?: ResidentDaemonRestartObservation;
   readonly terminalFailure?: ResidentDaemonTerminalFailureSummary;
 }
 
@@ -343,10 +376,30 @@ export function classifyResidentDaemonHealth(
     failed.push(TERMINAL_FAILURE_HEALTH_REASON[terminal.failure.reasonCode]);
   }
 
+  const restart = observation.restart;
+  if (restart === undefined || restart.state === "missing") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartStateMissing);
+  } else if (restart?.state === "invalid") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartStateInvalid);
+  } else if (restart?.state === "unknown") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.restartStateUnverified);
+  } else if (restart?.state === "backoff") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartBackoff);
+  } else if (restart?.state === "open") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartCircuitOpen);
+  } else if (restart?.state === "half-open") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.restartCircuitHalfOpen);
+  } else if (restart?.state === "generation-mismatch") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartGenerationMismatch);
+  } else if (restart?.state === "stale") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.restartStateStale);
+  }
+
   const reasonCodes = [...new Set([...failed, ...unverified])];
   return {
     reasonCodes,
     status: failed.length > 0 ? "failed" : unverified.length > 0 ? "unverified" : "healthy",
+    ...(restart && restart.state !== "closed" ? { restart } : {}),
     ...(terminal?.state === "failed" ? { terminalFailure: terminal.failure } : {})
   };
 }
@@ -936,6 +989,44 @@ async function inspectTerminalState(
   };
 }
 
+async function inspectRestartState(
+  file: string | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+  nowMs: number,
+  maxAgeMs: number,
+  expectedGeneration: string | undefined
+): Promise<ResidentDaemonRestartObservation> {
+  if (!file) return { state: "unknown" };
+  if (!await validateResidentDaemonRestartStatePath(env, file)) return { state: "invalid" };
+  const read = await readOwnerOnlyText(file);
+  if (read.state === "missing") return { state: "missing" };
+  if (read.state !== "ok" || read.text === undefined) return { state: "invalid" };
+  const receipt = parseResidentDaemonRestartStateReceipt(read.text);
+  if (!receipt) return { state: "invalid" };
+  if (Date.parse(receipt.updatedAt) > nowMs) return { state: "invalid" };
+  if (nowMs - Date.parse(receipt.updatedAt) > maxAgeMs) return { state: "stale" };
+  if (
+    receipt.state === "closed"
+    && receipt.failureCount === 0
+    && (
+      expectedGeneration === undefined
+      || receipt.successfulGeneration !== expectedGeneration
+      || receipt.admittedGeneration !== expectedGeneration
+    )
+  ) return { state: "generation-mismatch" };
+  const state = receipt.state === "closed" && receipt.failureCount > 0
+    ? "backoff"
+    : receipt.state;
+  return {
+    failureCount: receipt.failureCount,
+    lastFailureAt: receipt.lastFailureAt,
+    notBeforeAt: receipt.notBeforeAt,
+    sequence: receipt.sequence,
+    state,
+    updatedAt: receipt.updatedAt
+  };
+}
+
 async function inspectHeartbeat(
   file: string | undefined,
   leaseFile: string | undefined,
@@ -943,6 +1034,7 @@ async function inspectHeartbeat(
   processStartMs: number | undefined,
   expectedPid: number | undefined
 ): Promise<{
+  readonly expectedCadenceMs?: number;
   readonly generation?: string;
   readonly state: ResidentDaemonObservation["heartbeat"];
   readonly pidMatches: boolean;
@@ -985,7 +1077,12 @@ async function inspectHeartbeat(
   if (nowMs - lastProgressAt > maxAgeMs) {
     return { generation: receipt.generation, pidMatches, state: "progress-stale" };
   }
-  return { generation: receipt.generation, pidMatches, state: "fresh" };
+  return {
+    expectedCadenceMs: receipt.expectedCadenceMs,
+    generation: receipt.generation,
+    pidMatches,
+    state: "fresh"
+  };
 }
 
 const PROCESS_START_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -1091,6 +1188,14 @@ export async function inspectResidentDaemon(
     livePid,
     heartbeat.generation
   );
+  const restart = await inspectRestartState(
+    resolveResidentDaemonRestartStateFilePath(effectiveRuntimeEnv),
+    effectiveRuntimeEnv,
+    nowMs,
+    (heartbeat.expectedCadenceMs ?? RESIDENT_DAEMON_MAX_CADENCE_MS)
+      * RESIDENT_DAEMON_HEARTBEAT_GRACE_MULTIPLIER,
+    heartbeat.generation
+  );
   const processProbe = options.inspectOrphans === false
     ? { orphanProcessCount: 0, orphanRootCount: 0, probe: "unverified" as const, processes: [] }
     : await inspectResidentMuseProcesses(
@@ -1127,6 +1232,7 @@ export async function inspectResidentDaemon(
       && heartbeat.pidMatches
       && heartbeat.state === "fresh"
       && terminal.state === "running"
+      && restart.state === "closed"
       && orphan.orphanRootCount === 0
       && residentProcessCount === 1
       && launchdResidentMatches === 1) {
@@ -1153,6 +1259,7 @@ export async function inspectResidentDaemon(
     platform,
     runtime,
     stableMuseCommand,
+    restart,
     terminal
   };
   return {

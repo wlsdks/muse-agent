@@ -30,6 +30,9 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
     orphanRootCount: 0,
     pidAgreement: runtime === "running",
     platform: "darwin",
+    restart: runtime === "running"
+      ? { failureCount: 0, state: "closed", updatedAt: NOW.toISOString() }
+      : { state: "missing" },
     runtime,
     stableMuseCommand: runtime === "running"
   };

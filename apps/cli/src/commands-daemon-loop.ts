@@ -56,16 +56,17 @@ export class DaemonStopSignal {
 /**
  * Run `tick` every `intervalMs` until `signal` stops, returning the
  * number of completed ticks. A tick that throws is reported via
- * `onError` and does NOT stop the loop (an unattended daemon survives
- * a transient tick failure). The sleep is the signal's interruptible
- * one by default; tests inject a synchronous `sleep` to drive it.
+ * `onError`; the handler is awaited so a resident controller can durably
+ * classify the failure before deciding whether to stop or retry. The loop
+ * itself does not stop unless the handler stops the signal. The sleep is the
+ * signal's interruptible one by default; tests inject a synchronous `sleep`.
  */
 export async function runDaemonLoop(opts: {
   readonly tick: () => Promise<void>;
   readonly intervalMs: number;
   readonly signal: DaemonStopSignal;
   readonly sleep?: (ms: number) => Promise<void>;
-  readonly onError?: (cause: unknown) => void;
+  readonly onError?: (cause: unknown) => Promise<void> | void;
 }): Promise<number> {
   const sleep = opts.sleep ?? ((ms: number) => opts.signal.sleep(ms));
   let ticks = 0;
@@ -74,7 +75,7 @@ export async function runDaemonLoop(opts: {
       await opts.tick();
       ticks += 1;
     } catch (cause) {
-      opts.onError?.(cause);
+      await opts.onError?.(cause);
     }
     if (!opts.signal.stopped) {
       await sleep(opts.intervalMs);

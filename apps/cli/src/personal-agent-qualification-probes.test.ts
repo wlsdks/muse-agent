@@ -6,8 +6,12 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  beginResidentDaemonRestartState,
   beginResidentDaemonTerminalGeneration,
-  markResidentDaemonStable
+  decideResidentDaemonRestartAdmission,
+  markResidentDaemonStable,
+  parseResidentDaemonRestartStateReceipt,
+  recordResidentDaemonRestartSuccess
 } from "@muse/runtime-state";
 import {
   collectResidentDaemonRuntime,
@@ -132,6 +136,26 @@ function qualificationFixture(options: {
       "tick-completed",
       new Date("2026-07-21T11:59:00.000Z")
     )),
+    { mode: 0o600 }
+  );
+  const restartStarted = beginResidentDaemonRestartState({
+    baseDelayMs: 1_000,
+    failureThreshold: 3,
+    failureWindowMs: 300_000,
+    maxDelayMs: 60_000,
+    openCooldownMs: 300_000
+  }, new Date("2026-07-21T11:00:01.000Z"));
+  const restartAdmitted = decideResidentDaemonRestartAdmission(restartStarted, {
+    generation: "qualification_generation_01",
+    now: new Date("2026-07-21T11:00:01.000Z")
+  }).receipt;
+  const restartSuccessful = recordResidentDaemonRestartSuccess(restartAdmitted, {
+    generation: "qualification_generation_01",
+    now: new Date("2026-07-21T11:59:00.000Z")
+  });
+  writeFileSync(
+    join(root, ".muse", "resident-daemon-restart-state.json"),
+    JSON.stringify(restartSuccessful),
     { mode: 0o600 }
   );
   writeFileSync(followupsFile, JSON.stringify({ followups: options.overdueFollowup
@@ -323,6 +347,27 @@ describe("git source probe", () => {
 });
 
 describe("qualification collector integration", () => {
+  it("binds qualification input freshness to the shared restart receipt", async () => {
+    const fixture = qualificationFixture();
+    const before = qualifyPersonalAgent(
+      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    );
+    const restartFile = join(fixture.root, ".muse", "resident-daemon-restart-state.json");
+    const receipt = parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8"));
+    expect(receipt).toBeDefined();
+    const refreshed = recordResidentDaemonRestartSuccess(receipt!, {
+      generation: "qualification_generation_01",
+      now: new Date("2026-07-21T11:59:30.000Z")
+    });
+    writeFileSync(restartFile, JSON.stringify(refreshed), { mode: 0o600 });
+    const after = qualifyPersonalAgent(
+      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    );
+
+    expect(after.status).toBe("qualified");
+    expect(after.provenance.inputHash).not.toBe(before.provenance.inputHash);
+  });
+
   it("rejects completed inspector output without its four-file fingerprint", () => {
     expect(parseCapabilityEvidenceInspection({
       artifact: { state: "parsed", value: capabilityReport() },

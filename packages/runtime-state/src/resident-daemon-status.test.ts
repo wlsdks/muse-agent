@@ -6,11 +6,18 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  beginResidentDaemonRestartState,
+  decideResidentDaemonRestartAdmission,
+  recordResidentDaemonRestartFailure,
+  recordResidentDaemonRestartSuccess
+} from "./resident-daemon-restart-state.js";
+import {
   appendResidentDaemonFailure,
   beginResidentDaemonTerminalGeneration,
   markResidentDaemonStable
 } from "./resident-daemon-terminal-state.js";
 import {
+  classifyResidentDaemonHealth,
   inspectResidentDaemon,
   parseResidentDaemonHeartbeatReceipt,
   parseResidentWriterLeaseIdentity,
@@ -66,6 +73,29 @@ function writeResidentTerminal(root: string): string {
     new Date("2026-07-22T02:59:00.000Z")
   );
   writeFileSync(file, JSON.stringify(stable), { mode: 0o600 });
+  return file;
+}
+
+function writeResidentRestart(root: string): string {
+  const museRoot = join(root, ".muse");
+  const file = join(museRoot, "resident-daemon-restart-state.json");
+  mkdirSync(museRoot, { mode: 0o700, recursive: true });
+  const started = beginResidentDaemonRestartState({
+    baseDelayMs: 1_000,
+    failureThreshold: 3,
+    failureWindowMs: 300_000,
+    maxDelayMs: 60_000,
+    openCooldownMs: 300_000
+  }, new Date("2026-07-22T02:00:01.000Z"));
+  const admitted = decideResidentDaemonRestartAdmission(started, {
+    generation: RESIDENT_GENERATION,
+    now: new Date("2026-07-22T02:00:01.000Z")
+  }).receipt;
+  const successful = recordResidentDaemonRestartSuccess(admitted, {
+    generation: RESIDENT_GENERATION,
+    now: new Date("2026-07-22T02:59:00.000Z")
+  });
+  writeFileSync(file, JSON.stringify(successful), { mode: 0o600 });
   return file;
 }
 
@@ -161,6 +191,7 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
   );
   const lease = writeResidentLease(root);
   const terminal = writeResidentTerminal(root);
+  const restart = writeResidentRestart(root);
   const liveEnvironment = { ...environment, MUSE_DAEMON_DELIVERY_ENABLED: options.liveDelivery ?? "false" };
   const print = [
     "gui/501/com.muse.daemon = {",
@@ -185,7 +216,7 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
     if (executable === "ps") return { code: 0, stderr: "", stdout: "" };
     return { code: 1, stderr: "unexpected", stdout: "" };
   };
-  return { environment, heartbeat, lease, plistFile, root, run, terminal };
+  return { environment, heartbeat, lease, plistFile, restart, root, run, terminal };
 }
 
 function fingerprint(file: string): string {
@@ -382,6 +413,7 @@ function inventoryFixture(options: {
   );
   writeResidentLease(root);
   writeResidentTerminal(root);
+  writeResidentRestart(root);
   const launchdRunning = options.launchdRunning ?? true;
   const residentPids = options.residentPids ?? (launchdRunning ? [4321] : []);
   const rows = [
@@ -450,6 +482,13 @@ describe("resident daemon read-only authority", () => {
       stableMuseCommand: true
     });
     expect(result.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED).toBe("false");
+    expect(classifyResidentDaemonHealth(
+      { ...result.observation, restart: undefined },
+      result.processInventory
+    )).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-restart-state-missing"]),
+      status: "failed"
+    });
   });
 
   it("projects a redacted terminal failure through the shared health result", async () => {
@@ -540,6 +579,130 @@ describe("resident daemon read-only authority", () => {
       uid: 501
     });
     expect(mismatchedResult.health.reasonCodes).toContain("daemon-terminal-generation-mismatch");
+  });
+
+  it("projects missing, invalid, open, and half-open restart state through shared health", async () => {
+    const inspect = async (state: ReturnType<typeof fixture>, now = NOW) =>
+      inspectResidentDaemon({
+        daemonTemporaryRoots: [],
+        env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+        now: () => now,
+        platform: "darwin",
+        run: state.run,
+        uid: 501
+      });
+
+    const missing = fixture();
+    unlinkSync(missing.restart);
+    expect((await inspect(missing)).health.reasonCodes)
+      .toContain("daemon-restart-state-missing");
+
+    const malformed = fixture();
+    writeFileSync(malformed.restart, "{\"version\":1", { mode: 0o600 });
+    expect((await inspect(malformed)).health.reasonCodes)
+      .toContain("daemon-restart-state-invalid");
+
+    const future = fixture();
+    writeFileSync(future.restart, JSON.stringify(beginResidentDaemonRestartState({
+      baseDelayMs: 1_000,
+      failureThreshold: 3,
+      failureWindowMs: 60_000,
+      maxDelayMs: 4_000,
+      openCooldownMs: 30_000
+    }, new Date("2099-01-01T00:00:00.000Z"))), { mode: 0o600 });
+    const futureHealth = (await inspect(future)).health;
+    expect(futureHealth).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-restart-state-invalid"]),
+      status: "failed"
+    });
+
+    const stale = fixture();
+    const staleStarted = beginResidentDaemonRestartState({
+      baseDelayMs: 1_000,
+      failureThreshold: 3,
+      failureWindowMs: 60_000,
+      maxDelayMs: 4_000,
+      openCooldownMs: 30_000
+    }, new Date("2020-01-01T00:00:00.000Z"));
+    const staleAdmitted = decideResidentDaemonRestartAdmission(staleStarted, {
+      generation: RESIDENT_GENERATION,
+      now: new Date("2020-01-01T00:00:00.000Z")
+    }).receipt;
+    const staleSuccessful = recordResidentDaemonRestartSuccess(staleAdmitted, {
+      generation: RESIDENT_GENERATION,
+      now: new Date("2020-01-01T00:01:00.000Z")
+    });
+    writeFileSync(stale.restart, JSON.stringify(staleSuccessful), { mode: 0o600 });
+    const staleHealth = (await inspect(stale)).health;
+    expect(staleHealth).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-restart-state-stale"]),
+      status: "failed"
+    });
+
+    const mismatchedGeneration = fixture();
+    const mismatchStarted = beginResidentDaemonRestartState({
+      baseDelayMs: 1_000,
+      failureThreshold: 3,
+      failureWindowMs: 60_000,
+      maxDelayMs: 4_000,
+      openCooldownMs: 30_000
+    }, new Date("2026-07-22T02:59:00.000Z"));
+    const mismatchAdmitted = decideResidentDaemonRestartAdmission(mismatchStarted, {
+      generation: "different_generation_02",
+      now: new Date("2026-07-22T02:59:00.000Z")
+    }).receipt;
+    const mismatchSuccessful = recordResidentDaemonRestartSuccess(mismatchAdmitted, {
+      generation: "different_generation_02",
+      now: new Date("2026-07-22T02:59:00.000Z")
+    });
+    writeFileSync(
+      mismatchedGeneration.restart,
+      JSON.stringify(mismatchSuccessful),
+      { mode: 0o600 }
+    );
+    const mismatchHealth = (await inspect(mismatchedGeneration)).health;
+    expect(mismatchHealth).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-restart-generation-mismatch"]),
+      status: "failed"
+    });
+
+    const opened = fixture();
+    const policy = {
+      baseDelayMs: 1_000,
+      failureThreshold: 1,
+      failureWindowMs: 60_000,
+      maxDelayMs: 4_000,
+      openCooldownMs: 30_000
+    };
+    const openReceipt = recordResidentDaemonRestartFailure(
+      beginResidentDaemonRestartState(policy, NOW),
+      { at: NOW, failureSequence: 10 }
+    );
+    writeFileSync(opened.restart, JSON.stringify(openReceipt), { mode: 0o600 });
+    const openHealth = (await inspect(opened)).health;
+    expect(openHealth.reasonCodes).toContain("daemon-restart-circuit-open");
+    expect(openHealth.restart).toMatchObject({ failureCount: 1, state: "open" });
+
+    const backingOff = fixture();
+    const backoffReceipt = recordResidentDaemonRestartFailure(
+      beginResidentDaemonRestartState({ ...policy, failureThreshold: 3 }, NOW),
+      { at: NOW, failureSequence: 9 }
+    );
+    writeFileSync(backingOff.restart, JSON.stringify(backoffReceipt), { mode: 0o600 });
+    const backoffHealth = (await inspect(backingOff)).health;
+    expect(backoffHealth.reasonCodes).toContain("daemon-restart-backoff-active");
+    expect(backoffHealth.restart).toMatchObject({ failureCount: 1, state: "backoff" });
+
+    const probing = fixture();
+    const probeAt = new Date(NOW.getTime() + policy.openCooldownMs);
+    const halfOpen = decideResidentDaemonRestartAdmission(openReceipt, {
+      generation: RESIDENT_GENERATION,
+      now: probeAt
+    }).receipt;
+    writeFileSync(probing.restart, JSON.stringify(halfOpen), { mode: 0o600 });
+    const halfOpenHealth = (await inspect(probing, probeAt)).health;
+    expect(halfOpenHealth.reasonCodes).toContain("daemon-restart-circuit-half-open");
+    expect(halfOpenHealth.restart).toMatchObject({ failureCount: 1, state: "half-open" });
   });
 
   it.each([
@@ -747,7 +910,11 @@ describe("resident daemon read-only authority", () => {
     },
     {
       expected: { conditions: ["process-only"], duplicateResidentProcessCount: 0, museProcessCount: 1, residentProcessCount: 1 },
-      expectedHealth: { reasonCodes: expect.arrayContaining(["daemon-artifact-missing", "daemon-not-registered"]), status: "failed" },
+      expectedHealth: {
+        reasonCodes: expect.arrayContaining(["daemon-artifact-missing", "daemon-not-registered"]),
+        restart: { state: "generation-mismatch" },
+        status: "failed"
+      },
       name: "process-only",
       options: { artifact: "missing" as const, launchdRunning: false, residentPids: [4330] }
     },

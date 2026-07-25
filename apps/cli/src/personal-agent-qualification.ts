@@ -144,6 +144,7 @@ export interface RuntimeQualificationObservation {
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;
+  readonly restart?: ResidentDaemonObservation["restart"];
   readonly terminal?: ResidentDaemonObservation["terminal"];
 }
 
