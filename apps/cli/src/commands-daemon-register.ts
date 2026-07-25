@@ -57,7 +57,7 @@ import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -78,6 +78,12 @@ import {
 import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
+import {
+  applyResidentDaemonRepairPlan,
+  buildResidentDaemonRepairPlan,
+  parseResidentDaemonRepairPlan,
+  type ResidentDaemonRepairSnapshot
+} from "./resident-daemon-repair-plan.js";
 
 import { autoReindexBudgetEnvironment } from "./auto-reindex-budget.js";
 import { closestCommandName } from "./closest-command.js";
@@ -346,6 +352,8 @@ export interface DaemonHelpers {
   readonly platform?: NodeJS.Platform;
   /** Test seam — shared read-only resident health consumed by daemon --status. */
   readonly residentDaemonHealth?: (env: NodeJS.ProcessEnv) => Promise<ResidentDaemonHealthResult>;
+  /** Test seam for the full read-only repair snapshot; production uses the shared inspector. */
+  readonly inspectResidentDaemon?: typeof inspectResidentDaemon;
   /** Test seam — process-wide writer authority acquired before any daemon tick/effect. */
   readonly acquireResidentWriterLease?: (env: NodeJS.ProcessEnv) => Promise<ResidentWriterLease>;
   /** Test seam — owner-only heartbeat writer bound to the acquired lease generation. */
@@ -755,6 +763,69 @@ export async function getDaemonAutostartStatus(
   });
 }
 
+async function collectResidentDaemonRepairSnapshot(
+  e: NodeJS.ProcessEnv,
+  helpers: Pick<
+    DaemonHelpers,
+    | "daemonCliEntry"
+    | "daemonRuntimeExecutable"
+    | "daemonTemporaryRoots"
+    | "inspectResidentDaemon"
+    | "platform"
+    | "runLaunchctl"
+    | "schtasksRun"
+  >
+): Promise<ResidentDaemonRepairSnapshot> {
+  const autostart = await getDaemonAutostartStatus(e, helpers);
+  const runtime = validateStableMuseRuntimeExecutable(
+    helpers.daemonRuntimeExecutable ?? process.execPath
+  );
+  const entry = validateDaemonCliEntry(helpers.daemonCliEntry ?? process.argv[1], {
+    temporaryRoots: helpers.daemonTemporaryRoots ?? defaultDaemonTemporaryRoots(e)
+  });
+  const inspection = await (helpers.inspectResidentDaemon ?? inspectResidentDaemon)({
+    daemonTemporaryRoots: helpers.daemonTemporaryRoots,
+    env: e,
+    platform: helpers.platform
+  });
+  return {
+    autostart,
+    desired: runtime.ok && entry.ok
+      ? {
+          cliEntry: entry.entrypoint,
+          runtimeExecutable: runtime.executable,
+          state: "valid"
+        }
+      : {
+          reasonCode: "daemon-repair-install-target-invalid",
+          state: "invalid"
+        },
+    health: inspection.health,
+    processes: inspection.processInventory.processes
+  };
+}
+
+function readOwnerOnlyDaemonRepairPlan(
+  file: string,
+  now: Date
+): ReturnType<typeof parseResidentDaemonRepairPlan> {
+  let descriptor: number | undefined;
+  try {
+    // The descriptor opened with O_NOFOLLOW is the same inode we validate and
+    // read. Never lstat(path) and then reopen path: an attacker could swap it.
+    if (process.platform === "win32") return undefined;
+    descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0) return undefined;
+    if (typeof process.getuid !== "function" || stat.uid !== process.getuid()) return undefined;
+    return parseResidentDaemonRepairPlan(readFileSync(descriptor, "utf8"), now);
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 interface DaemonStatusSafetyGates {
   readonly deliveryBrakeEngaged: boolean;
   readonly providerLock: DaemonProviderLock | undefined;
@@ -985,6 +1056,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--pause-heavy-work", "Pause model, sync, and consolidation daemon work until resumed (heartbeat and safety work continue)")
     .option("--resume-heavy-work", "Resume model, sync, and consolidation daemon work on the next tick")
     .option("--reset-restart-circuit", "Reset the owner-local resident restart circuit, then exit")
+    .option("--repair-plan", "Print a read-only, exact resident repair plan as JSON, then exit")
+    .option("--apply-repair-plan <file>", "Apply one fresh owner-only repair plan after an exact stale-target recheck")
     .option("--install", "Write a macOS LaunchAgent plist AND load it via launchctl so the daemon survives logout/reboot, then exit")
     .option("--safe", "With --install, persist local-only + log lock + delivery brake + self-learning off for controlled activation")
     .option("--uninstall", "Unload the macOS LaunchAgent (or remove the Windows scheduled task) and delete its file, then exit")
@@ -1000,6 +1073,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       readonly pauseHeavyWork?: boolean;
       readonly resumeHeavyWork?: boolean;
       readonly resetRestartCircuit?: boolean;
+      readonly repairPlan?: boolean;
+      readonly applyRepairPlan?: string;
       readonly install?: boolean;
       readonly safe?: boolean;
       readonly uninstall?: boolean;
@@ -1015,7 +1090,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         && !options.status
         && !options.pauseHeavyWork
         && !options.resumeHeavyWork
-        && !options.resetRestartCircuit;
+        && !options.resetRestartCircuit
+        && !options.repairPlan
+        && options.applyRepairPlan === undefined;
       if (options.safe && !options.install) {
         io.stderr("muse daemon --safe is only valid with --install; it persists a contained LaunchAgent activation profile.\n");
         process.exitCode = 1;
@@ -1023,6 +1100,75 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       }
       if (options.pauseHeavyWork && options.resumeHeavyWork) {
         io.stderr("muse daemon --pause-heavy-work and --resume-heavy-work cannot be used together.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const repairModeSelected = options.repairPlan || options.applyRepairPlan !== undefined;
+      if (
+        repairModeSelected
+        && (
+          (options.repairPlan && options.applyRepairPlan !== undefined)
+          || options.once
+          || options.print
+          || options.init
+          || options.install
+          || options.uninstall
+          || options.status
+          || options.pauseHeavyWork
+          || options.resumeHeavyWork
+          || options.resetRestartCircuit
+          || options.safe
+          || options.provider !== undefined
+          || options.destination !== undefined
+          || command.getOptionValueSource("interval") === "cli"
+          || command.getOptionValueSource("leadMinutes") === "cli"
+        )
+      ) {
+        io.stderr("muse daemon repair planning/apply must be used by itself.\n");
+        process.exitCode = 1;
+        return;
+      }
+      if (repairModeSelected) {
+        const now = new Date();
+        if (options.repairPlan) {
+          const snapshot = await collectResidentDaemonRepairSnapshot(e, helpers);
+          const plan = buildResidentDaemonRepairPlan({ env: e, now, snapshot });
+          io.stdout(`${JSON.stringify(plan)}\n`);
+          return;
+        }
+        const planFile = options.applyRepairPlan?.trim();
+        const plan = planFile
+          ? readOwnerOnlyDaemonRepairPlan(planFile, now)
+          : undefined;
+        if (!plan) {
+          io.stderr("muse daemon repair refused: plan is missing, unsafe, malformed, tampered, future-dated, or expired.\n");
+          process.exitCode = 1;
+          return;
+        }
+        const snapshot = await collectResidentDaemonRepairSnapshot(e, helpers);
+        const result = await applyResidentDaemonRepairPlan({
+          env: e,
+          execute: async (step) => {
+            if (
+              step.id !== "reinstall-autostart"
+              || step.target.platform !== (helpers.platform ?? process.platform)
+            ) return false;
+            const installed = await installDaemonAutostart(io, e, helpers);
+            return installed.ok;
+          },
+          now,
+          plan,
+          snapshot
+        });
+        if (result === "applied") {
+          io.stdout(`muse daemon repair applied: ${plan.planHash}\n`);
+          return;
+        }
+        if (result === "no-op") {
+          io.stdout("muse daemon repair: no changes required\n");
+          return;
+        }
+        io.stderr(`muse daemon repair refused: ${result}\n`);
         process.exitCode = 1;
         return;
       }

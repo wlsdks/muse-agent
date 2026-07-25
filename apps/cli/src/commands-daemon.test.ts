@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -36,6 +36,10 @@ import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 import { RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED } from "./resident-daemon-heartbeat.js";
 import { openResidentDaemonRestartStateJournal } from "./resident-daemon-restart-state.js";
+import {
+  buildResidentDaemonRepairPlan,
+  type ResidentDaemonRepairSnapshot
+} from "./resident-daemon-repair-plan.js";
 import { openResidentDaemonTerminalStateJournal } from "./resident-daemon-terminal-state.js";
 
 function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
@@ -97,7 +101,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; openResidentTerminalJournal?: DaemonHelpers["openResidentTerminalJournal"]; openResidentRestartJournal?: DaemonHelpers["openResidentRestartJournal"]; residentRestartSleep?: DaemonHelpers["residentRestartSleep"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; inspectResidentDaemon?: DaemonHelpers["inspectResidentDaemon"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; openResidentTerminalJournal?: DaemonHelpers["openResidentTerminalJournal"]; openResidentRestartJournal?: DaemonHelpers["openResidentRestartJournal"]; residentRestartSleep?: DaemonHelpers["residentRestartSleep"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -151,6 +155,7 @@ async function runDaemon(
         reasonCodes: ["daemon-probe-unverified"],
         status: "unverified"
       })),
+      ...(opts.inspectResidentDaemon ? { inspectResidentDaemon: opts.inspectResidentDaemon } : {}),
       acquireResidentWriterLease: opts.acquireResidentWriterLease ?? (async () => ({
         ...testResidentLeaseIdentity(),
         release: async () => undefined,
@@ -288,6 +293,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       registry
     });
 
+    expect(result.stderr).toBe("");
     expect(result.exitCode).toBeUndefined();
     expect(events).toEqual([
       "journal:open",
@@ -650,6 +656,272 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe("muse daemon --reset-restart-circuit must be used by itself.\n");
     expect(openRestart).not.toHaveBeenCalled();
+  });
+
+  it("prints a deterministic read-only repair plan without entering any service effect", async () => {
+    const inspectResidentDaemon = vi.fn<NonNullable<DaemonHelpers["inspectResidentDaemon"]>>(async () => ({
+      diskArguments: undefined,
+      effectiveRuntimeEnv: {},
+      health: {
+        reasonCodes: ["background-runtime-platform-unverified"],
+        status: "unverified"
+      },
+      liveArguments: undefined,
+      liveEnvironment: undefined,
+      observation: {
+        artifact: "unknown",
+        autostartProbe: "unverified",
+        heartbeat: "unknown",
+        liveDefinitionMatches: false,
+        liveProbe: "unverified",
+        orphanProcessCount: 0,
+        orphanProbe: "unverified",
+        orphanRootCount: 0,
+        pidAgreement: false,
+        platform: "linux",
+        runtime: "unknown",
+        stableMuseCommand: false
+      },
+      processInventory: {
+        conditions: [],
+        duplicateResidentProcessCount: 0,
+        museProcessCount: 0,
+        probe: "unverified",
+        processes: [],
+        residentProcessCount: 0
+      }
+    }));
+    const runLaunchctl = vi.fn(async () => ({ code: 0, stderr: "", stdout: "" }));
+
+    const result = await runDaemon(["--repair-plan"], {
+      env: tmpEnv(),
+      inspectResidentDaemon,
+      platform: "linux",
+      registry: new MessagingProviderRegistry(),
+      runLaunchctl
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      disposition: "blocked",
+      reasonCodes: ["daemon-repair-platform-unmanaged"],
+      schemaVersion: "muse.daemon-repair-plan/v1",
+      steps: []
+    });
+    expect(inspectResidentDaemon).toHaveBeenCalledOnce();
+    expect(runLaunchctl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale repair target before unload, write, load, or process effects", async () => {
+    const env = tmpEnv();
+    const plistFile = join(env.HOME!, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    env.MUSE_DAEMON_PLIST_FILE = plistFile;
+    const initial: ResidentDaemonRepairSnapshot = {
+      autostart: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile,
+        runtime: { state: "not-registered" }
+      },
+      desired: {
+        cliEntry: TEST_HARNESS_CLI_ENTRY,
+        runtimeExecutable: realpathSync(process.execPath),
+        state: "valid"
+      },
+      health: {
+        reasonCodes: ["daemon-artifact-missing", "daemon-not-registered"],
+        status: "failed"
+      },
+      processes: []
+    };
+    const plan = buildResidentDaemonRepairPlan({ env, now: new Date(), snapshot: initial });
+    const planFile = join(env.HOME!, "repair-plan.json");
+    writeFileSync(planFile, JSON.stringify(plan), { mode: 0o600 });
+    chmodSync(planFile, 0o600);
+    const launchctlCalls: (readonly string[])[] = [];
+
+    const result = await runDaemon(["--apply-repair-plan", planFile], {
+      env,
+      inspectResidentDaemon: async () => ({
+        effectiveRuntimeEnv: {},
+        health: initial.health,
+        observation: {
+          artifact: "missing",
+          autostartProbe: "ok",
+          heartbeat: "missing",
+          liveDefinitionMatches: false,
+          liveProbe: "unverified",
+          orphanProcessCount: 0,
+          orphanProbe: "ok",
+          orphanRootCount: 0,
+          pidAgreement: false,
+          platform: "darwin",
+          runtime: "not-registered",
+          stableMuseCommand: false
+        },
+        processInventory: {
+          conditions: [],
+          duplicateResidentProcessCount: 0,
+          museProcessCount: 1,
+          probe: "ok",
+          processes: [{
+            cwd: "/changed",
+            executableRealpath: process.execPath,
+            matchesLaunchdPid: false,
+            pid: 9876,
+            ppid: 1,
+            role: "orphan-api",
+            startedAt: new Date().toISOString()
+          }],
+          residentProcessCount: 0
+        }
+      }),
+      platform: "darwin" as const,
+      registry: new MessagingProviderRegistry(),
+      runLaunchctl: async (args) => {
+        launchctlCalls.push(args);
+        return { code: 1, stderr: "Could not find service", stdout: "" };
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("muse daemon repair refused: stale\n");
+    expect(launchctlCalls).toEqual([["list", "com.muse.daemon"]]);
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("applies an exact fresh repair plan only through the existing install executor", async () => {
+    const env = tmpEnv();
+    const plistFile = join(env.HOME!, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    env.MUSE_DAEMON_PLIST_FILE = plistFile;
+    const current: ResidentDaemonRepairSnapshot = {
+      autostart: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile,
+        runtime: { state: "not-registered" }
+      },
+      desired: {
+        cliEntry: TEST_HARNESS_CLI_ENTRY,
+        runtimeExecutable: realpathSync(process.execPath),
+        state: "valid"
+      },
+      health: {
+        reasonCodes: ["daemon-artifact-missing", "daemon-not-registered"],
+        status: "failed"
+      },
+      processes: []
+    };
+    const planFile = join(env.HOME!, "repair-plan.json");
+    let installed = false;
+    const launchctlCalls: (readonly string[])[] = [];
+    const inspectResidentDaemon: NonNullable<DaemonHelpers["inspectResidentDaemon"]> = async () => ({
+      effectiveRuntimeEnv: {},
+      health: current.health,
+      observation: {
+        artifact: "missing",
+        autostartProbe: "ok",
+        heartbeat: "missing",
+        liveDefinitionMatches: false,
+        liveProbe: "unverified",
+        orphanProcessCount: 0,
+        orphanProbe: "ok",
+        orphanRootCount: 0,
+        pidAgreement: false,
+        platform: "darwin",
+        runtime: "not-registered",
+        stableMuseCommand: false
+      },
+      processInventory: {
+        conditions: [],
+        duplicateResidentProcessCount: 0,
+        museProcessCount: 0,
+        probe: "ok",
+        processes: [],
+        residentProcessCount: 0
+      }
+    });
+    const runLaunchctl = async (args: readonly string[]) => {
+      launchctlCalls.push(args);
+      if (args[0] === "load") {
+        installed = true;
+        return { code: 0, stderr: "", stdout: "" };
+      }
+      if (args[0] === "list") {
+        return installed
+          ? { code: 0, stderr: "", stdout: "\"PID\" = 4321;\n\"LastExitStatus\" = 0;\n" }
+          : { code: 1, stderr: "Could not find service", stdout: "" };
+      }
+      return { code: 1, stderr: "not loaded", stdout: "" };
+    };
+    const common = {
+      env,
+      inspectResidentDaemon,
+      platform: "darwin" as const,
+      registry: new MessagingProviderRegistry(),
+      runLaunchctl
+    };
+    const preview = await runDaemon(["--repair-plan"], common);
+    expect(preview.exitCode).toBeUndefined();
+    const plan = JSON.parse(preview.stdout) as { readonly planHash: string };
+    writeFileSync(planFile, preview.stdout, { mode: 0o600 });
+    chmodSync(planFile, 0o600);
+    launchctlCalls.length = 0;
+
+    const result = await runDaemon(["--apply-repair-plan", planFile], common);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBeUndefined();
+    expect(result.stdout).toContain(`muse daemon repair applied: ${plan.planHash}`);
+    expect(launchctlCalls).toEqual([
+      ["list", "com.muse.daemon"],
+      ["unload", "-w", plistFile],
+      ["load", "-w", plistFile],
+      ["list", "com.muse.daemon"]
+    ]);
+    expect(readFileSync(plistFile, "utf8")).toContain("<string>com.muse.daemon</string>");
+  });
+
+  it("rejects unsafe repair-plan files and companion options before inspection", async () => {
+    const env = tmpEnv();
+    const unsafePlan = join(env.HOME!, "unsafe-plan.json");
+    writeFileSync(unsafePlan, "{}\n", { mode: 0o644 });
+    chmodSync(unsafePlan, 0o644);
+    const inspectResidentDaemon = vi.fn<NonNullable<DaemonHelpers["inspectResidentDaemon"]>>();
+
+    const unsafe = await runDaemon(["--apply-repair-plan", unsafePlan], {
+      env,
+      inspectResidentDaemon,
+      platform: "darwin",
+      registry: new MessagingProviderRegistry()
+    });
+    expect(unsafe.exitCode).toBe(1);
+    expect(unsafe.stderr).toContain("plan is missing, unsafe, malformed");
+    expect(inspectResidentDaemon).not.toHaveBeenCalled();
+
+    const targetPlan = join(env.HOME!, "target-plan.json");
+    const symlinkPlan = join(env.HOME!, "symlink-plan.json");
+    writeFileSync(targetPlan, "{}\n", { mode: 0o600 });
+    chmodSync(targetPlan, 0o600);
+    symlinkSync(targetPlan, symlinkPlan);
+    const symlinked = await runDaemon(["--apply-repair-plan", symlinkPlan], {
+      env,
+      inspectResidentDaemon,
+      platform: "darwin",
+      registry: new MessagingProviderRegistry()
+    });
+    expect(symlinked.exitCode).toBe(1);
+    expect(symlinked.stderr).toContain("plan is missing, unsafe, malformed");
+    expect(inspectResidentDaemon).not.toHaveBeenCalled();
+
+    const combined = await runDaemon(["--repair-plan", "--status"], {
+      env,
+      inspectResidentDaemon,
+      registry: new MessagingProviderRegistry()
+    });
+    expect(combined.exitCode).toBe(1);
+    expect(combined.stderr).toBe("muse daemon repair planning/apply must be used by itself.\n");
+    expect(inspectResidentDaemon).not.toHaveBeenCalled();
   });
 
   it.each([
