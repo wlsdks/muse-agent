@@ -122,6 +122,114 @@ describe("personal-agent qualification scorer", () => {
     });
   });
 
+  it("binds the report to privacy-safe source, build, runtime, input, and expiry provenance", () => {
+    const report = qualifyPersonalAgent(passingObservations());
+
+    expect(report).toMatchObject({
+      provenance: {
+        build: ARTIFACTS,
+        expiresAt: "2026-07-22T12:00:00.000Z",
+        generatedAt: NOW.toISOString(),
+        runtimeIdentity: {
+          artifactState: "valid",
+          heartbeatState: "fresh",
+          liveDefinitionMatch: true,
+          liveProbe: "ok",
+          orphanProcessCount: 0,
+          orphanProbe: "ok",
+          orphanRootCount: 0,
+          platform: "darwin",
+          processIdentityMatch: true,
+          runtimeState: "running"
+        },
+        source: { end: SOURCE, start: SOURCE }
+      },
+      schemaVersion: 2
+    });
+    expect(report.provenance.inputHash).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("keeps the input hash stable across generation time and changes it for technical evidence drift", () => {
+    const base = passingObservations();
+    const baselineHash = qualifyPersonalAgent(base).provenance.inputHash;
+    const afterFreshnessBoundary = qualifyPersonalAgent({
+      ...base,
+      now: new Date(base.now.getTime() + 25 * 60 * 60_000)
+    });
+
+    expect(afterFreshnessBoundary.gates[0].status).toBe("unverified");
+    expect(afterFreshnessBoundary.provenance.inputHash).toBe(baselineHash);
+    expect(afterFreshnessBoundary.generatedAt).not.toBe(base.now.toISOString());
+
+    const changedInputs: PersonalAgentQualificationObservations[] = [
+      {
+        ...base,
+        capability: {
+          ...base.capability,
+          currentSourceEnd: { revision: "c".repeat(40), tree: "clean" }
+        }
+      },
+      {
+        ...base,
+        capability: {
+          ...base.capability,
+          currentArtifacts: { ...ARTIFACTS, digest: "c".repeat(64) }
+        }
+      },
+      { ...base, runtime: { ...base.runtime, pidAgreement: false } },
+      { ...base, delivery: { ...base.delivery, localOnly: false } },
+      { ...base, capability: { ...base.capability, maxAgeMs: 60 * 60_000 } }
+    ];
+
+    for (const input of changedInputs) {
+      expect(qualifyPersonalAgent(input).provenance.inputHash).not.toBe(baselineHash);
+    }
+  });
+
+  it("keeps unavailable source and build identities explicit without inventing values", () => {
+    const base = passingObservations();
+    const report = qualifyPersonalAgent({
+      ...base,
+      capability: {
+        ...base.capability,
+        currentArtifacts: { count: 0, status: "unknown" },
+        currentSourceEnd: { tree: "unknown" },
+        currentSourceStart: { tree: "unknown" },
+        maxAgeMs: 48 * 60 * 60_000
+      }
+    });
+
+    expect(report.provenance).toMatchObject({
+      build: { count: 0, digest: null, status: "unknown" },
+      expiresAt: "2026-07-22T12:00:00.000Z",
+      source: {
+        end: { revision: null, tree: "unknown" },
+        start: { revision: null, tree: "unknown" }
+      }
+    });
+  });
+
+  it("represents unobserved live runtime identity as null instead of a concrete mismatch", () => {
+    const base = passingObservations();
+    const report = qualifyPersonalAgent({
+      ...base,
+      runtime: {
+        ...base.runtime,
+        liveDefinitionMatches: false,
+        liveProbe: "unverified",
+        pidAgreement: false,
+        stableMuseCommand: false
+      }
+    });
+
+    expect(report.provenance.runtimeIdentity).toMatchObject({
+      liveDefinitionMatch: null,
+      liveProbe: "unverified",
+      processIdentityMatch: null
+    });
+    expect(report.gates[1].reasonCodes).toContain("daemon-live-probe-unverified");
+  });
+
   it.each(["controlled", "unclassified"] as const)("cannot promote %s-only Attunement evidence into qualification effectiveness", (evidenceClass: ContinuityEvidenceClass) => {
     const state: AttunementState = {
       deliveries: [{ evidenceClass, evidenceRefs: [], id: `delivery_${evidenceClass}`, openedAt: "2026-07-21T09:00:00.000Z", policyVersion: 1, threadId: "thread_work" }],
@@ -241,6 +349,7 @@ describe("personal-agent qualification scorer", () => {
     const base = passingObservations();
     for (const runtime of [
       { ...base.runtime, liveDefinitionMatches: false },
+      { ...base.runtime, pidAgreement: false },
       { ...base.runtime, heartbeat: "future" as const },
       { ...base.runtime, heartbeat: "before-process" as const },
       { ...base.runtime, liveProbe: "unverified" as const }

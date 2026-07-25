@@ -37,6 +37,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Personal-agent qualification reports now carry schema-v2 provenance.**
+  Machine output binds the current source start/end revision and dirty state,
+  build artifact digest, privacy-safe runtime identity, deterministic technical
+  input hash, generation time, and bounded expiry. Raw process details,
+  environment, local paths, and personal records remain excluded.
+
 - **Observe O1 adds explicit, local app-category collection for one exact
   PersonalThread.** The owner must accept consent v1 and provide an owner-only,
   exact app-to-category map. A strict bounded ledger records only category,

@@ -121,8 +121,21 @@ afterEach(() => {
 describe("muse qualify", () => {
   it("emits only the machine report in JSON mode and exits non-zero for unverified evidence", async () => {
     const result = await run(["--json"], observations("running"));
-    const report = JSON.parse(result.stdout) as { status: string; readOnly: boolean };
-    expect(report).toMatchObject({ readOnly: true, status: "unverified" });
+    const report = JSON.parse(result.stdout) as {
+      provenance: { inputHash: string };
+      readOnly: boolean;
+      schemaVersion: number;
+      status: string;
+    };
+    expect(report).toMatchObject({
+      provenance: { inputHash: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+      readOnly: true,
+      schemaVersion: 2,
+      status: "unverified"
+    });
+    expect(JSON.stringify(report)).not.toMatch(
+      /safe\/workspace|PRIVATE|src\/index\.ts|"(?:cwd|diskArguments|environment|liveArguments|path|pid|processArguments)"\s*:/iu
+    );
     expect(result.stdout.trim().split("\n")).toHaveLength(1);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe("");

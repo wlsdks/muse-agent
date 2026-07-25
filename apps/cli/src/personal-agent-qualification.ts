@@ -6,9 +6,12 @@
  * below; only closed reason codes and aggregate counts cross into the report.
  */
 
-export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 1 as const;
+import { createHash } from "node:crypto";
+
+export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 2 as const;
 export const AGENT_CAPABILITY_MATRIX_ID = "muse-agent-capability-v1" as const;
 export const DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS = 24;
+const DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_MS = DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS * 60 * 60_000;
 
 export const AGENT_CAPABILITY_REQUIREMENTS = [
   { id: "tool-selection-arguments", required: true, repeats: 3 },
@@ -186,10 +189,38 @@ export interface QualificationGate<Id extends string, Evidence> {
   readonly evidence: Evidence;
 }
 
+export interface QualificationReportProvenance {
+  readonly source: {
+    readonly start: { readonly revision: string | null; readonly tree: GitEvidenceSnapshot["tree"] };
+    readonly end: { readonly revision: string | null; readonly tree: GitEvidenceSnapshot["tree"] };
+  };
+  readonly inputHash: string;
+  readonly build: {
+    readonly status: ArtifactEvidenceSnapshot["status"];
+    readonly count: number;
+    readonly digest: string | null;
+  };
+  readonly runtimeIdentity: {
+    readonly platform: NodeJS.Platform;
+    readonly artifactState: RuntimeQualificationObservation["artifact"];
+    readonly runtimeState: RuntimeQualificationObservation["runtime"];
+    readonly liveProbe: RuntimeQualificationObservation["liveProbe"];
+    readonly liveDefinitionMatch: boolean | null;
+    readonly processIdentityMatch: boolean | null;
+    readonly heartbeatState: RuntimeQualificationObservation["heartbeat"];
+    readonly orphanProbe: RuntimeQualificationObservation["orphanProbe"];
+    readonly orphanRootCount: number | null;
+    readonly orphanProcessCount: number | null;
+  };
+  readonly generatedAt: string;
+  readonly expiresAt: string;
+}
+
 export interface PersonalAgentQualificationReport {
   readonly schemaVersion: typeof PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION;
   readonly profile: "personal-agent-v1";
   readonly generatedAt: string;
+  readonly provenance: QualificationReportProvenance;
   readonly readOnly: true;
   readonly status: PersonalAgentQualificationStatus;
   readonly counts: {
@@ -237,6 +268,54 @@ interface ParsedCapabilityReport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, canonicalValue(value[key])])
+  );
+}
+
+function qualificationInputHash(observations: PersonalAgentQualificationObservations): string {
+  const privacySafeInput = {
+    build: observations.capability.currentArtifacts,
+    capability: {
+      artifact: observations.capability.artifact,
+      attempt: observations.capability.attempt,
+      maxAgeMs: observations.capability.maxAgeMs,
+      source: {
+        end: observations.capability.currentSourceEnd,
+        start: observations.capability.currentSourceStart
+      }
+    },
+    delivery: observations.delivery,
+    runtime: observations.runtime
+  };
+  return createHash("sha256").update(JSON.stringify(canonicalValue(privacySafeInput))).digest("hex");
+}
+
+function runtimeIdentityProvenance(
+  observation: RuntimeQualificationObservation
+): QualificationReportProvenance["runtimeIdentity"] {
+  const liveObserved = observation.liveProbe === "ok";
+  const orphansObserved = observation.orphanProbe === "ok";
+  return {
+    artifactState: observation.artifact,
+    heartbeatState: observation.heartbeat,
+    liveDefinitionMatch: liveObserved ? observation.liveDefinitionMatches : null,
+    liveProbe: observation.liveProbe,
+    orphanProbe: observation.orphanProbe,
+    orphanProcessCount: orphansObserved ? observation.orphanProcessCount : null,
+    orphanRootCount: orphansObserved ? observation.orphanRootCount : null,
+    platform: observation.platform,
+    processIdentityMatch: liveObserved ? observation.pidAgreement : null,
+    runtimeState: observation.runtime
+  };
 }
 
 function hasExactKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean {
@@ -581,6 +660,11 @@ export function qualifyPersonalAgent(observations: PersonalAgentQualificationObs
     : counts.unverified > 0
       ? "unverified"
       : "qualified";
+  const generatedAt = observations.now.toISOString();
+  const evidenceMaxAgeMs = Number.isFinite(observations.capability.maxAgeMs)
+    && observations.capability.maxAgeMs > 0
+    ? Math.min(observations.capability.maxAgeMs, DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_MS)
+    : 0;
   return {
     counts,
     effectiveness: {
@@ -588,8 +672,29 @@ export function qualifyPersonalAgent(observations: PersonalAgentQualificationObs
       status: "not-proven"
     },
     gates,
-    generatedAt: observations.now.toISOString(),
+    generatedAt,
     profile: "personal-agent-v1",
+    provenance: {
+      build: {
+        count: observations.capability.currentArtifacts.count,
+        digest: observations.capability.currentArtifacts.digest ?? null,
+        status: observations.capability.currentArtifacts.status
+      },
+      expiresAt: new Date(nowMs + evidenceMaxAgeMs).toISOString(),
+      generatedAt,
+      inputHash: qualificationInputHash(observations),
+      runtimeIdentity: runtimeIdentityProvenance(observations.runtime),
+      source: {
+        end: {
+          revision: observations.capability.currentSourceEnd.revision ?? null,
+          tree: observations.capability.currentSourceEnd.tree
+        },
+        start: {
+          revision: observations.capability.currentSourceStart.revision ?? null,
+          tree: observations.capability.currentSourceStart.tree
+        }
+      }
+    },
     readOnly: true,
     schemaVersion: PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION,
     status

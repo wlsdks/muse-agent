@@ -16,6 +16,17 @@ Exit status is `0` only for `qualified`. An executed technical failure produces
 produces `unverified` unless another gate has already failed. Gates are never
 averaged.
 
+The JSON report uses schema v2. Its `provenance` object binds the result to the
+current Git snapshot at the start and end of qualification, the current build
+artifact digest/count/status, a privacy-safe runtime-identity projection, and a
+deterministic SHA-256 of the technical inputs. `generatedAt` is kept separate
+from that input hash so an unchanged observation has a stable identity;
+`expiresAt` uses the configured evidence window capped at 24 hours. The
+projection contains no raw PID, process arguments, path, environment, subprocess
+error, or personal record. When the live or orphan probe is unavailable,
+identity comparisons and counts are `null`; absence of observation is never
+encoded as a concrete mismatch.
+
 ## Required gates
 
 | Gate | Pass requires |
@@ -51,6 +62,11 @@ evidence. Evidence is valid
 for at most 24 hours. `--max-evidence-age-hours` may tighten that window but
 cannot raise it; `--capability-report` changes only the report input, never the
 current source identity.
+
+State authority is strict: a current command result outranks a
+provenance-valid canonical report, which outranks a dated narrative snapshot.
+A newer timestamp never rescues dirty, future-dated, stale, source-drifted, or
+artifact-mismatched evidence.
 
 ## Runtime and delivery safety
 
