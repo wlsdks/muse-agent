@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createPersonalThread, linkArtifact, prepareContinuityReview, type AttunementState } from "@muse/attunement";
 import type { UserMemory } from "@muse/memory";
 import { MessagingProviderRegistry, type MessagingProvider } from "@muse/messaging";
-import type { ResidentDaemonInspection } from "@muse/runtime-state";
+import type { ResidentDaemonHealthResult, ResidentDaemonInspection } from "@muse/runtime-state";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
@@ -17,9 +17,13 @@ import type { ServerOptions } from "./server-options.js";
 const NOW = new Date("2026-07-22T12:00:00.000Z");
 const USER_ID = "owner";
 
-function resident(delivery = "false"): ResidentDaemonInspection {
+function resident(
+  delivery = "false",
+  health: ResidentDaemonHealthResult = { reasonCodes: [], status: "healthy" }
+): ResidentDaemonInspection {
   return {
     effectiveRuntimeEnv: { HOME: "/isolated", MUSE_DAEMON_DELIVERY_ENABLED: delivery },
+    health,
     observation: {
       artifact: "valid",
       autostartProbe: "ok",
@@ -33,6 +37,14 @@ function resident(delivery = "false"): ResidentDaemonInspection {
       platform: "darwin",
       runtime: "running",
       stableMuseCommand: true
+    },
+    processInventory: {
+      conditions: ["healthy"],
+      duplicateResidentProcessCount: 0,
+      museProcessCount: 1,
+      probe: "ok",
+      processes: [],
+      residentProcessCount: 1
     }
   };
 }
@@ -179,6 +191,23 @@ describe("GET /api/personal-status", () => {
     expect(status.cards.some((card) => card.id === "approval:approval_owner")).toBe(true);
     expect(status.cards).toContainEqual(expect.objectContaining({ id: "source:proposed-actions", status: "unavailable" }));
     expect(status.sources).toContainEqual(expect.objectContaining({ errorCode: "invalid-json", id: "proposed-actions", result: "corrupt" }));
+  });
+
+  it("holds runtime help when shared health fails even if the projected fields look fresh", async () => {
+    const state = await fixture();
+    const status = await collectPersonalStatus({
+      ...state.routeOptions,
+      residentInspector: async () => resident("true", {
+        reasonCodes: ["daemon-heartbeat-progress-stale"],
+        status: "failed"
+      })
+    });
+
+    expect(status.cards).toContainEqual(expect.objectContaining({
+      id: "runtime:resident",
+      status: "held",
+      title: "백그라운드 도움 보류"
+    }));
   });
 
   it("uses persisted order as the tie-break for same-timestamp learning retractions", async () => {

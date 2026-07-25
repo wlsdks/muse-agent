@@ -62,7 +62,12 @@ export interface LocalModelExecutionLeaseOptions {
 }
 
 export interface LocalModelExecutionLease {
+  /** Immutable authority identity persisted in active.json for fencing. */
+  readonly createdAtMs: number;
+  readonly pid: number;
   readonly role: LocalModelExecutionRole;
+  readonly sequence: number;
+  readonly token: string;
   readonly waitMs: number;
   validate(): Promise<boolean>;
   hasForegroundWaiter(signal?: AbortSignal): Promise<boolean>;
@@ -305,7 +310,11 @@ export class FileLocalModelExecutionLeaseCoordinator {
       let released = false;
       let releasing: Promise<void> | undefined;
       return {
+        createdAtMs: claimed.createdAtMs,
+        pid: claimed.pid,
         role,
+        sequence: claimed.sequence,
+        token: claimed.token,
         waitMs,
         validate: async () => sameInode(activeIdentity, await inode(this.#activeFile()))
           && this.#activeMatches(claimed!),

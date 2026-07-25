@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,12 +7,96 @@ import { describe, expect, it } from "vitest";
 
 import {
   inspectResidentDaemon,
+  parseResidentDaemonHeartbeatReceipt,
+  parseResidentWriterLeaseIdentity,
   validateStableMuseCliEntry,
   validateStableMuseRuntimeExecutable,
   type ReadOnlyProcessRunner
 } from "./resident-daemon-status.js";
 
 const NOW = new Date("2026-07-22T03:00:00.000Z");
+const RESIDENT_GENERATION = "resident_generation_01";
+
+function residentHeartbeat(at: string, overrides: Readonly<Record<string, unknown>> = {}) {
+  return {
+    at,
+    expectedCadenceMs: 60_000,
+    generation: RESIDENT_GENERATION,
+    lastProgressAt: at,
+    pid: 4321,
+    sequence: 7,
+    version: 1,
+    ...overrides
+  };
+}
+
+function writeResidentLease(root: string, overrides: Readonly<Record<string, unknown>> = {}): string {
+  const leaseRoot = join(root, ".muse", "resident-writer-lease");
+  const file = join(leaseRoot, "active.json");
+  mkdirSync(leaseRoot, { mode: 0o700, recursive: true });
+  writeFileSync(file, JSON.stringify({
+    createdAtMs: Date.parse("2026-07-22T02:00:01.000Z"),
+    pid: 4321,
+    role: "background",
+    sequence: 1,
+    token: RESIDENT_GENERATION,
+    version: 1,
+    ...overrides
+  }), { mode: 0o600 });
+  return file;
+}
+
+describe("resident daemon heartbeat receipt", () => {
+  const valid = {
+    at: "2026-07-22T03:00:00.000Z",
+    expectedCadenceMs: 60_000,
+    generation: RESIDENT_GENERATION,
+    lastProgressAt: "2026-07-22T02:59:59.000Z",
+    pid: 4321,
+    sequence: 7,
+    version: 1
+  };
+
+  it("accepts only the exact canonical versioned receipt", () => {
+    expect(parseResidentDaemonHeartbeatReceipt(JSON.stringify(valid))).toEqual(valid);
+  });
+
+  it.each([
+    ["partial JSON", "{\"version\":1"],
+    ["legacy mark", JSON.stringify({ at: valid.at, pid: valid.pid })],
+    ["unknown key", JSON.stringify({ ...valid, private: "hidden" })],
+    ["future version", JSON.stringify({ ...valid, version: 2 })],
+    ["weak generation", JSON.stringify({ ...valid, generation: "short" })],
+    ["zero sequence", JSON.stringify({ ...valid, sequence: 0 })],
+    ["fractional sequence", JSON.stringify({ ...valid, sequence: 1.5 })],
+    ["too-fast cadence", JSON.stringify({ ...valid, expectedCadenceMs: 4_999 })],
+    ["too-slow cadence", JSON.stringify({ ...valid, expectedCadenceMs: 86_400_001 })],
+    ["noncanonical timestamp", JSON.stringify({ ...valid, at: "2026-07-22T03:00:00Z" })],
+    ["progress after write", JSON.stringify({ ...valid, lastProgressAt: "2026-07-22T03:00:01.000Z" })]
+  ])("rejects %s", (_name, text) => {
+    expect(parseResidentDaemonHeartbeatReceipt(text)).toBeUndefined();
+  });
+
+  it("accepts only the exact background writer lease identity", () => {
+    const validLease = {
+      createdAtMs: Date.parse("2026-07-22T02:00:01.000Z"),
+      pid: 4321,
+      role: "background",
+      sequence: 1,
+      token: RESIDENT_GENERATION,
+      version: 1
+    };
+    expect(parseResidentWriterLeaseIdentity(JSON.stringify(validLease))).toEqual(validLease);
+    expect(parseResidentWriterLeaseIdentity(JSON.stringify({
+      ...validLease,
+      role: "foreground"
+    }))).toBeUndefined();
+    expect(parseResidentWriterLeaseIdentity(JSON.stringify({
+      ...validLease,
+      private: "hidden"
+    }))).toBeUndefined();
+  });
+});
 
 function escapeXml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -47,7 +131,12 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
   };
   const arguments_ = [process.execPath, entry, "daemon"];
   writeFileSync(plistFile, plist(arguments_, environment));
-  writeFileSync(heartbeat, JSON.stringify({ at: options.heartbeatAt ?? "2026-07-22T02:59:00.000Z", pid: 4321 }));
+  writeFileSync(
+    heartbeat,
+    JSON.stringify(residentHeartbeat(options.heartbeatAt ?? "2026-07-22T02:59:00.000Z")),
+    { mode: 0o600 }
+  );
+  const lease = writeResidentLease(root);
   const liveEnvironment = { ...environment, MUSE_DAEMON_DELIVERY_ENABLED: options.liveDelivery ?? "false" };
   const print = [
     "gui/501/com.muse.daemon = {",
@@ -72,7 +161,7 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
     if (executable === "ps") return { code: 0, stderr: "", stdout: "" };
     return { code: 1, stderr: "unexpected", stdout: "" };
   };
-  return { environment, heartbeat, plistFile, root, run };
+  return { environment, heartbeat, lease, plistFile, root, run };
 }
 
 function fingerprint(file: string): string {
@@ -262,7 +351,12 @@ function inventoryFixture(options: {
   const arguments_ = [process.execPath, cliEntry, "daemon"];
   writeFileSync(plistFile, plist(arguments_, environment));
   if (options.artifact === "missing") unlinkSync(plistFile);
-  writeFileSync(heartbeat, JSON.stringify({ at: "2026-07-22T02:59:00.000Z", pid: 4321 }));
+  writeFileSync(
+    heartbeat,
+    JSON.stringify(residentHeartbeat("2026-07-22T02:59:00.000Z")),
+    { mode: 0o600 }
+  );
+  writeResidentLease(root);
   const launchdRunning = options.launchdRunning ?? true;
   const residentPids = options.residentPids ?? (launchdRunning ? [4321] : []);
   const rows = [
@@ -333,6 +427,109 @@ describe("resident daemon read-only authority", () => {
     expect(result.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED).toBe("false");
   });
 
+  it.each([
+    {
+      expected: "invalid",
+      name: "partial write",
+      write: (state: ReturnType<typeof fixture>) => writeFileSync(state.heartbeat, "{\"version\":1", { mode: 0o600 })
+    },
+    {
+      expected: "invalid",
+      name: "legacy mark",
+      write: (state: ReturnType<typeof fixture>) => writeFileSync(
+        state.heartbeat,
+        JSON.stringify({ at: "2026-07-22T02:59:00.000Z", pid: 4321 }),
+        { mode: 0o600 }
+      )
+    },
+    {
+      expected: "generation-mismatch",
+      name: "stale generation",
+      write: (state: ReturnType<typeof fixture>) => writeFileSync(
+        state.heartbeat,
+        JSON.stringify(residentHeartbeat("2026-07-22T02:59:00.000Z", {
+          generation: "resident_generation_00"
+        })),
+        { mode: 0o600 }
+      )
+    },
+    {
+      expected: "progress-stale",
+      name: "recent liveness without progress",
+      write: (state: ReturnType<typeof fixture>) => writeFileSync(
+        state.heartbeat,
+        JSON.stringify(residentHeartbeat("2026-07-22T02:59:30.000Z", {
+          lastProgressAt: "2026-07-22T02:50:00.000Z"
+        })),
+        { mode: 0o600 }
+      )
+    },
+    {
+      expected: "invalid",
+      name: "corrupt lease authority",
+      write: (state: ReturnType<typeof fixture>) => writeFileSync(
+        state.lease,
+        JSON.stringify({ private: "do-not-leak" }),
+        { mode: 0o600 }
+      )
+    }
+  ])("fails closed for $name evidence", async ({ expected, write }) => {
+    const state = fixture();
+    write(state);
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: state.run,
+      uid: 501
+    });
+
+    expect(result.observation.heartbeat).toBe(expected);
+    expect(result.health.status).toBe("failed");
+  });
+
+  it("rejects non-owner-only heartbeat permissions", async () => {
+    if (process.platform === "win32") return;
+    const state = fixture();
+    chmodSync(state.heartbeat, 0o644);
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: state.run,
+      uid: 501
+    });
+
+    expect(result.observation.heartbeat).toBe("invalid");
+    expect(result.health).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-heartbeat-invalid"]),
+      status: "failed"
+    });
+  });
+
+  it("rejects a same-PID receipt that predates the live process incarnation", async () => {
+    const state = fixture();
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "ps" && args[0] === "-p") {
+        return { code: 0, stderr: "", stdout: "Wed Jul 22 11:59:30 2026\n" };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.observation.heartbeat).toBe("before-process");
+    expect(result.health.status).not.toBe("healthy");
+  });
+
   it("keeps the live environment authoritative and exposes definition drift", async () => {
     const state = fixture({ liveDelivery: "true" });
     const result = await inspectResidentDaemon({
@@ -371,7 +568,7 @@ describe("resident daemon read-only authority", () => {
   });
 
   it("does not alter daemon evidence while inspecting it", async () => {
-    const state = fixture({ heartbeatAt: "2026-07-22T02:00:00.000Z" });
+    const state = fixture({ heartbeatAt: "2026-07-22T02:50:00.000Z" });
     const before = {
       entries: readdirSync(state.root).sort(),
       heartbeat: fingerprint(state.heartbeat),

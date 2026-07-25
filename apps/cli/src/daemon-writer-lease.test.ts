@@ -41,6 +41,12 @@ describe("resident writer lease", () => {
       version: 1
     });
     expect(active.token).toEqual(expect.stringMatching(/^[A-Za-z0-9_-]{8,128}$/u));
+    expect(lease).toMatchObject({
+      acquiredAtMs: active.createdAtMs,
+      generation: active.token,
+      leaseSequence: active.sequence,
+      pid: active.pid
+    });
     expect((await stat(leaseRoot)).mode & 0o777).toBe(0o700);
     expect((await stat(activeFile)).mode & 0o777).toBe(0o600);
     expect(await lease.validate()).toBe(true);

@@ -1,11 +1,130 @@
 import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export const MUSE_LAUNCH_AGENT_LABEL = "com.muse.daemon";
-export const RESIDENT_DAEMON_HEARTBEAT_MAX_AGE_MS = 3 * 60_000;
+export const RESIDENT_DAEMON_HEARTBEAT_VERSION = 1 as const;
+export const RESIDENT_DAEMON_MIN_CADENCE_MS = 5_000;
+export const RESIDENT_DAEMON_MAX_CADENCE_MS = 86_400_000;
+export const RESIDENT_DAEMON_HEARTBEAT_GRACE_MULTIPLIER = 3;
+
+export interface ResidentDaemonHeartbeatReceipt {
+  readonly at: string;
+  readonly expectedCadenceMs: number;
+  readonly generation: string;
+  readonly lastProgressAt: string;
+  readonly pid: number;
+  readonly sequence: number;
+  readonly version: typeof RESIDENT_DAEMON_HEARTBEAT_VERSION;
+}
+
+export interface ResidentWriterLeaseIdentity {
+  readonly createdAtMs: number;
+  readonly pid: number;
+  readonly role: "background";
+  readonly sequence: number;
+  readonly token: string;
+  readonly version: 1;
+}
+
+const RESIDENT_DAEMON_HEARTBEAT_KEYS = [
+  "at",
+  "expectedCadenceMs",
+  "generation",
+  "lastProgressAt",
+  "pid",
+  "sequence",
+  "version"
+] as const;
+const RESIDENT_WRITER_LEASE_KEYS = [
+  "createdAtMs",
+  "pid",
+  "role",
+  "sequence",
+  "token",
+  "version"
+] as const;
+
+function exactObjectKeys(row: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(row).sort();
+  return keys.length === expected.length
+    && keys.every((key, index) => key === expected[index]);
+}
+
+function validAuthorityToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/u.test(value);
+}
+
+/** Strict parser shared by the resident writer and every health surface. */
+export function parseResidentDaemonHeartbeatReceipt(
+  text: string
+): ResidentDaemonHeartbeatReceipt | undefined {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const row = parsed as Record<string, unknown>;
+    if (!exactObjectKeys(row, RESIDENT_DAEMON_HEARTBEAT_KEYS)) return undefined;
+    if (
+      row.version !== RESIDENT_DAEMON_HEARTBEAT_VERSION
+      || typeof row.at !== "string"
+      || typeof row.lastProgressAt !== "string"
+      || !validAuthorityToken(row.generation)
+      || typeof row.pid !== "number"
+      || !Number.isSafeInteger(row.pid)
+      || row.pid <= 0
+      || typeof row.sequence !== "number"
+      || !Number.isSafeInteger(row.sequence)
+      || row.sequence <= 0
+      || typeof row.expectedCadenceMs !== "number"
+      || !Number.isSafeInteger(row.expectedCadenceMs)
+      || row.expectedCadenceMs < RESIDENT_DAEMON_MIN_CADENCE_MS
+      || row.expectedCadenceMs > RESIDENT_DAEMON_MAX_CADENCE_MS
+    ) return undefined;
+    const at = Date.parse(row.at);
+    const lastProgressAt = Date.parse(row.lastProgressAt);
+    if (
+      !Number.isFinite(at)
+      || !Number.isFinite(lastProgressAt)
+      || new Date(at).toISOString() !== row.at
+      || new Date(lastProgressAt).toISOString() !== row.lastProgressAt
+      || lastProgressAt > at
+    ) return undefined;
+    return row as unknown as ResidentDaemonHeartbeatReceipt;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Strictly parse the dedicated resident writer's persisted authority identity. */
+export function parseResidentWriterLeaseIdentity(
+  text: string
+): ResidentWriterLeaseIdentity | undefined {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const row = parsed as Record<string, unknown>;
+    if (!exactObjectKeys(row, RESIDENT_WRITER_LEASE_KEYS)) return undefined;
+    if (
+      row.version !== 1
+      || row.role !== "background"
+      || !validAuthorityToken(row.token)
+      || typeof row.pid !== "number"
+      || !Number.isSafeInteger(row.pid)
+      || row.pid <= 0
+      || typeof row.sequence !== "number"
+      || !Number.isSafeInteger(row.sequence)
+      || row.sequence <= 0
+      || typeof row.createdAtMs !== "number"
+      || !Number.isSafeInteger(row.createdAtMs)
+      || row.createdAtMs < 0
+    ) return undefined;
+    return row as unknown as ResidentWriterLeaseIdentity;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface ResidentDaemonObservation {
   readonly platform: NodeJS.Platform;
@@ -16,7 +135,16 @@ export interface ResidentDaemonObservation {
   readonly liveDefinitionMatches: boolean;
   readonly stableMuseCommand: boolean;
   readonly pidAgreement: boolean;
-  readonly heartbeat: "fresh" | "missing" | "invalid" | "stale" | "future" | "before-process" | "unknown";
+  readonly heartbeat:
+    | "fresh"
+    | "missing"
+    | "invalid"
+    | "stale"
+    | "progress-stale"
+    | "generation-mismatch"
+    | "future"
+    | "before-process"
+    | "unknown";
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;
@@ -73,8 +201,10 @@ export const RESIDENT_DAEMON_HEALTH_REASON = {
   duplicateResidents: "duplicate-resident-processes-detected",
   heartbeatBeforeProcess: "daemon-heartbeat-before-process-start",
   heartbeatFuture: "daemon-heartbeat-future-dated",
+  heartbeatGenerationMismatch: "daemon-heartbeat-generation-mismatch",
   heartbeatInvalid: "daemon-heartbeat-invalid",
   heartbeatMissing: "daemon-heartbeat-missing",
+  heartbeatProgressStale: "daemon-heartbeat-progress-stale",
   heartbeatStale: "daemon-heartbeat-stale",
   liveProbeUnverified: "daemon-live-probe-unverified",
   notRegistered: "daemon-not-registered",
@@ -122,9 +252,16 @@ export function classifyResidentDaemonHealth(
   }
 
   if (observation.heartbeat === "missing") failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatMissing);
-  else if (observation.heartbeat === "invalid" || observation.heartbeat === "unknown") {
+  else if (observation.heartbeat === "invalid") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid);
+  } else if (observation.heartbeat === "unknown") {
     unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid);
   } else if (observation.heartbeat === "stale") failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatStale);
+  else if (observation.heartbeat === "progress-stale") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatProgressStale);
+  } else if (observation.heartbeat === "generation-mismatch") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatGenerationMismatch);
+  }
   else if (observation.heartbeat === "future") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatFuture);
   else if (observation.heartbeat === "before-process") {
     unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatBeforeProcess);
@@ -663,40 +800,84 @@ function relevantEnvironmentMatches(disk: Readonly<Record<string, string>>, live
     ((key === "HOME" || key === "USERPROFILE") && live[key] === undefined) || live[key] === value);
 }
 
-function heartbeatFile(env: Readonly<Record<string, string | undefined>>): string | undefined {
+export function resolveResidentDaemonHeartbeatFile(
+  env: Readonly<Record<string, string | undefined>>
+): string | undefined {
   const sidecar = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim();
   if (sidecar) return join(dirname(sidecar), "proactive-heartbeat-daemon-loop.json");
   const home = env.HOME?.trim() || env.USERPROFILE?.trim();
   return home ? join(home, ".muse", "proactive-heartbeat-daemon-loop.json") : undefined;
 }
 
+export function resolveResidentWriterLeaseFile(
+  env: Readonly<Record<string, string | undefined>>
+): string | undefined {
+  const home = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return home ? join(home, ".muse", "resident-writer-lease", "active.json") : undefined;
+}
+
+async function readOwnerOnlyText(
+  file: string
+): Promise<{ readonly state: "missing" | "ok" | "unreadable"; readonly text?: string }> {
+  try {
+    const stat = await lstat(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) return { state: "unreadable" };
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+      return { state: "unreadable" };
+    }
+    if (process.platform !== "win32" && (stat.mode & 0o777) !== 0o600) {
+      return { state: "unreadable" };
+    }
+    return { state: "ok", text: await readFile(file, "utf8") };
+  } catch (cause) {
+    return cause && typeof cause === "object" && "code" in cause && cause.code === "ENOENT"
+      ? { state: "missing" }
+      : { state: "unreadable" };
+  }
+}
+
 async function inspectHeartbeat(
   file: string | undefined,
+  leaseFile: string | undefined,
   nowMs: number,
   processStartMs: number | undefined,
   expectedPid: number | undefined
 ): Promise<{ readonly state: ResidentDaemonObservation["heartbeat"]; readonly pidMatches: boolean }> {
   if (!file) return { pidMatches: false, state: "unknown" };
-  const read = await readText(file);
+  const read = await readOwnerOnlyText(file);
   if (read.state === "missing") return { pidMatches: false, state: "missing" };
   if (read.state !== "ok" || read.text === undefined) return { pidMatches: false, state: "invalid" };
-  try {
-    const parsed = JSON.parse(read.text) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new TypeError("invalid heartbeat");
-    const row = parsed as Record<string, unknown>;
-    if (typeof row.at !== "string" || typeof row.pid !== "number" || !Number.isSafeInteger(row.pid) || row.pid <= 0) {
-      throw new TypeError("invalid heartbeat");
-    }
-    const at = Date.parse(row.at);
-    if (!Number.isFinite(at)) throw new TypeError("invalid heartbeat");
-    const pidMatches = row.pid === expectedPid;
-    if (at > nowMs) return { pidMatches, state: "future" };
-    if (processStartMs === undefined) return { pidMatches, state: "unknown" };
-    if (at < processStartMs) return { pidMatches, state: "before-process" };
-    return { pidMatches, state: nowMs - at > RESIDENT_DAEMON_HEARTBEAT_MAX_AGE_MS ? "stale" : "fresh" };
-  } catch {
-    return { pidMatches: false, state: "invalid" };
+  const receipt = parseResidentDaemonHeartbeatReceipt(read.text);
+  if (!receipt) return { pidMatches: false, state: "invalid" };
+  const pidMatches = receipt.pid === expectedPid;
+  const at = Date.parse(receipt.at);
+  const lastProgressAt = Date.parse(receipt.lastProgressAt);
+  if (at > nowMs) return { pidMatches, state: "future" };
+  if (processStartMs === undefined) return { pidMatches, state: "unknown" };
+  if (at < processStartMs || lastProgressAt < processStartMs) {
+    return { pidMatches, state: "before-process" };
   }
+  if (!leaseFile) return { pidMatches, state: "generation-mismatch" };
+  const leaseRead = await readOwnerOnlyText(leaseFile);
+  if (leaseRead.state === "missing") return { pidMatches, state: "generation-mismatch" };
+  if (leaseRead.state !== "ok" || leaseRead.text === undefined) {
+    return { pidMatches, state: "invalid" };
+  }
+  const lease = parseResidentWriterLeaseIdentity(leaseRead.text);
+  if (!lease) return { pidMatches, state: "invalid" };
+  if (
+    lease.pid !== receipt.pid
+    || lease.pid !== expectedPid
+    || lease.token !== receipt.generation
+    || lease.createdAtMs < processStartMs
+    || lease.createdAtMs > at
+  ) {
+    return { pidMatches, state: "generation-mismatch" };
+  }
+  const maxAgeMs = receipt.expectedCadenceMs * RESIDENT_DAEMON_HEARTBEAT_GRACE_MULTIPLIER;
+  if (nowMs - at > maxAgeMs) return { pidMatches, state: "stale" };
+  if (nowMs - lastProgressAt > maxAgeMs) return { pidMatches, state: "progress-stale" };
+  return { pidMatches, state: "fresh" };
 }
 
 const PROCESS_START_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -788,7 +969,13 @@ export async function inspectResidentDaemon(
         ...(liveEnvironment.HOME?.trim() || liveEnvironment.USERPROFILE?.trim() || !hostHome ? {} : { HOME: hostHome })
       }
     : { ...env, ...(diskEnvironment ?? {}) };
-  const heartbeat = await inspectHeartbeat(heartbeatFile(effectiveRuntimeEnv), nowMs, await processStart(livePid, run), livePid);
+  const heartbeat = await inspectHeartbeat(
+    resolveResidentDaemonHeartbeatFile(effectiveRuntimeEnv),
+    resolveResidentWriterLeaseFile(effectiveRuntimeEnv),
+    nowMs,
+    await processStart(livePid, run),
+    livePid
+  );
   const processProbe = options.inspectOrphans === false
     ? { orphanProcessCount: 0, orphanRootCount: 0, probe: "unverified" as const, processes: [] }
     : await inspectResidentMuseProcesses(

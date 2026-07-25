@@ -53,7 +53,7 @@ import {
   validateStableMuseRuntimeExecutable,
   type ResidentDaemonHealthResult
 } from "@muse/runtime-state";
-import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
+import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, resolveDaemonSettingsFile } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
@@ -133,6 +133,11 @@ import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloa
 import { DaemonWorkloadGovernor, daemonWorkloadNotReady } from "./daemon-workload-governor.js";
 import { startObserveDaemonTimer } from "./observe-daemon.js";
 import { emptyDaemonWorkloadProfile, readDaemonWorkloadProfile, recordDaemonWorkloadReceipt, resolveDaemonWorkloadProfileFile, writeDaemonWorkloadProfile } from "./daemon-workload-profile.js";
+import {
+  createResidentDaemonHeartbeatWriter,
+  RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED,
+  type ResidentDaemonHeartbeatWriter
+} from "./resident-daemon-heartbeat.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
@@ -332,6 +337,8 @@ export interface DaemonHelpers {
   readonly residentDaemonHealth?: (env: NodeJS.ProcessEnv) => Promise<ResidentDaemonHealthResult>;
   /** Test seam — process-wide writer authority acquired before any daemon tick/effect. */
   readonly acquireResidentWriterLease?: (env: NodeJS.ProcessEnv) => Promise<ResidentWriterLease>;
+  /** Test seam — owner-only heartbeat writer bound to the acquired lease generation. */
+  readonly createResidentHeartbeatWriter?: typeof createResidentDaemonHeartbeatWriter;
   /** Test seam — production persists process.argv[1] after stable-entry validation. */
   readonly daemonCliEntry?: string;
   /** Test seam — production persists canonical process.execPath after stable-runtime validation. */
@@ -387,6 +394,24 @@ async function validateDaemonWriterAuthority(
   process.exitCode = 1;
   signal.stop();
   return false;
+}
+
+async function recordResidentHeartbeat(
+  io: ProgramIO,
+  writer: ResidentDaemonHeartbeatWriter,
+  signal: DaemonStopSignal,
+  progress: boolean
+): Promise<boolean> {
+  try {
+    if (progress) await writer.recordProgress();
+    else await writer.recordLiveness();
+    return true;
+  } catch {
+    io.stderr(`muse daemon writer stopped: ${RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED}\n`);
+    process.exitCode = 1;
+    signal.stop();
+    return false;
+  }
 }
 
 /**
@@ -764,11 +789,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         if (!residentLease) return;
         const signal = new DaemonStopSignal();
         const heartbeatDir = defaultProactiveHeartbeatDir(e);
-        const heartbeatOnlyTick = async (): Promise<void> => {
-          if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
-          await recordProactiveHeartbeat(heartbeatDir, "daemon-loop").catch(() => false);
-        };
         try {
+          const heartbeatWriter = (helpers.createResidentHeartbeatWriter
+            ?? createResidentDaemonHeartbeatWriter)({
+            acquiredAtMs: residentLease.acquiredAtMs,
+            directory: heartbeatDir,
+            expectedCadenceMs: interval * 1000,
+            generation: residentLease.generation,
+            pid: residentLease.pid
+          });
+          const heartbeatOnlyTick = async (): Promise<void> => {
+            if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
+            await recordResidentHeartbeat(io, heartbeatWriter, signal, true);
+          };
           io.stdout("muse daemon — delivery brake engaged (heartbeat-only)\n");
           if (options.once) {
             await heartbeatOnlyTick();
@@ -1222,7 +1255,18 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const residentLease = await acquireDaemonWriterAuthority(io, e, helpers);
       if (!residentLease) return;
       const signal = new DaemonStopSignal();
+      const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
       try {
+      const heartbeatWriter = (helpers.createResidentHeartbeatWriter
+        ?? createResidentDaemonHeartbeatWriter)({
+        acquiredAtMs: residentLease.acquiredAtMs,
+        directory: daemonHeartbeatDir,
+        expectedCadenceMs: interval * 1000,
+        generation: residentLease.generation,
+        pid: residentLease.pid
+      });
+      if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
+      if (!await recordResidentHeartbeat(io, heartbeatWriter, signal, false)) return;
       const proactiveTick = makeProactiveTick({
         calendarRegistry,
         dailyCap,
@@ -1612,13 +1656,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         workspaceDir: io.workspaceDir ?? process.cwd()
       });
 
-      // R2-1: a generic "the daemon completed a tick round" mark, distinct
-      // from proactiveTick's own alive/fired pair (which only reflects the
-      // proactive sub-tick). Written FIRST, before any sub-tick can throw,
-      // so `muse scheduler add` / `muse status` can answer "is the daemon
-      // loop actually running" without depending on any one sub-tick's
-      // internals. Fail-soft — a heartbeat write failure never breaks a tick.
-      const daemonHeartbeatDir = defaultProactiveHeartbeatDir(e);
+      // The resident receipt is distinct from proactiveTick's generic
+      // alive/fired marks. It is written before effects and again only after a
+      // completed round so health can distinguish liveness from progress.
       const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
       let lastResourceAdmissionKey: string | undefined;
       const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
@@ -1707,7 +1747,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       };
       const runTick = async (): Promise<void> => {
         if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
-        await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
+        if (!await recordResidentHeartbeat(io, heartbeatWriter, signal, false)) return;
         await proactiveTick();
         await backgroundExitNoticeTick();
         await remindersTick();
@@ -1768,6 +1808,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await conflictWatchTick();
         if (signal.stopped) return;
         await retentionPruneTick();
+        await recordResidentHeartbeat(io, heartbeatWriter, signal, true);
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);

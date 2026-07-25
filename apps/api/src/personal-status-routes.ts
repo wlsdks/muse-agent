@@ -391,8 +391,7 @@ function projectRuntime(
     };
   }
   const observation = inspected.observation;
-  const verified = observation.artifact === "valid" && observation.runtime === "running" && observation.liveProbe === "ok"
-    && observation.liveDefinitionMatches && observation.stableMuseCommand && observation.pidAgreement && observation.heartbeat === "fresh";
+  const verified = inspected.health.status === "healthy";
   const delivery = inspected.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED?.trim().toLowerCase();
   const brakeEngaged = delivery !== undefined && ["0", "false", "no", "off"].includes(delivery);
   const brakeReleased = delivery !== undefined && ["1", "true", "yes", "on"].includes(delivery);
@@ -454,7 +453,7 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
   const now = options.now?.() ?? new Date();
   const context: ProjectionContext = { generatedAt: now.toISOString(), now, userId: options.defaultUserId };
   const [runtime, approvals, proposals, attunement, provenance, memoryResult, reconfirmation, vetoes] = await Promise.all([
-    options.residentInspector?.() ?? inspectResidentDaemon({ env: { ...options.env }, inspectOrphans: false }),
+    options.residentInspector?.() ?? inspectResidentDaemon({ env: { ...options.env } }),
     inspectPendingApprovalsSource(options.pendingApprovalsFile),
     inspectProposedActionsSource(options.proposedActionsFile),
     inspectAttunement(options.attunementFile),

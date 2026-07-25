@@ -130,7 +130,16 @@ export interface RuntimeQualificationObservation {
   readonly liveDefinitionMatches: boolean;
   readonly stableMuseCommand: boolean;
   readonly pidAgreement: boolean;
-  readonly heartbeat: "fresh" | "missing" | "invalid" | "stale" | "future" | "before-process" | "unknown";
+  readonly heartbeat:
+    | "fresh"
+    | "missing"
+    | "invalid"
+    | "stale"
+    | "progress-stale"
+    | "generation-mismatch"
+    | "future"
+    | "before-process"
+    | "unknown";
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;

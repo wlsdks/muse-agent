@@ -28,6 +28,10 @@ export class ResidentWriterLeaseError extends Error {
 }
 
 export interface ResidentWriterLease {
+  readonly acquiredAtMs: number;
+  readonly generation: string;
+  readonly leaseSequence: number;
+  readonly pid: number;
   readonly waitMs: number;
   validate(): Promise<boolean>;
   release(): Promise<void>;
@@ -89,6 +93,10 @@ export async function acquireResidentWriterLease(
     throw mapLeaseError(cause);
   }
   return {
+    acquiredAtMs: lease.createdAtMs,
+    generation: lease.token,
+    leaseSequence: lease.sequence,
+    pid: lease.pid,
     release: () => lease.release(),
     validate: () => lease.validate(),
     waitMs: lease.waitMs

@@ -26,6 +26,7 @@ import {
 } from "./daemon-writer-lease.js";
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
+import { RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED } from "./resident-daemon-heartbeat.js";
 
 function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -47,6 +48,14 @@ function scheduledTaskXml(entrypoint: string, executable = process.execPath): st
 }
 
 const TEST_HARNESS_CLI_ENTRY = stableCliEntryFixture();
+function testResidentLeaseIdentity() {
+  return {
+    acquiredAtMs: Date.now() - 1_000,
+    generation: "test_resident_generation_01",
+    leaseSequence: 1,
+    pid: process.pid
+  } as const;
+}
 
 function fakeChromeTools(snapshotText: string): MuseTool[] {
   const mk = (name: string, result: string): MuseTool => ({
@@ -78,7 +87,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -133,10 +142,14 @@ async function runDaemon(
         status: "unverified"
       })),
       acquireResidentWriterLease: opts.acquireResidentWriterLease ?? (async () => ({
+        ...testResidentLeaseIdentity(),
         release: async () => undefined,
         validate: async () => true,
         waitMs: 0
       })),
+      ...(opts.createResidentHeartbeatWriter
+        ? { createResidentHeartbeatWriter: opts.createResidentHeartbeatWriter }
+        : {}),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonRuntimeExecutable !== undefined
         ? { daemonRuntimeExecutable: opts.daemonRuntimeExecutable }
@@ -216,6 +229,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
     const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
       acquireResidentWriterLease: async () => ({
+        ...testResidentLeaseIdentity(),
         release,
         validate: async () => false,
         waitMs: 0
@@ -245,6 +259,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
     const result = await runDaemon(["--provider", "telegram"], {
       acquireResidentWriterLease: async () => ({
+        ...testResidentLeaseIdentity(),
         release,
         validate: async () => true,
         waitMs: 0
@@ -1856,7 +1871,12 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
     const validate = vi.fn(async () => false);
 
     const result = await runDaemon(["--once"], {
-      acquireResidentWriterLease: async () => ({ release, validate, waitMs: 0 }),
+      acquireResidentWriterLease: async () => ({
+        ...testResidentLeaseIdentity(),
+        release,
+        validate,
+        waitMs: 0
+      }),
       env,
       registry: new MessagingProviderRegistry()
     });
@@ -1869,12 +1889,49 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
     expect(result.stdout).not.toContain("daemon --once complete");
   });
 
+  it("heartbeat persistence failure stops before daemon effects and reports only a fixed reason", async () => {
+    const env = tmpEnv();
+    const sent: OutboundMessage[] = [];
+    const createObserveRunner = vi.fn(async () => {
+      throw new Error("Observe must not initialize before the authority receipt");
+    });
+    const recordProgress = vi.fn(async () => {
+      throw new Error("progress must not run");
+    });
+    const result = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      {
+        createResidentHeartbeatWriter: () => ({
+          file: join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"),
+          recordLiveness: async () => {
+            throw new Error("PRIVATE disk failure");
+          },
+          recordProgress
+        }),
+        createObserveRunner,
+        env,
+        registry: new MessagingProviderRegistry([capturingProvider(sent)])
+      }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      `muse daemon writer stopped: ${RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED}\n`
+    );
+    expect(result.stderr).not.toContain("PRIVATE");
+    expect(sent).toHaveLength(0);
+    expect(createObserveRunner).not.toHaveBeenCalled();
+    expect(recordProgress).not.toHaveBeenCalled();
+    expect(result.stdout).not.toContain("daemon --once complete");
+  });
+
   it("releases writer authority when the resident loop throws", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
     const release = vi.fn(async () => undefined);
 
     const result = await runDaemon([], {
       acquireResidentWriterLease: async () => ({
+        ...testResidentLeaseIdentity(),
         release,
         validate: async () => true,
         waitMs: 0

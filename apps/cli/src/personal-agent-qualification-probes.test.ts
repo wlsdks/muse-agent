@@ -94,12 +94,29 @@ function qualificationFixture(options: {
   const daemonConfigFile = join(root, "daemon.json");
   mkdirSync(join(cliPackageRoot, "dist"), { recursive: true });
   mkdirSync(join(root, "state"), { recursive: true });
+  mkdirSync(join(root, ".muse", "resident-writer-lease"), { mode: 0o700, recursive: true });
   writeFileSync(join(cliPackageRoot, "package.json"), JSON.stringify({
     bin: { muse: "./dist/index.js" },
     name: "@muse/cli"
   }));
   writeFileSync(cliEntry, "export {};\n");
-  writeFileSync(heartbeatFile, JSON.stringify({ at: "2026-07-21T11:59:00.000Z", pid: 4321 }));
+  writeFileSync(heartbeatFile, JSON.stringify({
+    at: "2026-07-21T11:59:00.000Z",
+    expectedCadenceMs: 60_000,
+    generation: "qualification_generation_01",
+    lastProgressAt: "2026-07-21T11:59:00.000Z",
+    pid: 4321,
+    sequence: 7,
+    version: 1
+  }), { mode: 0o600 });
+  writeFileSync(join(root, ".muse", "resident-writer-lease", "active.json"), JSON.stringify({
+    createdAtMs: Date.parse("2026-07-21T11:00:01.000Z"),
+    pid: 4321,
+    role: "background",
+    sequence: 1,
+    token: "qualification_generation_01",
+    version: 1
+  }), { mode: 0o600 });
   writeFileSync(followupsFile, JSON.stringify({ followups: options.overdueFollowup
     ? [{ scheduledFor: "2026-07-20T00:00:00.000Z", status: "scheduled" }]
     : [] }));
