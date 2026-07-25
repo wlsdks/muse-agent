@@ -434,6 +434,28 @@ describe("resident daemon truth", () => {
     expect(check.detail).not.toContain("pid");
   });
 
+  it("surfaces only the redacted terminal reason, stable point, and diagnostic link", () => {
+    const check = residentDaemonRuntimeCheck(residentRuntime({
+      health: {
+        reasonCodes: ["daemon-terminal-provider-auth-failed"],
+        status: "failed",
+        terminalFailure: {
+          at: "2026-07-22T02:00:03.000Z",
+          diagnosticRef: "muse://resident-diagnostics/diagnostic_00000001",
+          exitClass: "authentication",
+          lastStablePoint: "heartbeat-established",
+          reasonCode: "provider-auth-failed"
+        }
+      }
+    }));
+
+    expect(check.status).toBe("fail");
+    expect(check.detail).toContain("terminal failure: provider authentication");
+    expect(check.detail).toContain("provider-auth-failed after heartbeat-established");
+    expect(check.detail).toContain("muse://resident-diagnostics/diagnostic_00000001");
+    expect(check.detail).not.toContain("token");
+  });
+
   it.each([
     ["stale heartbeat", { heartbeat: "stale" }],
     ["process identity mismatch", { pidAgreement: false }],

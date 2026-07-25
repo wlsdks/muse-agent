@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  appendResidentDaemonFailure,
+  beginResidentDaemonTerminalGeneration,
+  markResidentDaemonStable
+} from "./resident-daemon-terminal-state.js";
+import {
   inspectResidentDaemon,
   parseResidentDaemonHeartbeatReceipt,
   parseResidentWriterLeaseIdentity,
@@ -43,6 +48,24 @@ function writeResidentLease(root: string, overrides: Readonly<Record<string, unk
     version: 1,
     ...overrides
   }), { mode: 0o600 });
+  return file;
+}
+
+function writeResidentTerminal(root: string): string {
+  const museRoot = join(root, ".muse");
+  const file = join(museRoot, "resident-daemon-terminal-state.json");
+  mkdirSync(museRoot, { mode: 0o700, recursive: true });
+  const started = beginResidentDaemonTerminalGeneration({
+    generation: RESIDENT_GENERATION,
+    now: new Date("2026-07-22T02:00:01.000Z"),
+    pid: 4321
+  });
+  const stable = markResidentDaemonStable(
+    started,
+    "tick-completed",
+    new Date("2026-07-22T02:59:00.000Z")
+  );
+  writeFileSync(file, JSON.stringify(stable), { mode: 0o600 });
   return file;
 }
 
@@ -137,6 +160,7 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
     { mode: 0o600 }
   );
   const lease = writeResidentLease(root);
+  const terminal = writeResidentTerminal(root);
   const liveEnvironment = { ...environment, MUSE_DAEMON_DELIVERY_ENABLED: options.liveDelivery ?? "false" };
   const print = [
     "gui/501/com.muse.daemon = {",
@@ -161,7 +185,7 @@ function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt
     if (executable === "ps") return { code: 0, stderr: "", stdout: "" };
     return { code: 1, stderr: "unexpected", stdout: "" };
   };
-  return { environment, heartbeat, lease, plistFile, root, run };
+  return { environment, heartbeat, lease, plistFile, root, run, terminal };
 }
 
 function fingerprint(file: string): string {
@@ -357,6 +381,7 @@ function inventoryFixture(options: {
     { mode: 0o600 }
   );
   writeResidentLease(root);
+  writeResidentTerminal(root);
   const launchdRunning = options.launchdRunning ?? true;
   const residentPids = options.residentPids ?? (launchdRunning ? [4321] : []);
   const rows = [
@@ -425,6 +450,96 @@ describe("resident daemon read-only authority", () => {
       stableMuseCommand: true
     });
     expect(result.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED).toBe("false");
+  });
+
+  it("projects a redacted terminal failure through the shared health result", async () => {
+    const state = fixture();
+    const started = beginResidentDaemonTerminalGeneration({
+      generation: RESIDENT_GENERATION,
+      now: new Date("2026-07-22T02:00:01.000Z"),
+      pid: 4321
+    });
+    const stable = markResidentDaemonStable(
+      started,
+      "heartbeat-established",
+      new Date("2026-07-22T02:00:02.000Z")
+    );
+    const failed = appendResidentDaemonFailure(stable, {
+      cause: Object.assign(new Error("secret provider token"), { code: "EAUTH" }),
+      context: { domain: "provider" },
+      id: "diagnostic_00000001",
+      now: new Date("2026-07-22T02:00:03.000Z")
+    });
+    writeFileSync(state.terminal, JSON.stringify(failed), { mode: 0o600 });
+
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: state.run,
+      uid: 501
+    });
+
+    expect(result.health).toMatchObject({
+      reasonCodes: expect.arrayContaining(["daemon-terminal-provider-auth-failed"]),
+      status: "failed",
+      terminalFailure: {
+        at: "2026-07-22T02:00:03.000Z",
+        diagnosticRef: "muse://resident-diagnostics/diagnostic_00000001",
+        exitClass: "authentication",
+        lastStablePoint: "heartbeat-established",
+        reasonCode: "provider-auth-failed"
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("secret provider token");
+  });
+
+  it("fails closed for missing, malformed, and wrong-generation terminal receipts", async () => {
+    const missing = fixture();
+    unlinkSync(missing.terminal);
+    const missingResult = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: missing.root, MUSE_DAEMON_PLIST_FILE: missing.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: missing.run,
+      uid: 501
+    });
+    expect(missingResult.health.reasonCodes).toContain("daemon-terminal-state-missing");
+
+    const malformed = fixture();
+    writeFileSync(malformed.terminal, "{\"version\":1", { mode: 0o600 });
+    const malformedResult = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: malformed.root, MUSE_DAEMON_PLIST_FILE: malformed.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: malformed.run,
+      uid: 501
+    });
+    expect(malformedResult.health.reasonCodes).toContain("daemon-terminal-state-invalid");
+
+    const mismatched = fixture();
+    const wrongGeneration = markResidentDaemonStable(
+      beginResidentDaemonTerminalGeneration({
+        generation: "different_generation_02",
+        now: new Date("2026-07-22T02:00:01.000Z"),
+        pid: 4321
+      }),
+      "tick-completed",
+      new Date("2026-07-22T02:59:00.000Z")
+    );
+    writeFileSync(mismatched.terminal, JSON.stringify(wrongGeneration), { mode: 0o600 });
+    const mismatchedResult = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: mismatched.root, MUSE_DAEMON_PLIST_FILE: mismatched.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run: mismatched.run,
+      uid: 501
+    });
+    expect(mismatchedResult.health.reasonCodes).toContain("daemon-terminal-generation-mismatch");
   });
 
   it.each([

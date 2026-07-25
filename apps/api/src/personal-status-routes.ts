@@ -396,11 +396,14 @@ function projectRuntime(
   const brakeEngaged = delivery !== undefined && ["0", "false", "no", "off"].includes(delivery);
   const brakeReleased = delivery !== undefined && ["1", "true", "yes", "on"].includes(delivery);
   const held = !verified || brakeEngaged || !brakeReleased;
+  const terminal = inspected.health.terminalFailure;
   const card: PersonalStatusCard = {
     action: { id: "inspect-runtime", target: { command: "muse daemon --status", type: "command" } },
     deadline: null,
     detail: held
-      ? text(`runtime=${observation.runtime}, heartbeat=${observation.heartbeat}, delivery=${brakeEngaged ? "engaged" : brakeReleased ? "released" : "unknown"}`, 500)
+      ? text(`runtime=${observation.runtime}, heartbeat=${observation.heartbeat}, delivery=${brakeEngaged ? "engaged" : brakeReleased ? "released" : "unknown"}${terminal
+        ? `, terminal=${terminal.reasonCode} after ${terminal.lastStablePoint}, diagnostic=${terminal.diagnosticRef}`
+        : ""}`, 500)
       : "resident daemon과 delivery gate가 검증되었습니다.",
     id: "runtime:resident",
     kind: "runtime-trust",

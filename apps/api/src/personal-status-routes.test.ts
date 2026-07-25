@@ -210,6 +210,30 @@ describe("GET /api/personal-status", () => {
     }));
   });
 
+  it("projects the redacted terminal diagnostic without private failure text", async () => {
+    const state = await fixture();
+    const status = await collectPersonalStatus({
+      ...state.routeOptions,
+      residentInspector: async () => resident("true", {
+        reasonCodes: ["daemon-terminal-port-collision"],
+        status: "failed",
+        terminalFailure: {
+          at: "2026-07-22T02:00:03.000Z",
+          diagnosticRef: "muse://resident-diagnostics/diagnostic_00000001",
+          exitClass: "resource-conflict",
+          lastStablePoint: "heartbeat-established",
+          reasonCode: "port-collision"
+        }
+      })
+    });
+
+    const runtime = status.cards.find((card) => card.id === "runtime:resident");
+    expect(runtime?.detail).toContain("terminal=port-collision after heartbeat-established");
+    expect(runtime?.detail).toContain("muse://resident-diagnostics/diagnostic_00000001");
+    expect(runtime?.detail).not.toContain("/Users/");
+    expect(runtime?.detail).not.toContain("token=");
+  });
+
   it("uses persisted order as the tie-break for same-timestamp learning retractions", async () => {
     const base = {
       key: "focus_time", kind: "preference", learnedAt: "2026-07-21T08:00:00.000Z", source: "user", userId: USER_ID

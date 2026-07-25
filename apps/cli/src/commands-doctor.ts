@@ -489,7 +489,17 @@ function describeResidentDaemonHealthReason(
     [RESIDENT_DAEMON_HEALTH_REASON.pidMismatch]: "resident PID mismatch",
     [RESIDENT_DAEMON_HEALTH_REASON.platformUnverified]: "background runtime platform unverified",
     [RESIDENT_DAEMON_HEALTH_REASON.processProbeUnverified]: "resident process probe unverified",
-    [RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing]: "resident process missing"
+    [RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing]: "resident process missing",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalConfigurationInvalid]: "terminal failure: configuration invalid",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalGenerationMismatch]: "terminal writer generation mismatch",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalInvalid]: "terminal state invalid",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalMissing]: "terminal state missing",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalPidMismatch]: "terminal writer PID mismatch",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalPortCollision]: "terminal failure: port collision",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalProviderAuthFailed]: "terminal failure: provider authentication",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalStateUnverified]: "terminal state unverified",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalStoreCorrupt]: "terminal failure: store corruption",
+    [RESIDENT_DAEMON_HEALTH_REASON.terminalUncaughtException]: "terminal failure: uncaught exception"
   };
   return descriptions[reason];
 }
@@ -506,10 +516,12 @@ export function residentDaemonRuntimeCheck(
     ? "ok"
     : observation.health.status === "failed" ? "fail" : "warn";
   const detail = status === "ok"
-    ? "LaunchAgent, live definition, process identity, heartbeat, and orphan-process probe are healthy"
+    ? "LaunchAgent, live definition, process identity, heartbeat, terminal state, and orphan-process probe are healthy"
     : `resident health ${observation.health.status}: ${observation.health.reasonCodes
       .map((reason) => describeResidentDaemonHealthReason(reason, observation))
-      .join(", ")}`;
+      .join(", ")}${observation.health.terminalFailure
+        ? `; last terminal=${observation.health.terminalFailure.reasonCode} after ${observation.health.terminalFailure.lastStablePoint} (${observation.health.terminalFailure.diagnosticRef})`
+        : ""}`;
   return { detail, health: observation.health, name: "resident daemon", observation, status };
 }
 

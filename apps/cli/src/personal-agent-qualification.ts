@@ -11,7 +11,8 @@ import { createHash } from "node:crypto";
 import {
   RESIDENT_DAEMON_HEALTH_REASON,
   type ResidentDaemonHealthReasonCode,
-  type ResidentDaemonHealthResult
+  type ResidentDaemonHealthResult,
+  type ResidentDaemonObservation
 } from "@muse/runtime-state";
 
 export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 2 as const;
@@ -143,6 +144,7 @@ export interface RuntimeQualificationObservation {
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;
+  readonly terminal?: ResidentDaemonObservation["terminal"];
 }
 
 export interface BacklogCountObservation {

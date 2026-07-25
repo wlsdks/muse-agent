@@ -6,6 +6,10 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  beginResidentDaemonTerminalGeneration,
+  markResidentDaemonStable
+} from "@muse/runtime-state";
+import {
   collectResidentDaemonRuntime,
   collectPersonalAgentQualificationObservations,
   inspectGitSnapshot,
@@ -117,6 +121,19 @@ function qualificationFixture(options: {
     token: "qualification_generation_01",
     version: 1
   }), { mode: 0o600 });
+  writeFileSync(
+    join(root, ".muse", "resident-daemon-terminal-state.json"),
+    JSON.stringify(markResidentDaemonStable(
+      beginResidentDaemonTerminalGeneration({
+        generation: "qualification_generation_01",
+        now: new Date("2026-07-21T11:00:01.000Z"),
+        pid: 4321
+      }),
+      "tick-completed",
+      new Date("2026-07-21T11:59:00.000Z")
+    )),
+    { mode: 0o600 }
+  );
   writeFileSync(followupsFile, JSON.stringify({ followups: options.overdueFollowup
     ? [{ scheduledFor: "2026-07-20T00:00:00.000Z", status: "scheduled" }]
     : [] }));

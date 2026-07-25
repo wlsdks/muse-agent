@@ -4,6 +4,15 @@ import { lstat, readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
+import {
+  parseResidentDaemonTerminalStateReceipt,
+  resolveResidentDaemonTerminalStateFilePath,
+  validateResidentDaemonTerminalStatePath,
+  type ResidentDaemonExitClass,
+  type ResidentDaemonFailureReasonCode,
+  type ResidentDaemonStablePoint
+} from "./resident-daemon-terminal-state.js";
+
 export const MUSE_LAUNCH_AGENT_LABEL = "com.muse.daemon";
 export const RESIDENT_DAEMON_HEARTBEAT_VERSION = 1 as const;
 export const RESIDENT_DAEMON_MIN_CADENCE_MS = 5_000;
@@ -148,7 +157,20 @@ export interface ResidentDaemonObservation {
   readonly orphanProbe: "ok" | "unverified";
   readonly orphanRootCount: number;
   readonly orphanProcessCount: number;
+  readonly terminal?: ResidentDaemonTerminalObservation;
 }
+
+export interface ResidentDaemonTerminalFailureSummary {
+  readonly at: string;
+  readonly diagnosticRef: string;
+  readonly exitClass: ResidentDaemonExitClass;
+  readonly lastStablePoint: ResidentDaemonStablePoint;
+  readonly reasonCode: ResidentDaemonFailureReasonCode;
+}
+
+export type ResidentDaemonTerminalObservation =
+  | { readonly state: "missing" | "invalid" | "unknown" | "generation-mismatch" | "pid-mismatch" | "running" }
+  | { readonly failure: ResidentDaemonTerminalFailureSummary; readonly state: "failed" };
 
 export interface ResidentDaemonInspection {
   readonly effectiveRuntimeEnv: NodeJS.ProcessEnv;
@@ -213,7 +235,17 @@ export const RESIDENT_DAEMON_HEALTH_REASON = {
   pidMismatch: "daemon-pid-mismatch",
   platformUnverified: "background-runtime-platform-unverified",
   processProbeUnverified: "orphan-process-probe-unverified",
-  residentProcessMissing: "resident-process-missing"
+  residentProcessMissing: "resident-process-missing",
+  terminalConfigurationInvalid: "daemon-terminal-configuration-invalid",
+  terminalGenerationMismatch: "daemon-terminal-generation-mismatch",
+  terminalInvalid: "daemon-terminal-state-invalid",
+  terminalMissing: "daemon-terminal-state-missing",
+  terminalPidMismatch: "daemon-terminal-pid-mismatch",
+  terminalPortCollision: "daemon-terminal-port-collision",
+  terminalProviderAuthFailed: "daemon-terminal-provider-auth-failed",
+  terminalStateUnverified: "daemon-terminal-state-unverified",
+  terminalStoreCorrupt: "daemon-terminal-store-corrupt",
+  terminalUncaughtException: "daemon-terminal-uncaught-exception"
 } as const;
 
 export type ResidentDaemonHealthReasonCode =
@@ -222,7 +254,19 @@ export type ResidentDaemonHealthReasonCode =
 export interface ResidentDaemonHealthResult {
   readonly status: "healthy" | "failed" | "unverified";
   readonly reasonCodes: readonly ResidentDaemonHealthReasonCode[];
+  readonly terminalFailure?: ResidentDaemonTerminalFailureSummary;
 }
+
+const TERMINAL_FAILURE_HEALTH_REASON: Readonly<Record<
+  ResidentDaemonFailureReasonCode,
+  ResidentDaemonHealthReasonCode
+>> = {
+  "configuration-invalid": RESIDENT_DAEMON_HEALTH_REASON.terminalConfigurationInvalid,
+  "port-collision": RESIDENT_DAEMON_HEALTH_REASON.terminalPortCollision,
+  "provider-auth-failed": RESIDENT_DAEMON_HEALTH_REASON.terminalProviderAuthFailed,
+  "store-corrupt": RESIDENT_DAEMON_HEALTH_REASON.terminalStoreCorrupt,
+  "uncaught-exception": RESIDENT_DAEMON_HEALTH_REASON.terminalUncaughtException
+};
 
 /** One fail-close resident truth shared by CLI status, Doctor, and qualification. */
 export function classifyResidentDaemonHealth(
@@ -284,10 +328,26 @@ export function classifyResidentDaemonHealth(
     failed.push(RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses);
   }
 
+  const terminal = observation.terminal;
+  if (terminal?.state === "missing") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.terminalMissing);
+  } else if (terminal?.state === "invalid") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.terminalInvalid);
+  } else if (terminal?.state === "generation-mismatch") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.terminalGenerationMismatch);
+  } else if (terminal?.state === "pid-mismatch") {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.terminalPidMismatch);
+  } else if (terminal?.state === "unknown") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.terminalStateUnverified);
+  } else if (terminal?.state === "failed") {
+    failed.push(TERMINAL_FAILURE_HEALTH_REASON[terminal.failure.reasonCode]);
+  }
+
   const reasonCodes = [...new Set([...failed, ...unverified])];
   return {
     reasonCodes,
-    status: failed.length > 0 ? "failed" : unverified.length > 0 ? "unverified" : "healthy"
+    status: failed.length > 0 ? "failed" : unverified.length > 0 ? "unverified" : "healthy",
+    ...(terminal?.state === "failed" ? { terminalFailure: terminal.failure } : {})
   };
 }
 
@@ -836,13 +896,57 @@ async function readOwnerOnlyText(
   }
 }
 
+async function inspectTerminalState(
+  file: string | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+  runtime: ResidentDaemonObservation["runtime"],
+  expectedPid: number | undefined,
+  expectedGeneration: string | undefined
+): Promise<ResidentDaemonTerminalObservation> {
+  if (!file) return { state: "unknown" };
+  if (!await validateResidentDaemonTerminalStatePath(env, file)) return { state: "invalid" };
+  const read = await readOwnerOnlyText(file);
+  if (read.state === "missing") return { state: "missing" };
+  if (read.state !== "ok" || read.text === undefined) return { state: "invalid" };
+  const receipt = parseResidentDaemonTerminalStateReceipt(read.text);
+  if (!receipt) return { state: "invalid" };
+
+  // A live process must own the same PID and writer generation. A launchd
+  // crash-loop has no live PID, so its final failed receipt is the relevant
+  // terminal evidence from the process that just exited.
+  if (runtime === "running") {
+    if (expectedPid === undefined || expectedGeneration === undefined) return { state: "unknown" };
+    if (receipt.pid !== expectedPid) return { state: "pid-mismatch" };
+    if (receipt.generation !== expectedGeneration) return { state: "generation-mismatch" };
+  }
+  if (receipt.status === "running") {
+    return runtime === "crash-looping" ? { state: "invalid" } : { state: "running" };
+  }
+  const failure = receipt.failures.at(-1);
+  if (!failure) return { state: "invalid" };
+  return {
+    failure: {
+      at: failure.at,
+      diagnosticRef: failure.diagnosticRef,
+      exitClass: failure.exitClass,
+      lastStablePoint: failure.lastStablePoint,
+      reasonCode: failure.reasonCode
+    },
+    state: "failed"
+  };
+}
+
 async function inspectHeartbeat(
   file: string | undefined,
   leaseFile: string | undefined,
   nowMs: number,
   processStartMs: number | undefined,
   expectedPid: number | undefined
-): Promise<{ readonly state: ResidentDaemonObservation["heartbeat"]; readonly pidMatches: boolean }> {
+): Promise<{
+  readonly generation?: string;
+  readonly state: ResidentDaemonObservation["heartbeat"];
+  readonly pidMatches: boolean;
+}> {
   if (!file) return { pidMatches: false, state: "unknown" };
   const read = await readOwnerOnlyText(file);
   if (read.state === "missing") return { pidMatches: false, state: "missing" };
@@ -852,19 +956,21 @@ async function inspectHeartbeat(
   const pidMatches = receipt.pid === expectedPid;
   const at = Date.parse(receipt.at);
   const lastProgressAt = Date.parse(receipt.lastProgressAt);
-  if (at > nowMs) return { pidMatches, state: "future" };
-  if (processStartMs === undefined) return { pidMatches, state: "unknown" };
+  if (at > nowMs) return { generation: receipt.generation, pidMatches, state: "future" };
+  if (processStartMs === undefined) return { generation: receipt.generation, pidMatches, state: "unknown" };
   if (at < processStartMs || lastProgressAt < processStartMs) {
-    return { pidMatches, state: "before-process" };
+    return { generation: receipt.generation, pidMatches, state: "before-process" };
   }
-  if (!leaseFile) return { pidMatches, state: "generation-mismatch" };
+  if (!leaseFile) return { generation: receipt.generation, pidMatches, state: "generation-mismatch" };
   const leaseRead = await readOwnerOnlyText(leaseFile);
-  if (leaseRead.state === "missing") return { pidMatches, state: "generation-mismatch" };
+  if (leaseRead.state === "missing") {
+    return { generation: receipt.generation, pidMatches, state: "generation-mismatch" };
+  }
   if (leaseRead.state !== "ok" || leaseRead.text === undefined) {
-    return { pidMatches, state: "invalid" };
+    return { generation: receipt.generation, pidMatches, state: "invalid" };
   }
   const lease = parseResidentWriterLeaseIdentity(leaseRead.text);
-  if (!lease) return { pidMatches, state: "invalid" };
+  if (!lease) return { generation: receipt.generation, pidMatches, state: "invalid" };
   if (
     lease.pid !== receipt.pid
     || lease.pid !== expectedPid
@@ -872,12 +978,14 @@ async function inspectHeartbeat(
     || lease.createdAtMs < processStartMs
     || lease.createdAtMs > at
   ) {
-    return { pidMatches, state: "generation-mismatch" };
+    return { generation: receipt.generation, pidMatches, state: "generation-mismatch" };
   }
   const maxAgeMs = receipt.expectedCadenceMs * RESIDENT_DAEMON_HEARTBEAT_GRACE_MULTIPLIER;
-  if (nowMs - at > maxAgeMs) return { pidMatches, state: "stale" };
-  if (nowMs - lastProgressAt > maxAgeMs) return { pidMatches, state: "progress-stale" };
-  return { pidMatches, state: "fresh" };
+  if (nowMs - at > maxAgeMs) return { generation: receipt.generation, pidMatches, state: "stale" };
+  if (nowMs - lastProgressAt > maxAgeMs) {
+    return { generation: receipt.generation, pidMatches, state: "progress-stale" };
+  }
+  return { generation: receipt.generation, pidMatches, state: "fresh" };
 }
 
 const PROCESS_START_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -976,6 +1084,13 @@ export async function inspectResidentDaemon(
     await processStart(livePid, run),
     livePid
   );
+  const terminal = await inspectTerminalState(
+    resolveResidentDaemonTerminalStateFilePath(effectiveRuntimeEnv),
+    effectiveRuntimeEnv,
+    runtime,
+    livePid,
+    heartbeat.generation
+  );
   const processProbe = options.inspectOrphans === false
     ? { orphanProcessCount: 0, orphanRootCount: 0, probe: "unverified" as const, processes: [] }
     : await inspectResidentMuseProcesses(
@@ -1011,6 +1126,7 @@ export async function inspectResidentDaemon(
       && listPid === livePid
       && heartbeat.pidMatches
       && heartbeat.state === "fresh"
+      && terminal.state === "running"
       && orphan.orphanRootCount === 0
       && residentProcessCount === 1
       && launchdResidentMatches === 1) {
@@ -1036,7 +1152,8 @@ export async function inspectResidentDaemon(
     pidAgreement: listPid !== undefined && livePid !== undefined && listPid === livePid && heartbeat.pidMatches,
     platform,
     runtime,
-    stableMuseCommand
+    stableMuseCommand,
+    terminal
   };
   return {
     diskArguments,

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 import { readBrowsingStore } from "@muse/recall";
+import { parseResidentDaemonTerminalStateReceipt } from "@muse/runtime-state";
 
 import { LogMessagingProvider, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
@@ -27,6 +28,7 @@ import {
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 import { RESIDENT_DAEMON_HEARTBEAT_WRITE_FAILED } from "./resident-daemon-heartbeat.js";
+import { openResidentDaemonTerminalStateJournal } from "./resident-daemon-terminal-state.js";
 
 function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -87,7 +89,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createResidentHeartbeatWriter?: DaemonHelpers["createResidentHeartbeatWriter"]; openResidentTerminalJournal?: DaemonHelpers["openResidentTerminalJournal"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -150,6 +152,12 @@ async function runDaemon(
       ...(opts.createResidentHeartbeatWriter
         ? { createResidentHeartbeatWriter: opts.createResidentHeartbeatWriter }
         : {}),
+      openResidentTerminalJournal: opts.openResidentTerminalJournal ?? (async () => ({
+        current: () => ({} as never),
+        file: "/test/resident-daemon-terminal-state.json",
+        markStable: async () => ({} as never),
+        recordFailure: async () => ({} as never)
+      })),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonRuntimeExecutable !== undefined
         ? { daemonRuntimeExecutable: opts.daemonRuntimeExecutable }
@@ -217,6 +225,239 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(existsSync(env.MUSE_TASKS_FILE!)).toBe(false);
     expect(existsSync(env.MUSE_REMINDERS_FILE!)).toBe(false);
     expect(existsSync(env.MUSE_FOLLOWUPS_FILE!)).toBe(false);
+  });
+
+  it("records the resident lifecycle around the initial heartbeat and completed tick", async () => {
+    const env = tmpEnv();
+    const events: string[] = [];
+    const registry = new MessagingProviderRegistry([new LogMessagingProvider()]);
+
+    const result = await runDaemon(["--once", "--provider", "log"], {
+      createObserveRunner: async () => {
+        events.push("observe-created");
+        return {
+          shutdown: async () => undefined,
+          tick: async () => {
+            events.push("observe-tick");
+            return "sampled" as const;
+          }
+        };
+      },
+      createResidentHeartbeatWriter: () => ({
+        current: () => ({} as never),
+        file: "/test/resident-heartbeat.json",
+        recordLiveness: async () => {
+          events.push("heartbeat:liveness");
+          return {} as never;
+        },
+        recordProgress: async () => {
+          events.push("heartbeat:progress");
+          return {} as never;
+        }
+      }),
+      env,
+      openResidentTerminalJournal: async () => {
+        events.push("journal:open");
+        return {
+          current: () => ({} as never),
+          file: "/test/resident-terminal-state.json",
+          markStable: async (point) => {
+            events.push(`stable:${point}`);
+            return {} as never;
+          },
+          recordFailure: async () => ({} as never)
+        };
+      },
+      registry
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(events).toEqual([
+      "journal:open",
+      "stable:configuration-loaded",
+      "stable:writer-authority-acquired",
+      "heartbeat:liveness",
+      "stable:heartbeat-established",
+      "observe-created",
+      "stable:runtime-initialized",
+      "observe-tick",
+      "heartbeat:liveness",
+      "heartbeat:progress",
+      "stable:tick-completed"
+    ]);
+  });
+
+  it("persists a redacted reason-coded terminal failure after the last stable point", async () => {
+    const env = tmpEnv();
+    const terminalFile = join(env.HOME!, "terminal-state.json");
+    env.MUSE_DAEMON_TERMINAL_STATE_FILE = terminalFile;
+    const registry = new MessagingProviderRegistry([new LogMessagingProvider()]);
+    const privateCause = Object.assign(
+      new Error("bind failed with token=super-secret at /Users/private/socket"),
+      { code: "EADDRINUSE" }
+    );
+
+    const result = await runDaemon(["--once", "--provider", "log"], {
+      createObserveRunner: async () => {
+        throw privateCause;
+      },
+      env,
+      openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
+      registry
+    });
+
+    expect(result.exitCode).toBe(1);
+    const text = readFileSync(terminalFile, "utf8");
+    expect(text).not.toContain("super-secret");
+    expect(text).not.toContain("/Users/private");
+    const receipt = parseResidentDaemonTerminalStateReceipt(text);
+    expect(receipt).toMatchObject({
+      lastStablePoint: "heartbeat-established",
+      status: "failed"
+    });
+    expect(receipt?.failures.at(-1)).toMatchObject({
+      exitClass: "resource-conflict",
+      lastStablePoint: "heartbeat-established",
+      reasonCode: "port-collision"
+    });
+    expect(receipt?.failures.at(-1)?.diagnosticRef).toMatch(/^muse:\/\/resident-diagnostics\/[A-Za-z0-9_-]+$/u);
+  });
+
+  it("fails closed with a fixed reason when the terminal journal cannot persist", async () => {
+    const env = tmpEnv();
+    const registry = new MessagingProviderRegistry([new LogMessagingProvider()]);
+    const heartbeat = vi.fn(async () => ({} as never));
+
+    const result = await runDaemon(["--once", "--provider", "log"], {
+      createResidentHeartbeatWriter: () => ({
+        current: () => ({} as never),
+        file: "/test/resident-heartbeat.json",
+        recordLiveness: heartbeat,
+        recordProgress: heartbeat
+      }),
+      env,
+      openResidentTerminalJournal: async () => {
+        throw new Error("private journal path");
+      },
+      registry
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("muse daemon writer stopped: resident-terminal-state-unavailable\n");
+    expect(heartbeat).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      expected: {
+        exitClass: "configuration",
+        reasonCode: "configuration-invalid"
+      },
+      name: "configuration",
+      options: {
+        readDaemonConfig: () => {
+          throw new SyntaxError("private malformed config content");
+        }
+      }
+    },
+    {
+      expected: {
+        exitClass: "authentication",
+        reasonCode: "provider-auth-failed"
+      },
+      name: "provider authentication",
+      options: {
+        buildMessagingRegistry: () => {
+          throw Object.assign(new Error("private provider credential"), { code: "EAUTH" });
+        }
+      }
+    }
+  ] as const)("records a reason-coded $name startup failure before runtime initialization", async ({ expected, options }) => {
+    const env = tmpEnv();
+    const terminalFile = join(env.HOME!, `terminal-${expected.reasonCode}.json`);
+    env.MUSE_DAEMON_TERMINAL_STATE_FILE = terminalFile;
+
+    const result = await runDaemon(["--once", "--provider", "log"], {
+      ...options,
+      env,
+      openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()])
+    });
+
+    expect(result.exitCode).toBe(1);
+    const text = readFileSync(terminalFile, "utf8");
+    expect(text).not.toContain("private");
+    expect(parseResidentDaemonTerminalStateReceipt(text)?.failures.at(-1)).toMatchObject({
+      ...expected,
+      lastStablePoint: "writer-authority-acquired"
+    });
+  });
+
+  it.each([
+    {
+      args: ["--once", "--interval", "1", "--provider", "log"],
+      configure: (_env: NodeJS.ProcessEnv) => undefined,
+      name: "bounded interval"
+    },
+    {
+      args: ["--once", "--provider", "log"],
+      configure: (env: NodeJS.ProcessEnv) => {
+        env.MUSE_DAEMON_PROVIDER_LOCK = "telegram";
+      },
+      name: "provider lock"
+    }
+  ])("journals a pre-runtime $name validation failure", async ({ args, configure, name }) => {
+    const env = tmpEnv();
+    const terminalFile = join(env.HOME!, `terminal-${name.replaceAll(" ", "-")}.json`);
+    env.MUSE_DAEMON_TERMINAL_STATE_FILE = terminalFile;
+    configure(env);
+
+    const result = await runDaemon(args, {
+      env,
+      openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()])
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(parseResidentDaemonTerminalStateReceipt(readFileSync(terminalFile, "utf8"))?.failures.at(-1))
+      .toMatchObject({
+        exitClass: "configuration",
+        lastStablePoint: "writer-authority-acquired",
+        reasonCode: "configuration-invalid"
+      });
+  });
+
+  it.each([
+    {
+      cause: Object.assign(new Error("PRIVATE provider credential"), { status: 401 }),
+      expected: { exitClass: "authentication", reasonCode: "provider-auth-failed" },
+      name: "provider authentication"
+    },
+    {
+      cause: Object.assign(new Error("PRIVATE store bytes"), { code: "ERR_STORE_CORRUPT" }),
+      expected: { exitClass: "data-integrity", reasonCode: "store-corrupt" },
+      name: "store corruption"
+    }
+  ])("preserves a post-journal $name classification", async ({ cause, expected, name }) => {
+    const env = tmpEnv();
+    const terminalFile = join(env.HOME!, `terminal-runtime-${name.replaceAll(" ", "-")}.json`);
+    env.MUSE_DAEMON_TERMINAL_STATE_FILE = terminalFile;
+
+    const result = await runDaemon(["--once", "--provider", "log"], {
+      createObserveRunner: async () => {
+        throw cause;
+      },
+      env,
+      openResidentTerminalJournal: openResidentDaemonTerminalStateJournal,
+      registry: new MessagingProviderRegistry([new LogMessagingProvider()])
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(parseResidentDaemonTerminalStateReceipt(readFileSync(terminalFile, "utf8"))?.failures.at(-1))
+      .toMatchObject({
+        ...expected,
+        lastStablePoint: "heartbeat-established"
+      });
   });
 
   it("normal resident lease loss fences the next tick, releases, and restores signal listeners", async () => {
@@ -1818,8 +2059,10 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
     });
     await firstEntered;
 
+    const loserHeartbeatWriter = vi.fn();
     const secondResult = await runDaemon(["--once"], {
       acquireResidentWriterLease: acquire,
+      createResidentHeartbeatWriter: loserHeartbeatWriter,
       env,
       registry: new MessagingProviderRegistry()
     });
@@ -1828,7 +2071,10 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
       `muse daemon refused writer start: ${RESIDENT_WRITER_LEASE_REASON.contended}\n`
     );
     expect(secondResult.stdout).not.toContain("daemon --once complete");
-    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+    expect(loserHeartbeatWriter).not.toHaveBeenCalled();
+    // The admitted writer establishes liveness before entering its loop.
+    // The losing command contributes no heartbeat or tick effect of its own.
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(true);
 
     allowFirstTick();
     const winner = await firstResult;
