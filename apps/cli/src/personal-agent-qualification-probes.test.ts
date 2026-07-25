@@ -83,7 +83,8 @@ function qualificationFixture(options: {
   readonly liveProvider?: string;
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "muse-qualify-fixture-"));
-  const cliEntry = join(root, "stable-muse-entry.js");
+  const cliPackageRoot = join(root, "apps", "cli");
+  const cliEntry = join(cliPackageRoot, "dist", "index.js");
   const plistFile = join(root, "com.muse.daemon.plist");
   const reportFile = join(root, "latest.json");
   const sidecarFile = join(root, "state", "proactive-sidecar.json");
@@ -91,7 +92,12 @@ function qualificationFixture(options: {
   const followupsFile = join(root, "followups.json");
   const remindersFile = join(root, "reminders.json");
   const daemonConfigFile = join(root, "daemon.json");
+  mkdirSync(join(cliPackageRoot, "dist"), { recursive: true });
   mkdirSync(join(root, "state"), { recursive: true });
+  writeFileSync(join(cliPackageRoot, "package.json"), JSON.stringify({
+    bin: { muse: "./dist/index.js" },
+    name: "@muse/cli"
+  }));
   writeFileSync(cliEntry, "export {};\n");
   writeFileSync(heartbeatFile, JSON.stringify({ at: "2026-07-21T11:59:00.000Z", pid: 4321 }));
   writeFileSync(followupsFile, JSON.stringify({ followups: options.overdueFollowup

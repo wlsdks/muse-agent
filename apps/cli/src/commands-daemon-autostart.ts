@@ -1,8 +1,21 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
+
+import { validateStableMuseCliEntry, validateStableMuseRuntimeExecutable } from "@muse/runtime-state";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { parseLaunchctlListInfo } from "./commands-daemon-launchagent.js";
+
+const TASK_SCHEDULER_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+const TASK_SCHEDULER_ROOT_ELEMENTS = new Set([
+  "Actions",
+  "Data",
+  "Principals",
+  "RegistrationInfo",
+  "Settings",
+  "Triggers"
+]);
 
 export interface CommandProbeResult {
   readonly code: number;
@@ -29,6 +42,10 @@ export type LaunchAgentArtifactStatus =
   | { readonly state: "stale-entrypoint"; readonly entrypoint?: string; readonly reason: string }
   | { readonly state: "valid"; readonly entrypoint: string };
 
+export type ScheduledTaskArtifactStatus =
+  | LaunchAgentArtifactStatus
+  | { readonly state: "unknown"; readonly reason: string };
+
 export type DaemonAutostartStatus =
   | {
       readonly kind: "darwin";
@@ -39,6 +56,7 @@ export type DaemonAutostartStatus =
   | {
       readonly kind: "win32";
       readonly taskName: string;
+      readonly artifact: ScheduledTaskArtifactStatus;
       readonly registration: "registered" | "not-registered" | "unknown";
       readonly runtime: { readonly state: "unknown"; readonly reason: string };
     }
@@ -56,6 +74,7 @@ export interface InspectDaemonAutostartOptions {
   readonly runLaunchctl?: (args: readonly string[]) => Promise<CommandProbeResult>;
   readonly schtasksRun?: (args: readonly string[]) => Promise<ScheduledTaskProbeResult>;
   readonly schtasksQueryArgs: (taskName: string) => readonly string[];
+  readonly temporaryRoots?: readonly string[];
 }
 
 function xmlText(value: string): string | undefined {
@@ -197,7 +216,10 @@ export function parseLaunchAgentProgramArguments(plist: string): readonly string
   return args;
 }
 
-function inspectLaunchAgentArtifact(plistFile: string): LaunchAgentArtifactStatus {
+function inspectLaunchAgentArtifact(
+  plistFile: string,
+  temporaryRoots: readonly string[] | undefined
+): LaunchAgentArtifactStatus {
   if (!existsSync(plistFile)) return { state: "missing" };
 
   let programArguments: readonly string[] | undefined;
@@ -213,19 +235,367 @@ function inspectLaunchAgentArtifact(plistFile: string): LaunchAgentArtifactStatu
 
   const executable = programArguments[0] ?? "";
   const entrypoint = programArguments[1] ?? "";
-  if (!isAbsolute(executable) || !existsSync(executable)) {
-    return { entrypoint, reason: `runtime executable is missing: ${executable || "<empty>"}`, state: "stale-entrypoint" };
+  const runtimeExecutable = validateStableMuseRuntimeExecutable(executable);
+  if (!runtimeExecutable.ok) {
+    return { entrypoint, reason: runtimeExecutable.reason, state: "stale-entrypoint" };
   }
-  if (!isAbsolute(entrypoint) || !existsSync(entrypoint)) {
-    return { entrypoint, reason: `Muse CLI entry is missing: ${entrypoint || "<empty>"}`, state: "stale-entrypoint" };
+  const validatedEntry = validateStableMuseCliEntry(entrypoint, { temporaryRoots });
+  return validatedEntry.ok
+    ? { entrypoint: validatedEntry.entrypoint, state: "valid" }
+    : { entrypoint, reason: validatedEntry.reason, state: "stale-entrypoint" };
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function exactlyOneRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!Array.isArray(value)) return recordValue(value);
+  return value.length === 1 ? recordValue(value[0]) : undefined;
+}
+
+function elementKeys(value: Record<string, unknown>): readonly string[] {
+  return Object.keys(value).filter((key) => !key.startsWith("@_")).sort();
+}
+
+function hasOnlyAttributes(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const allowedSet = new Set(allowed);
+  return Object.keys(value).filter((key) => key.startsWith("@_")).every((key) => allowedSet.has(key));
+}
+
+function containsNestedNamespaceDeclaration(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => containsNestedNamespaceDeclaration(item));
+  const record = recordValue(value);
+  if (!record) return false;
+  return Object.entries(record).some(([key, child]) =>
+    key === "@_xmlns"
+    || key.startsWith("@_xmlns:")
+    || (!key.startsWith("@_") && containsNestedNamespaceDeclaration(child))
+  );
+}
+
+interface ScheduledTaskXmlShape {
+  readonly attributes?: readonly string[];
+  readonly children?: Readonly<Record<string, ScheduledTaskXmlShape | "text">>;
+  readonly exactlyOneOf?: readonly (readonly string[])[];
+  readonly maxChildren?: number;
+  readonly maxOccurrences?: Readonly<Record<string, number>>;
+  readonly repeatable?: readonly string[];
+  readonly required?: readonly string[];
+}
+
+const TEXT_XML_SHAPE = "text" as const;
+const EMPTY_XML_SHAPE: ScheduledTaskXmlShape = {};
+const REPETITION_XML_SHAPE: ScheduledTaskXmlShape = {
+  children: {
+    Duration: TEXT_XML_SHAPE,
+    Interval: TEXT_XML_SHAPE,
+    StopAtDurationEnd: TEXT_XML_SHAPE
+  },
+  required: ["Interval"]
+};
+const TRIGGER_BASE_CHILDREN = {
+  Enabled: TEXT_XML_SHAPE,
+  EndBoundary: TEXT_XML_SHAPE,
+  ExecutionTimeLimit: TEXT_XML_SHAPE,
+  Repetition: REPETITION_XML_SHAPE,
+  StartBoundary: TEXT_XML_SHAPE
+} as const;
+
+function matchesScheduledTaskXmlShape(value: unknown, shape: ScheduledTaskXmlShape): boolean {
+  const record = value === "" ? {} : exactlyOneRecord(value);
+  if (record === undefined || !hasOnlyAttributes(record, shape.attributes ?? [])) return false;
+  const allowedChildren = shape.children ?? {};
+  const repeatable = new Set(shape.repeatable ?? []);
+  const keys = elementKeys(record);
+  if (keys.some((key) => !(key in allowedChildren))
+    || (shape.required ?? []).some((key) => !keys.includes(key))
+    || (shape.exactlyOneOf ?? []).some((group) => group.filter((key) => keys.includes(key)).length !== 1)) return false;
+  const childCount = keys.reduce(
+    (count, key) => count + (Array.isArray(record[key]) ? (record[key] as unknown[]).length : 1),
+    0
+  );
+  if (shape.maxChildren !== undefined && childCount > shape.maxChildren) return false;
+  return keys.every((key) => {
+    const childShape = allowedChildren[key];
+    const rawChildren = Array.isArray(record[key]) ? record[key] as unknown[] : [record[key]];
+    const maximum = shape.maxOccurrences?.[key];
+    if ((rawChildren.length > 1 && !repeatable.has(key))
+      || (maximum !== undefined && rawChildren.length > maximum)) return false;
+    return rawChildren.every((child) =>
+      childShape === TEXT_XML_SHAPE
+        ? typeof child === "string"
+        : childShape !== undefined && matchesScheduledTaskXmlShape(child, childShape)
+    );
+  });
+}
+
+const REGISTRATION_INFO_XML_SHAPE: ScheduledTaskXmlShape = {
+  children: Object.fromEntries([
+    "Author", "Date", "Description", "Documentation", "SecurityDescriptor", "Source", "URI", "Version"
+  ].map((key) => [key, TEXT_XML_SHAPE]))
+};
+const SETTINGS_XML_SHAPE: ScheduledTaskXmlShape = {
+  children: {
+    AllowHardTerminate: TEXT_XML_SHAPE,
+    AllowStartOnDemand: TEXT_XML_SHAPE,
+    DeleteExpiredTaskAfter: TEXT_XML_SHAPE,
+    DisallowStartIfOnBatteries: TEXT_XML_SHAPE,
+    DisallowStartOnRemoteAppSession: TEXT_XML_SHAPE,
+    Enabled: TEXT_XML_SHAPE,
+    ExecutionTimeLimit: TEXT_XML_SHAPE,
+    Hidden: TEXT_XML_SHAPE,
+    IdleSettings: {
+      children: {
+        Duration: TEXT_XML_SHAPE,
+        RestartOnIdle: TEXT_XML_SHAPE,
+        StopOnIdleEnd: TEXT_XML_SHAPE,
+        WaitTimeout: TEXT_XML_SHAPE
+      }
+    },
+    MultipleInstancesPolicy: TEXT_XML_SHAPE,
+    NetworkProfileName: TEXT_XML_SHAPE,
+    NetworkSettings: { children: { Id: TEXT_XML_SHAPE, Name: TEXT_XML_SHAPE } },
+    Priority: TEXT_XML_SHAPE,
+    RestartOnFailure: {
+      children: { Count: TEXT_XML_SHAPE, Interval: TEXT_XML_SHAPE },
+      required: ["Count", "Interval"]
+    },
+    RunOnlyIfIdle: TEXT_XML_SHAPE,
+    RunOnlyIfNetworkAvailable: TEXT_XML_SHAPE,
+    StartWhenAvailable: TEXT_XML_SHAPE,
+    StopIfGoingOnBatteries: TEXT_XML_SHAPE,
+    UseUnifiedSchedulingEngine: TEXT_XML_SHAPE,
+    WakeToRun: TEXT_XML_SHAPE
   }
-  return { entrypoint, state: "valid" };
+};
+const PRINCIPALS_XML_SHAPE: ScheduledTaskXmlShape = {
+  children: {
+    Principal: {
+      attributes: ["@_id"],
+      children: {
+        DisplayName: TEXT_XML_SHAPE,
+        GroupId: TEXT_XML_SHAPE,
+        LogonType: TEXT_XML_SHAPE,
+        ProcessTokenSidType: TEXT_XML_SHAPE,
+        RequiredPrivileges: {
+          children: { Privilege: TEXT_XML_SHAPE },
+          maxOccurrences: { Privilege: 64 },
+          repeatable: ["Privilege"],
+          required: ["Privilege"]
+        },
+        RunLevel: TEXT_XML_SHAPE,
+        UserId: TEXT_XML_SHAPE
+      }
+    }
+  },
+  maxOccurrences: { Principal: 32 },
+  repeatable: ["Principal"],
+  required: ["Principal"]
+};
+const TRIGGERS_XML_SHAPE: ScheduledTaskXmlShape = {
+  children: {
+    BootTrigger: { attributes: ["@_id"], children: { ...TRIGGER_BASE_CHILDREN, Delay: TEXT_XML_SHAPE } },
+    CalendarTrigger: {
+      attributes: ["@_id"],
+      children: {
+        ...TRIGGER_BASE_CHILDREN,
+        RandomDelay: TEXT_XML_SHAPE,
+        ScheduleByDay: { children: { DaysInterval: TEXT_XML_SHAPE } },
+        ScheduleByMonth: {
+          children: {
+            DaysOfMonth: {
+              children: { Day: TEXT_XML_SHAPE },
+              maxOccurrences: { Day: 32 },
+              repeatable: ["Day"]
+            },
+            Months: {
+              children: Object.fromEntries([
+                "April", "August", "December", "February", "January", "July", "June",
+                "March", "May", "November", "October", "September"
+              ].map((key) => [key, EMPTY_XML_SHAPE]))
+            }
+          }
+        },
+        ScheduleByMonthDayOfWeek: {
+          children: {
+            DaysOfWeek: {
+              children: Object.fromEntries([
+                "Friday", "Monday", "Saturday", "Sunday", "Thursday", "Tuesday", "Wednesday"
+              ].map((key) => [key, EMPTY_XML_SHAPE]))
+            },
+            Months: {
+              children: Object.fromEntries([
+                "April", "August", "December", "February", "January", "July", "June",
+                "March", "May", "November", "October", "September"
+              ].map((key) => [key, EMPTY_XML_SHAPE]))
+            },
+            Weeks: {
+              children: { Week: TEXT_XML_SHAPE },
+              maxOccurrences: { Week: 5 },
+              repeatable: ["Week"]
+            }
+          }
+        },
+        ScheduleByWeek: {
+          children: {
+            DaysOfWeek: {
+              children: Object.fromEntries([
+                "Friday", "Monday", "Saturday", "Sunday", "Thursday", "Tuesday", "Wednesday"
+              ].map((key) => [key, EMPTY_XML_SHAPE]))
+            },
+            WeeksInterval: TEXT_XML_SHAPE
+          }
+        }
+      },
+      exactlyOneOf: [[
+        "ScheduleByDay", "ScheduleByMonth", "ScheduleByMonthDayOfWeek", "ScheduleByWeek"
+      ]]
+    },
+    EventTrigger: {
+      attributes: ["@_id"],
+      children: {
+        ...TRIGGER_BASE_CHILDREN,
+        Delay: TEXT_XML_SHAPE,
+        MatchingElement: TEXT_XML_SHAPE,
+        NumberOfOccurrences: TEXT_XML_SHAPE,
+        PeriodOfOccurrence: TEXT_XML_SHAPE,
+        Subscription: TEXT_XML_SHAPE,
+        ValueQueries: {
+          children: { Value: { attributes: ["@_name"], children: { "#text": TEXT_XML_SHAPE } } },
+          maxOccurrences: { Value: 32 },
+          repeatable: ["Value"],
+          required: ["Value"]
+        }
+      },
+      required: ["Subscription"]
+    },
+    IdleTrigger: { attributes: ["@_id"], children: TRIGGER_BASE_CHILDREN },
+    LogonTrigger: {
+      attributes: ["@_id"],
+      children: { ...TRIGGER_BASE_CHILDREN, Delay: TEXT_XML_SHAPE, UserId: TEXT_XML_SHAPE }
+    },
+    RegistrationTrigger: { attributes: ["@_id"], children: { ...TRIGGER_BASE_CHILDREN, Delay: TEXT_XML_SHAPE } },
+    SessionStateChangeTrigger: {
+      attributes: ["@_id"],
+      children: {
+        ...TRIGGER_BASE_CHILDREN,
+        Delay: TEXT_XML_SHAPE,
+        StateChange: TEXT_XML_SHAPE,
+        UserId: TEXT_XML_SHAPE
+      },
+      required: ["StateChange"]
+    },
+    TimeTrigger: { attributes: ["@_id"], children: { ...TRIGGER_BASE_CHILDREN, RandomDelay: TEXT_XML_SHAPE } }
+  },
+  maxChildren: 48,
+  repeatable: [
+    "BootTrigger", "CalendarTrigger", "EventTrigger", "IdleTrigger", "LogonTrigger",
+    "RegistrationTrigger", "SessionStateChangeTrigger", "TimeTrigger"
+  ]
+};
+
+function hasStrictScheduledTaskSupportingSections(task: Record<string, unknown>): boolean {
+  return (task.RegistrationInfo === undefined
+      || matchesScheduledTaskXmlShape(task.RegistrationInfo, REGISTRATION_INFO_XML_SHAPE))
+    && (task.Settings === undefined || matchesScheduledTaskXmlShape(task.Settings, SETTINGS_XML_SHAPE))
+    && (task.Principals === undefined || matchesScheduledTaskXmlShape(task.Principals, PRINCIPALS_XML_SHAPE))
+    && (task.Triggers === undefined || matchesScheduledTaskXmlShape(task.Triggers, TRIGGERS_XML_SHAPE))
+    && (task.Data === undefined || typeof task.Data === "string");
+}
+
+/** Parse only the exact two arguments Muse persists: CLI entry + `daemon`. */
+function parseScheduledTaskArguments(raw: string): readonly [string, "daemon"] | undefined {
+  const match = /^(?:"([^"]+)"|(\S+))\s+daemon$/u.exec(raw.trim());
+  const entrypoint = match?.[1] ?? match?.[2];
+  return entrypoint ? [entrypoint, "daemon"] : undefined;
+}
+
+export function inspectScheduledTaskArtifact(
+  taskXml: string,
+  temporaryRoots: readonly string[] | undefined
+): ScheduledTaskArtifactStatus {
+  if (/<!DOCTYPE|<!ENTITY/iu.test(taskXml)
+    || XMLValidator.validate(taskXml, { allowBooleanAttributes: false }) !== true) {
+    return { reason: "scheduled task XML is malformed or contains declarations", state: "invalid" };
+  }
+  let document: Record<string, unknown>;
+  try {
+    document = new XMLParser({
+      attributeNamePrefix: "@_",
+      ignoreAttributes: false,
+      parseTagValue: false,
+      trimValues: true
+    }).parse(taskXml) as Record<string, unknown>;
+  } catch {
+    return { reason: "scheduled task XML cannot be parsed", state: "invalid" };
+  }
+  const documentKeys = Object.keys(document);
+  const declaration = document["?xml"];
+  const declarationRecord = declaration === undefined ? undefined : exactlyOneRecord(declaration);
+  if (documentKeys.some((key) => key !== "?xml" && key !== "Task")
+    || documentKeys.filter((key) => key === "Task").length !== 1
+    || (declaration !== undefined
+      && (declarationRecord === undefined
+        || !hasOnlyAttributes(declarationRecord, ["@_encoding", "@_standalone", "@_version"])
+        || elementKeys(declarationRecord).length !== 0))) {
+    return { reason: "scheduled task XML must contain exactly one top-level Task", state: "invalid" };
+  }
+  const task = exactlyOneRecord(document.Task);
+  const taskElements = task === undefined ? [] : elementKeys(task);
+  if (task === undefined
+    || task["@_xmlns"] !== TASK_SCHEDULER_NAMESPACE
+    || !hasOnlyAttributes(task, ["@_version", "@_xmlns"])
+    || !taskElements.includes("Actions")
+    || taskElements.some((key) => !TASK_SCHEDULER_ROOT_ELEMENTS.has(key))
+    || taskElements.some((key) => Array.isArray(task[key]))
+    || taskElements.some((key) => containsNestedNamespaceDeclaration(task[key]))
+    || !hasStrictScheduledTaskSupportingSections(task)) {
+    return { reason: "scheduled task XML does not use the expected Task Scheduler namespace", state: "invalid" };
+  }
+  const actions = task === undefined ? undefined : exactlyOneRecord(task.Actions);
+  if (actions === undefined
+    || elementKeys(actions).join(",") !== "Exec"
+    || !hasOnlyAttributes(actions, ["@_Context"])) {
+    return { reason: "scheduled task XML does not contain exactly one Exec action", state: "invalid" };
+  }
+  const exec = exactlyOneRecord(actions.Exec);
+  const execKeys = exec === undefined ? [] : elementKeys(exec);
+  if (exec === undefined
+    || !execKeys.includes("Command")
+    || !execKeys.includes("Arguments")
+    || execKeys.some((key) => key !== "Arguments" && key !== "Command")
+    || !hasOnlyAttributes(exec, [])
+  ) {
+    return { reason: "scheduled task XML does not contain exactly one Exec action", state: "invalid" };
+  }
+  const executable = typeof exec.Command === "string" ? exec.Command.trim() : undefined;
+  const argumentsText = typeof exec.Arguments === "string" ? exec.Arguments.trim() : undefined;
+  const arguments_ = argumentsText === undefined ? undefined : parseScheduledTaskArguments(argumentsText);
+  if (!executable || !arguments_) {
+    return { reason: "scheduled task Exec does not contain node + Muse CLI entry + daemon", state: "invalid" };
+  }
+  const runtimeExecutable = validateStableMuseRuntimeExecutable(executable);
+  if (!runtimeExecutable.ok) {
+    return {
+      entrypoint: arguments_[0],
+      reason: runtimeExecutable.reason,
+      state: "stale-entrypoint"
+    };
+  }
+  const validatedEntry = validateStableMuseCliEntry(arguments_[0], { temporaryRoots });
+  return validatedEntry.ok
+    ? { entrypoint: validatedEntry.entrypoint, state: "valid" }
+    : { entrypoint: arguments_[0], reason: validatedEntry.reason, state: "stale-entrypoint" };
 }
 
 export async function inspectDaemonAutostart(options: InspectDaemonAutostartOptions): Promise<DaemonAutostartStatus> {
   if (options.platform === "win32") {
     if (!options.schtasksRun) {
       return {
+        artifact: { reason: "Task Scheduler probe unavailable", state: "unknown" },
         kind: "win32",
         registration: "unknown",
         runtime: { reason: "Task Scheduler probe unavailable", state: "unknown" },
@@ -233,9 +603,23 @@ export async function inspectDaemonAutostart(options: InspectDaemonAutostartOpti
       };
     }
     const query = await options.schtasksRun(options.schtasksQueryArgs(options.scheduledTaskName));
+    if (query.exitCode !== 0) {
+      const output = `${query.stderr}\n${query.stdout}`.trim();
+      const missing = output === "ERROR: The system cannot find the file specified.";
+      return {
+        artifact: missing
+          ? { state: "missing" }
+          : { reason: `Task Scheduler query failed (exit ${query.exitCode.toString()}): ${output || "no diagnostic output"}`, state: "unknown" },
+        kind: "win32",
+        registration: missing ? "not-registered" : "unknown",
+        runtime: { reason: "Task Scheduler registration does not prove a resident process is running", state: "unknown" },
+        taskName: options.scheduledTaskName
+      };
+    }
     return {
+      artifact: inspectScheduledTaskArtifact(query.stdout, options.temporaryRoots),
       kind: "win32",
-      registration: query.exitCode === 0 ? "registered" : "not-registered",
+      registration: "registered",
       runtime: { reason: "Task Scheduler registration does not prove a resident process is running", state: "unknown" },
       taskName: options.scheduledTaskName
     };
@@ -249,7 +633,7 @@ export async function inspectDaemonAutostart(options: InspectDaemonAutostartOpti
     };
   }
 
-  const artifact = inspectLaunchAgentArtifact(options.plistFile);
+  const artifact = inspectLaunchAgentArtifact(options.plistFile, options.temporaryRoots);
   if (!options.runLaunchctl) {
     return {
       artifact,
@@ -295,9 +679,10 @@ export function isDaemonAutostartHealthy(status: DaemonAutostartStatus): boolean
   return status.kind === "darwin" && status.artifact.state === "valid" && status.runtime.state === "running";
 }
 
-function describeArtifact(artifact: LaunchAgentArtifactStatus): string {
+function describeArtifact(artifact: ScheduledTaskArtifactStatus): string {
   switch (artifact.state) {
     case "missing": return "missing";
+    case "unknown": return `unknown (${artifact.reason})`;
     case "valid": return "valid";
     case "invalid": return `invalid (${artifact.reason})`;
     case "stale-entrypoint": return `stale entrypoint (${artifact.reason})`;
@@ -326,6 +711,7 @@ export function formatDaemonAutostartStatus(status: DaemonAutostartStatus): read
     const registration = status.registration === "not-registered" ? "not registered" : status.registration;
     return [
       `autostart:    ${registration} (scheduled task ${status.taskName})`,
+      `  artifact:     ${describeArtifact(status.artifact)}`,
       `  runtime:      unknown (${status.runtime.reason})`
     ];
   }
@@ -346,7 +732,7 @@ export function describeDaemonAutostartForDoctor(status: DaemonAutostartStatus):
   }
   if (status.kind === "win32") {
     const registration = status.registration === "not-registered" ? "not registered" : status.registration;
-    return `scheduled task ${registration}; runtime unknown — inspect Task Scheduler before trusting idle learning`;
+    return `scheduled task ${registration}; artifact ${describeArtifact(status.artifact)}; runtime unknown — inspect Task Scheduler before trusting idle learning`;
   }
   return `autostart unmanaged on ${status.platform}; runtime unknown — keep \`muse daemon\` resident with your service manager`;
 }
@@ -358,17 +744,6 @@ export interface ValidateDaemonCliEntryOptions {
 export type DaemonCliEntryValidation =
   | { readonly ok: true; readonly entrypoint: string }
   | { readonly ok: false; readonly reason: string };
-
-function isWithin(root: string, candidate: string): boolean {
-  let canonicalRoot: string;
-  try {
-    canonicalRoot = realpathSync(root);
-  } catch {
-    canonicalRoot = resolve(root);
-  }
-  const rel = relative(canonicalRoot, candidate);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-}
 
 export function defaultDaemonTemporaryRoots(env: NodeJS.ProcessEnv): readonly string[] {
   return [...new Set([
@@ -384,29 +759,6 @@ export function validateDaemonCliEntry(
   rawEntry: string | undefined,
   options: ValidateDaemonCliEntryOptions = {}
 ): DaemonCliEntryValidation {
-  const entry = rawEntry?.trim();
-  if (!entry) return { ok: false, reason: "the Muse CLI entrypoint is missing" };
-  if (!isAbsolute(entry)) return { ok: false, reason: `the Muse CLI entrypoint is not absolute: ${entry}` };
-  if (!existsSync(entry)) return { ok: false, reason: `the Muse CLI entrypoint does not exist: ${entry}` };
-
-  let canonical: string;
-  try {
-    canonical = realpathSync(entry);
-  } catch {
-    return { ok: false, reason: `the Muse CLI entrypoint cannot be resolved: ${entry}` };
-  }
-  // Environment markers such as VITEST_WORKER_ID defend the normal test
-  // path, but a subprocess can lose those markers. Persisting a test worker
-  // would turn its one-shot process into a KeepAlive crash loop, so reject
-  // package entrypoints themselves before any LaunchAgent write/load.
-  const normalized = canonical.replaceAll("\\", "/");
-  if (normalized.includes("/node_modules/vitest/") || normalized.includes("/node_modules/jest/")) {
-    return { ok: false, reason: "the Muse CLI entrypoint is a test-runner worker and cannot be persisted" };
-  }
   const temporaryRoots = options.temporaryRoots ?? defaultDaemonTemporaryRoots(process.env);
-  const temporaryRoot = temporaryRoots.find((root) => isWithin(root, canonical));
-  if (temporaryRoot) {
-    return { ok: false, reason: `the Muse CLI entrypoint is inside a temporary directory (${temporaryRoot}): ${canonical}` };
-  }
-  return { entrypoint: canonical, ok: true };
+  return validateStableMuseCliEntry(rawEntry, { temporaryRoots });
 }

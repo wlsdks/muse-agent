@@ -21,6 +21,6 @@ describe("schtasks arg builders", () => {
 
   it("delete and query target the task by name", () => {
     expect(buildSchtasksDeleteArgs("MuseDaemon")).toEqual(["/Delete", "/F", "/TN", "MuseDaemon"]);
-    expect(buildSchtasksQueryArgs("MuseDaemon")).toEqual(["/Query", "/TN", "MuseDaemon"]);
+    expect(buildSchtasksQueryArgs("MuseDaemon")).toEqual(["/Query", "/TN", "MuseDaemon", "/XML"]);
   });
 });

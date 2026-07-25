@@ -45,6 +45,7 @@
     "@muse/tools": "workspace:*",
     "@muse/voice": "workspace:*",
     "commander": "^15.0.0",
+    "fast-xml-parser": "^5.9.3",
     "ink": "^7.1.0",
     "react": "^19.2.7",
     "@muse/windows": "workspace:*"

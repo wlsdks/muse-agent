@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -250,6 +250,18 @@ function defaultTemporaryRoots(env: NodeJS.ProcessEnv): readonly string[] {
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => resolve(value)))];
 }
 
+export interface ValidateStableMuseCliEntryOptions {
+  readonly temporaryRoots?: readonly string[];
+}
+
+export type StableMuseCliEntryValidation =
+  | { readonly ok: true; readonly entrypoint: string; readonly packageRoot: string }
+  | { readonly ok: false; readonly reason: string };
+
+export type StableMuseRuntimeExecutableValidation =
+  | { readonly ok: true; readonly executable: string }
+  | { readonly ok: false; readonly reason: string };
+
 function within(root: string, candidate: string): boolean {
   let canonicalRoot: string;
   try { canonicalRoot = realpathSync(root); } catch { canonicalRoot = resolve(root); }
@@ -257,14 +269,134 @@ function within(root: string, candidate: string): boolean {
   return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
 }
 
-function stableCliEntry(entry: string | undefined, temporaryRoots: readonly string[]): boolean {
-  if (!entry?.trim() || !isAbsolute(entry) || !existsSync(entry)) return false;
+function withinLexically(root: string, candidate: string): boolean {
+  const pathFromRoot = relative(resolve(root), resolve(candidate));
+  return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
+}
+
+function containsSymlink(root: string, candidate: string): boolean {
+  const pathFromRoot = relative(root, candidate);
+  let current = root;
+  try {
+    if (lstatSync(current).isSymbolicLink()) return true;
+    for (const part of pathFromRoot.split(/[\\/]/u).filter(Boolean)) {
+      current = join(current, part);
+      if (lstatSync(current).isSymbolicLink()) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function declaredMuseCliBin(entry: string, canonicalEntry: string): string | undefined {
+  let directory = dirname(entry);
+  for (let depth = 0; depth < 16; depth += 1) {
+    const manifestFile = join(directory, "package.json");
+    if (existsSync(manifestFile)) {
+      try {
+        if (containsSymlink(directory, entry)) return undefined;
+        const parsed = JSON.parse(readFileSync(manifestFile, "utf8")) as unknown;
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+        const manifest = parsed as Record<string, unknown>;
+        if (manifest.name !== "@muse/cli") return undefined;
+        const bin = typeof manifest.bin === "object" && manifest.bin !== null && !Array.isArray(manifest.bin)
+          ? (manifest.bin as Record<string, unknown>).muse
+          : undefined;
+        if (typeof bin !== "string" || !bin.trim() || bin.includes("\0") || isAbsolute(bin)) return undefined;
+        const declared = resolve(directory, bin);
+        if (!withinLexically(directory, declared) || !existsSync(declared) || containsSymlink(directory, declared)) return undefined;
+        return realpathSync(declared) === canonicalEntry ? realpathSync(directory) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return undefined;
+}
+
+function isTestOutput(packageRoot: string, canonicalEntry: string): boolean {
+  const packageRelative = relative(packageRoot, canonicalEntry).replaceAll("\\", "/").toLowerCase();
+  const parts = packageRelative.split("/");
+  const fileName = parts.pop() ?? "";
+  return parts.some((part) =>
+    part === "__specs__"
+    || part === "__tests__"
+    || part === "spec"
+    || part === "specs"
+    || part === "test"
+    || part === "tests"
+  )
+    || /(?:^|[._-])(?:runner|spec|test)(?:[._-]|$)/u.test(fileName);
+}
+
+export function validateStableMuseRuntimeExecutable(
+  rawExecutable: string | undefined
+): StableMuseRuntimeExecutableValidation {
+  const executable = rawExecutable?.trim();
+  if (!executable) return { ok: false, reason: "the runtime executable is missing" };
+  if (!isAbsolute(executable)) {
+    return { ok: false, reason: `the runtime executable is not absolute: ${executable}` };
+  }
+  if (!existsSync(executable)) {
+    return { ok: false, reason: `the runtime executable does not exist: ${executable}` };
+  }
+  try {
+    const canonical = realpathSync(executable);
+    const expected = realpathSync(process.execPath);
+    if (!statSync(canonical).isFile()) {
+      return { ok: false, reason: `the runtime executable is not a regular file: ${canonical}` };
+    }
+    if (canonical !== expected) {
+      return { ok: false, reason: `the runtime executable does not match the current Node runtime: ${canonical}` };
+    }
+    return { executable: canonical, ok: true };
+  } catch {
+    return { ok: false, reason: `the runtime executable cannot be resolved: ${executable}` };
+  }
+}
+
+export function validateStableMuseCliEntry(
+  rawEntry: string | undefined,
+  options: ValidateStableMuseCliEntryOptions = {}
+): StableMuseCliEntryValidation {
+  const entry = rawEntry?.trim();
+  if (!entry) return { ok: false, reason: "the Muse CLI entrypoint is missing" };
+  if (!isAbsolute(entry)) return { ok: false, reason: `the Muse CLI entrypoint is not absolute: ${entry}` };
+  if (!existsSync(entry)) return { ok: false, reason: `the Muse CLI entrypoint does not exist: ${entry}` };
   let canonical: string;
-  try { canonical = realpathSync(entry); } catch { return false; }
+  try {
+    canonical = realpathSync(entry);
+  } catch {
+    return { ok: false, reason: `the Muse CLI entrypoint cannot be resolved: ${entry}` };
+  }
+  try {
+    if (!statSync(canonical).isFile()) {
+      return { ok: false, reason: `the Muse CLI entrypoint is not a regular file: ${canonical}` };
+    }
+  } catch {
+    return { ok: false, reason: `the Muse CLI entrypoint cannot be inspected: ${canonical}` };
+  }
   const normalized = canonical.replaceAll("\\", "/");
-  return !normalized.includes("/node_modules/vitest/")
-    && !normalized.includes("/node_modules/jest/")
-    && !temporaryRoots.some((root) => within(root, canonical));
+  if (normalized.includes("/node_modules/vitest/") || normalized.includes("/node_modules/jest/")) {
+    return { ok: false, reason: "the Muse CLI entrypoint is a test-runner worker and cannot be persisted" };
+  }
+  const temporaryRoots = options.temporaryRoots ?? defaultTemporaryRoots(process.env);
+  const temporaryRoot = temporaryRoots.find((root) => within(root, canonical));
+  if (temporaryRoot) {
+    return { ok: false, reason: `the Muse CLI entrypoint is inside a temporary directory (${temporaryRoot}): ${canonical}` };
+  }
+  const packageRoot = declaredMuseCliBin(entry, canonical);
+  if (!packageRoot) {
+    return { ok: false, reason: "the Muse CLI entrypoint is not the declared muse bin of an @muse/cli package" };
+  }
+  if (isTestOutput(packageRoot, canonical)) {
+    return { ok: false, reason: `the Muse CLI entrypoint is test output and cannot be persisted: ${canonical}` };
+  }
+  return { entrypoint: canonical, ok: true, packageRoot };
 }
 
 function parseList(result: ReadOnlyProcessResult): { readonly state: ResidentDaemonObservation["runtime"]; readonly pid?: number } {
@@ -521,8 +653,8 @@ export async function inspectResidentDaemon(
     if (!diskArguments || diskArguments.length < 3 || diskEnvironment === undefined) {
       artifact = "invalid";
     } else {
-      artifact = isAbsolute(diskArguments[0] ?? "") && existsSync(diskArguments[0] ?? "")
-        && stableCliEntry(diskArguments[1], temporaryRoots) ? "valid" : "stale";
+      artifact = validateStableMuseRuntimeExecutable(diskArguments[0]).ok
+        && validateStableMuseCliEntry(diskArguments[1], { temporaryRoots }).ok ? "valid" : "stale";
     }
   }
 
@@ -551,8 +683,8 @@ export async function inspectResidentDaemon(
           && JSON.stringify(liveArguments) === JSON.stringify(diskArguments)
           && relevantEnvironmentMatches(diskEnvironment, liveEnvironment);
         stableMuseCommand = liveArguments.length === 3 && liveArguments[2] === "daemon"
-          && isAbsolute(liveArguments[0] ?? "") && existsSync(liveArguments[0] ?? "")
-          && stableCliEntry(liveArguments[1], temporaryRoots);
+          && validateStableMuseRuntimeExecutable(liveArguments[0]).ok
+          && validateStableMuseCliEntry(liveArguments[1], { temporaryRoots }).ok;
       }
     }
   }

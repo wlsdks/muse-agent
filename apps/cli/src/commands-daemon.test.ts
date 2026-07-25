@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -21,7 +21,26 @@ import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSig
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 
-const TEST_HARNESS_CLI_ENTRY = fileURLToPath(import.meta.url);
+function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  const packageRoot = join(root, "node_modules", "@muse", "cli");
+  const entry = join(packageRoot, "dist", "index.js");
+  mkdirSync(join(packageRoot, "dist"), { recursive: true });
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+    bin: { muse: "./dist/index.js" },
+    name: "@muse/cli"
+  }));
+  writeFileSync(entry, "export {};\n");
+  return entry;
+}
+
+function scheduledTaskXml(entrypoint: string, executable = process.execPath): string {
+  const escapedEntry = entrypoint.replaceAll("&", "&amp;").replaceAll("\"", "&quot;");
+  const escapedExecutable = executable.replaceAll("&", "&amp;");
+  return `<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task"><Actions Context="Author"><Exec><Command>${escapedExecutable}</Command><Arguments>&quot;${escapedEntry}&quot; daemon</Arguments></Exec></Actions></Task>`;
+}
+
+const TEST_HARNESS_CLI_ENTRY = stableCliEntryFixture();
 
 function fakeChromeTools(snapshotText: string): MuseTool[] {
   const mk = (name: string, result: string): MuseTool => ({
@@ -53,7 +72,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -103,7 +122,10 @@ async function runDaemon(
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
-      ...(opts.daemonTemporaryRoots ? { daemonTemporaryRoots: opts.daemonTemporaryRoots } : {}),
+      ...(opts.daemonRuntimeExecutable !== undefined
+        ? { daemonRuntimeExecutable: opts.daemonRuntimeExecutable }
+        : {}),
+      daemonTemporaryRoots: opts.daemonTemporaryRoots ?? [],
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -555,7 +577,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
     writeFileSync(plistFile, buildLaunchAgentPlist({
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     }), "utf8");
@@ -585,7 +607,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
         MUSE_SELFLEARN_ENABLED: "false"
       },
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     }), "utf8");
@@ -617,7 +639,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const plistFile = join(dir, "com.muse.daemon.plist");
     writeFileSync(plistFile, buildLaunchAgentPlist({
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     }), "utf8");
@@ -647,7 +669,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const makePlist = (environmentVariables?: Record<string, string>) => buildLaunchAgentPlist({
       ...(environmentVariables ? { environmentVariables } : {}),
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     });
@@ -673,7 +695,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const plistFile = join(dir, "com.muse.daemon.plist");
     writeFileSync(plistFile, buildLaunchAgentPlist({
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     }), "utf8");
@@ -716,7 +738,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     writeFileSync(plistFile, buildLaunchAgentPlist({
       label: "com.muse.daemon",
-      programArguments: [process.execPath, process.argv[1]!, "daemon"],
+      programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
       stderrPath: join(dir, "daemon.err.log"),
       stdoutPath: join(dir, "daemon.out.log")
     }), "utf8");
@@ -1300,10 +1322,20 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     const installed = await runDaemon(["--status", "--provider", "telegram"], {
       env, platform: "win32", registry,
-      schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: "MuseDaemon" })
+      schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: scheduledTaskXml(TEST_HARNESS_CLI_ENTRY) })
     });
     expect(installed.stdout).toMatch(/autostart:\s+registered \(scheduled task MuseDaemon\)/);
+    expect(installed.stdout).toMatch(/artifact:\s+valid/);
     expect(installed.stdout).toContain("runtime:      unknown");
+
+    const arbitraryEntry = join(mkdtempSync(join(tmpdir(), "muse-status-win-arbitrary-")), "entry.js");
+    writeFileSync(arbitraryEntry, "export {};\n");
+    const stale = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "win32", registry,
+      schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: scheduledTaskXml(arbitraryEntry) })
+    });
+    expect(stale.stdout).toMatch(/autostart:\s+registered \(scheduled task MuseDaemon\)/);
+    expect(stale.stdout).toMatch(/artifact:\s+stale entrypoint .*declared muse bin/);
 
     const missing = await runDaemon(["--status", "--provider", "telegram"], {
       env, platform: "win32", registry,
@@ -2297,6 +2329,31 @@ describe("validateDaemonCliEntry — persistent service entries must be stable",
     expect(result).toMatchObject({ ok: true });
   });
 
+  it("rejects arbitrary existing files, package test source, and a moved-away declared bin", () => {
+    const arbitrary = join(mkdtempSync(join(tmpdir(), "muse-entry-arbitrary-")), "entry.mjs");
+    writeFileSync(arbitrary, "export {};\n");
+    expect(validateDaemonCliEntry(arbitrary, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("declared muse bin")
+    });
+
+    const packageRoot = dirname(dirname(TEST_HARNESS_CLI_ENTRY));
+    const testSource = join(packageRoot, "src", "entry.test.ts");
+    mkdirSync(dirname(testSource), { recursive: true });
+    writeFileSync(testSource, "export {};\n");
+    expect(validateDaemonCliEntry(testSource, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("declared muse bin")
+    });
+
+    const movedAway = stableCliEntryFixture("muse-entry-moved-");
+    unlinkSync(movedAway);
+    expect(validateDaemonCliEntry(movedAway, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("does not exist")
+    });
+  });
+
   it("rejects an installed Vitest entrypoint before any service-manager call", async () => {
     const vitestEntry = fileURLToPath(import.meta.resolve("vitest"));
     const calls: (readonly string[])[] = [];
@@ -2314,6 +2371,126 @@ describe("validateDaemonCliEntry — persistent service entries must be stable",
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("test-runner worker");
+    expect(calls).toEqual([]);
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("rejects package test output before writing a plist or calling launchctl", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "muse-install-package-test-output-"));
+    const testEntry = join(packageRoot, "src", "daemon.test.mjs");
+    mkdirSync(dirname(testEntry), { recursive: true });
+    writeFileSync(testEntry, "export {};\n");
+    writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./src/daemon.test.mjs" },
+      name: "@muse/cli"
+    }));
+    const calls: (readonly string[])[] = [];
+    const plistFile = join(mkdtempSync(join(tmpdir(), "muse-install-package-source-target-")), "com.muse.daemon.plist");
+    const result = await runDaemon(["--install"], {
+      daemonCliEntry: testEntry,
+      daemonTemporaryRoots: [],
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        return { code: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("test output");
+    expect(calls).toEqual([]);
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("rejects missing and moved-away entries before writing a plist or calling launchctl", async () => {
+    const movedAway = stableCliEntryFixture("muse-install-moved-");
+    unlinkSync(movedAway);
+    const missing = join(mkdtempSync(join(tmpdir(), "muse-install-missing-")), "never-existed.js");
+
+    for (const [name, entry] of [["missing", missing], ["moved", movedAway]] as const) {
+      const calls: (readonly string[])[] = [];
+      const plistFile = join(mkdtempSync(join(tmpdir(), `muse-install-${name}-target-`)), "com.muse.daemon.plist");
+      const result = await runDaemon(["--install"], {
+        daemonCliEntry: entry,
+        daemonTemporaryRoots: [],
+        env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+        platform: "darwin",
+        registry: new MessagingProviderRegistry([capturingProvider([])]),
+        runLaunchctl: async (args) => {
+          calls.push(args);
+          return { code: 0, stderr: "", stdout: "" };
+        }
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("does not exist");
+      expect(calls, name).toEqual([]);
+      expect(existsSync(plistFile), name).toBe(false);
+    }
+  });
+
+  it("rejects a declared bin directory before writing a plist or calling a service manager", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "muse-install-directory-bin-"));
+    const binDirectory = join(packageRoot, "dist");
+    mkdirSync(binDirectory, { recursive: true });
+    writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./dist" },
+      name: "@muse/cli"
+    }));
+    const calls: (readonly string[])[] = [];
+    const plistFile = join(mkdtempSync(join(tmpdir(), "muse-install-directory-target-")), "com.muse.daemon.plist");
+    const result = await runDaemon(["--install"], {
+      daemonCliEntry: binDirectory,
+      daemonTemporaryRoots: [],
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        return { code: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("not a regular file");
+    expect(calls).toEqual([]);
+    expect(existsSync(plistFile)).toBe(false);
+
+    const scheduledTaskCalls: (readonly string[])[] = [];
+    const windowsResult = await runDaemon(["--install"], {
+      daemonCliEntry: binDirectory,
+      daemonTemporaryRoots: [],
+      env: tmpEnv(),
+      platform: "win32",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      schtasksRun: async (args) => {
+        scheduledTaskCalls.push(args);
+        return { exitCode: 0, stderr: "", stdout: "" };
+      }
+    });
+    expect(windowsResult.exitCode).toBe(1);
+    expect(windowsResult.stderr).toContain("not a regular file");
+    expect(scheduledTaskCalls).toEqual([]);
+  });
+
+  it("rejects an invalid runtime executable before writing a plist or calling a service manager", async () => {
+    const calls: (readonly string[])[] = [];
+    const plistFile = join(mkdtempSync(join(tmpdir(), "muse-install-runtime-target-")), "com.muse.daemon.plist");
+    const result = await runDaemon(["--install"], {
+      daemonRuntimeExecutable: "/usr",
+      env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile },
+      platform: "win32",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      schtasksRun: async (args) => {
+        calls.push(args);
+        return { exitCode: 0, stderr: "", stdout: "" };
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("runtime executable");
     expect(calls).toEqual([]);
     expect(existsSync(plistFile)).toBe(false);
   });

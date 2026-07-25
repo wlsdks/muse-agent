@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { inspectResidentDaemon, type ReadOnlyProcessRunner } from "./resident-daemon-status.js";
+import {
+  inspectResidentDaemon,
+  validateStableMuseCliEntry,
+  validateStableMuseRuntimeExecutable,
+  type ReadOnlyProcessRunner
+} from "./resident-daemon-status.js";
 
 const NOW = new Date("2026-07-22T03:00:00.000Z");
 
@@ -18,12 +22,24 @@ function plist(arguments_: readonly string[], environment: Readonly<Record<strin
   return `<plist><dict><key>ProgramArguments</key><array>${arguments_.map((value) => `<string>${escapeXml(value)}</string>`).join("")}</array><key>EnvironmentVariables</key><dict>${Object.entries(environment).map(([key, value]) => `<key>${key}</key><string>${escapeXml(value)}</string>`).join("")}</dict></dict></plist>`;
 }
 
+function stableCliPackage(root: string): string {
+  const packageRoot = join(root, "apps", "cli");
+  const entry = join(packageRoot, "dist", "cli.mjs");
+  mkdirSync(join(packageRoot, "dist"), { recursive: true });
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+    bin: { muse: "./dist/cli.mjs" },
+    name: "@muse/cli"
+  }));
+  writeFileSync(entry, "export {};\n");
+  return entry;
+}
+
 function fixture(options: { readonly liveDelivery?: string; readonly heartbeatAt?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "muse-resident-status-"));
   const plistFile = join(root, "daemon.plist");
   const sidecar = join(root, "proactive-sidecar.json");
   const heartbeat = join(root, "proactive-heartbeat-daemon-loop.json");
-  const entry = fileURLToPath(import.meta.url);
+  const entry = stableCliPackage(root);
   const environment = {
     HOME: root,
     MUSE_DAEMON_DELIVERY_ENABLED: "false",
@@ -64,6 +80,171 @@ function fingerprint(file: string): string {
   return `${stat.size.toString()}:${stat.mtimeMs.toString()}:${createHash("sha256").update(readFileSync(file)).digest("hex")}`;
 }
 
+describe("stable Muse CLI entry authority", () => {
+  it("accepts only the canonical current Node regular executable", () => {
+    expect(validateStableMuseRuntimeExecutable(process.execPath)).toMatchObject({
+      executable: realpathSync(process.execPath),
+      ok: true
+    });
+    expect(validateStableMuseRuntimeExecutable("/bin/echo")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("does not match the current Node runtime")
+    });
+    expect(validateStableMuseRuntimeExecutable("/usr")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("not a regular file")
+    });
+  });
+
+  it("accepts only the canonical declared muse bin of an @muse/cli package", () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-stable-cli-"));
+    const entry = stableCliPackage(root);
+    expect(validateStableMuseCliEntry(entry, { temporaryRoots: [] })).toMatchObject({
+      entrypoint: realpathSync(entry),
+      ok: true,
+      packageRoot: realpathSync(join(root, "apps", "cli"))
+    });
+
+    const source = join(root, "apps", "cli", "src", "index.test.ts");
+    mkdirSync(join(root, "apps", "cli", "src"), { recursive: true });
+    writeFileSync(source, "export {};\n");
+    expect(validateStableMuseCliEntry(source, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("declared muse bin")
+    });
+
+    const arbitrary = join(root, "arbitrary.mjs");
+    writeFileSync(arbitrary, "export {};\n");
+    expect(validateStableMuseCliEntry(arbitrary, { temporaryRoots: [] })).toMatchObject({ ok: false });
+  });
+
+  it("fails closed for temporary, moved-away, malformed, and escaping package entries", () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-stable-cli-reject-"));
+    const entry = stableCliPackage(root);
+    expect(validateStableMuseCliEntry(entry, { temporaryRoots: [root] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("temporary directory")
+    });
+
+    unlinkSync(entry);
+    expect(validateStableMuseCliEntry(entry, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("does not exist")
+    });
+
+    const malformedRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-malformed-"));
+    const malformedEntry = join(malformedRoot, "dist", "index.js");
+    mkdirSync(join(malformedRoot, "dist"), { recursive: true });
+    writeFileSync(malformedEntry, "export {};\n");
+    writeFileSync(join(malformedRoot, "package.json"), "{broken");
+    expect(validateStableMuseCliEntry(malformedEntry, { temporaryRoots: [] })).toMatchObject({ ok: false });
+
+    const directoryBinRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-directory-bin-"));
+    const directoryBin = join(directoryBinRoot, "dist");
+    mkdirSync(directoryBin, { recursive: true });
+    writeFileSync(join(directoryBinRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./dist" },
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(directoryBin, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("not a regular file")
+    });
+
+    const unnamedBinRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-unnamed-bin-"));
+    const unnamedBin = join(unnamedBinRoot, "dist", "index.js");
+    mkdirSync(join(unnamedBinRoot, "dist"), { recursive: true });
+    writeFileSync(unnamedBin, "export {};\n");
+    writeFileSync(join(unnamedBinRoot, "package.json"), JSON.stringify({
+      bin: "./dist/index.js",
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(unnamedBin, { temporaryRoots: [] })).toMatchObject({ ok: false });
+
+    const declaredTestRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-declared-test-"));
+    const declaredTestBin = join(declaredTestRoot, "src", "entry.test.ts");
+    mkdirSync(join(declaredTestRoot, "src"), { recursive: true });
+    writeFileSync(declaredTestBin, "export {};\n");
+    writeFileSync(join(declaredTestRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./src/entry.test.ts" },
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(declaredTestBin, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("test output")
+    });
+
+    const declaredSpecRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-declared-spec-"));
+    const declaredSpecBin = join(declaredSpecRoot, "spec", "index.js");
+    mkdirSync(join(declaredSpecRoot, "spec"), { recursive: true });
+    writeFileSync(declaredSpecBin, "export {};\n");
+    writeFileSync(join(declaredSpecRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./spec/index.js" },
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(declaredSpecBin, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("test output")
+    });
+
+    if (process.platform !== "win32") {
+      const symlinkRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-symlink-"));
+      const symlinkTarget = join(symlinkRoot, "dist", "index.js");
+      const symlinkBin = join(symlinkRoot, "dist", "muse.js");
+      mkdirSync(join(symlinkRoot, "dist"), { recursive: true });
+      writeFileSync(symlinkTarget, "export {};\n");
+      symlinkSync(symlinkTarget, symlinkBin);
+      writeFileSync(join(symlinkRoot, "package.json"), JSON.stringify({
+        bin: { muse: "./dist/muse.js" },
+        name: "@muse/cli"
+      }));
+      expect(validateStableMuseCliEntry(symlinkBin, { temporaryRoots: [] })).toMatchObject({ ok: false });
+
+      const aliasedPackageRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-package-alias-"));
+      const realPackage = join(aliasedPackageRoot, "real-cli");
+      const packageAlias = join(aliasedPackageRoot, "alias-cli");
+      const realEntry = join(realPackage, "dist", "index.js");
+      const entryAlias = join(realPackage, "dist", "alias.js");
+      mkdirSync(join(realPackage, "dist"), { recursive: true });
+      writeFileSync(realEntry, "export {};\n");
+      writeFileSync(join(realPackage, "package.json"), JSON.stringify({
+        bin: { muse: "./dist/index.js" },
+        name: "@muse/cli"
+      }));
+      symlinkSync(realPackage, packageAlias);
+      symlinkSync(realEntry, entryAlias);
+      expect(validateStableMuseCliEntry(join(packageAlias, "dist", "index.js"), { temporaryRoots: [] })).toMatchObject({
+        ok: false
+      });
+      expect(validateStableMuseCliEntry(entryAlias, { temporaryRoots: [] })).toMatchObject({ ok: false });
+    }
+
+    const declaredRunnerRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-declared-runner-"));
+    const declaredRunnerBin = join(declaredRunnerRoot, "dist", "runner.js");
+    mkdirSync(join(declaredRunnerRoot, "dist"), { recursive: true });
+    writeFileSync(declaredRunnerBin, "export {};\n");
+    writeFileSync(join(declaredRunnerRoot, "package.json"), JSON.stringify({
+      bin: { muse: "./dist/runner.js" },
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(declaredRunnerBin, { temporaryRoots: [] })).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("test output")
+    });
+
+    const escapingRoot = mkdtempSync(join(tmpdir(), "muse-stable-cli-escape-"));
+    const outsideEntry = join(escapingRoot, "outside.js");
+    const packageRoot = join(escapingRoot, "package");
+    mkdirSync(packageRoot, { recursive: true });
+    writeFileSync(outsideEntry, "export {};\n");
+    writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+      bin: { muse: "../outside.js" },
+      name: "@muse/cli"
+    }));
+    expect(validateStableMuseCliEntry(outsideEntry, { temporaryRoots: [] })).toMatchObject({ ok: false });
+  });
+});
+
 function inventoryFixture(options: {
   readonly artifact?: "valid" | "missing";
   readonly launchdRunning?: boolean;
@@ -72,13 +253,11 @@ function inventoryFixture(options: {
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "muse-resident-inventory-"));
   const apiCwd = join(root, "apps", "api");
-  const cliEntry = join(root, "apps", "cli", "dist", "cli.mjs");
+  const cliEntry = stableCliPackage(root);
   const plistFile = join(root, "daemon.plist");
   const sidecar = join(root, "proactive-sidecar.json");
   const heartbeat = join(root, "proactive-heartbeat-daemon-loop.json");
-  mkdirSync(join(root, "apps", "cli", "dist"), { recursive: true });
   mkdirSync(apiCwd, { recursive: true });
-  writeFileSync(cliEntry, "export {};\n");
   const environment = { HOME: root, MUSE_PROACTIVE_SIDECAR_FILE: sidecar };
   const arguments_ = [process.execPath, cliEntry, "daemon"];
   writeFileSync(plistFile, plist(arguments_, environment));
@@ -167,6 +346,28 @@ describe("resident daemon read-only authority", () => {
 
     expect(result.observation.liveDefinitionMatches).toBe(false);
     expect(result.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED).toBe("true");
+  });
+
+  it("rejects a matching disk/live definition that uses an arbitrary executable", async () => {
+    const state = fixture();
+    writeFileSync(state.plistFile, readFileSync(state.plistFile, "utf8").replaceAll(process.execPath, "/bin/echo"));
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      const result = await state.run(executable, args, options);
+      return executable === "launchctl" && args[0] === "print"
+        ? { ...result, stdout: result.stdout.replaceAll(process.execPath, "/bin/echo") }
+        : result;
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.observation.artifact).toBe("stale");
+    expect(result.observation.stableMuseCommand).toBe(false);
   });
 
   it("does not alter daemon evidence while inspecting it", async () => {

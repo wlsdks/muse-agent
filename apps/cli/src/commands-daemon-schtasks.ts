@@ -24,5 +24,5 @@ export function buildSchtasksDeleteArgs(taskName: string): readonly string[] {
 }
 
 export function buildSchtasksQueryArgs(taskName: string): readonly string[] {
-  return ["/Query", "/TN", taskName];
+  return ["/Query", "/TN", taskName, "/XML"];
 }

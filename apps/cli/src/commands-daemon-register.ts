@@ -48,6 +48,7 @@ import { createObserveRunnerFromEnvironment } from "@muse/attunement/host";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
+import { validateStableMuseRuntimeExecutable } from "@muse/runtime-state";
 import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
@@ -317,6 +318,8 @@ export interface DaemonHelpers {
   readonly platform?: NodeJS.Platform;
   /** Test seam — production persists process.argv[1] after stable-entry validation. */
   readonly daemonCliEntry?: string;
+  /** Test seam — production persists canonical process.execPath after stable-runtime validation. */
+  readonly daemonRuntimeExecutable?: string;
   /** Test seam — deterministic temporary-root classification across operating systems. */
   readonly daemonTemporaryRoots?: readonly string[];
 }
@@ -395,7 +398,7 @@ function extractOutputFromExecError(cause: unknown, key: "stdout" | "stderr"): s
 /** One source of truth for daemon status and Doctor: artifact and runtime stay separate. */
 export async function getDaemonAutostartStatus(
   e: NodeJS.ProcessEnv,
-  helpers: Pick<DaemonHelpers, "platform" | "runLaunchctl" | "schtasksRun"> = {}
+  helpers: Pick<DaemonHelpers, "daemonTemporaryRoots" | "platform" | "runLaunchctl" | "schtasksRun"> = {}
 ): Promise<DaemonAutostartStatus> {
   const platform = helpers.platform ?? process.platform;
   return inspectDaemonAutostart({
@@ -409,6 +412,7 @@ export async function getDaemonAutostartStatus(
         : { runLaunchctl: defaultRunLaunchctl }),
     scheduledTaskName: SCHTASKS_TASK_NAME,
     schtasksQueryArgs: buildSchtasksQueryArgs,
+    temporaryRoots: helpers.daemonTemporaryRoots ?? defaultDaemonTemporaryRoots(e),
     ...(helpers.schtasksRun
       ? { schtasksRun: helpers.schtasksRun }
       : isRunningUnderVitest()
@@ -498,13 +502,22 @@ function resolveDaemonStatusHeavyWorkUnitsPerTick(
 export async function installDaemonAutostart(
   io: ProgramIO,
   e: NodeJS.ProcessEnv,
-  helpers: Pick<DaemonHelpers, "daemonCliEntry" | "daemonTemporaryRoots" | "platform" | "runLaunchctl" | "schtasksRun"> = {}
+  helpers: Pick<DaemonHelpers, "daemonCliEntry" | "daemonRuntimeExecutable" | "daemonTemporaryRoots" | "platform" | "runLaunchctl" | "schtasksRun"> = {}
 ): Promise<{ readonly ok: boolean }> {
   const plat = helpers.platform ?? process.platform;
   if (plat !== "darwin" && plat !== "win32") {
     io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
     return { ok: false };
   }
+
+  const validatedRuntime = validateStableMuseRuntimeExecutable(
+    helpers.daemonRuntimeExecutable ?? process.execPath
+  );
+  if (!validatedRuntime.ok) {
+    io.stderr(`refusing to install daemon autostart: ${validatedRuntime.reason}. Run \`muse daemon --install\` with the current stable Node runtime.\n`);
+    return { ok: false };
+  }
+  const runtimeExecutable = validatedRuntime.executable;
 
   // argv[1] is the Muse CLI JavaScript entry at runtime. It is only safe to
   // persist after proving it exists outside OS temporary roots; otherwise a
@@ -521,7 +534,7 @@ export async function installDaemonAutostart(
   if (plat === "win32") {
     const run = helpers.schtasksRun ?? defaultSchtasksRun;
     const result = await run(buildSchtasksCreateArgs({
-      programArguments: [process.execPath, cliEntry, "daemon"],
+      programArguments: [runtimeExecutable, cliEntry, "daemon"],
       taskName: SCHTASKS_TASK_NAME
     }));
     if (result.exitCode === 0) {
@@ -574,7 +587,7 @@ export async function installDaemonAutostart(
   const plist = buildLaunchAgentPlist({
     environmentVariables: safetyEnvironment,
     label: LAUNCH_AGENT_LABEL,
-    programArguments: [process.execPath, cliEntry, "daemon"],
+    programArguments: [runtimeExecutable, cliEntry, "daemon"],
     stderrPath: join(logDir, "daemon.err.log"),
     stdoutPath: join(logDir, "daemon.out.log")
   });
@@ -768,6 +781,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           : e;
         const result = await installDaemonAutostart(io, installEnvironment, {
           ...(helpers.daemonCliEntry !== undefined ? { daemonCliEntry: helpers.daemonCliEntry } : {}),
+          ...(helpers.daemonRuntimeExecutable !== undefined
+            ? { daemonRuntimeExecutable: helpers.daemonRuntimeExecutable }
+            : {}),
           ...(helpers.daemonTemporaryRoots ? { daemonTemporaryRoots: helpers.daemonTemporaryRoots } : {}),
           ...(helpers.platform ? { platform: helpers.platform } : {}),
           ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
@@ -1065,6 +1081,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         // Artifact existence and runtime state are deliberately separate: a
         // stale plist may coexist with an orphaned running launchd job.
         const autostart = await getDaemonAutostartStatus(e, {
+          ...(helpers.daemonTemporaryRoots
+            ? { daemonTemporaryRoots: helpers.daemonTemporaryRoots }
+            : {}),
           ...(helpers.platform ? { platform: helpers.platform } : {}),
           ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
           ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})

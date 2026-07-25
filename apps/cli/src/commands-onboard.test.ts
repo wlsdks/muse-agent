@@ -1,7 +1,6 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -112,7 +111,14 @@ describe("muse onboard — closing hints (R2-3)", () => {
 });
 
 describe("muse onboard — background-daemon offer (R3-5)", () => {
-  const stableDaemonCliEntry = fileURLToPath(import.meta.url);
+  const stableDaemonCliPackage = mkdtempSync(join(tmpdir(), "muse-onboard-cli-"));
+  const stableDaemonCliEntry = join(stableDaemonCliPackage, "dist", "index.js");
+  mkdirSync(join(stableDaemonCliPackage, "dist"), { recursive: true });
+  writeFileSync(join(stableDaemonCliPackage, "package.json"), JSON.stringify({
+    bin: { muse: "./dist/index.js" },
+    name: "@muse/cli"
+  }));
+  writeFileSync(stableDaemonCliEntry, "export {};\n");
 
   function runIo(): { io: ProgramIO; out: string[] } {
     const out: string[] = [];
