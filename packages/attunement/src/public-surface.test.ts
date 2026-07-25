@@ -22,9 +22,12 @@ const hostSpecifier = "@muse/attunement" + "/host";
 const hostImportPattern = new RegExp(`(?:\\bfrom\\s*|\\bimport\\s*(?:\\(\\s*)?|\\brequire\\s*\\(\\s*)["']${hostSpecifier}["']`, "u");
 const allowedHostImports = [
   "apps/api/src/attunement-routes.ts",
+  "apps/api/src/observe-tick.ts",
   "apps/api/src/tasks-routes.ts",
   "apps/cli/src/commands-attunement.ts",
+  "apps/cli/src/commands-daemon-register.ts",
   "apps/cli/src/commands-tasks.ts",
+  "apps/cli/src/observe-daemon.ts",
   "packages/autoconfigure/src/loopback-tools.ts"
 ];
 const generatedDirectories = new Set([
@@ -58,9 +61,18 @@ describe("@muse/attunement public authority surface", () => {
   it("does not expose a reusable organic-authority mint at runtime", () => {
     expect(mainOrganicProducersAreAbsent).toBe(true);
     for (const name of organicProducerNames) expect(name in publicSurface).toBe(false);
+    expect("recordObserveSample" in publicSurface).toBe(false);
+    expect("claimObserveLease" in publicSurface).toBe(false);
+    expect("deletePersonalThread" in publicSurface).toBe(false);
+    expect("deletePersonalThreadWorkSafe" in publicSurface).toBe(false);
     expect(Object.keys(hostSurface).sort()).toEqual([
+      "createObserveActiveAppSource",
+      "createObserveCollector",
+      "createObserveRunner",
+      "createObserveRunnerFromEnvironment",
       "openProductionAuthorizedContinuityPack",
       "prepareProductionAuthorizedContinuityTaskCompletionInteraction",
+      "readObserveAppMapping",
       "recordProductionAuthorizedContinuityOutcome"
     ]);
   });

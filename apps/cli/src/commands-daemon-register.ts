@@ -23,6 +23,7 @@ import {
   createMessagingPollDispatchers,
   parseBoolean,
   parseNonNegativeInteger,
+  resolveAttunementFile,
   resolveDigestQueueFile,
   resolveDigestSentFile,
   resolveFollowupsFile,
@@ -42,6 +43,8 @@ import {
   type DecayContradictedDeps,
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
+import { readAttunementState } from "@muse/attunement";
+import { createObserveRunnerFromEnvironment } from "@muse/attunement/host";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
@@ -117,6 +120,7 @@ import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDae
 import { resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
 import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt, type DaemonWorkloadReceiptV2, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 import { DaemonWorkloadGovernor, daemonWorkloadNotReady } from "./daemon-workload-governor.js";
+import { startObserveDaemonTimer } from "./observe-daemon.js";
 import { emptyDaemonWorkloadProfile, readDaemonWorkloadProfile, recordDaemonWorkloadReceipt, resolveDaemonWorkloadProfileFile, writeDaemonWorkloadProfile } from "./daemon-workload-profile.js";
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
@@ -1586,6 +1590,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         }
         return true;
       };
+      const observeRunner = await createObserveRunnerFromEnvironment({
+        assertKnownThread: async (threadId) => {
+          if (!(await readAttunementState(resolveAttunementFile(e))).threads.some((thread) => thread.id === threadId)) {
+            throw new Error("configured Observe thread does not exist");
+          }
+        },
+        attunementFile: resolveAttunementFile(e),
+        env: e
+      });
+      const observeTick = async (): Promise<void> => {
+        try { await observeRunner?.tick(); }
+        catch (cause) { io.stderr(`observe tick error: ${errorMessage(cause)}\n`); }
+      };
       const runTick = async (): Promise<void> => {
         await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
@@ -1653,7 +1670,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);
 
       if (options.once) {
-        await runTick();
+        try { await observeTick(); await runTick(); } finally { await observeRunner?.shutdown(); }
         io.stdout("daemon --once complete\n");
         return;
       }
@@ -1667,13 +1684,22 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       process.on("SIGTERM", stop);
 
       io.stdout(`  running every ${interval.toString()} s — ctrl-c to stop\n`);
-      await (helpers.runDaemonLoop ?? runDaemonLoop)({
-        intervalMs: interval * 1000,
-        onError: (cause) => {
-          io.stderr(`tick error: ${errorMessage(cause)}\n`);
-        },
-        signal,
-        tick: runTick
-      });
+      const observeDaemon = observeRunner === undefined ? undefined : startObserveDaemonTimer(
+        observeRunner,
+        Number(e.MUSE_OBSERVE_INTERVAL_MS),
+        (cause) => io.stderr(`observe tick error: ${errorMessage(cause)}\n`)
+      );
+      try {
+        await (helpers.runDaemonLoop ?? runDaemonLoop)({
+          intervalMs: interval * 1000,
+          onError: (cause) => {
+            io.stderr(`tick error: ${errorMessage(cause)}\n`);
+          },
+          signal,
+          tick: runTick
+        });
+      } finally {
+        await observeDaemon?.stop();
+      }
     });
 }

@@ -262,9 +262,11 @@ Muse가 지시 없이 스스로 움직이는, 가장 자비스다운 영역입�
 
 ## 알려진 갭
 
-- **Attunement는 첫 고리만 구현됨** — Personal Continuity Slice A는 사용자가 만든 life/work thread에
+- **Attunement는 수집까지 구현, 해석·타이밍은 미구현** — Personal Continuity Slice A는 사용자가 만든 life/work thread에
   정확한 local task/note를 연결하고, `muse continue` → 명시적 outcome → 제한된 다음 pack 표시 변경까지
-  제공한다. 하지만 Observe, 자동 연결, 더 많은 자료원, 리듬·타이밍 개선은 아직
+  제공한다. Observe O1은 exact thread에 앱 카테고리·시각·지속시간을 opt-in 로컬 수집하고
+  inspect/pause/resume/forget할 수 있다. 하지만 rhythm/friction 가설, 자동 연결, 더 많은 자료원,
+  usefulness·리듬·타이밍 개선과 proactive delivery는 아직
   [구현 계획](goals/attunement-implementation-plan.md)의 roadmap이다.
 - **generic desktop computer use 미구현** — 실제 Chrome은 semantic snapshot과 fail-close target matching으로 조작하지만, 브라우저 밖 arbitrary app의 action tree·상태 복원·cross-app workflow compilation은 제공하지 않는다.
 - **외부 연동 기능의 실검증** — 스마트홈·이메일·수신함·웹행동처럼 외부 계정·기기 연동이 필요한 기능은, 로직과 안전장치 자체는 계약에 충실한 가짜 환경으로 검증됐지만 실제 자격증명 환경에서의 라이브 검증은 아직 남아 있다.

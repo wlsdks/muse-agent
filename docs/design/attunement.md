@@ -13,8 +13,11 @@ The full Attunement loop is **not shipped**. Slice A is implemented as a user-in
 the user creates a `life` or `work` thread, links exact sources, opens a pack through the CLI
 or local web/API surface, and records one of four outcomes. Exact local tasks and notes plus
 context-only reminders, configured-calendar occurrences, contacts, strict workspace-scoped run
-evidence, and exact visits from the separately enabled local browsing archive are available; Observe, automatic affiliation, further source
-adapters, and proactive timing-aware help remain roadmap work.
+evidence, and exact visits from the separately enabled local browsing archive are available.
+Observe O1 also ships an explicitly consented, category-only local session ledger with
+inspect/pause/resume/forget and a fenced app-only collector. It does not derive rhythm,
+friction, hypotheses, policy, or delivery. Automatic affiliation, further source adapters,
+and proactive timing-aware help remain roadmap work.
 
 In plain language: start with an unfinished life or work thread the user chooses, build a
 small “where was I?” pack from explicitly linked items, record whether it helped, and change
@@ -27,8 +30,8 @@ to guess what part of the user's life an app belongs to.
 chosen PersonalThread + explicitly linked items
   → Continuity Pack → outcome → allowed policy update → next pack
 
-opt-in observation (later)
-  → safer timing / rhythm evidence ───────────────────────┘
+opt-in category observation (O1 collection only)
+  → future qualified timing / rhythm evidence ───────────┘
 ```
 
 Slice A makes no LLM call. A later LLM may phrase an explanation or summarize an already

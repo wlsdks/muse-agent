@@ -634,6 +634,21 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "observe",
+    "description": "opt-in, local-only app-category collection for one exact PersonalThread",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "consent",
+      "forget",
+      "inspect",
+      "pause",
+      "resume",
+      "start",
+      "status"
+    ]
+  },
+  {
     "name": "objectives",
     "description": "Standing objectives Muse pursues autonomously (watch X / until Z / tell me when W)",
     "argsTerm": "",

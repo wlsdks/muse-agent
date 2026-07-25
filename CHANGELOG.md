@@ -37,6 +37,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Observe O1 adds explicit, local app-category collection for one exact
+  PersonalThread.** The owner must accept consent v1 and provide an owner-only,
+  exact app-to-category map. A strict bounded ledger records only category,
+  canonical time, and duration behind a fenced single-collector lease; raw app
+  identifiers are neither persisted nor returned. CLI and authenticated API
+  expose consent/start/status/inspect/pause/resume/forget, while macOS and
+  Windows collectors run only from an explicit daemon configuration. O1 does
+  not infer rhythm or friction, evaluate usefulness, send messages, perform
+  actions, or grant automation permission.
+
 - **Personal Continuity can now attach one exact local Work as inert context.**
   Work storage now has a strict encryption-aware v1 reader and same-snapshot
   mutations, while a deterministic two-file coordinator prevents contradictory

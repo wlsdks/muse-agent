@@ -69,6 +69,33 @@ export {
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 export {
+  OBSERVE_APP_CATEGORIES,
+  OBSERVE_CONSENT_TERMS,
+  OBSERVE_CONSENT_VERSION,
+  ObserveStoreError,
+  forgetObserveSession,
+  inspectObserveSession,
+  observeStatus,
+  pauseObserveSession,
+} from "./observe-store.js";
+export type {
+  ObserveActiveSegment,
+  ObserveAppCategory,
+  ObserveErrorCode,
+  ObserveObservation,
+  ObserveSession,
+  ObserveSessionStatus,
+  ObserveStoreOptions
+} from "./observe-store.js";
+export {
+  deletePersonalThreadContinuitySafe,
+  resolveCanonicalObserveStateFile,
+  resolveObserveStateFile,
+  resumeObserveSessionSafe,
+  startObserveSessionSafe
+} from "./observe-continuity-coordinator.js";
+export type { ObserveContinuityFiles, PersonalContinuityFiles } from "./observe-continuity-coordinator.js";
+export {
   completeLinkedNextStep,
   type CompleteLinkedNextStepOptions,
   type CompleteLinkedNextStepResult,
@@ -130,7 +157,6 @@ export {
   type WorkArtifactOptions
 } from "./work-artifact.js";
 export {
-  deletePersonalThreadWorkSafe,
   deleteWorkContinuitySafe,
   linkWorkContinuity,
   setWorkContinuityThread,
@@ -158,7 +184,6 @@ export {
   AttunementStoreError,
   type ArtifactLinkValidator,
   createPersonalThread,
-  deletePersonalThread,
   inspectThread,
   linkArtifact,
   openContinuityDelivery,

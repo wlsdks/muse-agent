@@ -68,11 +68,13 @@ Muse는 provider-neutral이므로 클라우드 모델도 선택할 수 있습니
 요청 경계와 정책이 적용됩니다. 온디바이스 보장이 필요한 사용자는 `MUSE_LOCAL_ONLY=true`를 켜야
 하며, 이 자세에서는 cloud provider가 런타임에 생성되기 전에 거부됩니다.
 
-## Muse Observe 데이터 경계 (roadmap)
+## Muse Observe 데이터 경계 (O1 collection available)
 
-Observe는 아직 출시된 하나의 제품 표면이 아닙니다. 현재 ambient source는 opt-in snapshot을 daemon
-rule에 제공할 수 있지만, 지속되는 desktop work rhythm이나 intervention outcome을 저장하지 않습니다.
-향후 Observe는 다음 다섯 속성을 릴리스 gate로 삼습니다.
+Observe O1은 사용자가 고른 정확한 PersonalThread 하나에 대해 앱 **카테고리**, 시각, 지속시간만
+로컬에 수집하는 opt-in 표면입니다. `consent/start/status/inspect/pause/resume/forget`을 제공하며 raw 앱
+식별자는 명시적인 owner-only map 조회 뒤 폐기합니다. O1은 desktop work rhythm, friction, hypothesis,
+intervention outcome, notice, action을 만들지 않습니다. 향후 Personal Rhythm/타이밍 단계는 다음 다섯
+속성을 계속 릴리스 gate로 삼습니다.
 
 1. **Local-first** — owner-only local store와 source별 TTL. observation data가 cloud model context에
    자동 포함되지 않는다.
@@ -83,8 +85,9 @@ rule에 제공할 수 있지만, 지속되는 desktop work rhythm이나 interven
 
 기본 저장 대상은 app-session transition과 duration 같은 최소 metadata다. **raw keystroke, continuous
 screen capture, clipboard content, selected text, window title의 지속 저장은 기본 프로필에서 금지**한다.
-Browser history는 현재처럼 별도 명시적 opt-in source이고, private-window exclusion과 per-app denylist가
-없는 상태에서는 Observe를 출시하지 않는다. 상세 계약은 [Attunement 설계](design/attunement.md).
+Browser history는 현재처럼 별도 명시적 opt-in source이며 O1 collector와 결합되지 않습니다. 브라우저
+관찰을 향후 Observe에 추가하려면 private-window exclusion과 source별 제어를 별도로 통과해야 합니다.
+상세 계약은 [Attunement 설계](design/attunement.md).
 
 ## 프라이버시-등급 라우팅 — 개인정보 없는 요청만 선택적으로 클라우드로 (opt-in, 기본 꺼짐)
 

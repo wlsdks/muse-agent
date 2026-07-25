@@ -706,6 +706,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "observe",
+    names: ["observe"],
+    load: async (program, io, _deps) => {
+      const module = await import("./commands-observe.js");
+      module.registerObserveCommands(program, io);
+    }
+  },
+  {
     id: "objectives",
     names: ["objectives"],
     load: async (program, io, _deps) => {

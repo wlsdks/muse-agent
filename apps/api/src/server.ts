@@ -77,6 +77,7 @@ import {
   startWebWatchDaemonIfConfigured
 } from "./tick-daemons.js";
 import { warmUpModelIfConfigured } from "./model-warmup.js";
+import { startObserveDaemonIfConfigured } from "./observe-tick.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startMatrixSyncTick } from "./matrix-sync-tick.js";
@@ -755,6 +756,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startWebWatchDaemonIfConfigured(env, server, options);
   startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
   startDigestDaemonIfConfigured(env, server, options);
+  startObserveDaemonIfConfigured(env, server, resolveAttunementFile(env));
   warmUpModelIfConfigured(env, options);
 
   // Optional daemon: ingest Telegram messages into telegramInboxFile.
