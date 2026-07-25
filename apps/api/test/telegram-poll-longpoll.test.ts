@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -19,15 +19,31 @@ function makeMessage(messageId: string): InboundMessage {
   };
 }
 
+async function withDeadline<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} did not complete within 10s`));
+    }, 10_000);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 describe("startTelegramPollTick long-poll mode", () => {
-  it("passes longPollSeconds to the provider and immediately re-polls (no interval wait)", async () => {
+  it("passes longPollSeconds to the provider and immediately re-polls (no interval wait)", { timeout: 20_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-tg-lp-"));
     const seenOptions: unknown[] = [];
+    const repolled = Promise.withResolvers<void>();
     let calls = 0;
     const provider = {
       pollUpdates: async (options?: unknown) => {
         seenOptions.push(options);
         calls += 1;
+        if (calls > 1) repolled.resolve();
         return calls === 1 ? [makeMessage("1")] : [];
       }
     } as unknown as TelegramProvider;
@@ -39,21 +55,26 @@ describe("startTelegramPollTick long-poll mode", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await sleep(120);
-    handle.stop();
-
-    // With a 60s interval, >1 call proves the continuous loop re-polled on
-    // its own instead of waiting for the timer.
-    expect(calls).toBeGreaterThan(1);
-    expect(seenOptions[0]).toMatchObject({ longPollSeconds: 25 });
+    try {
+      await withDeadline(repolled.promise, "second Telegram long poll");
+      // With a 60s interval, >1 call proves the continuous loop re-polled on
+      // its own instead of waiting for the timer.
+      expect(calls).toBeGreaterThan(1);
+      expect(seenOptions[0]).toMatchObject({ longPollSeconds: 25 });
+    } finally {
+      handle.stop();
+      rmSync(dir, { force: true, recursive: true });
+    }
   });
 
-  it("fires onIngested with the count when messages land, and not on empty polls", async () => {
+  it("fires onIngested with the count when messages land, and not on empty polls", { timeout: 20_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-tg-lp2-"));
+    const emptyPollCompleted = Promise.withResolvers<void>();
     let calls = 0;
     const provider = {
       pollUpdates: async () => {
         calls += 1;
+        if (calls > 1) emptyPollCompleted.resolve();
         return calls === 1 ? [makeMessage("1"), makeMessage("2")] : [];
       }
     } as unknown as TelegramProvider;
@@ -69,10 +90,13 @@ describe("startTelegramPollTick long-poll mode", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await sleep(120);
-    handle.stop();
-
-    expect(ingests).toEqual([2]);
+    try {
+      await withDeadline(emptyPollCompleted.promise, "empty Telegram re-poll");
+      expect(ingests).toEqual([2]);
+    } finally {
+      handle.stop();
+      rmSync(dir, { force: true, recursive: true });
+    }
   });
 
   it("stop() halts the continuous loop", async () => {
