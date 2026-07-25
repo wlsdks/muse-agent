@@ -121,6 +121,12 @@ import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
 import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
+import {
+  acquireResidentWriterLease,
+  RESIDENT_WRITER_LEASE_REASON,
+  ResidentWriterLeaseError,
+  type ResidentWriterLease
+} from "./daemon-writer-lease.js";
 import { assessDaemonResourceAdmission, daemonResourcePolicyEnvironment, readDaemonResourceSnapshot, type DaemonResourceAdmission, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import { resolveDaemonHeavyWorkUnitsPerTick } from "./daemon-heavy-work-budget.js";
 import { cancelledDecisionReceipt, resolveDaemonResourceReceiptFile, withWorkloadBoundary, workloadDecisionReceipt, writeDaemonResourceAdmissionReceipt, type DaemonResourceReceipt, type DaemonWorkloadReceiptV2, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
@@ -204,6 +210,8 @@ export function resolveInterruptionBudgetWiring(e: NodeJS.ProcessEnv): Interrupt
 export interface DaemonHelpers {
   /** Test seam — defaults to `process.env`. */
   readonly env?: () => NodeJS.ProcessEnv;
+  /** Test seam — inject Observe lifecycle without OS/app-state effects. */
+  readonly createObserveRunner?: typeof createObserveRunnerFromEnvironment;
   /**
    * Test seam — inject a contract-faithful messaging registry rather
    * than building one from env, so a smoke can assert delivery against
@@ -322,6 +330,8 @@ export interface DaemonHelpers {
   readonly platform?: NodeJS.Platform;
   /** Test seam — shared read-only resident health consumed by daemon --status. */
   readonly residentDaemonHealth?: (env: NodeJS.ProcessEnv) => Promise<ResidentDaemonHealthResult>;
+  /** Test seam — process-wide writer authority acquired before any daemon tick/effect. */
+  readonly acquireResidentWriterLease?: (env: NodeJS.ProcessEnv) => Promise<ResidentWriterLease>;
   /** Test seam — production persists process.argv[1] after stable-entry validation. */
   readonly daemonCliEntry?: string;
   /** Test seam — production persists canonical process.execPath after stable-runtime validation. */
@@ -333,6 +343,50 @@ export interface DaemonHelpers {
 /** Canonical machine-readable daemon health line payload. */
 export function formatResidentDaemonHealthStatus(health: ResidentDaemonHealthResult): string {
   return JSON.stringify(health);
+}
+
+async function acquireDaemonWriterAuthority(
+  io: ProgramIO,
+  env: NodeJS.ProcessEnv,
+  helpers: DaemonHelpers
+): Promise<ResidentWriterLease | undefined> {
+  try {
+    return await (helpers.acquireResidentWriterLease ?? acquireResidentWriterLease)(env);
+  } catch (cause) {
+    const reason = cause instanceof ResidentWriterLeaseError
+      ? cause.code
+      : RESIDENT_WRITER_LEASE_REASON.stateUnavailable;
+    io.stderr(`muse daemon refused writer start: ${reason}\n`);
+    process.exitCode = 1;
+    return undefined;
+  }
+}
+
+async function releaseDaemonWriterAuthority(io: ProgramIO, lease: ResidentWriterLease): Promise<void> {
+  try {
+    await lease.release();
+  } catch {
+    io.stderr(`muse daemon writer shutdown: ${RESIDENT_WRITER_LEASE_REASON.stateUnavailable}\n`);
+    process.exitCode = 1;
+  }
+}
+
+async function validateDaemonWriterAuthority(
+  io: ProgramIO,
+  lease: ResidentWriterLease,
+  signal: DaemonStopSignal
+): Promise<boolean> {
+  let valid = false;
+  try {
+    valid = await lease.validate();
+  } catch {
+    // Fixed fail-close output below; never expose private lease state.
+  }
+  if (valid) return true;
+  io.stderr(`muse daemon writer stopped: ${RESIDENT_WRITER_LEASE_REASON.stateUnavailable}\n`);
+  process.exitCode = 1;
+  signal.stop();
+  return false;
 }
 
 /**
@@ -706,38 +760,45 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // only authorized mutation in this branch is the daemon-loop heartbeat.
       // Administrative/status commands keep their own existing behavior.
       if (deliveryBrakeEngaged && !options.init && !options.install && !options.uninstall && !options.status && !options.pauseHeavyWork && !options.resumeHeavyWork) {
+        const residentLease = await acquireDaemonWriterAuthority(io, e, helpers);
+        if (!residentLease) return;
+        const signal = new DaemonStopSignal();
         const heartbeatDir = defaultProactiveHeartbeatDir(e);
         const heartbeatOnlyTick = async (): Promise<void> => {
+          if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
           await recordProactiveHeartbeat(heartbeatDir, "daemon-loop").catch(() => false);
         };
-        io.stdout("muse daemon — delivery brake engaged (heartbeat-only)\n");
-        if (options.once) {
-          await heartbeatOnlyTick();
-          io.stdout("daemon --once complete (heartbeat-only)\n");
-          return;
-        }
-
-        const signal = new DaemonStopSignal();
-        const stop = (): void => {
-          if (signal.stopped) return;
-          io.stdout("\n(stopping)\n");
-          signal.stop();
-        };
-        process.on("SIGINT", stop);
-        process.on("SIGTERM", stop);
         try {
-          io.stdout(`  running heartbeat every ${interval.toString()} s — ctrl-c to stop\n`);
-          await (helpers.runDaemonLoop ?? runDaemonLoop)({
-            intervalMs: interval * 1000,
-            onError: (cause) => {
-              io.stderr(`heartbeat error: ${errorMessage(cause)}\n`);
-            },
-            signal,
-            tick: heartbeatOnlyTick
-          });
+          io.stdout("muse daemon — delivery brake engaged (heartbeat-only)\n");
+          if (options.once) {
+            await heartbeatOnlyTick();
+            if (!signal.stopped) io.stdout("daemon --once complete (heartbeat-only)\n");
+            return;
+          }
+
+          const stop = (): void => {
+            if (signal.stopped) return;
+            io.stdout("\n(stopping)\n");
+            signal.stop();
+          };
+          process.on("SIGINT", stop);
+          process.on("SIGTERM", stop);
+          try {
+            io.stdout(`  running heartbeat every ${interval.toString()} s — ctrl-c to stop\n`);
+            await (helpers.runDaemonLoop ?? runDaemonLoop)({
+              intervalMs: interval * 1000,
+              onError: (cause) => {
+                io.stderr(`heartbeat error: ${errorMessage(cause)}\n`);
+              },
+              signal,
+              tick: heartbeatOnlyTick
+            });
+          } finally {
+            process.off("SIGINT", stop);
+            process.off("SIGTERM", stop);
+          }
         } finally {
-          process.off("SIGINT", stop);
-          process.off("SIGTERM", stop);
+          await releaseDaemonWriterAuthority(io, residentLease);
         }
         return;
       }
@@ -1158,6 +1219,10 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
+      const residentLease = await acquireDaemonWriterAuthority(io, e, helpers);
+      if (!residentLease) return;
+      const signal = new DaemonStopSignal();
+      try {
       const proactiveTick = makeProactiveTick({
         calendarRegistry,
         dailyCap,
@@ -1557,7 +1622,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const heavyWorkUnitsPerTick = resolveDaemonHeavyWorkUnitsPerTick(e);
       let lastResourceAdmissionKey: string | undefined;
       const resourceReceiptFile = resolveDaemonResourceReceiptFile(e);
-      const signal = new DaemonStopSignal();
       const workloadProfileFile = resolveDaemonWorkloadProfileFile(e);
       let workloadProfile = await readDaemonWorkloadProfile(workloadProfileFile)
         ?? emptyDaemonWorkloadProfile();
@@ -1627,7 +1691,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         }
         return true;
       };
-      const observeRunner = await createObserveRunnerFromEnvironment({
+      const observeRunner = await (helpers.createObserveRunner ?? createObserveRunnerFromEnvironment)({
         assertKnownThread: async (threadId) => {
           if (!(await readAttunementState(resolveAttunementFile(e))).threads.some((thread) => thread.id === threadId)) {
             throw new Error("configured Observe thread does not exist");
@@ -1637,10 +1701,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         env: e
       });
       const observeTick = async (): Promise<void> => {
+        if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
         try { await observeRunner?.tick(); }
         catch (cause) { io.stderr(`observe tick error: ${errorMessage(cause)}\n`); }
       };
       const runTick = async (): Promise<void> => {
+        if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return;
         await recordProactiveHeartbeat(daemonHeartbeatDir, "daemon-loop").catch(() => false);
         await proactiveTick();
         await backgroundExitNoticeTick();
@@ -1707,8 +1773,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);
 
       if (options.once) {
-        try { await observeTick(); await runTick(); } finally { await observeRunner?.shutdown(); }
-        io.stdout("daemon --once complete\n");
+        try {
+          await observeTick();
+          if (!signal.stopped) await runTick();
+        } finally {
+          await observeRunner?.shutdown();
+        }
+        if (!signal.stopped) io.stdout("daemon --once complete\n");
         return;
       }
 
@@ -1722,7 +1793,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       io.stdout(`  running every ${interval.toString()} s — ctrl-c to stop\n`);
       const observeDaemon = observeRunner === undefined ? undefined : startObserveDaemonTimer(
-        observeRunner,
+        {
+          shutdown: () => observeRunner.shutdown(),
+          tick: async () => {
+            if (!await validateDaemonWriterAuthority(io, residentLease, signal)) return "ignored";
+            return observeRunner.tick();
+          }
+        },
         Number(e.MUSE_OBSERVE_INTERVAL_MS),
         (cause) => io.stderr(`observe tick error: ${errorMessage(cause)}\n`)
       );
@@ -1736,7 +1813,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           tick: runTick
         });
       } finally {
+        process.off("SIGINT", stop);
+        process.off("SIGTERM", stop);
         await observeDaemon?.stop();
+      }
+      } finally {
+        await releaseDaemonWriterAuthority(io, residentLease);
       }
     });
 }

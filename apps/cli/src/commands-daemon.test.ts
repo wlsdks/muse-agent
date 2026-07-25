@@ -18,6 +18,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MuseTool } from "@muse/tools";
 
 import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, formatResidentDaemonHealthStatus, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
+import {
+  acquireResidentWriterLease,
+  RESIDENT_WRITER_LEASE_REASON,
+  ResidentWriterLeaseError,
+  resolveResidentWriterLeaseRoot
+} from "./daemon-writer-lease.js";
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 
@@ -72,7 +78,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; acquireResidentWriterLease?: DaemonHelpers["acquireResidentWriterLease"]; createObserveRunner?: DaemonHelpers["createObserveRunner"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -118,12 +124,18 @@ async function runDaemon(
         thermalState: "unavailable"
       })),
       ...(opts.writeResourceAdmissionReceipt ? { writeResourceAdmissionReceipt: opts.writeResourceAdmissionReceipt } : {}),
+      ...(opts.createObserveRunner ? { createObserveRunner: opts.createObserveRunner } : {}),
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
       residentDaemonHealth: opts.residentDaemonHealth ?? (async () => ({
         reasonCodes: ["daemon-probe-unverified"],
         status: "unverified"
+      })),
+      acquireResidentWriterLease: opts.acquireResidentWriterLease ?? (async () => ({
+        release: async () => undefined,
+        validate: async () => true,
+        waitMs: 0
       })),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonRuntimeExecutable !== undefined
@@ -172,6 +184,87 @@ function tmpEnv(): NodeJS.ProcessEnv {
 }
 
 describe("muse daemon — one-process launcher fires real ticks", () => {
+  it("normal writer contention exits before heartbeat, store, and outbound effects", async () => {
+    const env = tmpEnv();
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const result = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      acquireResidentWriterLease: async () => {
+        throw new ResidentWriterLeaseError(RESIDENT_WRITER_LEASE_REASON.contended);
+      },
+      env,
+      registry
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(`muse daemon refused writer start: ${RESIDENT_WRITER_LEASE_REASON.contended}\n`);
+    expect(sent).toHaveLength(0);
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+    expect(existsSync(env.MUSE_TASKS_FILE!)).toBe(false);
+    expect(existsSync(env.MUSE_REMINDERS_FILE!)).toBe(false);
+    expect(existsSync(env.MUSE_FOLLOWUPS_FILE!)).toBe(false);
+  });
+
+  it("normal resident lease loss fences the next tick, releases, and restores signal listeners", async () => {
+    const env = tmpEnv();
+    const sent: OutboundMessage[] = [];
+    const release = vi.fn(async () => undefined);
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const sigintBefore = process.listenerCount("SIGINT");
+    const sigtermBefore = process.listenerCount("SIGTERM");
+
+    const result = await runDaemon(["--provider", "telegram", "--destination", "555"], {
+      acquireResidentWriterLease: async () => ({
+        release,
+        validate: async () => false,
+        waitMs: 0
+      }),
+      env,
+      registry,
+      runDaemonLoop: async ({ signal, tick }) => {
+        await tick();
+        expect(signal.stopped).toBe(true);
+        return 0;
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect(release).toHaveBeenCalledOnce();
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+    expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+  });
+
+  it("restores signal listeners and releases authority when Observe shutdown rejects", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_OBSERVE_INTERVAL_MS: "300000" };
+    const release = vi.fn(async () => undefined);
+    const sigintBefore = process.listenerCount("SIGINT");
+    const sigtermBefore = process.listenerCount("SIGTERM");
+
+    const result = await runDaemon(["--provider", "telegram"], {
+      acquireResidentWriterLease: async () => ({
+        release,
+        validate: async () => true,
+        waitMs: 0
+      }),
+      createObserveRunner: async () => ({
+        shutdown: async () => { throw new Error("PRIVATE observe shutdown"); },
+        tick: async () => "ignored"
+      }),
+      env,
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runDaemonLoop: async () => 0
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).not.toContain("PRIVATE");
+    expect(release).toHaveBeenCalledOnce();
+    expect(process.listenerCount("SIGINT")).toBe(sigintBefore);
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermBefore);
+  });
+
   it("--once delivers an imminent task to the contract-faithful messaging sink", async () => {
     const env = tmpEnv();
     const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
@@ -748,12 +841,15 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     }), "utf8");
     const env = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
 
+    const acquireResidentWriterLease = vi.fn<NonNullable<DaemonHelpers["acquireResidentWriterLease"]>>();
     const healthy = await runDaemon(["--status", "--provider", "telegram"], {
+      acquireResidentWriterLease,
       env, platform: "darwin", registry,
       runLaunchctl: async () => ({ code: 0, stderr: "", stdout: '{\n\t"PID" = 42;\n\t"LastExitStatus" = 0;\n};\n' })
     });
     expect(healthy.stdout).toContain("autostart:    healthy");
     expect(healthy.stdout).toContain("runtime:      running (pid 42)");
+    expect(acquireResidentWriterLease).not.toHaveBeenCalled();
 
     const stopped = await runDaemon(["--status", "--provider", "telegram"], {
       env, platform: "darwin", registry,
@@ -1686,6 +1782,115 @@ describe("muse daemon — macos-notification env overlay (onboard's config must 
 });
 
 describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
+  it("two concurrent daemon commands admit exactly one writer and the loser has zero tick effects", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
+    let markFirstEntered!: () => void;
+    let allowFirstTick!: () => void;
+    const firstEntered = new Promise<void>((resolve) => { markFirstEntered = resolve; });
+    const firstMayTick = new Promise<void>((resolve) => { allowFirstTick = resolve; });
+    const acquire = (residentEnv: NodeJS.ProcessEnv) => acquireResidentWriterLease(residentEnv);
+
+    const firstResult = runDaemon([], {
+      acquireResidentWriterLease: acquire,
+      env,
+      registry: new MessagingProviderRegistry(),
+      runDaemonLoop: async ({ tick }) => {
+        markFirstEntered();
+        await firstMayTick;
+        await tick();
+        return 1;
+      }
+    });
+    await firstEntered;
+
+    const secondResult = await runDaemon(["--once"], {
+      acquireResidentWriterLease: acquire,
+      env,
+      registry: new MessagingProviderRegistry()
+    });
+    expect(secondResult.exitCode).toBe(1);
+    expect(secondResult.stderr).toBe(
+      `muse daemon refused writer start: ${RESIDENT_WRITER_LEASE_REASON.contended}\n`
+    );
+    expect(secondResult.stdout).not.toContain("daemon --once complete");
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+
+    allowFirstTick();
+    const winner = await firstResult;
+    expect(winner.exitCode).toBeUndefined();
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(true);
+    expect(existsSync(join(resolveResidentWriterLeaseRoot(env), "active.json"))).toBe(false);
+  });
+
+  it("a contended resident lease exits before heartbeat, registry, model, or send effects", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
+    const buildMessagingRegistry = vi.fn((): MessagingProviderRegistry => {
+      throw new Error("registry must not initialize for a lease loser");
+    });
+    const resolveFollowupModel = vi.fn(async () => {
+      throw new Error("model must not initialize for a lease loser");
+    });
+
+    const result = await runDaemon(["--once"], {
+      acquireResidentWriterLease: async () => {
+        throw new ResidentWriterLeaseError(RESIDENT_WRITER_LEASE_REASON.contended);
+      },
+      buildMessagingRegistry,
+      env,
+      registry: new MessagingProviderRegistry(),
+      resolveFollowupModel
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      stderr: `muse daemon refused writer start: ${RESIDENT_WRITER_LEASE_REASON.contended}\n`
+    });
+    expect(buildMessagingRegistry).not.toHaveBeenCalled();
+    expect(resolveFollowupModel).not.toHaveBeenCalled();
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+  });
+
+  it("lease loss stops before the next heartbeat and releases only through the owner handle", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
+    const release = vi.fn(async () => undefined);
+    const validate = vi.fn(async () => false);
+
+    const result = await runDaemon(["--once"], {
+      acquireResidentWriterLease: async () => ({ release, validate, waitMs: 0 }),
+      env,
+      registry: new MessagingProviderRegistry()
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(`muse daemon writer stopped: ${RESIDENT_WRITER_LEASE_REASON.stateUnavailable}\n`);
+    expect(validate).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+    expect(existsSync(join(dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!), "proactive-heartbeat-daemon-loop.json"))).toBe(false);
+    expect(result.stdout).not.toContain("daemon --once complete");
+  });
+
+  it("releases writer authority when the resident loop throws", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
+    const release = vi.fn(async () => undefined);
+
+    const result = await runDaemon([], {
+      acquireResidentWriterLease: async () => ({
+        release,
+        validate: async () => true,
+        waitMs: 0
+      }),
+      env,
+      registry: new MessagingProviderRegistry(),
+      runDaemonLoop: async () => {
+        throw new Error("PRIVATE loop failure");
+      }
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(release).toHaveBeenCalledOnce();
+    expect(result.stderr).not.toContain("PRIVATE");
+  });
+
   it("delivery brake --once records only the daemon-loop heartbeat before poisoned initialization seams", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_DELIVERY_ENABLED: "false" };
     const sidecarDir = dirname(env.MUSE_PROACTIVE_SIDECAR_FILE!);
