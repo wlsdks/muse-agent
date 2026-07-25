@@ -19,39 +19,34 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { createLiveLlmSmokeSandbox } from "./lib/live-llm-smoke-sandbox.mjs";
+import {
+  chooseHeavyTier,
+  qwenParamSize,
+  selectSmokeLiveModel,
+  smokeLiveMinParams
+} from "./lib/live-llm-smoke-models.mjs";
+
+export {
+  chooseHeavyTier,
+  qwenParamSize,
+  selectSmokeLiveModel,
+  smokeLiveMinParams
+} from "./lib/live-llm-smoke-models.mjs";
+
 const rootDir = process.cwd();
-const port = await findFreePort();
-const baseUrl = `http://127.0.0.1:${port}`;
-
-const notesDir = mkdtempSync(path.join(os.tmpdir(), "muse-live-notes-"));
-mkdirSync(path.join(notesDir, "people"), { recursive: true });
-writeFileSync(
-  path.join(notesDir, "people", "mom.md"),
-  "# Mom's birthday\n\nMay 15. Buy white roses and write a card mentioning the trip to Jeju.\n",
-  "utf8"
-);
-writeFileSync(
-  path.join(notesDir, "house.md"),
-  "Garage door opener spare battery is in the kitchen drawer next to the matches.\n",
-  "utf8"
-);
-
-const calendarSandbox = mkdtempSync(path.join(os.tmpdir(), "muse-live-calendar-"));
-const calendarFile = path.join(calendarSandbox, "calendar.json");
-const credentialsFile = path.join(calendarSandbox, "credentials.json");
-const tasksFile = path.join(calendarSandbox, "tasks.json");
 
 const provider = await pickProvider();
 
 if (!provider) {
   console.log(
-    "smoke:live skipped — local Ollama not reachable. Start Ollama with a Qwen model on the loop PC (OLLAMA_BASE_URL to override; cloud APIs are never used by policy)."
+    "smoke:live skipped — local Ollama is unreachable or has no eligible chat model. Start Ollama with a chat-capable local model on the loop PC (OLLAMA_BASE_URL to override; cloud APIs are never used by policy)."
   );
   process.exit(0);
 }
@@ -63,37 +58,18 @@ if (tierModels) {
   console.log(`smoke:live — tiered orchestrate enabled: fast=${tierModels.fast} heavy=${tierModels.heavy}`);
 }
 
-const env = {
-  ...process.env,
-  MUSE_CALENDAR_FILE: calendarFile,
-  MUSE_CALENDAR_PROVIDERS: "local",
-  MUSE_CREDENTIALS_FILE: credentialsFile,
-  // The PII input guard is OFF by default under local-only (no cloud egress to
-  // protect); force it on so the PII-block case actually exercises the guard.
-  MUSE_INPUT_GUARD_PII_ENABLED: "true",
-  MUSE_MODEL: provider.model,
-  MUSE_MODEL_PROVIDER_ID: provider.providerId,
-  MUSE_NOTES_DIR: notesDir,
-  MUSE_TASKS_FILE: tasksFile,
-  PORT: String(port),
-  ...(tierModels ? { MUSE_FAST_MODEL: tierModels.fast, MUSE_HEAVY_MODEL: tierModels.heavy } : {}),
-  ...(provider.apiKey ? { MUSE_MODEL_API_KEY: provider.apiKey } : {})
-};
-
-const api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
-  cwd: rootDir,
-  env,
-  stdio: ["ignore", "pipe", "pipe"]
+const port = await findFreePort();
+const baseUrl = `http://127.0.0.1:${port}`;
+const sandbox = createLiveLlmSmokeSandbox({
+  port,
+  provider,
+  sourceEnv: process.env,
+  tierModels
 });
+const env = sandbox.env;
 
+let api;
 let apiOutput = "";
-api.stdout.on("data", (chunk) => {
-  apiOutput += chunk.toString();
-});
-api.stderr.on("data", (chunk) => {
-  apiOutput += chunk.toString();
-});
-
 const checks = [];
 let failures = 0;
 
@@ -152,7 +128,25 @@ function assertSelected(body, toolName) {
 }
 
 try {
-  await waitForHealth(`${baseUrl}/health`, 30_000);
+  api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
+    cwd: rootDir,
+    env,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  api.stdout.on("data", (chunk) => {
+    apiOutput += chunk.toString();
+  });
+  api.stderr.on("data", (chunk) => {
+    apiOutput += chunk.toString();
+  });
+
+  const spawnError = new Promise((_, reject) => {
+    api.once("error", reject);
+  });
+  await Promise.race([
+    waitForHealth(`${baseUrl}/health`, 30_000),
+    spawnError
+  ]);
 
   await record("POST /api/chat — direct answer", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
@@ -570,31 +564,34 @@ try {
       skip("no local nomic-embed-text model; PDF RAG needs an embed model (`ollama pull nomic-embed-text`)");
     }
     const ragHome = mkdtempSync(path.join(os.tmpdir(), "muse-live-pdfrag-"));
-    const ragNotes = path.join(ragHome, "notes");
-    mkdirSync(ragNotes, { recursive: true });
-    // Minimal hand-built PDF with a distinctive fact + an unrelated decoy.
-    const pdf = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 90>>stream\nBT /F1 18 Tf 72 700 Td (The Q3 marketing budget is 47000 dollars allocated to events.) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
-    writeFileSync(path.join(ragNotes, "budget.pdf"), Buffer.from(pdf, "latin1"));
-    writeFileSync(path.join(ragNotes, "decoy.md"), "My favorite recipe is pancakes with maple syrup.\n", "utf8");
-    const cliEnv = { ...env, HOME: ragHome, MUSE_NOTES_DIR: ragNotes };
-    const reindex = spawnSync("node", [cliEntry, "notes", "reindex"], { encoding: "utf8", env: cliEnv, timeout: 120_000 });
-    assert(reindex.status === 0, `reindex failed (${reindex.status}): ${reindex.stderr}`);
-    const ask = spawnSync(
-      "node",
-      [cliEntry, "ask", "What is the Q3 marketing budget?", "--json", "--no-tasks", "--no-calendar", "--no-reminders"],
-      { encoding: "utf8", env: cliEnv, timeout: 180_000 }
-    );
-    rmSync(ragHome, { force: true, recursive: true });
-    assert(ask.status === 0, `ask failed (${ask.status}): ${ask.stderr}`);
-    const payload = JSON.parse(ask.stdout);
-    const chunks = payload.grounded?.noteChunks ?? [];
-    assert(chunks.length > 0, `expected grounded note chunks, got ${JSON.stringify(payload.grounded)}`);
-    // The PDF outranks the decoy (decoy excluded from the top).
-    const top = [...chunks].sort((a, b) => b.score - a.score)[0];
-    assert(String(top.file).endsWith("budget.pdf"), `expected the PDF to be the top grounded chunk, got ${top.file}`);
-    assert(String(top.text).includes("47000"), `expected the PDF's extracted text in the top chunk, got: ${String(top.text).slice(0, 120)}`);
-    // The model's answer is grounded in the PDF's number.
-    assert(/47[,.]?000|47\s?000/u.test(String(payload.answer)), `expected the answer grounded in the PDF budget figure, got: ${String(payload.answer).slice(0, 200)}`);
+    try {
+      const ragNotes = path.join(ragHome, "notes");
+      mkdirSync(ragNotes, { recursive: true });
+      // Minimal hand-built PDF with a distinctive fact + an unrelated decoy.
+      const pdf = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 90>>stream\nBT /F1 18 Tf 72 700 Td (The Q3 marketing budget is 47000 dollars allocated to events.) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+      writeFileSync(path.join(ragNotes, "budget.pdf"), Buffer.from(pdf, "latin1"));
+      writeFileSync(path.join(ragNotes, "decoy.md"), "My favorite recipe is pancakes with maple syrup.\n", "utf8");
+      const cliEnv = { ...env, HOME: ragHome, MUSE_NOTES_DIR: ragNotes };
+      const reindex = spawnSync("node", [cliEntry, "notes", "reindex"], { encoding: "utf8", env: cliEnv, timeout: 120_000 });
+      assert(reindex.status === 0, `reindex failed (${reindex.status}): ${reindex.stderr}`);
+      const ask = spawnSync(
+        "node",
+        [cliEntry, "ask", "What is the Q3 marketing budget?", "--json", "--no-tasks", "--no-calendar", "--no-reminders"],
+        { encoding: "utf8", env: cliEnv, timeout: 180_000 }
+      );
+      assert(ask.status === 0, `ask failed (${ask.status}): ${ask.stderr}`);
+      const payload = JSON.parse(ask.stdout);
+      const chunks = payload.grounded?.noteChunks ?? [];
+      assert(chunks.length > 0, `expected grounded note chunks, got ${JSON.stringify(payload.grounded)}`);
+      // The PDF outranks the decoy (decoy excluded from the top).
+      const top = [...chunks].sort((a, b) => b.score - a.score)[0];
+      assert(String(top.file).endsWith("budget.pdf"), `expected the PDF to be the top grounded chunk, got ${top.file}`);
+      assert(String(top.text).includes("47000"), `expected the PDF's extracted text in the top chunk, got: ${String(top.text).slice(0, 120)}`);
+      // The model's answer is grounded in the PDF's number.
+      assert(/47[,.]?000|47\s?000/u.test(String(payload.answer)), `expected the answer grounded in the PDF budget figure, got: ${String(payload.answer).slice(0, 200)}`);
+    } finally {
+      rmSync(ragHome, { force: true, maxRetries: 3, recursive: true, retryDelay: 100 });
+    }
   });
 } catch (error) {
   failures += 1;
@@ -617,13 +614,15 @@ try {
     console.error(apiOutput.trim().slice(-4_000));
   }
 
-  api.kill("SIGTERM");
-  await waitForExit(api, 5_000);
+  if (api) {
+    api.kill("SIGTERM");
+    await waitForExit(api, 5_000);
+  }
   try {
-    rmSync(notesDir, { force: true, recursive: true });
-    rmSync(calendarSandbox, { force: true, recursive: true });
-  } catch {
-    // best effort
+    sandbox.cleanup();
+  } catch (error) {
+    failures += 1;
+    console.error(`FAIL  cleanup: ${error instanceof Error ? error.message : String(error)}`);
   }
   process.exitCode = failures > 0 ? 1 : 0;
 }
@@ -671,77 +670,6 @@ async function ollamaHasModel(needle) {
   } catch {
     return false;
   }
-}
-
-// Among the local Ollama models, choose which one smoke:live drives. An
-// explicit MUSE_SMOKE_LIVE_MODEL wins. Unparsable size loses to any sized
-// model. Falls back to the first model when no qwen is present.
-export function qwenParamSize(name) {
-  const tag = name.includes(":") ? name.slice(name.indexOf(":") + 1) : name;
-  const match = tag.match(/(\d+(?:\.\d+)?)b/i);
-  return match ? Number.parseFloat(match[1]) : Number.POSITIVE_INFINITY;
-}
-
-// Heavy tiers at/above this parameter count cold-load too slowly to complete
-// smoke:live in-window; the --tiered check is skipped rather than stalling the
-// whole suite (an explicit MUSE_SMOKE_LIVE_HEAVY_MODEL override bypasses this).
-// Inlined (not a module const) so it's available during top-level evaluation,
-// where pickTierModels runs before this point in the file.
-export function chooseHeavyTier(fastModel, qwens, overrideHeavy) {
-  if (overrideHeavy) {
-    const pinned = overrideHeavy.startsWith("ollama/") ? overrideHeavy : `ollama/${overrideHeavy}`;
-    return pinned !== fastModel ? pinned : undefined;
-  }
-  const heavy = qwens
-    .filter((m) => m !== fastModel)
-    .sort((a, b) => qwenParamSize(a) - qwenParamSize(b))[0];
-  if (!heavy || qwenParamSize(heavy) >= 20) {
-    return undefined; // only a giant distinct qwen available → skip tiered
-  }
-  return heavy;
-}
-
-// Tool selection is the POINT of this gate (see tool-calling.md). A sub-7B
-// qwen fails the NATURAL one-shot selection checks on capability, not on a
-// code defect — picking the absolute smallest model therefore manufactured
-// false reds and let real regressions hide behind "it's just the tiny model".
-// So prefer the SMALLEST qwen that is actually tool-calling capable
-// (>= floor) yet still small enough to cold-load inside the window
-// (< ceil). Only when none qualify do we fall back to the absolute smallest,
-// and pickProvider then prints a caveat that selection results are advisory.
-// MUSE_SMOKE_LIVE_MIN_PARAMS tunes the floor (default 7, the documented
-// qwen target tier). Declared as a hoisted FUNCTION (not a module const) so
-// it is callable during top-level evaluation, where pickProvider →
-// selectSmokeLiveModel runs before this point in the file — the same TDZ
-// hazard chooseHeavyTier is inlined to dodge. The ceiling (20B cold-loads
-// past the window) is a literal in selectSmokeLiveModel for the same reason.
-export function smokeLiveMinParams() {
-  return Number.parseFloat(process.env.MUSE_SMOKE_LIVE_MIN_PARAMS ?? "7");
-}
-
-export function selectSmokeLiveModel(names, override) {
-  if (override) {
-    return override;
-  }
-  // Prefer the shipped default (gemma4) when it's installed — smoke:live should
-  // exercise the model Muse actually runs. Fall back to the qwen heuristic for
-  // setups that don't have gemma4 yet.
-  const gemma = names.find((n) => /gemma4/i.test(n));
-  if (gemma) {
-    return gemma;
-  }
-  const qwens = names.filter((n) => /qwen/i.test(n));
-  if (qwens.length === 0) {
-    return names[0];
-  }
-  const bySize = [...qwens].sort(
-    (a, b) => qwenParamSize(a) - qwenParamSize(b) || a.localeCompare(b)
-  );
-  const floor = smokeLiveMinParams();
-  const toolCapable = bySize.filter(
-    (n) => qwenParamSize(n) >= floor && qwenParamSize(n) < 20
-  );
-  return toolCapable[0] ?? bySize[0];
 }
 
 async function pickProvider() {

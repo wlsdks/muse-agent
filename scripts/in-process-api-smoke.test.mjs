@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -13,6 +13,119 @@ import {
   installProcessEnvironment,
   startInProcessApi
 } from "./lib/in-process-api.mjs";
+import { createLiveLlmSmokeSandbox } from "./lib/live-llm-smoke-sandbox.mjs";
+import {
+  chooseHeavyTier,
+  selectSmokeLiveModel
+} from "./lib/live-llm-smoke-models.mjs";
+
+test("live LLM model selection never routes chat work to embedding-only models", () => {
+  const installed = [
+    "qwen3-embedding:0.6b",
+    "embeddinggemma:latest",
+    "nomic-embed-text:latest",
+    "qwen3.6:35b-a3b",
+    "qwen3:8b"
+  ];
+
+  assert.equal(selectSmokeLiveModel(installed, undefined, 7), "qwen3:8b");
+  assert.equal(
+    chooseHeavyTier(
+      "ollama/gemma4:12b",
+      installed.map((name) => `ollama/${name}`),
+      undefined
+    ),
+    "ollama/qwen3:8b"
+  );
+  assert.equal(
+    chooseHeavyTier("ollama/gemma4:12b", ["ollama/qwen3-embedding:0.6b"], undefined),
+    undefined
+  );
+  assert.equal(selectSmokeLiveModel(["qwen3-embedding:0.6b"], undefined, 7), undefined);
+  assert.equal(selectSmokeLiveModel(["bge-reranker-v2-m3:latest"], undefined, 7), undefined);
+  assert.equal(selectSmokeLiveModel(["embeddinggemma:latest"], undefined, 7), undefined);
+});
+
+test("live LLM smoke isolates persistent state and cleans only its disposable root", () => {
+  const ownerRoot = mkdtempSync(join(tmpdir(), "muse-live-owner-sentinel-"));
+  const ownerMemory = join(ownerRoot, "user-memory.json");
+  const ownerTasks = join(ownerRoot, "tasks.json");
+  const sandbox = createLiveLlmSmokeSandbox({
+    port: 31_337,
+    provider: {
+      apiKey: undefined,
+      model: "ollama/qwen-test",
+      providerId: "ollama"
+    },
+    sourceEnv: {
+      HOME: ownerRoot,
+      MUSE_TASKS_FILE: ownerTasks,
+      MUSE_USER_MEMORY_FILE: ownerMemory,
+      OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+      OPENAI_API_KEY: "owner-secret",
+      PATH: process.env.PATH
+    }
+  });
+
+  try {
+    assert.notEqual(sandbox.env.HOME, ownerRoot);
+    assert.ok(sandbox.env.HOME?.startsWith(sandbox.rootDir));
+    assert.ok(sandbox.env.MUSE_TASKS_FILE?.startsWith(sandbox.rootDir));
+    assert.equal(sandbox.env.MUSE_USER_MEMORY_FILE, undefined);
+    assert.equal(sandbox.env.MUSE_USER_MEMORY_AUTO_EXTRACT, "true");
+    assert.equal(sandbox.env.MUSE_MODEL, "ollama/qwen-test");
+    assert.equal(sandbox.env.MUSE_MODEL_PROVIDER_ID, "ollama");
+    assert.equal(sandbox.env.OLLAMA_BASE_URL, "http://127.0.0.1:11434");
+    assert.equal(sandbox.env.OPENAI_API_KEY, undefined);
+    assert.equal(sandbox.env.PORT, "31337");
+    assert.ok(readFileSync(join(sandbox.env.MUSE_NOTES_DIR, "people", "mom.md"), "utf8").includes("May 15"));
+    writeFileSync(join(sandbox.env.HOME, ".muse-owner-probe"), "sandbox\n", "utf8");
+  } finally {
+    sandbox.cleanup();
+    sandbox.cleanup();
+  }
+
+  assert.equal(existsSync(sandbox.rootDir), false);
+  assert.equal(existsSync(ownerRoot), true);
+  assert.equal(existsSync(ownerMemory), false);
+  assert.equal(existsSync(ownerTasks), false);
+  rmSync(ownerRoot, { force: true, recursive: true });
+});
+
+test("live LLM smoke allocates after the Ollama skip boundary and cleans in finally", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "smoke-live-llm.mjs"), "utf8");
+  const providerProbe = source.indexOf("const provider = await pickProvider()");
+  const skipExit = source.indexOf("process.exit(0)", providerProbe);
+  const sandboxAllocation = source.indexOf("createLiveLlmSmokeSandbox({", providerProbe);
+  const executionTry = source.indexOf("try {\n  api = spawn", sandboxAllocation);
+  const apiSpawn = source.indexOf("api = spawn", sandboxAllocation);
+  const spawnErrorListener = source.indexOf('api.once("error"', apiSpawn);
+  const finallyBlock = source.indexOf("} finally {", apiSpawn);
+  const sandboxCleanup = source.indexOf("sandbox.cleanup()", finallyBlock);
+  const ragAllocation = source.indexOf("const ragHome = mkdtempSync", apiSpawn);
+  const ragTry = source.indexOf("try {", ragAllocation);
+  const ragFinally = source.indexOf("} finally {", ragTry);
+  const ragCleanup = source.indexOf("rmSync(ragHome", ragFinally);
+
+  assert.ok(providerProbe >= 0);
+  assert.ok(skipExit > providerProbe);
+  assert.ok(sandboxAllocation > skipExit, "the no-Ollama skip must happen before allocating state");
+  assert.ok(executionTry > sandboxAllocation);
+  assert.ok(apiSpawn > executionTry, "the API spawn must be inside the cleanup try/finally");
+  assert.ok(spawnErrorListener > apiSpawn && spawnErrorListener < finallyBlock);
+  assert.ok(finallyBlock > apiSpawn);
+  assert.ok(sandboxCleanup > finallyBlock, "success and failure paths must share cleanup");
+  assert.ok(ragAllocation > apiSpawn);
+  assert.ok(ragTry > ragAllocation);
+  assert.ok(ragFinally > ragTry);
+  assert.ok(ragCleanup > ragFinally, "the PDF fixture must clean up on every failure path");
+  assert.match(source, /import \{[^}]*mkdirSync[^}]*\} from "node:fs"/u);
+  assert.match(source, /import \{[^}]*writeFileSync[^}]*\} from "node:fs"/u);
+  assert.doesNotMatch(
+    source.slice(sandboxAllocation, source.indexOf("const api = spawn", sandboxAllocation)),
+    /\.\.\.process\.env/u
+  );
+});
 
 test("disposable API env starts sparse and remaps every home/temp namespace", () => {
   const rootDir = join(tmpdir(), "muse-smoke-unit-root");
