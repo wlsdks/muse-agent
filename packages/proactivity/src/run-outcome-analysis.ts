@@ -4,6 +4,7 @@ import {
   RUN_GROUNDING_FRESHNESS_MS,
   admitDecisionMetric,
   isCanonicalLocalRunId,
+  type DecisionMetricDataOrigin,
   type DecisionMetric,
   type DecisionMetricExclusionReason
 } from "@muse/shared";
@@ -58,7 +59,7 @@ const DEFAULT_MAX_TOPICS = 5;
 
 export function analyzeRunOutcomes(
   entries: readonly RunOutcomeEntry[],
-  options?: { readonly maxTopics?: number; readonly now?: Date }
+  options?: { readonly dataOrigin?: DecisionMetricDataOrigin; readonly maxTopics?: number; readonly now?: Date }
 ): RunOutcomeSummary {
   const maxTopics = Number.isFinite(options?.maxTopics) ? Math.max(1, Math.trunc(options!.maxTopics!)) : DEFAULT_MAX_TOPICS;
   let labelled = 0;
@@ -114,7 +115,8 @@ export function analyzeRunOutcomes(
     const admission = admitDecisionMetric({
       actionId: "inspect-run-grounding",
       claim: "technical-diagnostic",
-      evidenceClass: "unclassified",
+      dataOrigin: options?.dataOrigin ?? "unclassified",
+      executionEvidence: "deterministic",
       freshness: {
         asOf: endedAt,
         evaluatedAt,
@@ -122,7 +124,7 @@ export function analyzeRunOutcomes(
         status: Date.parse(evaluatedAt) - Date.parse(endedAt) <= RUN_GROUNDING_FRESHNESS_MS ? "fresh" : "stale"
       },
       id: "run.grounding.failure-rate",
-      schemaVersion: 1,
+      schemaVersion: 2,
       source: { id: "run-grounding-log", version: 1 },
       value: { denominator: gradedRuns, numerator: technicalFailures, unit: "ratio" },
       window: { endedAt, startedAt }

@@ -1106,10 +1106,11 @@ test("a complete organic window renders the API measurement contract instead of 
   const metric = (outcome: "used" | "rejected", numerator: number) => ({
     actionId: "review-continuity-feedback" as const,
     claim: "personal-effectiveness" as const,
-    evidenceClass: "organic" as const,
+    dataOrigin: "production" as const,
+    executionEvidence: "organic-production" as const,
     freshness: { asOf: "2026-07-21T10:00:00.000Z", evaluatedAt: "2026-07-22T00:00:00.000Z", staleAfterMs: 2_592_000_000, status: "fresh" as const },
     id: `continuity.first-20.${outcome}.life`,
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     source: { id: "attunement-state" as const, version: 8 as const },
     value: { denominator: 20, numerator, unit: "ratio" as const },
     window: { endedAt: "2026-07-21T09:00:00.000Z", startedAt: "2026-07-16T09:00:00.000Z" }
@@ -1130,7 +1131,7 @@ test("a complete organic window renders the API measurement contract instead of 
 
   await expect.element(screen.getByText("40%", { exact: true })).toBeVisible();
   await expect.element(screen.getByText("10%", { exact: true })).toBeVisible();
-  await expect.element(screen.getByText(/organic evidence · denominator 20 · attunement-state@8/u)).toBeVisible();
+  await expect.element(screen.getByText(/organic-production evidence · denominator 20 · attunement-state@8/u)).toBeVisible();
   await expect.element(screen.getByRole("link", { name: "Review pending feedback" }).first()).toHaveAttribute("href", "#continuity-feedback-review");
   await expect.element(screen.getByText("100%", { exact: true })).not.toBeInTheDocument();
 });

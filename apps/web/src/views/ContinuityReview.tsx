@@ -332,7 +332,7 @@ function KindSummary({ kind, evaluation }: { readonly kind: Kind; readonly evalu
       {used
         ? <p className="row-meta">{t("continuity.metricDetails", {
             denominator: used.value.denominator,
-            evidenceClass: used.evidenceClass,
+            evidenceClass: used.executionEvidence,
             freshness: used.freshness.status,
             source: `${used.source.id}@${used.source.version.toString()}`,
             startedAt: used.window.startedAt.slice(0, 10),
@@ -361,7 +361,7 @@ function TechnicalEvidenceCard({ evaluation }: { readonly evaluation: ReviewResp
     })}</p>
     {sample ? <p className="row-meta">{t("continuity.metricDetails", {
       denominator: sample.value.denominator,
-      evidenceClass: sample.evidenceClass,
+      evidenceClass: sample.executionEvidence,
       freshness: sample.freshness.status,
       source: `${sample.source.id}@${sample.source.version.toString()}`,
       startedAt: sample.window.startedAt.slice(0, 10),

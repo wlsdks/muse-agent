@@ -372,6 +372,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Changed
 
+- **Decision metrics now separate data origin from execution evidence.**
+  The shared schema-v2 admission contract requires immutable
+  `synthetic|production|unclassified` origin, an independent
+  `deterministic|controlled-live|organic-production` execution grade,
+  freshness, source/action coherence, and a non-zero denominator. Missing or
+  promotion-incoherent evidence is excluded instead of guessed.
+
 - **Doctor runtime diagnostics now have a cohesive internal boundary.** The
   oversized CLI command module keeps argument/runtime assembly, while resident
   resource policy, verified-PID process observation, workload evidence, and

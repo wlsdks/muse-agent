@@ -327,7 +327,7 @@ export function formatContinuityStats(stats: ContinuityStats): string {
     `First ${CONTINUITY_KILL_CRITERION_FIRST_PACKS.toString()} complete organic pairs: used ${formatMetricRate(stats, "used", "overall")}, rejected ${formatMetricRate(stats, "rejected", "overall")} (kill criterion: used<20% or rejected>30%)`,
     ...(continuityMetric(stats, "continuity.first-20.used.overall")
       ? [
-          `Measurement contract: evidence=organic source=attunement-state@8 window=${continuityMetric(stats, "continuity.first-20.used.overall")!.window.startedAt} → ${continuityMetric(stats, "continuity.first-20.used.overall")!.window.endedAt} freshness=${continuityMetric(stats, "continuity.first-20.used.overall")!.freshness.status}.`,
+          `Measurement contract: origin=${continuityMetric(stats, "continuity.first-20.used.overall")!.dataOrigin} execution=${continuityMetric(stats, "continuity.first-20.used.overall")!.executionEvidence} source=attunement-state@8 window=${continuityMetric(stats, "continuity.first-20.used.overall")!.window.startedAt} → ${continuityMetric(stats, "continuity.first-20.used.overall")!.window.endedAt} freshness=${continuityMetric(stats, "continuity.first-20.used.overall")!.freshness.status}.`,
           "Measurement action: muse thread review"
         ]
       : ["Measurement evidence: insufficient — no personal-effectiveness percentage is emitted.", "Measurement action: muse thread review"]),

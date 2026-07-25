@@ -245,10 +245,11 @@ function decisionMeasurements(
         const metric = admittedMetric({
           actionId: "review-continuity-feedback",
           claim: "personal-effectiveness",
-          evidenceClass: "organic",
+          dataOrigin: "production",
+          executionEvidence: "organic-production",
           freshness: freshness(asOf, evaluatedAt),
           id: `continuity.first-20.${outcome}.${scope}`,
-          schemaVersion: 1,
+          schemaVersion: 2,
           source: { id: "attunement-state", version: 8 },
           value: {
             denominator: CONTINUITY_KILL_CRITERION_FIRST_PACKS,
@@ -269,10 +270,15 @@ function decisionMeasurements(
       const metric = admittedMetric({
         actionId: "inspect-continuity-technical-evidence",
         claim: "technical-diagnostic",
-        evidenceClass,
+        dataOrigin: evidenceClass === "organic" ? "production" : "unclassified",
+        executionEvidence: evidenceClass === "organic"
+          ? "organic-production"
+          : evidenceClass === "controlled"
+            ? "controlled-live"
+            : "deterministic",
         freshness: freshness(deliveryWindow.endedAt, evaluatedAt),
         id: `continuity.technical.delivery.${evidenceClass}.${scope}`,
-        schemaVersion: 1,
+        schemaVersion: 2,
         source: { id: "attunement-state", version: 8 },
         value: { denominator: deliveries.length, numerator: deliveries.filter((delivery) => delivery.evidenceClass === evidenceClass).length, unit: "count-of-total" },
         window: deliveryWindow
@@ -287,10 +293,15 @@ function decisionMeasurements(
       const metric = admittedMetric({
         actionId: "inspect-continuity-technical-evidence",
         claim: "technical-diagnostic",
-        evidenceClass,
+        dataOrigin: evidenceClass === "organic" ? "production" : "unclassified",
+        executionEvidence: evidenceClass === "organic"
+          ? "organic-production"
+          : evidenceClass === "controlled"
+            ? "controlled-live"
+            : "deterministic",
         freshness: freshness(outcomeWindow.endedAt, evaluatedAt),
         id: `continuity.technical.outcome.${evidenceClass}.${scope}`,
-        schemaVersion: 1,
+        schemaVersion: 2,
         source: { id: "attunement-state", version: 8 },
         value: { denominator: outcomes.length, numerator: outcomes.filter((outcome) => outcome.evidenceClass === evidenceClass).length, unit: "count-of-total" },
         window: outcomeWindow

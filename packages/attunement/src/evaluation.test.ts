@@ -52,6 +52,11 @@ describe("computeContinuityEvaluation longitudinal evidence", () => {
       "continuity.first-20.used.work",
       "continuity.first-20.rejected.work"
     ]);
+    expect(personal[0]).toMatchObject({
+      dataOrigin: "production",
+      executionEvidence: "organic-production",
+      schemaVersion: 2
+    });
     expect(personal[0]?.value).toEqual({ denominator: 20, numerator: 20, unit: "ratio" });
     expect(personal[0]?.freshness).toMatchObject({ evaluatedAt: "2026-07-22T00:00:00.000Z", status: "fresh" });
   });
@@ -111,6 +116,12 @@ describe("computeContinuityEvaluation longitudinal evidence", () => {
     ]);
     expect(evaluation.measurements.find((metric) => metric.id === `continuity.technical.delivery.${evidenceClass}.overall`)?.value)
       .toEqual({ denominator: 1, numerator: 1, unit: "count-of-total" });
+    expect(evaluation.measurements.find((metric) => metric.id === `continuity.technical.delivery.${evidenceClass}.overall`))
+      .toMatchObject({
+        dataOrigin: "unclassified",
+        executionEvidence: evidenceClass === "controlled" ? "controlled-live" : "deterministic",
+        schemaVersion: 2
+      });
     expect(evaluation.measurements.find((metric) => metric.id === "continuity.technical.outcome.organic.overall")?.value)
       .toEqual({ denominator: 1, numerator: 1, unit: "count-of-total" });
     expect(evaluation.measurements.filter((metric) => metric.claim !== "technical-diagnostic")).toEqual([]);

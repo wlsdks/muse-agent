@@ -39,6 +39,52 @@ The report separately returns `organic-effectiveness: not-proven`. Synthetic
 fixtures and technical gates cannot promote this field. Organic effectiveness
 requires real user-labelled continuity outcomes.
 
+## Program outcome scorecard
+
+The three machine-report gates above answer a narrower question: whether the
+current technical qualification is trustworthy. They are inputs to, not a
+replacement for, the daily-use program scorecard. The program has eight
+conjunctive outcome gates; percentages, test counts, tool calls, or a strong
+component cannot average away a red or unverified row.
+
+| Outcome gate | Green means | Admissible evidence | Never infer |
+| --- | --- | --- | --- |
+| Runtime | Required interactive and resident journeys finish within their bounded time, recover from expected restart/failure cases, and leave no duplicate or orphan process. | Fresh deterministic fault tests plus current controlled-live runtime evidence bound to source/build/runtime identity. | A passing unit test or installed artifact alone proves daily reliability. |
+| Delivery safety | Every proposed external effect remains inside the configured local/provider boundary, uses the required draft/approval/idempotency path, and has no unresolved overdue queue. | Deterministic adversarial tests and current controlled-live provider/queue observations; organic receipts may corroborate delivery only. | A task transition or delivery receipt is feedback, permission, or future-send authority. |
+| Recall | Current facts, preferences, corrections, source citations, and abstentions meet their named per-axis terminal criteria without hiding a failed axis in an aggregate. | Deterministic and controlled-live trials with frozen cases, exact denominators, freshness, and source provenance. | Synthetic scale or retrieval-component success is personal usefulness or organic effectiveness. |
+| Continuity | One exact PersonalThread can produce a provenance-bound Continuity Pack, delivery, and outcome whose links remain intact across restart and storage backends. | Deterministic parity/fault tests, controlled-live end-to-end trials, and separately labelled organic outcomes. | A factual interaction receipt is an outcome label, feedback, permission, or policy promotion. |
+| Privacy | Local stores, retention/deletion, secrets, provider egress, logs, exports, and backups preserve the declared owner-only and fail-closed boundaries. | Deterministic adversarial/corruption tests plus current controlled-live filesystem, provider, and recovery observations. | “Local by default,” a clean log sample, or one provider lock proves the complete privacy boundary. |
+| Resource | Resident and interactive use stays within declared CPU, memory, disk, latency, token/provider-cost, retry, and queue budgets without runaway work. | Denominator-bearing controlled-live measurements and organic-production operational telemetry tied to a version and interval. | A short benchmark, idle snapshot, or synthetic throughput run proves sustainable daily cost. |
+| Onboarding | The owner can complete clean setup, understand the next action, reach the first useful personal journey, and recover from a failed prerequisite without hidden manual repair. | Controlled-live clean-profile journeys and owner-labelled organic completion/friction evidence. | `OnboardReport.ready`, command success, or documentation presence alone proves adoption or value. |
+| Organic value | Real owner-initiated or policy-eligible daily use produces explicitly labelled useful outcomes at the declared denominator while ignored/rejected/adjusted outcomes and friction remain visible. | Fresh `organic-production` outcomes with exact user, thread, source, time window, denominator, and explicit labels. | Deterministic, synthetic, controlled-live, factual receipt, or elapsed time can green this row. |
+
+The scorecard is green only when every applicable technical row is green and
+organic value is proven for its declared interval. Until then, the honest
+program state is failed, unverified, or not-proven. Scorecard evidence never
+mints `ProgressiveAutonomyOrganicAuthority` and never changes permission or
+policy: autonomy promotion additionally requires the trusted organic runtime
+path, exact correlation, and its own governed approval contract. Neither a
+technically `qualified` report nor scorecard evidence alone is a release PASS
+or release decision; release still requires every applicable, fresh roadmap
+gate and its independent release evaluation.
+
+### Decision evidence admission
+
+Decision-grade measurements use the shared schema-v2 `DecisionMetric` contract.
+`dataOrigin` (`synthetic | production | unclassified`) is immutable provenance;
+`executionEvidence` (`deterministic | controlled-live | organic-production`) is
+a separate execution grade. Both are required alongside a canonical source,
+freshness interval, measurement window, and non-zero denominator. Missing,
+unknown, stale-incoherent, or source/action/claim-incoherent records are
+excluded by `admitDecisionMetric` before any qualification consumer sees them.
+
+Only `dataOrigin=production` with
+`executionEvidence=organic-production` may support the current
+personal-effectiveness measurements. Synthetic or unclassified origin and
+deterministic or controlled-live execution may support an explicitly technical
+diagnostic only; they cannot support personal effectiveness, learning,
+autonomy, permission, or release promotion.
+
 ## Capability evidence
 
 `pnpm eval:agent -- --json` is the only producer of a pass-eligible v2 report.

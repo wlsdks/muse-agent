@@ -4,7 +4,8 @@ export const RUN_GROUNDING_FRESHNESS_MS = 7 * 24 * 60 * 60 * 1_000;
 export const ATTUNEMENT_OUTCOME_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export type DecisionMetricClaim = "technical-diagnostic" | "personal-effectiveness" | "learning" | "autonomy";
-export type DecisionMetricEvidenceClass = "organic" | "controlled" | "unclassified";
+export type DecisionMetricDataOrigin = "synthetic" | "production" | "unclassified";
+export type DecisionMetricExecutionEvidence = "deterministic" | "controlled-live" | "organic-production";
 export type DecisionMetricUnit = "ratio" | "count-of-total";
 export type DecisionMetricActionId = "inspect-run-grounding" | "review-continuity-feedback" | "inspect-continuity-technical-evidence";
 export type DecisionMetricFreshnessStatus = "fresh" | "stale";
@@ -16,7 +17,8 @@ export type DecisionMetricSource =
 export interface DecisionMetricInput {
   readonly actionId: DecisionMetricActionId;
   readonly claim: DecisionMetricClaim;
-  readonly evidenceClass: DecisionMetricEvidenceClass;
+  readonly dataOrigin: DecisionMetricDataOrigin;
+  readonly executionEvidence: DecisionMetricExecutionEvidence;
   readonly freshness: {
     readonly asOf: string;
     readonly evaluatedAt: string;
@@ -24,7 +26,7 @@ export interface DecisionMetricInput {
     readonly status: DecisionMetricFreshnessStatus;
   };
   readonly id: string;
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly source: DecisionMetricSource;
   readonly value: {
     readonly denominator: number;
@@ -51,7 +53,18 @@ export type DecisionMetricAdmission =
   | { readonly kind: "admitted"; readonly metric: DecisionMetric }
   | { readonly kind: "excluded"; readonly reason: DecisionMetricExclusionReason };
 
-const TOP_KEYS = ["actionId", "claim", "evidenceClass", "freshness", "id", "schemaVersion", "source", "value", "window"] as const;
+const TOP_KEYS = [
+  "actionId",
+  "claim",
+  "dataOrigin",
+  "executionEvidence",
+  "freshness",
+  "id",
+  "schemaVersion",
+  "source",
+  "value",
+  "window"
+] as const;
 
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
@@ -80,7 +93,7 @@ function coherent(metric: DecisionMetric): boolean {
   if (metric.source.id === "run-grounding-log") {
     return metric.id === "run.grounding.failure-rate"
       && metric.claim === "technical-diagnostic"
-      && metric.evidenceClass === "unclassified"
+      && metric.executionEvidence === "deterministic"
       && metric.value.unit === "ratio"
       && metric.freshness.staleAfterMs === RUN_GROUNDING_FRESHNESS_MS
       && metric.actionId === "inspect-run-grounding";
@@ -88,15 +101,20 @@ function coherent(metric: DecisionMetric): boolean {
   const personal = /^continuity\.first-20\.(used|rejected)\.(overall|life|work)$/u.exec(metric.id);
   if (personal) {
     return metric.claim === "personal-effectiveness"
-      && metric.evidenceClass === "organic"
+      && metric.dataOrigin === "production"
+      && metric.executionEvidence === "organic-production"
       && metric.value.unit === "ratio"
       && metric.freshness.staleAfterMs === ATTUNEMENT_OUTCOME_FRESHNESS_MS
       && metric.actionId === "review-continuity-feedback";
   }
   const technical = /^continuity\.technical\.(delivery|outcome)\.(organic|controlled|unclassified)\.(overall|life|work)$/u.exec(metric.id);
-  return Boolean(technical)
-    && metric.claim === "technical-diagnostic"
-    && metric.evidenceClass === technical?.[2]
+  if (!technical || metric.claim !== "technical-diagnostic") return false;
+  const technicalContract = technical[2] === "organic"
+    ? metric.dataOrigin === "production" && metric.executionEvidence === "organic-production"
+    : technical[2] === "controlled"
+      ? metric.dataOrigin === "unclassified" && metric.executionEvidence === "controlled-live"
+      : metric.dataOrigin === "unclassified" && metric.executionEvidence === "deterministic";
+  return technicalContract
     && metric.value.unit === "count-of-total"
     && metric.freshness.staleAfterMs === ATTUNEMENT_OUTCOME_FRESHNESS_MS
     && metric.actionId === "inspect-continuity-technical-evidence";
@@ -104,7 +122,7 @@ function coherent(metric: DecisionMetric): boolean {
 
 /** Validate the complete source/claim/action tuple; invalid or unknown provenance is excluded, never guessed. */
 export function admitDecisionMetric(input: unknown): DecisionMetricAdmission {
-  if (!isRecord(input) || !exactKeys(input, TOP_KEYS) || input.schemaVersion !== 1) {
+  if (!isRecord(input) || !exactKeys(input, TOP_KEYS) || input.schemaVersion !== 2) {
     return { kind: "excluded", reason: "invalid-shape" };
   }
   const parsedSource = source(input.source);
@@ -133,7 +151,8 @@ export function admitDecisionMetric(input: unknown): DecisionMetricAdmission {
   if (input.freshness.status !== expectedStatus) return { kind: "excluded", reason: "invalid-freshness" };
   if (typeof input.id !== "string"
     || !["technical-diagnostic", "personal-effectiveness", "learning", "autonomy"].includes(String(input.claim))
-    || !["organic", "controlled", "unclassified"].includes(String(input.evidenceClass))
+    || !["synthetic", "production", "unclassified"].includes(String(input.dataOrigin))
+    || !["deterministic", "controlled-live", "organic-production"].includes(String(input.executionEvidence))
     || !["inspect-run-grounding", "review-continuity-feedback", "inspect-continuity-technical-evidence"].includes(String(input.actionId))) {
     return { kind: "excluded", reason: "invalid-shape" };
   }

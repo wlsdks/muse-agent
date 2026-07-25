@@ -24,7 +24,7 @@ export function formatRunOutcomes(summary: RunOutcomeSummary): string {
     + `${outcomes.misgrounded.toString()} misgrounded · ${outcomes.contested.toString()} contested · ${outcomes.error.toString()} error)`;
   const metadata = [
     `  scope: ${scope}`,
-    `  evidence: ${measurement.evidenceClass} · source: ${measurement.source.id}@${measurement.source.version.toString()}`,
+    `  origin: ${measurement.dataOrigin} · execution: ${measurement.executionEvidence} · source: ${measurement.source.id}@${measurement.source.version.toString()}`,
     `  denominator: ${measurement.value.denominator.toString()} canonical unique graded runs`,
     `  window: ${measurement.window.startedAt} → ${measurement.window.endedAt}`,
     `  freshness: ${measurement.freshness.status} as of ${measurement.freshness.asOf} (evaluated ${measurement.freshness.evaluatedAt})`,
@@ -85,7 +85,7 @@ export async function readRunOutcomeEntries(workspaceDir: string): Promise<RunOu
 
 export async function runRunOutcomesDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
   const entries = await readRunOutcomeEntries(io.workspaceDir ?? process.cwd());
-  const summary = analyzeRunOutcomes(entries, { now: new Date() });
+  const summary = analyzeRunOutcomes(entries, { dataOrigin: "production", now: new Date() });
   if (asJson) {
     io.stdout(`${JSON.stringify(summary, null, 2)}\n`);
     return;

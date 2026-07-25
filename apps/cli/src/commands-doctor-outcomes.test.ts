@@ -31,7 +31,7 @@ describe("formatRunOutcomes", () => {
 
     expect(out).toContain("2 unique graded runs");
     expect(out).toContain("technical failure-rate 50%");
-    expect(out).toContain("evidence: unclassified · source: run-grounding-log@1");
+    expect(out).toContain("origin: unclassified · execution: deterministic · source: run-grounding-log@1");
     expect(out).toContain("window: 2026-07-21T00:00:00.000Z → 2026-07-22T00:00:00.000Z");
     expect(out).toContain("freshness: fresh");
     expect(out).toContain("action: muse doctor --run-outcomes");
