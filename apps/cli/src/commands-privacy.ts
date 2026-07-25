@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import {
   resolveActionLogFile,
+  resolveAttunementFile,
   resolveContactsFile,
   resolveEpisodesFile,
   resolveNotesDir,
@@ -72,8 +73,17 @@ function storeDefs(env: Env, runtime: PrivacyPostureRuntime = {}): readonly { na
     { encryptCommand: "muse reflections encrypt", encryptable: true, name: "reflections", path: resolveReflectionsFile(env) },
     { encryptable: false, name: "tasks", path: resolveTasksFile(env) },
     { encryptable: false, name: "reminders", path: resolveRemindersFile(env) },
-    { encryptable: false, name: "notes", path: resolveNotesDir(env) }
+    { encryptable: false, name: "notes", path: resolveNotesDir(env) },
+    { encryptable: false, name: "attunement", path: resolveAttunementFile(env) }
   ];
+}
+
+/** Canonical path authority shared with service-removal safety guards. */
+export function resolvePrivacyStorePaths(
+  env: Env,
+  runtime: PrivacyPostureRuntime = {}
+): readonly { readonly name: string; readonly path: string }[] {
+  return storeDefs(env, runtime).map(({ name, path }) => ({ name, path }));
 }
 
 /**

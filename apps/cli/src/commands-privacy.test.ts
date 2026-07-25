@@ -43,9 +43,9 @@ describe("collectPrivacyPosture — inventory each store's at-rest state + key p
     expect(posture.explicitKey).toBe(true);
   });
 
-  it("marks tasks/reminders/notes as not-yet-encryptable (never falsely 'encrypted')", async () => {
+  it("marks tasks/reminders/notes/attunement as not-yet-encryptable (never falsely 'encrypted')", async () => {
     const posture = await collectPrivacyPosture({ HOME: tmpHome() });
-    for (const name of ["tasks", "reminders", "notes"]) {
+    for (const name of ["tasks", "reminders", "notes", "attunement"]) {
       const store = posture.stores.find((s) => s.name === name)!;
       expect(store.encryptable).toBe(false);
       expect(store.encrypted).toBe(false);

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -59,6 +59,15 @@ function scheduledTaskXml(entrypoint: string, executable = process.execPath): st
   const escapedEntry = entrypoint.replaceAll("&", "&amp;").replaceAll("\"", "&quot;");
   const escapedExecutable = executable.replaceAll("&", "&amp;");
   return `<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task"><Actions Context="Author"><Exec><Command>${escapedExecutable}</Command><Arguments>&quot;${escapedEntry}&quot; daemon</Arguments></Exec></Actions></Task>`;
+}
+
+function residentLaunchAgentXml(root: string): string {
+  return buildLaunchAgentPlist({
+    label: "com.muse.daemon",
+    programArguments: [process.execPath, TEST_HARNESS_CLI_ENTRY, "daemon"],
+    stderrPath: join(root, "daemon.err.log"),
+    stdoutPath: join(root, "daemon.out.log")
+  });
 }
 
 const TEST_HARNESS_CLI_ENTRY = stableCliEntryFixture();
@@ -2057,7 +2066,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   it("--uninstall unloads, VERIFIES via list that the label is gone, then removes the plist", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-uninstall-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
-    writeFileSync(plistFile, "<plist/>", "utf8");
+    writeFileSync(plistFile, residentLaunchAgentXml(dir), "utf8");
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     const calls: (readonly string[])[] = [];
@@ -2079,7 +2088,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   it("--uninstall KEEPS the plist and fails when `list` shows the job is STILL registered/running after unload (no orphan daemon)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-uninstall-stuck-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
-    writeFileSync(plistFile, "<plist/>", "utf8");
+    writeFileSync(plistFile, residentLaunchAgentXml(dir), "utf8");
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
     const runLaunchctl = async (args: readonly string[]) => {
@@ -2106,15 +2115,278 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const calls: (readonly string[])[] = [];
     const runLaunchctl = async (args: readonly string[]) => {
       calls.push(args);
-      return { code: 0, stderr: "", stdout: "" };
+      return { code: 1, stderr: "Could not find specified service", stdout: "" };
     };
 
     const res = await runDaemon(["--uninstall"], { env, platform: "darwin", registry, runLaunchctl });
 
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toContain("was not installed");
-    expect(calls).toHaveLength(0); // never shells out to unload something that isn't there
+    expect(calls).toEqual([["list", "com.muse.daemon"]]);
     expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--uninstall is service-only across success, failure, and no-op; personal store bytes and modes never change", async () => {
+    const home = mkdtempSync(join(tmpdir(), "muse-uninstall-preserve-"));
+    const notesDir = join(home, ".muse", "notes");
+    const noteFile = join(notesDir, "daily.md");
+    const tasksFile = join(home, ".muse", "tasks.json");
+    const memoryFile = join(home, ".muse", "user-memory.json");
+    const attunementFile = join(home, ".muse", "attunement.json");
+    const receiptFile = join(home, ".muse", "daemon-install", "receipt.json");
+    mkdirSync(notesDir, { mode: 0o700, recursive: true });
+    mkdirSync(dirname(receiptFile), { mode: 0o700, recursive: true });
+    writeFileSync(noteFile, "# private note\n", { mode: 0o600 });
+    writeFileSync(tasksFile, "[{\"id\":\"task-private\"}]\n", { mode: 0o640 });
+    writeFileSync(memoryFile, "{\"facts\":[\"private\"]}\n", { mode: 0o600 });
+    writeFileSync(attunementFile, "{\"threads\":[{\"id\":\"thread-private\"}]}\n", { mode: 0o600 });
+
+    const personalFiles = [noteFile, tasksFile, memoryFile, attunementFile] as const;
+    const notesDirMode = statSync(notesDir).mode & 0o777;
+    const before = personalFiles.map((file) => ({
+      bytes: readFileSync(file),
+      file,
+      mode: statSync(file).mode & 0o777
+    }));
+    const assertPersonalDataUnchanged = () => {
+      expect(statSync(notesDir).isDirectory()).toBe(true);
+      expect(statSync(notesDir).mode & 0o777).toBe(notesDirMode);
+      for (const snapshot of before) {
+        expect(readFileSync(snapshot.file)).toEqual(snapshot.bytes);
+        expect(statSync(snapshot.file).mode & 0o777).toBe(snapshot.mode);
+      }
+    };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const baseEnv: NodeJS.ProcessEnv = {
+      HOME: home,
+      MUSE_ATTUNEMENT_FILE: attunementFile,
+      MUSE_NOTES_DIR: notesDir,
+      MUSE_TASKS_FILE: tasksFile,
+      MUSE_USER_MEMORY_FILE: memoryFile
+    };
+
+    const successPlist = join(home, "success.plist");
+    writeFileSync(successPlist, residentLaunchAgentXml(home), "utf8");
+    writeFileSync(receiptFile, "operational receipt\n", { mode: 0o600 });
+    const success = await runDaemon(["--uninstall"], {
+      env: { ...baseEnv, MUSE_DAEMON_PLIST_FILE: successPlist },
+      platform: "darwin",
+      registry,
+      runLaunchctl: async (args) => args[0] === "list"
+        ? { code: 1, stderr: "not found", stdout: "" }
+        : { code: 0, stderr: "", stdout: "" }
+    });
+    expect(success.exitCode).toBeUndefined();
+    expect(success.stdout).toContain("Personal data preserved");
+    expect(existsSync(successPlist)).toBe(false);
+    expect(existsSync(receiptFile)).toBe(false);
+    assertPersonalDataUnchanged();
+
+    const stuckPlist = join(home, "stuck.plist");
+    writeFileSync(stuckPlist, residentLaunchAgentXml(home), "utf8");
+    writeFileSync(receiptFile, "operational receipt\n", { mode: 0o600 });
+    const stuck = await runDaemon(["--uninstall"], {
+      env: { ...baseEnv, MUSE_DAEMON_PLIST_FILE: stuckPlist },
+      platform: "darwin",
+      registry,
+      runLaunchctl: async (args) => args[0] === "list"
+        ? { code: 0, stderr: "", stdout: '{\n\t"PID" = 91;\n};\n' }
+        : { code: 5, stderr: "Operation not permitted", stdout: "" }
+    });
+    expect(stuck.exitCode).toBe(1);
+    expect(stuck.stderr).toContain("Personal data preserved");
+    expect(existsSync(stuckPlist)).toBe(true);
+    expect(existsSync(receiptFile)).toBe(true);
+    assertPersonalDataUnchanged();
+
+    const ambiguousPlist = join(home, "ambiguous.plist");
+    writeFileSync(ambiguousPlist, residentLaunchAgentXml(home), "utf8");
+    const ambiguous = await runDaemon(["--uninstall"], {
+      env: { ...baseEnv, MUSE_DAEMON_PLIST_FILE: ambiguousPlist },
+      platform: "darwin",
+      registry,
+      runLaunchctl: async (args) => args[0] === "list"
+        ? { code: 5, stderr: "Operation not permitted", stdout: "" }
+        : { code: 0, stderr: "", stdout: "" }
+    });
+    expect(ambiguous.exitCode).toBe(1);
+    expect(ambiguous.stderr).toContain("could not verify");
+    expect(ambiguous.stderr).toContain("Personal data preserved");
+    expect(existsSync(ambiguousPlist)).toBe(true);
+    expect(existsSync(receiptFile)).toBe(true);
+    assertPersonalDataUnchanged();
+
+    const absentPlist = join(home, "absent.plist");
+    unlinkSync(receiptFile);
+    writeFileSync(receiptFile, "operational receipt\n", { mode: 0o600 });
+    const noOpLaunchctl = vi.fn(async () => ({ code: 1, stderr: "not found", stdout: "" }));
+    const noOp = await runDaemon(["--uninstall"], {
+      env: { ...baseEnv, MUSE_DAEMON_PLIST_FILE: absentPlist },
+      platform: "darwin",
+      registry,
+      runLaunchctl: noOpLaunchctl
+    });
+    expect(noOp.exitCode).toBeUndefined();
+    expect(noOp.stdout).toContain("Personal data preserved");
+    expect(noOpLaunchctl).toHaveBeenCalledWith(["list", "com.muse.daemon"]);
+    expect(existsSync(receiptFile)).toBe(false);
+    assertPersonalDataUnchanged();
+
+    for (const [name, listResult] of [
+      ["registered", { code: 0, stderr: "", stdout: '{\n\t"PID" = 92;\n};\n' }],
+      ["unverified", { code: 5, stderr: "Operation not permitted", stdout: "" }]
+    ] as const) {
+      writeFileSync(receiptFile, "operational receipt\n", { mode: 0o600 });
+      const missingArtifact = await runDaemon(["--uninstall"], {
+        env: { ...baseEnv, MUSE_DAEMON_PLIST_FILE: absentPlist },
+        platform: "darwin",
+        registry,
+        runLaunchctl: async () => listResult
+      });
+      expect(missingArtifact.exitCode, name).toBe(1);
+      expect(missingArtifact.stderr, name).toContain("Keeping the operational install receipt");
+      expect(existsSync(receiptFile), name).toBe(true);
+      assertPersonalDataUnchanged();
+      unlinkSync(receiptFile);
+    }
+  });
+
+  it("--uninstall refuses a personal-data overlap or symlink before launchctl and deletion", async () => {
+    const home = mkdtempSync(join(tmpdir(), "muse-uninstall-target-guard-"));
+    const tasksFile = join(home, ".muse", "tasks.json");
+    mkdirSync(dirname(tasksFile), { recursive: true });
+    const personalBytes = residentLaunchAgentXml(home);
+    writeFileSync(tasksFile, personalBytes, { mode: 0o600 });
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const runLaunchctl = vi.fn(async () => ({ code: 1, stderr: "not found", stdout: "" }));
+
+    const overlap = await runDaemon(["--uninstall"], {
+      env: {
+        HOME: home,
+        MUSE_DAEMON_PLIST_FILE: tasksFile,
+        MUSE_TASKS_FILE: tasksFile
+      },
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+    expect(overlap.exitCode).toBe(1);
+    expect(overlap.stderr).toContain("overlaps personal data");
+    expect(runLaunchctl).not.toHaveBeenCalled();
+    expect(readFileSync(tasksFile, "utf8")).toBe(personalBytes);
+
+    for (const [name, envKey] of [
+      ["reminders", "MUSE_REMINDERS_FILE"],
+      ["contacts", "MUSE_CONTACTS_FILE"]
+    ] as const) {
+      const personalFile = join(home, ".muse", `${name}.json`);
+      writeFileSync(personalFile, personalBytes, { mode: 0o600 });
+      const personalOverlap = await runDaemon(["--uninstall"], {
+        env: {
+          HOME: home,
+          MUSE_DAEMON_PLIST_FILE: personalFile,
+          [envKey]: personalFile
+        },
+        platform: "darwin",
+        registry,
+        runLaunchctl
+      });
+      expect(personalOverlap.exitCode, name).toBe(1);
+      expect(personalOverlap.stderr, name).toContain("overlaps personal data");
+      expect(runLaunchctl, name).not.toHaveBeenCalled();
+      expect(readFileSync(personalFile, "utf8"), name).toBe(personalBytes);
+    }
+
+    const spoofed = join(home, "comment-spoofed-launch-agent.plist");
+    const spoofedBytes = residentLaunchAgentXml(home)
+      .replace(
+        "<key>Label</key>\n  <string>com.muse.daemon</string>",
+        "<key>Label</key>\n  <string>com.other.daemon</string>\n  <!-- <key>Label</key><string>com.muse.daemon</string> -->"
+      );
+    writeFileSync(spoofed, spoofedBytes, { mode: 0o600 });
+    const spoofedResult = await runDaemon(["--uninstall"], {
+      env: { HOME: home, MUSE_DAEMON_PLIST_FILE: spoofed },
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+    expect(spoofedResult.exitCode).toBe(1);
+    expect(spoofedResult.stderr).toContain("not a safe owner-owned Muse LaunchAgent");
+    expect(runLaunchctl).not.toHaveBeenCalled();
+    expect(readFileSync(spoofed, "utf8")).toBe(spoofedBytes);
+
+    for (const [name, label] of [
+      ["prefix-space", " com.muse.daemon"],
+      ["suffix-space", "com.muse.daemon "],
+      ["newline", "\ncom.muse.daemon\n"]
+    ] as const) {
+      const whitespaceLabel = join(home, `${name}-launch-agent.plist`);
+      const whitespaceBytes = residentLaunchAgentXml(home).replace(
+        "<string>com.muse.daemon</string>",
+        `<string>${label}</string>`
+      );
+      writeFileSync(whitespaceLabel, whitespaceBytes, { mode: 0o600 });
+      const whitespaceResult = await runDaemon(["--uninstall"], {
+        env: { HOME: home, MUSE_DAEMON_PLIST_FILE: whitespaceLabel },
+        platform: "darwin",
+        registry,
+        runLaunchctl
+      });
+      expect(whitespaceResult.exitCode, name).toBe(1);
+      expect(whitespaceResult.stderr, name).toContain("not a safe owner-owned Muse LaunchAgent");
+      expect(runLaunchctl, name).not.toHaveBeenCalled();
+      expect(readFileSync(whitespaceLabel, "utf8"), name).toBe(whitespaceBytes);
+    }
+
+    const duplicateLabel = join(home, "duplicate-label-launch-agent.plist");
+    const duplicateBytes = residentLaunchAgentXml(home).replace(
+      "<key>ProgramArguments</key>",
+      "<key>Label</key>\n  <string>com.muse.daemon</string>\n  <key>ProgramArguments</key>"
+    );
+    writeFileSync(duplicateLabel, duplicateBytes, { mode: 0o600 });
+    const duplicateResult = await runDaemon(["--uninstall"], {
+      env: { HOME: home, MUSE_DAEMON_PLIST_FILE: duplicateLabel },
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+    expect(duplicateResult.exitCode).toBe(1);
+    expect(duplicateResult.stderr).toContain("not a safe owner-owned Muse LaunchAgent");
+    expect(runLaunchctl).not.toHaveBeenCalled();
+    expect(readFileSync(duplicateLabel, "utf8")).toBe(duplicateBytes);
+
+    const target = join(home, "real-launch-agent.plist");
+    const symlink = join(home, "symlink-launch-agent.plist");
+    writeFileSync(target, residentLaunchAgentXml(home), { mode: 0o600 });
+    symlinkSync(target, symlink);
+    const unsafe = await runDaemon(["--uninstall"], {
+      env: { HOME: home, MUSE_DAEMON_PLIST_FILE: symlink },
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+    expect(unsafe.exitCode).toBe(1);
+    expect(unsafe.stderr).toContain("not a safe owner-owned Muse LaunchAgent");
+    expect(runLaunchctl).not.toHaveBeenCalled();
+    expect(readFileSync(target, "utf8")).toBe(residentLaunchAgentXml(home));
+    expect(existsSync(symlink)).toBe(true);
+
+    const tasksAlias = join(home, ".muse", "tasks-alias.json");
+    symlinkSync(target, tasksAlias);
+    const aliasOverlap = await runDaemon(["--uninstall"], {
+      env: {
+        HOME: home,
+        MUSE_DAEMON_PLIST_FILE: target,
+        MUSE_TASKS_FILE: tasksAlias
+      },
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+    expect(aliasOverlap.exitCode).toBe(1);
+    expect(aliasOverlap.stderr).toContain("overlaps personal data");
+    expect(runLaunchctl).not.toHaveBeenCalled();
+    expect(readFileSync(target, "utf8")).toBe(residentLaunchAgentXml(home));
   });
 
   it("--install on win32 registers a schtasks ONLOGON task and writes NO plist", async () => {
@@ -2153,6 +2425,89 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain("Access is denied");
     expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--uninstall on win32 verifies scheduled-task absence and preserves personal data", async () => {
+    const home = mkdtempSync(join(tmpdir(), "muse-uninstall-win-"));
+    const tasksFile = join(home, ".muse", "tasks.json");
+    mkdirSync(dirname(tasksFile), { recursive: true });
+    writeFileSync(tasksFile, "[{\"id\":\"keep-me\"}]\n", { mode: 0o600 });
+    const before = readFileSync(tasksFile);
+    const env: NodeJS.ProcessEnv = { HOME: home, MUSE_TASKS_FILE: tasksFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const successCalls: (readonly string[])[] = [];
+    let successQueries = 0;
+    const success = await runDaemon(["--uninstall"], {
+      env,
+      platform: "win32",
+      registry,
+      schtasksRun: async (args) => {
+        successCalls.push(args);
+        if (args[0] === "/Query") {
+          successQueries += 1;
+          return successQueries === 1
+            ? { exitCode: 0, stderr: "", stdout: "<Task/>" }
+            : { exitCode: 1, stderr: "ERROR: task not found", stdout: "" };
+        }
+        return { exitCode: 0, stderr: "", stdout: "SUCCESS" };
+      }
+    });
+    expect(success.exitCode).toBeUndefined();
+    expect(success.stdout).toContain("absence verified");
+    expect(success.stdout).toContain("Personal data preserved");
+    expect(successCalls.map((args) => args[0])).toEqual(["/Query", "/Delete", "/Query"]);
+    expect(readFileSync(tasksFile)).toEqual(before);
+
+    const stuckCalls: (readonly string[])[] = [];
+    const stuck = await runDaemon(["--uninstall"], {
+      env,
+      platform: "win32",
+      registry,
+      schtasksRun: async (args) => {
+        stuckCalls.push(args);
+        return args[0] === "/Delete"
+          ? { exitCode: 5, stderr: "Access is denied", stdout: "" }
+          : { exitCode: 0, stderr: "", stdout: "<Task/>" };
+      }
+    });
+    expect(stuck.exitCode).toBe(1);
+    expect(stuck.stderr).toContain("still registered");
+    expect(stuck.stderr).toContain("Personal data preserved");
+    expect(stuckCalls.map((args) => args[0])).toEqual(["/Query", "/Delete", "/Query"]);
+    expect(readFileSync(tasksFile)).toEqual(before);
+
+    const noOpCalls: (readonly string[])[] = [];
+    const noOp = await runDaemon(["--uninstall"], {
+      env,
+      platform: "win32",
+      registry,
+      schtasksRun: async (args) => {
+        noOpCalls.push(args);
+        return { exitCode: 1, stderr: "ERROR: task not found", stdout: "" };
+      }
+    });
+    expect(noOp.exitCode).toBeUndefined();
+    expect(noOp.stdout).toContain("was not installed");
+    expect(noOp.stdout).toContain("Personal data preserved");
+    expect(noOpCalls.map((args) => args[0])).toEqual(["/Query"]);
+    expect(readFileSync(tasksFile)).toEqual(before);
+
+    const unverifiedCalls: (readonly string[])[] = [];
+    const unverified = await runDaemon(["--uninstall"], {
+      env,
+      platform: "win32",
+      registry,
+      schtasksRun: async (args) => {
+        unverifiedCalls.push(args);
+        return { exitCode: 5, stderr: "Access is denied", stdout: "" };
+      }
+    });
+    expect(unverified.exitCode).toBe(1);
+    expect(unverified.stderr).toContain("could not verify");
+    expect(unverified.stderr).toContain("Personal data preserved");
+    expect(unverifiedCalls.map((args) => args[0])).toEqual(["/Query"]);
+    expect(readFileSync(tasksFile)).toEqual(before);
   });
 
   it("--install on linux fails closed — writes NO plist and never touches launchctl (unsupported platform, gated before any I/O)", async () => {

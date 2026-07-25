@@ -57,7 +57,7 @@ import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
-import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -66,7 +66,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 // phantom import of it has now broken the build twice; the regression
 // lock lives in no-phantom-node-modules.test.ts.
 const execFile = promisify(execFileCallback);
-import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, parseLaunchAgentLabel, parseLaunchctlListInfo, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
 import {
   defaultDaemonTemporaryRoots,
   formatDaemonAutostartStatus,
@@ -77,7 +77,8 @@ import {
 } from "./commands-daemon-autostart.js";
 import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
-import { join } from "node:path";
+import { resolvePrivacyStorePaths } from "./commands-privacy.js";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import {
   applyResidentDaemonRepairPlan,
@@ -163,7 +164,8 @@ import {
 
 const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
-
+const PERSONAL_DATA_PRESERVED_NOTICE =
+  "Personal data preserved: notes, tasks, memory, and Personal Continuity were not deleted. Use their explicit delete/forget commands separately.";
 /**
  * The proactive-trust ledger file — shared by the proactive-notice tick's
  * daily cap AND the channel-veto avoided-source check every UNASKED loop
@@ -699,6 +701,75 @@ const defaultSchtasksRun = async (args: readonly string[]): Promise<{ exitCode: 
   }
 };
 
+function schtasksConfirmsMissing(result: {
+  readonly exitCode: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}): boolean {
+  if (result.exitCode === 0) return false;
+  const diagnostic = `${result.stderr}\n${result.stdout}`.toLowerCase();
+  return diagnostic.includes("not found")
+    || diagnostic.includes("cannot find")
+    || diagnostic.includes("does not exist");
+}
+
+function launchctlConfirmsMissing(result: {
+  readonly code: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}): boolean {
+  if (result.code === 0) return false;
+  const diagnostic = `${result.stderr}\n${result.stdout}`.toLowerCase();
+  return diagnostic.includes("not found")
+    || diagnostic.includes("could not find")
+    || diagnostic.includes("no such process");
+}
+
+function pathIsSameOrInside(candidate: string, root: string): boolean {
+  const relation = relative(resolve(root), resolve(candidate));
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
+}
+
+function canonicalIfPresent(file: string): string {
+  try {
+    return realpathSync(file);
+  } catch {
+    return resolve(file);
+  }
+}
+
+function overlapsPersonalDataPath(
+  plistFile: string,
+  e: NodeJS.ProcessEnv,
+  home: string
+): boolean {
+  const candidate = canonicalIfPresent(plistFile);
+  return resolvePrivacyStorePaths(e, { homeDir: home }).some(({ name, path }) => {
+    const personalPath = canonicalIfPresent(path);
+    return name === "notes"
+      ? pathIsSameOrInside(candidate, personalPath)
+      : personalPath === candidate;
+  });
+}
+
+function isOwnedMuseLaunchAgentArtifact(plistFile: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(plistFile, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1_048_576) return false;
+    if (process.platform !== "win32") {
+      if (typeof process.getuid !== "function" || stat.uid !== process.getuid()) return false;
+      if ((stat.mode & 0o022) !== 0) return false;
+    }
+    return parseLaunchAgentLabel(readFileSync(fd, "utf8")) === LAUNCH_AGENT_LABEL;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 /**
  * NEVER reaches real launchctl under vitest, even if a test forgets to
  * inject `runLaunchctl` — the hard boundary this seam exists to guarantee
@@ -1115,7 +1186,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--apply-repair-plan <file>", "Apply one fresh owner-only repair plan after an exact stale-target recheck")
     .option("--install", "Write a macOS LaunchAgent plist AND load it via launchctl so the daemon survives logout/reboot, then exit")
     .option("--safe", "With --install, persist local-only + log lock + delivery brake + self-learning off for controlled activation")
-    .option("--uninstall", "Unload the macOS LaunchAgent (or remove the Windows scheduled task) and delete its file, then exit")
+    .option("--uninstall", "Remove daemon autostart only; preserve notes, tasks, memory, and Personal Continuity data")
     .option("--interval <seconds>", "Tick interval in seconds (default 60)", "60")
     .option("--lead-minutes <minutes>", "Imminent-window lead in minutes (default 10)", "10")
     .option("--provider <id>", "Messaging provider id (default MUSE_PROACTIVE_PROVIDER, else 'log')")
@@ -1459,12 +1530,29 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         const plat = helpers.platform ?? process.platform;
         if (plat === "win32") {
           const run = helpers.schtasksRun ?? defaultSchtasksRun;
-          const result = await run(buildSchtasksDeleteArgs(SCHTASKS_TASK_NAME));
-          // A missing task also exits non-zero on schtasks — treat any
-          // outcome here as "nothing left registered", never a crash.
-          io.stdout(result.exitCode === 0
-            ? `muse daemon scheduled task '${SCHTASKS_TASK_NAME}' removed\n`
-            : `muse daemon scheduled task '${SCHTASKS_TASK_NAME}' was not installed (nothing to remove)\n`);
+          const before = await run(buildSchtasksQueryArgs(SCHTASKS_TASK_NAME));
+          if (before.exitCode !== 0) {
+            if (schtasksConfirmsMissing(before)) {
+              io.stdout(`muse daemon scheduled task '${SCHTASKS_TASK_NAME}' was not installed (nothing to remove)\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+              return;
+            }
+            io.stderr(`could not verify whether scheduled task '${SCHTASKS_TASK_NAME}' exists: ${before.stderr.trim() || before.stdout.trim() || `schtasks exit ${before.exitCode.toString()}`}\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          const deletion = await run(buildSchtasksDeleteArgs(SCHTASKS_TASK_NAME));
+          const after = await run(buildSchtasksQueryArgs(SCHTASKS_TASK_NAME));
+          if (after.exitCode === 0) {
+            io.stderr(`schtasks delete did NOT remove '${SCHTASKS_TASK_NAME}'; the task is still registered (exit ${deletion.exitCode.toString()}): ${deletion.stderr.trim() || deletion.stdout.trim() || "no diagnostic"}\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          if (!schtasksConfirmsMissing(after)) {
+            io.stderr(`schtasks deletion outcome for '${SCHTASKS_TASK_NAME}' is unverified: ${after.stderr.trim() || after.stdout.trim() || `query exit ${after.exitCode.toString()}`}\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          io.stdout(`muse daemon scheduled task '${SCHTASKS_TASK_NAME}' removed (absence verified)\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
           return;
         }
         if (plat !== "darwin") {
@@ -1473,8 +1561,40 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           return;
         }
         const plistFile = resolveLaunchAgentFile(e);
+        const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
+        const installReceiptFile = resolveResidentDaemonInstallStateFiles({
+          ...e,
+          HOME: home
+        }).receiptFile;
         if (!existsSync(plistFile)) {
-          io.stdout(`muse daemon LaunchAgent was not installed at ${plistFile} (nothing to remove)\n`);
+          const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+          const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+          if (listResult.code === 0) {
+            io.stderr(`refusing to remove daemon install state: ${plistFile} is missing but ${LAUNCH_AGENT_LABEL} is still registered. Keeping the operational install receipt because service absence is not verified.\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          if (!launchctlConfirmsMissing(listResult)) {
+            io.stderr(`launchctl could not verify that ${LAUNCH_AGENT_LABEL} is absent while ${plistFile} is missing: ${listResult.stderr.trim() || listResult.stdout.trim() || `exit ${listResult.code.toString()}`}. Keeping the operational install receipt.\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          try {
+            rmSync(installReceiptFile, { force: true });
+          } catch (cause) {
+            io.stderr(`muse daemon LaunchAgent was not installed, but its operational install receipt could not be removed: ${errorMessage(cause)}\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          io.stdout(`muse daemon LaunchAgent was not installed at ${plistFile}; ${LAUNCH_AGENT_LABEL} absence verified (nothing to remove)\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+          return;
+        }
+        if (
+          overlapsPersonalDataPath(plistFile, e, home)
+          || !isOwnedMuseLaunchAgentArtifact(plistFile)
+        ) {
+          io.stderr(`refusing to uninstall daemon autostart: ${plistFile} overlaps personal data or is not a safe owner-owned Muse LaunchAgent artifact. Nothing was unloaded or deleted.\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+          process.exitCode = 1;
           return;
         }
         const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
@@ -1489,18 +1609,24 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         const stillRegistered = listResult.code === 0;
         if (stillRegistered) {
           const { pid } = parseLaunchctlListInfo(listResult.stdout);
-          io.stderr(`launchctl unload did NOT stop ${LAUNCH_AGENT_LABEL} — it is still registered${pid !== undefined ? ` and running (pid ${pid.toString()})` : ""}. Keeping ${plistFile} so you have a route back.\n  Run \`launchctl unload -w ${plistFile}\` manually (or \`launchctl remove ${LAUNCH_AGENT_LABEL}\`), then retry \`muse daemon --uninstall\`.\n`);
+          io.stderr(`launchctl unload did NOT stop ${LAUNCH_AGENT_LABEL} — it is still registered${pid !== undefined ? ` and running (pid ${pid.toString()})` : ""}. Keeping ${plistFile} so you have a route back.\n  Run \`launchctl unload -w ${plistFile}\` manually (or \`launchctl remove ${LAUNCH_AGENT_LABEL}\`), then retry \`muse daemon --uninstall\`.\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        if (!launchctlConfirmsMissing(listResult)) {
+          io.stderr(`launchctl could not verify that ${LAUNCH_AGENT_LABEL} is absent: ${listResult.stderr.trim() || listResult.stdout.trim() || `exit ${listResult.code.toString()}`}. Keeping ${plistFile} and its install receipt.\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
           process.exitCode = 1;
           return;
         }
         try {
           rmSync(plistFile);
+          rmSync(installReceiptFile, { force: true });
         } catch (cause) {
-          io.stderr(`launchctl unload succeeded but failed to remove ${plistFile}: ${errorMessage(cause)}\n`);
+          io.stderr(`launchctl unload succeeded but failed to remove daemon service metadata: ${errorMessage(cause)}\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
           process.exitCode = 1;
           return;
         }
-        io.stdout(`muse daemon LaunchAgent unloaded and removed (${plistFile})\n`);
+        io.stdout(`muse daemon LaunchAgent unloaded and removed (${plistFile})\n${PERSONAL_DATA_PRESERVED_NOTICE}\n`);
         return;
       }
 
