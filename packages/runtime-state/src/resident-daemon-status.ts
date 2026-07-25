@@ -27,7 +27,38 @@ export interface ResidentDaemonInspection {
   readonly diskArguments?: readonly string[];
   readonly liveArguments?: readonly string[];
   readonly liveEnvironment?: Readonly<Record<string, string>>;
+  readonly processInventory: ResidentMuseProcessInventory;
   readonly observation: ResidentDaemonObservation;
+}
+
+export type ResidentMuseProcessRole = "resident" | "orphan-api" | "orphan-api-descendant";
+
+export interface ResidentMuseProcess {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly cwd: string;
+  readonly executableRealpath: string;
+  readonly startedAt: string;
+  readonly role: ResidentMuseProcessRole;
+  readonly matchesLaunchdPid: boolean;
+}
+
+export type ResidentInventoryCondition =
+  | "artifact-only"
+  | "process-only"
+  | "duplicate"
+  | "orphan"
+  | "healthy"
+  | "degraded"
+  | "unverified";
+
+export interface ResidentMuseProcessInventory {
+  readonly probe: "ok" | "unverified";
+  readonly processes: readonly ResidentMuseProcess[];
+  readonly museProcessCount: number;
+  readonly residentProcessCount: number;
+  readonly duplicateResidentProcessCount: number;
+  readonly conditions: readonly ResidentInventoryCondition[];
 }
 
 export interface ReadOnlyProcessResult {
@@ -62,6 +93,13 @@ interface ProcessRow {
   readonly pid: number;
   readonly ppid: number;
   readonly command: string;
+}
+
+interface ProcessInventoryProbe {
+  readonly probe: "ok" | "unverified";
+  readonly processes: readonly ResidentMuseProcess[];
+  readonly orphanRootCount: number;
+  readonly orphanProcessCount: number;
 }
 
 interface LaunchctlSnapshot {
@@ -247,13 +285,16 @@ function parseList(result: ReadOnlyProcessResult): { readonly state: ResidentDae
 
 function parseProcessTable(output: string): readonly ProcessRow[] | undefined {
   const rows: ProcessRow[] = [];
+  const pids = new Set<number>();
   for (const line of output.split(/\r?\n/u)) {
     if (!line.trim()) continue;
     const match = /^\s*(\d+)\s+(\d+)\s+([\s\S]+)$/u.exec(line);
     if (!match) return undefined;
     const pid = Number(match[1]);
     const ppid = Number(match[2]);
-    if (!Number.isSafeInteger(pid) || pid <= 0 || !Number.isSafeInteger(ppid) || ppid < 0) return undefined;
+    if (!Number.isSafeInteger(pid) || pid <= 0 || pids.has(pid)
+      || !Number.isSafeInteger(ppid) || ppid < 0) return undefined;
+    pids.add(pid);
     rows.push({ command: match[3] ?? "", pid, ppid });
   }
   return rows;
@@ -271,6 +312,101 @@ function descendants(rows: readonly ProcessRow[], roots: ReadonlySet<number>): S
   return found;
 }
 
+const MAX_RESIDENT_INVENTORY_PROCESSES = 32;
+
+function residentCommand(command: string, definitions: readonly (readonly string[])[]): boolean {
+  const normalized = command.trim();
+  if (definitions.some((definition) => definition.length === 3
+    && definition[2] === "daemon"
+    && normalized === definition.join(" "))) return true;
+  return /^(?:(?:\S*\/)?muse\s+daemon|(?:\S*\/)?node\s+\S*\/(?:apps|packages)\/cli\/\S+\s+daemon)(?:\s|$)/u.test(normalized);
+}
+
+function orphanApiCommand(row: ProcessRow): boolean {
+  return row.ppid === 1
+    && /(?:^|[\s/])tsx(?:\/dist\/cli\.mjs)?(?:\s|$)[\s\S]*\bsrc\/index\.ts(?:\s|$)/u.test(row.command);
+}
+
+async function inspectProcessPath(
+  pid: number,
+  descriptor: "cwd" | "txt",
+  run: ReadOnlyProcessRunner
+): Promise<string | undefined> {
+  const result = await run("lsof", ["-a", "-p", pid.toString(), "-d", descriptor, "-Fn"]);
+  const lines = result.stdout.split(/\r?\n/u);
+  const paths = lines.filter((line) => line.startsWith("n")).map((line) => line.slice(1)).filter(Boolean);
+  if (result.code !== 0 || !lines.includes(`p${pid.toString()}`) || paths.length !== 1) return undefined;
+  try {
+    return realpathSync(paths[0]!);
+  } catch {
+    return undefined;
+  }
+}
+
+async function inspectResidentMuseProcesses(
+  platform: NodeJS.Platform,
+  run: ReadOnlyProcessRunner,
+  definitions: readonly (readonly string[])[],
+  launchdPid: number | undefined
+): Promise<ProcessInventoryProbe> {
+  const unverified = (): ProcessInventoryProbe => ({
+    orphanProcessCount: 0,
+    orphanRootCount: 0,
+    probe: "unverified",
+    processes: []
+  });
+  if (platform !== "darwin") return unverified();
+  const table = await run("ps", ["-axo", "pid=,ppid=,command="]);
+  const rows = table.code === 0 ? parseProcessTable(table.stdout) : undefined;
+  if (!rows) return unverified();
+
+  const residentPids = new Set(rows.filter((row) => residentCommand(row.command, definitions)).map((row) => row.pid));
+  const orphanCandidates = rows.filter(orphanApiCommand);
+  const potentialOrphanPids = descendants(rows, new Set(orphanCandidates.map((row) => row.pid)));
+  if (new Set([...residentPids, ...potentialOrphanPids]).size > MAX_RESIDENT_INVENTORY_PROCESSES) {
+    return unverified();
+  }
+  const orphanRoots = new Set<number>();
+  for (const row of orphanCandidates) {
+    const cwd = await inspectProcessPath(row.pid, "cwd", run);
+    if (cwd === undefined) return unverified();
+    if (cwd.replace(/\/+$/u, "").endsWith("/apps/api")) orphanRoots.add(row.pid);
+  }
+  const orphanPids = descendants(rows, orphanRoots);
+  const candidatePids = new Set([...residentPids, ...orphanPids]);
+  if (candidatePids.size > MAX_RESIDENT_INVENTORY_PROCESSES) return unverified();
+
+  const processes: ResidentMuseProcess[] = [];
+  for (const row of rows.filter((candidate) => candidatePids.has(candidate.pid))) {
+    const [cwd, executableRealpath, startedAtMs] = await Promise.all([
+      inspectProcessPath(row.pid, "cwd", run),
+      inspectProcessPath(row.pid, "txt", run),
+      processStart(row.pid, run)
+    ]);
+    if (cwd === undefined || executableRealpath === undefined || startedAtMs === undefined) {
+      return unverified();
+    }
+    const role: ResidentMuseProcessRole = residentPids.has(row.pid)
+      ? "resident"
+      : orphanRoots.has(row.pid) ? "orphan-api" : "orphan-api-descendant";
+    processes.push({
+      cwd,
+      executableRealpath,
+      matchesLaunchdPid: row.pid === launchdPid,
+      pid: row.pid,
+      ppid: row.ppid,
+      role,
+      startedAt: new Date(startedAtMs).toISOString()
+    });
+  }
+  return {
+    orphanProcessCount: orphanPids.size,
+    orphanRootCount: orphanRoots.size,
+    probe: "ok",
+    processes
+  };
+}
+
 export async function inspectResidentOrphanApiProcesses(
   platform: NodeJS.Platform,
   run: ReadOnlyProcessRunner
@@ -281,6 +417,9 @@ export async function inspectResidentOrphanApiProcesses(
   if (!rows) return { orphanProbe: "unverified", orphanProcessCount: 0, orphanRootCount: 0 };
   const candidates = rows.filter((row) => row.ppid === 1
     && /(?:^|[\s/])tsx(?:\/dist\/cli\.mjs)?(?:\s|$)[\s\S]*\bsrc\/index\.ts(?:\s|$)/u.test(row.command));
+  if (candidates.length > MAX_RESIDENT_INVENTORY_PROCESSES) {
+    return { orphanProbe: "unverified", orphanProcessCount: 0, orphanRootCount: 0 };
+  }
   const roots = new Set<number>();
   for (const candidate of candidates) {
     const cwd = await run("lsof", ["-a", "-p", candidate.pid.toString(), "-d", "cwd", "-Fn"]);
@@ -335,11 +474,30 @@ async function inspectHeartbeat(
   }
 }
 
+const PROCESS_START_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const PROCESS_START_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+function parseProcessStart(value: string): number | undefined {
+  const match = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/u.exec(value.trim());
+  if (!match) return undefined;
+  const month = PROCESS_START_MONTHS.indexOf(match[2] as (typeof PROCESS_START_MONTHS)[number]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const year = Number(match[7]);
+  if (month < 0 || year < 1970 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return undefined;
+  const parsed = new Date(year, month, day, hour, minute, second, 0);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month || parsed.getDate() !== day
+    || parsed.getHours() !== hour || parsed.getMinutes() !== minute || parsed.getSeconds() !== second
+    || PROCESS_START_WEEKDAYS[parsed.getDay()] !== match[1]) return undefined;
+  return parsed.getTime();
+}
+
 async function processStart(pid: number | undefined, run: ReadOnlyProcessRunner): Promise<number | undefined> {
   if (pid === undefined) return undefined;
   const result = await run("ps", ["-p", pid.toString(), "-o", "lstart="]);
-  const parsed = result.code === 0 ? Date.parse(result.stdout.trim()) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return result.code === 0 ? parseProcessStart(result.stdout) : undefined;
 }
 
 /** Inspect resident runtime authority without writing service or owner state. */
@@ -406,14 +564,62 @@ export async function inspectResidentDaemon(
       }
     : { ...env, ...(diskEnvironment ?? {}) };
   const heartbeat = await inspectHeartbeat(heartbeatFile(effectiveRuntimeEnv), nowMs, await processStart(livePid, run), livePid);
-  const orphan = options.inspectOrphans === false
-    ? { orphanProbe: "unverified" as const, orphanProcessCount: 0, orphanRootCount: 0 }
-    : await inspectResidentOrphanApiProcesses(platform, run);
+  const processProbe = options.inspectOrphans === false
+    ? { orphanProcessCount: 0, orphanRootCount: 0, probe: "unverified" as const, processes: [] }
+    : await inspectResidentMuseProcesses(
+        platform,
+        run,
+        [diskArguments, liveArguments].filter((definition): definition is readonly string[] => definition !== undefined),
+        livePid
+      );
+  const orphan = {
+    orphanProbe: processProbe.probe,
+    orphanProcessCount: processProbe.orphanProcessCount,
+    orphanRootCount: processProbe.orphanRootCount
+  };
+  const residentProcessCount = processProbe.processes.filter((process_) => process_.role === "resident").length;
+  const duplicateResidentProcessCount = Math.max(0, residentProcessCount - 1);
+  const launchdResidentMatches = processProbe.processes.filter((process_) =>
+    process_.role === "resident" && process_.matchesLaunchdPid).length;
+  const conditions: ResidentInventoryCondition[] = [];
+  if (processProbe.probe !== "ok" || orphan.orphanProbe !== "ok") {
+    conditions.push("unverified");
+  } else {
+    if (orphan.orphanRootCount > 0) conditions.push("orphan");
+    if (duplicateResidentProcessCount > 0) conditions.push("duplicate");
+    if (artifact === "valid" && residentProcessCount === 0) conditions.push("artifact-only");
+    if (artifact === "missing" && residentProcessCount > 0) conditions.push("process-only");
+    if (artifact === "valid"
+      && runtime === "running"
+      && liveProbe === "ok"
+      && liveDefinitionMatches
+      && stableMuseCommand
+      && listPid !== undefined
+      && livePid !== undefined
+      && listPid === livePid
+      && heartbeat.pidMatches
+      && heartbeat.state === "fresh"
+      && orphan.orphanRootCount === 0
+      && residentProcessCount === 1
+      && launchdResidentMatches === 1) {
+      conditions.push("healthy");
+    }
+    if (conditions.length === 0) conditions.push("degraded");
+  }
+  const processInventory: ResidentMuseProcessInventory = {
+    conditions,
+    duplicateResidentProcessCount,
+    museProcessCount: processProbe.processes.length,
+    probe: processProbe.probe,
+    processes: processProbe.processes,
+    residentProcessCount
+  };
   return {
     diskArguments,
     effectiveRuntimeEnv,
     liveArguments,
     liveEnvironment,
+    processInventory,
     observation: {
       artifact,
       autostartProbe: "ok",

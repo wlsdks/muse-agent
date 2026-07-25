@@ -155,7 +155,7 @@ function qualificationFixture(options: {
         : { code: 0, stderr: "", stdout: launchctlPrint };
     }
     if (executable === "ps" && args[0] === "-p") {
-      return { code: 0, stderr: "", stdout: "2026-07-21T11:00:00.000Z\n" };
+      return { code: 0, stderr: "", stdout: "Tue Jul 21 20:00:00 2026\n" };
     }
     if (executable === "ps") return { code: 0, stderr: "", stdout: "" };
     return { code: 1, stderr: "PRIVATE raw failure", stdout: "" };
