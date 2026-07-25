@@ -84,6 +84,47 @@ failure, allow at most one safe fetch/rebase retry, then stop and report.
 Autonomous scheduled loops keep their own push tiers; third-party human/action
 sends remain draft-first under the outbound policy.
 
+Use product-behavior changes as the commit boundary, not every roadmap checkbox.
+When a completed slice changes runtime/source code, tests, executable scripts,
+build/package configuration, schemas/migrations, UI contracts, or enforced
+security policy, run its required checks and independent completion gate, then
+commit and push that slice. Documentation-, evidence-, ledger-, and status-only
+updates do not require a per-task commit or push; batch them at the next phase
+exit, related source commit, branch/worktree transition, long-session handoff,
+or release-readiness checkpoint. Mixed slices follow the source-change rule and
+must not absorb unrelated accumulated records.
+
+Roadmap task IDs are stable references, not instructions to implement every
+checkbox in numeric order. Before opening a BUILD slice, inspect current source
+with CodeGraph and classify the task as `missing`, `partial`,
+`built-unverified`, `verified-current`, `monitoring`, `blocked`, `deferred`,
+`rejected`, or `superseded`. Reuse and verify existing implementations; code
+only the missing delta. A later task that repeats an earlier acceptance
+contract must name a distinct domain or recurring-operation delta, otherwise
+mark it superseded and do no duplicate work. Keep at most one source-changing
+BUILD slice plus one non-mutating EVIDENCE/MONITOR activity; elapsed-time
+organic evidence must not block unrelated safety, reliability, or repair work.
+The roadmap's authoritative execution-order table and scope-specific gates take
+precedence over raw task numbering.
+
+For
+[`docs/goals/personal-agent-productization-roadmap.md`](docs/goals/personal-agent-productization-roadmap.md),
+do not hand the unsliced 300-task program to one default worker configuration.
+Use `gpt-5.6-sol` with `high` reasoning as the program controller, planner, and
+independent gate evaluator. `gpt-5.6-terra` with `high` reasoning is the default
+implementation worker only after a task is activated with a clear missing
+delta, bounded S/M scope, deterministic acceptance, and no high-risk boundary.
+Use `gpt-5.6-luna` only for clear, repeatable, low-risk record or transformation
+work; no required roadmap step may depend on Luna being available. Security,
+permissions, credentials, persistence migrations, external effects,
+process/concurrency control, self-modification, and release decisions start on
+Sol, with `xhigh` reserved for the hardest security/release evaluations. Record
+the maker and evaluator model, reasoning effort, selection reason, and
+escalation trigger in every task activation header. Maker/evaluator separation
+requires a fresh agent context and role; changing only the model name is not
+independent evaluation. The roadmap's model-routing section is authoritative
+for fallbacks, escalation, and stage-specific defaults.
+
 ## TypeScript 7 toolchain
 
 Muse compiles its project graph with the TypeScript 7 native compiler. The

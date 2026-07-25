@@ -81,6 +81,31 @@ L-size·보안급 슬라이스에서만 별도 인스턴스로 띄우는 **선�
 > 최적 — 더 깊이 필요하면 단일 거대 팀이 아니라 피처 리드가 자기 하위 팀을 스폰하는 **계층**으로
 > 늘립니다.
 
+## 1.5 작업 surface별 maker/evaluator 권한
+
+`read-only evaluator`는 단순히 Edit 도구가 없다는 뜻이 아닙니다. 평가 명령이나 브라우저가 상태를
+쓸 수 있으므로, **레포와 owner state는 읽기 전용**, 쓰기가 필요한 재현은 **평가자가 만든 disposable
+fixture**에만 허용합니다. maker와 evaluator는 동시에 같은 checkout/file을 쓰지 않습니다.
+
+| Surface | Maker / worker와 허용 쓰기 | Independent evaluator와 허용 읽기·실행 | 평가자 금지 권한 | Gate 강도 |
+| --- | --- | --- | --- | --- |
+| Runtime | 활성 slice의 runtime source/test/config만 쓰는 단일 worker. 명시된 좁은 test·trace를 실행한다. | fresh context에서 handoff, acceptance slice, current diff/source, trace를 읽고 격리된 프로세스·fixture로 정상/실패/취소/재시도를 재현한다. | repo 편집, worker와 같은 프로세스/상태 재사용, owner daemon/scheduler 상태 변경, FAIL 직접 수정. | controller/maker와 evaluator 모두 Sol/high가 필요한 process·scheduler·concurrency 경계는 처음부터 그 강도로 시작한다. |
+| Store / persistence | 활성 store/schema/migration과 migration test만 쓰며 backup·restore·rollback acceptance를 함께 만든다. | schema/diff를 읽고 disposable database 또는 임시 HOME 복제본에서 round-trip, corruption, rollback을 실행한다. | owner DB·`~/.muse`·backup 수정, 실제 migration 적용, fixture 결과를 organic evidence로 승격, FAIL 직접 수정. | persistence/migration은 maker와 fresh evaluator 모두 Sol/high; release 최종 판정은 별도 gate를 따른다. |
+| Security / permission / credential | Sol/high maker 하나만 scoped guard/policy/test를 쓴다. 실제 secret은 코드나 handoff에 넣지 않는다. | fresh evaluator가 artifact/diff와 redacted fixture를 읽고 sandbox에서 adversarial deny-path를 실행한다. | credential 조회·복사, grant/approval/policy 발급·변경, external egress, repo 편집, FAIL 직접 수정. | 보안·credential 최종 gate는 fresh Sol/xhigh. |
+| UI / browser | 활성 UI source/test와 evaluator용 disposable state만 쓴다. | fresh evaluator가 current build와 acceptance를 읽고 isolated browser profile/test account에서 Chromium/Playwright 및 접근성·실패 상태를 관찰한다. | 사용자의 실제 browser profile·clipboard·download/upload·account state 변경, snapshot 승인값 임의 갱신, repo 편집, FAIL 직접 수정. | 일반 UI는 위험도에 맞는 fresh evaluator; upload/download·computer-control 경계는 Sol/high부터 시작한다. |
+| Release / publication | controller가 검증된 commit 후보와 provenance를 준비한다. standing authorization 범위의 정상 push 외 tag/release/publication은 별도 권한이다. | fresh checkout에서 HEAD/time/input hash, required checks, rollback artifact, remote 상태를 읽고 재현한다. | source 수정, tag/release/publish/push, credential·protection 변경, stale artifact를 green으로 사용, FAIL 직접 수정. | 최종 release gate는 fresh Sol/xhigh; evaluator PASS도 publication 권한이 아니다. |
+
+평가자에게 전달하는 입력은 다음 allowlist로 제한합니다.
+
+1. activation/handoff와 구조화된 acceptance slice,
+2. 판정할 current artifact 또는 commit/diff와 직접 관련 source,
+3. 재현할 검증 명령·fixture·provenance,
+4. 이미 알려진 blocker와 이전 evaluator의 **구체적 판정**(재평가 cycle일 때만).
+
+maker의 전체 대화, 숨은 추론, 자기평가, 무관한 dirty file은 전달하지 않습니다. 평가자는 permanent
+handoff나 repo를 직접 고치지 않고 PASS/FAIL과 기준별 근거를 반환하며, controller가 기록합니다.
+새 context가 불가능하면 PASS가 아니라 `미분리 자기평가`로 남깁니다.
+
 ## 2. 일이 흐르는 모양 (Patterns)
 
 작업 성격에 맞는 모양을 고릅니다(Anthropic의 5가지 + 합의된 합성 패턴). 한 가지를 고집하지 말고

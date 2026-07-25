@@ -42,6 +42,10 @@ related: [../reference/tool-design.md, verification-and-guardrails.md, ../refere
   규약에 저장소·remote·ref·선행 검증·실패 상한을 명시한 경우에만 정상 Git push를 그 범위 안의
   사전 승인으로 취급할 수 있다. force/`--no-verify`/remote 삭제/태그·릴리스/다른 remote·refspec은
   포함되지 않으며, 메시지·제출·예약 같은 제3자 outbound에는 절대 확장되지 않는다.
+- **개발 역할의 권한은 별도 축:** worker/evaluator가 어떤 checkout·fixture를 읽거나 쓸 수 있는지는
+  [team-roles §1.5](team-roles.md)의 surface별 표를 따릅니다. evaluator의 Bash/browser 실행 권한은
+  레포나 owner state 쓰기 권한이 아니며, 상태 쓰기는 evaluator-owned disposable fixture에만
+  허용됩니다.
 
 ## 2. 매트릭스 (등급 × 처리)
 

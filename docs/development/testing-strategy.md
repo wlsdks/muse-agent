@@ -25,6 +25,28 @@ reliability repeats, injected failures, adversarial safety, and local
 trace-to-golden-case review. The research and Muse adoption decisions are in
 [`ai-agent-testing-strategy.md`](ai-agent-testing-strategy.md).
 
+## Risk-based minimum gate matrix
+
+The technique table chooses a tool. This matrix decides the **minimum evidence
+depth** for a change. Apply every touched row; when rows overlap, use the
+highest-risk evaluator and live/preflight rule while retaining each
+platform-specific gate. The role and write boundaries come from
+[`harness/core/team-roles.md` §1.5](../../harness/core/team-roles.md).
+
+| Change surface | Deterministic base | Required real platform | Failure, corruption, and rollback | Controlled-live / preflight | Independent evaluator and PASS rule |
+| --- | --- | --- | --- | --- | --- |
+| Pure deterministic code | Named examples for exact behavior and no collateral mutation; add seeded property tests only for a genuine large-space invariant or untrusted boundary. Run the affected typecheck/lint and `test:changed`. | None unless the code consumes a platform contract hidden by a fake. | Exercise invalid, empty, boundary, cancellation, and retry inputs that the contract admits; mutation-RED the guarded branch. | Not required. A live result cannot replace the deterministic contract. | Fresh evaluator re-runs the named acceptance checks from the diff; every criterion must pass. |
+| UI / browser interaction | Static markup/contract tests plus reducer or API tests below the view. | Real Chromium Browser Mode for focus, keyboard, effects, visibility, responsive layout, and DOM events; Playwright E2E for a critical built-assets/API journey. | Observe loading, empty, validation, error, cancel, retry, and stale-state behavior; prove no unrelated state mutation. Visual snapshots alone are insufficient. | Use an isolated local build/profile and controlled fixture. A real user profile/account, upload, download, clipboard, or external effect requires its own approval and higher-risk row. | Fresh evaluator operates the isolated browser from acceptance criteria and measured observations; Node/static green cannot substitute for the browser gate. |
+| Persistent store / schema / migration | Exact serialization and query examples plus seeded round-trip/invariant properties at JSON/schema boundaries. | Real file-store path and disposable PostgreSQL/Testcontainers when PostgreSQL semantics, migration, locking, JSONB, or ordering matter. | Corrupt/truncated/version-skewed state, partial write, restart, concurrent access, backup, restore, and rollback; assert owner data and unrelated rows remain byte-stable. | Run upgrade/restore/rollback preflight only on a disposable database or temporary HOME copy; never on owner state. | Fresh Sol/high evaluator reproduces round-trip, corruption, and rollback from a clean fixture. In-memory green cannot substitute for a required backend. |
+| Permission / approval / outbound send | Exact allow/deny tests bind action, effect, recipient, account, freshness, and one-shot consumption; property/adversarial tests cover unknown and attacker-controlled inputs. | Exercise the real guard/hook/approval chokepoint in an isolated fixture. Browser/computer surfaces also inherit the UI row. | Denial, stale/replayed approval, recipient ambiguity, cancellation, timeout, retry, and partial failure must create no send, grant widening, or collateral mutation. | Draft/preflight or a fake/local sink only. Never perform an unapproved real third-party send; lack of controlled-live proof remains `unverified`, not PASS. | Fresh Sol/high evaluator checks deny paths and authority separation; security/credential final gates use fresh Sol/xhigh. |
+| Release / publication | Validate manifest/schema, HEAD, creation time, input hash/provenance, version, and required-check inventory deterministically. | Fresh checkout reruns the full impacted build/test matrix, including Chromium and PostgreSQL gates when touched. | Reproduce stale/tampered artifact refusal, upgrade/downgrade or install rollback, failed pre-push/preflight, and recovery without moving an immutable tag. | Fresh release preflight and rollback artifact are mandatory. Evaluator PASS is not permission to push, tag, publish, or release. | Fresh Sol/xhigh evaluator must reproduce the gate. Local unit green, an old artifact, or a skipped live/preflight check cannot establish release-ready. |
+
+Evidence is conjunctive, not a score. A lower row's green tests cannot replace a
+required real-browser, real-backend, corruption, controlled-live, provenance,
+rollback, or fresh-evaluator gate. `skipped`, unavailable hardware/provider, and
+missing credentials are `unverified`; they do not become PASS and do not block
+unrelated ready work in another lane.
+
 Keep Vitest as the primary runner. It is Vite-native, understands ESM/TS/JSX
 without using the TypeScript compiler API, supplies mature mocks/fake timers,
 and supports projects, browser mode, sharding, and V8 coverage. Replacing it
