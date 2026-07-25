@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MuseTool } from "@muse/tools";
 
-import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
+import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, formatResidentDaemonHealthStatus, parseLaunchctlListInfo, registerDaemonCommands, runDaemonLoop, validateDaemonCliEntry, type DaemonHelpers } from "./commands-daemon.js";
 import type { DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { DaemonResourceReceipt } from "./daemon-resource-receipt.js";
 
@@ -72,7 +72,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; buildCalendarRegistry?: DaemonHelpers["buildCalendarRegistry"]; buildMessagingRegistry?: DaemonHelpers["buildMessagingRegistry"]; readDaemonConfig?: DaemonHelpers["readDaemonConfig"]; runDaemonLoop?: DaemonHelpers["runDaemonLoop"]; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; resolveKnowledgeEnrich?: DaemonHelpers["resolveKnowledgeEnrich"]; resolveChromeConnection?: DaemonHelpers["resolveChromeConnection"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; makeEmailSyncTick?: DaemonHelpers["makeEmailSyncTick"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; resourceSnapshot?: DaemonHelpers["resourceSnapshot"]; writeResourceAdmissionReceipt?: DaemonHelpers["writeResourceAdmissionReceipt"]; schtasksRun?: DaemonHelpers["schtasksRun"]; runLaunchctl?: DaemonHelpers["runLaunchctl"]; platform?: DaemonHelpers["platform"]; residentDaemonHealth?: DaemonHelpers["residentDaemonHealth"]; daemonCliEntry?: DaemonHelpers["daemonCliEntry"]; daemonRuntimeExecutable?: DaemonHelpers["daemonRuntimeExecutable"]; daemonTemporaryRoots?: DaemonHelpers["daemonTemporaryRoots"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -121,6 +121,10 @@ async function runDaemon(
       ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
       runLaunchctl: opts.runLaunchctl ?? (async () => ({ code: 1, stderr: "Could not find specified service", stdout: "" })),
       ...(opts.platform ? { platform: opts.platform } : {}),
+      residentDaemonHealth: opts.residentDaemonHealth ?? (async () => ({
+        reasonCodes: ["daemon-probe-unverified"],
+        status: "unverified"
+      })),
       daemonCliEntry: opts.daemonCliEntry ?? TEST_HARNESS_CLI_ENTRY,
       ...(opts.daemonRuntimeExecutable !== undefined
         ? { daemonRuntimeExecutable: opts.daemonRuntimeExecutable }
@@ -763,6 +767,20 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     });
     expect(crashLoop.stdout).toContain("runtime:      crash-looping (last exit status 78)");
     expect(crashLoop.stdout).toContain("autostart:    not ready");
+  });
+
+  it("--status emits the shared resident health payload without changing its reason order", async () => {
+    const health = {
+      reasonCodes: ["duplicate-resident-processes-detected", "daemon-live-probe-unverified"] as const,
+      status: "failed" as const
+    };
+    const status = await runDaemon(["--status", "--provider", "telegram"], {
+      env: tmpEnv(),
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      residentDaemonHealth: async () => health
+    });
+
+    expect(status.stdout).toContain(`resident-health: ${formatResidentDaemonHealthStatus(health)}\n`);
   });
 
   it("--status keeps a running job degraded when its persisted CLI entrypoint is stale", async () => {

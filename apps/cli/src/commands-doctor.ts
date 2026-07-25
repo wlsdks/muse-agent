@@ -69,6 +69,10 @@ import { readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemo
 import type { ResidentDaemonProcessSnapshot } from "./daemon-resource-status.js";
 import { buildDaemonResourceDoctorCheck, buildLocalModelMemoryDoctorCheck, readResidentDaemonProcessSnapshot } from "./commands-doctor-runtime-resources.js";
 export { readResidentDaemonProcessSnapshot } from "./commands-doctor-runtime-resources.js";
+import {
+  RESIDENT_DAEMON_HEALTH_REASON,
+  type ResidentDaemonHealthReasonCode
+} from "@muse/runtime-state";
 
 export interface DoctorCommandHelpers {
   readonly apiRequest: (
@@ -451,7 +455,41 @@ export interface LocalDoctorReport {
 }
 
 export interface ResidentDaemonRuntimeCheck extends LocalCheck {
+  readonly health: RuntimeQualificationObservation["health"];
   readonly observation: RuntimeQualificationObservation;
+}
+
+function describeResidentDaemonHealthReason(
+  reason: ResidentDaemonHealthReasonCode,
+  observation: RuntimeQualificationObservation
+): string {
+  if (reason === RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses) {
+    return `${observation.orphanProcessCount.toString()} orphan API process(es)`;
+  }
+  const descriptions: Readonly<Record<ResidentDaemonHealthReasonCode, string>> = {
+    [RESIDENT_DAEMON_HEALTH_REASON.artifactInvalid]: "artifact invalid",
+    [RESIDENT_DAEMON_HEALTH_REASON.artifactMissing]: "artifact missing",
+    [RESIDENT_DAEMON_HEALTH_REASON.artifactStale]: "artifact stale",
+    [RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified]: "service-manager probe unverified",
+    [RESIDENT_DAEMON_HEALTH_REASON.commandUnstable]: "command is not a stable Muse entry",
+    [RESIDENT_DAEMON_HEALTH_REASON.crashLooping]: "runtime crash-looping",
+    [RESIDENT_DAEMON_HEALTH_REASON.definitionMismatch]: "live definition mismatch",
+    [RESIDENT_DAEMON_HEALTH_REASON.duplicateResidents]: "duplicate resident processes detected",
+    [RESIDENT_DAEMON_HEALTH_REASON.heartbeatBeforeProcess]: "heartbeat predates resident process",
+    [RESIDENT_DAEMON_HEALTH_REASON.heartbeatFuture]: "heartbeat is future-dated",
+    [RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid]: "heartbeat invalid",
+    [RESIDENT_DAEMON_HEALTH_REASON.heartbeatMissing]: "heartbeat missing",
+    [RESIDENT_DAEMON_HEALTH_REASON.heartbeatStale]: "heartbeat stale",
+    [RESIDENT_DAEMON_HEALTH_REASON.liveProbeUnverified]: "live definition probe unverified",
+    [RESIDENT_DAEMON_HEALTH_REASON.notRegistered]: "runtime not registered",
+    [RESIDENT_DAEMON_HEALTH_REASON.notRunning]: "runtime not running",
+    [RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses]: "orphan API processes detected",
+    [RESIDENT_DAEMON_HEALTH_REASON.pidMismatch]: "resident PID mismatch",
+    [RESIDENT_DAEMON_HEALTH_REASON.platformUnverified]: "background runtime platform unverified",
+    [RESIDENT_DAEMON_HEALTH_REASON.processProbeUnverified]: "resident process probe unverified",
+    [RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing]: "resident process missing"
+  };
+  return descriptions[reason];
 }
 
 /**
@@ -462,40 +500,15 @@ export interface ResidentDaemonRuntimeCheck extends LocalCheck {
 export function residentDaemonRuntimeCheck(
   observation: RuntimeQualificationObservation
 ): ResidentDaemonRuntimeCheck {
-  const failures: string[] = [];
-  const unverified: string[] = [];
-  if (observation.platform !== "darwin") {
-    unverified.push(`autostart unmanaged on ${observation.platform}`);
-  }
-  if (observation.artifact !== "valid") {
-    failures.push(`artifact ${observation.artifact}`);
-  }
-  if (observation.autostartProbe !== "ok") {
-    unverified.push("service-manager probe unavailable");
-  }
-  if (observation.runtime !== "running") {
-    failures.push(`runtime ${observation.runtime}`);
-  }
-  if (observation.liveProbe !== "ok") {
-    unverified.push("live definition unverified");
-  } else {
-    if (!observation.liveDefinitionMatches) failures.push("live definition differs from artifact");
-    if (!observation.stableMuseCommand) failures.push("live command is not a stable Muse entry");
-    if (!observation.pidAgreement) failures.push("daemon process identity mismatch");
-  }
-  if (observation.heartbeat !== "fresh") {
-    failures.push(`heartbeat ${observation.heartbeat}`);
-  }
-  if (observation.orphanProbe !== "ok") {
-    unverified.push("orphan-process probe unavailable");
-  } else if (observation.orphanProcessCount > 0) {
-    failures.push(`${observation.orphanProcessCount.toString()} orphan API process(es)`);
-  }
-  const status: LocalCheck["status"] = failures.length > 0 ? "fail" : unverified.length > 0 ? "warn" : "ok";
+  const status: LocalCheck["status"] = observation.health.status === "healthy"
+    ? "ok"
+    : observation.health.status === "failed" ? "fail" : "warn";
   const detail = status === "ok"
     ? "LaunchAgent, live definition, process identity, heartbeat, and orphan-process probe are healthy"
-    : [...failures, ...unverified].join("; ");
-  return { detail, name: "resident daemon", observation, status };
+    : `resident health ${observation.health.status}: ${observation.health.reasonCodes
+      .map((reason) => describeResidentDaemonHealthReason(reason, observation))
+      .join(", ")}`;
+  return { detail, health: observation.health, name: "resident daemon", observation, status };
 }
 
 async function collectDoctorResidentRuntime(
@@ -575,6 +588,7 @@ export async function localModelMemoryDoctorCheck(runtimeOptions: DoctorLocalRun
 function withResidentRuntime(response: unknown, resident: ResidentDaemonRuntimeCheck): unknown {
   const runtime = {
     detail: resident.detail,
+    health: resident.health,
     status: resident.status
   };
   if (!isRecord(response)) return { remote: response, residentRuntime: runtime };

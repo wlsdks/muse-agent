@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { baselinePolicy, computeContinuityEvaluation, type AttunementState, type ContinuityEvidenceClass } from "@muse/attunement";
+import {
+  classifyResidentDaemonHealth,
+  type ResidentDaemonObservation,
+  type ResidentDaemonHealthResult,
+  type ResidentMuseProcessInventory
+} from "@muse/runtime-state";
+import { formatResidentDaemonHealthStatus } from "./commands-daemon.js";
+import { residentDaemonRuntimeCheck } from "./commands-doctor.js";
 
 import {
   AGENT_CAPABILITY_MATRIX_ID,
@@ -8,7 +16,8 @@ import {
   qualifyPersonalAgent,
   type ArtifactEvidenceSnapshot,
   type GitEvidenceSnapshot,
-  type PersonalAgentQualificationObservations
+  type PersonalAgentQualificationObservations,
+  type RuntimeQualificationObservation
 } from "./personal-agent-qualification.js";
 
 const NOW = new Date("2026-07-21T12:00:00.000Z");
@@ -53,6 +62,44 @@ function capabilityReport(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function runtimeObservation(
+  overrides: Partial<RuntimeQualificationObservation> = {}
+): RuntimeQualificationObservation {
+  const { health: suppliedHealth, ...observationOverrides } = overrides;
+  const observation: ResidentDaemonObservation = {
+    artifact: "valid",
+    autostartProbe: "ok",
+    heartbeat: "fresh",
+    liveDefinitionMatches: true,
+    liveProbe: "ok",
+    orphanProbe: "ok",
+    orphanProcessCount: 0,
+    orphanRootCount: 0,
+    pidAgreement: true,
+    platform: "darwin",
+    runtime: "running",
+    stableMuseCommand: true,
+    ...observationOverrides
+  };
+  const inventory: ResidentMuseProcessInventory = {
+    conditions: [],
+    duplicateResidentProcessCount: 0,
+    museProcessCount: 1,
+    probe: observation.orphanProbe,
+    processes: [{
+      cwd: "/private/runtime",
+      executableRealpath: process.execPath,
+      matchesLaunchdPid: observation.pidAgreement,
+      pid: 1,
+      ppid: 0,
+      role: "resident",
+      startedAt: "2026-07-21T00:00:00.000Z"
+    }],
+    residentProcessCount: 1
+  };
+  return { ...observation, health: suppliedHealth ?? classifyResidentDaemonHealth(observation, inventory) };
+}
+
 function passingObservations(): PersonalAgentQualificationObservations {
   return {
     capability: {
@@ -74,20 +121,7 @@ function passingObservations(): PersonalAgentQualificationObservations {
       selfLearnDisabled: true
     },
     now: NOW,
-    runtime: {
-      artifact: "valid",
-      autostartProbe: "ok",
-      heartbeat: "fresh",
-      liveDefinitionMatches: true,
-      liveProbe: "ok",
-      orphanProbe: "ok",
-      orphanProcessCount: 0,
-      orphanRootCount: 0,
-      pidAgreement: true,
-      platform: "darwin",
-      runtime: "running",
-      stableMuseCommand: true
-    }
+    runtime: runtimeObservation()
   };
 }
 
@@ -112,6 +146,74 @@ describe("capability report contract", () => {
 });
 
 describe("personal-agent qualification scorer", () => {
+  it.each([
+    {
+      health: { reasonCodes: [], status: "healthy" },
+      name: "healthy"
+    },
+    {
+      health: {
+        reasonCodes: [
+          "daemon-not-registered",
+          "resident-process-missing",
+          "daemon-live-probe-unverified",
+          "daemon-heartbeat-invalid"
+        ],
+        status: "failed"
+      },
+      name: "artifact-only"
+    },
+    {
+      health: {
+        reasonCodes: [
+          "daemon-artifact-missing",
+          "daemon-not-registered",
+          "daemon-pid-mismatch",
+          "daemon-live-probe-unverified",
+          "daemon-heartbeat-invalid"
+        ],
+        status: "failed"
+      },
+      name: "process-only"
+    },
+    {
+      health: { reasonCodes: ["duplicate-resident-processes-detected"], status: "failed" },
+      name: "duplicate"
+    },
+    {
+      health: { reasonCodes: ["orphan-api-processes-detected"], status: "failed" },
+      name: "orphan"
+    },
+    {
+      health: { reasonCodes: ["daemon-heartbeat-stale"], status: "failed" },
+      name: "stale"
+    },
+    {
+      health: {
+        reasonCodes: ["background-runtime-platform-unverified", "daemon-probe-unverified"],
+        status: "unverified"
+      },
+      name: "unmanaged"
+    }
+  ] satisfies readonly { readonly health: ResidentDaemonHealthResult; readonly name: string }[])(
+    "keeps $name status and reasons byte-equivalent across daemon, doctor, and qualification",
+    ({ health }) => {
+      const runtime = runtimeObservation({ health });
+      const doctor = residentDaemonRuntimeCheck(runtime);
+      const qualification = qualifyPersonalAgent({ ...passingObservations(), runtime });
+      const daemonBytes = formatResidentDaemonHealthStatus(health);
+
+      expect(JSON.stringify(doctor.health)).toBe(daemonBytes);
+      expect(JSON.stringify(qualification.gates[1].evidence.health)).toBe(daemonBytes);
+      expect(JSON.stringify({
+        reasonCodes: qualification.gates[1].reasonCodes,
+        status: qualification.gates[1].status === "passed"
+          ? "healthy"
+          : qualification.gates[1].status === "failed" ? "failed" : "unverified"
+      })).toBe(daemonBytes);
+    }
+  );
+
   it("qualifies technical gates only and keeps organic effectiveness not-proven", () => {
     const report = qualifyPersonalAgent(passingObservations());
     expect(report.status).toBe("qualified");
@@ -176,7 +278,7 @@ describe("personal-agent qualification scorer", () => {
           currentArtifacts: { ...ARTIFACTS, digest: "c".repeat(64) }
         }
       },
-      { ...base, runtime: { ...base.runtime, pidAgreement: false } },
+      { ...base, runtime: runtimeObservation({ pidAgreement: false }) },
       { ...base, delivery: { ...base.delivery, localOnly: false } },
       { ...base, capability: { ...base.capability, maxAgeMs: 60 * 60_000 } }
     ];
@@ -213,13 +315,12 @@ describe("personal-agent qualification scorer", () => {
     const base = passingObservations();
     const report = qualifyPersonalAgent({
       ...base,
-      runtime: {
-        ...base.runtime,
+      runtime: runtimeObservation({
         liveDefinitionMatches: false,
         liveProbe: "unverified",
         pidAgreement: false,
         stableMuseCommand: false
-      }
+      })
     });
 
     expect(report.provenance.runtimeIdentity).toMatchObject({
@@ -252,7 +353,7 @@ describe("personal-agent qualification scorer", () => {
     const input = passingObservations();
     const report = qualifyPersonalAgent({
       ...input,
-      runtime: { ...input.runtime, orphanProcessCount: 2, orphanRootCount: 1 }
+      runtime: runtimeObservation({ orphanProcessCount: 2, orphanRootCount: 1 })
     });
     expect(report.status).toBe("not-qualified");
     expect(report.gates[1]).toMatchObject({
@@ -348,11 +449,11 @@ describe("personal-agent qualification scorer", () => {
   it("rejects disk/live identity drift, future/PID-reused heartbeat, and missing probes", () => {
     const base = passingObservations();
     for (const runtime of [
-      { ...base.runtime, liveDefinitionMatches: false },
-      { ...base.runtime, pidAgreement: false },
-      { ...base.runtime, heartbeat: "future" as const },
-      { ...base.runtime, heartbeat: "before-process" as const },
-      { ...base.runtime, liveProbe: "unverified" as const }
+      runtimeObservation({ liveDefinitionMatches: false }),
+      runtimeObservation({ pidAgreement: false }),
+      runtimeObservation({ heartbeat: "future" }),
+      runtimeObservation({ heartbeat: "before-process" }),
+      runtimeObservation({ liveProbe: "unverified" })
     ]) {
       expect(qualifyPersonalAgent({ ...base, runtime }).status).not.toBe("qualified");
     }

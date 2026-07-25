@@ -1,5 +1,10 @@
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  classifyResidentDaemonHealth,
+  type ResidentDaemonObservation,
+  type ResidentMuseProcessInventory
+} from "@muse/runtime-state";
 
 import { registerQualifyCommand } from "./commands-qualify.js";
 import {
@@ -14,6 +19,36 @@ const ARTIFACTS = { count: 12, digest: "b".repeat(64), status: "ok" as const };
 const NOW = new Date("2026-07-21T12:00:00.000Z");
 
 function observations(runtime: PersonalAgentQualificationObservations["runtime"]["runtime"]): PersonalAgentQualificationObservations {
+  const runtimeObservation: ResidentDaemonObservation = {
+    artifact: runtime === "running" ? "valid" : "stale",
+    autostartProbe: "ok",
+    heartbeat: runtime === "running" ? "fresh" : "missing",
+    liveDefinitionMatches: runtime === "running",
+    liveProbe: runtime === "running" ? "ok" : "unverified",
+    orphanProbe: "ok",
+    orphanProcessCount: 0,
+    orphanRootCount: 0,
+    pidAgreement: runtime === "running",
+    platform: "darwin",
+    runtime,
+    stableMuseCommand: runtime === "running"
+  };
+  const inventory: ResidentMuseProcessInventory = {
+    conditions: [],
+    duplicateResidentProcessCount: 0,
+    museProcessCount: runtime === "running" ? 1 : 0,
+    probe: "ok",
+    processes: runtime === "running" ? [{
+      cwd: "/private/runtime",
+      executableRealpath: process.execPath,
+      matchesLaunchdPid: true,
+      pid: 1,
+      ppid: 0,
+      role: "resident",
+      startedAt: "2026-07-21T00:00:00.000Z"
+    }] : [],
+    residentProcessCount: runtime === "running" ? 1 : 0
+  };
   return {
     capability: {
       attempt: { stable: true, state: "missing" },
@@ -35,18 +70,8 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
     },
     now: NOW,
     runtime: {
-      artifact: runtime === "running" ? "valid" : "stale",
-      autostartProbe: "ok",
-      heartbeat: runtime === "running" ? "fresh" : "missing",
-      liveDefinitionMatches: runtime === "running",
-      liveProbe: runtime === "running" ? "ok" : "unverified",
-      orphanProbe: "ok",
-      orphanProcessCount: 0,
-      orphanRootCount: 0,
-      pidAgreement: runtime === "running",
-      platform: "darwin",
-      runtime,
-      stableMuseCommand: runtime === "running"
+      ...runtimeObservation,
+      health: classifyResidentDaemonHealth(runtimeObservation, inventory)
     }
   };
 }

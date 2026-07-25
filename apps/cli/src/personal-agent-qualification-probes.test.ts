@@ -163,7 +163,14 @@ function qualificationFixture(options: {
     if (executable === "ps" && args[0] === "-p") {
       return { code: 0, stderr: "", stdout: "Tue Jul 21 20:00:00 2026\n" };
     }
-    if (executable === "ps") return { code: 0, stderr: "", stdout: "" };
+    if (executable === "ps" && args[0] === "-axo") {
+      return { code: 0, stderr: "", stdout: `4321 1 ${process.execPath} ${cliEntry} daemon\n` };
+    }
+    if (executable === "lsof") {
+      const descriptor = args[args.indexOf("-d") + 1];
+      const path = descriptor === "txt" ? process.execPath : root;
+      return { code: 0, stderr: "", stdout: `p4321\nf${descriptor}\nn${path}\n` };
+    }
     return { code: 1, stderr: "PRIVATE raw failure", stdout: "" };
   };
   return {

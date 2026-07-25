@@ -25,6 +25,7 @@ export interface ResidentDaemonObservation {
 export interface ResidentDaemonInspection {
   readonly effectiveRuntimeEnv: NodeJS.ProcessEnv;
   readonly diskArguments?: readonly string[];
+  readonly health: ResidentDaemonHealthResult;
   readonly liveArguments?: readonly string[];
   readonly liveEnvironment?: Readonly<Record<string, string>>;
   readonly processInventory: ResidentMuseProcessInventory;
@@ -59,6 +60,98 @@ export interface ResidentMuseProcessInventory {
   readonly residentProcessCount: number;
   readonly duplicateResidentProcessCount: number;
   readonly conditions: readonly ResidentInventoryCondition[];
+}
+
+export const RESIDENT_DAEMON_HEALTH_REASON = {
+  artifactInvalid: "daemon-artifact-invalid",
+  artifactMissing: "daemon-artifact-missing",
+  artifactStale: "daemon-artifact-stale",
+  autostartProbeUnverified: "daemon-probe-unverified",
+  commandUnstable: "daemon-command-not-stable-muse-entry",
+  crashLooping: "daemon-crash-looping",
+  definitionMismatch: "daemon-live-definition-mismatch",
+  duplicateResidents: "duplicate-resident-processes-detected",
+  heartbeatBeforeProcess: "daemon-heartbeat-before-process-start",
+  heartbeatFuture: "daemon-heartbeat-future-dated",
+  heartbeatInvalid: "daemon-heartbeat-invalid",
+  heartbeatMissing: "daemon-heartbeat-missing",
+  heartbeatStale: "daemon-heartbeat-stale",
+  liveProbeUnverified: "daemon-live-probe-unverified",
+  notRegistered: "daemon-not-registered",
+  notRunning: "daemon-not-running",
+  orphanProcesses: "orphan-api-processes-detected",
+  pidMismatch: "daemon-pid-mismatch",
+  platformUnverified: "background-runtime-platform-unverified",
+  processProbeUnverified: "orphan-process-probe-unverified",
+  residentProcessMissing: "resident-process-missing"
+} as const;
+
+export type ResidentDaemonHealthReasonCode =
+  (typeof RESIDENT_DAEMON_HEALTH_REASON)[keyof typeof RESIDENT_DAEMON_HEALTH_REASON];
+
+export interface ResidentDaemonHealthResult {
+  readonly status: "healthy" | "failed" | "unverified";
+  readonly reasonCodes: readonly ResidentDaemonHealthReasonCode[];
+}
+
+/** One fail-close resident truth shared by CLI status, Doctor, and qualification. */
+export function classifyResidentDaemonHealth(
+  observation: ResidentDaemonObservation,
+  inventory: ResidentMuseProcessInventory
+): ResidentDaemonHealthResult {
+  const failed: ResidentDaemonHealthReasonCode[] = [];
+  const unverified: ResidentDaemonHealthReasonCode[] = [];
+  if (observation.platform !== "darwin") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.platformUnverified);
+  if (observation.autostartProbe !== "ok") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified);
+  if (observation.artifact === "missing") failed.push(RESIDENT_DAEMON_HEALTH_REASON.artifactMissing);
+  else if (observation.artifact === "invalid") failed.push(RESIDENT_DAEMON_HEALTH_REASON.artifactInvalid);
+  else if (observation.artifact === "stale") failed.push(RESIDENT_DAEMON_HEALTH_REASON.artifactStale);
+  else if (observation.artifact === "unknown") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified);
+
+  if (observation.runtime === "not-registered") failed.push(RESIDENT_DAEMON_HEALTH_REASON.notRegistered);
+  else if (observation.runtime === "not-running") failed.push(RESIDENT_DAEMON_HEALTH_REASON.notRunning);
+  else if (observation.runtime === "crash-looping") failed.push(RESIDENT_DAEMON_HEALTH_REASON.crashLooping);
+  else if (observation.runtime === "unknown") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified);
+
+  if (observation.liveProbe !== "ok") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.liveProbeUnverified);
+  } else {
+    if (!observation.liveDefinitionMatches) failed.push(RESIDENT_DAEMON_HEALTH_REASON.definitionMismatch);
+    if (!observation.stableMuseCommand) failed.push(RESIDENT_DAEMON_HEALTH_REASON.commandUnstable);
+    if (!observation.pidAgreement) failed.push(RESIDENT_DAEMON_HEALTH_REASON.pidMismatch);
+  }
+
+  if (observation.heartbeat === "missing") failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatMissing);
+  else if (observation.heartbeat === "invalid" || observation.heartbeat === "unknown") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid);
+  } else if (observation.heartbeat === "stale") failed.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatStale);
+  else if (observation.heartbeat === "future") unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatFuture);
+  else if (observation.heartbeat === "before-process") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.heartbeatBeforeProcess);
+  }
+
+  if (observation.orphanProbe !== "ok" || inventory.probe !== "ok") {
+    unverified.push(RESIDENT_DAEMON_HEALTH_REASON.processProbeUnverified);
+  } else {
+    if (inventory.residentProcessCount === 0) failed.push(RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing);
+    if (inventory.duplicateResidentProcessCount > 0 || inventory.residentProcessCount > 1) {
+      failed.push(RESIDENT_DAEMON_HEALTH_REASON.duplicateResidents);
+    }
+    const matchingResidents = inventory.processes.filter((process_) =>
+      process_.role === "resident" && process_.matchesLaunchdPid).length;
+    if (inventory.residentProcessCount === 1 && matchingResidents !== 1) {
+      failed.push(RESIDENT_DAEMON_HEALTH_REASON.pidMismatch);
+    }
+  }
+  if (observation.orphanRootCount > 0 || observation.orphanProcessCount > 0) {
+    failed.push(RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses);
+  }
+
+  const reasonCodes = [...new Set([...failed, ...unverified])];
+  return {
+    reasonCodes,
+    status: failed.length > 0 ? "failed" : unverified.length > 0 ? "unverified" : "healthy"
+  };
 }
 
 export interface ReadOnlyProcessResult {
@@ -746,23 +839,25 @@ export async function inspectResidentDaemon(
     processes: processProbe.processes,
     residentProcessCount
   };
+  const observation: ResidentDaemonObservation = {
+    artifact,
+    autostartProbe: "ok",
+    heartbeat: heartbeat.state,
+    liveDefinitionMatches,
+    liveProbe,
+    ...orphan,
+    pidAgreement: listPid !== undefined && livePid !== undefined && listPid === livePid && heartbeat.pidMatches,
+    platform,
+    runtime,
+    stableMuseCommand
+  };
   return {
     diskArguments,
     effectiveRuntimeEnv,
+    health: classifyResidentDaemonHealth(observation, processInventory),
     liveArguments,
     liveEnvironment,
     processInventory,
-    observation: {
-      artifact,
-      autostartProbe: "ok",
-      heartbeat: heartbeat.state,
-      liveDefinitionMatches,
-      liveProbe,
-      ...orphan,
-      pidAgreement: listPid !== undefined && livePid !== undefined && listPid === livePid && heartbeat.pidMatches,
-      platform,
-      runtime,
-      stableMuseCommand
-    }
+    observation
   };
 }

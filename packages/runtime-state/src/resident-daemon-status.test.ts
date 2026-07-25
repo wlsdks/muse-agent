@@ -421,30 +421,43 @@ describe("resident daemon read-only authority", () => {
   it.each([
     {
       expected: { conditions: ["artifact-only"], duplicateResidentProcessCount: 0, museProcessCount: 0, residentProcessCount: 0 },
+      expectedHealth: {
+        reasonCodes: [
+          "daemon-not-registered",
+          "resident-process-missing",
+          "daemon-live-probe-unverified",
+          "daemon-heartbeat-invalid"
+        ],
+        status: "failed"
+      },
       name: "artifact-only",
       options: { launchdRunning: false, residentPids: [] }
     },
     {
       expected: { conditions: ["process-only"], duplicateResidentProcessCount: 0, museProcessCount: 1, residentProcessCount: 1 },
+      expectedHealth: { reasonCodes: expect.arrayContaining(["daemon-artifact-missing", "daemon-not-registered"]), status: "failed" },
       name: "process-only",
       options: { artifact: "missing" as const, launchdRunning: false, residentPids: [4330] }
     },
     {
       expected: { conditions: ["duplicate"], duplicateResidentProcessCount: 1, museProcessCount: 2, residentProcessCount: 2 },
+      expectedHealth: { reasonCodes: expect.arrayContaining(["duplicate-resident-processes-detected"]), status: "failed" },
       name: "duplicate",
       options: { residentPids: [4321, 4322] }
     },
     {
       expected: { conditions: ["orphan"], duplicateResidentProcessCount: 0, museProcessCount: 3, residentProcessCount: 1 },
+      expectedHealth: { reasonCodes: ["orphan-api-processes-detected"], status: "failed" },
       name: "orphan",
       options: { orphanTree: true }
     },
     {
       expected: { conditions: ["healthy"], duplicateResidentProcessCount: 0, museProcessCount: 1, residentProcessCount: 1 },
+      expectedHealth: { reasonCodes: [], status: "healthy" },
       name: "healthy",
       options: {}
     }
-  ])("distinguishes the $name inventory fixture", async ({ expected, options }) => {
+  ])("distinguishes the $name inventory fixture", async ({ expected, expectedHealth, options }) => {
     const state = inventoryFixture(options);
     const result = await inspectResidentDaemon({
       daemonTemporaryRoots: [],
@@ -456,6 +469,7 @@ describe("resident daemon read-only authority", () => {
     });
 
     expect(result.processInventory).toMatchObject(expected);
+    expect(result.health).toEqual(expectedHealth);
     expect(result.processInventory.processes).toHaveLength(expected.museProcessCount);
     for (const process_ of result.processInventory.processes) {
       expect(process_).toMatchObject({

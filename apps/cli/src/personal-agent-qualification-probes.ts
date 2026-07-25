@@ -317,7 +317,8 @@ async function inspectResidentDaemonRuntime(
 export async function collectResidentDaemonRuntime(
   dependencies: QualificationProbeDependencies = {}
 ): Promise<RuntimeQualificationObservation> {
-  return (await inspectResidentDaemonRuntime(dependencies)).observation;
+  const resident = await inspectResidentDaemonRuntime(dependencies);
+  return { ...resident.observation, health: resident.health };
 }
 
 export async function collectPersonalAgentQualificationObservations(
@@ -392,6 +393,6 @@ export async function collectPersonalAgentQualificationObservations(
       selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED)
     },
     now: nowDate,
-    runtime: resident.observation
+    runtime: { ...resident.observation, health: resident.health }
   };
 }

@@ -48,7 +48,11 @@ import { createObserveRunnerFromEnvironment } from "@muse/attunement/host";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
-import { validateStableMuseRuntimeExecutable } from "@muse/runtime-state";
+import {
+  inspectResidentDaemon,
+  validateStableMuseRuntimeExecutable,
+  type ResidentDaemonHealthResult
+} from "@muse/runtime-state";
 import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog, readQuietHoursSettingSync, readReminders, readTasks, recordProactiveHeartbeat, resolveDaemonSettingsFile } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
@@ -316,12 +320,19 @@ export interface DaemonHelpers {
   readonly runLaunchctl?: (args: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }>;
   /** Test seam — platform override for the --install / --status / --uninstall autostart branches. */
   readonly platform?: NodeJS.Platform;
+  /** Test seam — shared read-only resident health consumed by daemon --status. */
+  readonly residentDaemonHealth?: (env: NodeJS.ProcessEnv) => Promise<ResidentDaemonHealthResult>;
   /** Test seam — production persists process.argv[1] after stable-entry validation. */
   readonly daemonCliEntry?: string;
   /** Test seam — production persists canonical process.execPath after stable-runtime validation. */
   readonly daemonRuntimeExecutable?: string;
   /** Test seam — deterministic temporary-root classification across operating systems. */
   readonly daemonTemporaryRoots?: readonly string[];
+}
+
+/** Canonical machine-readable daemon health line payload. */
+export function formatResidentDaemonHealthStatus(health: ResidentDaemonHealthResult): string {
+  return JSON.stringify(health);
 }
 
 /**
@@ -1088,6 +1099,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ...(helpers.runLaunchctl ? { runLaunchctl: helpers.runLaunchctl } : {}),
           ...(helpers.schtasksRun ? { schtasksRun: helpers.schtasksRun } : {})
         });
+        const residentHealth = await (helpers.residentDaemonHealth
+          ?? (async (residentEnv: NodeJS.ProcessEnv) => (await inspectResidentDaemon({
+            daemonTemporaryRoots: helpers.daemonTemporaryRoots,
+            env: residentEnv,
+            platform: helpers.platform
+          })).health))(e);
         const statusSafety = resolveDaemonStatusSafetyGates(e, autostart);
         io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}; safety=${statusSafety.source}):\n`);
         io.stdout(`  delivery:   ${statusSafety.deliveryBrakeEngaged ? "heartbeat-only (brake engaged)" : "enabled"}\n`);
@@ -1137,6 +1154,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  followups:  ${followupsFile}\n`);
         io.stdout(`  objectives: ${objectivesFile}\n`);
         for (const line of formatDaemonAutostartStatus(autostart)) io.stdout(`${line}\n`);
+        io.stdout(`resident-health: ${formatResidentDaemonHealthStatus(residentHealth)}\n`);
         return;
       }
 

@@ -8,6 +8,12 @@
 
 import { createHash } from "node:crypto";
 
+import {
+  RESIDENT_DAEMON_HEALTH_REASON,
+  type ResidentDaemonHealthReasonCode,
+  type ResidentDaemonHealthResult
+} from "@muse/runtime-state";
+
 export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 2 as const;
 export const AGENT_CAPABILITY_MATRIX_ID = "muse-agent-capability-v1" as const;
 export const DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS = 24;
@@ -44,40 +50,44 @@ export const QUALIFICATION_REASON = {
   currentSourceDirty: "current-source-tree-dirty",
   currentSourceDrift: "current-source-drift",
   currentSourceUnverified: "current-source-unverified",
-  daemonArtifactInvalid: "daemon-artifact-invalid",
-  daemonArtifactMissing: "daemon-artifact-missing",
-  daemonArtifactStale: "daemon-artifact-stale",
-  daemonCommandUnstable: "daemon-command-not-stable-muse-entry",
-  daemonCrashLooping: "daemon-crash-looping",
-  daemonDefinitionMismatch: "daemon-live-definition-mismatch",
-  daemonLiveProbeUnverified: "daemon-live-probe-unverified",
-  daemonNotRegistered: "daemon-not-registered",
-  daemonNotRunning: "daemon-not-running",
-  daemonPidMismatch: "daemon-pid-mismatch",
-  daemonProbeUnverified: "daemon-probe-unverified",
+  daemonArtifactInvalid: RESIDENT_DAEMON_HEALTH_REASON.artifactInvalid,
+  daemonArtifactMissing: RESIDENT_DAEMON_HEALTH_REASON.artifactMissing,
+  daemonArtifactStale: RESIDENT_DAEMON_HEALTH_REASON.artifactStale,
+  daemonCommandUnstable: RESIDENT_DAEMON_HEALTH_REASON.commandUnstable,
+  daemonCrashLooping: RESIDENT_DAEMON_HEALTH_REASON.crashLooping,
+  daemonDefinitionMismatch: RESIDENT_DAEMON_HEALTH_REASON.definitionMismatch,
+  daemonDuplicateResidents: RESIDENT_DAEMON_HEALTH_REASON.duplicateResidents,
+  daemonLiveProbeUnverified: RESIDENT_DAEMON_HEALTH_REASON.liveProbeUnverified,
+  daemonNotRegistered: RESIDENT_DAEMON_HEALTH_REASON.notRegistered,
+  daemonNotRunning: RESIDENT_DAEMON_HEALTH_REASON.notRunning,
+  daemonPidMismatch: RESIDENT_DAEMON_HEALTH_REASON.pidMismatch,
+  daemonProbeUnverified: RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified,
+  daemonResidentProcessMissing: RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing,
   deliveryBrakeEngaged: "delivery-brake-engaged",
   deliveryEnvironmentUnverified: "delivery-environment-unverified",
   deliveryProviderLockMissing: "delivery-provider-lock-not-log",
   deliveryRouteNotLocalLog: "delivery-route-not-local-log",
   followupBacklogUnverified: "followup-backlog-unverified",
-  heartbeatBeforeProcess: "daemon-heartbeat-before-process-start",
-  heartbeatFuture: "daemon-heartbeat-future-dated",
-  heartbeatInvalid: "daemon-heartbeat-invalid",
-  heartbeatMissing: "daemon-heartbeat-missing",
-  heartbeatStale: "daemon-heartbeat-stale",
+  heartbeatBeforeProcess: RESIDENT_DAEMON_HEALTH_REASON.heartbeatBeforeProcess,
+  heartbeatFuture: RESIDENT_DAEMON_HEALTH_REASON.heartbeatFuture,
+  heartbeatInvalid: RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid,
+  heartbeatMissing: RESIDENT_DAEMON_HEALTH_REASON.heartbeatMissing,
+  heartbeatStale: RESIDENT_DAEMON_HEALTH_REASON.heartbeatStale,
   localOnlyMissing: "daemon-local-only-not-persisted",
   organicEvidenceNotProven: "organic-personal-effectiveness-not-proven",
-  orphanApiProcesses: "orphan-api-processes-detected",
-  orphanProcessProbeUnverified: "orphan-process-probe-unverified",
+  orphanApiProcesses: RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses,
+  orphanProcessProbeUnverified: RESIDENT_DAEMON_HEALTH_REASON.processProbeUnverified,
   overdueFollowups: "overdue-followups-detected",
   overdueReminders: "overdue-reminders-detected",
-  platformUnsupported: "background-runtime-platform-unverified",
+  platformUnsupported: RESIDENT_DAEMON_HEALTH_REASON.platformUnverified,
   reminderBacklogUnverified: "reminder-backlog-unverified",
   selfLearnEnabled: "daemon-self-learn-not-disabled",
   sourceProvenanceInvalid: "capability-source-provenance-invalid"
 } as const;
 
-export type QualificationReasonCode = (typeof QUALIFICATION_REASON)[keyof typeof QUALIFICATION_REASON];
+export type QualificationReasonCode =
+  | (typeof QUALIFICATION_REASON)[keyof typeof QUALIFICATION_REASON]
+  | ResidentDaemonHealthReasonCode;
 export type QualificationGateStatus = "passed" | "failed" | "unverified";
 export type PersonalAgentQualificationStatus = "qualified" | "not-qualified" | "unverified";
 
@@ -111,6 +121,7 @@ export interface CapabilityQualificationObservation {
 }
 
 export interface RuntimeQualificationObservation {
+  readonly health: ResidentDaemonHealthResult;
   readonly platform: NodeJS.Platform;
   readonly autostartProbe: "ok" | "unverified";
   readonly artifact: "valid" | "missing" | "invalid" | "stale" | "unknown";
@@ -160,6 +171,7 @@ export interface CapabilityGateEvidence {
 }
 
 export interface RuntimeGateEvidence {
+  readonly health: ResidentDaemonHealthResult;
   readonly artifactState: RuntimeQualificationObservation["artifact"];
   readonly runtimeState: RuntimeQualificationObservation["runtime"];
   readonly liveDefinitionMatch: boolean;
@@ -557,40 +569,10 @@ function assessCapability(
 }
 
 function assessRuntime(observation: RuntimeQualificationObservation): QualificationGate<"background-runtime", RuntimeGateEvidence> {
-  const failed: QualificationReasonCode[] = [];
-  const unverified: QualificationReasonCode[] = [];
-  if (observation.platform !== "darwin") unverified.push(QUALIFICATION_REASON.platformUnsupported);
-  if (observation.autostartProbe !== "ok") unverified.push(QUALIFICATION_REASON.daemonProbeUnverified);
-  if (observation.artifact === "missing") failed.push(QUALIFICATION_REASON.daemonArtifactMissing);
-  else if (observation.artifact === "invalid") failed.push(QUALIFICATION_REASON.daemonArtifactInvalid);
-  else if (observation.artifact === "stale") failed.push(QUALIFICATION_REASON.daemonArtifactStale);
-  else if (observation.artifact === "unknown") unverified.push(QUALIFICATION_REASON.daemonProbeUnverified);
-
-  if (observation.runtime === "not-registered") failed.push(QUALIFICATION_REASON.daemonNotRegistered);
-  else if (observation.runtime === "not-running") failed.push(QUALIFICATION_REASON.daemonNotRunning);
-  else if (observation.runtime === "crash-looping") failed.push(QUALIFICATION_REASON.daemonCrashLooping);
-  else if (observation.runtime === "unknown") unverified.push(QUALIFICATION_REASON.daemonProbeUnverified);
-
-  if (observation.liveProbe !== "ok") unverified.push(QUALIFICATION_REASON.daemonLiveProbeUnverified);
-  else {
-    if (!observation.liveDefinitionMatches) failed.push(QUALIFICATION_REASON.daemonDefinitionMismatch);
-    if (!observation.stableMuseCommand) failed.push(QUALIFICATION_REASON.daemonCommandUnstable);
-    if (!observation.pidAgreement) failed.push(QUALIFICATION_REASON.daemonPidMismatch);
-  }
-
-  if (observation.heartbeat === "missing") failed.push(QUALIFICATION_REASON.heartbeatMissing);
-  else if (observation.heartbeat === "invalid") unverified.push(QUALIFICATION_REASON.heartbeatInvalid);
-  else if (observation.heartbeat === "stale") failed.push(QUALIFICATION_REASON.heartbeatStale);
-  else if (observation.heartbeat === "future") unverified.push(QUALIFICATION_REASON.heartbeatFuture);
-  else if (observation.heartbeat === "before-process") unverified.push(QUALIFICATION_REASON.heartbeatBeforeProcess);
-  else if (observation.heartbeat === "unknown") unverified.push(QUALIFICATION_REASON.heartbeatInvalid);
-
-  if (observation.orphanProbe !== "ok") unverified.push(QUALIFICATION_REASON.orphanProcessProbeUnverified);
-  if (observation.orphanRootCount > 0 || observation.orphanProcessCount > 0) failed.push(QUALIFICATION_REASON.orphanApiProcesses);
-
   return {
     evidence: {
       artifactState: observation.artifact,
+      health: observation.health,
       heartbeatState: observation.heartbeat,
       liveDefinitionMatch: observation.liveDefinitionMatches,
       orphanProcessCount: observation.orphanProcessCount,
@@ -599,9 +581,11 @@ function assessRuntime(observation: RuntimeQualificationObservation): Qualificat
       runtimeState: observation.runtime
     },
     id: "background-runtime",
-    reasonCodes: [...new Set([...failed, ...unverified])],
+    reasonCodes: observation.health.reasonCodes,
     required: true,
-    status: gateStatus(failed, unverified)
+    status: observation.health.status === "healthy"
+      ? "passed"
+      : observation.health.status === "failed" ? "failed" : "unverified"
   };
 }
 

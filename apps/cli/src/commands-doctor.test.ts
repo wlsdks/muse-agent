@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 import { analyzeRunOutcomes } from "@muse/proactivity";
+import {
+  classifyResidentDaemonHealth,
+  type ResidentDaemonObservation,
+  type ResidentMuseProcessInventory
+} from "@muse/runtime-state";
 
 import {
   classifyHomeAlertsConfig,
@@ -44,7 +49,8 @@ import type { WeaknessEntry } from "@muse/stores";
 import { buildLaunchAgentPlist } from "./commands-daemon.js";
 
 function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {}): RuntimeQualificationObservation {
-  return {
+  const { health: suppliedHealth, ...observationOverrides } = overrides;
+  const observation: ResidentDaemonObservation = {
     artifact: "valid",
     autostartProbe: "ok",
     heartbeat: "fresh",
@@ -57,8 +63,25 @@ function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {
     platform: "darwin",
     runtime: "running",
     stableMuseCommand: true,
-    ...overrides
+    ...observationOverrides
   };
+  const inventory: ResidentMuseProcessInventory = {
+    conditions: [],
+    duplicateResidentProcessCount: 0,
+    museProcessCount: 1,
+    probe: observation.orphanProbe,
+    processes: [{
+      cwd: "/private/runtime",
+      executableRealpath: process.execPath,
+      matchesLaunchdPid: observation.pidAgreement,
+      pid: 1,
+      ppid: 0,
+      role: "resident",
+      startedAt: "2026-07-21T00:00:00.000Z"
+    }],
+    residentProcessCount: 1
+  };
+  return { ...observation, health: suppliedHealth ?? classifyResidentDaemonHealth(observation, inventory) };
 }
 
 describe("local doctor runtime ownership", () => {
