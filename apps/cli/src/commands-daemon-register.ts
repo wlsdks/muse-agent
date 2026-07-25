@@ -57,7 +57,7 @@ import { defaultProactiveHeartbeatDir, defaultSchedulerPauseFile, queryActionLog
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, FileAmbientSignalSource, gateProactiveNoticeSink, resolveEffectiveQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type QuietHourRange, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, type EmailProvider } from "@muse/domain-tools";
 import { execFile as execFileCallback } from "node:child_process";
-import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -77,13 +77,18 @@ import {
 } from "./commands-daemon-autostart.js";
 import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { MUSE_CLI_VERSION } from "./muse-version.js";
 import {
   applyResidentDaemonRepairPlan,
   buildResidentDaemonRepairPlan,
   parseResidentDaemonRepairPlan,
   type ResidentDaemonRepairSnapshot
 } from "./resident-daemon-repair-plan.js";
+import {
+  applyResidentDaemonInstallTransaction,
+  resolveResidentDaemonInstallStateFiles
+} from "./resident-daemon-install-state.js";
 
 import { autoReindexBudgetEnvironment } from "./auto-reindex-budget.js";
 import { closestCommandName } from "./closest-command.js";
@@ -998,47 +1003,97 @@ export async function installDaemonAutostart(
   });
 
   const runLaunchctl = helpers.runLaunchctl ?? defaultRunLaunchctl;
+  let loadResult: Awaited<ReturnType<typeof runLaunchctl>> | undefined;
+  let listResult: Awaited<ReturnType<typeof runLaunchctl>> | undefined;
+  let pid: number | undefined;
+  let lastExitStatus: number | undefined;
+  let failedLoadResult: Awaited<ReturnType<typeof runLaunchctl>> | undefined;
+  let failedListResult: Awaited<ReturnType<typeof runLaunchctl>> | undefined;
+  let failedLastExitStatus: number | undefined;
+  const installResult = await applyResidentDaemonInstallTransaction({
+    activate: async () => {
+      const attemptedLoad = await runLaunchctl(["load", "-w", plistFile]);
+      const attemptedList = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
+      const parsed = parseLaunchctlListInfo(attemptedList.stdout);
+      loadResult = attemptedLoad;
+      listResult = attemptedList;
+      pid = parsed.pid;
+      lastExitStatus = parsed.lastExitStatus;
+      const healthy = attemptedList.code === 0 && parsed.pid !== undefined;
+      if (!healthy && !failedLoadResult) {
+        failedLoadResult = attemptedLoad;
+        failedListResult = attemptedList;
+        failedLastExitStatus = parsed.lastExitStatus;
+      }
+      return healthy;
+    },
+    artifactFile: plistFile,
+    deactivate: async () => {
+      // Nothing registered is an expected idempotent starting condition.
+      await runLaunchctl(["unload", "-w", plistFile]);
+    },
+    desiredArtifact: plist,
+    files: resolveResidentDaemonInstallStateFiles({ ...e, HOME: home }),
+    productVersion: MUSE_CLI_VERSION
+  });
 
-  // Unload any stale definition FIRST. `load -w` is NOT reliably
-  // idempotent for an already-loaded label — some launchd versions
-  // return non-zero AND don't re-read the plist, so a bare load after
-  // an edit (a node upgrade, a moved `muse`, a plain reinstall) would
-  // leave launchd running the OLD programArguments until logout. A
-  // failed unload here (nothing was loaded yet) is expected and fine.
-  await runLaunchctl(["unload", "-w", plistFile]);
-
-  mkdirSync(dirname(plistFile), { recursive: true });
-  writeFileSync(plistFile, plist, "utf8");
-
-  const loadResult = await runLaunchctl(["load", "-w", plistFile]);
-  // The source of truth for success is the verifying `list` call, not
-  // `load`'s own exit code — and `list` exiting 0 only proves the label
-  // is REGISTERED, not that it is actually running. Parse its dump for
-  // a PID (running now) vs a non-zero LastExitStatus with no PID
-  // (registered but crash-looping) so neither is reported as healthy.
-  const listResult = await runLaunchctl(["list", LAUNCH_AGENT_LABEL]);
-  const registered = listResult.code === 0;
-  const { pid, lastExitStatus } = parseLaunchctlListInfo(listResult.stdout);
-
-  if (registered && pid !== undefined) {
-    const loadReportedNonZero = loadResult.code !== 0;
+  if (installResult.ok && pid !== undefined) {
+    const loadReportedNonZero = loadResult?.code !== 0;
     io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  loaded via launchctl and RUNNING (pid ${pid.toString()}, label: ${LAUNCH_AGENT_LABEL})${loadReportedNonZero ? " — load itself reported a non-zero exit, but the running pid confirms the new plist took effect" : ""}\n  logs: ${logDir}\n  remove with:  muse daemon --uninstall\n`);
     return { ok: true };
   }
 
-  if (registered && lastExitStatus !== undefined && lastExitStatus !== 0) {
-    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${lastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
+  if (installResult.reason === "downgrade-refused") {
+    io.stderr("refusing to install daemon autostart: installed receipt is newer than this Muse CLI (downgrade refused).\n");
+    return { ok: false };
+  }
+  if (installResult.reason === "receipt-invalid" || installResult.reason === "backup-invalid") {
+    io.stderr(`refusing to install daemon autostart: resident install ${installResult.reason === "receipt-invalid" ? "receipt" : "backup"} is invalid.\n`);
+    return { ok: false };
+  }
+  if (installResult.reason === "artifact-drift") {
+    io.stderr("refusing to install daemon autostart: artifact changed during an interrupted install; generate a fresh repair plan.\n");
+    return { ok: false };
+  }
+  const diagnosticLoad = failedLoadResult ?? loadResult;
+  const diagnosticList = failedListResult ?? listResult;
+  const diagnosticLastExitStatus = failedLastExitStatus ?? lastExitStatus;
+  const rollbackSuffix = installResult.rolledBack
+    ? installResult.receipt?.previousDigest
+      ? "\n  rollback: the exact previous LaunchAgent artifact was restored and reloaded."
+      : "\n  rollback: the failed new LaunchAgent artifact was removed, restoring the prior absent state."
+    : "";
+  if (installResult.reason === "rollback-failed") {
+    io.stderr("daemon install activation failed and automatic rollback could not restore a verified prior LaunchAgent. The owner-only install receipt is marked rollback-failed; do not retry until the artifact and backup are repaired.\n");
+    return { ok: false };
+  }
+  if (installResult.reason === "persistence-failed") {
+    io.stderr("daemon install persistence failed. The owner-only receipt may remain prepared for deterministic recovery; inspect it and retry without editing the LaunchAgent or backup.\n");
+    return { ok: false };
+  }
+  if (diagnosticLastExitStatus !== undefined && diagnosticLastExitStatus !== 0) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but it is NOT running — last exit status ${diagnosticLastExitStatus.toString()} (it crashed or failed to start; this is a crash-looping install, not a healthy one).${rollbackSuffix}\n  plist: ${plistFile}\n  logs: ${logDir}\n  check the log files above, then \`muse daemon --uninstall\` and retry \`muse daemon --install\`.\n`);
     return { ok: false };
   }
 
-  if (registered) {
-    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.\n  plist: ${plistFile}\n`);
+  if (diagnosticList?.code === 0) {
+    io.stderr(`launchctl registered ${LAUNCH_AGENT_LABEL} but reported no PID and no exit status yet — it has not started running. This can be transient right after install; re-check with \`launchctl list ${LAUNCH_AGENT_LABEL}\` in a few seconds or \`muse daemon --status\`.${rollbackSuffix}\n  plist: ${plistFile}\n`);
     return { ok: false };
   }
 
-  // launchctl failed AND the agent does not show up as registered —
-  // never claim success on a plist that isn't actually loaded.
-  io.stderr(`launchctl load failed (exit ${loadResult.code.toString()}): ${loadResult.stderr.trim() || loadResult.stdout.trim() || "label not found in launchctl list"}\n  plist was written to ${plistFile} but the daemon is NOT loaded — run \`launchctl load -w ${plistFile}\` manually or retry \`muse daemon --install\`.\n`);
+  if (diagnosticLoad && diagnosticLoad.code !== 0) {
+    io.stderr(`launchctl load failed (exit ${diagnosticLoad.code.toString()}): ${diagnosticLoad.stderr.trim() || diagnosticLoad.stdout.trim() || installResult.reason || "label not found in launchctl list"}${rollbackSuffix}\n  plist was not left active; inspect the resident install receipt before retrying.\n`);
+    return { ok: false };
+  }
+  if (installResult.rolledBack) {
+    io.stderr(installResult.receipt?.previousDigest
+      ? "daemon install activation failed; the exact previous LaunchAgent artifact was restored and reloaded.\n"
+      : "daemon install activation failed; the failed new LaunchAgent artifact was removed, restoring the prior absent state.\n");
+    return { ok: false };
+  }
+
+  const loadCode = diagnosticLoad?.code ?? 1;
+  io.stderr(`launchctl load failed (exit ${loadCode.toString()}): ${diagnosticLoad?.stderr.trim() || diagnosticLoad?.stdout.trim() || installResult.reason || "label not found in launchctl list"}${rollbackSuffix}\n  plist was not left active; inspect the resident install receipt before retrying.\n`);
   return { ok: false };
 }
 

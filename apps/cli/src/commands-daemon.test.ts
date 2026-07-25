@@ -2011,8 +2011,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain("launchctl load failed");
     expect(res.stdout).not.toContain("loaded via launchctl");
-    // The plist is still written (harmless), but never claimed as running.
-    expect(existsSync(plistFile)).toBe(true);
+    // A failed first install rolls back to the exact prior absent state.
+    expect(existsSync(plistFile)).toBe(false);
   });
 
   it("--install reports FAILURE (not success) when launchctl registers the label but it is CRASH-LOOPING (no pid, non-zero LastExitStatus)", async () => {
