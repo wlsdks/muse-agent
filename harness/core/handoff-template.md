@@ -39,29 +39,30 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 ## 헤더 (목표 + 맥락)
 
 - **작업 이름:** <짧고 고유하게>
-- **한 줄 목표:** <이 작업이 끝나면 사용자가 무엇을 할 수 있나>
-- **제품 맥락:** <왜 이게 필요한가, 누구를 위한 것인가>
+- **한 줄 목표 (WHAT / `what`):** <이 작업이 끝나면 사용자가 무엇을 할 수 있나>
+- **제품 맥락 (WHY / `why`):** <왜 이게 필요한가, 누구를 위한 것인가>
 - **현재 단계:** `BUILD | EVAL | DONE | BLOCKED`
 - **담당(현재):** <역할/에이전트>
 
-## 1. 수용 기준 (검증 가능한 PASS 조건)
+## 1. 수용 기준 (PASS / `passCriteria`)
 
 - <"무엇이 참이어야 통과인가" — 구체적·검증 가능, 체크리스트로>
   - [ ] <기준 1>
   - [ ] <기준 2>
-- **범위 밖(하지 말 것):** <경계>
+- **범위 밖 (`outOfScope`):** <하지 않을 경계. "없음"도 명시적으로 적기>
 
-## 2. 검증 방법
+## 2. 검증·근거·복구
 
-- <어떤 테스트/명령/관찰로 확인하나 — 워커와 평가자가 같은 방법을 씀>
+- **검증 명령 (`verificationCommands`):** <평가자가 그대로 재실행할 명령/관찰>
 - **PLAN-review budget:** <시간/비용 cap; raw PLAN FAIL 횟수와 분리>
 - **BUILD↔EVAL budget:** <수정 반복 횟수/시간/비용 cap; PLAN 카운터와 분리>
 - **진전 판정:** `material-progress | no-progress` — material progress는 이전 blocker를 닫거나
   acceptance/accounting을 측정 가능하게 만든 변경, no-progress는 같은 blocker가 새 증거·수정 없이
   반복되는 상태
-- **근거 회계:** <semantic family/surface variant/profile/journey/turn 수; `realismProxy` 이름;
+- **근거 회계 (`evidenceAccounting`):** <semantic family/surface variant/profile/journey/turn 수; `realismProxy` 이름;
   immutable `dataOrigin`; independent `executionEvidence`; controlled replay/organic production evidence;
   receipt와 feedback 분리>
+- **Rollback / recovery (`rollback`):** <실패·회귀 때 되돌릴 변경, 보존할 데이터, 재개 조건>
 
 ## 3. 워커 노트 (워커/빌더가 채움)
 

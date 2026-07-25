@@ -84,7 +84,7 @@ related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-promp
 
 | 스펙 게이트/규약 | 요구 행동 | 결속된 실측 증거 |
 |---|---|---|
-| 계획 게이트 — 빈 기준 거부 | 수용 기준이 비면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) |
+| 계획 게이트 — 빈 slice 거부 | WHAT·WHY·PASS·범위 밖·검증 명령·근거 회계·rollback 중 하나라도 비면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) + runner field-by-field conformance |
 | 완료 게이트 — 틀린 빌드 FAIL | 기준 위반 산출물은 PASS 안 됨 | G8 null 빌드 → **pass^10** FAIL · G9 올바른 빌드 → pass^5 PASS |
 | 외부전송 게이트(HITL) | 자동 전송 금지·draft-first | 권한 실측: outbound→approve·은행→refuse([permission-matrix §4.5](../core/permission-matrix.md)) |
 
@@ -96,7 +96,7 @@ related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-promp
 | 케이스 | 입력 | 기대(fail-closed) |
 |---|---|---|
 | 단계 건너뛰기 | PLAN 없이 BUILD 요청 | 거부, 상태 유지 |
-| 빈 기준 | 수용 기준 없이 계획 게이트 | 전이 거부 + 사유 로그 |
+| 빈 acceptance slice | 필수 필드 하나라도 누락/공백인 계획 게이트 | 전이 거부 + 필드 사유 로그 |
 | 미평가 머지 | 평가 PASS 없이 DONE 요청 | 거부(완료 게이트) |
 | 자기 채점 | BUILD와 같은 인스턴스가 EVAL | 거부(만든 자≠판정하는 자) |
 | 손상된 양식 | 상태 로그 파손/알 수 없는 상태 | 진행 금지 + 사람 개입 |

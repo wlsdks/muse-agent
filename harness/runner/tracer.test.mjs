@@ -7,6 +7,16 @@ import { createTracer, redactSecrets } from './tracer.mjs';
 import { runCycle } from './orchestrator.mjs';
 import { createHookPipeline, dispatchTool } from './hooks.mjs';
 
+const VALID_PLAN = JSON.stringify({
+  what: 'add two integers',
+  why: 'the trace needs a completed cycle',
+  passCriteria: ['a+b'],
+  outOfScope: ['other arithmetic'],
+  verificationCommands: ['node --test harness/runner/'],
+  evidenceAccounting: 'one deterministic fixture',
+  rollback: 'revert this slice',
+});
+
 test('every event carries a correlation id (runId) and a monotonic seq', () => {
   const tr = createTracer({ runId: 'r1', now: () => 7 });
   tr.add('start', { task: 't' });
@@ -55,7 +65,7 @@ test('orchestrator emits a trace + summary through the tracer', async () => {
   const res = await runCycle('add two ints', {
     runId: 'cycle-1',
     callAgent: async (role) => ({
-      planner: '{"criteria":["a+b"]}',
+      planner: VALID_PLAN,
       worker: 'def add(a,b): return a+b',
       evaluator: '{"verdict":"PASS"}',
     })[role],

@@ -6,10 +6,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, planGate, permissionGate, createRun } from './harness-runner.mjs';
 
+const slice = (overrides = {}) => ({
+  what: 'The user can add two integers',
+  why: 'This proves the phase contract',
+  passCriteria: ['returns the sum of two ints'],
+  outOfScope: ['floating-point arithmetic'],
+  verificationCommands: ['node --test harness/runner/'],
+  evidenceAccounting: 'one deterministic example fixture',
+  rollback: 'revert the task slice',
+  ...overrides,
+});
+
 // ---- Happy path: a full cycle reaches DONE ----
 test('happy path: REQUESTED -> PLANNED -> BUILT -> EVALUATED(PASS) -> DONE', () => {
   let s = 'REQUESTED';
-  s = advance(s, 'plan', { criteria: ['returns the sum of two ints'] }).state;
+  s = advance(s, 'plan', { acceptanceSlice: slice() }).state;
   assert.equal(s, 'PLANNED');
   s = advance(s, 'build').state;
   assert.equal(s, 'BUILT');
@@ -26,9 +37,21 @@ test('deny: skip a step (BUILD without PLAN)', () => {
   assert.equal(r.ok, false);
 });
 
-test('deny: empty acceptance criteria at the plan gate', () => {
-  assert.equal(advance('REQUESTED', 'plan', { criteria: [] }).state, 'BLOCKED');
-  assert.equal(advance('REQUESTED', 'plan', { criteria: ['   ', ''] }).state, 'BLOCKED');
+test('deny: every missing or blank acceptance-slice field at the plan gate', () => {
+  const blanks = {
+    what: ' ',
+    why: '',
+    passCriteria: ['   ', ''],
+    outOfScope: [],
+    verificationCommands: undefined,
+    evidenceAccounting: null,
+    rollback: '   ',
+  };
+  for (const [field, value] of Object.entries(blanks)) {
+    const result = advance('REQUESTED', 'plan', { acceptanceSlice: slice({ [field]: value }) });
+    assert.equal(result.state, 'BLOCKED', `${field} must fail closed`);
+    assert.match(result.reason, new RegExp(field));
+  }
   assert.equal(advance('REQUESTED', 'plan', {}).state, 'BLOCKED');
 });
 
@@ -75,18 +98,18 @@ test('permission: write/execute need trust; unknown kinds denied', () => {
 });
 
 test('plan gate is the source of truth for empty-criteria blocking', () => {
-  assert.equal(planGate(['ok']).ok, true);
-  assert.equal(planGate([]).ok, false);
+  assert.equal(planGate(slice()).ok, true);
+  assert.equal(planGate(slice({ passCriteria: [] })).ok, false);
   assert.equal(planGate(undefined).ok, false);
 });
 
 // ---- idempotent resume ----
 test('idempotent resume: replaying the same transition id applies once', () => {
   const run = createRun('REQUESTED');
-  const first = run.apply('t1', 'plan', { criteria: ['x'] });
+  const first = run.apply('t1', 'plan', { acceptanceSlice: slice() });
   assert.equal(first.state, 'PLANNED');
   assert.equal(run.state, 'PLANNED');
-  const replay = run.apply('t1', 'plan', { criteria: ['x'] });
+  const replay = run.apply('t1', 'plan', { acceptanceSlice: slice() });
   assert.deepEqual(replay, first);
   assert.equal(run.state, 'PLANNED'); // not advanced twice
 });

@@ -22,9 +22,19 @@ test('attack: forge completion with a non-canonical verdict string', () => {
   }
 });
 
-test('attack: empty criteria smuggled as whitespace/blank entries', () => {
+test('attack: legacy criteria or blank slice fields cannot downgrade the PLAN contract', () => {
   assert.equal(advance('REQUESTED', 'plan', { criteria: ['   ', '\t', ''] }).state, 'BLOCKED');
-  assert.equal(advance('REQUESTED', 'plan', { criteria: [null, undefined] }).state, 'BLOCKED');
+  assert.equal(advance('REQUESTED', 'plan', {
+    acceptanceSlice: {
+      what: 'claim success',
+      why: 'bypass',
+      passCriteria: ['looks fine'],
+      outOfScope: ['everything risky'],
+      verificationCommands: ['true'],
+      evidenceAccounting: 'none',
+      rollback: ' ',
+    },
+  }).state, 'BLOCKED');
 });
 
 test('attack: same agent reviews its own build under different-looking ids that are equal', () => {

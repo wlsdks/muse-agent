@@ -12,12 +12,38 @@ export const STATES = ['REQUESTED', 'PLANNED', 'BUILT', 'EVALUATED', 'DONE', 'BL
 // A gate returns { ok:true } or { ok:false, reason }. Gates are pure and
 // deterministic — they are the unit-testable heart of the harness.
 
-// Plan gate: no build may start without verifiable acceptance criteria. An
-// empty (or blank) criteria list is the classic "guess-pass" hole — refuse it.
-export function planGate(criteria) {
-  if (!Array.isArray(criteria)) return { ok: false, reason: 'criteria missing (fail-closed)' };
-  const real = criteria.map((c) => String(c ?? '').trim()).filter(Boolean);
-  if (real.length === 0) return { ok: false, reason: 'empty acceptance criteria' };
+// Plan gate: no build may start from a claim-only plan. Every phase slice must
+// state what changes, why, how PASS is observed, what stays outside the slice,
+// how evidence is accounted, and how to recover. Missing or blank fields fail
+// closed so a planner cannot smuggle ambiguity through a non-empty criteria
+// array.
+const TEXT_FIELDS = ['what', 'why', 'evidenceAccounting', 'rollback'];
+const LIST_FIELDS = ['passCriteria', 'outOfScope', 'verificationCommands'];
+
+function hasText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasTextList(value) {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every((entry) => hasText(entry));
+}
+
+export function planGate(acceptanceSlice) {
+  if (!acceptanceSlice || typeof acceptanceSlice !== 'object' || Array.isArray(acceptanceSlice)) {
+    return { ok: false, reason: 'acceptanceSlice missing (fail-closed)' };
+  }
+  for (const field of TEXT_FIELDS) {
+    if (!hasText(acceptanceSlice[field])) {
+      return { ok: false, reason: `${field} missing or blank (fail-closed)` };
+    }
+  }
+  for (const field of LIST_FIELDS) {
+    if (!hasTextList(acceptanceSlice[field])) {
+      return { ok: false, reason: `${field} missing, empty, or blank (fail-closed)` };
+    }
+  }
   return { ok: true };
 }
 
@@ -54,7 +80,7 @@ function blocked(reason) { return { state: 'BLOCKED', ok: false, reason }; }
 export function advance(state, event, ctx = {}) {
   switch (`${state}:${event}`) {
     case 'REQUESTED:plan': {
-      const g = planGate(ctx.criteria);
+      const g = planGate(ctx.acceptanceSlice);
       return g.ok ? ok('PLANNED') : blocked(g.reason);
     }
     case 'PLANNED:build':

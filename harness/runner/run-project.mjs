@@ -24,8 +24,10 @@ const ROLE_FRAMING = {
     'You are the ORCHESTRATOR. Decompose the task into an ordered list of small, ' +
     'independently buildable subtasks. Output ONLY one JSON line: {"subtasks":["...","..."]}. No prose.',
   planner:
-    'You are the PLANNER. Produce verifiable acceptance criteria for the subtask. ' +
-    'Output ONLY one JSON line: {"criteria":["...","..."]}. No prose.',
+    'You are the PLANNER. Produce a complete acceptance slice for the subtask. ' +
+    'Output ONLY one JSON line with every required field: ' +
+    '{"what":"...","why":"...","passCriteria":["..."],"outOfScope":["..."],' +
+    '"verificationCommands":["..."],"evidenceAccounting":"...","rollback":"..."}. No prose.',
   worker:
     'You are the WORKER. Implement code that satisfies the acceptance criteria. Output only the implementation.',
   evaluator:

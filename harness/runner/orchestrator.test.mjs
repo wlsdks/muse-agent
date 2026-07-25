@@ -7,6 +7,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runCycle } from './orchestrator.mjs';
 
+const plan = (overrides = {}) => JSON.stringify({
+  what: 'the requested behavior exists',
+  why: 'the user needs a verifiable result',
+  passCriteria: ['criterion'],
+  outOfScope: ['unrelated behavior'],
+  verificationCommands: ['node --test harness/runner/'],
+  evidenceAccounting: 'one deterministic fixture',
+  rollback: 'revert this slice',
+  ...overrides,
+});
+
 // A fake agent built from canned per-role replies.
 const agentOf = (replies) => async (role) => {
   const r = replies[role];
@@ -16,7 +27,7 @@ const agentOf = (replies) => async (role) => {
 test('happy path: drives plan->build->evaluate(PASS)->DONE with a trace', async () => {
   const res = await runCycle('add two ints', {
     callAgent: agentOf({
-      planner: '{"criteria":["returns a+b for two ints"]}',
+      planner: plan({ passCriteria: ['returns a+b for two ints'] }),
       worker: 'def add(a,b): return a+b',
       evaluator: '{"verdict":"PASS","reason":"matches"}',
     }),
@@ -32,7 +43,7 @@ test('gate fires: empty criteria from planner -> BLOCKED at plan gate (no build 
   let workerCalled = false;
   const res = await runCycle('vague task', {
     callAgent: async (role) => {
-      if (role === 'planner') return '{"criteria":[]}';
+      if (role === 'planner') return plan({ passCriteria: [] });
       if (role === 'worker') { workerCalled = true; return 'x'; }
       return '{"verdict":"PASS"}';
     },
@@ -43,12 +54,45 @@ test('gate fires: empty criteria from planner -> BLOCKED at plan gate (no build 
   assert.equal(workerCalled, false); // build never ran — the gate stopped it
 });
 
+test('gate fires: blank non-criteria handoff field -> BLOCKED before build', async () => {
+  let workerCalled = false;
+  const res = await runCycle('unsafe ambiguous task', {
+    callAgent: async (role) => {
+      if (role === 'planner') return plan({ rollback: ' ' });
+      if (role === 'worker') { workerCalled = true; return 'x'; }
+      return '{"verdict":"PASS"}';
+    },
+  });
+  assert.equal(res.ok, false);
+  assert.equal(res.state, 'BLOCKED');
+  assert.match(res.reason, /rollback/);
+  assert.equal(workerCalled, false);
+});
+
+test('worker and evaluator receive the same validated acceptance slice', async () => {
+  const bodies = {};
+  const planned = JSON.parse(plan({ what: 'preserve one contract' }));
+  const res = await runCycle('task', {
+    callAgent: async (role, body) => {
+      bodies[role] = body;
+      if (role === 'planner') return JSON.stringify(planned);
+      if (role === 'worker') return 'build';
+      return '{"verdict":"PASS"}';
+    },
+  });
+  assert.equal(res.ok, true);
+  const encoded = JSON.stringify(planned);
+  assert.match(bodies.worker, new RegExp(encoded.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(bodies.evaluator, new RegExp(encoded.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.deepEqual(res.acceptanceSlice, planned);
+});
+
 test('gate fires: FAIL verdict triggers bounded rebuild, then PASS completes', async () => {
   let builds = 0;
   const res = await runCycle('flaky build', {
     maxRetries: 2,
     callAgent: async (role) => {
-      if (role === 'planner') return '{"criteria":["c"]}';
+      if (role === 'planner') return plan();
       if (role === 'worker') { builds += 1; return `build#${builds}`; }
       // first eval FAIL, then PASS
       return builds < 2 ? '{"verdict":"FAIL","reason":"bug"}' : '{"verdict":"PASS"}';
@@ -64,7 +108,7 @@ test('gate fires: persistent FAIL hits the retry cap -> BLOCKED (never falsely D
   const res = await runCycle('unbuildable', {
     maxRetries: 1,
     callAgent: agentOf({
-      planner: '{"criteria":["c"]}',
+      planner: plan(),
       worker: 'broken',
       evaluator: '{"verdict":"FAIL","reason":"still wrong"}',
     }),
@@ -77,7 +121,7 @@ test('gate fires: persistent FAIL hits the retry cap -> BLOCKED (never falsely D
 test('fail-closed: malformed evaluator reply is treated as a block, not a pass', async () => {
   const res = await runCycle('task', {
     callAgent: agentOf({
-      planner: '{"criteria":["c"]}',
+      planner: plan(),
       worker: 'build',
       evaluator: 'the build looks fine to me!', // no JSON verdict
     }),

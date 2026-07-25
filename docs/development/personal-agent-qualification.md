@@ -85,6 +85,25 @@ deterministic or controlled-live execution may support an explicitly technical
 diagnostic only; they cannot support personal effectiveness, learning,
 autonomy, permission, or release promotion.
 
+### Ledger separation and forbidden promotion
+
+Factual interaction, labelled outcome, one-shot permission, and durable policy
+are four different authorities. They may carry explicit IDs that let an
+auditor follow a causal chain, but no record is automatically converted into
+the next ledger.
+
+| Ledger | Current authority and allowed link | Forbidden automatic conversion |
+| --- | --- | --- |
+| Factual interaction receipt | `AttunementState.interactionReceipts`; records one exact, provenance-bound local task `open-to-done` transition linked to its task, delivery, run, thread, and interaction anchor. | Does not create a delivery outcome, feedback label, approval receipt, permission, standing grant, policy version, or promotion. |
+| Labelled outcome / feedback | `ContinuityDelivery.outcome`; an explicit `used|adjusted|ignored|rejected` label is recorded through the evidence-authorized outcome path and remains linked to one delivery. The same atomic operation may advance the thread's bounded presentation-only `ContinuityPolicy` through the fixed `policyForOutcome` reducer. | Does not mint action permission, consume or issue an approval receipt, change a standing grant, widen tool/egress authority, or promote autonomy merely because the outcome was positive or organic. |
+| One-shot permission | `ApprovalReceiptStore`; a fresh receipt authorizes only its exact action/effect/recipient/account binding and is consumed at most once. | Is not a usefulness outcome, reusable consent, standing authority, or evidence that policy should change. |
+| Policy / governed adaptation | PersonalThread presentation policy versions may change only through the versioned, fixed outcome reducer or explicit reset/undo path. Permission-bearing progressive-autonomy grants remain in separate authority stores and require their own governed owner/admin action, validation, audit record, limits, and revocation path. | Presentation adaptation never grants tool/egress permission. Permission or autonomy policy is never created or widened from a task completion, factual receipt, delivery receipt, outcome count, scorecard, elapsed time, or model suggestion. |
+
+The public task-completion fixture therefore has one allowed terminal delta:
+append or replay the immutable factual receipt. It leaves
+`ContinuityDelivery.outcome`, personal-effectiveness measurements, approval
+receipts, permissions, policy versions, and autonomy grants unchanged.
+
 ## Capability evidence
 
 `pnpm eval:agent -- --json` is the only producer of a pass-eligible v2 report.

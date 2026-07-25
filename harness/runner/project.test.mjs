@@ -6,6 +6,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runProject } from './project.mjs';
 
+const VALID_PLAN = JSON.stringify({
+  what: 'complete the subtask',
+  why: 'the project depends on it',
+  passCriteria: ['criterion'],
+  outOfScope: ['other subtasks'],
+  verificationCommands: ['node --test harness/runner/'],
+  evidenceAccounting: 'one deterministic fixture',
+  rollback: 'revert this subtask',
+});
+
 // Fake agent set. `subtasks` is the decomposition JSON; `failAt` makes the
 // evaluator FAIL for that subtask index. A planner-call counter tracks which
 // subtask's cycle is running. `calls` records roles seen (for skip assertions).
@@ -14,7 +24,7 @@ function fakeAgents({ subtasks = '["s0","s1","s2"]', failAt = null, calls = [] }
   return async (role) => {
     calls.push(role);
     if (role === 'orchestrator') return `{"subtasks":${subtasks}}`;
-    if (role === 'planner') { idx += 1; return '{"criteria":["c"]}'; }
+    if (role === 'planner') { idx += 1; return VALID_PLAN; }
     if (role === 'worker') return `build-${idx}`;
     if (role === 'evaluator') return failAt === idx ? '{"verdict":"FAIL","reason":"bug"}' : '{"verdict":"PASS"}';
     return '{}';
@@ -78,7 +88,7 @@ function captureAgents(workerBodies) {
   let idx = -1;
   return async (role, body) => {
     if (role === 'orchestrator') return '{"subtasks":["first","second"]}';
-    if (role === 'planner') { idx += 1; return '{"criteria":["c"]}'; }
+    if (role === 'planner') { idx += 1; return VALID_PLAN; }
     if (role === 'worker') { workerBodies.push(body); return `OUTPUT-${idx}`; }
     return '{"verdict":"PASS"}';
   };

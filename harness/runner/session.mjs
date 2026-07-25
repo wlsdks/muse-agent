@@ -9,7 +9,8 @@ import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // A snapshot is the minimal state needed to resume: where we are (phase), the
-// acceptance criteria (so we never re-plan), the retry attempt, and the latest
+// acceptance plan (a structured slice for new runs; a criteria array for
+// backward-compatible v1 resumes), the retry attempt, and the latest
 // build/verdict (so a produced build isn't rebuilt).
 export function snapshot({ runId, phase, criteria = null, attempt = 0, build = null, verdict = null }) {
   if (!runId || !phase) throw new Error('snapshot needs runId + phase');

@@ -20,6 +20,15 @@ function parseJson(text) {
   try { return JSON.parse(m[0]); } catch { return null; }
 }
 
+function legacyCriteriaGate(criteria) {
+  const usable = criteria
+    .map((entry) => String(entry ?? '').trim())
+    .filter(Boolean);
+  return usable.length > 0
+    ? { ok: true }
+    : { ok: false, reason: 'empty legacy acceptance criteria (fail-closed)' };
+}
+
 export async function runCycle(task, opts = {}) {
   const { callAgent, maxRetries = 2, now = () => 0, runId = 'run', redact, checkpoint, resume } = opts;
   if (typeof callAgent !== 'function') throw new Error('callAgent is required');
@@ -31,6 +40,7 @@ export async function runCycle(task, opts = {}) {
   const save = async (phase, extra) => { if (checkpoint) await checkpoint(snapshot({ runId, phase, ...extra })); };
 
   let state = 'REQUESTED';
+  let acceptanceSlice;
   let criteria;
   let attempt = 0;
   let pendingBuild = null; // a build restored from a checkpoint: evaluate it without rebuilding
@@ -39,22 +49,38 @@ export async function runCycle(task, opts = {}) {
   if (resume) {
     // Resume: restore criteria/attempt/build and skip the steps already done.
     const r = deserializeSession(resume);
-    criteria = r.criteria;
+    if (Array.isArray(r.criteria)) {
+      // Backward compatibility for v1 snapshots created before structured
+      // acceptance slices existed. The plan already passed the old gate, so
+      // enforce that gate's nonblank invariant before resuming, without
+      // inventing missing structured fields or re-planning.
+      const legacyPlan = legacyCriteriaGate(r.criteria);
+      if (!legacyPlan.ok) return fail(`legacy resume plan gate: ${legacyPlan.reason}`);
+      criteria = r.criteria;
+    } else {
+      acceptanceSlice = r.criteria;
+      const resumedPlan = planGate(acceptanceSlice);
+      if (!resumedPlan.ok) return fail(`resume plan gate: ${resumedPlan.reason}`);
+      criteria = acceptanceSlice.passCriteria;
+    }
     attempt = r.attempt || 0;
     if (r.build != null) pendingBuild = r.build;
     state = 'PLANNED';
     log({ event: 'resumed', fromPhase: r.phase, attempt, hasBuild: r.build != null });
   } else {
-    // 1) PLAN — planner returns acceptance criteria.
+    // 1) PLAN — planner returns the complete acceptance slice.
     const planRaw = await callAgent('planner', task);
-    criteria = parseJson(planRaw)?.criteria;
-    log({ event: 'plan', criteria, gate: planGate(criteria) });
-    const planned = advance(state, 'plan', { criteria });
+    acceptanceSlice = parseJson(planRaw);
+    const gate = planGate(acceptanceSlice);
+    criteria = acceptanceSlice?.passCriteria;
+    log({ event: 'plan', acceptanceSlice, gate });
+    const planned = advance(state, 'plan', { acceptanceSlice });
     if (!planned.ok) return fail(`plan gate: ${planned.reason}`);
     state = planned.state; // PLANNED
-    await save('PLANNED', { criteria });
+    await save('PLANNED', { criteria: acceptanceSlice });
   }
 
+  const acceptanceContext = acceptanceSlice ?? { legacyCriteria: criteria };
   let lastBuild = null;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -66,22 +92,22 @@ export async function runCycle(task, opts = {}) {
       build = pendingBuild; pendingBuild = null;
       log({ event: 'build', workerId, build, resumed: true });
     } else {
-      build = await callAgent('worker', `${task}\n\n[acceptance criteria]\n${JSON.stringify(criteria)}`);
+      build = await callAgent('worker', `${task}\n\n[acceptance slice]\n${JSON.stringify(acceptanceContext)}`);
       log({ event: 'build', workerId, build });
-      await save('BUILT', { criteria, attempt, build });
+      await save('BUILT', { criteria: acceptanceSlice ?? criteria, attempt, build });
     }
     lastBuild = build;
 
     // 3) EVALUATE — a DIFFERENT instance judges; the runner enforces maker != judge.
     const evaluatorId = `evaluator#${attempt}`;
-    const evalRaw = await callAgent('evaluator', `[acceptance criteria]\n${JSON.stringify(criteria)}\n\n[build]\n${build}`);
+    const evalRaw = await callAgent('evaluator', `[acceptance slice]\n${JSON.stringify(acceptanceContext)}\n\n[build]\n${build}`);
     const verdictObj = parseJson(evalRaw);
     const verdict = verdictObj?.verdict;
     log({ event: 'evaluate', evaluatorId, verdict, reason: verdictObj?.reason });
     const evaluated = advance('BUILT', 'evaluate', { workerId, evaluatorId, verdict });
     if (!evaluated.ok) return fail(`evaluate gate: ${evaluated.reason}`);
     state = evaluated.state; // EVALUATED
-    await save('EVALUATED', { criteria, attempt, build, verdict });
+    await save('EVALUATED', { criteria: acceptanceSlice ?? criteria, attempt, build, verdict });
 
     // 4) COMPLETION gate — only an evaluator PASS may finish.
     if (verdict === 'PASS') {
@@ -89,8 +115,8 @@ export async function runCycle(task, opts = {}) {
       if (!done.ok) return fail(`completion gate: ${done.reason}`);
       state = done.state; // DONE
       log({ event: 'done', build: lastBuild });
-      await save('DONE', { criteria, attempt, build: lastBuild, verdict });
-      return result({ ok: true, state, build: lastBuild, criteria });
+      await save('DONE', { criteria: acceptanceSlice ?? criteria, attempt, build: lastBuild, verdict });
+      return result({ ok: true, state, build: lastBuild, criteria, acceptanceSlice: acceptanceSlice ?? null });
     }
 
     // FAIL -> bounded rebuild.

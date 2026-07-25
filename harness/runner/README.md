@@ -27,7 +27,8 @@ updated: 2026-05-31
 
 - **`harness-runner.mjs`** — 의존성 0(Node 내장만). 순수 함수 모음:
   - `advance(state, event, ctx)` — 상태 전이. 허용 안 되면 `BLOCKED`+사유(fail-closed 기본).
-  - `planGate(criteria)` — 빈/공백 수용 기준이면 거부(추측 통과 차단).
+  - `planGate(acceptanceSlice)` — WHAT·WHY·PASS·범위 밖·검증 명령·근거 회계·rollback 중
+    하나라도 누락/공백이면 거부(주장만 있는 계획의 추측 통과 차단).
   - `permissionGate(action)` — 은행=영구 거부, 외부전송=수신자 확정+사람 확인 필수, write/execute=신뢰 필요, 미상=거부.
   - `createRun()` — 같은 전이 id를 다시 적용하면 1회만 반영(재개 멱등성).
 - **`conformance.test.mjs`** — [runner-spec §7 매트릭스](../reference/runner-spec.md)의 **거부 경로**를 증명하는 테스트.
@@ -70,7 +71,7 @@ node --test "harness/runner/*.test.mjs"
 (디렉터리 인자 형태 `node --test harness/runner/`는 Node 24에서 디렉터리를 엔트리 모듈로
 취급해 깨집니다 — glob 형태가 Node 21+ 전 버전에서 포터블합니다.)
 
-마지막 측정: **64/64 통과** (적합성 13 + 오케스트레이터 5 + 적대 9 + 훅 6 + 관측 6 + 세션 6 + 메모리 5 + 도구 6 + 다단계 8). 행복경로만이 아니라
+마지막 측정: **68/68 통과** (적합성 13 + 오케스트레이터 7 + 적대 9 + 훅 6 + 관측 6 + 세션 8 + 메모리 5 + 도구 6 + 다단계 8). 행복경로만이 아니라
 **거부 경로가 전부 초록**일 때만 러너가 "delivered"입니다. CI는
 `.github/workflows/harness.yml`(호스트 레포의 CI)가 `harness/**` 변경마다 강제.
 

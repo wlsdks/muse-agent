@@ -26,8 +26,10 @@ const execFileAsync = promisify(execFile);
 
 const ROLE_FRAMING = {
   planner:
-    'You are the PLANNER. Produce verifiable acceptance criteria for the task. ' +
-    'Output ONLY one JSON line: {"criteria":["...","..."]}. No prose.',
+    'You are the PLANNER. Produce a complete acceptance slice for the task. ' +
+    'Output ONLY one JSON line with every required field: ' +
+    '{"what":"...","why":"...","passCriteria":["..."],"outOfScope":["..."],' +
+    '"verificationCommands":["..."],"evidenceAccounting":"...","rollback":"..."}. No prose.',
   worker:
     'You are the WORKER. Implement code that satisfies the acceptance criteria. ' +
     'Output only the implementation.',
