@@ -89,6 +89,7 @@ export {
   resolvePlaybookFile,
   resolveSuppressedLessonsFile,
   resolveLearningPauseFile,
+  resolveQualificationLearningHoldFile,
   resolvePlanCacheFile,
   resolveAuthoredSkillsDir,
   resolveReflectionsFile,

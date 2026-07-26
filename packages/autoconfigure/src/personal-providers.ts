@@ -108,6 +108,7 @@ export {
   resolveReflectionsFile,
   resolveSuppressedLessonsFile,
   resolveLearningPauseFile,
+  resolveQualificationLearningHoldFile,
   resolvePlanCacheFile,
   resolveWorksFile,
 } from "./provider-paths.js";

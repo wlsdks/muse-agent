@@ -125,7 +125,18 @@ function passingObservations(): PersonalAgentQualificationObservations {
       providerLockLog: true,
       providerResolutionSource: "live-arguments",
       reminders: { overdue: 0, scheduled: 0, status: "ok" },
-      selfLearnDisabled: true
+      selfLearnDisabled: true,
+      selfLearningHold: {
+        engaged: true,
+        record: {
+          active: true,
+          activatedAt: "2026-07-21T10:00:00.000Z",
+          holdId: "personal-agent-v1",
+          reason: "personal-agent-qualification",
+          schemaVersion: 1
+        },
+        state: "active"
+      }
     },
     now: NOW,
     runtime: runtimeObservation()
@@ -225,6 +236,12 @@ describe("personal-agent qualification scorer", () => {
     const report = qualifyPersonalAgent(passingObservations());
     expect(report.status).toBe("qualified");
     expect(report.counts).toEqual({ failed: 0, passed: 3, total: 3, unverified: 0 });
+    expect(report.gates[2].evidence).toMatchObject({
+      selfLearningHoldActivatedAt: "2026-07-21T10:00:00.000Z",
+      selfLearningHoldEngaged: true,
+      selfLearningHoldId: "personal-agent-v1",
+      selfLearningHoldState: "active"
+    });
     expect(report.effectiveness).toEqual({
       reasonCodes: ["organic-personal-effectiveness-not-proven"],
       status: "not-proven"
@@ -287,6 +304,13 @@ describe("personal-agent qualification scorer", () => {
       },
       { ...base, runtime: runtimeObservation({ pidAgreement: false }) },
       { ...base, delivery: { ...base.delivery, localOnly: false } },
+      {
+        ...base,
+        delivery: {
+          ...base.delivery,
+          selfLearningHold: { engaged: false, state: "inactive" }
+        }
+      },
       { ...base, capability: { ...base.capability, maxAgeMs: 60 * 60_000 } }
     ];
 

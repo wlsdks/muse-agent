@@ -737,6 +737,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "encryption-status",
       "list",
       "pause",
+      "qualification-hold",
       "remove",
       "resume",
       "reward",

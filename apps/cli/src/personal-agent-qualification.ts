@@ -14,6 +14,10 @@ import {
   type ResidentDaemonHealthResult,
   type ResidentDaemonObservation
 } from "@muse/runtime-state";
+import type {
+  QualificationLearningHoldFailure,
+  QualificationLearningHoldInspection
+} from "@muse/stores";
 import {
   DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
   type DaemonProviderLockDecision
@@ -177,6 +181,7 @@ export interface DeliveryQualificationObservation {
   readonly brakeEngaged: boolean;
   readonly followups: BacklogCountObservation;
   readonly reminders: BacklogCountObservation;
+  readonly selfLearningHold: QualificationLearningHoldInspection;
 }
 
 export interface PersonalAgentQualificationObservations {
@@ -221,6 +226,11 @@ export interface DeliveryGateEvidence {
   readonly overdueFollowups: number;
   readonly scheduledReminders: number;
   readonly overdueReminders: number;
+  readonly selfLearningHoldEngaged: boolean;
+  readonly selfLearningHoldActivatedAt?: string;
+  readonly selfLearningHoldFailure?: QualificationLearningHoldFailure;
+  readonly selfLearningHoldId?: string;
+  readonly selfLearningHoldState: QualificationLearningHoldInspection["state"];
 }
 
 export interface QualificationGate<Id extends string, Evidence> {
@@ -654,7 +664,18 @@ function assessDelivery(observation: DeliveryQualificationObservation): Qualific
       resolvedProviderSource: observation.providerResolutionSource,
       scheduledFollowups: observation.followups.scheduled,
       scheduledReminders: observation.reminders.scheduled,
-      selfLearnDisabled: observation.selfLearnDisabled
+      selfLearnDisabled: observation.selfLearnDisabled,
+      selfLearningHoldEngaged: observation.selfLearningHold.engaged,
+      ...(observation.selfLearningHold.state === "active"
+        ? {
+            selfLearningHoldActivatedAt: observation.selfLearningHold.record.activatedAt,
+            selfLearningHoldId: observation.selfLearningHold.record.holdId
+          }
+        : {}),
+      ...(observation.selfLearningHold.state === "invalid"
+        ? { selfLearningHoldFailure: observation.selfLearningHold.failure }
+        : {}),
+      selfLearningHoldState: observation.selfLearningHold.state
     },
     id: "delivery-safety",
     reasonCodes: [...new Set([...failed, ...unverified])],

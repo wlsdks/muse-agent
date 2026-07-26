@@ -81,6 +81,17 @@ export type { JourneyEvent, JourneyEventKind, JourneyFactRecord, JourneyFactValu
 export { enqueueLearnEvent, markLearnEventsDone, pruneLearnQueueByAge, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";
 export type { LearnCorrectionEvent } from "./learn-queue.js";
 export { isLearningPaused, setLearningPaused } from "./learning-pause-store.js";
+export {
+  activateQualificationLearningHold,
+  inspectQualificationLearningHold,
+  QUALIFICATION_LEARNING_HOLD_REASON,
+  QUALIFICATION_LEARNING_HOLD_SCHEMA_VERSION
+} from "./qualification-learning-hold-store.js";
+export type {
+  QualificationLearningHoldFailure,
+  QualificationLearningHoldInspection,
+  QualificationLearningHoldRecord
+} from "./qualification-learning-hold-store.js";
 export { defaultSchedulerPauseFile, isSchedulerPaused, readSchedulerPauseState, setSchedulerPaused } from "./scheduler-pause-store.js";
 export {
   DEFAULT_LOCAL_MODEL_BACKGROUND_WAIT_MS,

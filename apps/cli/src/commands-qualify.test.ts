@@ -75,7 +75,18 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
       providerLockLog: true,
       providerResolutionSource: "live-arguments",
       reminders: { overdue: 0, scheduled: 0, status: "ok" },
-      selfLearnDisabled: true
+      selfLearnDisabled: true,
+      selfLearningHold: {
+        engaged: true,
+        record: {
+          active: true,
+          activatedAt: "2026-07-21T10:00:00.000Z",
+          holdId: "personal-agent-v1",
+          reason: "personal-agent-qualification",
+          schemaVersion: 1
+        },
+        state: "active"
+      }
     },
     now: NOW,
     runtime: {

@@ -191,6 +191,14 @@ export function resolveLearningPauseFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LEARNING_PAUSE_FILE", "learning-paused.json");
 }
 
+export function resolveQualificationLearningHoldFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(
+    env,
+    "MUSE_QUALIFICATION_LEARNING_HOLD_FILE",
+    "qualification-learning-hold.json"
+  );
+}
+
 export function resolvePlanCacheFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PLAN_CACHE_FILE", "plan-cache.json");
 }

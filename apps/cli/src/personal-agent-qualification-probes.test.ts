@@ -86,6 +86,7 @@ function exactFixtureManifest(root: string): readonly string[] {
 function qualificationFixture(options: {
   readonly deliveryEnabledValue?: string;
   readonly overdueFollowup?: boolean;
+  readonly qualificationHold?: "active" | "invalid" | "missing";
   readonly report?: "present" | "missing";
   readonly liveArgumentMismatch?: boolean;
   readonly omitLiveHome?: boolean;
@@ -100,6 +101,7 @@ function qualificationFixture(options: {
   const heartbeatFile = join(root, "state", "proactive-heartbeat-daemon-loop.json");
   const followupsFile = join(root, "followups.json");
   const remindersFile = join(root, "reminders.json");
+  const qualificationHoldFile = join(root, "qualification-learning-hold.json");
   const daemonConfigFile = join(root, "daemon.json");
   mkdirSync(join(cliPackageRoot, "dist"), { recursive: true });
   mkdirSync(join(root, "state"), { recursive: true });
@@ -163,6 +165,21 @@ function qualificationFixture(options: {
     ? [{ scheduledFor: "2026-07-20T00:00:00.000Z", status: "scheduled" }]
     : [] }));
   writeFileSync(remindersFile, JSON.stringify({ reminders: [] }));
+  if (options.qualificationHold !== "missing") {
+    writeFileSync(
+      qualificationHoldFile,
+      options.qualificationHold === "invalid"
+        ? "{private malformed"
+        : JSON.stringify({
+            active: true,
+            activatedAt: "2026-07-21T10:00:00.000Z",
+            holdId: "personal-agent-v1",
+            reason: "personal-agent-qualification",
+            schemaVersion: 1
+          }),
+      { mode: 0o600 }
+    );
+  }
   writeFileSync(daemonConfigFile, JSON.stringify({ provider: "log" }));
   if (options.report !== "missing") {
     const attempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath: reportFile });
@@ -179,6 +196,7 @@ function qualificationFixture(options: {
     MUSE_LOCAL_ONLY: "true",
     MUSE_PROACTIVE_PROVIDER: "log",
     MUSE_PROACTIVE_SIDECAR_FILE: sidecarFile,
+    MUSE_QUALIFICATION_LEARNING_HOLD_FILE: qualificationHoldFile,
     MUSE_REMINDERS_FILE: remindersFile,
     MUSE_SELFLEARN_ENABLED: "false"
   };
@@ -411,6 +429,35 @@ describe("qualification collector integration", () => {
       reasonCodes: ["delivery-brake-engaged"],
       status: "unverified"
     });
+  });
+
+  it("projects missing and malformed qualification holds without mutating either source", async () => {
+    const missing = qualificationFixture({ qualificationHold: "missing" });
+    const missingBefore = exactFixtureManifest(missing.root);
+    const missingObservation = await collectPersonalAgentQualificationObservations(
+      missing.options,
+      missing.dependencies
+    );
+    expect(missingObservation.delivery.selfLearningHold).toEqual({
+      engaged: false,
+      state: "inactive"
+    });
+    expect(exactFixtureManifest(missing.root)).toEqual(missingBefore);
+
+    const invalid = qualificationFixture({ qualificationHold: "invalid" });
+    const invalidBefore = exactFixtureManifest(invalid.root);
+    const invalidReport = qualifyPersonalAgent(
+      await collectPersonalAgentQualificationObservations(
+        invalid.options,
+        invalid.dependencies
+      )
+    );
+    expect(invalidReport.gates[2].evidence).toMatchObject({
+      selfLearningHoldEngaged: true,
+      selfLearningHoldFailure: "invalid-json",
+      selfLearningHoldState: "invalid"
+    });
+    expect(exactFixtureManifest(invalid.root)).toEqual(invalidBefore);
   });
 
   it("re-reads evidence after source/artifact probes and rejects a concurrent new attempt", async () => {

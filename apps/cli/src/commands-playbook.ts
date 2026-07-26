@@ -9,9 +9,9 @@
 import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
-import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveQualificationLearningHoldFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { stripUntrustedTerminalChars } from "@muse/shared";
-import { adjustPlaybookReward, decryptPlaybookAtRest, encryptPlaybookAtRest, isPlaybookEncrypted, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/stores";
+import { activateQualificationLearningHold, adjustPlaybookReward, decryptPlaybookAtRest, encryptPlaybookAtRest, inspectQualificationLearningHold, isPlaybookEncrypted, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";
@@ -30,6 +30,10 @@ function suppressedLessonsFile(): string {
 
 function learningPauseFile(): string {
   return resolveLearningPauseFile(process.env as Record<string, string | undefined>);
+}
+
+function qualificationLearningHoldFile(): string {
+  return resolveQualificationLearningHoldFile(process.env as Record<string, string | undefined>);
 }
 
 /**
@@ -147,6 +151,34 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
     .action(async () => {
       await setLearningPaused(learningPauseFile(), false);
       io.stdout("▶ Background learning resumed.\n");
+    });
+
+  playbook
+    .command("qualification-hold")
+    .description("Inspect or safely activate the persisted personal-agent qualification hold (release is intentionally unavailable here)")
+    .option("--activate", "Activate the hold idempotently")
+    .option("--id <id>", "Stable qualification hold id", "personal-agent-v1")
+    .action(async (options: { readonly activate?: boolean; readonly id: string }) => {
+      const file = qualificationLearningHoldFile();
+      const inspection = options.activate
+        ? {
+            engaged: true as const,
+            record: await activateQualificationLearningHold(file, {
+              activatedAt: new Date().toISOString(),
+              holdId: options.id
+            }),
+            state: "active" as const
+          }
+        : await inspectQualificationLearningHold(file);
+      if (inspection.state === "inactive") {
+        io.stdout("Qualification learning hold: inactive\n");
+        return;
+      }
+      if (inspection.state === "invalid") {
+        io.stdout(`Qualification learning hold: engaged (fail-closed: ${inspection.failure})\n`);
+        return;
+      }
+      io.stdout(`Qualification learning hold: engaged (id=${inspection.record.holdId}, since=${inspection.record.activatedAt})\n`);
     });
 
   playbook

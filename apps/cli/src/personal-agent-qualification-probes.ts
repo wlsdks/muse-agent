@@ -5,9 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { resolveFollowupsFile, resolveRemindersFile } from "@muse/autoconfigure";
+import { resolveFollowupsFile, resolveQualificationLearningHoldFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { resolveDaemonDeliveryBrake } from "@muse/shared";
+import { inspectQualificationLearningHold, type QualificationLearningHoldInspection } from "@muse/stores";
 import {
   inspectResidentDaemon,
   inspectResidentOrphanApiProcesses,
@@ -379,9 +380,16 @@ export async function collectPersonalAgentQualificationObservations(
     && configResult.status === "ok"
     ? "ok"
     : "unverified";
-  const [followups, reminders, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
+  const [followups, reminders, selfLearningHold, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
     readStrictBacklogCounts(resolveFollowupsFile(effectiveRuntimeEnv), "followups", nowMs),
     readStrictBacklogCounts(resolveRemindersFile(effectiveRuntimeEnv), "reminders", nowMs),
+    inspectQualificationLearningHold(
+      resolveQualificationLearningHoldFile(effectiveRuntimeEnv)
+    ).catch((): QualificationLearningHoldInspection => ({
+      engaged: true,
+      failure: "unreadable",
+      state: "invalid"
+    })),
     initialCapabilityEvidencePromise,
     artifactDigestPromise
   ]);
@@ -414,7 +422,8 @@ export async function collectPersonalAgentQualificationObservations(
       providerLockLog,
       providerResolutionSource,
       reminders,
-      selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED)
+      selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED),
+      selfLearningHold
     },
     now: nowDate,
     runtime: { ...resident.observation, health: resident.health }

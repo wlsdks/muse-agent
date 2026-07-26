@@ -23,11 +23,72 @@ describe("muse playbook command registration", () => {
     expect(distill?.description()).toContain("last chat session");
   });
 
-  it("keeps add/list/remove/reward/undo/pause/resume/drain alongside distill", () => {
+  it("keeps add/list/remove/reward/undo/pause/resume/qualification-hold/drain alongside distill", () => {
     const program = new Command();
     registerPlaybookCommands(program, noopIo);
-    for (const name of ["add", "list", "remove", "reward", "undo", "pause", "resume", "distill", "drain"]) {
+    for (const name of ["add", "list", "remove", "reward", "undo", "pause", "resume", "qualification-hold", "distill", "drain"]) {
       expect(findSub(program, ["playbook", name])).toBeDefined();
+    }
+  });
+});
+
+describe("muse playbook qualification-hold", () => {
+  it("reports inactive, activates idempotently, and never exposes a release switch", async () => {
+    const { mkdtemp, readFile, stat } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "muse-qualification-hold-command-"));
+    const file = join(dir, "hold.json");
+    const previous = process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+    process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = file;
+    try {
+      const run = async (args: string[]): Promise<string> => {
+        const output: string[] = [];
+        const io = { stderr: () => undefined, stdout: (message: string) => output.push(message) } as unknown as IO;
+        const program = new Command();
+        registerPlaybookCommands(program, io);
+        await program.parseAsync(["node", "x", "playbook", "qualification-hold", ...args], { from: "node" });
+        return output.join("");
+      };
+      expect(await run([])).toContain("inactive");
+      expect(await run(["--activate", "--id", "personal-agent-v1"])).toContain("engaged");
+      const before = await readFile(file);
+      expect(await run(["--activate", "--id", "personal-agent-v1"])).toContain("engaged");
+      expect(await readFile(file)).toEqual(before);
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      const program = new Command();
+      registerPlaybookCommands(program, noopIo);
+      expect(
+        findSub(program, ["playbook", "qualification-hold"])?.options.map(
+          (option) => option.long
+        )
+      ).not.toContain("--release");
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+      else process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = previous;
+    }
+  });
+
+  it("reports an invalid existing artifact as engaged fail-closed without rewriting it", async () => {
+    const { mkdtemp, readFile, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "muse-qualification-hold-command-invalid-"));
+    const file = join(dir, "hold.json");
+    const previous = process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+    process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = file;
+    await writeFile(file, "{private malformed", { mode: 0o600 });
+    try {
+      const output: string[] = [];
+      const io = { stderr: () => undefined, stdout: (message: string) => output.push(message) } as unknown as IO;
+      const program = new Command();
+      registerPlaybookCommands(program, io);
+      await program.parseAsync(["node", "x", "playbook", "qualification-hold"], { from: "node" });
+      expect(output.join("")).toContain("engaged (fail-closed: invalid-json)");
+      expect(await readFile(file, "utf8")).toBe("{private malformed");
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+      else process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = previous;
     }
   });
 });
@@ -40,13 +101,18 @@ describe("muse playbook drain — no model provider prints the same setup guidan
     const { enqueueLearnEvent, readPendingLearnEvents } = await import("@muse/stores");
     const dir = await mkdtemp(join(tmpdir(), "muse-drain-nomodel-"));
     const queueFile = join(dir, "learn-queue.jsonl");
+    const modelKeysFile = join(dir, "models.json");
     await enqueueLearnEvent(queueFile, {
       correction: "no, bullets not prose", enqueuedAtMs: 1, id: "a", priorAnswer: "prose", userId: "u1"
     });
     const prevQueue = process.env.MUSE_LEARN_QUEUE_FILE;
+    const prevModelKeysFile = process.env.MUSE_MODEL_KEYS_FILE;
+    const prevHome = process.env.HOME;
     const prevProviderId = process.env.MUSE_MODEL_PROVIDER_ID;
     const prevBaseUrl = process.env.MUSE_MODEL_BASE_URL;
     process.env.MUSE_LEARN_QUEUE_FILE = queueFile;
+    process.env.MUSE_MODEL_KEYS_FILE = modelKeysFile;
+    process.env.HOME = dir;
     // Forces `createModelProvider` to resolve to `undefined`: an unregistered
     // provider id with no base URL falls through every adapter branch.
     process.env.MUSE_MODEL_PROVIDER_ID = "nonexistent-provider";
@@ -61,6 +127,8 @@ describe("muse playbook drain — no model provider prints the same setup guidan
       expect(await readPendingLearnEvents(queueFile)).toHaveLength(1); // untouched
     } finally {
       if (prevQueue === undefined) delete process.env.MUSE_LEARN_QUEUE_FILE; else process.env.MUSE_LEARN_QUEUE_FILE = prevQueue;
+      if (prevModelKeysFile === undefined) delete process.env.MUSE_MODEL_KEYS_FILE; else process.env.MUSE_MODEL_KEYS_FILE = prevModelKeysFile;
+      if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
       if (prevProviderId === undefined) delete process.env.MUSE_MODEL_PROVIDER_ID; else process.env.MUSE_MODEL_PROVIDER_ID = prevProviderId;
       if (prevBaseUrl === undefined) delete process.env.MUSE_MODEL_BASE_URL; else process.env.MUSE_MODEL_BASE_URL = prevBaseUrl;
     }
