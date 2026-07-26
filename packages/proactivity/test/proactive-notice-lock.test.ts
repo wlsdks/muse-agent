@@ -1,9 +1,13 @@
-import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
+import { CalendarProviderRegistry, type CalendarProvider } from "@muse/calendar";
 import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { readProactiveFired, writeTasks } from "@muse/stores";
+import { readProactiveFired, readProactiveHeartbeat, writeTasks } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -36,6 +40,29 @@ let tasksFile: string;
 let sidecarFile: string;
 const lockPath = (): string => `${sidecarFile}.firing.lock`;
 const NOW = new Date("2026-05-18T09:00:00.000Z");
+const execFileAsync = promisify(execFile);
+const childFixture = new URL("./fixtures/proactive-notice-lock-child.ts", import.meta.url);
+
+function countingCalendar(onRead: () => void): CalendarProviderRegistry {
+  const provider: CalendarProvider = {
+    createEvent: async () => { throw new Error("not used"); },
+    deleteEvent: async () => { throw new Error("not used"); },
+    describe: () => ({
+      description: "counting calendar",
+      displayName: "Counting",
+      id: "counting",
+      supportsReminders: false,
+      supportsSearch: false
+    }),
+    id: "counting",
+    listEvents: async () => {
+      onRead();
+      return [];
+    },
+    updateEvent: async () => { throw new Error("not used"); }
+  };
+  return new CalendarProviderRegistry([provider]);
+}
 
 async function seedImminentTask(): Promise<void> {
   await writeTasks(tasksFile, [{
@@ -169,23 +196,150 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
 
   it("a LIVE lock (another daemon actively firing) short-circuits to lock-held with no send attempted and no marks", async () => {
     await writeFile(lockPath(), "other-daemon-pid", "utf8"); // fresh mtime — live
+    await writeFile(tasksFile, "{corrupt-task-store", "utf8");
+    const filesBefore = (await readdir(dir)).sort();
 
     const sent: OutboundMessage[] = [];
+    let calendarReads = 0;
+    let investigated = 0;
+    let synthesized = 0;
+    let reverified = 0;
+    let brokerCalls = 0;
+    const historyFile = join(dir, "history.json");
+    const trustFile = join(dir, "trust.json");
     const summary = await runDueProactiveNotices({
+      agentInitiatedNoticeBroker: { publish: () => { brokerCalls += 1; } },
+      agentInitiatedNoticeUserId: "owner",
+      agentModel: "test-model",
+      calendarRegistry: countingCalendar(() => { calendarReads += 1; }),
       destination: "555",
+      heartbeatDir: null,
+      historyFile,
+      investigate: async () => {
+        investigated += 1;
+        return "finding";
+      },
       messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      modelProvider: {
+        generate: async () => {
+          synthesized += 1;
+          return { output: "notice" };
+        }
+      },
       now: () => NOW,
       providerId: "telegram",
+      reverify: async () => {
+        reverified += 1;
+        return true;
+      },
       sidecarFile,
-      tasksFile
+      tasksFile,
+      trustLedgerFile: trustFile
     });
     expect(summary.outcome).toBe("lock-held");
     expect(summary.fired).toBe(0);
     expect(summary.imminent).toBe(0);
     expect(summary.errors).toEqual([]);
     expect(sent).toEqual([]);
+    expect(calendarReads).toBe(0);
+    expect(investigated).toBe(0);
+    expect(synthesized).toBe(0);
+    expect(reverified).toBe(0);
+    expect(brokerCalls).toBe(0);
+    expect(await readFile(tasksFile, "utf8")).toBe("{corrupt-task-store");
+    expect((await readdir(dir)).sort()).toEqual(filesBefore);
+    expect(existsSync(historyFile)).toBe(false);
+    expect(existsSync(trustFile)).toBe(false);
     // The sidecar the loop reads its dedupe state from is untouched.
     const fired = await readProactiveFired(sidecarFile);
     expect(fired).toEqual([]);
   });
+
+  it("a BROKEN required lock records the pre-lock alive heartbeat but performs no downstream work", async () => {
+    const blockingParent = join(dir, "not-a-directory");
+    await writeFile(blockingParent, "file", "utf8");
+    const brokenSidecar = join(blockingParent, "proactive-fired.json");
+    const heartbeatDir = join(dir, "heartbeat");
+    const historyFile = join(dir, "history.json");
+    const trustFile = join(dir, "trust.json");
+    const taskBytes = await readFile(tasksFile, "utf8");
+    const sent: OutboundMessage[] = [];
+    let calendarReads = 0;
+    let investigated = 0;
+    let synthesized = 0;
+    let reverified = 0;
+    let brokerCalls = 0;
+
+    const summary = await runDueProactiveNotices({
+      agentInitiatedNoticeBroker: { publish: () => { brokerCalls += 1; } },
+      agentInitiatedNoticeUserId: "owner",
+      agentModel: "test-model",
+      calendarRegistry: countingCalendar(() => { calendarReads += 1; }),
+      destination: "555",
+      heartbeatDir,
+      historyFile,
+      investigate: async () => {
+        investigated += 1;
+        return "finding";
+      },
+      messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      modelProvider: {
+        generate: async () => {
+          synthesized += 1;
+          return { output: "notice" };
+        }
+      },
+      now: () => NOW,
+      providerId: "telegram",
+      reverify: async () => {
+        reverified += 1;
+        return true;
+      },
+      sidecarFile: brokenSidecar,
+      tasksFile,
+      trustLedgerFile: trustFile
+    });
+
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.fired).toBe(0);
+    expect(summary.imminent).toBe(0);
+    expect(summary.errors.join("\n")).toContain("lock acquisition failed");
+    expect(sent).toEqual([]);
+    expect(calendarReads).toBe(0);
+    expect(investigated).toBe(0);
+    expect(synthesized).toBe(0);
+    expect(reverified).toBe(0);
+    expect(brokerCalls).toBe(0);
+    expect(await readFile(tasksFile, "utf8")).toBe(taskBytes);
+    expect(existsSync(historyFile)).toBe(false);
+    expect(existsSync(trustFile)).toBe(false);
+    expect(await readProactiveHeartbeat(heartbeatDir)).toMatchObject({
+      alive: { at: NOW.toISOString() }
+    });
+    expect((await readProactiveHeartbeat(heartbeatDir)).fired).toBeUndefined();
+  });
+
+  it("admits at most one delivery section across two real OS processes", async () => {
+    const callsFile = join(dir, "provider-calls.txt");
+    const input = {
+      callsFile,
+      nowIso: NOW.toISOString(),
+      sidecarFile,
+      tasksFile
+    };
+    const outputs = await Promise.all([
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+    ]);
+    const calls = existsSync(callsFile)
+      ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    const summaries = outputs.map(({ stdout }) => JSON.parse(stdout.trim()) as {
+      readonly fired: number;
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(summaries.reduce((total, summary) => total + summary.fired, 0)).toBe(1);
+    expect(await readProactiveFired(sidecarFile)).toHaveLength(1);
+  }, 20_000);
 });

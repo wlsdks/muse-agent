@@ -72,7 +72,7 @@ import {
   recordProactiveHeartbeat,
   sourceKey,
   withinDailyCap,
-  withProcessLock,
+  withRequiredProcessLock,
   writeProactiveFired,
   type ProactiveFiredEntry,
   type TrustLedgerEntry
@@ -301,9 +301,9 @@ export interface RunDueProactiveNoticesSummary {
    * user understands why nothing fired during a focus window.
    */
   readonly sessionLockedUntil?: string;
-  /** Set only when another daemon held the firing lock for this tick — no
-   *  read, send, or mark was attempted at all. Absent on every other path. */
-  readonly outcome?: "lock-held";
+  /** Set when required firing-lock ownership was unavailable. No downstream
+   *  read, synthesis, delivery, or state mutation was attempted. */
+  readonly outcome?: "lock-error" | "lock-held";
 }
 
 /**
@@ -338,7 +338,7 @@ export async function runDueProactiveNotices(
 /**
  * The whole select→send→mark tick — calendar/task fetch, optional Phase-D
  * synthesis + reverify, per-item delivery, and the trailing sidecar write —
- * runs under the cross-process `withProcessLock`
+ * runs under the required cross-process firing lock
  * (`${options.sidecarFile}.firing.lock`, the same generalized lock the
  * reminder/followup/checkin/objective ticks use — `@muse/stores/digest-lock.ts`)
  * because the api daemon's `proactive-tick` and the CLI daemon's
@@ -347,30 +347,32 @@ export async function runDueProactiveNotices(
  * both daemons can read the same imminent item as un-fired and both deliver it
  * before either records it. This critical section is LARGER than the other
  * four loops' (a calendar/task fetch plus, per item, an optional LLM synthesis
- * and grounding reverify) — but `withProcessLock`'s own heartbeat refreshes the
+ * and grounding reverify) — but the lock's own heartbeat refreshes the
  * lock file's mtime on an unref'd `staleMs / 3` interval for as long as the
  * section runs, so a legitimately slow tick never has its lock stolen
  * mid-work. That is what makes wrapping the WHOLE tick (rather than only the
  * final sidecar write) safe here. A LIVE held lock returns
- * `outcome: "lock-held"` immediately with nothing fetched or sent; a broken
- * lock (non-contention fs error) fails OPEN — the tick still runs unlocked
- * rather than silently skipping proactive notices.
+ * `outcome: "lock-held"` immediately with nothing fetched or sent. A broken
+ * lock also fails CLOSED with `outcome: "lock-error"`; external delivery is
+ * never attempted without proven ownership.
  */
 async function runProactiveTickLocked(
   options: RunDueProactiveNoticesOptions
 ): Promise<RunDueProactiveNoticesSummary> {
   const lockPath = `${options.sidecarFile}.firing.lock`;
-  const lockOutcome = await withProcessLock(lockPath, () => runDueProactiveNoticesUnderLock(options));
+  const lockOutcome = await withRequiredProcessLock(
+    lockPath,
+    () => runDueProactiveNoticesUnderLock(options)
+  );
   if (lockOutcome.kind === "lock-held") {
     return { errors: [], fired: 0, imminent: 0, outcome: "lock-held" };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention): the tick still ran,
-    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
-    // rather than silencing proactive notices.
+  if (lockOutcome.kind === "lock-error") {
     return {
-      ...lockOutcome.value,
-      errors: [`proactive-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+      errors: [`proactive-tick: lock acquisition failed: ${lockOutcome.error}`],
+      fired: 0,
+      imminent: 0,
+      outcome: "lock-error"
     };
   }
   return lockOutcome.value;
