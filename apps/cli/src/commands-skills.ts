@@ -12,9 +12,13 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createMuseRuntimeAssembly, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, createQualificationLearningActiveSkillWriteGate, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/stores";
-import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
+import {
+  AuthoredSkillStore,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+  loadSkillsFromDirectory
+} from "@muse/skills";
 import type { Command } from "commander";
 
 import { authorSkillsFromSession } from "./chat-author-skills.js";
@@ -116,7 +120,10 @@ Examples:
     .description("List agent-authored skills with usage dates (written by `muse skills author`)")
     .action(async () => {
       const dir = resolveAuthoredSkillsDir();
-      const store = new AuthoredSkillStore({ dir });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir
+      });
       const authored = await store.listAuthored().catch(() => []);
       if (authored.length === 0) {
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
@@ -148,7 +155,10 @@ Examples:
       if (!Number.isInteger(amount) || amount <= 0) {
         throw new Error("skills reward <amount> must be a positive integer");
       }
-      const authored = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []);
+      const authored = await new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir: resolveAuthoredSkillsDir()
+      }).listAuthored().catch(() => []);
       if (!authored.some((s) => s.name === name)) {
         io.stdout(`(no authored skill named "${name}" — see \`muse skills authored\`)\n`);
         return;
@@ -171,7 +181,10 @@ Examples:
         return;
       }
       const dir = resolveAuthoredSkillsDir();
-      const store = new AuthoredSkillStore({ dir });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+        dir
+      });
       const archived = await store.curate(days).catch(() => [] as readonly string[]);
       if (archived.length === 0) {
         io.stdout(`No authored skills idle beyond ${days.toString()} days — nothing archived.\n`);
@@ -201,7 +214,10 @@ Examples:
         return;
       }
       const { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } = await import("@muse/agent-core");
-      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+        dir: resolveAuthoredSkillsDir()
+      });
       const merge = (
         cluster: Parameters<typeof mergeSkillsIntoUmbrella>[0],
         feedback?: { readonly avoidDropping: readonly string[] }
@@ -238,7 +254,10 @@ Examples:
     .command("archived")
     .description("List archived authored skills (from curate/consolidate) — restorable")
     .action(async () => {
-      const names = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listArchived();
+      const names = await new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir: resolveAuthoredSkillsDir()
+      }).listArchived();
       if (names.length === 0) {
         io.stdout("No archived authored skills.\n");
         return;
@@ -251,7 +270,10 @@ Examples:
     .command("restore <name>")
     .description("Restore an archived authored skill back to active (curate/consolidate rollback)")
     .action(async (name: string) => {
-      const ok = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).restore(name);
+      const ok = await new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+        dir: resolveAuthoredSkillsDir()
+      }).restore(name);
       if (!ok) {
         io.stderr(`Could not restore '${name}' (not archived, or a live skill already holds that slot).\n`);
         process.exitCode = 1;

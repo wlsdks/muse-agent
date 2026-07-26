@@ -35,6 +35,11 @@ const correctedSession = [
   { content: "no, that's wrong — always convert to PDF first then attach", role: "user" as const }
 ];
 
+const readEnvFor = (root: string): (() => NodeJS.ProcessEnv) => () => ({
+  HOME: root,
+  MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(root, "qualification-learning-hold.json")
+});
+
 describe("authorSkillsFromSession", () => {
   it("authors a skill from a procedural correction", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-auth-cli-"));
@@ -42,6 +47,7 @@ describe("authorSkillsFromSession", () => {
       model: "m",
       modelProvider: stub(draftOutput),
       authoredDir: dir,
+      readEnv: readEnvFor(dir),
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });
@@ -57,6 +63,7 @@ describe("authorSkillsFromSession", () => {
       model: "m",
       modelProvider: stub(draftOutput),
       authoredDir: dir,
+      readEnv: readEnvFor(dir),
       readBoundaries: async () => boundaries,
       readLines: async () => [
         { content: "send the report", role: "user" },
@@ -73,6 +80,7 @@ describe("authorSkillsFromSession", () => {
       model: "m",
       modelProvider: stub(draftOutput),
       authoredDir: dir,
+      readEnv: readEnvFor(dir),
       readBoundaries: async () => boundaries,
       readLines: async () => {
         throw new Error("disk gone");
@@ -90,6 +98,7 @@ describe("authorSkillsFromSession", () => {
       model: "m",
       modelProvider: stub(draftOutput),
       authoredDir,
+      readEnv: readEnvFor(base),
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });
@@ -125,6 +134,7 @@ describe("authorSkillsFromSession", () => {
       model: "m",
       modelProvider: stub(draftOutput),
       authoredDir,
+      readEnv: readEnvFor(base),
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });

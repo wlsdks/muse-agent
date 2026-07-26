@@ -113,6 +113,10 @@ export {
 } from "./setup-status.js";
 
 export {
+  createQualificationLearningActiveSkillWriteGate
+} from "./qualification-learning-active-skill-write-gate.js";
+
+export {
   diagnoseExternalMcpConfig,
   diagnoseExternalMcpConfigFile,
   loadExternalMcpConfig,

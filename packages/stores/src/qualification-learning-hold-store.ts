@@ -1,8 +1,10 @@
 import { constants as fsConstants, promises as fs } from "node:fs";
+import { dirname } from "node:path";
+
+import { withPrivateFileLock } from "@muse/shared";
 
 import {
   atomicWriteFile,
-  withFileLock,
   withFileMutationQueue
 } from "./atomic-file-store.js";
 
@@ -35,6 +37,22 @@ export type QualificationLearningHoldInspection =
 
 const HOLD_ID_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
 const EXACT_KEYS = ["active", "activatedAt", "holdId", "reason", "schemaVersion"] as const;
+
+/**
+ * A non-stealable cross-process interlock shared by hold activation and every
+ * active authored-skill mutation. Unlike the general sidecar lock, this
+ * safety boundary never reclaims a lock based on elapsed wall-clock time:
+ * activation must wait for the current writer to finish or fail closed.
+ */
+export async function withQualificationLearningHoldLock<T>(
+  file: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  return withFileMutationQueue(file, async () => {
+    await fs.mkdir(dirname(file), { mode: 0o700, recursive: true });
+    return withPrivateFileLock(`${file}.lock`, operation);
+  });
+}
 
 function canonicalIso(value: unknown): value is string {
   if (typeof value !== "string") return false;
@@ -135,7 +153,7 @@ export async function activateQualificationLearningHold(
   if (!HOLD_ID_PATTERN.test(input.holdId)) {
     throw new TypeError("qualification learning hold id must be 1-64 lowercase ASCII identifier characters");
   }
-  return withFileMutationQueue(file, () => withFileLock(file, async () => {
+  return withQualificationLearningHoldLock(file, async () => {
     const existing = await inspectQualificationLearningHold(file);
     if (existing.state === "active") {
       if (existing.record.holdId !== input.holdId) {
@@ -155,5 +173,5 @@ export async function activateQualificationLearningHold(
     };
     await atomicWriteFile(file, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
     return record;
-  }));
+  });
 }

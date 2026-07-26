@@ -14,7 +14,10 @@ import { aggregateActivitySignals, detectTimeOfDayPatterns, detectWeeklyTaskPatt
 import { isGoalKey, isVetoKey } from "@muse/recall";
 import { isLearningPaused, isPatternDismissed, queryPlaybook, queryVetoes, readPatternsFired, readReflections, readSkillRewards, SKILL_AVOID_BELOW, type ActionVeto } from "@muse/stores";
 import { stripUntrustedTerminalChars } from "@muse/shared";
-import { AuthoredSkillStore } from "@muse/skills";
+import {
+  AuthoredSkillStore,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE
+} from "@muse/skills";
 import type { Command } from "commander";
 
 import { resolveReflectionsFile } from "./commands-reflections.js";
@@ -330,7 +333,10 @@ export function registerLearnedCommand(program: Command, io: ProgramIO): void {
       const env = process.env as Record<string, string | undefined>;
       const [strategies, authored, skillRewards, reflections, paused, memoryRecord, vetoes, patterns] = await Promise.all([
         queryPlaybook(resolvePlaybookFile(env), userId).catch(() => []),
-        new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []),
+        new AuthoredSkillStore({
+          activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+          dir: resolveAuthoredSkillsDir()
+        }).listAuthored().catch(() => []),
         readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>)),
         readReflections(resolveReflectionsFile()).catch(() => []),
         isLearningPaused(resolveLearningPauseFile(env)).catch(() => false),

@@ -122,8 +122,14 @@ export async function runEndOfSessionPipeline(args: {
     const { AuthoredSkillStore } = await import("@muse/skills");
     const { resolveAuthoredSkillsDir } = await import("./commands-skills.js");
     const { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } = await import("@muse/agent-core");
-    const { createGateEmbedder } = await import("@muse/autoconfigure");
-    const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
+    const {
+      createGateEmbedder,
+      createQualificationLearningActiveSkillWriteGate
+    } = await import("@muse/autoconfigure");
+    const store = new AuthoredSkillStore({
+      activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+      dir: resolveAuthoredSkillsDir()
+    });
     // SkillOpt held-out gate, same as the daemon: a coverage-losing umbrella is
     // rejected (originals kept), never committed unverified on session end.
     const gateEmbed = createGateEmbedder(process.env);

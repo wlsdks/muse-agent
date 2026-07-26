@@ -42,6 +42,8 @@ export {
 
 export {
   AuthoredSkillStore,
+  ActiveSkillWriteBlockedError,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
   rankSkillsForEviction,
   scanSkillBodyForRisks,
   serializeAuthoredSkill,
@@ -52,6 +54,8 @@ export {
   type SkillDraft,
   type SkillEvictionEntry,
   type SkillRiskScan,
+  type ActiveSkillWriteBlockReason,
+  type ActiveSkillWriteGate,
   type AuthorAction,
   type AuthoredSkillStoreOptions
 } from "./authored-skill-store.js";

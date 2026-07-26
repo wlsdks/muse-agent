@@ -13,6 +13,7 @@ import { errorMessage } from "@muse/shared";
  */
 
 import { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } from "@muse/agent-core";
+import { createQualificationLearningActiveSkillWriteGate } from "@muse/autoconfigure";
 import type { ModelProvider } from "@muse/model";
 import { AuthoredSkillStore } from "@muse/skills";
 
@@ -30,6 +31,8 @@ export interface ConsolidateTickOptions {
   readonly model: string;
   readonly modelProvider: Pick<ModelProvider, "generate">;
   readonly authoredSkillsDir: string;
+  /** Environment seam for resolving the persisted qualification learning hold. */
+  readonly env?: NodeJS.ProcessEnv;
   /** Idle signal: ms-epoch of the last user activity, or undefined if never. */
   readonly lastActivityMs: () => number | undefined;
   /** Only consolidate after the user has been idle at least this long. Default 30 min. */
@@ -148,12 +151,16 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
   const intervalMs = clampInterval(options.intervalMs ?? DEFAULT_INTERVAL_MS);
   const idleThresholdMs = Math.max(0, options.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS);
   const now = options.now ?? (() => new Date());
+  const env = options.env ?? process.env;
   let firing = false;
 
   const runConsolidate =
     options.runConsolidate ??
     (async (): Promise<readonly ConsolidateMergeOutcome[]> => {
-      const store = new AuthoredSkillStore({ dir: options.authoredSkillsDir });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(env),
+        dir: options.authoredSkillsDir
+      });
       const { embed } = options;
       return store.consolidate(
         (cluster, feedback) => mergeSkillsIntoUmbrella(cluster, {
@@ -201,7 +208,10 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
   const runCurate =
     options.runCurate ??
     (async (): Promise<readonly string[]> => {
-      const store = new AuthoredSkillStore({ dir: options.authoredSkillsDir });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(env),
+        dir: options.authoredSkillsDir
+      });
       return store.curate(options.curateMaxIdleDays ?? 0);
     });
 
@@ -283,4 +293,3 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

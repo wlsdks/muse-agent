@@ -13,6 +13,12 @@ import { buildSwarmSkillDraft, gatherCouncil, readSwarmBody, registerSwarmComman
 import type { ProgramIO } from "./program.js";
 import { hasCouncilConsensus, type CouncilUtterance } from "@muse/agent-core";
 
+const activeWriteGate = {
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+};
+
 describe("readSwarmBody — inbound A2A body is size-capped (no unbounded accumulation)", () => {
   // readSwarmBody consumes the request as an async iterable (a real
   // IncomingMessage is one), so the fake yields chunks the same way.
@@ -153,7 +159,7 @@ describe("muse swarm share — draft-first outbound", () => {
       peers: [{ id: "phone", secret: "shared-secret", url: "https://phone.test/a2a" }],
       selfId: "laptop"
     }), "utf8");
-    await new AuthoredSkillStore({ dir: join(dir, "authored") }).writeOrPatch({
+    await new AuthoredSkillStore({ activeWriteGate, dir: join(dir, "authored") }).writeOrPatch({
       body: "Set MTU 1380 on wg0. key=sk-proj-AbCdEf0123456789GhIjKl0123456789",
       description: "fix vpn",
       name: "vpn-fix"
@@ -249,7 +255,7 @@ describe("personal swarm — send → quarantine → promote (end to end)", () =
     const pending = listPending(await readQuarantine(quarantineFile));
     expect(pending).toHaveLength(1);
     expect(pending[0]!.fromPeerId).toBe("phone");
-    const store = new AuthoredSkillStore({ dir: authoredDir });
+    const store = new AuthoredSkillStore({ activeWriteGate, dir: authoredDir });
     expect(await store.listAuthored()).toHaveLength(0); // nothing authored yet
 
     // Promote it → execute-gated authored skill.

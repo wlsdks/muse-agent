@@ -50,8 +50,40 @@ export {
 
 export type AuthorAction = "create" | "patch" | "skip" | "quarantined";
 
+export type ActiveSkillWriteBlockReason =
+  | "qualification-hold-active"
+  | "qualification-hold-invalid"
+  | "qualification-hold-unavailable";
+
+export class ActiveSkillWriteBlockedError extends Error {
+  readonly code = "MUSE_ACTIVE_SKILL_WRITE_BLOCKED";
+  readonly reason: ActiveSkillWriteBlockReason;
+
+  constructor(reason: ActiveSkillWriteBlockReason, options?: ErrorOptions) {
+    super(`active authored-skill mutation blocked: ${reason}`, options);
+    this.name = "ActiveSkillWriteBlockedError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Runs one active-skill mutation while holding the same qualification-hold
+ * lock used by activation. The gate decides whether the operation may run;
+ * omitting it is deliberately fail-close for every active mutation.
+ */
+export interface ActiveSkillWriteGate {
+  run<T>(operation: () => Promise<T>): Promise<T>;
+}
+
+export const FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE: ActiveSkillWriteGate = {
+  run: async () => {
+    throw new ActiveSkillWriteBlockedError("qualification-hold-unavailable");
+  }
+};
+
 export interface AuthoredSkillStoreOptions {
   readonly dir: string;
+  readonly activeWriteGate: ActiveSkillWriteGate;
   readonly maxSkills?: number;
   /** Non-authored skill names, best-effort, for collision suffixing. */
   readonly existingNames?: () => readonly string[];
@@ -90,6 +122,7 @@ export const DEFAULT_SKILL_SNAPSHOT_RING_SIZE = 5;
 
 export class AuthoredSkillStore {
   private readonly dir: string;
+  private readonly activeWriteGate: ActiveSkillWriteGate | undefined;
   private readonly maxSkills: number;
   private readonly existingNames: () => readonly string[];
   private readonly now: () => Date;
@@ -98,6 +131,7 @@ export class AuthoredSkillStore {
 
   constructor(options: AuthoredSkillStoreOptions) {
     this.dir = options.dir;
+    this.activeWriteGate = options.activeWriteGate;
     this.maxSkills = options.maxSkills ?? DEFAULT_MAX_AUTHORED_SKILLS;
     this.existingNames = options.existingNames ?? (() => []);
     this.now = options.now ?? (() => new Date());
@@ -113,7 +147,10 @@ export class AuthoredSkillStore {
     return this.serializeMutation(() => this.writeOrPatchUnlocked(draft));
   }
 
-  private async writeOrPatchUnlocked(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
+  private async writeOrPatchUnlocked(
+    draft: SkillDraft,
+    activeGateHeld = false
+  ): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
     const scan = scanSkillBodyForRisks(draft.body);
     if (scan.flagged) {
       const filePath = join(this.dir, ".quarantine", slugifySkillName(draft.name), "SKILL.md");
@@ -136,8 +173,11 @@ export class AuthoredSkillStore {
       if (stripTimestamps(existing) === stripTimestamps(text)) {
         return { action: "skip", skill: match };
       }
-      await writeFileAtomic(match.sourceInfo.filePath, text);
-      return { action: "patch", skill: await this.reload(match.name) };
+      const patch = async (): Promise<{ action: "patch"; skill: Skill }> => {
+        await writeFileAtomic(match.sourceInfo.filePath, text);
+        return { action: "patch", skill: await this.reload(match.name) };
+      };
+      return activeGateHeld ? patch() : this.runActiveMutation(patch);
     }
     // Write-time SUBSUMPTION dedup (Voyager skill-library novelty gate,
     // arXiv:2305.16291): the name/description match above is symmetric Jaccard and
@@ -152,10 +192,13 @@ export class AuthoredSkillStore {
     const name = this.dedupeName(draft.name);
     const slug = slugifySkillName(name);
     const filePath = join(this.dir, slug, "SKILL.md");
-    await writeFileAtomic(filePath, serializeAuthoredSkill({ ...draft, name }, this.now().toISOString()));
-    const created = await this.reload(name);
-    await this.enforceCap();
-    return { action: "create", skill: created };
+    const create = async (): Promise<{ action: "create"; skill: Skill }> => {
+      await writeFileAtomic(filePath, serializeAuthoredSkill({ ...draft, name }, this.now().toISOString()));
+      const created = await this.reload(name);
+      await this.enforceCap();
+      return { action: "create", skill: created };
+    };
+    return activeGateHeld ? create() : this.runActiveMutation(create);
   }
 
   /**
@@ -193,7 +236,9 @@ export class AuthoredSkillStore {
         authoredAt,
         now.toISOString()
       );
-      await writeFileAtomic(skill.sourceInfo.filePath, text);
+      await this.runActiveMutation(async () => {
+        await writeFileAtomic(skill.sourceInfo.filePath, text);
+      });
       return true;
     } catch {
       return false;
@@ -235,12 +280,15 @@ export class AuthoredSkillStore {
     const candidates = (await this.listAuthored()).filter(
       (s) => this.lastActiveAt(s) < cutoff && !referencedByScheduledJob(s, jobs)
     );
-    if (candidates.length > 0) await this.snapshotSkills(candidates);
-    const archived: string[] = [];
-    for (const s of candidates) {
-      if (await this.archiveSkill(s)) archived.push(s.name);
-    }
-    return archived;
+    if (candidates.length === 0) return [];
+    return this.runActiveMutation(async () => {
+      await this.snapshotSkills(candidates);
+      const archived: string[] = [];
+      for (const s of candidates) {
+        if (await this.archiveSkill(s)) archived.push(s.name);
+      }
+      return archived;
+    });
   }
 
   /**
@@ -372,14 +420,24 @@ export class AuthoredSkillStore {
         out.push({ merged: cluster.map((s) => s.name), umbrella: umbrella.name });
         continue;
       }
-      // Snapshot the cluster's current content BEFORE this cluster's mutating
-      // pass so a bad merge can be undone with rollback().
-      await this.snapshotSkills(cluster);
-      // Archive originals FIRST so the subsequent umbrella write can't
-      // similarity-match (and accidentally patch) one of them.
-      for (const s of cluster) await this.archiveSkill(s);
-      const { skill } = await this.writeOrPatchUnlocked(umbrella);
-      await options.recordMerged?.(drafts); // merged → clear any cooldown entry
+      // Risky generated content remains an inert quarantine proposal. It must
+      // never archive the originals before the risk scan has separated
+      // proposal persistence from active apply.
+      if (scanSkillBodyForRisks(umbrella.body).flagged) {
+        await this.writeOrPatchUnlocked(umbrella);
+        continue;
+      }
+      const skill = await this.runActiveMutation(async () => {
+        // Snapshot the cluster's current content BEFORE this cluster's mutating
+        // pass so a bad merge can be undone with rollback().
+        await this.snapshotSkills(cluster);
+        // Archive originals FIRST so the subsequent umbrella write can't
+        // similarity-match (and accidentally patch) one of them.
+        for (const s of cluster) await this.archiveSkill(s);
+        const applied = await this.writeOrPatchUnlocked(umbrella, true);
+        await options.recordMerged?.(drafts); // merged → clear any cooldown entry
+        return applied.skill;
+      });
       out.push({ merged: cluster.map((s) => s.name), umbrella: skill.name });
     }
     return out;
@@ -422,13 +480,15 @@ export class AuthoredSkillStore {
     const slug = slugifySkillName(name);
     const src = join(this.dir, ".archive", slug);
     const dest = join(this.dir, slug);
-    try {
-      await fs.access(dest);
-      return false; // a live skill already holds this slot
-    } catch {
-      // slot free — proceed
-    }
-    return fs.rename(src, dest).then(() => true).catch(() => false);
+    return this.runActiveMutation(async () => {
+      try {
+        await fs.access(dest);
+        return false; // a live skill already holds this slot
+      } catch {
+        // slot free — proceed
+      }
+      return fs.rename(src, dest).then(() => true).catch(() => false);
+    });
   }
 
   /** Pre-mutation snapshots, newest last — what `rollback()` can restore. */
@@ -476,14 +536,16 @@ export class AuthoredSkillStore {
         snapshotId ? `snapshot not found: ${snapshotId}` : "no snapshots available to roll back to"
       );
     }
-    const restored: string[] = [];
-    const archivedConflicts: string[] = [];
-    for (const entry of snapshot.entries) {
-      const conflict = await this.restoreSnapshotEntry(entry);
-      restored.push(entry.name);
-      if (conflict) archivedConflicts.push(entry.name);
-    }
-    return { archivedConflicts, restored, snapshotId: snapshot.id };
+    return this.runActiveMutation(async () => {
+      const restored: string[] = [];
+      const archivedConflicts: string[] = [];
+      for (const entry of snapshot.entries) {
+        const conflict = await this.restoreSnapshotEntry(entry);
+        restored.push(entry.name);
+        if (conflict) archivedConflicts.push(entry.name);
+      }
+      return { archivedConflicts, restored, snapshotId: snapshot.id };
+    });
   }
 
   private snapshotsDir(): string {
@@ -494,6 +556,13 @@ export class AuthoredSkillStore {
   private async serializeMutation<T>(operation: () => Promise<T>): Promise<T> {
     const mutationFile = join(this.dir, ".authored-skill-store");
     return withFileMutationQueue(mutationFile, () => withFileLock(mutationFile, operation));
+  }
+
+  private async runActiveMutation<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.activeWriteGate) {
+      throw new ActiveSkillWriteBlockedError("qualification-hold-unavailable");
+    }
+    return this.activeWriteGate.run(operation);
   }
 
   /**

@@ -18,9 +18,16 @@ import {
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "@muse/agent-core";
-import { resolveAuthoredSkillsDir } from "@muse/autoconfigure";
+import {
+  createQualificationLearningActiveSkillWriteGate,
+  resolveAuthoredSkillsDir
+} from "@muse/autoconfigure";
 import { adjustSkillReward } from "@muse/stores";
-import { AuthoredSkillStore, type Skill } from "@muse/skills";
+import {
+  AuthoredSkillStore,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+  type Skill
+} from "@muse/skills";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 import { selectRelevantSkills } from "./chat-skills.js";
@@ -67,6 +74,7 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
 
   const dir = options.authoredDir ?? resolveAuthoredSkillsDir(env as Record<string, string | undefined>);
   const store = new AuthoredSkillStore({
+    activeWriteGate: createQualificationLearningActiveSkillWriteGate(env),
     dir,
     ...(options.existingNames ? { existingNames: options.existingNames } : {})
   });
@@ -149,7 +157,10 @@ export async function applySkillRewardsFromSession(options: SkillRewardOptions):
 
   const skills = options.listSkills
     ? await options.listSkills()
-    : await new AuthoredSkillStore({ dir: options.authoredDir ?? resolveAuthoredSkillsDir(env as Record<string, string | undefined>) })
+    : await new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir: options.authoredDir ?? resolveAuthoredSkillsDir(env as Record<string, string | undefined>)
+      })
         .listAuthored()
         .catch(() => [] as readonly Skill[]);
   if (skills.length === 0) {
@@ -186,4 +197,3 @@ export async function applySkillRewardsFromSession(options: SkillRewardOptions):
   }
   return { decayed, reinforced };
 }
-

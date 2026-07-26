@@ -1,7 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { resolveAuthoredSkillsDir } from "@muse/autoconfigure";
+import {
+  createQualificationLearningActiveSkillWriteGate,
+  resolveAuthoredSkillsDir
+} from "@muse/autoconfigure";
 import { AuthoredSkillStore } from "@muse/skills";
 import {
   buildSwarmSkillDraft,
@@ -28,6 +31,8 @@ export interface SwarmRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly quarantineFile?: string;
   readonly authoredSkillsDir?: string;
+  /** Environment seam for qualification-hold and default path resolution. */
+  readonly env?: Record<string, string | undefined>;
 }
 
 function defaultQuarantineFile(): string {
@@ -38,6 +43,7 @@ const findPending = (entries: readonly SwarmQuarantineEntry[], id: string): Swar
   entries.find((e) => e.status === "pending" && (e.id === id || e.id.startsWith(id)));
 
 export function registerSwarmRoutes(server: FastifyInstance, gate: SwarmRoutesGate): void {
+  const env = gate.env ?? (process.env as Record<string, string | undefined>);
   const authed = (request: Parameters<typeof requireAuthenticated>[0], reply: Parameters<typeof requireAuthenticated>[1]) =>
     requireAuthenticated(request, reply, Boolean(gate.authService));
   const file = () => gate.quarantineFile ?? defaultQuarantineFile();
@@ -73,7 +79,8 @@ export function registerSwarmRoutes(server: FastifyInstance, gate: SwarmRoutesGa
       return reply.status(409).send({ reason: `'${entry.kind}' promotion isn't supported — only 'skill'` });
     }
     const store = new AuthoredSkillStore({
-      dir: gate.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>)
+      activeWriteGate: createQualificationLearningActiveSkillWriteGate(env),
+      dir: gate.authoredSkillsDir ?? resolveAuthoredSkillsDir(env)
     });
     const result = await store.writeOrPatch(buildSwarmSkillDraft(entry));
     await setQuarantineStatus(file(), entry.id, "promoted", Date.now());

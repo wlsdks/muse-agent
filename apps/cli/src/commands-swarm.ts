@@ -14,9 +14,16 @@ import { once } from "node:events";
 
 import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
-import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
+import {
+  createMuseRuntimeAssembly,
+  createQualificationLearningActiveSkillWriteGate,
+  resolveAuthoredSkillsDir
+} from "@muse/autoconfigure";
 import { addToQuarantine, buildSwarmSkillDraft, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
-import { AuthoredSkillStore } from "@muse/skills";
+import {
+  AuthoredSkillStore,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE
+} from "@muse/skills";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";
 
@@ -250,7 +257,12 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(
+          process.env as Record<string, string | undefined>
+        ),
+        dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>)
+      });
       const result = await store.writeOrPatch(buildSwarmSkillDraft(entry));
       await setQuarantineStatus(file, entry.id, "promoted", Date.now());
       io.stdout(`✅ Promoted ${entry.id.slice(0, 8)} from ${entry.fromPeerId} → authored skill (${result.action}, execute-gated).\n`);
@@ -294,7 +306,10 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
           return;
         }
       } else {
-        const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env as Record<string, string | undefined>) });
+        const store = new AuthoredSkillStore({
+          activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+          dir: resolveAuthoredSkillsDir(env as Record<string, string | undefined>)
+        });
         const skill = (await store.listAuthored()).find((s) => s.name === skillName);
         if (!skill) {
           io.stderr(`muse swarm share: no authored skill named '${skillName}' (see \`muse skills authored\`, or pass --file <path>).\n`);

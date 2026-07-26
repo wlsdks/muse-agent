@@ -85,7 +85,8 @@ export {
   activateQualificationLearningHold,
   inspectQualificationLearningHold,
   QUALIFICATION_LEARNING_HOLD_REASON,
-  QUALIFICATION_LEARNING_HOLD_SCHEMA_VERSION
+  QUALIFICATION_LEARNING_HOLD_SCHEMA_VERSION,
+  withQualificationLearningHoldLock
 } from "./qualification-learning-hold-store.js";
 export type {
   QualificationLearningHoldFailure,

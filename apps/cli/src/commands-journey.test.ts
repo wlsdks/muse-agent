@@ -9,6 +9,12 @@ import { registerJourneyCommands } from "./commands-journey.js";
 
 type IO = Parameters<typeof registerJourneyCommands>[1];
 
+const activeWriteGate = {
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+};
+
 function findSub(program: Command, names: readonly string[]): Command | undefined {
   let current: Command | undefined = program;
   for (const name of names) {
@@ -87,7 +93,7 @@ describe("muse journey — merged timeline over real file stores", () => {
     await new FileUserMemoryStore().upsertFact("journey-user", "home_city", "Seoul");
 
     const { AuthoredSkillStore } = await import("@muse/skills");
-    const skillStore = new AuthoredSkillStore({ dir: process.env.MUSE_AUTHORED_SKILLS_DIR, now: () => new Date("2026-01-15T00:00:00.000Z") });
+    const skillStore = new AuthoredSkillStore({ activeWriteGate, dir: process.env.MUSE_AUTHORED_SKILLS_DIR, now: () => new Date("2026-01-15T00:00:00.000Z") });
     await skillStore.writeOrPatch({ body: "Reconnect the office VPN when it drops.", description: "Reconnect the office VPN", name: "vpn-fix" });
   });
 
@@ -161,7 +167,7 @@ describe("muse journey — merged timeline over real file stores", () => {
     const { out } = await run(["forget", "vpn-fix"]);
     expect(out).toContain("no safe single-entry delete");
     const { AuthoredSkillStore } = await import("@muse/skills");
-    const skills = await new AuthoredSkillStore({ dir: process.env.MUSE_AUTHORED_SKILLS_DIR as string }).listAuthored();
+    const skills = await new AuthoredSkillStore({ activeWriteGate, dir: process.env.MUSE_AUTHORED_SKILLS_DIR as string }).listAuthored();
     expect(skills.some((s) => s.name === "vpn-fix")).toBe(true);
   });
 

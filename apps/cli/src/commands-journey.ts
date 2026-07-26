@@ -19,7 +19,10 @@ import {
   type BeliefProvenance
 } from "@muse/memory";
 import { resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
-import { AuthoredSkillStore } from "@muse/skills";
+import {
+  AuthoredSkillStore,
+  FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE
+} from "@muse/skills";
 import {
   factRecordsFromProvenance,
   mergeJourneyEvents,
@@ -50,7 +53,10 @@ async function loadFactRecords(userId: string): Promise<readonly JourneyFactReco
 }
 
 async function loadSkillRecords(): Promise<readonly JourneySkillRecord[]> {
-  const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>) });
+  const store = new AuthoredSkillStore({
+    activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+    dir: resolveAuthoredSkillsDir(process.env as Record<string, string | undefined>)
+  });
   const skills = await store.listAuthored().catch(() => []);
   return skills.map((skill) => {
     const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
@@ -203,4 +209,3 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
       }
     });
 }
-

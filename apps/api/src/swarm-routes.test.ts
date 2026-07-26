@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { addToQuarantine } from "@muse/stores";
+import { activateQualificationLearningHold, addToQuarantine } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -21,7 +22,15 @@ const seed = async (file: string, kind: "skill" | "strategy", id: string) =>
 
 function build(file: string, skillsDir: string) {
   const server = Fastify();
-  registerSwarmRoutes(server, { authService: undefined, authoredSkillsDir: skillsDir, quarantineFile: file });
+  registerSwarmRoutes(server, {
+    authService: undefined,
+    authoredSkillsDir: skillsDir,
+    env: {
+      HOME: dir,
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(dir, "qualification-learning-hold.json")
+    },
+    quarantineFile: file
+  });
   return server;
 }
 
@@ -55,6 +64,30 @@ describe("swarm quarantine routes", () => {
     const reject = await server.inject({ method: "POST", url: "/api/swarm/st-2222/reject" });
     expect(reject.statusCode).toBe(200);
     expect(JSON.parse((await server.inject({ method: "GET", url: "/api/swarm/pending" })).body)).toMatchObject({ total: 0 });
+    await server.close();
+  });
+
+  it("keeps a pending skill inert when the qualification learning hold is active", async () => {
+    const file = join(dir, "q-held.json");
+    const skillsDir = join(dir, "skills-held");
+    const holdFile = join(dir, "qualification-learning-hold.json");
+    await seed(file, "skill", "sk-33333333");
+    await activateQualificationLearningHold(holdFile, {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+    const server = build(file, skillsDir);
+
+    const promote = await server.inject({
+      method: "POST",
+      url: "/api/swarm/sk-3333/promote"
+    });
+    expect(promote.statusCode).toBe(500);
+    expect(JSON.parse((await server.inject({
+      method: "GET",
+      url: "/api/swarm/pending"
+    })).body)).toMatchObject({ total: 1 });
+    expect(await readdir(skillsDir).catch(() => [])).toEqual([]);
     await server.close();
   });
 });

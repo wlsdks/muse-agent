@@ -8,7 +8,7 @@
 
 import { buildChatActuatorWiring } from "./chat-actuator-wiring.js";
 import type { ProgramIO } from "./program.js";
-import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, createQualificationLearningActiveSkillWriteGate, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
@@ -592,7 +592,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   for (const s of authoredSkills) skillMap.set(s.name, s);
   for (const s of userSkills) skillMap.set(s.name, s);
   const skills = [...skillMap.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const authoredStore = new AuthoredSkillStore({ dir: authoredSkillsDir });
+  const authoredStore = new AuthoredSkillStore({
+    activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+    dir: authoredSkillsDir
+  });
   // RL over skills (from prior sessions): a skill corrected into the avoid
   // floor is dropped from this session's prompt entirely; a reinforced one
   // wins the limited body slots. Loaded once at start.

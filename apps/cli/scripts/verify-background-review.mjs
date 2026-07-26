@@ -71,7 +71,10 @@ const cases = [
 let failures = 0;
 for (const c of cases) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "muse-bgreview-store-"));
-  const store = new AuthoredSkillStore({ dir });
+  const store = new AuthoredSkillStore({
+    activeWriteGate: { run: (operation) => operation() },
+    dir
+  });
   const result = await reviewSkillsFromTurns(c.turns, {
     model,
     modelProvider,

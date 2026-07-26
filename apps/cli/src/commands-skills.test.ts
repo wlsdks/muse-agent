@@ -18,6 +18,12 @@ import {
 } from "./commands-skills.js";
 import type { ProgramIO } from "./program.js";
 
+const activeWriteGate = {
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+};
+
 describe("resolveSkillsDir", () => {
   it("honours MUSE_SKILLS_DIR, else defaults under ~/.muse/skills", () => {
     expect(resolveSkillsDir({ MUSE_SKILLS_DIR: "/tmp/s" } as NodeJS.ProcessEnv)).toBe("/tmp/s");
@@ -28,14 +34,18 @@ describe("resolveSkillsDir", () => {
 describe("resolveAuthoredSkillsDir", () => {
   it("honours MUSE_AUTHORED_SKILLS_DIR, else defaults under ~/.muse/skills/authored", () => {
     expect(resolveAuthoredSkillsDir({ MUSE_AUTHORED_SKILLS_DIR: "/tmp/a" } as NodeJS.ProcessEnv)).toBe("/tmp/a");
-    expect(resolveAuthoredSkillsDir({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skills/authored")).toBe(true);
+    expect(resolveAuthoredSkillsDir({
+      HOME: join(tmpdir(), "muse-authored-path-home")
+    } as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skills/authored")).toBe(true);
   });
 });
 
 describe("resolveSkillRewardsFile", () => {
   it("honours MUSE_SKILL_REWARDS_FILE, else defaults under ~/.muse/skill-rewards.json", () => {
     expect(resolveSkillRewardsFile({ MUSE_SKILL_REWARDS_FILE: "/tmp/r.json" } as NodeJS.ProcessEnv)).toBe("/tmp/r.json");
-    expect(resolveSkillRewardsFile({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skill-rewards.json")).toBe(true);
+    expect(resolveSkillRewardsFile({
+      HOME: join(tmpdir(), "muse-rewards-path-home")
+    } as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/skill-rewards.json")).toBe(true);
   });
 });
 
@@ -49,7 +59,7 @@ describe("muse skills reward — manual reinforce/penalise", () => {
     process.env.MUSE_AUTHORED_SKILLS_DIR = authoredDir;
     process.env.MUSE_SKILL_REWARDS_FILE = rewardsFile;
     try {
-      await new AuthoredSkillStore({ dir: authoredDir }).writeOrPatch({ body: "do the thing", description: "fix a vpn", name: "vpn-fix" });
+      await new AuthoredSkillStore({ activeWriteGate, dir: authoredDir }).writeOrPatch({ body: "do the thing", description: "fix a vpn", name: "vpn-fix" });
       const run = async (args: string[]): Promise<string> => {
         const out: string[] = [];
         const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as ProgramIO;

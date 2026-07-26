@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { AuthoredSkillStore } from "@muse/skills";
 import { describe, expect, it } from "vitest";
 
+const activeWriteGate = {
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+};
+
 import {
   isIdleForConsolidate,
   startConsolidateTick,
@@ -13,12 +19,19 @@ import {
 } from "./consolidate-tick.js";
 
 const IDLE_MS = 30 * 60_000;
+const QUALIFICATION_HOLD_FILE = join(
+  mkdtempSync(join(tmpdir(), "muse-consolidate-hold-")),
+  "qualification-learning-hold.json"
+);
 // Local-time 03:00 so getHours() === 3 regardless of the runner's timezone.
 const NOW = new Date(2026, 4, 1, 3, 0, 0);
 
 function baseOptions(overrides: Partial<Parameters<typeof startConsolidateTick>[0]> = {}): Parameters<typeof startConsolidateTick>[0] {
   return {
     authoredSkillsDir: "/tmp/unused",
+    env: {
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: QUALIFICATION_HOLD_FILE
+    },
     lastActivityMs: () => undefined,
     model: "qwen3:8b",
     modelProvider: { generate: async () => ({}) } as unknown as Parameters<typeof startConsolidateTick>[0]["modelProvider"],
@@ -281,7 +294,7 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
 
   async function seedTwoSummariseSkills(): Promise<string> {
     const dir = mkdtempSync(join(tmpdir(), "muse-consolidate-tick-"));
-    const store = new AuthoredSkillStore({ dir });
+    const store = new AuthoredSkillStore({ activeWriteGate, dir });
     await store.writeOrPatch({ name: "summarise-email", description: "Use when summarising an email thread", body: "read; bullets" });
     await store.writeOrPatch({ name: "summarise-doc", description: "Use when summarising a document", body: "skim; bullets" });
     return dir;
@@ -332,7 +345,7 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     await handle.tickOnce();
     handle.stop();
 
-    const store = new AuthoredSkillStore({ dir });
+    const store = new AuthoredSkillStore({ activeWriteGate, dir });
     const live = (await store.listAuthored()).map((s) => s.name).sort();
     expect(live).toEqual(["summarise-doc", "summarise-email"]); // both intact (rollback)
     const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
@@ -367,7 +380,7 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     await handle.tickOnce();
     handle.stop();
 
-    const store = new AuthoredSkillStore({ dir });
+    const store = new AuthoredSkillStore({ activeWriteGate, dir });
     const live = (await store.listAuthored()).map((s) => s.name);
     expect(live).toContain("summarise-text"); // the steered re-proposal committed
     expect(live).not.toContain("summarise-email");
@@ -391,7 +404,7 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     await handle.tickOnce();
     handle.stop();
 
-    const store = new AuthoredSkillStore({ dir });
+    const store = new AuthoredSkillStore({ activeWriteGate, dir });
     const live = (await store.listAuthored()).map((s) => s.name);
     expect(live).toContain("summarise-text");
     expect(live).not.toContain("summarise-email");

@@ -21,6 +21,7 @@ import { createGateEmbedder } from "./context-engineering-builders.js";
 import { inferPreferencesFromTurns, scanCommitmentsFromTurns } from "./context-engineering-turn-analysis.js";
 import { parseBoolean } from "./env-parsers.js";
 import { resolveAuthoredSkillsDir, resolveCheckinsFile } from "./personal-providers.js";
+import { createQualificationLearningActiveSkillWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import type { MuseEnvironment } from "./index.js";
 
 /**
@@ -94,7 +95,10 @@ export function createReviewSkillArm(
           (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .map((m) => ({ content: m.content, role: m.role }));
       if (turns.length === 0) return;
-      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env) });
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(env),
+        dir: resolveAuthoredSkillsDir(env)
+      });
       await reviewSkillsFromTurns(turns, {
         model: defaultModel,
         modelProvider,
