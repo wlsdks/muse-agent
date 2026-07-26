@@ -2065,6 +2065,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const backgroundExitNoticeTick = makeBackgroundExitNoticeTick({
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         interruptionBudget,
         messagingRegistry,
         provider,

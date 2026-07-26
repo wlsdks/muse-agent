@@ -141,6 +141,7 @@ export function makeProactiveTick(deps: MakeProactiveTickDeps): () => Promise<vo
 
 export interface MakeBackgroundExitNoticeTickDeps {
   readonly destination: string;
+  readonly effectFile: string;
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly provider: string;
@@ -148,10 +149,11 @@ export interface MakeBackgroundExitNoticeTickDeps {
 }
 
 export function makeBackgroundExitNoticeTick(deps: MakeBackgroundExitNoticeTickDeps): () => Promise<void> {
-  const { destination, interruptionBudget, messagingRegistry, provider, stdout } = deps;
+  const { destination, effectFile, interruptionBudget, messagingRegistry, provider, stdout } = deps;
   return async (): Promise<void> => {
     const summary = await runDueBackgroundExitNotices({
       destination,
+      effectFile,
       interruptionBudget,
       messagingRegistry,
       notifiedFile: join(homedir(), ".muse", "bg-exit-notified.json"),
